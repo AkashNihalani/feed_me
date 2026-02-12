@@ -585,6 +585,52 @@ def fetch_next_post_job():
         return job
 
 
+
+
+def fetch_next_post_job_batch(batch_size: int = 10):
+    with get_conn() as conn:
+        anchor = conn.execute(
+            """
+            SELECT *
+            FROM post_queue
+            WHERE status IN ('pending','retry')
+              AND next_run_at <= NOW()
+            ORDER BY next_run_at ASC, id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+            """
+        ).fetchone()
+        if not anchor:
+            conn.commit()
+            return []
+
+        jobs = conn.execute(
+            """
+            SELECT *
+            FROM post_queue
+            WHERE status IN ('pending','retry')
+              AND next_run_at <= NOW()
+              AND subscriber_id=%s
+              AND handle=%s
+              AND checkpoint=%s
+            ORDER BY next_run_at ASC, id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT %s
+            """,
+            (anchor['subscriber_id'], anchor['handle'], anchor['checkpoint'], max(1, batch_size)),
+        ).fetchall()
+
+        if not jobs:
+            conn.commit()
+            return []
+
+        ids = [j['id'] for j in jobs]
+        conn.execute(
+            "UPDATE post_queue SET status='running', updated_at=NOW() WHERE id = ANY(%s)",
+            (ids,),
+        )
+        conn.commit()
+        return jobs
 def mark_post_job_success(job_id: int):
     with get_conn() as conn:
         conn.execute(

@@ -28,8 +28,7 @@ def _build_input(handle: str, run_type: str, post_url: str | None = None) -> dic
     return json.loads(payload)
 
 
-def run_actor(handle: str, run_type: str, post_url: str | None = None) -> list[dict]:
-    input_payload = _build_input(handle, run_type, post_url)
+def _run_payload(input_payload: dict) -> list[dict]:
     run_url = f"{API_BASE}/acts/{APIFY_ACTOR_ID}/runs?token={APIFY_TOKEN}"
     resp = requests.post(run_url, json=input_payload, timeout=60)
     resp.raise_for_status()
@@ -39,6 +38,7 @@ def run_actor(handle: str, run_type: str, post_url: str | None = None) -> list[d
 
     status = "RUNNING"
     start = time.time()
+    check = None
     while status in ("RUNNING", "READY"):
         if time.time() - start > APIFY_RUN_TIMEOUT_SECONDS:
             raise TimeoutError("Apify run timed out")
@@ -50,7 +50,7 @@ def run_actor(handle: str, run_type: str, post_url: str | None = None) -> list[d
     if status != "SUCCEEDED":
         raise RuntimeError(f"Apify run failed with status: {status}")
 
-    dataset_id = check.json().get("data", {}).get("defaultDatasetId")
+    dataset_id = check.json().get("data", {}).get("defaultDatasetId") if check is not None else None
     if not dataset_id:
         raise RuntimeError("Apify run missing dataset id")
 
@@ -58,6 +58,22 @@ def run_actor(handle: str, run_type: str, post_url: str | None = None) -> list[d
     items = requests.get(items_url, timeout=60)
     items.raise_for_status()
     return items.json()
+
+
+def run_actor(handle: str, run_type: str, post_url: str | None = None) -> list[dict]:
+    input_payload = _build_input(handle, run_type, post_url)
+    return _run_payload(input_payload)
+
+
+def run_actor_post_urls(handle: str, post_urls: list[str]) -> list[dict]:
+    urls = [u.strip() for u in (post_urls or []) if (u or "").strip()]
+    if not urls:
+        return []
+    input_payload = _build_input(handle, "post_url", post_url=urls[0])
+    input_payload["directUrls"] = urls
+    current_limit = int(input_payload.get("resultsLimit") or 0)
+    input_payload["resultsLimit"] = max(current_limit, len(urls))
+    return _run_payload(input_payload)
 
 
 def run_actor_details(handle: str) -> dict:

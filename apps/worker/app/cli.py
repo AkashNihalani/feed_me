@@ -3,7 +3,13 @@ import re
 import time
 from datetime import datetime, timezone, timedelta
 
-from .config import RETRY_BACKOFF_MINUTES, IGNORE_SHEETS, APIFY_TOKEN
+from .config import (
+    RETRY_BACKOFF_MINUTES,
+    IGNORE_SHEETS,
+    APIFY_TOKEN,
+    APIFY_COOLDOWN_TRIGGER_FAILURES,
+    APIFY_COOLDOWN_HOURS,
+)
 from .db import (
     init_db,
     enqueue_handle,
@@ -23,7 +29,7 @@ from .db import (
     ensure_feeders_for_subscriber,
     refresh_feeder_pair_metrics,
     rebuild_signal_aggregates_for_subscriber,
-    fetch_next_post_job,
+    fetch_next_post_job_batch,
     mark_post_job_success,
     mark_post_job_retry,
     mark_post_job_failed,
@@ -32,9 +38,12 @@ from .db import (
     get_post_signal_map,
     get_conn,
     upsert_handle_profile_metric,
+    get_apify_pause_until,
+    record_apify_success,
+    record_apify_failure,
 )
 from .sheets import list_sheet_titles, get_values, batch_update, upsert_handle_profile_snapshot
-from .sync import sync_handle, sync_post_checkpoint
+from .sync import sync_handle, sync_post_checkpoint_batch
 from .apify import run_actor_details
 from .embeddings import build_signal_texts, get_embedding
 from .config import OPENAI_EMBED_MODEL, EMBED_ONLY_TAGS, EMBED_BATCH_LIMIT, EMBED_SIGNAL_TYPES
@@ -87,7 +96,10 @@ def schedule(run_type: str):
 
 def worker():
     init_db()
+    post_batch_size = 10
     while True:
+        pause_until = get_apify_pause_until()
+
         job = fetch_next_job()
         if job:
             handle = job["handle"]
@@ -95,10 +107,19 @@ def worker():
             subscriber_id = job["subscriber_id"]
             spreadsheet_id = job["spreadsheet_id"]
             run_log_id = log_run_start(subscriber_id, spreadsheet_id, handle, run_type)
+
+            # Respect global Apify cooldown without consuming retries.
+            if pause_until and pause_until > datetime.now(timezone.utc):
+                mark_job_retry(job["id"], job["attempt"], pause_until, "Apify cooldown active")
+                log_run_finish(run_log_id, "retry", 0, 0, 0, "Apify cooldown active")
+                time.sleep(1)
+                continue
+
             try:
                 last_seen, apify_items, inserted_count, updated_count = sync_handle(
                     subscriber_id, spreadsheet_id, handle, handle, run_type
                 )
+                record_apify_success()
                 upsert_handle_state(subscriber_id, handle, handle, "success", last_seen, None)
                 mark_job_success(job["id"])
                 log_run_finish(run_log_id, "success", apify_items, inserted_count, updated_count, None)
@@ -107,9 +128,14 @@ def worker():
                     refresh_feeder_pair_metrics(feed["id"], 30)
             except Exception as exc:
                 safe_error = _sanitize_error_message(exc)
+                _, new_pause_until = record_apify_failure(
+                    safe_error, APIFY_COOLDOWN_TRIGGER_FAILURES, APIFY_COOLDOWN_HOURS
+                )
                 attempt = job["attempt"] + 1
                 if attempt <= len(RETRY_BACKOFF_MINUTES):
                     next_time = _next_retry_time(attempt)
+                    if new_pause_until and new_pause_until > next_time:
+                        next_time = new_pause_until
                     mark_job_retry(job["id"], attempt, next_time, safe_error)
                     upsert_handle_state(subscriber_id, handle, handle, "retry", None, safe_error)
                     log_run_finish(run_log_id, "retry", 0, 0, 0, safe_error)
@@ -120,38 +146,67 @@ def worker():
             time.sleep(1)
             continue
 
-        post_job = fetch_next_post_job()
-        if not post_job:
-            break
+        post_jobs = fetch_next_post_job_batch(post_batch_size)
+        if not post_jobs:
+            time.sleep(5)
+            continue
+
+        # All jobs in batch share same subscriber+handle+checkpoint from DB fetch helper.
+        anchor = post_jobs[0]
+
+        if pause_until and pause_until > datetime.now(timezone.utc):
+            for pj in post_jobs:
+                mark_post_job_retry(pj["id"], pj["attempt"], pause_until, "Apify cooldown active")
+            time.sleep(1)
+            continue
 
         try:
-            if post_job["checkpoint"] == "d21" and post_job.get("requires_d7_hot"):
-                if not is_d7_hot(
-                    subscriber_id=post_job["subscriber_id"],
-                    handle=post_job["handle"],
-                    post_url=post_job["post_url"],
-                ):
-                    mark_post_job_skipped(post_job["id"], "D7 not hot; D21 skipped by gate")
-                    time.sleep(1)
-                    continue
-
-            sync_post_checkpoint(
-                subscriber_id=post_job["subscriber_id"],
-                spreadsheet_id=post_job["spreadsheet_id"],
-                handle=post_job["handle"],
-                sheet_name=post_job["handle"],
-                post_url=post_job["post_url"],
-                checkpoint=post_job["checkpoint"],
+            urls = [pj["post_url"] for pj in post_jobs]
+            batch_results = sync_post_checkpoint_batch(
+                subscriber_id=anchor["subscriber_id"],
+                spreadsheet_id=anchor["spreadsheet_id"],
+                handle=anchor["handle"],
+                sheet_name=anchor["handle"],
+                checkpoint=anchor["checkpoint"],
+                post_urls=urls,
             )
-            mark_post_job_success(post_job["id"])
+            record_apify_success()
+
+            for pj in post_jobs:
+                if pj["checkpoint"] == "d21" and pj.get("requires_d7_hot"):
+                    if not is_d7_hot(
+                        subscriber_id=pj["subscriber_id"],
+                        handle=pj["handle"],
+                        post_url=pj["post_url"],
+                    ):
+                        mark_post_job_skipped(pj["id"], "D7 not hot; D21 skipped by gate")
+                        continue
+
+                res = batch_results.get(pj["post_url"])
+                if res is None:
+                    attempt = pj["attempt"] + 1
+                    msg = "Post missing in batch result"
+                    if attempt <= len(RETRY_BACKOFF_MINUTES):
+                        mark_post_job_retry(pj["id"], attempt, _next_retry_time(attempt), msg)
+                    else:
+                        mark_post_job_failed(pj["id"], msg)
+                else:
+                    mark_post_job_success(pj["id"])
         except Exception as exc:
             safe_error = _sanitize_error_message(exc)
-            attempt = post_job["attempt"] + 1
-            if attempt <= len(RETRY_BACKOFF_MINUTES):
-                next_time = _next_retry_time(attempt)
-                mark_post_job_retry(post_job["id"], attempt, next_time, safe_error)
-            else:
-                mark_post_job_failed(post_job["id"], safe_error)
+            _, new_pause_until = record_apify_failure(
+                safe_error, APIFY_COOLDOWN_TRIGGER_FAILURES, APIFY_COOLDOWN_HOURS
+            )
+            for pj in post_jobs:
+                attempt = pj["attempt"] + 1
+                if attempt <= len(RETRY_BACKOFF_MINUTES):
+                    next_time = _next_retry_time(attempt)
+                    if new_pause_until and new_pause_until > next_time:
+                        next_time = new_pause_until
+                    mark_post_job_retry(pj["id"], attempt, next_time, safe_error)
+                else:
+                    mark_post_job_failed(pj["id"], safe_error)
+
         time.sleep(1)
 
 

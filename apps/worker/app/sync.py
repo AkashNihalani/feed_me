@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from dateutil import parser as date_parser
 
-from .apify import run_actor, run_actor_post_url
+from .apify import run_actor, run_actor_post_url, run_actor_post_urls
 from .sheets import ensure_header, get_values, batch_update, append_values, sort_by_posted_at
 from .db import (
     upsert_snapshot,
@@ -328,22 +328,15 @@ def sync_handle(subscriber_id: int, spreadsheet_id: str, handle: str, sheet_name
     return None, len(items), inserted_count, updated_count
 
 
-def sync_post_checkpoint(
+def _sync_post_checkpoint_item(
     subscriber_id: int,
     spreadsheet_id: str,
     handle: str,
     sheet_name: str,
     post_url: str,
     checkpoint: str,
+    item: dict,
 ) -> tuple[int, int]:
-    scrape_handle = handle.strip()
-    if scrape_handle.startswith("@"):
-        scrape_handle = scrape_handle[1:]
-
-    item = run_actor_post_url(scrape_handle, post_url)
-    if not item:
-        return 0, 0
-
     header = ensure_header(sheet_name, spreadsheet_id)
     values = get_values(f"{sheet_name}!A3:AZ10000", spreadsheet_id)
     post_id_idx = header.index("post_url") if "post_url" in header else 0
@@ -407,6 +400,74 @@ def sync_post_checkpoint(
     append_values(f"{sheet_name}!A3", [row], spreadsheet_id)
     sort_by_posted_at(sheet_name, spreadsheet_id)
     return 1, 0
+
+
+def sync_post_checkpoint(
+    subscriber_id: int,
+    spreadsheet_id: str,
+    handle: str,
+    sheet_name: str,
+    post_url: str,
+    checkpoint: str,
+) -> tuple[int, int]:
+    scrape_handle = handle.strip()
+    if scrape_handle.startswith("@"):
+        scrape_handle = scrape_handle[1:]
+
+    item = run_actor_post_url(scrape_handle, post_url)
+    if not item:
+        return 0, 0
+
+    return _sync_post_checkpoint_item(
+        subscriber_id=subscriber_id,
+        spreadsheet_id=spreadsheet_id,
+        handle=handle,
+        sheet_name=sheet_name,
+        post_url=post_url,
+        checkpoint=checkpoint,
+        item=item,
+    )
+
+
+def sync_post_checkpoint_batch(
+    subscriber_id: int,
+    spreadsheet_id: str,
+    handle: str,
+    sheet_name: str,
+    checkpoint: str,
+    post_urls: list[str],
+) -> dict[str, tuple[int, int] | None]:
+    scrape_handle = handle.strip()
+    if scrape_handle.startswith("@"):
+        scrape_handle = scrape_handle[1:]
+
+    urls = [u for u in post_urls if (u or "").strip()]
+    items = run_actor_post_urls(scrape_handle, urls)
+
+    by_shortcode: dict[str, dict] = {}
+    for item in items:
+        norm = _normalize_item(item)
+        sc = _shortcode_from_url(norm.get("post_url") or item.get("url") or "")
+        if sc:
+            by_shortcode[sc.lower()] = item
+
+    results: dict[str, tuple[int, int] | None] = {}
+    for post_url in urls:
+        sc = _shortcode_from_url(post_url).lower()
+        item = by_shortcode.get(sc)
+        if not item:
+            results[post_url] = None
+            continue
+        results[post_url] = _sync_post_checkpoint_item(
+            subscriber_id=subscriber_id,
+            spreadsheet_id=spreadsheet_id,
+            handle=handle,
+            sheet_name=sheet_name,
+            post_url=post_url,
+            checkpoint=checkpoint,
+            item=item,
+        )
+    return results
 
 
 def _col_letter(n: int) -> str:
