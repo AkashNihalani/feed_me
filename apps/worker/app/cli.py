@@ -262,11 +262,11 @@ def repair_velocity(subscriber_id: int | None):
                     ELSE 'D2'
                 END,
                 velocity_tag = CASE
-                    WHEN COALESCE(velocity_percentile,'') ~ '^[0-9]+%$' THEN
+                    WHEN COALESCE(velocity_percentile,'') ~ '^[0-9]+%%$' THEN
                         CASE
-                            WHEN replace(velocity_percentile,'%','')::int <= 5 THEN '🚀'
-                            WHEN replace(velocity_percentile,'%','')::int <= 15 THEN '🔥'
-                            WHEN replace(velocity_percentile,'%','')::int <= 35 THEN '✅'
+                            WHEN replace(velocity_percentile,'%%','')::int <= 5 THEN '🚀'
+                            WHEN replace(velocity_percentile,'%%','')::int <= 15 THEN '🔥'
+                            WHEN replace(velocity_percentile,'%%','')::int <= 35 THEN '✅'
                             ELSE '😴'
                         END
                     ELSE ''

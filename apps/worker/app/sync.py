@@ -458,7 +458,7 @@ def _apply_velocity(
                 _, d7_percentile, d7_tag_full = _velocity_from_snapshots(
                     subscriber_id, handle, snap, item, "d7"
                 )
-                signal_tag = d7_tag_full or d7_tag or "✅"
+                signal_tag = d7_tag_full or d7_tag or "insufficient_data"
                 signal_percentile = d7_percentile or ""
                 if signal_tag == "insufficient_data":
                     norm["velocity"] = ""
@@ -518,7 +518,7 @@ def _apply_velocity(
         return
 
     _, percentile, tag = _velocity_from_snapshots(subscriber_id, handle, snap, item, checkpoint)
-    signal_tag = tag or "✅"
+    signal_tag = tag or "insufficient_data"
     signal_percentile = percentile or ""
     if signal_tag == "insufficient_data":
         norm["velocity"] = ""
@@ -652,12 +652,16 @@ def _velocity_from_snapshots(subscriber_id: int, handle: str, snap: dict, item: 
 
     pool = _velocity_pool(subscriber_id, handle, media_type, checkpoint)
     if not pool:
-        return None, None, ""
+        return None, None, "insufficient_data"
     if len(pool) < _min_cohort_size(checkpoint):
         return None, None, "insufficient_data"
 
     percentile = _percentile(pool, metric_per_day)
+    if not percentile:
+        return None, None, "insufficient_data"
     tag = _velocity_tag(percentile)
+    if not tag:
+        return None, None, "insufficient_data"
 
     # Late bloomer: D1 was low, D7 is high
     if checkpoint == "d7":
@@ -708,9 +712,11 @@ def _percentile(values: list[float], value: float) -> str | None:
     if not values:
         return None
     # Dense-rank percentile: ties share rank, 1% = top-performing.
-    uniq_desc = sorted(set(values), reverse=True)
+    # Round for deterministic tie grouping on floating-point metrics.
+    uniq_desc = sorted({round(v, 6) for v in values}, reverse=True)
     if not uniq_desc:
         return None
+    value = round(value, 6)
     if len(uniq_desc) == 1:
         return "50%"
     rank = len(uniq_desc)
@@ -731,7 +737,7 @@ def _velocity_tag(percentile: str | None) -> str:
         except Exception:
             p = None
     if p is None:
-        return "✅"
+        return ""
     if p <= 5:
         return "🚀"
     if p <= 15:
@@ -740,7 +746,7 @@ def _velocity_tag(percentile: str | None) -> str:
         return "✅"
     if p > 35:
         return "😴"
-    return "✅"
+    return ""
 
 
 def _is_high_tag(tag: str | None) -> bool:
@@ -761,8 +767,10 @@ def _velocity_tag_for_checkpoint(
     metric_per_day = metric / days
     pool = _velocity_pool(subscriber_id, handle, media_type, checkpoint)
     if not pool:
-        return None
+        return "insufficient_data"
     if len(pool) < _min_cohort_size(checkpoint):
         return "insufficient_data"
     percentile = _percentile(pool, metric_per_day)
+    if not percentile:
+        return "insufficient_data"
     return _velocity_tag(percentile)
