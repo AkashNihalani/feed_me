@@ -66,8 +66,13 @@ def schedule(run_type: str):
             if s not in IGNORE_SHEETS and s not in ("Feeder", "Billing/Usage")
         ]
         ensure_feeders_for_subscriber(sub["id"], handle_sheets)
+
+        # Weekly cycle is profile/details refresh only.
         if run_type == "weekly":
             _refresh_followers(sub["id"], sub["spreadsheet_id"], handle_sheets)
+            continue
+
+        # Daily cycle enqueues post scrapes.
         for sheet in handle_sheets:
             enqueue_handle(sub["id"], sub["spreadsheet_id"], sheet, run_type)
 
