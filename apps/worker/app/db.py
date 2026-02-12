@@ -232,12 +232,26 @@ def _backfill_and_fix_constraints():
             "ALTER TABLE handle_state ADD CONSTRAINT handle_state_pkey PRIMARY KEY (subscriber_id, handle)"
         )
 
-        # Ensure the partial unique index for run_queue exists (required for ON CONFLICT DO NOTHING patterns).
+        # Ensure the partial unique index for run_queue exists (run_type-aware dedupe).
+        conn.execute("DROP INDEX IF EXISTS run_queue_unique_pending")
         conn.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS run_queue_unique_pending
-            ON run_queue (subscriber_id, handle)
+            ON run_queue (subscriber_id, handle, run_type)
             WHERE status IN ('pending','retry')
+            """
+        )
+
+        # Health alert dedupe/edge tracking (no frontend required).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS health_alert_state (
+                key TEXT PRIMARY KEY,
+                is_active BOOLEAN NOT NULL DEFAULT FALSE,
+                last_value BIGINT,
+                last_alert_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
             """
         )
 
@@ -516,7 +530,7 @@ def enqueue_handle(subscriber_id: int, spreadsheet_id: str, handle: str, run_typ
             """
             INSERT INTO run_queue (subscriber_id, spreadsheet_id, handle, run_type, status)
             VALUES (%s, %s, %s, %s, 'pending')
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (subscriber_id, handle, run_type) WHERE status IN ('pending','retry') DO NOTHING
             """,
             (subscriber_id, spreadsheet_id, handle, run_type),
         )
@@ -1660,6 +1674,33 @@ def get_post_signal_map(subscriber_id: int, handle: str) -> dict[str, dict]:
         }
     return out
 
+
+
+def health_alert_get(key: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT key, is_active, last_value, last_alert_at FROM health_alert_state WHERE key=%s",
+            (key,),
+        ).fetchone()
+        conn.commit()
+        return row
+
+
+def health_alert_set(key: str, is_active: bool, last_value: int | None = None):
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO health_alert_state (key, is_active, last_value, last_alert_at, updated_at)
+            VALUES (%s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END, NOW())
+            ON CONFLICT (key) DO UPDATE
+            SET is_active=EXCLUDED.is_active,
+                last_value=EXCLUDED.last_value,
+                last_alert_at=CASE WHEN EXCLUDED.is_active THEN NOW() ELSE health_alert_state.last_alert_at END,
+                updated_at=NOW()
+            """,
+            (key, is_active, last_value, is_active),
+        )
+        conn.commit()
 
 def run_retention_cleanup():
     with get_conn() as conn:

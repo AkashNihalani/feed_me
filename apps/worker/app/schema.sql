@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS run_queue_handle_idx ON run_queue (handle);
 
 -- Prevent duplicate pending jobs per handle
 CREATE UNIQUE INDEX IF NOT EXISTS run_queue_unique_pending
-ON run_queue (subscriber_id, handle)
+ON run_queue (subscriber_id, handle, run_type)
 WHERE status IN ('pending','retry');
 
 CREATE TABLE IF NOT EXISTS post_queue (
@@ -128,6 +128,15 @@ CREATE TABLE IF NOT EXISTS run_log (
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS health_alert_state (
+    key TEXT PRIMARY KEY,
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+    last_value BIGINT,
+    last_alert_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 CREATE TABLE IF NOT EXISTS post_snapshots (
     id BIGSERIAL PRIMARY KEY,

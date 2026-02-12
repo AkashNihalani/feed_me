@@ -18,3 +18,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Weekly retention cleanup on Sunday at 03:10
 10 3 * * 0 cd /app && python -m app.cli --mode retention >> /var/log/cron.log 2>&1
+
+# Health checks every 10 minutes
+*/10 * * * * cd /app && python -m app.cli --mode healthcheck >> /var/log/cron.log 2>&1

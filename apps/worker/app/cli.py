@@ -1,6 +1,7 @@
 import argparse
 import re
 import time
+import requests
 from datetime import datetime, timezone, timedelta
 
 from .config import (
@@ -9,6 +10,11 @@ from .config import (
     APIFY_TOKEN,
     APIFY_COOLDOWN_TRIGGER_FAILURES,
     APIFY_COOLDOWN_HOURS,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+    HEALTHCHECK_RETRY_SPIKE_THRESHOLD,
+    HEALTHCHECK_STUCK_MINUTES,
+    HEALTHCHECK_FAILED_LOOKBACK_MINUTES,
 )
 from .db import (
     init_db,
@@ -41,6 +47,8 @@ from .db import (
     get_apify_pause_until,
     record_apify_success,
     record_apify_failure,
+    health_alert_get,
+    health_alert_set,
 )
 from .sheets import list_sheet_titles, get_values, batch_update, upsert_handle_profile_snapshot
 from .sync import sync_handle, sync_post_checkpoint_batch
@@ -84,12 +92,7 @@ def schedule(run_type: str):
         ]
         ensure_feeders_for_subscriber(sub["id"], handle_sheets)
 
-        # Weekly cycle is profile/details refresh only.
-        if run_type == "weekly":
-            _refresh_followers(sub["id"], sub["spreadsheet_id"], handle_sheets)
-            continue
-
-        # Daily cycle enqueues post scrapes.
+        # Both daily and weekly now use queue + retry/cooldown in worker.
         for sheet in handle_sheets:
             enqueue_handle(sub["id"], sub["spreadsheet_id"], sheet, run_type)
 
@@ -116,16 +119,23 @@ def worker():
                 continue
 
             try:
-                last_seen, apify_items, inserted_count, updated_count = sync_handle(
-                    subscriber_id, spreadsheet_id, handle, handle, run_type
-                )
-                record_apify_success()
-                upsert_handle_state(subscriber_id, handle, handle, "success", last_seen, None)
-                mark_job_success(job["id"])
-                log_run_finish(run_log_id, "success", apify_items, inserted_count, updated_count, None)
-                feed = get_feed_by_subscriber(subscriber_id)
-                if feed:
-                    refresh_feeder_pair_metrics(feed["id"], 30)
+                if run_type == "weekly":
+                    _refresh_handle_profile(subscriber_id, spreadsheet_id, handle)
+                    record_apify_success()
+                    upsert_handle_state(subscriber_id, handle, handle, "success", None, None)
+                    mark_job_success(job["id"])
+                    log_run_finish(run_log_id, "success", 1, 0, 0, None)
+                else:
+                    last_seen, apify_items, inserted_count, updated_count = sync_handle(
+                        subscriber_id, spreadsheet_id, handle, handle, run_type
+                    )
+                    record_apify_success()
+                    upsert_handle_state(subscriber_id, handle, handle, "success", last_seen, None)
+                    mark_job_success(job["id"])
+                    log_run_finish(run_log_id, "success", apify_items, inserted_count, updated_count, None)
+                    feed = get_feed_by_subscriber(subscriber_id)
+                    if feed:
+                        refresh_feeder_pair_metrics(feed["id"], 30)
             except Exception as exc:
                 safe_error = _sanitize_error_message(exc)
                 _, new_pause_until = record_apify_failure(
@@ -154,14 +164,31 @@ def worker():
         # All jobs in batch share same subscriber+handle+checkpoint from DB fetch helper.
         anchor = post_jobs[0]
 
+        # Apply D21 gate before calling Apify to avoid wasted runs.
+        eligible_jobs = []
+        for pj in post_jobs:
+            if pj["checkpoint"] == "d21" and pj.get("requires_d7_hot"):
+                if not is_d7_hot(
+                    subscriber_id=pj["subscriber_id"],
+                    handle=pj["handle"],
+                    post_url=pj["post_url"],
+                ):
+                    mark_post_job_skipped(pj["id"], "D7 not hot; D21 skipped by gate")
+                    continue
+            eligible_jobs.append(pj)
+
+        if not eligible_jobs:
+            time.sleep(1)
+            continue
+
         if pause_until and pause_until > datetime.now(timezone.utc):
-            for pj in post_jobs:
+            for pj in eligible_jobs:
                 mark_post_job_retry(pj["id"], pj["attempt"], pause_until, "Apify cooldown active")
             time.sleep(1)
             continue
 
         try:
-            urls = [pj["post_url"] for pj in post_jobs]
+            urls = [pj["post_url"] for pj in eligible_jobs]
             batch_results = sync_post_checkpoint_batch(
                 subscriber_id=anchor["subscriber_id"],
                 spreadsheet_id=anchor["spreadsheet_id"],
@@ -172,16 +199,7 @@ def worker():
             )
             record_apify_success()
 
-            for pj in post_jobs:
-                if pj["checkpoint"] == "d21" and pj.get("requires_d7_hot"):
-                    if not is_d7_hot(
-                        subscriber_id=pj["subscriber_id"],
-                        handle=pj["handle"],
-                        post_url=pj["post_url"],
-                    ):
-                        mark_post_job_skipped(pj["id"], "D7 not hot; D21 skipped by gate")
-                        continue
-
+            for pj in eligible_jobs:
                 res = batch_results.get(pj["post_url"])
                 if res is None:
                     attempt = pj["attempt"] + 1
@@ -197,7 +215,7 @@ def worker():
             _, new_pause_until = record_apify_failure(
                 safe_error, APIFY_COOLDOWN_TRIGGER_FAILURES, APIFY_COOLDOWN_HOURS
             )
-            for pj in post_jobs:
+            for pj in eligible_jobs:
                 attempt = pj["attempt"] + 1
                 if attempt <= len(RETRY_BACKOFF_MINUTES):
                     next_time = _next_retry_time(attempt)
@@ -380,72 +398,153 @@ def repair_velocity(subscriber_id: int | None):
                 batch_update(updates, spreadsheet_id)
 
 
-def _refresh_followers(subscriber_id: int, spreadsheet_id: str, handles: list[str]):
+def _refresh_handle_profile(subscriber_id: int, spreadsheet_id: str, handle: str):
     timestamp = datetime.now().strftime("%d-%m-%y %I:%M %p")
-    for handle in handles:
-        clean = handle.lstrip("@")
+    clean = handle.lstrip("@")
+    details = run_actor_details(clean)
+
+    followers = (
+        details.get("followersCount")
+        or details.get("ownerFollowersCount")
+        or (details.get("owner") or {}).get("followersCount")
+        or ((details.get("owner") or {}).get("edge_followed_by") or {}).get("count")
+        or ""
+    )
+    follows_count = (
+        details.get("followsCount")
+        or details.get("followingsCount")
+        or details.get("followingCount")
+        or ((details.get("owner") or {}).get("edge_follow") or {}).get("count")
+        or ""
+    )
+    posts_count = details.get("postsCount") or details.get("posts_count") or ""
+    business_category = details.get("businessCategoryName") or ""
+    full_name = details.get("fullName") or details.get("full_name") or ""
+    verified = bool(details.get("verified") or details.get("isVerified"))
+    profile_pic_url = details.get("profilePicUrlHD") or details.get("profilePicUrl") or ""
+    profile_url = details.get("url") or f"https://www.instagram.com/{clean}/"
+
+    def _to_int(v):
         try:
-            details = run_actor_details(clean)
+            return int(v)
+        except Exception:
+            return None
+
+    upsert_handle_profile_metric(
+        subscriber_id=subscriber_id,
+        handle=f"@{clean}",
+        profile_url=profile_url,
+        full_name=full_name,
+        business_category=business_category,
+        biography=details.get("biography") or "",
+        followers_count=_to_int(followers),
+        follows_count=_to_int(follows_count),
+        posts_count=_to_int(posts_count),
+        verified=verified,
+        profile_pic_url=profile_pic_url,
+    )
+
+    upsert_handle_profile_snapshot(
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=handle,
+        handle=f"@{clean}",
+        followers_count=_to_int(followers),
+        follows_count=_to_int(follows_count),
+        posts_count=_to_int(posts_count),
+        business_category=business_category,
+        verified=verified,
+        sampled_at_label=timestamp,
+    )
+
+
+def _refresh_followers(subscriber_id: int, spreadsheet_id: str, handles: list[str]):
+    for handle in handles:
+        try:
+            _refresh_handle_profile(subscriber_id, spreadsheet_id, handle)
         except Exception:
             continue
 
-        followers = (
-            details.get("followersCount")
-            or details.get("ownerFollowersCount")
-            or (details.get("owner") or {}).get("followersCount")
-            or ((details.get("owner") or {}).get("edge_followed_by") or {}).get("count")
-            or ""
-        )
-        follows_count = (
-            details.get("followsCount")
-            or details.get("followingsCount")
-            or details.get("followingCount")
-            or ((details.get("owner") or {}).get("edge_follow") or {}).get("count")
-            or ""
-        )
-        posts_count = details.get("postsCount") or details.get("posts_count") or ""
-        business_category = details.get("businessCategoryName") or ""
-        full_name = details.get("fullName") or details.get("full_name") or ""
-        verified = bool(details.get("verified") or details.get("isVerified"))
-        profile_pic_url = details.get("profilePicUrlHD") or details.get("profilePicUrl") or ""
-        profile_url = details.get("url") or f"https://www.instagram.com/{clean}/"
 
-        def _to_int(v):
-            try:
-                return int(v)
-            except Exception:
-                return None
 
-        upsert_handle_profile_metric(
-            subscriber_id=subscriber_id,
-            handle=f"@{clean}",
-            profile_url=profile_url,
-            full_name=full_name,
-            business_category=business_category,
-            biography=details.get("biography") or "",
-            followers_count=_to_int(followers),
-            follows_count=_to_int(follows_count),
-            posts_count=_to_int(posts_count),
-            verified=verified,
-            profile_pic_url=profile_pic_url,
-        )
+def _telegram_send(text: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=15)
+    except Exception:
+        pass
 
-        upsert_handle_profile_snapshot(
-            spreadsheet_id=spreadsheet_id,
-            sheet_name=handle,
-            handle=f"@{clean}",
-            followers_count=_to_int(followers),
-            follows_count=_to_int(follows_count),
-            posts_count=_to_int(posts_count),
-            business_category=business_category,
-            verified=verified,
-            sampled_at_label=timestamp,
-        )
 
+def _set_and_maybe_alert(key: str, is_active: bool, value: int | None, message: str):
+    prev = health_alert_get(key)
+    prev_active = bool(prev["is_active"]) if prev else False
+    prev_value = int(prev["last_value"] or 0) if prev and prev.get("last_value") is not None else 0
+
+    if is_active:
+        should_alert = (not prev_active) or ((value or 0) > prev_value)
+        if should_alert:
+            _telegram_send(message)
+    elif prev_active:
+        _telegram_send(f"[RECOVERED] {key}")
+
+    health_alert_set(key, is_active, value)
+
+
+def healthcheck_run():
+    init_db()
+    with get_conn() as conn:
+        failed_recent = conn.execute(
+            "SELECT count(*) AS c FROM run_log WHERE status='failed' AND started_at > NOW() - (%s || ' minutes')::interval",
+            (HEALTHCHECK_FAILED_LOOKBACK_MINUTES,),
+        ).fetchone()["c"]
+        retry_recent = conn.execute(
+            "SELECT count(*) AS c FROM run_log WHERE status='retry' AND started_at > NOW() - INTERVAL '30 minutes'"
+        ).fetchone()["c"]
+        stuck_run = conn.execute(
+            "SELECT count(*) AS c FROM run_queue WHERE status='running' AND updated_at < NOW() - (%s || ' minutes')::interval",
+            (HEALTHCHECK_STUCK_MINUTES,),
+        ).fetchone()["c"]
+        stuck_post = conn.execute(
+            "SELECT count(*) AS c FROM post_queue WHERE status='running' AND updated_at < NOW() - (%s || ' minutes')::interval",
+            (HEALTHCHECK_STUCK_MINUTES,),
+        ).fetchone()["c"]
+        apify = conn.execute(
+            "SELECT consecutive_failures, pause_until, last_error FROM apify_health WHERE id=1"
+        ).fetchone()
+        conn.commit()
+
+    _set_and_maybe_alert(
+        "failed_recent",
+        failed_recent > 0,
+        int(failed_recent),
+        f"[ALERT] feed_me failed runs in last {HEALTHCHECK_FAILED_LOOKBACK_MINUTES}m: {failed_recent}",
+    )
+    _set_and_maybe_alert(
+        "retry_spike",
+        retry_recent >= HEALTHCHECK_RETRY_SPIKE_THRESHOLD,
+        int(retry_recent),
+        f"[ALERT] feed_me retry spike (30m): {retry_recent}",
+    )
+    total_stuck = int(stuck_run or 0) + int(stuck_post or 0)
+    _set_and_maybe_alert(
+        "stuck_running",
+        total_stuck > 0,
+        total_stuck,
+        f"[ALERT] feed_me stuck running jobs: run_queue={stuck_run}, post_queue={stuck_post}",
+    )
+
+    cooldown_active = bool(apify and apify.get("pause_until") and apify["pause_until"] > datetime.now(timezone.utc))
+    cool_msg = ""
+    if cooldown_active:
+        cool_msg = f"[ALERT] feed_me Apify cooldown active until {apify['pause_until']}"
+        if apify.get("last_error"):
+            cool_msg += f"; last_error={str(apify['last_error'])[:180]}"
+    _set_and_maybe_alert("apify_cooldown", cooldown_active, 1 if cooldown_active else 0, cool_msg)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["schedule", "worker", "embeddings", "alerts", "aggregates", "retention", "repair_velocity"], required=True)
+    parser.add_argument("--mode", choices=["schedule", "worker", "embeddings", "alerts", "aggregates", "retention", "repair_velocity", "healthcheck"], required=True)
     parser.add_argument("--run_type", choices=["daily", "weekly"], default="daily")
     parser.add_argument("--subscriber_id", type=int, default=None)
     args = parser.parse_args()
@@ -464,6 +563,8 @@ def main():
         retention_run()
     elif args.mode == "repair_velocity":
         repair_velocity(args.subscriber_id)
+    elif args.mode == "healthcheck":
+        healthcheck_run()
 
 
 if __name__ == "__main__":
