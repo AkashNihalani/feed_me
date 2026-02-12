@@ -57,6 +57,16 @@ def _sanitize_error_message(err: Exception) -> str:
     return msg
 
 
+def _normalize_post_url(url: str) -> str:
+    u = (url or "").strip().lower()
+    if not u:
+        return ""
+    u = u.split("?", 1)[0].split("#", 1)[0]
+    if u.endswith("/"):
+        u = u[:-1]
+    return u
+
+
 def schedule(run_type: str):
     init_db()
     for sub in list_subscribers():
@@ -296,7 +306,7 @@ def repair_velocity(subscriber_id: int | None):
                 post_url = row[0].strip() if len(row) > 0 and row[0] else ""
                 if not post_url:
                     continue
-                sig = signal_map.get(post_url)
+                sig = signal_map.get(post_url) or signal_map.get(_normalize_post_url(post_url))
                 if not sig:
                     continue
                 raw_k = sig.get("velocity_tag", "") or ""
