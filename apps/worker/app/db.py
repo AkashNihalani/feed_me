@@ -1581,14 +1581,12 @@ def mark_alert_engine_scan(feed_id: int, hot_scan_at=None, pattern_scan_at=None)
         conn.commit()
 
 
-def _normalize_post_url(url: str) -> str:
-    u = (url or "").strip().lower()
+def _shortcode_from_url(url: str) -> str:
+    u = (url or "").strip()
     if not u:
         return ""
-    u = u.split("?", 1)[0].split("#", 1)[0]
-    if u.endswith("/"):
-        u = u[:-1]
-    return u
+    m = re.search(r"/(?:p|reel|tv)/([A-Za-z0-9_-]+)", u, flags=re.IGNORECASE)
+    return m.group(1).lower() if m else ""
 
 
 def get_post_signal_map(subscriber_id: int, handle: str) -> dict[str, dict]:
@@ -1605,16 +1603,14 @@ def get_post_signal_map(subscriber_id: int, handle: str) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for r in rows:
         post_url = (r.get("post_url") or "").strip()
-        if not post_url:
+        post_key = _shortcode_from_url(post_url)
+        if not post_key:
             continue
-        sig = {
+        out[post_key] = {
             "velocity_tag": r.get("velocity_tag") or "",
             "velocity_percentile": r.get("velocity_percentile") or "",
             "velocity_stage": r.get("velocity_stage") or "",
         }
-        # Store both raw and normalized URL keys so sheet lookup can match variants.
-        out[post_url] = sig
-        out[_normalize_post_url(post_url)] = sig
     return out
 
 

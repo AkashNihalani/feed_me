@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from dateutil import parser as date_parser
@@ -128,6 +129,24 @@ def _list_to_tagged_users(value) -> str:
         users.append(value if value.startswith("@") else f"@{value}")
     return "\n".join(users)
 
+def _shortcode_from_url(url: str) -> str:
+    u = (url or "").strip()
+    if not u:
+        return ""
+    m = re.search(r"/(?:p|reel|tv)/([A-Za-z0-9_-]+)", u)
+    return m.group(1) if m else ""
+
+
+def _canonical_post_url(shortcode: str, fallback_url: str = "") -> str:
+    code = (shortcode or "").strip()
+    if code:
+        return f"https://www.instagram.com/p/{code}/"
+    u = (fallback_url or "").strip()
+    if not u:
+        return ""
+    return u.split("?", 1)[0].split("#", 1)[0]
+
+
 def _is_video(media_type: str) -> bool:
     m = (media_type or "").lower()
     return ("video" in m) or ("reel" in m)
@@ -168,10 +187,10 @@ def _normalize_item(item: dict) -> dict:
     duration = item.get("videoDuration") or item.get("duration") or item.get("videoDurationSeconds") or ""
 
     url = item.get("url")
-    if not url:
-        shortcode = item.get("shortCode") or item.get("shortcode") or item.get("code")
-        if shortcode:
-            url = f"https://www.instagram.com/p/{shortcode}/"
+    shortcode = item.get("shortCode") or item.get("shortcode") or item.get("code") or ""
+    if not shortcode:
+        shortcode = _shortcode_from_url(url or "")
+    url = _canonical_post_url(shortcode, url or "")
 
     display_url = item.get("displayUrl") or item.get("thumbnailUrl") or ""
     video_url = item.get("videoUrl") or item.get("videoUrlHd") or ""
