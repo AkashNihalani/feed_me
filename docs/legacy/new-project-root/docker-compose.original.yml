@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: postgresql://app:app@db:5432/app
+    volumes:
+      - ./secrets/service_account.json:/app/credentials/service_account.json:ro
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: ./worker
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: postgresql://app:app@db:5432/app
+    volumes:
+      - ./secrets/service_account.json:/app/credentials/service_account.json:ro
+    depends_on:
+      - db
+    command: ["/app/app/cron/entrypoint.sh"]
+    restart: unless-stopped
+
+volumes:
+  db_data:
