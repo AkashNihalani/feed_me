@@ -1,0 +1,20 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Daily at 00:01
+1 0 * * * cd /app && python -m app.cli --mode schedule --run_type daily >> /var/log/cron.log 2>&1
+
+# Weekly on Monday at 00:01
+1 0 * * 1 cd /app && python -m app.cli --mode schedule --run_type weekly >> /var/log/cron.log 2>&1
+
+# Daily embeddings at 00:20
+20 0 * * * cd /app && python -m app.cli --mode embeddings >> /var/log/cron.log 2>&1
+
+# Aggregate signals every 4 hours
+0 */4 * * * cd /app && python -m app.cli --mode aggregates >> /var/log/cron.log 2>&1
+
+# Alerts scoring every 4 hours
+5 */4 * * * cd /app && python -m app.cli --mode alerts >> /var/log/cron.log 2>&1
+
+# Weekly retention cleanup on Sunday at 03:10
+10 3 * * 0 cd /app && python -m app.cli --mode retention >> /var/log/cron.log 2>&1

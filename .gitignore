@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# environment + secrets
+.env
+.env.*
+!.env.example
+!.env.worker.example
+secrets/
+*.pem
+
+# Local data artifacts
+*.xlsx
+*.csv
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Build + logs
+build/
+dist/
+*.log
+
+# Vercel / local tools
+.vercel/

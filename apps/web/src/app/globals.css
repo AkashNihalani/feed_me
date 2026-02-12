@@ -1,0 +1,107 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800;900&display=swap");
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --border-color: #000000;
+
+  /* FeedMe Brutalist Palette */
+  --electric-lime: #CCFF00;
+  --hot-pink: #FF55A3;
+  --cyber-blue: #0066FF;
+  --neutral-gray: #878788;
+
+  /* Accents (use sparingly) */
+  --neon-green: #CCFF00;
+  --neon-pink: #FF55A3;
+  --neon-turquoise: #00F5FF;
+}
+
+/* Explicit Light Mode */
+html.light {
+  --background: #f9fafb;
+  --foreground: #000000;
+  --border-color: #000000;
+}
+
+/* Manual Dark Mode Override */
+html.dark {
+  --background: #000000;
+  --foreground: #FFFFFF;
+  --border-color: #FFFFFF;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #000000;
+    --foreground: #FFFFFF;
+    --border-color: #FFFFFF;
+  }
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border-color: var(--border-color);
+
+  --color-lime: var(--electric-lime);
+  --color-pink: var(--hot-pink);
+  --color-blue: var(--cyber-blue);
+  --color-neutral-gray: var(--neutral-gray);
+
+  --color-neon-green: var(--neon-green);
+  --color-neon-pink: var(--neon-pink);
+  --color-neon-turquoise: var(--neon-turquoise);
+
+  --animate-enter: enter 0.5s cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --animate-leave: leave 0.3s cubic-bezier(0.2, 0.0, 0.0, 1.0);
+
+  @keyframes enter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  --animate-marquee: marquee 20s linear infinite;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Space Grotesk", sans-serif;
+  transition: background 0.3s, color 0.3s;
+  overflow: hidden;
+}
+
+html {
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Neo-Brutalist Utilities */
+@utility shadow-hard {
+  box-shadow: 4px 4px 0px 0px var(--border-color);
+}
+
+@utility border-thick {
+  border: 3px solid var(--border-color);
+}
+
+@utility neo-card {
+  @apply border-thick bg-background shadow-hard text-foreground;
+}
+
+@utility neo-btn {
+  @apply border-thick bg-lime text-black font-black uppercase px-6 py-3 shadow-hard transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none hover:-translate-y-1 hover:-translate-x-1;
+}
+
+@utility neo-input {
+  @apply border-thick bg-gray-50 dark:bg-gray-900 p-4 font-bold focus:outline-none focus:ring-0 focus:bg-background transition-colors w-full text-foreground placeholder:text-gray-500;
+}
