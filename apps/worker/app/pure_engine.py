@@ -314,54 +314,50 @@ class PureEngine:
 
     def process_checkpoint_jobs(self, limit: int = 200):
         jobs = self._claim_checkpoint_jobs(limit)
-        grouped: dict[tuple[str, str], list[dict]] = {}
-        for j in jobs:
-            grouped.setdefault(((j.get("handle") or "").lstrip("@"), j.get("checkpoint") or ""), []).append(j)
+        if not jobs:
+            return
 
-        for (handle, checkpoint), batch in grouped.items():
-            urls = [str(x.get("post_url") or "") for x in batch if x.get("post_url")]
-            try:
-                items = run_actor_post_urls(handle, urls)
-                by_url = {}
-                for item in items:
-                    source_url = item.get("url") or ""
-                    shortcode = item.get("shortCode") or item.get("shortcode") or _shortcode_from_url(source_url)
-                    u = _canonical_post_url(shortcode, source_url)
-                    if u:
-                        by_url[u] = item
+        # Collect ALL URLs into one batch — one Apify call for everything
+        all_urls = list({str(j.get("post_url") or "") for j in jobs if j.get("post_url")})
+        if not all_urls:
+            return
 
-                for j in batch:
-                    jid = int(j["id"])
-                    att = int(j.get("attempt") or 0)
-                    item = by_url.get(str(j.get("post_url") or ""))
-                    if not item:
-                        na = att + 1
-                        if na <= len(RETRY_BACKOFF_MINUTES):
-                            self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), "Post missing in checkpoint batch")
-                        else:
-                            self._set_checkpoint_result(jid, "failed", na, None, "Post missing in checkpoint batch")
-                        continue
+        try:
+            items = run_actor_post_urls("", all_urls)
+            by_url: dict[str, dict] = {}
+            for item in items:
+                source_url = item.get("url") or ""
+                shortcode = item.get("shortCode") or item.get("shortcode") or _shortcode_from_url(source_url)
+                u = _canonical_post_url(shortcode, source_url)
+                if u:
+                    by_url[u] = item
 
-                    views, likes, comments = _extract_metrics(item)
-
-                    self._upsert_metric(
-                        str(j["post_key"]),
-                        checkpoint,
-                        views,
-                        likes,
-                        comments,
-                    )
-                    self.conn.commit()
-                    self._set_checkpoint_result(jid, "done", att, None, None)
-            except Exception as exc:
-                err = str(exc)[:1000] or "checkpoint batch failed"
-                for j in batch:
-                    jid = int(j["id"])
-                    na = int(j.get("attempt") or 0) + 1
+            for j in jobs:
+                jid = int(j["id"])
+                att = int(j.get("attempt") or 0)
+                checkpoint = j.get("checkpoint") or ""
+                item = by_url.get(str(j.get("post_url") or ""))
+                if not item:
+                    na = att + 1
                     if na <= len(RETRY_BACKOFF_MINUTES):
-                        self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                        self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), "Post missing in batch")
                     else:
-                        self._set_checkpoint_result(jid, "failed", na, None, err)
+                        self._set_checkpoint_result(jid, "failed", na, None, "Post missing in batch")
+                    continue
+
+                views, likes, comments = _extract_metrics(item)
+                self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments)
+                self.conn.commit()
+                self._set_checkpoint_result(jid, "done", att, None, None)
+        except Exception as exc:
+            err = str(exc)[:1000] or "checkpoint batch failed"
+            for j in jobs:
+                jid = int(j["id"])
+                na = int(j.get("attempt") or 0) + 1
+                if na <= len(RETRY_BACKOFF_MINUTES):
+                    self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                else:
+                    self._set_checkpoint_result(jid, "failed", na, None, err)
 
 
 def run_once(run_limit: int = 120, checkpoint_limit: int = 200):
