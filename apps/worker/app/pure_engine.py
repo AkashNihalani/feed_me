@@ -115,39 +115,6 @@ def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
     return profile_pic, followers
 
 
-def _metric_value(media_type: str, views: int | None, likes: int | None, comments: int | None) -> float | None:
-    if media_type == "reel":
-        if views is not None:
-            return float(views)
-        return float((likes or 0) + (comments or 0)) if (likes is not None or comments is not None) else None
-    return float((likes or 0) + (comments or 0)) if (likes is not None or comments is not None) else None
-
-
-def _days_for_checkpoint(checkpoint: str) -> int:
-    return {"d1": 1, "d2": 2, "d3": 3, "d7": 7, "d21": 21}.get(checkpoint, 1)
-
-
-def _percentile(values: list[float], value: float) -> int | None:
-    if not values:
-        return None
-    ordered = sorted(set(values), reverse=True)
-    if value not in ordered:
-        ordered = sorted(set(ordered + [value]), reverse=True)
-    rank = ordered.index(value) + 1
-    p = int(round((rank / len(ordered)) * 100))
-    return max(1, min(100, p))
-
-
-def _percentile_tag(percentile: int | None) -> str:
-    if percentile is None:
-        return ""
-    if percentile <= 5:
-        return "🚀"
-    if percentile <= 20:
-        return "🔥"
-    if percentile <= 35:
-        return "✅"
-    return "😴"
 
 
 def _daily_checkpoint_for_post(posted_at: datetime | None, now_utc: datetime) -> str:
@@ -186,21 +153,7 @@ class PureEngine:
         self.conn.execute("select * from public.requeue_stale_jobs(%s)", (max(1, minutes),)).fetchone()
         self.conn.commit()
 
-    def _pool(self, feeder_id: int, media_type: str, checkpoint: str, current_post_key: str) -> list[float]:
-        rows = self.conn.execute(
-            """
-            select pm.velocity_value
-            from public.post_metrics pm
-            join public.posts p on p.post_key = pm.post_key
-            where p.feeder_id=%s
-              and coalesce(p.media_type,'')=coalesce(%s,'')
-              and pm.checkpoint=%s
-              and pm.post_key<>%s
-              and pm.velocity_value is not null
-            """,
-            (feeder_id, media_type, checkpoint, current_post_key),
-        ).fetchall()
-        return [float(x["velocity_value"]) for x in rows if x.get("velocity_value") is not None]
+
 
     def _refresh_feeder_profile(self, feeder_id: int, profile_pic_url: str | None, follower_count: int | None):
         self.conn.execute(
@@ -237,42 +190,25 @@ class PureEngine:
     def _upsert_metric(
         self,
         post_key: str,
-        feeder_id: int,
-        media_type: str,
         checkpoint: str,
         views: int | None,
         likes: int | None,
         comments: int | None,
-        followers: int | None,
     ):
-        mv = _metric_value(media_type, views, likes, comments)
-        vv = (mv / _days_for_checkpoint(checkpoint)) if mv is not None else None
-        pct = None
-        pt = ""
-        if vv is not None:
-            pool = self._pool(feeder_id, media_type, checkpoint, post_key)
-            pct = _percentile(pool + [float(vv)], float(vv))
-            pt = _percentile_tag(pct)
-        perf = round((mv / followers) * 100.0, 4) if (mv is not None and followers and followers > 0) else None
-
+        """Write raw metrics only — Supabase trigger computes derived fields."""
         self.conn.execute(
             """
             insert into public.post_metrics
-              (post_key, checkpoint, views, likes, comments, metric_value, velocity_value, percentile_performance, percentile_tag, perf_score, computed_at)
-            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
+              (post_key, checkpoint, views, likes, comments, computed_at)
+            values (%s,%s,%s,%s,%s,now())
             on conflict (post_key, checkpoint)
             do update set
               views=excluded.views,
               likes=excluded.likes,
               comments=excluded.comments,
-              metric_value=excluded.metric_value,
-              velocity_value=excluded.velocity_value,
-              percentile_performance=excluded.percentile_performance,
-              percentile_tag=excluded.percentile_tag,
-              perf_score=excluded.perf_score,
               computed_at=now()
             """,
-            (post_key, checkpoint, views, likes, comments, mv, vv, pct, pt, perf),
+            (post_key, checkpoint, views, likes, comments),
         )
 
     def _claim_run_jobs(self, limit: int) -> list[dict]:
@@ -361,15 +297,9 @@ class PureEngine:
                         media_type = _media_type(item)
                         caption = item.get("caption") or item.get("text") or item.get("description") or ""
                         views, likes, comments = _extract_metrics(item)
-                        followers = _to_int(
-                            item.get("ownerFollowersCount")
-                            or item.get("followersCount")
-                            or (item.get("owner") or {}).get("followersCount")
-                            or ((item.get("owner") or {}).get("edge_followed_by") or {}).get("count")
-                        )
 
                         post_key = self._upsert_post(feeder_id, post_url, media_type, posted_at, caption)
-                        self._upsert_metric(post_key, feeder_id, media_type, daily_checkpoint, views, likes, comments, followers)
+                        self._upsert_metric(post_key, daily_checkpoint, views, likes, comments)
                         self.conn.execute("select public.enqueue_checkpoint_jobs(%s,%s)", (post_key, posted_at))
 
                     self.conn.commit()
@@ -412,24 +342,14 @@ class PureEngine:
                             self._set_checkpoint_result(jid, "failed", na, None, "Post missing in checkpoint batch")
                         continue
 
-                    media_type = _media_type(item)
                     views, likes, comments = _extract_metrics(item)
-                    followers = _to_int(
-                        item.get("ownerFollowersCount")
-                        or item.get("followersCount")
-                        or (item.get("owner") or {}).get("followersCount")
-                        or ((item.get("owner") or {}).get("edge_followed_by") or {}).get("count")
-                    )
 
                     self._upsert_metric(
                         str(j["post_key"]),
-                        int(j["feeder_id"]),
-                        media_type or (j.get("media_type") or "unknown"),
                         checkpoint,
                         views,
                         likes,
                         comments,
-                        followers,
                     )
                     self.conn.commit()
                     self._set_checkpoint_result(jid, "done", att, None, None)
