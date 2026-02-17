@@ -74,22 +74,3 @@ export interface User {
   reddit_posts_caught?: number;
   created_at: string;
 }
-
-export interface Scrape {
-  id: string;
-  user_id: string;
-  platform: 'linkedin' | 'youtube' | 'x' | 'instagram';
-  target_url: string;
-  post_count: number;
-  cost: number;
-  status: 'pending' | 'success' | 'failed';
-  created_at: string;
-}
-
-// Platform rates (₹ per post)
-export const PLATFORM_RATES: Record<string, number> = {
-  linkedin: 2.25,
-  youtube: 2,
-  x: 1.5,
-  instagram: 1.75,
-};

@@ -1,37 +1,23 @@
-# Feed Me Monorepo
+# FeedMe (Clean Rebuild)
 
-Single source repository for the Feed Me product.
+Pure Supabase engine + Vercel frontend.
+
+## Core model
+- Feed = workspace
+- Feeders = handles in a feed (1 to 15)
+- Daily scrape at 23:30 IST with 2-day fetch window
+- Official checkpoints: d1, d3, d7, d21 (d2 is buffer-only from two-day nightly scrape)
+- Hot gate = top 35% (`✅`,`🔥`,`🚀`)
+- D21 runs only if D7 is hot
 
 ## Structure
-- `apps/web` - Next.js app (frontend + API routes)
-- `apps/worker` - Python worker (queueing, sync, embeddings, alerts)
-- `infra/docker-compose.yml` - local worker stack (db + worker + scheduler)
-- `infra/supabase/migrations` - Supabase SQL migrations
-- `docs` - project docs
+- `infra/supabase`: schema, queue functions, audit scripts
+- `apps/worker`: pure engine processor (Apify + Supabase)
+- `apps/web`: frontend shell for Vercel
 
-## Local development
+## Quick start
+1. Apply Supabase migration in `infra/supabase/migrations`
+2. Configure worker env from `infra/.env.worker.example`
+3. Enqueue nightly jobs and run worker
 
-### Web app
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-### Worker stack
-```bash
-cd infra
-cp .env.worker.example .env
-# put Google service account at infra/secrets/service_account.json
-mkdir -p secrets
-
-docker compose up -d --build
-```
-
-## Deployment notes
-- Vercel project root should be `apps/web`.
-- Worker deploy target (VPS/VM) should run from `infra/docker-compose.yml`.
-
-## Security
-- Do not commit `.env`, `.env.local`, service account JSON, or API keys.
-- Rotate any key previously stored in local plaintext env files.
+- All feeders are enqueued at the same 23:30 IST burst; worker fans out scrapes in parallel.

@@ -1,0 +1,567 @@
+from __future__ import annotations
+
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+import psycopg
+from dateutil import parser as date_parser
+from psycopg.rows import dict_row
+
+from .apify import run_actor_handle, run_actor_post_urls
+from .config import POSTGRES_DSN, RETRY_BACKOFF_MINUTES, APP_TIMEZONE, RUN_JOB_CONCURRENCY
+
+
+def _next_retry_time(attempt: int) -> datetime:
+    idx = min(attempt - 1, len(RETRY_BACKOFF_MINUTES) - 1)
+    return datetime.now(timezone.utc) + timedelta(minutes=RETRY_BACKOFF_MINUTES[idx])
+
+
+def _to_dt(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts > 1_000_000_000_000:
+            ts = ts / 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    try:
+        dt = date_parser.parse(str(value))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _shortcode_from_url(url: str) -> str:
+    m = re.search(r"/(?:p|reel|tv)/([A-Za-z0-9_-]+)", (url or "").strip(), flags=re.IGNORECASE)
+    return m.group(1).lower() if m else ""
+
+
+def _canonical_post_url(shortcode: str, fallback_url: str = "") -> str:
+    if shortcode:
+        return f"https://www.instagram.com/p/{shortcode.strip()}/"
+    u = (fallback_url or "").strip()
+    return u.split("?", 1)[0].split("#", 1)[0] if u else ""
+
+
+def _post_key_from_url(post_url: str) -> str:
+    u = (post_url or "").strip().lower()
+    u = re.sub(r"^https?://(www\.)?instagram\.com/", "", u)
+    u = u.split("?", 1)[0].split("#", 1)[0].strip("/")
+    return u
+
+
+def _media_type(item: dict) -> str:
+    m = (item.get("type") or item.get("mediaType") or "").lower()
+    if "reel" in m or "video" in m:
+        return "reel"
+    if "sidecar" in m or "carousel" in m:
+        return "sidecar"
+    if "image" in m:
+        return "image"
+    return m or "unknown"
+
+
+def _to_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _clean_profile_pic_url(url: Any) -> str | None:
+    if url is None:
+        return None
+    u = str(url).strip()
+    if not u:
+        return None
+    lu = u.lower()
+    if "static.cdninstagram.com/rsrc.php" in lu or "/rsrc.php/" in lu:
+        return None
+    return u
+
+def _extract_metrics(item: dict) -> tuple[int | None, int | None, int | None]:
+    views = _to_int(item.get("videoViewCount") or item.get("videoPlayCount") or item.get("views") or item.get("viewCount"))
+    likes = _to_int(item.get("likesCount") or item.get("likes") or item.get("likeCount"))
+    comments = _to_int(item.get("commentsCount") or item.get("comments") or item.get("commentCount"))
+    return views, likes, comments
+
+def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
+    owner = item.get("owner") if isinstance(item.get("owner"), dict) else {}
+
+    profile_pic = (
+        item.get("ownerProfilePicUrl")
+        or item.get("ownerProfilePicURL")
+        or item.get("ownerProfilePicUrlHD")
+        or owner.get("profilePicUrl")
+        or owner.get("profile_pic_url")
+    )
+    profile_pic = _clean_profile_pic_url(profile_pic)
+
+    followers = _to_int(
+        item.get("ownerFollowersCount")
+        or item.get("followersCount")
+        or owner.get("followersCount")
+        or (owner.get("edge_followed_by") or {}).get("count")
+    )
+
+    return profile_pic, followers
+
+
+def _metric_value(media_type: str, views: int | None, likes: int | None, comments: int | None) -> float | None:
+    if media_type == "reel":
+        if views is not None:
+            return float(views)
+        return float((likes or 0) + (comments or 0)) if (likes is not None or comments is not None) else None
+    return float((likes or 0) + (comments or 0)) if (likes is not None or comments is not None) else None
+
+
+def _days_for_checkpoint(checkpoint: str) -> int:
+    return {"d1": 1, "d2": 2, "d3": 3, "d7": 7, "d21": 21}.get(checkpoint, 1)
+
+
+def _percentile(values: list[float], value: float) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(set(values), reverse=True)
+    if value not in ordered:
+        ordered = sorted(set(ordered + [value]), reverse=True)
+    rank = ordered.index(value) + 1
+    p = int(round((rank / len(ordered)) * 100))
+    return max(1, min(100, p))
+
+
+def _percentile_tag(percentile: int | None) -> str:
+    if percentile is None:
+        return ""
+    if percentile <= 5:
+        return "🚀"
+    if percentile <= 20:
+        return "🔥"
+    if percentile <= 35:
+        return "✅"
+    return "😴"
+
+
+def _daily_checkpoint_for_post(posted_at: datetime | None, now_utc: datetime) -> str:
+    if posted_at is None:
+        return "d1"
+    try:
+        tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+    except Exception:
+        tz = timezone.utc
+    post_date = posted_at.astimezone(tz).date()
+    run_date = now_utc.astimezone(tz).date()
+    delta_days = (run_date - post_date).days
+    if delta_days <= 0:
+        return "d1"
+    return "d2"
+
+
+class PureEngine:
+    def __init__(self):
+        self.conn = psycopg.connect(POSTGRES_DSN, row_factory=dict_row)
+
+    def close(self):
+        self.conn.close()
+
+    def enqueue_daily(self) -> int:
+        r = self.conn.execute("select public.enqueue_daily_jobs(now()) as c").fetchone()
+        self.conn.commit()
+        return int((r or {}).get("c") or 0)
+
+    def enqueue_weekly(self) -> int:
+        r = self.conn.execute("select public.enqueue_weekly_jobs(now()) as c").fetchone()
+        self.conn.commit()
+        return int((r or {}).get("c") or 0)
+
+    def requeue_stale(self, minutes: int = 30):
+        self.conn.execute("select * from public.requeue_stale_jobs(%s)", (max(1, minutes),)).fetchone()
+        self.conn.commit()
+
+    def _pool(self, feeder_id: int, media_type: str, checkpoint: str, current_post_key: str) -> list[float]:
+        rows = self.conn.execute(
+            """
+            select pm.velocity_value
+            from public.post_metrics pm
+            join public.posts p on p.post_key = pm.post_key
+            where p.feeder_id=%s
+              and coalesce(p.media_type,'')=coalesce(%s,'')
+              and pm.checkpoint=%s
+              and pm.post_key<>%s
+              and pm.velocity_value is not null
+            """,
+            (feeder_id, media_type, checkpoint, current_post_key),
+        ).fetchall()
+        return [float(x["velocity_value"]) for x in rows if x.get("velocity_value") is not None]
+
+    def _refresh_feeder_profile(self, feeder_id: int, profile_pic_url: str | None, follower_count: int | None):
+        self.conn.execute(
+            """
+            update public.feeders
+            set profile_pic_url = coalesce(%s, profile_pic_url),
+                follower_count = coalesce(%s, follower_count),
+                profile_pic_fetched_at = now(),
+                updated_at = now()
+            where id = %s
+            """,
+            (profile_pic_url, follower_count, feeder_id),
+        )
+
+    def _upsert_post(self, feeder_id: int, post_url: str, media_type: str, posted_at: datetime | None, caption: str | None) -> str:
+        post_key = _post_key_from_url(post_url)
+        self.conn.execute(
+            """
+            insert into public.posts (post_key, feeder_id, post_url, media_type, posted_at, caption, created_at, updated_at)
+            values (%s,%s,%s,%s,%s,%s,now(),now())
+            on conflict (post_key)
+            do update set
+              feeder_id=excluded.feeder_id,
+              post_url=excluded.post_url,
+              media_type=coalesce(excluded.media_type, public.posts.media_type),
+              posted_at=coalesce(excluded.posted_at, public.posts.posted_at),
+              caption=coalesce(excluded.caption, public.posts.caption),
+              updated_at=now()
+            """,
+            (post_key, feeder_id, post_url, media_type, posted_at, caption),
+        )
+        return post_key
+
+    def _upsert_metric(
+        self,
+        post_key: str,
+        feeder_id: int,
+        media_type: str,
+        checkpoint: str,
+        views: int | None,
+        likes: int | None,
+        comments: int | None,
+        followers: int | None,
+    ):
+        mv = _metric_value(media_type, views, likes, comments)
+        vv = (mv / _days_for_checkpoint(checkpoint)) if mv is not None else None
+        pct = None
+        pt = ""
+        if vv is not None:
+            pool = self._pool(feeder_id, media_type, checkpoint, post_key)
+            pct = _percentile(pool + [float(vv)], float(vv))
+            pt = _percentile_tag(pct)
+        perf = round((mv / followers) * 100.0, 4) if (mv is not None and followers and followers > 0) else None
+
+        self.conn.execute(
+            """
+            insert into public.post_metrics
+              (post_key, checkpoint, views, likes, comments, metric_value, velocity_value, percentile_performance, percentile_tag, perf_score, computed_at)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
+            on conflict (post_key, checkpoint)
+            do update set
+              views=excluded.views,
+              likes=excluded.likes,
+              comments=excluded.comments,
+              metric_value=excluded.metric_value,
+              velocity_value=excluded.velocity_value,
+              percentile_performance=excluded.percentile_performance,
+              percentile_tag=excluded.percentile_tag,
+              perf_score=excluded.perf_score,
+              computed_at=now()
+            """,
+            (post_key, checkpoint, views, likes, comments, mv, vv, pct, pt, perf),
+        )
+
+    def _claim_run_jobs(self, limit: int) -> list[dict]:
+        rows = self.conn.execute(
+            """
+            select rj.*, fd.handle
+            from public.claim_run_jobs(%s) rj
+            join public.feeders fd on fd.id = rj.feeder_id
+            """,
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+        return rows
+
+    def _claim_checkpoint_jobs(self, limit: int) -> list[dict]:
+        self.conn.execute("select public.skip_unqualified_d21_jobs()")
+        rows = self.conn.execute(
+            """
+            select cj.*, p.post_url, p.media_type, p.feeder_id, fd.handle
+            from public.claim_checkpoint_jobs(%s) cj
+            join public.posts p on p.post_key = cj.post_key
+            join public.feeders fd on fd.id = p.feeder_id
+            """,
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+        return rows
+
+    def _set_run_result(self, job_id: int, status: str, attempt: int | None = None, next_run_at: datetime | None = None, error: str | None = None):
+        self.conn.execute(
+            "select public.set_run_job_result(%s,%s,%s,%s,%s)",
+            (job_id, status, attempt, next_run_at, (error or "")[:1000] if error else None),
+        )
+        self.conn.commit()
+
+    def _set_checkpoint_result(self, job_id: int, status: str, attempt: int | None = None, next_run_at: datetime | None = None, error: str | None = None):
+        self.conn.execute(
+            "select public.set_checkpoint_job_result(%s,%s,%s,%s,%s)",
+            (job_id, status, attempt, next_run_at, (error or "")[:1000] if error else None),
+        )
+        self.conn.commit()
+
+    def process_run_jobs(self, limit: int = 120):
+        jobs = self._claim_run_jobs(limit)
+        if not jobs:
+            return
+
+        # Fan out all feeder scrapes at once so nightly burst starts simultaneously.
+        futures = {}
+        max_workers = max(1, RUN_JOB_CONCURRENCY)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for job in jobs:
+                handle = (job.get("handle") or "").lstrip("@")
+                futures[int(job["id"])] = pool.submit(run_actor_handle, handle, 2)
+
+            for job in jobs:
+                jid = int(job["id"])
+                att = int(job.get("attempt") or 0)
+                feeder_id = int(job["feeder_id"])
+                now_utc = datetime.now(timezone.utc)
+
+                try:
+                    items = futures[jid].result()
+
+                    profile_pic_url = None
+                    profile_followers = None
+                    for probe_item in items:
+                        pic, fcount = _extract_owner_profile(probe_item)
+                        if not profile_pic_url and pic:
+                            profile_pic_url = pic
+                        if profile_followers is None and fcount is not None:
+                            profile_followers = fcount
+                        if profile_pic_url and profile_followers is not None:
+                            break
+                    self._refresh_feeder_profile(feeder_id, profile_pic_url, profile_followers)
+
+                    for item in items:
+                        source_url = item.get("url") or ""
+                        shortcode = item.get("shortCode") or item.get("shortcode") or _shortcode_from_url(source_url)
+                        post_url = _canonical_post_url(shortcode, source_url)
+                        if not post_url:
+                            continue
+
+                        posted_at = _to_dt(item.get("timestamp") or item.get("takenAtTimestamp") or item.get("takenAt") or item.get("createdAt"))
+                        daily_checkpoint = _daily_checkpoint_for_post(posted_at, now_utc)
+                        media_type = _media_type(item)
+                        caption = item.get("caption") or item.get("text") or item.get("description") or ""
+                        views, likes, comments = _extract_metrics(item)
+                        followers = _to_int(
+                            item.get("ownerFollowersCount")
+                            or item.get("followersCount")
+                            or (item.get("owner") or {}).get("followersCount")
+                            or ((item.get("owner") or {}).get("edge_followed_by") or {}).get("count")
+                        )
+
+                        post_key = self._upsert_post(feeder_id, post_url, media_type, posted_at, caption)
+                        self._upsert_metric(post_key, feeder_id, media_type, daily_checkpoint, views, likes, comments, followers)
+                        self.conn.execute("select public.enqueue_checkpoint_jobs(%s,%s)", (post_key, posted_at))
+
+                    self.conn.commit()
+                    self._set_run_result(jid, "done", att, None, None)
+                except Exception as exc:
+                    na = att + 1
+                    err = str(exc)[:1000] or "run job failed"
+                    if na <= len(RETRY_BACKOFF_MINUTES):
+                        self._set_run_result(jid, "retry", na, _next_retry_time(na), err)
+                    else:
+                        self._set_run_result(jid, "failed", na, None, err)
+
+    def process_checkpoint_jobs(self, limit: int = 200):
+        jobs = self._claim_checkpoint_jobs(limit)
+        grouped: dict[tuple[str, str], list[dict]] = {}
+        for j in jobs:
+            grouped.setdefault(((j.get("handle") or "").lstrip("@"), j.get("checkpoint") or ""), []).append(j)
+
+        for (handle, checkpoint), batch in grouped.items():
+            urls = [str(x.get("post_url") or "") for x in batch if x.get("post_url")]
+            try:
+                items = run_actor_post_urls(handle, urls)
+                by_url = {}
+                for item in items:
+                    source_url = item.get("url") or ""
+                    shortcode = item.get("shortCode") or item.get("shortcode") or _shortcode_from_url(source_url)
+                    u = _canonical_post_url(shortcode, source_url)
+                    if u:
+                        by_url[u] = item
+
+                for j in batch:
+                    jid = int(j["id"])
+                    att = int(j.get("attempt") or 0)
+                    item = by_url.get(str(j.get("post_url") or ""))
+                    if not item:
+                        na = att + 1
+                        if na <= len(RETRY_BACKOFF_MINUTES):
+                            self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), "Post missing in checkpoint batch")
+                        else:
+                            self._set_checkpoint_result(jid, "failed", na, None, "Post missing in checkpoint batch")
+                        continue
+
+                    media_type = _media_type(item)
+                    views, likes, comments = _extract_metrics(item)
+                    followers = _to_int(
+                        item.get("ownerFollowersCount")
+                        or item.get("followersCount")
+                        or (item.get("owner") or {}).get("followersCount")
+                        or ((item.get("owner") or {}).get("edge_followed_by") or {}).get("count")
+                    )
+
+                    self._upsert_metric(
+                        str(j["post_key"]),
+                        int(j["feeder_id"]),
+                        media_type or (j.get("media_type") or "unknown"),
+                        checkpoint,
+                        views,
+                        likes,
+                        comments,
+                        followers,
+                    )
+                    self.conn.commit()
+                    self._set_checkpoint_result(jid, "done", att, None, None)
+            except Exception as exc:
+                err = str(exc)[:1000] or "checkpoint batch failed"
+                for j in batch:
+                    jid = int(j["id"])
+                    na = int(j.get("attempt") or 0) + 1
+                    if na <= len(RETRY_BACKOFF_MINUTES):
+                        self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                    else:
+                        self._set_checkpoint_result(jid, "failed", na, None, err)
+
+
+def run_once(run_limit: int = 120, checkpoint_limit: int = 200):
+    eng = PureEngine()
+    try:
+        eng.requeue_stale(30)
+        eng.process_run_jobs(run_limit)
+        eng.process_checkpoint_jobs(checkpoint_limit)
+    finally:
+        eng.close()
+
+
+def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_limit: int = 200):
+    from .telegram import (
+        alert_worker_started, alert_worker_error, alert_permanently_failed,
+        alert_job_failed, alert_daily_summary, is_enabled as tg_enabled,
+    )
+
+    eng = PureEngine()
+    last_watchdog = 0.0
+    last_dead_check = 0.0
+    last_summary_date = ""
+
+    alert_worker_started()
+    if tg_enabled():
+        print("[worker] Telegram alerting enabled")
+
+    try:
+        while True:
+            now_ts = time.time()
+
+            # Watchdog: requeue stale jobs every 60s
+            if now_ts - last_watchdog >= 60:
+                eng.requeue_stale(30)
+                last_watchdog = now_ts
+
+            # Failed job alerts: check every 60s for freshly failed jobs
+            if now_ts - last_dead_check >= 60:
+                try:
+                    with eng.conn.cursor(row_factory=dict_row) as cur:
+                        # Instant alert: any run_job that just failed
+                        cur.execute("""
+                            select rj.id, rj.attempt, rj.last_error, rj.resurrection_count, f.handle
+                            from public.run_jobs rj
+                            join public.feeders f on f.id = rj.feeder_id
+                            where rj.status = 'failed'
+                              and rj.updated_at > now() - interval '2 minutes'
+                        """)
+                        for row in cur.fetchall():
+                            if row.get("resurrection_count", 0) >= 3:
+                                alert_permanently_failed("run", row["id"], row["handle"], row.get("last_error", ""))
+                            else:
+                                alert_job_failed("run", row["id"], row["handle"], row.get("attempt", 0), row.get("last_error", ""))
+
+                        # Instant alert: any checkpoint_job that just failed
+                        cur.execute("""
+                            select cj.id, cj.attempt, cj.last_error, cj.checkpoint, cj.resurrection_count, f.handle
+                            from public.checkpoint_jobs cj
+                            join public.posts p on p.post_key = cj.post_key
+                            join public.feeders f on f.id = p.feeder_id
+                            where cj.status = 'failed'
+                              and cj.updated_at > now() - interval '2 minutes'
+                        """)
+                        for row in cur.fetchall():
+                            if row.get("resurrection_count", 0) >= 3:
+                                alert_permanently_failed(
+                                    f"checkpoint_{row['checkpoint']}", row["id"],
+                                    row["handle"], row.get("last_error", ""),
+                                )
+                            else:
+                                alert_job_failed(
+                                    f"checkpoint_{row['checkpoint']}", row["id"],
+                                    row["handle"], row.get("attempt", 0), row.get("last_error", ""),
+                                )
+                except Exception as e:
+                    print(f"[dead-check] {e}")
+                last_dead_check = now_ts
+
+            # Daily summary at 8:00 AM IST
+            today = datetime.now(ZoneInfo(APP_TIMEZONE)).strftime("%Y-%m-%d")
+            now_ist = datetime.now(ZoneInfo(APP_TIMEZONE))
+            if today != last_summary_date and now_ist.hour == 8 and now_ist.minute >= 0:
+                try:
+                    with eng.conn.cursor(row_factory=dict_row) as cur:
+                        cur.execute("""
+                            select
+                              count(*) filter (where status='done') as ok,
+                              count(*) filter (where status='failed') as fail,
+                              count(*) filter (where status in ('pending','retry')) as pending
+                            from public.run_jobs
+                            where updated_at > now() - interval '24 hours'
+                        """)
+                        r = cur.fetchone() or {}
+                        cur.execute("""
+                            select
+                              count(*) filter (where status='done') as ok,
+                              count(*) filter (where status='failed') as fail,
+                              count(*) filter (where status in ('pending','retry')) as pending
+                            from public.checkpoint_jobs
+                            where updated_at > now() - interval '24 hours'
+                        """)
+                        c = cur.fetchone() or {}
+                        alert_daily_summary(
+                            r.get("ok", 0), r.get("fail", 0),
+                            c.get("ok", 0), c.get("fail", 0),
+                            r.get("pending", 0), c.get("pending", 0),
+                        )
+                except Exception as e:
+                    print(f"[daily-summary] {e}")
+                last_summary_date = today
+
+            # Process jobs
+            try:
+                eng.process_run_jobs(run_limit)
+                eng.process_checkpoint_jobs(checkpoint_limit)
+            except Exception as e:
+                print(f"[worker-loop] error: {e}")
+                alert_worker_error(e)
+                time.sleep(10)  # back off on error
+
+            time.sleep(max(1, int(loop_sleep_seconds)))
+    finally:
+        eng.close()

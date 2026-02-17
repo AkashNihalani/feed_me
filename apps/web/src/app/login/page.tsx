@@ -23,7 +23,8 @@ export default function LoginPage() {
   const router = useRouter();
   
   // Use the shared Supabase client for consistent auth state
-  const supabase = getSupabase();
+  // Lazy init — avoid calling during SSR prerender when env vars aren't set
+  const getClient = () => getSupabase();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +34,7 @@ export default function LoginPage() {
 
     try {
         if (mode === 'login') {
-            const { error: signInError } = await supabase.auth.signInWithPassword({
+            const { error: signInError } = await getClient().auth.signInWithPassword({
                 email,
                 password,
             });
@@ -47,7 +48,7 @@ export default function LoginPage() {
             }, 1000); // Faster transition
         } 
         else if (mode === 'signup') {
-            const { error: signUpError } = await supabase.auth.signUp({
+            const { error: signUpError } = await getClient().auth.signUp({
                 email,
                 password,
                 options: {
@@ -59,7 +60,7 @@ export default function LoginPage() {
             setLoading(false);
         }
         else if (mode === 'forgot') {
-            const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+            const { error: resetError } = await getClient().auth.resetPasswordForEmail(email, {
                 redirectTo: `${location.origin}/auth/update-password`,
             });
             if (resetError) throw resetError;

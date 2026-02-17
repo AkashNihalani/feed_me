@@ -169,7 +169,7 @@ function mapRowToFlag(row: AlertRow): FlagItem {
   const evidence = asStringArray(payload.evidence).slice(0, 3);
 
   const percentile = percentileToDisplay(
-    asString(payload.velocity_percentile) || asString(payload.percentile)
+    asString(payload.percentile_performance) || asString(payload.velocity_percentile) || asString(payload.percentile)
   );
 
   const createdAt = row.created_at;
@@ -193,8 +193,8 @@ function mapRowToFlag(row: AlertRow): FlagItem {
     title,
     whyNow,
     action,
-    velocityTag: asString(payload.velocity_tag) || (family === 'velocity' ? '🔥' : family === 'competitive' ? '🚀' : '👁'),
-    stage: asString(payload.velocity_stage) || asString(payload.stage) || 'D3',
+    velocityTag: asString(payload.percentile_tag) || asString(payload.velocity_tag) || (family === 'velocity' ? '🔥' : family === 'competitive' ? '🚀' : '👁'),
+    stage: asString(payload.checkpoint) || asString(payload.velocity_stage) || asString(payload.stage) || 'd3',
     percentile,
     evidence: evidence.length ? evidence : ['Fresh signal', 'Candidate selected for flags'],
     timeAgo: timeAgoText(createdAt),

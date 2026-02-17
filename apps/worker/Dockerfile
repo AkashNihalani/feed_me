@@ -1,22 +1,17 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /worker
 
-# System deps for psycopg and cron
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc libpq-dev cron curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install deps first for layer caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Copy worker code
+COPY . .
 
-COPY app /app/app
+# Health check: verify Python and the module can import
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python -c "from app.pure_engine import PureEngine; print('ok')" || exit 1
 
-# Cron config will be mounted or copied
-COPY app/cron/scheduler.cron /etc/cron.d/scheduler
-RUN chmod 0644 /etc/cron.d/scheduler \
-    && crontab /etc/cron.d/scheduler
-
-ENV PYTHONUNBUFFERED=1
-
+# Run the worker (infinite loop, auto-restarts via docker)
 CMD ["python", "-m", "app.cli", "--mode", "worker"]

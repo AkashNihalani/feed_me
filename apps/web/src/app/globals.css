@@ -105,3 +105,8 @@ html {
 @utility neo-input {
   @apply border-thick bg-gray-50 dark:bg-gray-900 p-4 font-bold focus:outline-none focus:ring-0 focus:bg-background transition-colors w-full text-foreground placeholder:text-gray-500;
 }
+
+@utility stroke-text {
+  -webkit-text-stroke: 2px var(--foreground);
+  color: transparent;
+}

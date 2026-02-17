@@ -17,7 +17,6 @@ export const metadata: Metadata = {
     title: "FeedMe",
     statusBarStyle: "black",
   },
-  themeColor: "#000000",
 };
 
 export const viewport: Viewport = {
@@ -35,7 +34,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full w-full overflow-hidden">
       <body className="antialiased bg-background h-full w-full overflow-hidden transition-colors duration-300">
-        <TopNav />
         <main className="h-full w-full overflow-hidden">{children}</main>
         <BottomNav />
         <StatusBar />

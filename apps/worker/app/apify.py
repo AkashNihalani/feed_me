@@ -5,27 +5,11 @@ import requests
 from .config import (
     APIFY_TOKEN,
     APIFY_ACTOR_ID,
-    APIFY_INPUT_TEMPLATE_DAILY,
-    APIFY_INPUT_TEMPLATE_WEEKLY,
-    APIFY_INPUT_TEMPLATE_DETAILS,
-    APIFY_INPUT_TEMPLATE_POST_URL,
     APIFY_RUN_TIMEOUT_SECONDS,
     APIFY_POLL_INTERVAL_SECONDS,
 )
 
 API_BASE = "https://api.apify.com/v2"
-
-
-def _build_input(handle: str, run_type: str, post_url: str | None = None) -> dict:
-    template = APIFY_INPUT_TEMPLATE_DAILY
-    if run_type == "weekly":
-        template = APIFY_INPUT_TEMPLATE_WEEKLY
-    if run_type == "details":
-        template = APIFY_INPUT_TEMPLATE_DETAILS
-    if run_type == "post_url":
-        template = APIFY_INPUT_TEMPLATE_POST_URL
-    payload = template.replace("{handle}", handle).replace("{post_url}", post_url or "")
-    return json.loads(payload)
 
 
 def _run_payload(input_payload: dict) -> list[dict]:
@@ -34,61 +18,53 @@ def _run_payload(input_payload: dict) -> list[dict]:
     resp.raise_for_status()
     run_id = resp.json().get("data", {}).get("id")
     if not run_id:
-        raise RuntimeError("Apify run did not return a run id")
+        raise RuntimeError("Apify run did not return run id")
 
     status = "RUNNING"
-    start = time.time()
     check = None
+    start = time.time()
     while status in ("RUNNING", "READY"):
         if time.time() - start > APIFY_RUN_TIMEOUT_SECONDS:
-            raise TimeoutError("Apify run timed out")
+            raise TimeoutError("Apify run timeout")
         time.sleep(APIFY_POLL_INTERVAL_SECONDS)
         check = requests.get(f"{API_BASE}/actor-runs/{run_id}?token={APIFY_TOKEN}", timeout=30)
         check.raise_for_status()
         status = check.json().get("data", {}).get("status")
 
     if status != "SUCCEEDED":
-        raise RuntimeError(f"Apify run failed with status: {status}")
+        raise RuntimeError(f"Apify run failed: {status}")
 
     dataset_id = check.json().get("data", {}).get("defaultDatasetId") if check is not None else None
     if not dataset_id:
-        raise RuntimeError("Apify run missing dataset id")
+        raise RuntimeError("Apify missing dataset id")
 
-    items_url = f"{API_BASE}/datasets/{dataset_id}/items?clean=true&format=json"
-    items = requests.get(items_url, timeout=60)
+    items = requests.get(f"{API_BASE}/datasets/{dataset_id}/items?clean=true&format=json", timeout=60)
     items.raise_for_status()
-    return items.json()
+    data = items.json()
+    return data if isinstance(data, list) else []
 
 
-def run_actor(handle: str, run_type: str, post_url: str | None = None) -> list[dict]:
-    input_payload = _build_input(handle, run_type, post_url)
-    return _run_payload(input_payload)
+def run_actor_handle(handle: str, days_window: int = 2) -> list[dict]:
+    clean = (handle or "").lstrip("@").strip()
+    payload = {
+        "addParentData": False,
+        "directUrls": [f"https://www.instagram.com/{clean}/"],
+        "resultsType": "posts",
+        "searchType": "user",
+        "resultsLimit": 100,
+        "onlyPostsNewerThan": f"{max(1, int(days_window))} days",
+    }
+    return _run_payload(payload)
 
 
 def run_actor_post_urls(handle: str, post_urls: list[str]) -> list[dict]:
     urls = [u.strip() for u in (post_urls or []) if (u or "").strip()]
     if not urls:
         return []
-    input_payload = _build_input(handle, "post_url", post_url=urls[0])
-    input_payload["directUrls"] = urls
-    current_limit = int(input_payload.get("resultsLimit") or 0)
-    input_payload["resultsLimit"] = max(current_limit, len(urls))
-    return _run_payload(input_payload)
-
-
-def run_actor_details(handle: str) -> dict:
-    items = run_actor(handle, "details")
-    if not items:
-        return {}
-    if isinstance(items, list):
-        return items[0] if items else {}
-    return items
-
-
-def run_actor_post_url(handle: str, post_url: str) -> dict:
-    items = run_actor(handle, "post_url", post_url=post_url)
-    if not items:
-        return {}
-    if isinstance(items, list):
-        return items[0] if items else {}
-    return items
+    payload = {
+        "addParentData": False,
+        "directUrls": urls,
+        "resultsType": "posts",
+        "resultsLimit": max(1, len(urls)),
+    }
+    return _run_payload(payload)

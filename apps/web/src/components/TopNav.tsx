@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Zap, User, LogIn, LogOut, Flag, Fuel } from 'lucide-react';
+import { LayoutGrid, User, LogIn, LogOut, Flag, Fuel } from 'lucide-react';
 
 export default function TopNav() {
   const pathname = usePathname();
@@ -70,7 +70,7 @@ export default function TopNav() {
                 pathname === '/' ? "text-background" : "text-neutral-gray hover:text-black"
               )}
             >
-              <Zap size={16} className={pathname === '/' ? "fill-background" : "fill-none"} />
+              <LayoutGrid size={16} className={pathname === '/' ? "fill-background" : "fill-none"} />
               Feed
             </Link>
 
