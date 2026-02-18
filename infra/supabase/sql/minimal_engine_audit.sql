@@ -9,7 +9,7 @@ left join information_schema.tables t
 order by rt.name;
 
 with required_functions(name) as (
-  values ('fn_post_key'),('fn_checkpoint_due_at'),('enqueue_daily_jobs'),('enqueue_weekly_jobs'),('enqueue_checkpoint_jobs'),('claim_run_jobs'),('skip_unqualified_d21_jobs'),('claim_checkpoint_jobs'),('set_run_job_result'),('set_checkpoint_job_result'),('requeue_stale_jobs')
+  values ('fn_post_key'),('fn_checkpoint_due_at'),('enqueue_daily_jobs'),('enqueue_weekly_jobs'),('enqueue_checkpoint_jobs'),('claim_run_jobs'),('skip_unqualified_d21_jobs'),('claim_checkpoint_jobs'),('set_run_job_result'),('set_checkpoint_job_result'),('requeue_stale_jobs'),('finalize_daily_jobs_for_day'),('enqueue_repair_jobs_from_previous_day')
 )
 select rf.name as function_name,
        case when p.proname is null then 'MISSING' else 'OK' end as status

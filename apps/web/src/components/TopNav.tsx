@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutGrid, User, LogIn, LogOut, Flag, Fuel } from 'lucide-react';
+import { LayoutGrid, User, LogIn, LogOut, Flame, Fuel } from 'lucide-react';
 
 export default function TopNav() {
   const pathname = usePathname();
@@ -58,7 +58,7 @@ export default function TopNav() {
               className={cn(
                 "absolute top-1 bottom-1 rounded-full bg-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
                 pathname === '/' ? "left-1 w-[calc(33.33%-4px)]" :
-                pathname === '/flags' ? "left-[calc(33.33%)] w-[calc(33.33%-4px)]" :
+                pathname === '/fire' ? "left-[calc(33.33%)] w-[calc(33.33%-4px)]" :
                 pathname === '/profile' ? "left-[calc(66.66%)] w-[calc(33.33%-4px)]" : "hidden"
               )}
             />
@@ -75,14 +75,14 @@ export default function TopNav() {
             </Link>
 
             <Link
-              href="/flags"
+              href="/fire"
               className={cn(
                 "px-6 py-2 rounded-full font-black uppercase text-sm flex items-center gap-2 relative z-10 transition-colors",
-                pathname === '/flags' ? "text-background" : "text-neutral-gray hover:text-black"
+                pathname === '/fire' ? "text-background" : "text-neutral-gray hover:text-black"
               )}
             >
-              <Flag size={16} className={pathname === '/flags' ? "fill-background" : "fill-none"} />
-              Flags
+              <Flame size={16} className={pathname === '/fire' ? "fill-background" : "fill-none"} />
+              Fire
             </Link>
 
             {session ? (

@@ -2,9 +2,8 @@
 
 import { useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format, isToday, isFuture, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface DayPickerProps {
   days: Date[];
@@ -25,55 +24,85 @@ export function DayPicker({ days, activeDate, onSelect }: DayPickerProps) {
     }
   }, [activeDate]);
 
+  const handleSelect = (date: Date) => {
+    // Prevent selecting Today or Future (Elastic Snap-back Logic handled by parent state usually, 
+    // but here we just ignore the click or trigger a shake)
+    if (isToday(date) || isFuture(date)) {
+        // Optional: Trigger haptic or visual resist
+        return;
+    }
+    onSelect(date);
+  };
+
   return (
-    <div className="relative w-full overflow-hidden neo-card p-0 bg-white">
-      {/* Scroll Container */}
+    <div className="relative w-full h-24 bg-neutral-100 border-y-4 border-black overflow-hidden select-none">
+      
+      {/* Central Lens / Needle */}
+      <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-lime z-20 -translate-x-1/2 shadow-[0_0_10px_#CCFF00]" />
+      <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-black rotate-45 z-30" />
+      <div className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-black rotate-45 z-30" />
+
+      {/* Scroll Container (The Tape) */}
       <div 
         ref={containerRef}
-        className="flex items-center gap-3 overflow-x-auto p-4 snap-x snap-mandatory no-scrollbar"
-        style={{ scrollPaddingLeft: '50%', scrollPaddingRight: '50%' }}
+        className="flex items-center h-full overflow-x-auto px-[50%] snap-x snap-mandatory no-scrollbar"
       >
         {days.map((date) => {
-          const isSelected = date.toDateString() === activeDate.toDateString();
-          const isCurrentDay = isToday(date);
+          const isSelected = isSameDay(date, activeDate);
+          const isRestricted = isToday(date) || isFuture(date);
           
-          let label = format(date, 'EEE');
-          if (isCurrentDay) label = 'TODAY';
-          else if (isYesterday(date)) label = 'YESTERDAY';
-
           return (
-            <motion.button
+            <div
               key={date.toISOString()}
-              data-selected={isSelected}
-              onClick={() => onSelect(date)}
-              whileTap={{ scale: 0.95 }}
-              className={cn(
-                "relative flex-shrink-0 snap-center flex flex-col items-center justify-center transition-all duration-300 border-2 border-black select-none",
-                isSelected 
-                  ? "w-24 h-24 bg-black text-white shadow-[4px_4px_0px_0px_var(--color-lime)] z-10 scale-105" 
-                  : "w-20 h-20 bg-white text-black hover:bg-neutral-100 opacity-60 hover:opacity-100"
-              )}
+              className="relative flex-shrink-0 snap-center"
             >
-              <div className={cn(
-                "text-[10px] uppercase font-black tracking-wider mb-1",
-                isSelected ? "text-lime" : "text-neutral-500"
-              )}>
-                {label}
-              </div>
-              <div className="text-3xl font-black leading-none">
-                {format(date, 'dd')}
-              </div>
-              <div className="text-[10px] uppercase font-bold mt-1 opacity-60">
-                {format(date, 'MMM')}
-              </div>
-            </motion.button>
+                <button
+                    onClick={() => handleSelect(date)}
+                    data-selected={isSelected}
+                    className={cn(
+                        "h-full w-20 flex flex-col items-center justify-center relative group transition-opacity",
+                        isRestricted ? "opacity-100 cursor-not-allowed" : "cursor-pointer hover:bg-black/5"
+                    )}
+                >
+                    {/* Ticks */}
+                    <div className="absolute top-0 w-0.5 h-3 bg-black" />
+                    <div className="absolute bottom-0 w-0.5 h-3 bg-black" />
+                    
+                    {/* Minor Ticks */}
+                    <div className="absolute top-0 right-0 w-px h-1.5 bg-neutral-400" />
+                    <div className="absolute bottom-0 right-0 w-px h-1.5 bg-neutral-400" />
+                    
+                    {isRestricted ? (
+                        // HAZARD ZONE
+                        <div className="w-full h-full flex items-center justify-center bg-[repeating-linear-gradient(45deg,#000,#000_5px,#CCFF00_5px,#CCFF00_10px)] opacity-80">
+                            {/* No Text, just hazard tape */}
+                        </div>
+                    ) : (
+                        // DATE CONTENT
+                        <div className={cn(
+                            "transition-all duration-300 flex flex-col items-center",
+                            isSelected ? "scale-125 opacity-100" : "opacity-40 scale-90"
+                        )}>
+                            <span className="text-[10px] font-black uppercase tracking-wider font-mono">
+                                {format(date, 'MMM')}
+                            </span>
+                            <span className={cn(
+                                "text-3xl font-black leading-none",
+                                isSelected && "text-black"
+                            )}>
+                                {format(date, 'dd')}
+                            </span>
+                        </div>
+                    )}
+                </button>
+            </div>
           );
         })}
       </div>
       
-      {/* Fade Gradients for visual cue of scrolling */}
-      <div className="absolute top-0 bottom-0 left-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none" />
-      <div className="absolute top-0 bottom-0 right-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none" />
+      {/* Side Vignettes/Fade */}
+      <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-neutral-100 to-transparent pointer-events-none z-10" />
+      <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-neutral-100 to-transparent pointer-events-none z-10" />
     </div>
   );
 }

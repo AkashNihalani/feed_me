@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Flag, Fuel } from 'lucide-react';
+import { LayoutGrid, Flame, Fuel } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -13,7 +13,7 @@ export default function BottomNav() {
 
   const NAV_ITEMS = [
     { label: 'Feed', href: '/', icon: LayoutGrid },
-    { label: 'Flags', href: '/flags', icon: Flag },
+    { label: 'Fire', href: '/fire', icon: Flame },
     { label: 'Fuel', href: '/profile', icon: Fuel },
   ];
 
