@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -115,21 +116,67 @@ def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
     return profile_pic, followers
 
 
+def _extract_media_refs(item: dict) -> tuple[str | None, str | None, str | None, list[str], str | None]:
+    """Extract reusable media references for UI thumbnails and downstream vector jobs."""
+    display_url = (
+        item.get("displayUrl")
+        or item.get("display_url")
+        or item.get("imageUrl")
+        or item.get("thumbnailUrl")
+        or item.get("thumbnailSrc")
+    )
+    thumbnail_url = item.get("thumbnailUrl") or item.get("thumbnailSrc") or display_url
+    video_url = item.get("videoUrl") or item.get("video_url")
+    audio_url = item.get("audioUrl") or item.get("audio_url")
+
+    carousel_urls: list[str] = []
+    children = item.get("childPosts") or item.get("sidecarImages") or item.get("carouselMedia") or []
+    if isinstance(children, list):
+        for c in children:
+            if not isinstance(c, dict):
+                continue
+            u = c.get("displayUrl") or c.get("imageUrl") or c.get("videoUrl")
+            if u and str(u) not in carousel_urls:
+                carousel_urls.append(str(u))
+
+    def _clean(u: Any) -> str | None:
+        if u is None:
+            return None
+        t = str(u).strip()
+        return t if t else None
+
+    return _clean(thumbnail_url), _clean(display_url), _clean(video_url), carousel_urls, _clean(audio_url)
 
 
-def _daily_checkpoint_for_post(posted_at: datetime | None, now_utc: datetime) -> str:
+def _daily_checkpoint_for_post(posted_at: datetime | None, business_date_ist: date | None) -> str:
     if posted_at is None:
-        return "d1"
+        return ""
+    if business_date_ist is None:
+        return ""
     try:
         tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
     except Exception:
         tz = timezone.utc
     post_date = posted_at.astimezone(tz).date()
-    run_date = now_utc.astimezone(tz).date()
-    delta_days = (run_date - post_date).days
-    if delta_days <= 0:
+    if post_date == business_date_ist:
         return "d1"
-    return "d2"
+    if post_date == (business_date_ist - timedelta(days=1)):
+        return "d2"
+    return ""
+
+
+def _business_date_from_job(job: dict) -> date | None:
+    raw = job.get("business_date_ist")
+    if raw:
+        try:
+            return date_parser.parse(str(raw)).date()
+        except Exception:
+            pass
+    try:
+        tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+    except Exception:
+        tz = timezone.utc
+    return datetime.now(tz).date()
 
 
 class PureEngine:
@@ -168,12 +215,28 @@ class PureEngine:
             (profile_pic_url, follower_count, feeder_id),
         )
 
-    def _upsert_post(self, feeder_id: int, post_url: str, media_type: str, posted_at: datetime | None, caption: str | None) -> str:
+    def _upsert_post(
+        self,
+        feeder_id: int,
+        post_url: str,
+        media_type: str,
+        posted_at: datetime | None,
+        caption: str | None,
+        thumbnail_url: str | None = None,
+        display_url: str | None = None,
+        video_url: str | None = None,
+        carousel_urls: list[str] | None = None,
+        audio_url: str | None = None,
+    ) -> str:
         post_key = _post_key_from_url(post_url)
         self.conn.execute(
             """
-            insert into public.posts (post_key, feeder_id, post_url, media_type, posted_at, caption, created_at, updated_at)
-            values (%s,%s,%s,%s,%s,%s,now(),now())
+            insert into public.posts (
+              post_key, feeder_id, post_url, media_type, posted_at, caption,
+              thumbnail_url, display_url, video_url, carousel_urls, audio_url, media_fetched_at,
+              created_at, updated_at
+            )
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,now(),now(),now())
             on conflict (post_key)
             do update set
               feeder_id=excluded.feeder_id,
@@ -181,11 +244,64 @@ class PureEngine:
               media_type=coalesce(excluded.media_type, public.posts.media_type),
               posted_at=coalesce(excluded.posted_at, public.posts.posted_at),
               caption=coalesce(excluded.caption, public.posts.caption),
+              thumbnail_url=coalesce(excluded.thumbnail_url, public.posts.thumbnail_url),
+              display_url=coalesce(excluded.display_url, public.posts.display_url),
+              video_url=coalesce(excluded.video_url, public.posts.video_url),
+              carousel_urls=case
+                when excluded.carousel_urls is null then public.posts.carousel_urls
+                else excluded.carousel_urls
+              end,
+              audio_url=coalesce(excluded.audio_url, public.posts.audio_url),
+              media_fetched_at=coalesce(excluded.media_fetched_at, public.posts.media_fetched_at),
               updated_at=now()
             """,
-            (post_key, feeder_id, post_url, media_type, posted_at, caption),
+            (
+                post_key,
+                feeder_id,
+                post_url,
+                media_type,
+                posted_at,
+                caption,
+                thumbnail_url,
+                display_url,
+                video_url,
+                json.dumps(carousel_urls or []),
+                audio_url,
+            ),
         )
         return post_key
+
+    def _refresh_post_media(
+        self,
+        post_key: str,
+        thumbnail_url: str | None,
+        display_url: str | None,
+        video_url: str | None,
+        carousel_urls: list[str] | None,
+        audio_url: str | None,
+    ):
+        self.conn.execute(
+            """
+            update public.posts
+            set thumbnail_url = coalesce(%s, thumbnail_url),
+                display_url = coalesce(%s, display_url),
+                video_url = coalesce(%s, video_url),
+                carousel_urls = case when %s::jsonb = '[]'::jsonb then carousel_urls else %s::jsonb end,
+                audio_url = coalesce(%s, audio_url),
+                media_fetched_at = now(),
+                updated_at = now()
+            where post_key = %s
+            """,
+            (
+                thumbnail_url,
+                display_url,
+                video_url,
+                json.dumps(carousel_urls or []),
+                json.dumps(carousel_urls or []),
+                audio_url,
+                post_key,
+            ),
+        )
 
     def _upsert_metric(
         self,
@@ -262,13 +378,15 @@ class PureEngine:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             for job in jobs:
                 handle = (job.get("handle") or "").lstrip("@")
-                futures[int(job["id"])] = pool.submit(run_actor_handle, handle, 2)
+                job_type = str(job.get("job_type") or "daily")
+                days_window = 3 if job_type == "repair" else 2
+                futures[int(job["id"])] = pool.submit(run_actor_handle, handle, days_window)
 
             for job in jobs:
                 jid = int(job["id"])
                 att = int(job.get("attempt") or 0)
                 feeder_id = int(job["feeder_id"])
-                now_utc = datetime.now(timezone.utc)
+                business_date_ist = _business_date_from_job(job)
 
                 try:
                     items = futures[jid].result()
@@ -293,12 +411,26 @@ class PureEngine:
                             continue
 
                         posted_at = _to_dt(item.get("timestamp") or item.get("takenAtTimestamp") or item.get("takenAt") or item.get("createdAt"))
-                        daily_checkpoint = _daily_checkpoint_for_post(posted_at, now_utc)
+                        daily_checkpoint = _daily_checkpoint_for_post(posted_at, business_date_ist)
+                        if not daily_checkpoint:
+                            continue
                         media_type = _media_type(item)
                         caption = item.get("caption") or item.get("text") or item.get("description") or ""
                         views, likes, comments = _extract_metrics(item)
 
-                        post_key = self._upsert_post(feeder_id, post_url, media_type, posted_at, caption)
+                        thumbnail_url, display_url, video_url, carousel_urls, audio_url = _extract_media_refs(item)
+                        post_key = self._upsert_post(
+                            feeder_id,
+                            post_url,
+                            media_type,
+                            posted_at,
+                            caption,
+                            thumbnail_url=thumbnail_url,
+                            display_url=display_url,
+                            video_url=video_url,
+                            carousel_urls=carousel_urls,
+                            audio_url=audio_url,
+                        )
                         self._upsert_metric(post_key, daily_checkpoint, views, likes, comments)
                         self.conn.execute("select public.enqueue_checkpoint_jobs(%s,%s)", (post_key, posted_at))
 
@@ -346,6 +478,15 @@ class PureEngine:
                     continue
 
                 views, likes, comments = _extract_metrics(item)
+                thumbnail_url, display_url, video_url, carousel_urls, audio_url = _extract_media_refs(item)
+                self._refresh_post_media(
+                    str(j["post_key"]),
+                    thumbnail_url,
+                    display_url,
+                    video_url,
+                    carousel_urls,
+                    audio_url,
+                )
                 self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments)
                 self.conn.commit()
                 self._set_checkpoint_result(jid, "done", att, None, None)
@@ -358,6 +499,62 @@ class PureEngine:
                     self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
                 else:
                     self._set_checkpoint_result(jid, "failed", na, None, err)
+
+
+    def backfill_d1_media(self, limit: int = 300, days: int = 14, batch_size: int = 50) -> dict[str, int]:
+        """Backfill missing media refs for existing D1 posts without creating new metrics/checkpoints."""
+        rows = self.conn.execute(
+            """
+            select p.post_key, p.post_url
+            from public.posts p
+            join public.post_metrics pm on pm.post_key = p.post_key and pm.checkpoint = 'd1'
+            where p.post_url is not null
+              and p.created_at >= now() - (%s::text || ' days')::interval
+              and (
+                p.media_fetched_at is null
+                or (p.thumbnail_url is null and p.display_url is null)
+              )
+            order by p.created_at desc
+            limit %s
+            """,
+            (max(1, days), max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"selected": 0, "updated": 0, "missing": 0}
+
+        by_url: dict[str, dict] = {}
+        urls = [str(r.get("post_url") or "").strip() for r in rows if str(r.get("post_url") or "").strip()]
+
+        for i in range(0, len(urls), max(1, batch_size)):
+            chunk = urls[i : i + max(1, batch_size)]
+            if not chunk:
+                continue
+            items = run_actor_post_urls("", chunk)
+            for item in items:
+                source_url = item.get("url") or ""
+                shortcode = item.get("shortCode") or item.get("shortcode") or _shortcode_from_url(source_url)
+                canonical = _canonical_post_url(shortcode, source_url)
+                if canonical:
+                    by_url[canonical] = item
+
+        updated = 0
+        missing = 0
+        for r in rows:
+            post_key = str(r.get("post_key") or "")
+            post_url = str(r.get("post_url") or "")
+            item = by_url.get(post_url)
+            if not item:
+                missing += 1
+                continue
+            thumbnail_url, display_url, video_url, carousel_urls, audio_url = _extract_media_refs(item)
+            self._refresh_post_media(post_key, thumbnail_url, display_url, video_url, carousel_urls, audio_url)
+            updated += 1
+
+        self.conn.commit()
+        return {"selected": len(rows), "updated": updated, "missing": missing}
+
 
 
 def run_once(run_limit: int = 120, checkpoint_limit: int = 200):
