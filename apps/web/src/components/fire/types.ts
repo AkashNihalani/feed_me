@@ -18,4 +18,5 @@ export type FireItem = {
   createdAt: string;
   postUrl: string;
   thumbnailUrl?: string;
+  businessDateKey: string;
 };

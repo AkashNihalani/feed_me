@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { format, isToday, isFuture, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 
