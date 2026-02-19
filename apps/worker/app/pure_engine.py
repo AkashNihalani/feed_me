@@ -486,6 +486,10 @@ class PureEngine:
                     self._resolve_for_feeder(feeder_id, 'd1')
                     self._try_resolve_feed(feeder_id, 'd1', business_date_ist)
                 except Exception as exc:
+                    try:
+                        self.conn.rollback()
+                    except Exception:
+                        pass
                     na = att + 1
                     err = str(exc)[:1000] or "run job failed"
                     if na <= len(RETRY_BACKOFF_MINUTES):
@@ -520,6 +524,10 @@ class PureEngine:
                 checkpoint = j.get("checkpoint") or ""
                 item = by_url.get(str(j.get("post_url") or ""))
                 if not item:
+                    try:
+                        self.conn.rollback()
+                    except Exception:
+                        pass
                     na = att + 1
                     if na <= len(RETRY_BACKOFF_MINUTES):
                         self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), "Post missing in batch")
@@ -551,6 +559,10 @@ class PureEngine:
                 self._try_resolve_feed(feeder_id, cp, None)
 
         except Exception as exc:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
             err = str(exc)[:1000] or "checkpoint batch failed"
             for j in jobs:
                 jid = int(j["id"])
