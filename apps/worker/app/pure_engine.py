@@ -327,6 +327,25 @@ class PureEngine:
             (post_key, checkpoint, views, likes, comments),
         )
 
+    def _insert_metric_if_missing(
+        self,
+        post_key: str,
+        checkpoint: str,
+        views: int | None,
+        likes: int | None,
+        comments: int | None,
+    ):
+        """Insert-only metric writer for fallback stamps (never overwrite existing checkpoint rows)."""
+        self.conn.execute(
+            """
+            insert into public.post_metrics
+              (post_key, checkpoint, views, likes, comments, computed_at)
+            values (%s,%s,%s,%s,%s,now())
+            on conflict (post_key, checkpoint) do nothing
+            """,
+            (post_key, checkpoint, views, likes, comments),
+        )
+
     def _claim_run_jobs(self, limit: int) -> list[dict]:
         rows = self.conn.execute(
             """
@@ -365,6 +384,26 @@ class PureEngine:
             "select public.set_checkpoint_job_result(%s,%s,%s,%s,%s)",
             (job_id, status, attempt, next_run_at, (error or "")[:1000] if error else None),
         )
+        self.conn.commit()
+
+    def _resolve_for_feeder(self, feeder_id: int, checkpoint: str):
+        cp = (checkpoint or '').lower()
+        if cp not in ('d1', 'd3', 'd7', 'd21'):
+            return
+        self.conn.execute("select public.fn_refresh_feeder_baselines(%s, %s)", (feeder_id, cp))
+        self.conn.execute("select public.fn_resolve_post_signals(%s, %s)", (feeder_id, cp))
+        self.conn.commit()
+
+    def _try_resolve_feed(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
+        cp = (checkpoint or '').lower()
+        if cp not in ('d1', 'd3', 'd7', 'd21'):
+            return
+        row = self.conn.execute("select feed_id from public.feeders where id = %s", (feeder_id,)).fetchone()
+        feed_id = int((row or {}).get('feed_id') or 0)
+        if not feed_id:
+            self.conn.commit()
+            return
+        self.conn.execute("select public.fn_try_resolve_feed_signals(%s, %s, %s)", (feed_id, cp, business_date_ist))
         self.conn.commit()
 
     def process_run_jobs(self, limit: int = 120):
@@ -432,10 +471,20 @@ class PureEngine:
                             audio_url=audio_url,
                         )
                         self._upsert_metric(post_key, daily_checkpoint, views, likes, comments)
+
+                        # Buffer capture fallback: if this post was first seen in D2, stamp D1 once
+                        # (user-facing timeline remains D1/D3/D7/D21 while backend keeps D2 for audit).
+                        if daily_checkpoint == "d2":
+                            self._insert_metric_if_missing(post_key, "d1", views, likes, comments)
+
                         self.conn.execute("select public.enqueue_checkpoint_jobs(%s,%s)", (post_key, posted_at))
 
                     self.conn.commit()
                     self._set_run_result(jid, "done", att, None, None)
+
+                    # Post-ingest resolver chain (baseline -> post signals -> feed signals)
+                    self._resolve_for_feeder(feeder_id, 'd1')
+                    self._try_resolve_feed(feeder_id, 'd1', business_date_ist)
                 except Exception as exc:
                     na = att + 1
                     err = str(exc)[:1000] or "run job failed"
@@ -464,6 +513,7 @@ class PureEngine:
                 if u:
                     by_url[u] = item
 
+            touched: set[tuple[int, str]] = set()
             for j in jobs:
                 jid = int(j["id"])
                 att = int(j.get("attempt") or 0)
@@ -490,6 +540,16 @@ class PureEngine:
                 self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments)
                 self.conn.commit()
                 self._set_checkpoint_result(jid, "done", att, None, None)
+
+                feeder_id = int(j.get('feeder_id') or 0)
+                cp = str(checkpoint or '').lower()
+                if feeder_id and cp in ('d3', 'd7', 'd21'):
+                    touched.add((feeder_id, cp))
+            # Resolver chain for checkpoint jobs once batch writes are done
+            for feeder_id, cp in touched:
+                self._resolve_for_feeder(feeder_id, cp)
+                self._try_resolve_feed(feeder_id, cp, None)
+
         except Exception as exc:
             err = str(exc)[:1000] or "checkpoint batch failed"
             for j in jobs:
@@ -586,9 +646,23 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
         while True:
             now_ts = time.time()
 
+            # Ensure we never carry an aborted transaction into the next loop.
+            try:
+                eng.conn.rollback()
+            except Exception:
+                pass
+
             # Watchdog: requeue stale jobs every 60s
             if now_ts - last_watchdog >= 60:
-                eng.requeue_stale(30)
+                try:
+                    eng.requeue_stale(30)
+                except Exception as e:
+                    try:
+                        eng.conn.rollback()
+                    except Exception:
+                        pass
+                    print(f"[watchdog] {e}")
+                    alert_worker_error(e)
                 last_watchdog = now_ts
 
             # Failed job alerts: check every 60s for freshly failed jobs
@@ -671,6 +745,10 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
                 eng.process_run_jobs(run_limit)
                 eng.process_checkpoint_jobs(checkpoint_limit)
             except Exception as e:
+                try:
+                    eng.conn.rollback()
+                except Exception:
+                    pass
                 print(f"[worker-loop] error: {e}")
                 alert_worker_error(e)
                 time.sleep(10)  # back off on error
