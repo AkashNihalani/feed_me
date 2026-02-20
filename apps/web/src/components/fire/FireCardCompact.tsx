@@ -19,7 +19,7 @@ export function FireCardCompact({ item }: FireCardCompactProps) {
 
         <div className="relative z-10 flex items-center gap-3">
             <div className="text-3xl">
-                {item.velocityTag || '🚀'}
+                {item.percentileTag || '🚀'}
             </div>
             <div className="flex flex-col">
                 <span className="font-black uppercase text-xl leading-none tracking-tighter text-black">

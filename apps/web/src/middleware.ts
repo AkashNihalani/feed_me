@@ -57,8 +57,8 @@ export async function middleware(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession()
 
-  // Protect /profile and /feed routes
-  if (request.nextUrl.pathname.startsWith('/profile') || request.nextUrl.pathname.startsWith('/feed')) {
+  // Protect /profile, /feed and /fire routes
+  if (request.nextUrl.pathname.startsWith('/profile') || request.nextUrl.pathname.startsWith('/feed') || request.nextUrl.pathname.startsWith('/fire')) {
     if (!session) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
@@ -75,5 +75,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/profile/:path*', '/feed/:path*', '/login'],
+  matcher: ['/profile/:path*', '/feed/:path*', '/fire/:path*', '/login'],
 }

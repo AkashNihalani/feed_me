@@ -310,21 +310,25 @@ class PureEngine:
         views: int | None,
         likes: int | None,
         comments: int | None,
+        captured_business_date_ist: date | None = None,
+        d1_source: str | None = None,
     ):
         """Write raw metrics only — Supabase trigger computes derived fields."""
         self.conn.execute(
             """
             insert into public.post_metrics
-              (post_key, checkpoint, views, likes, comments, computed_at)
-            values (%s,%s,%s,%s,%s,now())
+              (post_key, checkpoint, views, likes, comments, computed_at, captured_business_date_ist, d1_source)
+            values (%s,%s,%s,%s,%s,now(),%s,%s)
             on conflict (post_key, checkpoint)
             do update set
               views=excluded.views,
               likes=excluded.likes,
               comments=excluded.comments,
-              computed_at=now()
+              computed_at=now(),
+              captured_business_date_ist=coalesce(excluded.captured_business_date_ist, public.post_metrics.captured_business_date_ist),
+              d1_source=coalesce(excluded.d1_source, public.post_metrics.d1_source)
             """,
-            (post_key, checkpoint, views, likes, comments),
+            (post_key, checkpoint, views, likes, comments, captured_business_date_ist, d1_source),
         )
 
     def _insert_metric_if_missing(
@@ -334,16 +338,18 @@ class PureEngine:
         views: int | None,
         likes: int | None,
         comments: int | None,
+        captured_business_date_ist: date | None = None,
+        d1_source: str | None = None,
     ):
         """Insert-only metric writer for fallback stamps (never overwrite existing checkpoint rows)."""
         self.conn.execute(
             """
             insert into public.post_metrics
-              (post_key, checkpoint, views, likes, comments, computed_at)
-            values (%s,%s,%s,%s,%s,now())
+              (post_key, checkpoint, views, likes, comments, computed_at, captured_business_date_ist, d1_source)
+            values (%s,%s,%s,%s,%s,now(),%s,%s)
             on conflict (post_key, checkpoint) do nothing
             """,
-            (post_key, checkpoint, views, likes, comments),
+            (post_key, checkpoint, views, likes, comments, captured_business_date_ist, d1_source),
         )
 
     def _claim_run_jobs(self, limit: int) -> list[dict]:
@@ -470,12 +476,12 @@ class PureEngine:
                             carousel_urls=carousel_urls,
                             audio_url=audio_url,
                         )
-                        self._upsert_metric(post_key, daily_checkpoint, views, likes, comments)
+                        self._upsert_metric(post_key, daily_checkpoint, views, likes, comments, business_date_ist, 'on_time' if daily_checkpoint == 'd1' else None)
 
                         # Buffer capture fallback: if this post was first seen in D2, stamp D1 once
                         # (user-facing timeline remains D1/D3/D7/D21 while backend keeps D2 for audit).
                         if daily_checkpoint == "d2":
-                            self._insert_metric_if_missing(post_key, "d1", views, likes, comments)
+                            self._insert_metric_if_missing(post_key, "d1", views, likes, comments, business_date_ist, 'from_d2b')
 
                         self.conn.execute("select public.enqueue_checkpoint_jobs(%s,%s)", (post_key, posted_at))
 
@@ -545,7 +551,7 @@ class PureEngine:
                     carousel_urls,
                     audio_url,
                 )
-                self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments)
+                self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, None, None)
                 self.conn.commit()
                 self._set_checkpoint_result(jid, "done", att, None, None)
 
@@ -556,7 +562,11 @@ class PureEngine:
             # Resolver chain for checkpoint jobs once batch writes are done
             for feeder_id, cp in touched:
                 self._resolve_for_feeder(feeder_id, cp)
-                self._try_resolve_feed(feeder_id, cp, None)
+                try:
+                    tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+                except Exception:
+                    tz = timezone.utc
+                self._try_resolve_feed(feeder_id, cp, datetime.now(tz).date())
 
         except Exception as exc:
             try:

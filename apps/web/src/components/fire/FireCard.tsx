@@ -2,131 +2,137 @@
 
 import { cn } from '@/lib/utils';
 import { FireItem } from './types';
-import Link from 'next/link';
-import { Video, Image as ImageIcon } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface FireCardProps {
   item: FireItem;
 }
 
 export function FireCard({ item }: FireCardProps) {
-  const isSpark = item.urgency === 'watch'; // Low
-  const isBurn = item.urgency === 'today';  // Medium
-  const isBlaze = item.urgency === 'now';   // High
+  const isSpark = item.urgency === 'watch';
+  const isBurn = item.urgency === 'today';
+  const isBlaze = item.urgency === 'now';
 
-  // Determine Media Icon
-  const isVideo = item.postUrl?.includes('reel') || item.postUrl?.includes('tiktok') || item.postUrl?.includes('youtube');
-  const MediaIcon = isVideo ? Video : ImageIcon;
+  const handleTap = () => {
+    if (item.postUrl) window.open(item.postUrl, '_blank');
+  };
 
   return (
-    <div className="relative w-full max-w-md mx-auto mb-12 group perspective-1000">
-      
-      {/* 1. ANIMATED LIVE WIRE BORDER */}
-      <div 
-        className={cn(
-          "absolute -inset-1 z-0",
-          // Spark = Yellow/Black
-          isSpark && "bg-[repeating-linear-gradient(45deg,#FFD600,#FFD600_10px,#000_10px,#000_20px)]",
-          // Burn = Orange/Black
-          isBurn && "animate-marquee-slow bg-[repeating-linear-gradient(45deg,#FF6B00,#FF6B00_15px,#000_15px,#000_30px)]",
-          // Blaze = Red/Black
-          isBlaze && "animate-marquee-fast bg-[repeating-linear-gradient(45deg,#FF003C,#FF003C_15px,#000_15px,#000_30px)]"
+    <motion.article
+      layoutId={item.id}
+      whileTap={{ scale: 0.985 }}
+      onClick={handleTap}
+      className={cn(
+        'group relative w-full aspect-[4/5] overflow-hidden bg-black border-[4px] cursor-pointer select-none touch-manipulation',
+        isSpark && 'border-[#CCFF00] shadow-[0_0_0_1px_#111,0_0_14px_rgba(204,255,0,0.35)]',
+        isBurn && 'border-[#FF6B00] fire-burn-trace shadow-[0_0_0_1px_#111,0_0_16px_rgba(255,107,0,0.22)]',
+        isBlaze && 'border-[#FF003C] fire-blaze-pulse shadow-[0_0_0_1px_#111,0_0_20px_rgba(255,0,60,0.32)]'
+      )}
+    >
+      <div className="absolute inset-0 z-0 bg-neutral-900">
+        {item.thumbnailUrl ? (
+          <img
+            src={item.thumbnailUrl}
+            alt="Signal Media"
+            className="w-full h-full object-cover opacity-95"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-neutral-800">
+            <span className="font-black text-5xl text-neutral-700 uppercase tracking-tighter">NO SIGNAL</span>
+          </div>
         )}
-        style={{
-          backgroundSize: '200% 200%',
-        }}
-      />
-
-      {/* 2. CARD CONTENT CONTAINER */}
-      <div className="relative z-10 bg-white border-2 border-black p-3 min-h-[450px] flex flex-col justify-between shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-transform group-hover:-translate-y-1 group-hover:translate-x-1">
-        
-        {/* HEADER: TIER NAME + EMOJI + TIME */}
-        <div className="flex justify-between items-center mb-3 border-b-2 border-black pb-2">
-            <div className="flex items-center gap-2">
-                <div className={cn(
-                    "px-2 py-0.5 text-xs font-black uppercase tracking-widest text-black",
-                    isSpark && "bg-[#FFD600]", // Yellow
-                    isBurn && "bg-[#FF6B00]", // Orange
-                    isBlaze && "bg-[#FF003C] text-white" // Red
-                )}>
-                    {isSpark ? 'SPARK' : isBurn ? 'BURN' : 'BLAZE'}
-                </div>
-                {/* Emoji Tag from Item */}
-                <div className="text-xl leading-none">
-                    {item.velocityTag || '🔥'}
-                </div>
-            </div>
-            <div className="font-mono text-[10px] font-bold opacity-50 uppercase">
-                {item.timeAgo}
-            </div>
-        </div>
-
-        {/* MEDIA: 4:5 Aspect Ratio Container */}
-        <div className="relative w-full aspect-[4/5] bg-black border-2 border-black mb-3 overflow-hidden group-hover:shadow-[4px_4px_0px_0px_#CCFF00] transition-shadow">
-            
-            {/* Top Right: Media Type Icon */}
-            <div className="absolute top-2 right-2 z-20 bg-black text-white p-1.5 border border-white/20 shadow-sm">
-                <MediaIcon size={16} />
-            </div>
-
-            {/* Bottom Left: Massive Overlay Tags */}
-            <div className="absolute bottom-2 left-2 z-20 flex flex-col gap-1 items-start">
-                 <div className="bg-white border-2 border-black px-2 py-0.5 shadow-[2px_2px_0px_black]">
-                    <span className="font-black text-2xl leading-none uppercase">
-                        {item.stage}
-                    </span>
-                 </div>
-                 {item.percentile && (
-                     <div className="bg-[#CCFF00] border-2 border-black px-2 py-0.5 shadow-[2px_2px_0px_black]">
-                        <span className="font-black text-2xl leading-none uppercase">
-                            TOP {item.percentile}
-                        </span>
-                     </div>
-                 )}
-            </div>
-
-            {/* Media */}
-            <img 
-               src={item.thumbnailUrl || '/placeholder.jpg'} 
-               alt="Alert Media"
-               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            />
-        </div>
-
-        {/* FOOTER */}
-        <div>
-           <div className="text-xs font-bold uppercase mb-1 text-neutral-400">
-             {item.handle}
-           </div>
-           <h3 className={cn(
-             "font-black uppercase text-xl leading-[0.95] mb-2",
-             isBlaze && "animate-heat-haze text-[#FF003C]"
-           )}>
-             {item.title}
-           </h3>
-           
-           <div className="bg-neutral-100 border-l-4 border-black p-2 mb-2">
-              <p className="font-mono text-[10px] font-bold uppercase mb-0.5 opacity-60">Insight</p>
-              <p className="font-bold text-xs leading-tight uppercase">{item.whyNow}</p>
-           </div>
-
-           <Link href={item.postUrl} target="_blank" className="block w-full bg-black text-white py-2.5 text-center font-black uppercase tracking-widest hover:bg-[#CCFF00] hover:text-black transition-colors border-2 border-black shadow-[4px_4px_0px_black] active:shadow-none active:translate-y-1">
-              OPEN SIGNAL
-           </Link>
-        </div>
-
       </div>
-      
-      {/* 3. PARTICLES (Blaze Only) */}
-      {isBlaze && (
-        <div className="absolute inset-x-0 bottom-0 h-full overflow-hidden pointer-events-none z-20 mix-blend-screen">
-           <div className="w-1 h-1 bg-yellow-400 absolute bottom-0 left-[20%] animate-[rise_2s_infinite]" />
-           <div className="w-1 h-1 bg-red-500 absolute bottom-0 left-[50%] animate-[rise_3s_infinite_0.5s]" />
-           <div className="w-2 h-2 bg-orange-500 absolute bottom-0 left-[80%] animate-[rise_2.5s_infinite_1s]" />
-           <div className="w-1 h-1 bg-white absolute bottom-0 left-[40%] animate-[rise_1.5s_infinite_0.2s]" />
+
+      <div className="absolute inset-0 z-[5] pointer-events-none bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.18)_35%,rgba(0,0,0,0.72)_100%)]" />
+
+      <div className="absolute top-0 left-0 w-full p-2.5 md:p-3.5 z-20 flex items-start justify-between pointer-events-none">
+        <div className="flex gap-1.5 md:gap-2 items-center flex-wrap max-w-[88%]">
+          <span
+            className={cn(
+              'px-2.5 md:px-3 py-1.5 border-[2px] border-black text-[11px] md:text-[13px] font-black uppercase tracking-wider shadow-[3px_3px_0px_black]',
+              isSpark && 'bg-[#CCFF00] text-black',
+              isBurn && 'bg-[#FF6B00] text-black',
+              isBlaze && 'bg-[#FF003C] text-white'
+            )}
+          >
+            {isSpark ? 'SPARK' : isBurn ? 'BURN' : 'BLAZE'}
+          </span>
+          <span className="px-2.5 md:px-3 py-1.5 border-[2px] border-black text-[11px] md:text-[13px] font-black uppercase tracking-wider bg-white text-black shadow-[3px_3px_0px_black]">
+            {item.mediaType || 'POST'}
+          </span>
+          <span className="px-2.5 md:px-3 py-1.5 border-[2px] border-black text-[11px] md:text-[13px] font-black uppercase tracking-wider bg-white text-black shadow-[3px_3px_0px_black]">
+            {item.stage}
+          </span>
+          {item.delta && (
+            <span className="px-2.5 md:px-3 py-1.5 border-[2px] border-black text-[11px] md:text-[13px] font-black uppercase tracking-wider bg-black text-white shadow-[3px_3px_0px_black]">
+              {item.delta.startsWith('+') ? '↑ ' : item.delta.startsWith('-') ? '↓ ' : ''}{item.delta}
+            </span>
+          )}
+        </div>
+        <span className="px-2.5 md:px-3 py-1.5 border-[2px] border-black bg-white text-black text-lg md:text-2xl leading-none shadow-[3px_3px_0px_black]">
+          {item.percentileTag || '🔥'}
+        </span>
+      </div>
+
+      {item.percentile && (
+        <div className="absolute right-2 md:right-3 top-[22%] z-15 pointer-events-none">
+          <span className="font-black italic text-[48px] md:text-[64px] tracking-tighter text-white/28 drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]">
+            {item.percentile}%
+          </span>
         </div>
       )}
 
-    </div>
+      <div className="absolute bottom-0 left-0 w-full z-20 pointer-events-none">
+        <div className="mx-2.5 md:mx-3 mb-2 bg-white border-[3px] border-black shadow-[5px_5px_0px_black] p-2.5 md:p-3.5">
+          <div className="inline-flex items-center bg-black text-white px-2 md:px-2.5 py-1 text-[11px] md:text-[12px] font-black uppercase tracking-wide mb-2.5 border border-black">
+            {item.handle}
+          </div>
+
+          <h3 className="text-black text-[26px] md:text-[36px] font-black uppercase leading-[0.9] tracking-tighter">
+            {item.title}
+          </h3>
+
+          <p className="mt-2.5 text-[12px] md:text-[15px] font-bold uppercase leading-[1.1] tracking-wide text-neutral-800">
+            {item.whyNow}
+          </p>
+
+          {item.evidence.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5 md:gap-2">
+              {item.evidence.slice(0, 3).map((ev, idx) => (
+                <span
+                  key={`${item.id}-ev-${idx}`}
+                  className="px-2.5 md:px-3 py-1.5 border-[2px] border-black bg-[#F3F3F3] text-black text-[11px] md:text-[13px] font-black uppercase tracking-wide shadow-[3px_3px_0px_black]"
+                >
+                  {ev}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="absolute bottom-1.5 right-2.5 z-30 pointer-events-none">
+        <span className="font-mono text-[9px] md:text-[10px] font-black uppercase text-white/85">{item.timeAgo}</span>
+      </div>
+
+      <style jsx global>{`
+        @keyframes burn-travel {
+          0% { box-shadow: inset 0 0 0 0 rgba(255, 210, 170, 0.0); }
+          50% { box-shadow: inset 0 0 0 2px rgba(255, 210, 170, 0.85); }
+          100% { box-shadow: inset 0 0 0 0 rgba(255, 210, 170, 0.0); }
+        }
+        .fire-burn-trace {
+          animation: burn-travel 1.6s linear infinite;
+        }
+        @keyframes blaze-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 60, 0.2); }
+          50% { box-shadow: 0 0 0 4px rgba(255, 0, 60, 0.35); }
+        }
+        .fire-blaze-pulse {
+          animation: blaze-pulse 2s ease-in-out infinite;
+        }
+      `}</style>
+    </motion.article>
   );
 }

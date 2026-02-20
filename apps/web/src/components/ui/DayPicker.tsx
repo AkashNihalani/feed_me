@@ -1,107 +1,112 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-import { format, isToday, isFuture, isSameDay } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
+
+interface DayCounts {
+  spark: number;
+  burn: number;
+  blaze: number;
+}
 
 interface DayPickerProps {
   days: Date[];
   activeDate: Date;
   onSelect: (date: Date) => void;
+  dayCounts?: Record<string, DayCounts>;
 }
 
-export function DayPicker({ days, activeDate, onSelect }: DayPickerProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to selected day on mount or change
-  useEffect(() => {
-    if (containerRef.current) {
-      const selectedEl = containerRef.current.querySelector('[data-selected="true"]');
-      if (selectedEl) {
-        selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      }
-    }
-  }, [activeDate]);
-
-  const handleSelect = (date: Date) => {
-    // Prevent selecting Today or Future (Elastic Snap-back Logic handled by parent state usually, 
-    // but here we just ignore the click or trigger a shake)
-    if (isToday(date) || isFuture(date)) {
-        // Optional: Trigger haptic or visual resist
-        return;
-    }
-    onSelect(date);
-  };
-
+export function DayPicker({ days, activeDate, onSelect, dayCounts }: DayPickerProps) {
   return (
-    <div className="relative w-full h-24 bg-neutral-100 border-y-4 border-black overflow-hidden select-none">
-      
-      {/* Central Lens / Needle */}
-      <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-lime z-20 -translate-x-1/2 shadow-[0_0_10px_#CCFF00]" />
-      <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-black rotate-45 z-30" />
-      <div className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-black rotate-45 z-30" />
-
-      {/* Scroll Container (The Tape) */}
-      <div 
-        ref={containerRef}
-        className="flex items-center h-full overflow-x-auto px-[50%] snap-x snap-mandatory no-scrollbar"
-      >
-        {days.map((date) => {
+    <div className="w-full bg-black py-2 px-1">
+      <div className="grid gap-px" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
+        {days.map((date, idx) => {
           const isSelected = isSameDay(date, activeDate);
-          const isRestricted = isToday(date) || isFuture(date);
-          
+          const dateKey = format(date, 'yyyy-MM-dd');
+          const counts = dayCounts?.[dateKey];
+          const total = counts ? counts.spark + counts.burn + counts.blaze : 0;
+
+          // Heat bar segment percentages
+          const sparkPct = total > 0 ? (counts!.spark / total) * 100 : 0;
+          const burnPct = total > 0 ? (counts!.burn / total) * 100 : 0;
+          const blazePct = total > 0 ? (counts!.blaze / total) * 100 : 0;
+
           return (
-            <div
+            <button
               key={date.toISOString()}
-              className="relative flex-shrink-0 snap-center"
+              onClick={() => onSelect(date)}
+              className={cn(
+                'relative flex flex-col items-center justify-center py-2 px-1 transition-all duration-200 cursor-pointer group',
+                isSelected
+                  ? '-translate-y-1 z-10 bg-neutral-900 shadow-[0_6px_20px_rgba(204,255,0,0.15),0_2px_8px_rgba(0,0,0,0.6)] rounded-sm'
+                  : 'hover:bg-white/[0.03]',
+                // Divider on left side (skip first)
+                idx > 0 && !isSelected && 'border-l border-neutral-800'
+              )}
             >
-                <button
-                    onClick={() => handleSelect(date)}
-                    data-selected={isSelected}
-                    className={cn(
-                        "h-full w-20 flex flex-col items-center justify-center relative group transition-opacity",
-                        isRestricted ? "opacity-100 cursor-not-allowed" : "cursor-pointer hover:bg-black/5"
+              {/* Symmetrical accent bars when selected */}
+              {isSelected && (
+                <>
+                  <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#CCFF00] rounded-r-full shadow-[0_0_6px_rgba(204,255,0,0.4)]" />
+                  <div className="absolute right-0 top-1 bottom-1 w-[3px] bg-[#CCFF00] rounded-l-full shadow-[0_0_6px_rgba(204,255,0,0.4)]" />
+                </>
+              )}
+
+              {/* Day of week */}
+              <span
+                className={cn(
+                  'font-mono text-[10px] uppercase tracking-wider leading-none mb-1',
+                  isSelected ? 'text-[#CCFF00]' : 'text-neutral-600 group-hover:text-neutral-400'
+                )}
+              >
+                {format(date, 'EEE')}
+              </span>
+
+              {/* Date number — hero */}
+              <span
+                className={cn(
+                  'text-2xl font-black leading-none tracking-tighter transition-all duration-200',
+                  isSelected ? 'text-white scale-110' : 'text-neutral-500 group-hover:text-neutral-300'
+                )}
+              >
+                {format(date, 'dd')}
+              </span>
+
+              {/* Month */}
+              <span
+                className={cn(
+                  'font-mono text-[10px] uppercase tracking-wider leading-none mt-1',
+                  isSelected ? 'text-[#CCFF00]' : 'text-neutral-600 group-hover:text-neutral-400'
+                )}
+              >
+                {format(date, 'MMM')}
+              </span>
+
+              {/* Heat bar */}
+              <div className={cn(
+                'w-full h-1 mt-2 flex overflow-hidden rounded-sm',
+                isSelected && 'h-1.5'
+              )}>
+                {total > 0 ? (
+                  <>
+                    {sparkPct > 0 && (
+                      <div className="h-full bg-[#CCFF00]" style={{ width: `${sparkPct}%` }} />
                     )}
-                >
-                    {/* Ticks */}
-                    <div className="absolute top-0 w-0.5 h-3 bg-black" />
-                    <div className="absolute bottom-0 w-0.5 h-3 bg-black" />
-                    
-                    {/* Minor Ticks */}
-                    <div className="absolute top-0 right-0 w-px h-1.5 bg-neutral-400" />
-                    <div className="absolute bottom-0 right-0 w-px h-1.5 bg-neutral-400" />
-                    
-                    {isRestricted ? (
-                        // HAZARD ZONE
-                        <div className="w-full h-full flex items-center justify-center bg-[repeating-linear-gradient(45deg,#000,#000_5px,#CCFF00_5px,#CCFF00_10px)] opacity-80">
-                            {/* No Text, just hazard tape */}
-                        </div>
-                    ) : (
-                        // DATE CONTENT
-                        <div className={cn(
-                            "transition-all duration-300 flex flex-col items-center",
-                            isSelected ? "scale-125 opacity-100" : "opacity-40 scale-90"
-                        )}>
-                            <span className="text-[10px] font-black uppercase tracking-wider font-mono">
-                                {format(date, 'MMM')}
-                            </span>
-                            <span className={cn(
-                                "text-3xl font-black leading-none",
-                                isSelected && "text-black"
-                            )}>
-                                {format(date, 'dd')}
-                            </span>
-                        </div>
+                    {burnPct > 0 && (
+                      <div className="h-full bg-[#FF6B00]" style={{ width: `${burnPct}%` }} />
                     )}
-                </button>
-            </div>
+                    {blazePct > 0 && (
+                      <div className="h-full bg-[#FF003C]" style={{ width: `${blazePct}%` }} />
+                    )}
+                  </>
+                ) : (
+                  <div className="h-full w-full bg-neutral-800" />
+                )}
+              </div>
+            </button>
           );
         })}
       </div>
-      
-      {/* Side Vignettes/Fade */}
-      <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-neutral-100 to-transparent pointer-events-none z-10" />
-      <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-neutral-100 to-transparent pointer-events-none z-10" />
     </div>
   );
 }

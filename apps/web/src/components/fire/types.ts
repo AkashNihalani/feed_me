@@ -1,4 +1,4 @@
-export type AlertFamily = 'velocity' | 'competitive' | 'intelligence';
+export type AlertFamily = 'insight' | 'stack';
 export type AlertUrgency = 'now' | 'today' | 'watch';
 
 export type FireItem = {
@@ -10,13 +10,19 @@ export type FireItem = {
   title: string;
   whyNow: string;
   action: string;
-  velocityTag: string; // 🔥, 🚀, 👁
-  stage: string;       // D3, D7
-  percentile?: string; // 08%
+  percentileTag: string;
+  mediaType?: string;
+  stage: string;
+  percentile?: string;
+  delta?: string;
   evidence: string[];
   timeAgo: string;
   createdAt: string;
   postUrl: string;
-  thumbnailUrl?: string;
+  thumbnailUrl?: string; // Standard high-res image
   businessDateKey: string;
+  
+  // Layout Props (Computed on frontend)
+  colSpan?: 1 | 2 | 3; // Grid span
+  stackCount?: number; // If family === 'stack'
 };
