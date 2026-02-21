@@ -583,7 +583,7 @@ class PureEngine:
                 if k:
                     by_post_key[k] = item
 
-            touched: set[tuple[int, str]] = set()
+            touched: set[tuple[int, str, date]] = set()
             for j in jobs:
                 jid = int(j["id"])
                 att = int(j.get("attempt") or 0)
@@ -625,16 +625,25 @@ class PureEngine:
                 feeder_id = int(j.get("feeder_id") or 0)
                 cp = checkpoint.lower()
                 if feeder_id and cp in ("d3", "d7", "d21"):
-                    touched.add((feeder_id, cp))
+                    due_dt = _to_dt(j.get("next_run_at"))
+                    if due_dt is not None:
+                        try:
+                            tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+                        except Exception:
+                            tz = timezone.utc
+                        business_day = due_dt.astimezone(tz).date()
+                    else:
+                        try:
+                            tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+                        except Exception:
+                            tz = timezone.utc
+                        business_day = datetime.now(tz).date()
+                    touched.add((feeder_id, cp, business_day))
 
             # Resolver chain for checkpoint jobs once batch writes are done
-            for feeder_id, cp in touched:
-                self._resolve_for_feeder(feeder_id, cp)
-                try:
-                    tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
-                except Exception:
-                    tz = timezone.utc
-                self._try_resolve_feed(feeder_id, cp, datetime.now(tz).date())
+            for feeder_id, cp, business_day in touched:
+                self._resolve_for_feeder(feeder_id, cp, business_day)
+                self._try_resolve_feed(feeder_id, cp, business_day)
 
         except Exception as exc:
             try:
