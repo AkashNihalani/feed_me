@@ -440,12 +440,13 @@ class PureEngine:
         )
         self.conn.commit()
 
-    def _resolve_for_feeder(self, feeder_id: int, checkpoint: str):
+    def _resolve_for_feeder(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
         cp = (checkpoint or '').lower()
         if cp not in ('d1', 'd3', 'd7', 'd21'):
             return
         self.conn.execute("select public.fn_refresh_feeder_baselines(%s, %s)", (feeder_id, cp))
         self.conn.execute("select public.fn_resolve_post_signals(%s, %s)", (feeder_id, cp))
+        self.conn.execute("select public.enqueue_slot_state_alerts(%s, %s, %s)", (feeder_id, cp, business_date_ist))
         self.conn.commit()
 
     def _try_resolve_feed(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
@@ -537,7 +538,7 @@ class PureEngine:
                     self._set_run_result(jid, "done", att, None, None)
 
                     # Post-ingest resolver chain (baseline -> post signals -> feed signals)
-                    self._resolve_for_feeder(feeder_id, 'd1')
+                    self._resolve_for_feeder(feeder_id, 'd1', business_date_ist)
                     self._try_resolve_feed(feeder_id, 'd1', business_date_ist)
                 except Exception as exc:
                     try:
