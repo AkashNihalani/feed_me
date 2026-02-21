@@ -64,6 +64,16 @@ def alert_job_failed(job_type: str, job_id: int, feeder_handle: str, attempt: in
     )
 
 
+def alert_job_skipped(job_type: str, job_id: int, feeder_handle: str, reason: str) -> None:
+    """Alert when a hard failure is terminally skipped (no retries)."""
+    _send(
+        f"⏭️ <b>Job Skipped (Hard Failure)</b>\n"
+        f"@{feeder_handle} — {job_type}\n"
+        f"Job #{job_id}\n"
+        f"<pre>{(reason or 'hard failure')[:300]}</pre>"
+    )
+
+
 def alert_permanently_failed(job_type: str, job_id: int, feeder_handle: str, last_error: str) -> None:
     """Send alert when a job exhausts all retries + resurrections."""
     _send(

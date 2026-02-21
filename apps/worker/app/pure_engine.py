@@ -21,6 +21,54 @@ def _next_retry_time(attempt: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(minutes=RETRY_BACKOFF_MINUTES[idx])
 
 
+_HARD_SKIP_PREFIX = 'hard-skip:'
+_TRANSIENT_FAILURE_TOKENS = (
+    'timeout',
+    'timed out',
+    'too many requests',
+    '429',
+    'rate limit',
+    'connection',
+    'network',
+    'temporarily unavailable',
+    'service unavailable',
+    'bad gateway',
+    'gateway timeout',
+    'internal server error',
+    'connection reset',
+)
+_HARD_FAILURE_TOKENS = (
+    'not found',
+    'private',
+    'deleted',
+    'post missing',
+    'missing in checkpoint batch',
+    'missing post',
+)
+
+
+def _normalize_error(err: str | None) -> str:
+    return (err or '').strip().lower()
+
+
+def _is_transient_failure(err: str | None) -> bool:
+    e = _normalize_error(err)
+    return any(tok in e for tok in _TRANSIENT_FAILURE_TOKENS)
+
+
+def _is_hard_failure(err: str | None) -> bool:
+    e = _normalize_error(err)
+    if any(tok in e for tok in _HARD_FAILURE_TOKENS):
+        return True
+    # Policy: only transient failures are retried. Everything else is terminal skip.
+    return not _is_transient_failure(e)
+
+
+def _hard_skip_error(err: str | None, fallback: str) -> str:
+    msg = (err or '').strip() or fallback
+    return f"{_HARD_SKIP_PREFIX}{msg[:900]}"
+
+
 def _to_dt(value: Any) -> datetime | None:
     if value is None or value == "":
         return None
@@ -496,49 +544,67 @@ class PureEngine:
                         self.conn.rollback()
                     except Exception:
                         pass
-                    na = att + 1
                     err = str(exc)[:1000] or "run job failed"
-                    if na <= len(RETRY_BACKOFF_MINUTES):
-                        self._set_run_result(jid, "retry", na, _next_retry_time(na), err)
+                    if _is_hard_failure(err):
+                        self._set_run_result(jid, "skipped", att, None, _hard_skip_error(err, "daily hard failure"))
                     else:
-                        self._set_run_result(jid, "failed", na, None, err)
+                        na = att + 1
+                        if na <= len(RETRY_BACKOFF_MINUTES):
+                            self._set_run_result(jid, "retry", na, _next_retry_time(na), err)
+                        else:
+                            self._set_run_result(jid, "failed", na, None, err)
 
-    def process_checkpoint_jobs(self, limit: int = 200):
+    def process_checkpoint_jobs(self, limit: int = 5000):
         jobs = self._claim_checkpoint_jobs(limit)
         if not jobs:
             return
 
-        # Collect ALL URLs into one batch — one Apify call for everything
-        all_urls = list({str(j.get("post_url") or "") for j in jobs if j.get("post_url")})
+        # Single batch call for all due jobs in this claim cycle.
+        all_urls = list({str(j.get("post_url") or "").strip() for j in jobs if j.get("post_url")})
         if not all_urls:
             return
 
         try:
             items = run_actor_post_urls("", all_urls)
-            by_url: dict[str, dict] = {}
+
+            # Match by shortcode/post_key so /p vs /reel URL variants do not trigger false retries.
+            by_short: dict[str, dict] = {}
+            by_post_key: dict[str, dict] = {}
             for item in items:
-                source_url = item.get("url") or ""
-                shortcode = item.get("shortCode") or item.get("shortcode") or _shortcode_from_url(source_url)
-                u = _canonical_post_url(shortcode, source_url)
-                if u:
-                    by_url[u] = item
+                source_url = str(item.get("url") or "")
+                shortcode = (
+                    str(item.get("shortCode") or item.get("shortcode") or "").strip().lower()
+                    or _shortcode_from_url(source_url)
+                )
+                if shortcode:
+                    by_short[shortcode] = item
+                k = _post_key_from_url(_canonical_post_url(shortcode, source_url) or source_url)
+                if k:
+                    by_post_key[k] = item
 
             touched: set[tuple[int, str]] = set()
             for j in jobs:
                 jid = int(j["id"])
                 att = int(j.get("attempt") or 0)
-                checkpoint = j.get("checkpoint") or ""
-                item = by_url.get(str(j.get("post_url") or ""))
+                checkpoint = str(j.get("checkpoint") or "")
+
+                job_post_key = str(j.get("post_key") or "").strip().lower()
+                job_post_url = str(j.get("post_url") or "")
+                job_short = _shortcode_from_url(job_post_url)
+
+                item = by_post_key.get(job_post_key) or (by_short.get(job_short) if job_short else None)
                 if not item:
                     try:
                         self.conn.rollback()
                     except Exception:
                         pass
-                    na = att + 1
-                    if na <= len(RETRY_BACKOFF_MINUTES):
-                        self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), "Post missing in batch")
-                    else:
-                        self._set_checkpoint_result(jid, "failed", na, None, "Post missing in batch")
+                    self._set_checkpoint_result(
+                        jid,
+                        "skipped",
+                        att,
+                        None,
+                        _hard_skip_error("Post missing in checkpoint batch", "checkpoint hard failure"),
+                    )
                     continue
 
                 views, likes, comments = _extract_metrics(item)
@@ -555,10 +621,11 @@ class PureEngine:
                 self.conn.commit()
                 self._set_checkpoint_result(jid, "done", att, None, None)
 
-                feeder_id = int(j.get('feeder_id') or 0)
-                cp = str(checkpoint or '').lower()
-                if feeder_id and cp in ('d3', 'd7', 'd21'):
+                feeder_id = int(j.get("feeder_id") or 0)
+                cp = checkpoint.lower()
+                if feeder_id and cp in ("d3", "d7", "d21"):
                     touched.add((feeder_id, cp))
+
             # Resolver chain for checkpoint jobs once batch writes are done
             for feeder_id, cp in touched:
                 self._resolve_for_feeder(feeder_id, cp)
@@ -574,13 +641,18 @@ class PureEngine:
             except Exception:
                 pass
             err = str(exc)[:1000] or "checkpoint batch failed"
+            is_hard = _is_hard_failure(err)
             for j in jobs:
                 jid = int(j["id"])
-                na = int(j.get("attempt") or 0) + 1
-                if na <= len(RETRY_BACKOFF_MINUTES):
-                    self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                att = int(j.get("attempt") or 0)
+                if is_hard:
+                    self._set_checkpoint_result(jid, "skipped", att, None, _hard_skip_error(err, "checkpoint hard failure"))
                 else:
-                    self._set_checkpoint_result(jid, "failed", na, None, err)
+                    na = att + 1
+                    if na <= len(RETRY_BACKOFF_MINUTES):
+                        self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                    else:
+                        self._set_checkpoint_result(jid, "failed", na, None, err)
 
 
     def backfill_d1_media(self, limit: int = 300, days: int = 14, batch_size: int = 50) -> dict[str, int]:
@@ -639,7 +711,7 @@ class PureEngine:
 
 
 
-def run_once(run_limit: int = 120, checkpoint_limit: int = 200):
+def run_once(run_limit: int = 120, checkpoint_limit: int = 5000):
     eng = PureEngine()
     try:
         eng.requeue_stale(30)
@@ -649,10 +721,10 @@ def run_once(run_limit: int = 120, checkpoint_limit: int = 200):
         eng.close()
 
 
-def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_limit: int = 200):
+def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_limit: int = 5000):
     from .telegram import (
         alert_worker_started, alert_worker_error, alert_permanently_failed,
-        alert_job_failed, alert_daily_summary, is_enabled as tg_enabled,
+        alert_job_failed, alert_job_skipped, alert_daily_summary, is_enabled as tg_enabled,
     )
 
     eng = PureEngine()
@@ -693,29 +765,55 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
                     with eng.conn.cursor(row_factory=dict_row) as cur:
                         # Instant alert: any run_job that just failed
                         cur.execute("""
-                            select rj.id, rj.attempt, rj.last_error, rj.resurrection_count, f.handle
+                            select rj.id, rj.status, rj.attempt, rj.last_error, rj.resurrection_count, f.handle
                             from public.run_jobs rj
                             join public.feeders f on f.id = rj.feeder_id
-                            where rj.status = 'failed'
-                              and rj.updated_at > now() - interval '2 minutes'
+                            where rj.updated_at > now() - interval '2 minutes'
+                              and (
+                                rj.status = 'failed'
+                                or (
+                                  rj.status = 'retry'
+                                  and coalesce(rj.last_error, '') <> ''
+                                  and coalesce(rj.last_error, '') not ilike 'Watchdog:%'
+                                  and coalesce(rj.last_error, '') not ilike 'Recovered stale%'
+                                )
+                                or (rj.status = 'skipped' and coalesce(rj.last_error, '') like 'hard-skip:%')
+                              )
                         """)
                         for row in cur.fetchall():
-                            if row.get("resurrection_count", 0) >= 3:
+                            if row.get("status") == 'skipped':
+                                reason = str(row.get("last_error", "")).replace('hard-skip:', '', 1).strip()
+                                alert_job_skipped("run", row["id"], row["handle"], reason)
+                            elif row.get("resurrection_count", 0) >= 3:
                                 alert_permanently_failed("run", row["id"], row["handle"], row.get("last_error", ""))
                             else:
                                 alert_job_failed("run", row["id"], row["handle"], row.get("attempt", 0), row.get("last_error", ""))
 
                         # Instant alert: any checkpoint_job that just failed
                         cur.execute("""
-                            select cj.id, cj.attempt, cj.last_error, cj.checkpoint, cj.resurrection_count, f.handle
+                            select cj.id, cj.status, cj.attempt, cj.last_error, cj.checkpoint, cj.resurrection_count, f.handle
                             from public.checkpoint_jobs cj
                             join public.posts p on p.post_key = cj.post_key
                             join public.feeders f on f.id = p.feeder_id
-                            where cj.status = 'failed'
-                              and cj.updated_at > now() - interval '2 minutes'
+                            where cj.updated_at > now() - interval '2 minutes'
+                              and (
+                                cj.status = 'failed'
+                                or (
+                                  cj.status = 'retry'
+                                  and coalesce(cj.last_error, '') <> ''
+                                  and coalesce(cj.last_error, '') not ilike 'Watchdog:%'
+                                  and coalesce(cj.last_error, '') not ilike 'Recovered stale%'
+                                )
+                                or (cj.status = 'skipped' and coalesce(cj.last_error, '') like 'hard-skip:%')
+                              )
                         """)
                         for row in cur.fetchall():
-                            if row.get("resurrection_count", 0) >= 3:
+                            if row.get("status") == 'skipped':
+                                reason = str(row.get("last_error", "")).replace('hard-skip:', '', 1).strip()
+                                alert_job_skipped(
+                                    f"checkpoint_{row['checkpoint']}", row["id"], row["handle"], reason
+                                )
+                            elif row.get("resurrection_count", 0) >= 3:
                                 alert_permanently_failed(
                                     f"checkpoint_{row['checkpoint']}", row["id"],
                                     row["handle"], row.get("last_error", ""),
