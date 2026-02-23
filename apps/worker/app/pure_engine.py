@@ -444,22 +444,13 @@ class PureEngine:
         cp = (checkpoint or '').lower()
         if cp not in ('d1', 'd3', 'd7', 'd21'):
             return
-        self.conn.execute("select public.fn_refresh_feeder_baselines(%s, %s)", (feeder_id, cp))
-        self.conn.execute("select public.fn_resolve_post_signals(%s, %s)", (feeder_id, cp))
-        self.conn.execute("select public.enqueue_slot_state_alerts(%s, %s, %s)", (feeder_id, cp, business_date_ist))
+        # Canonical resolver path: one function owns post+feed alert resolution.
+        self.conn.execute("select public.fn_process_checkpoint(%s, %s, %s)", (feeder_id, cp, business_date_ist))
         self.conn.commit()
 
     def _try_resolve_feed(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
-        cp = (checkpoint or '').lower()
-        if cp not in ('d1', 'd3', 'd7', 'd21'):
-            return
-        row = self.conn.execute("select feed_id from public.feeders where id = %s", (feeder_id,)).fetchone()
-        feed_id = int((row or {}).get('feed_id') or 0)
-        if not feed_id:
-            self.conn.commit()
-            return
-        self.conn.execute("select public.fn_try_resolve_feed_signals(%s, %s, %s)", (feed_id, cp, business_date_ist))
-        self.conn.commit()
+        # Feed-level logic is integrated inside fn_process_checkpoint.
+        return
 
     def process_run_jobs(self, limit: int = 120):
         jobs = self._claim_run_jobs(limit)
@@ -608,23 +599,9 @@ class PureEngine:
                     )
                     continue
 
-                views, likes, comments = _extract_metrics(item)
-                thumbnail_url, display_url, video_url, carousel_urls, audio_url = _extract_media_refs(item)
-                self._refresh_post_media(
-                    str(j["post_key"]),
-                    thumbnail_url,
-                    display_url,
-                    video_url,
-                    carousel_urls,
-                    audio_url,
-                )
-                self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, None, None)
-                self.conn.commit()
-                self._set_checkpoint_result(jid, "done", att, None, None)
-
                 feeder_id = int(j.get("feeder_id") or 0)
                 cp = checkpoint.lower()
-                if feeder_id and cp in ("d3", "d7", "d21"):
+                if cp in ("d3", "d7", "d21"):
                     due_dt = _to_dt(j.get("next_run_at"))
                     if due_dt is not None:
                         try:
@@ -638,6 +615,32 @@ class PureEngine:
                         except Exception:
                             tz = timezone.utc
                         business_day = datetime.now(tz).date()
+                else:
+                    business_day = _business_date_from_job(j)
+                    if business_day is None:
+                        try:
+                            tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+                        except Exception:
+                            tz = timezone.utc
+                        business_day = datetime.now(tz).date()
+
+                views, likes, comments = _extract_metrics(item)
+                thumbnail_url, display_url, video_url, carousel_urls, audio_url = _extract_media_refs(item)
+                self._refresh_post_media(
+                    str(j["post_key"]),
+                    thumbnail_url,
+                    display_url,
+                    video_url,
+                    carousel_urls,
+                    audio_url,
+                )
+                # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
+                # update the same row while preserving the checkpoint business day stamp.
+                self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, business_day, None)
+                self.conn.commit()
+                self._set_checkpoint_result(jid, "done", att, None, None)
+
+                if feeder_id and cp in ("d3", "d7", "d21"):
                     touched.add((feeder_id, cp, business_day))
 
             # Resolver chain for checkpoint jobs once batch writes are done
