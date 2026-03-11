@@ -80,7 +80,11 @@ def _to_dt(value: Any) -> datetime | None:
     try:
         dt = date_parser.parse(str(value))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            try:
+                source_tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+            except Exception:
+                source_tz = timezone.utc
+            dt = dt.replace(tzinfo=source_tz)
         return dt.astimezone(timezone.utc)
     except Exception:
         return None
