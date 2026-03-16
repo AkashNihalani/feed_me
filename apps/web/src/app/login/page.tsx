@@ -34,18 +34,19 @@ export default function LoginPage() {
 
     try {
         if (mode === 'login') {
-            const { error: signInError } = await getClient().auth.signInWithPassword({
-                email,
-                password,
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
             });
-            if (signInError) throw signInError;
-            
-            // Success
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body?.error || 'Login failed');
+
             setIsSuccess(true);
             setTimeout(() => {
-                router.push('/');
-                router.refresh();
-            }, 1000); // Faster transition
+                const nextPath = new URLSearchParams(window.location.search).get('next') || '/';
+                window.location.href = nextPath;
+            }, 1000);
         } 
         else if (mode === 'signup') {
             const { error: signUpError } = await getClient().auth.signUp({

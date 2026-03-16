@@ -1,5 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght;600;700;800;900&display=swap");
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800;900&display=swap");
 
 :root {
   --background: #ffffff;
@@ -91,7 +91,9 @@ body {
 
 html {
   overflow: hidden;
-  height: 100vh;
+  height: 100%;
+  min-height: 100svh;
+  min-height: 100dvh;
   width: 100vw;
 }
 
@@ -119,4 +121,387 @@ html {
 @utility stroke-text {
   -webkit-text-stroke: 2px var(--foreground);
   color: transparent;
+}
+
+
+/* Feed dashboard material system */
+.fm-glass-panel {
+  position: relative;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background:
+    linear-gradient(162deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03) 42%, rgba(0, 0, 0, 0.02)),
+    rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(36px) saturate(165%);
+  -webkit-backdrop-filter: blur(36px) saturate(165%);
+  box-shadow:
+    0 26px 62px rgba(0, 0, 0, 0.22),
+    0 8px 20px rgba(0, 0, 0, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.3) inset;
+}
+
+/*
+  TRUE 3D LIQUID GLASS (DARK):
+  Clean, stealthy, and deeply transparent.
+  Relies on pure hex neon colors inside the tile, not white tinting on the glass.
+*/
+.dark .fm-glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-top-color: rgba(255, 255, 255, 0.08); /* Extremely subtle edge catch */
+  background: rgba(8, 8, 8, 0.35); /* Solid dark, no gradients or white wash */
+  backdrop-filter: blur(48px) saturate(120%);
+  -webkit-backdrop-filter: blur(48px) saturate(120%);
+  
+  box-shadow:
+    /* Deep pure black volumetric shadow */
+    0 24px 64px -12px rgba(0, 0, 0, 0.95),
+    0 12px 32px -4px rgba(0, 0, 0, 0.75),
+    /* Barely visible inset for volume without whitewash */
+    inset 0 1px 1px rgba(255, 255, 255, 0.03);
+}
+
+/* Base highlight overlay — disabled in dark mode */
+.fm-glass-panel::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(158deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.03) 36%, transparent);
+  opacity: 0.62;
+}
+
+/* Remove all bright specular slices from dark mode to maintain stealth look */
+.dark .fm-glass-panel::before {
+  display: none;
+}
+
+.fm-glass-inner {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.06));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+
+.dark .fm-glass-inner {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.3));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.fm-glass-chip {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22), 0 1px 0 rgba(255, 255, 255, 0.22) inset;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.dark .fm-glass-chip {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.36));
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.62), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+.fm-hero-neon {
+  color: var(--electric-lime);
+  text-shadow:
+    0 0 8px rgba(204, 255, 0, var(--fm-neon-a, 0.4)),
+    0 0 22px rgba(204, 255, 0, var(--fm-neon-b, 0.18));
+}
+
+.fm-glass-shell-highlight {
+  border-radius: inherit;
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,0.3), transparent 38%);
+  opacity: 0.7;
+}
+
+.dark .fm-glass-shell-highlight {
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,0.04), transparent 40%);
+}
+
+/* ══════════════════════════════════════════════════════════
+   DEPTH-GLASS SURFACE SYSTEM
+   Neumorphic frosted glass with multi-layer elevation.
+   Each tile floats with depth, inner elements have own layers.
+   ══════════════════════════════════════════════════════════ */
+
+.fm-solid-panel,
+.fm-depth-glass {
+  position: relative;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.80);
+  border-top-color: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(44px) saturate(190%);
+  -webkit-backdrop-filter: blur(44px) saturate(190%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.03) inset,
+    0 1px 2px rgba(0, 0, 0, 0.03),
+    0 4px 8px rgba(0, 0, 0, 0.04),
+    0 12px 28px -4px rgba(0, 0, 0, 0.08),
+    0 28px 56px -10px rgba(0, 0, 0, 0.08),
+    0 48px 80px -16px rgba(0, 0, 0, 0.06);
+}
+
+.dark .fm-solid-panel,
+.dark .fm-depth-glass {
+  background: rgba(8, 8, 8, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top-color: rgba(255, 255, 255, 0.10);
+  border-bottom-color: rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.6) inset,
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 8px 16px rgba(0, 0, 0, 0.4),
+    0 24px 48px -8px rgba(0, 0, 0, 0.5),
+    0 48px 80px -16px rgba(0, 0, 0, 0.4);
+}
+
+/* Neumorphic top-bevel gradient overlay */
+.fm-solid-panel::before,
+.fm-depth-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.1) 25%, transparent 50%);
+  opacity: 0.55;
+}
+
+.dark .fm-solid-panel::before,
+.dark .fm-depth-glass::before {
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 25%);
+  opacity: 1;
+}
+
+/* Chip: raised button/badge with own depth */
+.fm-solid-chip,
+.fm-depth-chip {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-top-color: rgba(255, 255, 255, 0.80);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.03) inset,
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 6px 14px -2px rgba(0, 0, 0, 0.08);
+}
+
+.dark .fm-solid-chip,
+.dark .fm-depth-chip {
+  background: rgba(16, 16, 16, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.4) inset,
+    0 3px 8px rgba(0, 0, 0, 0.35),
+    0 8px 18px -4px rgba(0, 0, 0, 0.4);
+}
+
+/* Inner: recessed container with inset shadow */
+.fm-solid-inner,
+.fm-depth-inner {
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-bottom-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.05) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.5) inset;
+}
+
+.dark .fm-solid-inner,
+.dark .fm-depth-inner {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-top-color: rgba(0, 0, 0, 0.3);
+  border-bottom-color: rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.5) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 1px 0 rgba(0, 0, 0, 0.3) inset;
+}
+
+/* Embossed text utility */
+.fm-depth-title {
+  text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.dark .fm-depth-title {
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+
+@keyframes meshDrift {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(0, -6px, 0) scale(1.015); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes tickerScroll {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-33.333%, 0, 0); }
+}
+
+@keyframes tickerScrollHalf {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.fm-label {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--foreground) 48%, transparent);
+}
+
+.fm-kill-neon {
+  color: #FF3366;
+  text-shadow:
+    0 0 8px rgba(255, 51, 102, 0.45),
+    0 0 22px rgba(255, 51, 102, 0.2);
+}
+
+:root {
+  --pwa-top-pad: 0px;
+  --pwa-top-fix: 0px;
+  --pwa-bottom-pad: 0px;
+}
+
+.fm-app-shell {
+  width: 94%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 768px) {
+  .fm-app-shell {
+    width: 88%;
+  }
+}
+
+.fm-range {
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(204,255,0,0.9), rgba(204,255,0,0.55));
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,0.08),
+    inset 0 -1px 2px rgba(255,255,255,0.7),
+    0 2px 6px rgba(0,0,0,0.08);
+}
+
+.fm-range::-webkit-slider-thumb {
+  appearance: none;
+  height: 22px;
+  width: 22px;
+  border-radius: 50%;
+  background: #0b0b0b;
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow:
+    0 6px 12px rgba(0,0,0,0.25),
+    0 1px 0 rgba(255,255,255,0.6) inset;
+}
+
+.dark .fm-range {
+  background: linear-gradient(90deg, rgba(204,255,0,0.9), rgba(204,255,0,0.35));
+  box-shadow:
+    inset 0 2px 6px rgba(0,0,0,0.6),
+    inset 0 -1px 2px rgba(255,255,255,0.08),
+    0 2px 10px rgba(0,0,0,0.45);
+}
+
+.dark .fm-range::-webkit-slider-thumb {
+  background: #0d0d0d;
+  border: 2px solid rgba(255,255,255,0.2);
+  box-shadow:
+    0 6px 16px rgba(0,0,0,0.6),
+    0 1px 0 rgba(255,255,255,0.08) inset;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Bento grid: 1-col phone → 2-col tablet → 4-col desktop ── */
+.bento-feed-grid {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "ascent"
+    "pulse"
+    "kill"
+    "heatmap"
+    "apex"
+    "scatter"
+    "targets";
+}
+
+@media (min-width: 640px) {
+  .bento-feed-grid {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-areas:
+      "ascent ascent"
+      "pulse kill"
+      "heatmap heatmap"
+      "apex scatter"
+      "targets targets";
+  }
+}
+
+@media (min-width: 1024px) {
+  .bento-feed-grid {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas:
+      "ascent ascent pulse pulse"
+      "kill kill apex apex"
+      "heatmap heatmap heatmap heatmap"
+      "scatter scatter scatter scatter"
+      "targets targets targets targets";
+  }
+}
+
+@media (min-width: 1280px) {
+  .bento-feed-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-areas:
+      "ascent ascent ascent ascent ascent ascent ascent pulse pulse pulse pulse pulse"
+      "kill kill kill kill apex apex apex apex apex apex apex apex"
+      "heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap"
+      "scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter"
+      "targets targets targets targets targets targets targets targets targets targets targets targets";
+  }
+}
+
+
+
+.fm-feed-mobile-panel {
+  min-height: max(360px, calc(100svh - 230px - env(safe-area-inset-top) - 170px - env(safe-area-inset-bottom)));
+}
+
+@media (min-width: 640px) {
+  .fm-feed-mobile-panel {
+    min-height: max(380px, calc(100svh - 220px - env(safe-area-inset-top) - 150px - env(safe-area-inset-bottom)));
+  }
+}
+
+@media (min-width: 1024px) {
+  .fm-feed-mobile-panel {
+    min-height: 0;
+  }
 }

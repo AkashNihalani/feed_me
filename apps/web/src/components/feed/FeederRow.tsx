@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Crown, Trash2, ExternalLink, Activity, Eye, MessageSquare, ThumbsUp, Target, Zap } from 'lucide-react';
+import { Crown, ExternalLink, Target, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FeederRowProps {
@@ -19,133 +19,105 @@ interface FeederRowProps {
   index: number;
 }
 
-export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, onMakeAnchor, onRemove, index }: FeederRowProps) {
+function formatCompact(val: string): string {
+  const num = parseInt(val.replace(/,/g, ''), 10);
+  if (isNaN(num)) return val;
+  if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return num.toString();
+}
+
+export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, onMakeAnchor, onRemove }: FeederRowProps) {
   return (
     <motion.div
       layout
-      initial={false}
-      animate={isAnchor ? { scale: [1, 1.05, 1], zIndex: 50, transition: { duration: 0.4, type: "spring", bounce: 0.5 } } : { scale: 1, zIndex: 1 }}
+      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0, zIndex: isAnchor ? 50 : 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ layout: { duration: 0.3, type: "spring" } }}
+      whileTap={{ scale: 0.985 }}
+      transition={{ layout: { duration: 0.28, type: 'spring', stiffness: 220, damping: 24 } }}
       className={cn(
-        "neo-card p-4 min-h-[180px] flex flex-col justify-between group relative overflow-hidden transition-all duration-300 border-4",
-        isAnchor ? "bg-lime border-black shadow-[8px_8px_0px_0px_#000000]" : "bg-white dark:bg-black border-black dark:border-white hover:border-lime hover:shadow-[8px_8px_0px_0px_#CCFF00]"
+        'fm-depth-glass group relative flex flex-col justify-between overflow-hidden rounded-[22px] p-4',
+        isAnchor && 'ring-1 ring-lime/45'
       )}
+      style={{ willChange: 'transform' }}
     >
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-             style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '16px 16px' }} 
-        />
-
-        {/* Anchor Badge */}
-        {isAnchor && (
-            <div className="absolute top-0 right-0 bg-black text-lime px-3 py-1 text-[10px] font-black uppercase flex items-center gap-1 z-20 border-b-4 border-l-4 border-black">
-                <Crown size={12} strokeWidth={3} />
-                ANCHOR
-            </div>
-        )}
-
-      <div className="relative z-10">
-        {/* Handle Header */}
-        <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3 w-full">
-                {/* Avatar Box */}
-                <div className={cn(
-                    "w-14 h-14 border-4 flex items-center justify-center font-black text-2xl overflow-hidden shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
-                    isAnchor ? "bg-black text-lime border-black" : "bg-black text-white dark:bg-white dark:text-black border-black dark:border-white"
-                )}>
-                     {profilePicUrl ? (
-                        <img src={profilePicUrl} alt={`@${handle}`} className="w-full h-full object-cover" />
-                     ) : (
-                        handle.substring(0, 2).toUpperCase()
-                     )}
-                </div>
-                
-                {/* Handle Name */}
-                <div className="overflow-hidden flex-1 min-w-0">
-                     <h3 className={cn(
-                        "font-black text-3xl uppercase tracking-tighter leading-[0.9] truncate w-full",
-                         isAnchor ? "text-black" : "text-black dark:text-white group-hover:text-lime transition-colors"
-                     )}>
-                        {handle}
-                     </h3>
-                     <div className="flex items-center gap-2 mt-1">
-                        <span className={cn(
-                            "text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 border-2",
-                            isAnchor ? "border-black text-black" : "border-black/20 text-neutral-gray"
-                        )}>
-                            @{handle}
-                        </span>
-                     </div>
-                </div>
-            </div>
+      {isAnchor && (
+        <div className="absolute right-0 top-0 z-20 flex items-center gap-1 rounded-bl-[16px] bg-lime px-3 py-1 text-[9px] font-black uppercase text-black shadow-[0_4px_12px_rgba(204,255,0,0.4)]">
+          <Crown size={12} strokeWidth={3} />ANCHOR
         </div>
+      )}
 
-        {/* Metrics Grid - Brutalist Stamps */}
-        <div className="grid grid-cols-4 gap-2 mb-2">
-             <MetricStamp label="LIKES" value={metrics.likes} isAnchor={isAnchor} />
-             <MetricStamp label="COMMS" value={metrics.comments} isAnchor={isAnchor} />
-             <MetricStamp label="VIEWS" value={metrics.views} isAnchor={isAnchor} />
-             <MetricStamp label="POSTS" value={metrics.postsTracked} isAnchor={isAnchor} />
+      {/* Identity row */}
+      <div className="relative z-10 mb-3 flex items-center gap-3">
+        <div className={cn(
+          'fm-depth-chip flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] text-lg font-black',
+          isAnchor ? 'border-lime bg-lime/90 text-black' : 'text-foreground'
+        )}>
+          {profilePicUrl
+            ? <img src={profilePicUrl} alt={`@${handle}`} className="h-full w-full object-cover" />
+            : handle.substring(0, 2).toUpperCase()
+          }
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className={cn(
+            'truncate text-[18px] font-black uppercase leading-none tracking-tight text-foreground',
+            isAnchor && 'dark:text-[#CCFF00] dark:drop-shadow-[0_0_12px_rgba(204,255,0,0.4)]'
+          )}>
+            {handle}
+          </h3>
+          <span className="mt-0.5 block text-[10px] font-black uppercase tracking-[0.1em] text-foreground/40">
+            @{handle}
+          </span>
         </div>
       </div>
 
-      {/* Action Bar */}
-      <div className={cn(
-          "relative z-10 flex items-center justify-between mt-auto pt-3 border-t-4",
-          isAnchor ? "border-black" : "border-black/10 dark:border-white/10"
-      )}>
-        {!isAnchor ? (
-             <button 
-                onClick={onMakeAnchor}
-                className="text-xs font-black uppercase hover:text-lime hover:bg-black hover:px-2 -ml-2 py-1 transition-all flex items-center gap-1 group/btn"
-            >
-                <Crown size={14} strokeWidth={3} className="group-hover/btn:scale-110 transition-transform" />
-                MAKE ANCHOR
-            </button>
-        ) : (
-            <span className="text-xs font-black uppercase text-black flex items-center gap-1">
-                <Target size={14} strokeWidth={3} />
-                TRACKING
-            </span>
-        )}
+      {/* Metrics — 2x2 grid for breathing room */}
+      <div className="relative z-10 mb-3 grid grid-cols-2 gap-2">
+        <MetricStamp label="Likes" value={formatCompact(metrics.likes)} isAnchor={isAnchor} />
+        <MetricStamp label="Views" value={formatCompact(metrics.views)} isAnchor={isAnchor} />
+        <MetricStamp label="Comms" value={formatCompact(metrics.comments)} isAnchor={isAnchor} />
+        <MetricStamp label="Posts" value={formatCompact(metrics.postsTracked)} isAnchor={isAnchor} />
+      </div>
 
-        <div className="flex items-center gap-2">
-             <button className={cn(
-                 "p-1.5 hover:bg-black hover:text-white transition-colors border-2 border-transparent hover:border-black",
-                 isAnchor ? "text-black border-black/10" : "text-neutral-gray dark:text-neutral-400"
-             )}>
-                <ExternalLink size={16} strokeWidth={2.5} />
-            </button>
-            <button 
-                onClick={onRemove} 
-                className={cn(
-                    "p-1.5 hover:bg-red-500 hover:text-white transition-colors border-2 border-transparent hover:border-black",
-                    isAnchor ? "text-red-600 border-red-600/20" : "text-neutral-gray hover:border-black dark:text-neutral-400"
-                )}
-            >
-                <Trash2 size={16} strokeWidth={2.5} />
-            </button>
+      {/* Actions */}
+      <div className="relative z-10 mt-auto flex items-center justify-between border-t border-black/5 pt-2.5 dark:border-white/6">
+        {!isAnchor ? (
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onMakeAnchor}
+            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-foreground/60 transition-all hover:text-foreground dark:hover:text-[#CCFF00]">
+            <Crown size={14} strokeWidth={3} />Make Anchor
+          </motion.button>
+        ) : (
+          <motion.span animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#CCFF00]">
+            <Target size={14} strokeWidth={3} />Tracking
+          </motion.span>
+        )}
+        <div className="flex items-center gap-1.5">
+          <motion.button whileTap={{ scale: 0.9 }} className="fm-depth-chip rounded-[8px] p-1.5 text-foreground/50 transition-colors">
+            <ExternalLink size={14} strokeWidth={2.5} />
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={onRemove} className="fm-depth-chip rounded-[8px] p-1.5 text-foreground/50 transition-colors">
+            <Trash2 size={14} strokeWidth={2.5} />
+          </motion.button>
         </div>
       </div>
     </motion.div>
   );
 }
 
-function MetricStamp({ label, value, isAnchor }: { label: string, value: string, isAnchor: boolean }) {
-    return (
-        <div className={cn(
-            "flex flex-col items-center justify-center border-2 p-1",
-            isAnchor ? "border-black bg-white/20" : "border-black/5 dark:border-white/10 bg-neutral-100 dark:bg-neutral-900 group-hover:border-black"
-        )}>
-            <span className={cn(
-                "text-[9px] font-black uppercase",
-                isAnchor ? "text-black/60" : "text-neutral-gray"
-            )}>{label}</span>
-            <span className={cn(
-                "text-sm font-black leading-none mt-0.5",
-                isAnchor ? "text-black" : "text-black dark:text-white"
-            )}>{value}</span>
-        </div>
-    )
+function MetricStamp({ label, value, isAnchor }: { label: string; value: string; isAnchor: boolean }) {
+  return (
+    <div className={cn(
+      'grid grid-cols-1 rounded-[10px] fm-depth-chip px-3 py-2.5',
+      isAnchor && 'border-lime/30'
+    )}>
+      <span className={cn('block text-[9px] font-black uppercase tracking-[0.1em]', isAnchor ? 'text-lime/80' : 'text-foreground/40')}>
+        {label}
+      </span>
+      <span className={cn('mt-1 block text-[18px] font-black leading-none tabular-nums fm-depth-title', isAnchor ? 'text-foreground dark:text-[#CCFF00]' : 'text-foreground/85')}>
+        {value}
+      </span>
+    </div>
+  );
 }

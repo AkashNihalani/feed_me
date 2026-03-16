@@ -24,6 +24,7 @@ type FeederRow = {
 type PostRow = {
   post_key: string;
   feeder_id: number;
+  posted_at: string | null;
 };
 
 type MetricRow = {
@@ -32,6 +33,14 @@ type MetricRow = {
   comments: number | null;
   views: number | null;
   computed_at: string;
+};
+
+type TickerRow = {
+  id: string;
+  handle: string;
+  likesDelta: number;
+  commentsDelta: number;
+  postsDelta: number;
 };
 
 type InstagramProfileProbe = {
@@ -128,6 +137,58 @@ async function probeInstagramHandleQuick(handle: string): Promise<InstagramProfi
 
 
 
+function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: MetricRow[]): TickerRow[] {
+  const feederById = new Map<number, FeederRow>(feeders.map((feeder) => [feeder.id, feeder]));
+  const postByKey = new Map<string, PostRow>(posts.map((post) => [post.post_key, post]));
+  const metricsByPost = new Map<string, MetricRow[]>();
+
+  for (const metric of metrics) {
+    const arr = metricsByPost.get(metric.post_key) || [];
+    arr.push(metric);
+    metricsByPost.set(metric.post_key, arr);
+  }
+
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const tickerByHandle = new Map<string, TickerRow>();
+
+  for (const [postKey, postMetrics] of metricsByPost.entries()) {
+    const post = postByKey.get(postKey);
+    const feeder = post ? feederById.get(post.feeder_id) : null;
+    if (!post || !feeder) continue;
+
+    const sorted = [...postMetrics].sort((a, b) => Date.parse(b.computed_at) - Date.parse(a.computed_at));
+    const latest = sorted[0];
+    const previous = sorted[1] || null;
+
+    const row = tickerByHandle.get(feeder.handle) || {
+      id: String(feeder.id),
+      handle: `@${feeder.handle}`,
+      likesDelta: 0,
+      commentsDelta: 0,
+      postsDelta: 0,
+    };
+
+    row.likesDelta += (latest?.likes || 0) - (previous?.likes || 0);
+    row.commentsDelta += (latest?.comments || 0) - (previous?.comments || 0);
+
+    const postedAt = post.posted_at ? Date.parse(post.posted_at) : NaN;
+    if (Number.isFinite(postedAt) && postedAt >= sevenDaysAgo) {
+      row.postsDelta += 1;
+    }
+
+    tickerByHandle.set(feeder.handle, row);
+  }
+
+  return [...tickerByHandle.values()]
+    .sort((a, b) => {
+      const scoreA = Math.abs(a.likesDelta) + Math.abs(a.commentsDelta) + Math.abs(a.postsDelta) * 25;
+      const scoreB = Math.abs(b.likesDelta) + Math.abs(b.commentsDelta) + Math.abs(b.postsDelta) * 25;
+      return scoreB - scoreA;
+    })
+    .slice(0, 8);
+}
+
 async function getFeedBundle(userId: string) {
   const sb = adminClient();
 
@@ -135,6 +196,7 @@ async function getFeedBundle(userId: string) {
     .from('feeds')
     .select('id,user_id,name,status,created_at')
     .eq('user_id', userId)
+    .eq('status', 'active')
     .order('created_at', { ascending: false });
   if (feedsError) throw feedsError;
 
@@ -159,7 +221,7 @@ async function getFeedBundle(userId: string) {
   if (feederIds.length > 0) {
     const { data: postsData, error: postsError } = await sb
       .from('posts')
-      .select('post_key,feeder_id')
+      .select('post_key,feeder_id,posted_at')
       .in('feeder_id', feederIds);
     if (postsError) throw postsError;
     posts = (postsData || []) as PostRow[];
@@ -217,7 +279,7 @@ async function getFeedBundle(userId: string) {
     feederMetrics.set(feeder.id, { likes, comments, views, postsTracked });
   }
 
-  return feeds.map((feed) => {
+  const mappedFeeds = feeds.map((feed) => {
     const feedFeeders = feedersByFeed.get(feed.id) || [];
 
     let totalLikes = 0;
@@ -259,6 +321,11 @@ async function getFeedBundle(userId: string) {
       },
     };
   });
+
+  return {
+    feeds: mappedFeeds,
+    ticker: buildTickerItems(feeders, posts, metrics),
+  };
 }
 
 export async function GET() {
@@ -273,8 +340,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const feeds = await getFeedBundle(user.id);
-    return NextResponse.json({ feeds });
+    const bundle = await getFeedBundle(user.id);
+    return NextResponse.json(bundle);
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to load feeds' }, { status: 500 });
   }
@@ -309,8 +376,8 @@ export async function POST(request: NextRequest) {
       });
       if (error) throw error;
 
-      const feeds = await getFeedBundle(user.id);
-      return NextResponse.json({ feeds });
+      const bundle = await getFeedBundle(user.id);
+      return NextResponse.json(bundle);
     }
 
     if (action === 'add_feeder') {
@@ -370,30 +437,40 @@ export async function POST(request: NextRequest) {
 
       const feederId = Number(upsertedFeeder?.[0]?.id || 0);
       if (feederId > 0) {
-        const { data: openJob, error: openJobErr } = await sb
-          .from('run_jobs')
-          .select('id')
-          .eq('feeder_id', feederId)
-          .eq('job_type', 'daily')
-          .in('status', ['pending', 'running', 'retry'])
-          .limit(1);
-        if (openJobErr) throw openJobErr;
+        const nowIso = new Date().toISOString();
+        const { data: enqueueCount, error: enqueueErr } = await sb.rpc('enqueue_daily_job_for_feeder', {
+          p_feeder_id: feederId,
+          p_run_at: nowIso,
+        });
 
-        if (!openJob || openJob.length === 0) {
-          const { error: runJobErr } = await sb.from('run_jobs').insert({
-            feeder_id: feederId,
-            job_type: 'daily',
-            status: 'pending',
-            attempt: 0,
-            next_run_at: new Date().toISOString(),
-            last_error: null,
-          });
-          if (runJobErr) throw runJobErr;
+        // Some environments may not yet have the helper function applied, or may still
+        // have a Graph-era version of the helper. Fall back to a direct daily queue insert.
+        if (enqueueErr || Number(enqueueCount || 0) === 0) {
+          const { data: openJob, error: openJobErr } = await sb
+            .from('run_jobs')
+            .select('id')
+            .eq('feeder_id', feederId)
+            .eq('job_type', 'daily')
+            .in('status', ['pending', 'running', 'retry'])
+            .limit(1);
+          if (openJobErr) throw openJobErr;
+
+          if (!openJob || openJob.length === 0) {
+            const { error: runJobErr } = await sb.from('run_jobs').insert({
+              feeder_id: feederId,
+              job_type: 'daily',
+              status: 'pending',
+              attempt: 0,
+              next_run_at: nowIso,
+              last_error: null,
+            });
+            if (runJobErr) throw runJobErr;
+          }
         }
       }
 
-      const feeds = await getFeedBundle(user.id);
-      return NextResponse.json({ feeds });
+      const bundle = await getFeedBundle(user.id);
+      return NextResponse.json(bundle);
     }
 
     if (action === 'make_anchor') {
@@ -426,8 +503,8 @@ export async function POST(request: NextRequest) {
         .eq('status', 'active');
       if (anchorErr) throw anchorErr;
 
-      const feeds = await getFeedBundle(user.id);
-      return NextResponse.json({ feeds });
+      const bundle = await getFeedBundle(user.id);
+      return NextResponse.json(bundle);
     }
 
     if (action === 'remove_feeder') {
@@ -452,8 +529,42 @@ export async function POST(request: NextRequest) {
         .eq('handle', handle);
       if (error) throw error;
 
-      const feeds = await getFeedBundle(user.id);
-      return NextResponse.json({ feeds });
+      const bundle = await getFeedBundle(user.id);
+      return NextResponse.json(bundle);
+    }
+
+    if (action === 'delete_feed') {
+      const feedId = Number(body?.feedId);
+      if (!feedId) {
+        return NextResponse.json({ error: 'feedId is required' }, { status: 400 });
+      }
+
+      const { data: feedRow, error: feedErr } = await sb
+        .from('feeds')
+        .select('id,user_id')
+        .eq('id', feedId)
+        .eq('user_id', user.id)
+        .single();
+      if (feedErr || !feedRow) {
+        return NextResponse.json({ error: 'Feed not found' }, { status: 404 });
+      }
+
+      const { error: feederErr } = await sb
+        .from('feeders')
+        .update({ status: 'removed', role: 'standard' })
+        .eq('feed_id', feedId)
+        .eq('status', 'active');
+      if (feederErr) throw feederErr;
+
+      const { error: deleteErr } = await sb
+        .from('feeds')
+        .update({ status: 'archived' })
+        .eq('id', feedId)
+        .eq('user_id', user.id);
+      if (deleteErr) throw deleteErr;
+
+      const bundle = await getFeedBundle(user.id);
+      return NextResponse.json(bundle);
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

@@ -9,7 +9,7 @@ export default function ScanningCard({ handle }: { handle: string }) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.98 }}
         layout
-        className="neo-card p-5 min-h-[180px] flex flex-col items-center justify-center bg-black text-[#39FF14] relative overflow-hidden group border-4 border-black dark:border-white"
+        className="fm-solid-panel p-5 min-h-[180px] flex flex-col items-center justify-center relative overflow-hidden group"
     >
         <div className="relative z-10 text-center flex flex-col items-center justify-center h-full">
              {/* Pure Brutalist - No text, just handle, maybe blinking cursor */}

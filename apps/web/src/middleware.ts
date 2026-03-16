@@ -1,6 +1,12 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const PROTECTED_PREFIXES = ['/profile', '/feed']
+
+function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -8,72 +14,49 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  // Create Supabase Client
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      // Env vars missing — pass through instead of crashing
+      return response
+    }
+
+    const supabase = createServerClient(url, key, {
       cookies: {
         get(name: string) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
+          response.cookies.set({ name, value, ...options })
         },
         remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          response.cookies.set({ name, value: '', ...options })
         },
       },
-    }
-  )
+    })
 
-  const { data: { session } } = await supabase.auth.getSession()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  // Protect /profile, /feed and /fire routes
-  if (request.nextUrl.pathname.startsWith('/profile') || request.nextUrl.pathname.startsWith('/feed') || request.nextUrl.pathname.startsWith('/fire')) {
-    if (!session) {
-      return NextResponse.redirect(new URL('/login', request.url))
+    if (isProtectedPath(request.nextUrl.pathname) && !user) {
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('next', request.nextUrl.pathname)
+      return NextResponse.redirect(loginUrl)
     }
-  }
 
-  // Redirect authenticated users away from /login
-  if (request.nextUrl.pathname.startsWith('/login')) {
-    if (session) {
-      return NextResponse.redirect(new URL('/', request.url))
+    if (request.nextUrl.pathname.startsWith('/login') && user) {
+      const nextPath = request.nextUrl.searchParams.get('next') || '/'
+      return NextResponse.redirect(new URL(nextPath, request.url))
     }
+  } catch (err) {
+    console.error('[middleware] Auth check failed, passing through:', err)
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/profile/:path*', '/feed/:path*', '/fire/:path*', '/login'],
+  matcher: ['/profile/:path*', '/feed/:path*', '/login'],
 }

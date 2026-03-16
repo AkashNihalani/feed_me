@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#F2F2EF"/>
+  <g filter="url(#shadow)">
+    <rect x="56" y="154" width="400" height="204" rx="40" fill="#0A0A0A"/>
+    <path d="M256 154H416C438.091 154 456 171.909 456 194V318C456 340.091 438.091 358 416 358H256V154Z" fill="#D9EA14"/>
+  </g>
+  <g fill="#F5F5F5">
+    <path d="M98 215H181V233H120V259H171V277H120V321H98V215Z"/>
+    <path d="M188 215H271V233H210V257H261V275H210V303H271V321H188V215Z"/>
+    <path d="M278 215H361V233H300V257H351V275H300V303H361V321H278V215Z"/>
+    <path d="M370 215H404C434.376 215 454 235.592 454 268C454 300.408 434.376 321 404 321H370V215ZM392 233V303H403C421.14 303 432 289.363 432 268C432 246.637 421.14 233 403 233H392Z"/>
+  </g>
+  <g fill="#0C0C0C">
+    <path d="M300 215H324L344 273L364 215H388V321H368V252L346 321H342L320 252V321H300V215Z"/>
+    <path d="M397 215H479V233H419V257H468V275H419V303H479V321H397V215Z"/>
+  </g>
+  <defs>
+    <filter id="shadow" x="40" y="142" width="432" height="236" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#000000" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+</svg>
