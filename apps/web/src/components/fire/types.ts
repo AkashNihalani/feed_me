@@ -18,6 +18,26 @@ export type FireStamp = {
   metricValue: number | null;
 };
 
+export type FireFeederOption = {
+  id: number;
+  handle: string;
+};
+
+export type FireFeedOption = {
+  id: number;
+  name: string;
+  feeders: FireFeederOption[];
+};
+
+export type FireFilterThreshold = '10' | '25' | '50' | 'ALL';
+
+export type FireFilterState = {
+  threshold: FireFilterThreshold;
+  selectedFeedIds: number[];
+  selectedFeederIdsByFeed: Record<string, number[]>;
+  selectedCheckpoints: string[];
+};
+
 export type FirePayload = {
   best_metric?: string;
   metrics?: Record<string, unknown>;

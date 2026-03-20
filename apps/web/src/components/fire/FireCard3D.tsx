@@ -9,6 +9,8 @@ export type FireCard3DProps = {
   item: FireItem;
   forcedOpen?: boolean;
   highlighted?: boolean;
+  layoutMode?: 'mobile' | 'desktop';
+  onOpenDetails?: () => void;
 };
 
 function asRec(v: unknown): Record<string, unknown> {
@@ -53,9 +55,16 @@ function MetricChip({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function FireCard3D({ item, forcedOpen = false, highlighted = false }: FireCard3DProps) {
+export function FireCard3D({
+  item,
+  forcedOpen = false,
+  highlighted = false,
+  layoutMode = 'mobile',
+  onOpenDetails,
+}: FireCard3DProps) {
   const [openLocal, setOpenLocal] = useState(false);
   const [isPrimed, setIsPrimed] = useState(false);
+  const isDesktopCard = layoutMode === 'desktop';
   const isOpen = forcedOpen || openLocal;
 
   useEffect(() => {
@@ -135,21 +144,37 @@ export function FireCard3D({ item, forcedOpen = false, highlighted = false }: Fi
     return `${handle} · ${media} · ${bestMetric} ${compact(value)} · ${cp}`;
   }, [item.surfaceHandle, item.surfaceMediaType, bestMetric, value, cp]);
 
+  const handleCardActivate = () => {
+    if (isDesktopCard) {
+      onOpenDetails?.();
+      return;
+    }
+    setOpenLocal((v) => !v);
+  };
+
   return (
     <motion.div
       role="button"
       tabIndex={0}
-      onClick={() => setOpenLocal((v) => !v)}
+      onClick={handleCardActivate}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          setOpenLocal((v) => !v);
+          handleCardActivate();
         }
       }}
-      className="relative block w-full aspect-[4/5] max-h-[78svh] sm:max-h-none overflow-hidden rounded-[26px] sm:rounded-[32px] text-left fm-depth-glass"
+      className={isDesktopCard
+        ? 'relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left fm-depth-glass'
+        : 'relative block w-full aspect-[4/5] max-h-[78svh] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:max-h-none sm:rounded-[32px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
-        boxShadow: highlighted ? '0 18px 38px rgba(0,0,0,0.24)' : '0 10px 22px rgba(0,0,0,0.16)',
+        boxShadow: isDesktopCard
+          ? highlighted
+            ? '0 24px 46px rgba(0,0,0,0.34)'
+            : '0 14px 28px rgba(0,0,0,0.24)'
+          : highlighted
+            ? '0 18px 38px rgba(0,0,0,0.24)'
+            : '0 10px 22px rgba(0,0,0,0.16)',
         willChange: 'transform',
       }}
       whileTap={{ scale: 0.994 }}
@@ -180,27 +205,31 @@ export function FireCard3D({ item, forcedOpen = false, highlighted = false }: Fi
       />
 
       <motion.div
-        className="absolute left-4 top-8 z-10 md:top-4"
+        className={isDesktopCard ? 'absolute left-4 top-4 z-10' : 'absolute left-4 top-8 z-10 md:top-4'}
         style={{ marginTop: 'var(--pwa-top-pad)' }}
-        animate={{ opacity: isOpen ? 0.08 : 1, y: isOpen ? -10 : 0, scale: isOpen ? 0.95 : 1 }}
+        animate={{ opacity: !isDesktopCard && isOpen ? 0.08 : 1, y: !isDesktopCard && isOpen ? -10 : 0, scale: !isDesktopCard && isOpen ? 0.95 : 1 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="text-[clamp(108px,30vw,210px)] font-black leading-[0.76] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]">
+        <div className={isDesktopCard
+          ? 'text-[clamp(50px,4.6vw,82px)] font-black leading-[0.82] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'
+          : 'text-[clamp(108px,30vw,210px)] font-black leading-[0.76] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'}>
           {item.surfacePercentile == null ? '--' : Math.round(item.surfacePercentile)}
           <span className="ml-1 align-top text-[0.42em]">%</span>
         </div>
       </motion.div>
 
       <motion.div
-        className="absolute bottom-8 left-1/2 z-10 md:bottom-6 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/38 bg-white/14 px-3 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.1em] text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]"
-        animate={{ opacity: isOpen ? 0.1 : 1, y: isOpen ? 10 : 0 }}
+        className={isDesktopCard
+          ? 'absolute bottom-3.5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/24 bg-black/42 px-3 py-1.5 text-center text-[8px] font-black uppercase tracking-[0.08em] text-white/90 shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-[18px]'
+          : 'absolute bottom-8 left-1/2 z-10 md:bottom-6 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/38 bg-white/14 px-3 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.1em] text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
+        animate={{ opacity: !isDesktopCard && isOpen ? 0.1 : 1, y: !isDesktopCard && isOpen ? 10 : 0 }}
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
         {stamp}
       </motion.div>
 
       <AnimatePresence initial={false}>
-        {isOpen && (
+        {!isDesktopCard && isOpen && (
           <motion.div
             className="absolute inset-x-2 top-2 z-20"
             initial={{ opacity: 0, y: 10, scale: 0.986 }}
