@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { LayoutGrid, Flame, IndianRupee } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { play } = useAppHaptics();
 
   useEffect(() => {
@@ -30,6 +31,12 @@ export default function BottomNav() {
       sessionStorage.setItem('feedme:last-tab-ts', String(Date.now()));
     } catch {}
   }, [pathname]);
+
+  useEffect(() => {
+    router.prefetch('/');
+    router.prefetch('/fire');
+    router.prefetch('/profile');
+  }, [router]);
 
   if (pathname === '/login') return null;
 
@@ -54,7 +61,7 @@ export default function BottomNav() {
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <Link key={item.label} href={item.href} className="group relative z-10"
+            <Link key={item.label} href={item.href} prefetch className="group relative z-10"
               onClick={() => {
                 play(isActive ? 'navReselect' : 'navSwitch');
                 try {

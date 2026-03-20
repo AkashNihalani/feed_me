@@ -51,8 +51,8 @@ function VirtualSlot({
             ? {
                 opacity: 1,
                 y: 0,
-                scale: isActive ? 1.012 : 1,
-                filter: 'blur(0px)',
+                scale: 1,
+                filter: 'none',
               }
             : {
                 opacity: isActive ? 1 : 0.72,
@@ -95,7 +95,6 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   const containerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(cards[0]?.id ?? null);
-  const [hoverCardId, setHoverCardId] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
   const [isStandalone, setIsStandalone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches);
   const [isIOS] = useState(() => typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
@@ -182,7 +181,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     );
   }
 
-  const resolvedActive = isDesktop ? hoverCardId : activeCardId;
+  const resolvedActive = isDesktop ? null : activeCardId;
   const mobileStackClass = isIOS && !isStandalone
     ? '-mt-[10vh] flex w-full min-h-[74svh] snap-center items-center justify-center first:mt-0 md:-mt-[12vh] md:min-h-[76dvh]'
     : '-mt-[14vh] flex w-full min-h-[74svh] snap-center items-center justify-center first:mt-0 md:-mt-[16vh] md:min-h-[76dvh]';
@@ -213,14 +212,12 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                   const isActive = resolvedActive === card.id;
                   return (
                     <motion.div
-                      layout
                       key={card.id}
                       initial={{ opacity: 0, y: 14, scale: 0.986 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.98 }}
                       transition={{ type: 'spring', damping: 22, stiffness: 300, mass: 0.75 }}
-                      onPointerEnter={() => setHoverCardId(card.id)}
-                      onPointerLeave={() => setHoverCardId((current) => (current === card.id ? null : current))}
+                      whileHover={{ y: -4, scale: 1.008 }}
                     >
                       <VirtualSlot
                         item={card}
