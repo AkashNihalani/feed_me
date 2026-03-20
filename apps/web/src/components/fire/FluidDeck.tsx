@@ -96,33 +96,23 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(cards[0]?.id ?? null);
   const [hoverCardId, setHoverCardId] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  const [isStandalone, setIsStandalone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches);
+  const [isIOS] = useState(() => typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 1024px)');
-    const handler = (event: MediaQueryListEvent | MediaQueryList) => setIsDesktop(event.matches);
-    handler(mql);
+    const handler = (event: MediaQueryListEvent) => setIsDesktop(event.matches);
     mql.addEventListener('change', handler as (event: MediaQueryListEvent) => void);
     return () => mql.removeEventListener('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
 
   useEffect(() => {
-    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
     const mql = window.matchMedia('(display-mode: standalone)');
-    const handler = (event: MediaQueryListEvent | MediaQueryList) => setIsStandalone('matches' in event ? event.matches : (event as MediaQueryList).matches);
-    handler(mql);
+    const handler = (event: MediaQueryListEvent) => setIsStandalone(event.matches);
     mql.addEventListener?.('change', handler as (event: MediaQueryListEvent) => void);
     return () => mql.removeEventListener?.('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
-
-  useEffect(() => {
-    setActiveCardId(cards[0]?.id ?? null);
-    setHoverCardId(null);
-    const root = containerRef.current;
-    if (root) root.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [cards]);
 
   useEffect(() => {
     if (isDesktop) return;

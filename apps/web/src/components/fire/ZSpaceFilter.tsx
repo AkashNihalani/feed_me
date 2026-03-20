@@ -33,24 +33,14 @@ export default function ZSpaceFilter({
 }: ZSpaceFilterProps) {
   const { play } = useAppHaptics();
   const [expandedFeeds, setExpandedFeeds] = useState<Record<string, boolean>>({});
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 1024px)');
-    const handler = (event: MediaQueryListEvent | MediaQueryList) => setIsDesktop(event.matches);
-    handler(mql);
+    const handler = (event: MediaQueryListEvent) => setIsDesktop(event.matches);
     mql.addEventListener('change', handler as (event: MediaQueryListEvent) => void);
     return () => mql.removeEventListener('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setExpandedFeeds((current) => {
-      const next = { ...current };
-      for (const feedId of filters.selectedFeedIds) next[String(feedId)] = true;
-      return next;
-    });
-  }, [filters.selectedFeedIds, isOpen]);
 
   const selectedFeederCount = useMemo(
     () => Object.values(filters.selectedFeederIdsByFeed).reduce((sum, ids) => sum + ids.length, 0),
@@ -213,7 +203,7 @@ export default function ZSpaceFilter({
                 >
                   {availableFeeds.map((feed) => {
                     const isSelected = filters.selectedFeedIds.includes(feed.id);
-                    const isExpanded = Boolean(expandedFeeds[String(feed.id)]);
+                    const isExpanded = isSelected || Boolean(expandedFeeds[String(feed.id)]);
                     const selectedFeederIds = filters.selectedFeederIdsByFeed[String(feed.id)] || [];
 
                     return (

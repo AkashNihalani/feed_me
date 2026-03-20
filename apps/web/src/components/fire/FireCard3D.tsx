@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FireItem } from './types';
 import { compact } from '@/components/fire/fireLogicHelpers';
@@ -64,15 +64,15 @@ export function FireCard3D({
 }: FireCard3DProps) {
   const [openLocal, setOpenLocal] = useState(false);
   const [isPrimed, setIsPrimed] = useState(false);
+  const primedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDesktopCard = layoutMode === 'desktop';
-  const isOpen = forcedOpen || openLocal;
+  const isCardInteractive = highlighted || forcedOpen;
+  const isOpen = forcedOpen || (isCardInteractive && openLocal);
+  const showPrimed = isCardInteractive && isPrimed;
 
-  useEffect(() => {
-    if (!highlighted && !forcedOpen) {
-      setOpenLocal(false);
-      setIsPrimed(false);
-    }
-  }, [forcedOpen, highlighted]);
+  useEffect(() => () => {
+    if (primedTimeoutRef.current) clearTimeout(primedTimeoutRef.current);
+  }, []);
 
   const payload = asRec(item.payload);
   const metrics = asRec(payload.metrics);
@@ -138,11 +138,7 @@ export function FireCard3D({
   const cp = item.checkpoint.toUpperCase();
   const isD1 = cp === 'D1';
 
-  const stamp = useMemo(() => {
-    const handle = `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`;
-    const media = (item.surfaceMediaType || 'POST').toUpperCase();
-    return `${handle} · ${media} · ${bestMetric} ${compact(value)} · ${cp}`;
-  }, [item.surfaceHandle, item.surfaceMediaType, bestMetric, value, cp]);
+  const stamp = `${`@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`} · ${(item.surfaceMediaType || 'POST').toUpperCase()} · ${bestMetric} ${compact(value)} · ${cp}`;
 
   const handleCardActivate = () => {
     if (isDesktopCard) {
@@ -319,27 +315,28 @@ export function FireCard3D({
                   <div
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (isPrimed && item.postUrl) {
+                      if (showPrimed && item.postUrl) {
                         window.open(item.postUrl, '_blank', 'noreferrer');
                         setIsPrimed(false);
                       } else {
                         event.preventDefault();
+                        if (primedTimeoutRef.current) clearTimeout(primedTimeoutRef.current);
                         setIsPrimed(true);
-                        setTimeout(() => setIsPrimed(false), 3000);
+                        primedTimeoutRef.current = setTimeout(() => setIsPrimed(false), 3000);
                       }
                     }}
                     className="group relative cursor-pointer pointer-events-auto flex h-10 sm:h-13 w-full items-center justify-center rounded-[16px] overflow-hidden bg-black dark:bg-[#111] shadow-[0_16px_32px_rgba(0,0,0,0.4),inset_0_2px_4px_rgba(255,255,255,0.2)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_2px_rgba(255,255,255,0.08)] transition-transform active:scale-[0.96]"
                   >
                     <motion.div 
                       initial={{ y: '100%' }}
-                      animate={{ y: isPrimed ? '0%' : '100%' }}
+                      animate={{ y: showPrimed ? '0%' : '100%' }}
                       transition={{ duration: 0.3, ease: 'easeOut' }}
                       className="absolute inset-0 bg-[#CCFF00] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)] z-0"
                     />
                     <span 
-                      className={`relative z-10 text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${isPrimed ? 'text-black drop-shadow-sm' : 'text-[#CCFF00] drop-shadow-[0_0_8px_rgba(204,255,0,0.3)] dark:text-white dark:drop-shadow-none'}`}
+                      className={`relative z-10 text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${showPrimed ? 'text-black drop-shadow-sm' : 'text-[#CCFF00] drop-shadow-[0_0_8px_rgba(204,255,0,0.3)] dark:text-white dark:drop-shadow-none'}`}
                     >
-                      {isPrimed ? 'Tap To Open' : 'Open Post'}
+                      {showPrimed ? 'Tap To Open' : 'Open Post'}
                     </span>
                   </div>
                 </div>
