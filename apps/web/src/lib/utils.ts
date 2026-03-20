@@ -30,7 +30,7 @@ export function extractHandle(url: string, platform: string): string {
     }
 
     return url;
-  } catch (e) {
+  } catch {
     return url;
   }
 }

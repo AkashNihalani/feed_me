@@ -69,6 +69,8 @@ export interface User {
   data_points: number;
   success_rate: number;
   email_notifications: boolean;
+  fire_alert_threshold?: number;
+  pwa_push_enabled?: boolean;
   avatar_url?: string;
   twitter_posts_caught?: number;
   reddit_posts_caught?: number;

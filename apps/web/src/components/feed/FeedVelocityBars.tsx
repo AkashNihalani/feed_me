@@ -32,7 +32,7 @@ function AnimatedMultiplier({ value }: { value: number }) {
   return <>{renderValue.toFixed(1)}x</>;
 }
 
-export default function FeedVelocityBars({ timeframe: _timeframe, series }: { timeframe: Timeframe; series: FrequencyPoint[] }) {
+export default function FeedVelocityBars({ series }: { timeframe: Timeframe; series: FrequencyPoint[] }) {
   const metrics: MetricRow[] = [
     { label: 'Views', value: percentileToRatio(avg(series.map((r) => r.avg_views_percentile))) },
     { label: 'Likes', value: percentileToRatio(avg(series.map((r) => r.avg_likes_percentile))) },

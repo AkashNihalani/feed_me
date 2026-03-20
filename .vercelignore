@@ -1,0 +1,9 @@
+# Local one-off scripts
+fix_titles.js
+
+# Local Supabase temp/state folders
+apps/web/supabase/.temp/
+infra/supabase/supabase/
+
+# OS/editor noise
+.DS_Store

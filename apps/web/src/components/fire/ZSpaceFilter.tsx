@@ -13,6 +13,7 @@ interface ZSpaceFilterProps {
   onClose: () => void;
   activeThreshold: FilterThreshold;
   activeScope: FilterScope;
+  fundThreshold?: number | null;
   availableScopes?: string[];
   onChange: (threshold: FilterThreshold, scope: FilterScope) => void;
 }
@@ -22,6 +23,7 @@ export default function ZSpaceFilter({
   onClose,
   activeThreshold,
   activeScope,
+  fundThreshold = null,
   availableScopes = [],
   onChange
 }: ZSpaceFilterProps) {
@@ -92,6 +94,27 @@ export default function ZSpaceFilter({
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-black/50 dark:text-white/40">
                   L1: Signal Target
                 </div>
+
+                {fundThreshold != null && (
+                  <div className={cn(
+                    'rounded-[22px] px-4 py-3.5',
+                    'bg-[#CCFF00]/18 border border-[#CCFF00]/35',
+                    'shadow-[inset_0_1px_2px_rgba(255,255,255,0.7),0_8px_20px_-12px_rgba(204,255,0,0.45)]',
+                    'dark:bg-[#CCFF00]/[0.08] dark:border-[#CCFF00]/20 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_24px_-14px_rgba(204,255,0,0.3)]'
+                  )}>
+                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-black/45 dark:text-[#CCFF00]/60">
+                      Fund Alert Line
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <span className="text-[17px] font-black tracking-tight text-black dark:text-[#CCFF00]">
+                        Below {fundThreshold}%
+                      </span>
+                      <span className="text-[9px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/45">
+                        Synced to PWA alerts
+                      </span>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                   {thresholds.map((t) => {

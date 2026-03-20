@@ -3,6 +3,14 @@
 import { WebHaptics } from 'web-haptics';
 
 type HapticIntent = 'navSwitch' | 'navReselect' | 'snapLock';
+type TelegramHaptics = { impactOccurred: (style: 'light' | 'medium') => void };
+type CapacitorHaptics = { impact: (options: { style: string }) => Promise<void> | void };
+type WebkitHapticHandler = { postMessage: (payload: { style: 'light' | 'medium' }) => void };
+type AppNavigator = Navigator & {
+  Capacitor?: { Plugins?: { Haptics?: CapacitorHaptics } };
+  Telegram?: { WebApp?: { HapticFeedback?: TelegramHaptics } };
+  webkit?: { messageHandlers?: { haptic?: WebkitHapticHandler } };
+};
 
 const HAPTIC_PATTERNS: Record<HapticIntent, number> = {
   navSwitch: 26,
@@ -14,13 +22,14 @@ const webHaptics = typeof window !== 'undefined' ? new WebHaptics({ showSwitch: 
 
 export function useAppHaptics() {
   const hasWindow = typeof window !== 'undefined';
+  const appNavigator = hasWindow ? (window.navigator as AppNavigator) : null;
   const isSupported =
     hasWindow &&
     (
       (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') ||
-      !!(window as any)?.Telegram?.WebApp?.HapticFeedback ||
-      !!(window as any)?.webkit?.messageHandlers?.haptic ||
-      !!(window as any)?.Capacitor?.Plugins?.Haptics
+      !!appNavigator?.Telegram?.WebApp?.HapticFeedback ||
+      !!appNavigator?.webkit?.messageHandlers?.haptic ||
+      !!appNavigator?.Capacitor?.Plugins?.Haptics
     );
 
   const play = (intent: HapticIntent) => {
@@ -30,7 +39,7 @@ export function useAppHaptics() {
     const webPreset = intent === 'snapLock' ? 'selection' : 'medium';
 
     try {
-      const capacitorHaptics = (window as any)?.Capacitor?.Plugins?.Haptics;
+      const capacitorHaptics = appNavigator?.Capacitor?.Plugins?.Haptics;
       if (capacitorHaptics?.impact) {
         void capacitorHaptics.impact({ style: impactStyle.toUpperCase() });
         return;
@@ -38,7 +47,7 @@ export function useAppHaptics() {
     } catch {}
 
     try {
-      const tg = (window as any)?.Telegram?.WebApp?.HapticFeedback;
+      const tg = appNavigator?.Telegram?.WebApp?.HapticFeedback;
       if (tg?.impactOccurred) {
         tg.impactOccurred(impactStyle);
         return;
@@ -46,7 +55,7 @@ export function useAppHaptics() {
     } catch {}
 
     try {
-      const webkitHaptic = (window as any)?.webkit?.messageHandlers?.haptic;
+      const webkitHaptic = appNavigator?.webkit?.messageHandlers?.haptic;
       if (webkitHaptic?.postMessage) {
         webkitHaptic.postMessage({ style: impactStyle });
         return;

@@ -391,6 +391,42 @@ html {
   }
 }
 
+.fm-tab-header-shell,
+.fm-tab-content-shell {
+  width: 94%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 768px) {
+  .fm-tab-header-shell,
+  .fm-tab-content-shell {
+    width: 88%;
+  }
+}
+
+@media (min-width: 1024px) {
+  .fm-tab-header-shell {
+    width: 86%;
+    max-width: 1500px;
+  }
+
+  .fm-tab-content-shell {
+    width: 92%;
+    max-width: 1640px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .fm-tab-header-shell {
+    max-width: 1540px;
+  }
+
+  .fm-tab-content-shell {
+    max-width: 1700px;
+  }
+}
+
 .fm-range {
   appearance: none;
   height: 8px;

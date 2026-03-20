@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ChronoTabs from '@/components/fire/ChronoTabs';
@@ -10,6 +10,11 @@ import { AlertUrgency, FireAlertItem, FireLayers } from '@/components/fire/types
 import { useAppHaptics } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
+import {
+  FUND_ALERT_THRESHOLD_KEY,
+  readFundAlertThreshold,
+  thresholdToFireFilter,
+} from '@/lib/fireAlertSettings';
 
 type AlertRow = Record<string, unknown>;
 
@@ -150,6 +155,7 @@ export default function FirePage() {
   const [isZSpaceOpen, setIsZSpaceOpen] = useState(false);
   const [activeThreshold, setActiveThreshold] = useState<FilterThreshold>('ALL');
   const [activeScope, setActiveScope] = useState<FilterScope>('ALL');
+  const [fundThreshold, setFundThreshold] = useState<number | null>(null);
 
   // Cursor for pagination
   const cursorRef = useRef(0);
@@ -157,6 +163,8 @@ export default function FirePage() {
   const fetchKeyRef = useRef('');
 
   useEffect(() => {
+    const nextFundThreshold = readFundAlertThreshold(window.localStorage);
+    setFundThreshold(nextFundThreshold);
     const cachedState = getCache<{
       pickerDays: string[];
       availableScopes: string[];
@@ -168,7 +176,10 @@ export default function FirePage() {
       total: number;
       cursor: number;
     }>(FIRE_STATE_CACHE_KEY, FIRE_CACHE_TTL);
-    if (!cachedState) return;
+    if (!cachedState) {
+      setActiveThreshold(thresholdToFireFilter(nextFundThreshold));
+      return;
+    }
     setPickerDays(cachedState.pickerDays || []);
     setAvailableScopes(cachedState.availableScopes || []);
     setSelectedDay(cachedState.selectedDay || '');
@@ -179,6 +190,25 @@ export default function FirePage() {
     setTotal(cachedState.total || 0);
     cursorRef.current = cachedState.cursor || (cachedState.cards || []).length;
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const syncFundThreshold = () => {
+      setFundThreshold(readFundAlertThreshold(window.localStorage));
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === FUND_ALERT_THRESHOLD_KEY) {
+        syncFundThreshold();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', syncFundThreshold);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', syncFundThreshold);
+    };
   }, []);
 
   useEffect(() => {
@@ -201,7 +231,8 @@ export default function FirePage() {
   // PWA padding
   useEffect(() => {
     const updatePwaPad = () => {
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
       const vv = window.visualViewport;
       const offset = Math.max(0, Math.round(vv?.offsetTop ?? 0));
       const pad = offset + 8;
@@ -376,12 +407,13 @@ export default function FirePage() {
       <div className="pointer-events-none fixed inset-0 z-0 bg-white dark:bg-[#030303]" />
 
       <ZSpaceFilter isOpen={isZSpaceOpen} onClose={() => setIsZSpaceOpen(false)} activeThreshold={activeThreshold}
-        activeScope={activeScope} availableScopes={availableScopes} onChange={(t, s) => { setActiveThreshold(t); setActiveScope(s); }} />
+        activeScope={activeScope} fundThreshold={fundThreshold} availableScopes={availableScopes}
+        onChange={(t, s) => { setActiveThreshold(t); setActiveScope(s); }} />
 
       <div className="h-full w-full contain-paint">
         {/* ═══ HEADER ═══ */}
         <div className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4">
-          <div className="relative fm-app-shell">
+          <div className="relative fm-tab-header-shell">
             <div className={cn(
               'w-full pointer-events-auto overflow-hidden rounded-[32px] relative',
               'bg-white/65 backdrop-blur-[40px] backdrop-saturate-[180%]',

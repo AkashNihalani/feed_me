@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, BarChart3, Download, Layers, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react';
-import Image from 'next/image';
+import { Zap, BarChart3, Download, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react';
 
 const FEATURES = [
   {

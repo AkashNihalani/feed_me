@@ -44,12 +44,11 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
   const gapDeg = 3;
 
   const arcs = useMemo(() => {
-    let cursor = 0;
-    return normalizedSegments.map((seg, idx) => {
+    return normalizedSegments.reduce<Array<Segment & { idx: number; d: string; isTop: boolean }>>((acc, seg, idx) => {
+      const cursor = acc.reduce((sum, item) => sum + item.percentage, 0) * 3.6;
       const sweep = (seg.percentage / 100) * 360;
       const startAngle = cursor + gapDeg / 2 - 90;
       const endAngle = cursor + sweep - gapDeg / 2 - 90;
-      cursor += sweep;
 
       const startRad = (startAngle * Math.PI) / 180;
       const endRad = (endAngle * Math.PI) / 180;
@@ -59,14 +58,15 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
       const y2 = center + radius * Math.sin(endRad);
       const largeArc = sweep - gapDeg > 180 ? 1 : 0;
 
-      return {
+      acc.push({
         ...seg,
         idx,
         d: `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
         isTop: idx === 0,
-      };
-    });
-  }, [normalizedSegments]);
+      });
+      return acc;
+    }, []);
+  }, [center, gapDeg, normalizedSegments, radius]);
 
   return (
     <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-4">

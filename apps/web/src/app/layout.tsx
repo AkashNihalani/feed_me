@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { StatusBar } from "@/components/StatusBar";
 import BottomNav from "@/components/BottomNav";
+import PwaNotificationsBridge from "@/components/PwaNotificationsBridge";
 
 const metadataBase =
   process.env.NEXT_PUBLIC_SITE_URL
@@ -77,10 +78,10 @@ export default function RootLayout({
     <html lang="en" className="h-full w-full overflow-hidden">
       <body className="antialiased bg-background h-full w-full overflow-hidden transition-colors duration-300">
         <main className="h-full w-full overflow-hidden">{children}</main>
+        <PwaNotificationsBridge />
         <BottomNav />
         <StatusBar />
       </body>
     </html>
   );
 }
-

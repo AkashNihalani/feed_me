@@ -60,7 +60,7 @@ begin
       updated_at=now()
   where job_type='daily'
     and business_date_ist = p_business_date
-    and status in ('pending','running','retry');
+    and status in ('pending','retry');
   get diagnostics v_rows = row_count;
   return v_rows;
 end;
@@ -90,7 +90,14 @@ begin
     and rj.status='failed'
     and fd.status='active'
     and f.status='active'
-  on conflict do nothing;
+    and not exists (
+      select 1
+      from public.run_jobs e
+      where e.feeder_id = rj.feeder_id
+        and e.business_date_ist = v_day
+        and e.job_type in ('daily','repair')
+        and e.status in ('pending','running','retry','done')
+    );
 
   get diagnostics v_enqueued = row_count;
 

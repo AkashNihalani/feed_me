@@ -146,6 +146,7 @@ export async function GET(request: NextRequest) {
   const day = params.get('day') || yesterdayIstDayKey();
   const scope = params.get('scope') || 'ALL';
   const threshold = params.get('threshold') || 'ALL';
+  const sort = params.get('sort') || 'best';
   const cursor = Math.max(0, parseInt(params.get('cursor') || '0', 10) || 0);
 
   let query = supabase
@@ -171,11 +172,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Sort by percentile (best first), then recency
-  query = query
-    .order('surface_percentile', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .range(cursor, cursor + PAGE_SIZE - 1);
+  if (sort === 'recent') {
+    query = query
+      .order('created_at', { ascending: false })
+      .order('surface_percentile', { ascending: true, nullsFirst: false })
+      .range(cursor, cursor + PAGE_SIZE - 1);
+  } else {
+    // Sort by percentile (best first), then recency
+    query = query
+      .order('surface_percentile', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range(cursor, cursor + PAGE_SIZE - 1);
+  }
 
   const { data, error, count } = await query;
 

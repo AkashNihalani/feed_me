@@ -1,7 +1,8 @@
--- ============================================================
--- FeedMe: ALL SQL Functions (clean consolidated reference)
--- Run this in Supabase SQL Editor to ensure all functions exist
--- ============================================================
+-- DEPRECATED SNAPSHOT FILE
+-- Do not run this file on production/dev databases.
+-- Use migrations in infra/supabase/migrations as the only source of truth.
+-- This file is retained only as historical reference.
+
 
 -- ─── HELPERS ─────────────────────────────────────────────────
 

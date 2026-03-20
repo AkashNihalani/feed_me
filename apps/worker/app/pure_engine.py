@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import json
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta, date
 from typing import Any
@@ -14,6 +15,7 @@ from psycopg.rows import dict_row
 
 from .apify import run_actor_handle, run_actor_post_urls
 from .config import POSTGRES_DSN, RETRY_BACKOFF_MINUTES, APP_TIMEZONE, RUN_JOB_CONCURRENCY
+from .web_push import is_enabled as web_push_enabled, send as send_web_push
 
 
 def _next_retry_time(attempt: int) -> datetime:
@@ -45,6 +47,7 @@ _HARD_FAILURE_TOKENS = (
     'missing in checkpoint batch',
     'missing post',
 )
+_PUSH_TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 
 
 def _normalize_error(err: str | None) -> str:
@@ -67,6 +70,12 @@ def _is_hard_failure(err: str | None) -> bool:
 def _hard_skip_error(err: str | None, fallback: str) -> str:
     msg = (err or '').strip() or fallback
     return f"{_HARD_SKIP_PREFIX}{msg[:900]}"
+
+
+def _should_retry_web_push(status_code: int | None, err: str | None) -> bool:
+    if status_code in _PUSH_TRANSIENT_STATUS_CODES:
+        return True
+    return _is_transient_failure(err)
 
 
 def _to_dt(value: Any) -> datetime | None:
@@ -229,6 +238,79 @@ def _business_date_from_job(job: dict) -> date | None:
     except Exception:
         tz = timezone.utc
     return datetime.now(tz).date()
+
+
+def _push_payload_url(day_key: str | None, threshold: int) -> str:
+    url = f"/fire?threshold={threshold}"
+    if day_key:
+        return f"{url}&day={day_key}"
+    return url
+
+
+def _build_fire_push_payload(rows: list[dict[str, Any]], threshold: int) -> dict[str, Any]:
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: (
+            _to_dt(row.get("fire_created_at") or row.get("created_at")) or datetime.fromtimestamp(0, tz=timezone.utc)
+        ),
+        reverse=True,
+    )
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in sorted_rows:
+        feed_id = str(row.get("feed_id") or "unknown")
+        created_at = _to_dt(row.get("fire_created_at") or row.get("created_at")) or datetime.fromtimestamp(0, tz=timezone.utc)
+        title = str(row.get("feed_name") or "Tracked feed").strip() or "Tracked feed"
+        current = grouped.get(feed_id)
+        if current is None:
+            grouped[feed_id] = {
+                "count": 1,
+                "latest": row,
+                "latest_ts": created_at,
+                "title": title,
+            }
+            continue
+        current["count"] += 1
+        if created_at >= current["latest_ts"]:
+            current["latest"] = row
+            current["latest_ts"] = created_at
+
+    feed_groups = sorted(
+        grouped.values(),
+        key=lambda item: (-int(item["count"]), item["latest_ts"]),
+        reverse=False,
+    )
+    feed_groups.sort(key=lambda item: (-int(item["count"]), -item["latest_ts"].timestamp()))
+
+    lead = feed_groups[0]
+    lead_title = str(lead["title"] or "Tracked feed")
+    lead_latest = lead["latest"] or {}
+    checkpoint = str(lead_latest.get("checkpoint") or "").upper() or "the latest checkpoint"
+    lead_day = str(lead_latest.get("business_date_ist") or "").strip() or None
+
+    if len(feed_groups) <= 1:
+        if len(rows) == 1:
+            title = f"{lead_title} triggered"
+            body = f"{lead_title} crossed your {threshold}% fire line after {checkpoint}."
+        else:
+            title = f"{lead_title} heating up"
+            body = (
+                f"{lead['count']} fresh fire alerts in {lead_title} crossed your "
+                f"{threshold}% line after the latest checkpoint sweep."
+            )
+    else:
+        title = f"{len(feed_groups)} feeds triggered"
+        body = (
+            f"{len(feed_groups)} feeds crossed your {threshold}% line. "
+            f"{lead_title} led with {lead['count']} fresh alerts."
+        )
+
+    return {
+        "title": title,
+        "body": body,
+        "url": _push_payload_url(lead_day, threshold),
+        "tag": f"fire-threshold-{threshold}",
+    }
 
 
 class PureEngine:
@@ -430,6 +512,28 @@ class PureEngine:
         self.conn.commit()
         return rows
 
+    def _claim_web_push_jobs(self, limit: int) -> list[dict]:
+        rows = self.conn.execute(
+            """
+            select
+              jobs.*,
+              alerts.created_at as fire_created_at,
+              alerts.checkpoint,
+              alerts.business_date_ist,
+              alerts.surface_percentile,
+              feeds.name as feed_name,
+              users.fire_alert_threshold,
+              users.pwa_push_enabled
+            from public.claim_web_push_jobs(%s) jobs
+            left join public.fire_alerts alerts on alerts.id = jobs.fire_alert_id
+            left join public.feeds feeds on feeds.id = coalesce(jobs.feed_id, alerts.feed_id)
+            left join public.users users on users.id = jobs.user_id
+            """,
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+        return rows
+
     def _set_run_result(self, job_id: int, status: str, attempt: int | None = None, next_run_at: datetime | None = None, error: str | None = None):
         self.conn.execute(
             "select public.set_run_job_result(%s,%s,%s,%s,%s)",
@@ -441,6 +545,71 @@ class PureEngine:
         self.conn.execute(
             "select public.set_checkpoint_job_result(%s,%s,%s,%s,%s)",
             (job_id, status, attempt, next_run_at, (error or "")[:1000] if error else None),
+        )
+        self.conn.commit()
+
+    def _set_web_push_result(
+        self,
+        job_id: int,
+        status: str,
+        attempt: int | None = None,
+        next_run_at: datetime | None = None,
+        error: str | None = None,
+    ):
+        self.conn.execute(
+            """
+            update public.web_push_jobs
+            set status = %s,
+                attempt = coalesce(%s, attempt),
+                next_run_at = coalesce(%s, next_run_at),
+                last_error = case when %s is null then null else left(%s, 1000) end,
+                sent_at = case when %s = 'sent' then now() else sent_at end,
+                updated_at = now()
+            where id = %s
+            """,
+            (status, attempt, next_run_at, error, error, status, job_id),
+        )
+        self.conn.commit()
+
+    def _list_active_web_push_subscriptions(self, user_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            """
+            select id, endpoint, p256dh_key, auth_key
+            from public.web_push_subscriptions
+            where user_id = %s
+              and enabled = true
+            order by updated_at desc, id desc
+            """,
+            (user_id,),
+        ).fetchall()
+        self.conn.commit()
+        return rows
+
+    def _mark_web_push_subscription_success(self, subscription_id: int):
+        self.conn.execute(
+            """
+            update public.web_push_subscriptions
+            set last_error = null,
+                failed_at = null,
+                last_seen_at = now(),
+                updated_at = now()
+            where id = %s
+            """,
+            (subscription_id,),
+        )
+        self.conn.commit()
+
+    def _mark_web_push_subscription_failure(self, subscription_id: int, error: str, disable: bool = False):
+        self.conn.execute(
+            """
+            update public.web_push_subscriptions
+            set enabled = case when %s then false else enabled end,
+                last_error = left(%s, 1000),
+                failed_at = case when %s then now() else failed_at end,
+                updated_at = now()
+            where id = %s
+            """,
+            (disable, error or "web push failed", disable, subscription_id),
         )
         self.conn.commit()
 
@@ -468,7 +637,9 @@ class PureEngine:
             for job in jobs:
                 handle = (job.get("handle") or "").lstrip("@")
                 job_type = str(job.get("job_type") or "daily")
-                days_window = 3 if job_type == "repair" else 2
+                # Daily discovery now intentionally overlaps the last 3 days so
+                # late/missed posts still land without changing compute logic.
+                days_window = 3 if job_type in ("daily", "repair") else 2
                 futures[int(job["id"])] = pool.submit(run_actor_handle, handle, days_window)
 
             for job in jobs:
@@ -671,6 +842,123 @@ class PureEngine:
                     else:
                         self._set_checkpoint_result(jid, "failed", na, None, err)
 
+    def process_web_push_jobs(self, limit: int = 200):
+        if not web_push_enabled():
+            return
+
+        jobs = self._claim_web_push_jobs(limit)
+        if not jobs:
+            return
+
+        batches: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for job in jobs:
+            if str(job.get("kind") or "fire") == "fire":
+                threshold = int(job.get("fire_alert_threshold") or 25)
+                percentile = job.get("surface_percentile")
+                enabled = bool(job.get("pwa_push_enabled"))
+                if not enabled:
+                    self._set_web_push_result(int(job["id"]), "skipped", int(job.get("attempt") or 0), None, "PWA push disabled")
+                    continue
+                if percentile is None or int(percentile) > threshold:
+                    self._set_web_push_result(
+                        int(job["id"]),
+                        "skipped",
+                        int(job.get("attempt") or 0),
+                        None,
+                        "Alert no longer meets current fire threshold",
+                    )
+                    continue
+            batches[(str(job.get("user_id") or ""), str(job.get("kind") or "fire"))].append(job)
+
+        for (user_id, kind), batch in batches.items():
+            subscriptions = self._list_active_web_push_subscriptions(user_id)
+            if not subscriptions:
+                for job in batch:
+                    self._set_web_push_result(int(job["id"]), "skipped", int(job.get("attempt") or 0), None, "No active web push subscriptions")
+                continue
+
+            if kind == "test":
+                for job in batch:
+                    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+                    if not payload:
+                        self._set_web_push_result(int(job["id"]), "skipped", int(job.get("attempt") or 0), None, "Missing test push payload")
+                        continue
+                    ok = False
+                    last_error = ""
+                    last_status: int | None = None
+                    for subscription in subscriptions:
+                        success, error, status_code = send_web_push(
+                            {
+                                "endpoint": subscription["endpoint"],
+                                "keys": {
+                                    "p256dh": subscription["p256dh_key"],
+                                    "auth": subscription["auth_key"],
+                                },
+                            },
+                            payload,
+                        )
+                        if success:
+                            ok = True
+                            self._mark_web_push_subscription_success(int(subscription["id"]))
+                        else:
+                            last_error = error or "web push failed"
+                            last_status = status_code
+                            self._mark_web_push_subscription_failure(
+                                int(subscription["id"]),
+                                last_error,
+                                disable=status_code in (404, 410),
+                            )
+                    if ok:
+                        self._set_web_push_result(int(job["id"]), "sent", int(job.get("attempt") or 0), None, None)
+                    else:
+                        attempt = int(job.get("attempt") or 0) + 1
+                        if _should_retry_web_push(last_status, last_error) and attempt <= len(RETRY_BACKOFF_MINUTES):
+                            self._set_web_push_result(int(job["id"]), "retry", attempt, _next_retry_time(attempt), last_error)
+                        else:
+                            self._set_web_push_result(int(job["id"]), "failed", attempt, None, last_error or "web push failed")
+                continue
+
+            threshold = int(batch[0].get("fire_alert_threshold") or 25)
+            payload = _build_fire_push_payload(batch, threshold)
+            sent = False
+            last_error = ""
+            last_status: int | None = None
+
+            for subscription in subscriptions:
+                success, error, status_code = send_web_push(
+                    {
+                        "endpoint": subscription["endpoint"],
+                        "keys": {
+                            "p256dh": subscription["p256dh_key"],
+                            "auth": subscription["auth_key"],
+                        },
+                    },
+                    payload,
+                )
+                if success:
+                    sent = True
+                    self._mark_web_push_subscription_success(int(subscription["id"]))
+                else:
+                    last_error = error or "web push failed"
+                    last_status = status_code
+                    self._mark_web_push_subscription_failure(
+                        int(subscription["id"]),
+                        last_error,
+                        disable=status_code in (404, 410),
+                    )
+
+            if sent:
+                for job in batch:
+                    self._set_web_push_result(int(job["id"]), "sent", int(job.get("attempt") or 0), None, None)
+                continue
+
+            for job in batch:
+                attempt = int(job.get("attempt") or 0) + 1
+                if _should_retry_web_push(last_status, last_error) and attempt <= len(RETRY_BACKOFF_MINUTES):
+                    self._set_web_push_result(int(job["id"]), "retry", attempt, _next_retry_time(attempt), last_error)
+                else:
+                    self._set_web_push_result(int(job["id"]), "failed", attempt, None, last_error or "web push failed")
+
 
     def backfill_d1_media(self, limit: int = 300, days: int = 14, batch_size: int = 50) -> dict[str, int]:
         """Backfill missing media refs for existing D1 posts without creating new metrics/checkpoints."""
@@ -734,6 +1022,7 @@ def run_once(run_limit: int = 120, checkpoint_limit: int = 5000):
         eng.requeue_stale(30)
         eng.process_run_jobs(run_limit)
         eng.process_checkpoint_jobs(checkpoint_limit)
+        eng.process_web_push_jobs()
     finally:
         eng.close()
 
@@ -881,6 +1170,7 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
             try:
                 eng.process_run_jobs(run_limit)
                 eng.process_checkpoint_jobs(checkpoint_limit)
+                eng.process_web_push_jobs()
             except Exception as e:
                 try:
                     eng.conn.rollback()

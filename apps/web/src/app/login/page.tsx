@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Loader2, ArrowRight, UserPlus, KeyRound, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Loader2, UserPlus, KeyRound, LogIn, Eye, EyeOff } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import BrutalistSlideshow from '@/components/ui/BrutalistSlideshow';
 import { cn } from '@/lib/utils';
@@ -20,7 +19,6 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const router = useRouter();
   
   // Use the shared Supabase client for consistent auth state
   // Lazy init — avoid calling during SSR prerender when env vars aren't set
@@ -68,8 +66,8 @@ export default function LoginPage() {
             setMessage('Password reset link sent! Check your email.');
             setLoading(false);
         }
-    } catch (err: any) {
-        setError(err.message || 'An error occurred');
+    } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
         setLoading(false);
     }
   };

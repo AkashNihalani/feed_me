@@ -1,6 +1,7 @@
 import json
 import time
 import requests
+from urllib.parse import quote
 
 from .config import (
     APIFY_TOKEN,
@@ -13,7 +14,8 @@ API_BASE = "https://api.apify.com/v2"
 
 
 def _run_payload(input_payload: dict) -> list[dict]:
-    run_url = f"{API_BASE}/acts/{APIFY_ACTOR_ID}/runs?token={APIFY_TOKEN}"
+    actor_ref = quote(APIFY_ACTOR_ID, safe="")
+    run_url = f"{API_BASE}/acts/{actor_ref}/runs?token={APIFY_TOKEN}"
     resp = requests.post(run_url, json=input_payload, timeout=60)
     resp.raise_for_status()
     run_id = resp.json().get("data", {}).get("id")

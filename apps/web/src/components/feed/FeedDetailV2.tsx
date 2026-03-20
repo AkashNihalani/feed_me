@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
@@ -8,16 +8,17 @@ import FeedApexArch from './FeedApexArch';
 import FeedKillZone from './FeedKillZone';
 import FeedScatterField from './FeedScatterField';
 import PostingHeatmap from './PostingHeatmap';
-import { DashboardPayload, TIMEFRAME_TO_WEEKS, Timeframe } from './dashboardTypes';
+import { DashboardPayload, Timeframe } from './dashboardTypes';
 
+type ActiveFeed = {
+  id: string;
+};
 
 interface FeedDetailV2Props {
-  activeFeed: any;
+  activeFeed: ActiveFeed | null | undefined;
   children: React.ReactNode;
   timeframe: Timeframe;
-  selectedHandle: string;
   dashboardData: DashboardPayload | null;
-  dashboardLoading?: boolean;
 }
 
 const staggerContainer = {
@@ -40,12 +41,10 @@ export default function FeedDetailV2({
   activeFeed,
   children,
   timeframe,
-  selectedHandle,
   dashboardData,
 }: FeedDetailV2Props) {
-  if (!activeFeed) return null;
-
   const scrollRef = useRef<HTMLDivElement>(null);
+  if (!activeFeed) return null;
 
   return (
     <div
@@ -65,7 +64,7 @@ export default function FeedDetailV2({
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
-        className="fm-app-shell mx-auto w-full max-w-[1520px] px-3 pb-[calc(120px+env(safe-area-inset-bottom))] sm:px-0 lg:pb-[calc(136px+env(safe-area-inset-bottom))] transform-gpu"
+        className="fm-tab-content-shell mx-auto w-full px-3 pb-[calc(120px+env(safe-area-inset-bottom))] sm:px-0 lg:pb-[calc(136px+env(safe-area-inset-bottom))] transform-gpu"
       >
         <div className="bento-feed-grid grid gap-3 sm:gap-4 lg:gap-5 xl:gap-6">
           {/* Ascent — hero card */}

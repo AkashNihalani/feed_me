@@ -6,14 +6,24 @@ import { getSupabase, User } from '@/lib/supabase';
 import { cn, formatShortIST } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { useAppHaptics } from '@/lib/haptics';
-import Link from 'next/link';
+import {
+  FUND_ALERT_THRESHOLD_KEY,
+  PWA_NOTIFICATION_ENABLED_KEY,
+  clampAlertThreshold,
+  readBooleanFlag,
+  readFundAlertThreshold,
+} from '@/lib/fireAlertSettings';
+import {
+  ensureServiceWorkerRegistration,
+  getCurrentPushSubscription,
+  subscribeToWebPush,
+  unsubscribeFromWebPush,
+} from '@/lib/webPush';
 import { useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   Bell,
   Check,
-  CreditCard,
-  Crown,
   Lock,
   Moon,
   Sun,
@@ -74,6 +84,8 @@ const emptyStats: EngineStats = {
 };
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
+const FUND_CACHE_KEY = 'fund:bundle:v1';
+const FUND_CACHE_TTL = 2 * 60 * 1000;
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -100,6 +112,14 @@ function parseMetric(value: string | number | undefined) {
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
 }
+
+type BrowserNotificationPermission = NotificationPermission | 'unsupported';
+type NotificationSettingsResponse = {
+  error?: string;
+  fireAlertThreshold?: number;
+  hasActiveSubscription?: boolean;
+  pwaPushEnabled?: boolean;
+};
 
 // Deep Hardware Toggle (Signature Deep Neumorphism - Solid Neon)
 function HardwareToggle({ active }: { active: boolean }) {
@@ -146,17 +166,11 @@ function HardwareToggle({ active }: { active: boolean }) {
 export default function FundPage() {
   const router = useRouter();
   const { play } = useAppHaptics();
-  const launchRef = useRef<HTMLDivElement | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  const [emailNotifications, setEmailNotifications] = useState(true);
   const [alertThreshold, setAlertThreshold] = useState(25);
   const [isDraggingSlider, setIsDraggingSlider] = useState(false);
   const [thresholdLocked, setThresholdLocked] = useState(true);
-  const [lockProgress, setLockProgress] = useState(0);
-  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockRafRef = useRef<number | null>(null);
   const lockStartRef = useRef<number>(0);
   const [themeRipple, setThemeRipple] = useState<{ active: boolean; x: number; y: number; toDark: boolean } | null>(null);
@@ -165,27 +179,128 @@ export default function FundPage() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [slots, setSlots] = useState<SlotUsage>({ used: 0 });
   const [engineStats, setEngineStats] = useState<EngineStats>(emptyStats);
-  const [flowBusy, setFlowBusy] = useState(false);
-  const [flowError, setFlowError] = useState<string | null>(null);
-  const [flowNotice, setFlowNotice] = useState<string | null>(null);
+  const [pwaNotificationsEnabled, setPwaNotificationsEnabled] = useState(false);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>('default');
+  const [notificationPrefsReady, setNotificationPrefsReady] = useState(false);
+  const [notificationTestBusy, setNotificationTestBusy] = useState(false);
+  const [notificationTestNotice, setNotificationTestNotice] = useState<string | null>(null);
 
   // Launch sequence states removed
 
-  const FUND_CACHE_KEY = 'fund:bundle:v1';
-  const FUND_CACHE_TTL = 2 * 60 * 1000;
+  const syncPwaNotificationState = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setNotificationPermission('unsupported');
+      setPwaNotificationsEnabled(false);
+      return;
+    }
 
-  useEffect(() => {
-    const stored = localStorage.getItem('fund:alert-threshold');
-    if (stored) {
-      const next = Number(stored);
-      if (Number.isFinite(next)) setAlertThreshold(Math.max(1, Math.min(100, next)));
+    setNotificationPermission(Notification.permission);
+    setPwaNotificationsEnabled(
+      Notification.permission === 'granted' &&
+      readBooleanFlag(window.localStorage, PWA_NOTIFICATION_ENABLED_KEY)
+    );
+  }, []);
+
+  const readApiError = useCallback(async (response: Response, fallback: string) => {
+    try {
+      const data = await response.json() as { error?: string };
+      return data.error || fallback;
+    } catch {
+      return fallback;
     }
   }, []);
 
   useEffect(() => {
-    async function fetchData(hadCache: boolean) {
-      if (!hadCache) setIsLoading(true);
+    const localThreshold = readFundAlertThreshold(window.localStorage);
+    setAlertThreshold(localThreshold);
+    syncPwaNotificationState();
 
+    let cancelled = false;
+    const bootstrapNotificationSettings = async () => {
+      try {
+        const localSubscription = ('Notification' in window && Notification.permission === 'granted')
+          ? await getCurrentPushSubscription().catch(() => null)
+          : null;
+        const response = await fetch('/api/profile/notifications', { cache: 'no-store' });
+        if (!response.ok) return;
+
+        const data = await response.json() as NotificationSettingsResponse;
+        const nextThreshold = clampAlertThreshold(
+          Number(data.fireAlertThreshold ?? localThreshold),
+          localThreshold
+        );
+        const nextEnabled = Boolean(data.pwaPushEnabled) && Boolean(localSubscription) && Notification.permission === 'granted';
+
+        window.localStorage.setItem(FUND_ALERT_THRESHOLD_KEY, String(nextThreshold));
+        window.localStorage.setItem(PWA_NOTIFICATION_ENABLED_KEY, nextEnabled ? 'true' : 'false');
+
+        if (!cancelled) {
+          setAlertThreshold(nextThreshold);
+          setPwaNotificationsEnabled(nextEnabled);
+        }
+      } catch (error) {
+        console.error('[fund] Failed to bootstrap notification settings', error);
+      } finally {
+        if (!cancelled) {
+          setNotificationPrefsReady(true);
+        }
+      }
+    };
+
+    bootstrapNotificationSettings().catch(() => {
+      if (!cancelled) setNotificationPrefsReady(true);
+    });
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === FUND_ALERT_THRESHOLD_KEY) {
+        setAlertThreshold(readFundAlertThreshold(window.localStorage));
+      }
+      if (!event.key || event.key === PWA_NOTIFICATION_ENABLED_KEY) {
+        syncPwaNotificationState();
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') syncPwaNotificationState();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', syncPwaNotificationState);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', syncPwaNotificationState);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [syncPwaNotificationState]);
+
+  useEffect(() => {
+    if (!notificationPrefsReady || typeof window === 'undefined') return;
+    window.localStorage.setItem(FUND_ALERT_THRESHOLD_KEY, String(alertThreshold));
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/profile/notifications', {
+          body: JSON.stringify({ fireAlertThreshold: alertThreshold }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'PUT',
+        });
+
+        if (!response.ok) {
+          throw new Error(await readApiError(response, 'Failed to save fire alert threshold'));
+        }
+      } catch (error) {
+        console.error('[fund] Failed to persist fire alert threshold', error);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [alertThreshold, notificationPrefsReady, readApiError]);
+
+  useEffect(() => {
+    async function fetchData() {
       const { data: { user: authUser }, error: authError } = await getSupabase().auth.getUser();
       if (authError || !authUser) {
         window.location.href = '/login';
@@ -194,11 +309,12 @@ export default function FundPage() {
 
       const userId = authUser.id;
 
-      let { data: userData, error: userFetchError } = await getSupabase()
+      const { data: fetchedUserData, error: userFetchError } = await getSupabase()
         .from('users')
         .select('*')
         .eq('id', userId)
         .single();
+      let userData = fetchedUserData;
 
       if (!userData && userFetchError?.code === 'PGRST116') {
         const { data: newUser, error: createError } = await getSupabase()
@@ -218,7 +334,6 @@ export default function FundPage() {
 
         if (createError) {
           alert(`Failed to initialize account: ${createError.message}`);
-          setIsLoading(false);
           return;
         }
         userData = newUser as User;
@@ -226,8 +341,6 @@ export default function FundPage() {
 
       let userSnapshot: Partial<User> | null = null;
       if (userData) {
-        setUser(userData as User);
-        setEmailNotifications(userData.email_notifications ?? true);
         userSnapshot = {
           id: userData.id,
           name: userData.name,
@@ -264,8 +377,6 @@ export default function FundPage() {
         console.error('Failed to fetch engine stats', e);
       }
 
-      setIsLoading(false);
-
       setCache(FUND_CACHE_KEY, {
         feeds: nextFeeds,
         slots: nextSlots,
@@ -281,20 +392,16 @@ export default function FundPage() {
       user: Partial<User> | null;
     }>(FUND_CACHE_KEY, FUND_CACHE_TTL);
 
-    const hadCache = Boolean(cached);
     if (cached) {
       setFeeds(cached.feeds || []);
       setSlots(cached.slots || { used: 0 });
       setEngineStats(cached.engineStats || emptyStats);
       if (cached.user) {
-        setUser((prev) => ({ ...(prev || {}), ...cached.user } as User));
-        setEmailNotifications(cached.user.email_notifications ?? true);
       }
-      setIsLoading(false);
     }
 
     if (!cached) {
-      fetchData(hadCache).catch(() => {});
+      fetchData().catch(() => {});
     }
 
     // Default to dark mode unless user explicitly set 'light'
@@ -316,13 +423,11 @@ export default function FundPage() {
       payment = new URLSearchParams(window.location.search).get('payment');
     } catch {}
     if (payment !== 'success') return;
-    setFlowNotice('Payment received. Refreshing wallet balance…');
     (async () => {
       try {
         const { data: { user: authUser } } = await getSupabase().auth.getUser();
         if (!authUser) return;
-        const { data: freshUser } = await getSupabase().from('users').select('*').eq('id', authUser.id).single();
-        if (freshUser) setUser(freshUser as User);
+        await getSupabase().from('users').select('*').eq('id', authUser.id).single();
       } finally {
         router.replace('/profile');
       }
@@ -334,25 +439,27 @@ export default function FundPage() {
   const slotsUsed = slots.used ?? 0;
   const slotPlanPrice = slots.plan?.price ?? 499;
   const slotPostsCap = slots.plan?.postsCap ?? 35;
-  const packPrice = slots.plan?.packPrice ?? 99;
-  const packSize = slots.plan?.packSize ?? 15;
   const monthlySpend = slotsUsed * slotPlanPrice;
   const lastScrape = engineStats.recentJobs[0]?.updatedAt || engineStats.recentJobs[0]?.createdAt || '';
-
-  const totalTrackedPosts = feeds.reduce((sum, feed) => sum + parseMetric(feed.metrics?.postsTracked), 0);
-
-  async function runFeedAction(payload: Record<string, unknown>) {
-    const res = await fetch('/api/feed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Action failed');
-    if (json.feeds) setFeeds((json.feeds || []) as Feed[]);
-    if (json.slots) setSlots((json.slots || { used: 0 }) as SlotUsage);
-    return json;
-  }
+  const alertsArmed = pwaNotificationsEnabled;
+  const pwaStatusText = notificationBusy
+    ? 'Requesting browser permission...'
+    : notificationPermission === 'unsupported'
+      ? 'Notifications are not available in this browser.'
+      : notificationPermission === 'denied'
+        ? 'Browser permission is blocked. Enable it in site settings.'
+        : notificationTestNotice
+          ? notificationTestNotice
+        : pwaNotificationsEnabled
+          ? `Live as native push on the same fire line below ${alertThreshold}%.`
+          : `Turn this on to arm native Fire pushes below ${alertThreshold}% for this device.`;
+  const pwaBadgeText = notificationPermission === 'granted'
+    ? 'live'
+    : notificationPermission === 'denied'
+      ? 'blocked'
+      : notificationPermission === 'unsupported'
+        ? 'na'
+        : 'ready';
 
   // Group active feeders feed-wise
   const feedWiseUsage = useMemo(() => {
@@ -377,11 +484,9 @@ export default function FundPage() {
   const LOCK_DURATION = 1200;
   function startAutoLock() {
     lockStartRef.current = performance.now();
-    setLockProgress(0);
     const tick = () => {
       const elapsed = performance.now() - lockStartRef.current;
       const pct = Math.min(1, elapsed / LOCK_DURATION);
-      setLockProgress(pct);
       if (pct < 1) {
         lockRafRef.current = requestAnimationFrame(tick);
       } else {
@@ -392,6 +497,110 @@ export default function FundPage() {
     };
     lockRafRef.current = requestAnimationFrame(tick);
   }
+
+  const handlePwaNotificationToggle = useCallback(async () => {
+    if (notificationBusy || typeof window === 'undefined') return;
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setNotificationPermission('unsupported');
+      return;
+    }
+
+    setNotificationBusy(true);
+
+    if (pwaNotificationsEnabled) {
+      try {
+        await unsubscribeFromWebPush();
+        window.localStorage.setItem(PWA_NOTIFICATION_ENABLED_KEY, 'false');
+        setPwaNotificationsEnabled(false);
+        setNotificationTestNotice('Fire alerts paused on this device.');
+      } catch (error) {
+        console.error('[fund] Failed to disable PWA notifications', error);
+        setNotificationTestNotice(error instanceof Error ? error.message : 'Failed to disable Fire Alerts.');
+      } finally {
+        setNotificationBusy(false);
+      }
+      return;
+    }
+
+    let subscriptionArmed = false;
+    try {
+      await ensureServiceWorkerRegistration();
+      let permission = Notification.permission;
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+
+      setNotificationPermission(permission);
+      if (permission !== 'granted') {
+        window.localStorage.setItem(PWA_NOTIFICATION_ENABLED_KEY, 'false');
+        setPwaNotificationsEnabled(false);
+        setNotificationTestNotice('Browser permission is blocked. Enable it in site settings.');
+        return;
+      }
+
+      await subscribeToWebPush();
+      subscriptionArmed = true;
+      const response = await fetch('/api/profile/notifications', {
+        body: JSON.stringify({
+          fireAlertThreshold: alertThreshold,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response, 'Failed to arm Fire Alerts'));
+      }
+
+      window.localStorage.setItem(PWA_NOTIFICATION_ENABLED_KEY, 'true');
+      setPwaNotificationsEnabled(true);
+      setNotificationTestNotice('Fire alerts armed. Send a real test push to verify delivery.');
+    } catch (error) {
+      if (subscriptionArmed) {
+        try {
+          await unsubscribeFromWebPush();
+        } catch (cleanupError) {
+          console.error('[fund] Failed to roll back PWA subscription', cleanupError);
+        }
+      }
+      console.error('[fund] Failed to enable PWA notifications', error);
+      window.localStorage.setItem(PWA_NOTIFICATION_ENABLED_KEY, 'false');
+      setPwaNotificationsEnabled(false);
+      setNotificationTestNotice(error instanceof Error ? error.message : 'Failed to arm Fire Alerts.');
+    } finally {
+      setNotificationBusy(false);
+    }
+  }, [alertThreshold, notificationBusy, pwaNotificationsEnabled, readApiError]);
+
+  const handleTestNotification = useCallback(async () => {
+    if (notificationTestBusy || typeof window === 'undefined') return;
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setNotificationPermission('unsupported');
+      return;
+    }
+
+    if (Notification.permission !== 'granted' || !pwaNotificationsEnabled) {
+      setNotificationTestNotice('Enable Fire Alerts first, then send a test notification.');
+      return;
+    }
+
+    setNotificationTestBusy(true);
+    setNotificationTestNotice(null);
+
+    try {
+      const response = await fetch('/api/push/test', { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(await readApiError(response, 'Failed to queue test push'));
+      }
+      play('snapLock');
+      setNotificationTestNotice('Real push queued. Background delivery now depends on the worker and your browser push permission.');
+    } catch (error) {
+      console.error('[fund] Failed to send test notification', error);
+      setNotificationTestNotice(error instanceof Error ? error.message : 'Test failed. Check notification permissions and Web Push setup.');
+    } finally {
+      setNotificationTestBusy(false);
+    }
+  }, [notificationTestBusy, play, pwaNotificationsEnabled, readApiError]);
 
   return (
     <motion.div
@@ -420,8 +629,8 @@ export default function FundPage() {
       )}
 
       {/* ═══ MINIMAL LOCKED HEADER ═══ */}
-      <div className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-4 pt-[calc(10px+env(safe-area-inset-top))] sm:px-6 sm:pt-[calc(14px+env(safe-area-inset-top))] md:px-8 md:pt-[24px]">
-        <div className="relative w-full">
+      <div className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4">
+        <div className="relative fm-tab-header-shell">
           <div
             className={cn(
               'w-full overflow-hidden rounded-[32px] relative transition-all duration-500 ease-[cubic-bezier(0.4,0,0.1,1)]',
@@ -460,7 +669,7 @@ export default function FundPage() {
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="fm-app-shell mx-auto max-w-[1480px] space-y-4 px-4 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7 transform-gpu will-change-transform"
+            className="fm-tab-content-shell mx-auto space-y-4 px-4 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7 transform-gpu will-change-transform"
           >
             {/* Account Overview Bar */}
             <motion.div variants={tileVariant} className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:gap-4 xl:gap-5">
@@ -639,55 +848,126 @@ export default function FundPage() {
                     </div>
                   </div>
 
-                  {/* ── Fire Alert Notifications ── */}
+                  {/* ── Device Fire Alerts ── */}
                   <div className={cn(
-                    'w-full flex items-center justify-between rounded-[20px] px-5 py-[18px]',
+                    'w-full flex items-center justify-between gap-3 rounded-[20px] px-5 py-[18px]',
                     'transition-all duration-500',
-                    emailNotifications
+                    pwaNotificationsEnabled
                       ? [
-                          'bg-[#CCFF00]',
-                          'border border-[#bde600]',
-                          'shadow-[inset_0_2px_6px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(130,156,0,0.45),0_6px_18px_-4px_rgba(204,255,0,0.25),0_2px_4px_rgba(0,0,0,0.05)]',
-                          'dark:border-[#CCFF00]/30',
-                          'dark:shadow-[inset_0_2px_6px_rgba(255,255,255,0.15),inset_0_-2px_4px_rgba(0,0,0,0.35),0_0_20px_rgba(204,255,0,0.15),0_8px_24px_-4px_rgba(0,0,0,0.4)]',
+                          'bg-[#111]',
+                          'border border-black',
+                          'shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_24px_-10px_rgba(0,0,0,0.45),0_0_22px_rgba(204,255,0,0.12)]',
+                          'dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_18px_32px_-14px_rgba(0,0,0,0.65),0_0_28px_rgba(204,255,0,0.15)]',
                         ]
-                      : [
-                          'bg-gradient-to-b from-white/90 to-white/60',
-                          'border border-white/90 border-t-white',
-                          'shadow-[inset_0_2px_4px_rgba(255,255,255,1),inset_0_-1px_2px_rgba(0,0,0,0.04),0_6px_16px_-4px_rgba(15,23,42,0.08)]',
-                          'dark:bg-gradient-to-b dark:from-white/[0.06] dark:to-white/[0.015]',
-                          'dark:border-white/[0.06] dark:border-t-white/[0.1]',
-                          'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.5),0_8px_20px_-4px_rgba(0,0,0,0.5)]',
-                        ]
+                      : notificationPermission === 'denied'
+                        ? [
+                            'bg-[linear-gradient(180deg,rgba(255,122,0,0.14),rgba(255,255,255,0.85))]',
+                            'border border-[#ff9d4d]/45',
+                            'shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),0_8px_20px_-10px_rgba(255,122,0,0.3)]',
+                            'dark:bg-[linear-gradient(180deg,rgba(255,107,0,0.16),rgba(255,255,255,0.03))]',
+                            'dark:border-[#FF6B00]/30',
+                          ]
+                        : [
+                            'bg-gradient-to-b from-white/90 to-white/60',
+                            'border border-white/90 border-t-white',
+                            'shadow-[inset_0_2px_4px_rgba(255,255,255,1),inset_0_-1px_2px_rgba(0,0,0,0.04),0_6px_16px_-4px_rgba(15,23,42,0.08)]',
+                            'dark:bg-gradient-to-b dark:from-white/[0.06] dark:to-white/[0.015]',
+                            'dark:border-white/[0.06] dark:border-t-white/[0.1]',
+                            'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.5),0_8px_20px_-4px_rgba(0,0,0,0.5)]',
+                          ]
                   )}>
-                    <div className="flex items-center gap-3.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-3.5 pr-3">
                       <div className={cn(
                         'flex items-center justify-center w-8 h-8 rounded-[10px] transition-all duration-300',
-                        emailNotifications
-                          ? 'bg-black/90 shadow-[0_3px_8px_rgba(0,0,0,0.3),inset_0_1px_1px_rgba(255,255,255,0.1)]'
-                          : [
-                              'bg-white/70 border border-white/90',
-                              'shadow-[inset_0_1px_2px_rgba(255,255,255,1),0_2px_6px_rgba(0,0,0,0.06)]',
-                              'dark:bg-black/50 dark:border-white/[0.05]',
-                              'dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5),0_1px_0_rgba(255,255,255,0.04)]',
-                            ]
+                        'shrink-0',
+                        pwaNotificationsEnabled
+                          ? 'bg-[#CCFF00] shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_1px_rgba(255,255,255,0.6)]'
+                          : notificationPermission === 'denied'
+                            ? 'bg-[#FF6B00]/15 border border-[#FF6B00]/25'
+                            : [
+                                'bg-white/70 border border-white/90',
+                                'shadow-[inset_0_1px_2px_rgba(255,255,255,1),0_2px_6px_rgba(0,0,0,0.06)]',
+                                'dark:bg-black/50 dark:border-white/[0.05]',
+                                'dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5),0_1px_0_rgba(255,255,255,0.04)]',
+                              ]
                       )}>
                         <Bell size={15} className={cn(
-                          emailNotifications ? 'text-[#CCFF00]' : 'text-foreground/35 dark:text-white/30',
+                          pwaNotificationsEnabled
+                            ? 'text-black'
+                            : notificationPermission === 'denied'
+                              ? 'text-[#FF6B00]'
+                              : 'text-foreground/35 dark:text-white/30',
                           'transition-colors duration-300'
                         )} />
                       </div>
-                      <span className={cn(
-                        'text-[11px] font-black uppercase tracking-[0.14em] transition-colors duration-300',
-                        emailNotifications ? 'text-black' : 'text-foreground/70 dark:text-white/70'
-                      )}>Fire Alerts</span>
+                      <div className="min-w-0 flex-1">
+                        <div className={cn(
+                          'text-[11px] font-black uppercase tracking-[0.14em] transition-colors duration-300',
+                          pwaNotificationsEnabled ? 'text-white' : 'text-foreground/70 dark:text-white/70'
+                        )}>
+                          Fire Alerts
+                        </div>
+                        <div className={cn(
+                          'mt-1 text-[9px] font-bold uppercase tracking-[0.12em] leading-relaxed',
+                          pwaNotificationsEnabled
+                            ? 'text-[#CCFF00]/70'
+                            : notificationPermission === 'denied'
+                              ? 'text-[#9f4b00] dark:text-[#ffb278]'
+                              : 'text-foreground/45 dark:text-white/38'
+                        )}>
+                          {pwaStatusText}
+                        </div>
+                        <div className={cn(
+                          'mt-1 text-[8px] font-bold uppercase tracking-[0.12em]',
+                          pwaNotificationsEnabled
+                            ? 'text-white/42'
+                            : 'text-foreground/38 dark:text-white/28'
+                        )}>
+                          iPhone: install FeedMe to Home Screen for alerts.
+                        </div>
+                      </div>
                     </div>
-                    <div className="cursor-pointer group" onClick={async () => {
-                      const newValue = !emailNotifications;
-                      setEmailNotifications(newValue);
-                      await getSupabase().from('users').update({ email_notifications: newValue }).eq('id', user?.id);
-                    }}>
-                      <div className="group-active:scale-90 transition-transform duration-200"><HardwareToggle active={emailNotifications} /></div>
+                    <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
+                      {notificationPermission === 'granted' && (
+                        <button
+                          type="button"
+                          disabled={notificationBusy || notificationTestBusy || !pwaNotificationsEnabled}
+                          onClick={handleTestNotification}
+                          className={cn(
+                            'rounded-full px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] transition-all duration-200',
+                            'border border-white/85 bg-white/72 text-foreground/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_4px_12px_rgba(15,23,42,0.08)]',
+                            'dark:border-white/10 dark:bg-white/[0.06] dark:text-white/72 dark:shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]',
+                            pwaNotificationsEnabled && !notificationTestBusy && 'hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_6px_16px_rgba(15,23,42,0.1)] dark:hover:shadow-[0_10px_24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)]',
+                            (!pwaNotificationsEnabled || notificationBusy || notificationTestBusy) && 'cursor-not-allowed opacity-55'
+                          )}
+                        >
+                          {notificationTestBusy ? 'Sending...' : 'Send test'}
+                        </button>
+                      )}
+                      <div className={cn(
+                        'hidden rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.18em] sm:flex items-center gap-1.5',
+                        pwaNotificationsEnabled
+                          ? 'bg-[#CCFF00]/14 text-[#CCFF00] border border-[#CCFF00]/18'
+                          : notificationPermission === 'denied'
+                            ? 'bg-[#FF6B00]/10 text-[#FF6B00] border border-[#FF6B00]/20'
+                            : 'bg-black/5 text-foreground/45 border border-black/5 dark:bg-white/5 dark:text-white/40 dark:border-white/[0.06]'
+                      )}>
+                        {notificationPermission === 'granted' ? <Unlock size={10} strokeWidth={2.4} /> : <Lock size={10} strokeWidth={2.4} />}
+                        <span>{pwaBadgeText}</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={notificationBusy || notificationPermission === 'unsupported'}
+                        className={cn(
+                          'group cursor-pointer disabled:cursor-not-allowed',
+                          notificationPermission === 'unsupported' && 'opacity-40'
+                        )}
+                        onClick={handlePwaNotificationToggle}
+                      >
+                        <div className="group-active:scale-90 transition-transform duration-200">
+                          <HardwareToggle active={pwaNotificationsEnabled} />
+                        </div>
+                      </button>
                     </div>
                   </div>
 
@@ -701,7 +981,7 @@ export default function FundPage() {
                     'dark:border-white/[0.06] dark:border-t-white/[0.1]',
                     'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.5),0_12px_32px_-6px_rgba(0,0,0,0.5)]',
                     'transition-all duration-500',
-                    !emailNotifications && 'opacity-35 pointer-events-none'
+                    !alertsArmed && 'opacity-35 pointer-events-none'
                   )}>
                     {/* Header row */}
                     <div className="flex items-center justify-between w-full mb-1">
@@ -777,18 +1057,18 @@ export default function FundPage() {
                           value={alertThreshold}
                           onMouseDown={() => {
                             if (lockRafRef.current) { cancelAnimationFrame(lockRafRef.current); lockRafRef.current = null; }
-                            setThresholdLocked(false); setLockProgress(0); setIsDraggingSlider(true);
+                            setThresholdLocked(false); setIsDraggingSlider(true);
                           }}
                           onMouseUp={() => { setIsDraggingSlider(false); startAutoLock(); }}
                           onTouchStart={() => {
                             if (lockRafRef.current) { cancelAnimationFrame(lockRafRef.current); lockRafRef.current = null; }
-                            setThresholdLocked(false); setLockProgress(0); setIsDraggingSlider(true);
+                            setThresholdLocked(false); setIsDraggingSlider(true);
                           }}
                           onTouchEnd={() => { setIsDraggingSlider(false); startAutoLock(); }}
                           onChange={(e) => {
-                            const next = Number(e.target.value);
+                            const next = clampAlertThreshold(Number(e.target.value));
                             setAlertThreshold(next);
-                            localStorage.setItem('fund:alert-threshold', String(next));
+                            localStorage.setItem(FUND_ALERT_THRESHOLD_KEY, String(next));
                           }}
                           className="absolute inset-0 z-20 w-full h-full opacity-0 cursor-pointer"
                           style={{ WebkitAppearance: 'none', margin: 0, padding: '12px 0', height: '34px', top: '-12px' }}
@@ -838,7 +1118,9 @@ export default function FundPage() {
                     {/* Status line */}
                     <div className="text-[8px] font-bold uppercase tracking-[0.14em] text-foreground/35 dark:text-white/30 leading-relaxed mt-2">
                       {thresholdLocked
-                        ? `Active — fire alerts below ${alertThreshold}%`
+                        ? alertsArmed
+                          ? `Active — fire alerts below ${alertThreshold}%`
+                          : `Turn on Fire Alerts to use the ${alertThreshold}% fire line`
                         : isDraggingSlider ? 'Adjusting…' : 'Locking in…'}
                     </div>
                   </div>

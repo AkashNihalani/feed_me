@@ -38,20 +38,6 @@ function hourLabel(v: number | null): string {
   return `${hh}:00`;
 }
 
-function getNumber(item: FireItem, layerKey: keyof FireItem['layers'], ...keys: string[]): number | null {
-  const layer = (item.layers[layerKey] ?? {}) as Record<string, unknown>;
-  const payload = item.payload as Record<string, unknown>;
-  for (const key of keys) {
-    const a = layer[key];
-    if (typeof a === 'number' && Number.isFinite(a)) return a;
-    if (typeof a === 'string') { const n = Number(a.replace('%', '').trim()); if (Number.isFinite(n)) return n; }
-    const b = payload[key];
-    if (typeof b === 'number' && Number.isFinite(b)) return b;
-    if (typeof b === 'string') { const n = Number(b.replace('%', '').trim()); if (Number.isFinite(n)) return n; }
-  }
-  return null;
-}
-
 function surfaceTone(trajectoryDelta: number | null): { percentileColor: string; deltaColor: string; deltaText: string | null } {
   if (trajectoryDelta == null || !Number.isFinite(trajectoryDelta)) {
     return { percentileColor: '#FFFFFF', deltaColor: '#FFFFFF', deltaText: null };

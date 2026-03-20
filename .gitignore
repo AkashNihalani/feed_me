@@ -7,3 +7,9 @@ __pycache__/
 supabase/.temp/
 .vercel
 .env*.local
+apps/web/node_modules/
+apps/web/.next/
+apps/web/.vercel/
+apps/web/supabase/.temp/
+infra/supabase/.temp/
+*.tsbuildinfo

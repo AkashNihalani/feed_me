@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, Suspense } from 'react';
+import { useCallback, useEffect, useState, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Plus, Target, X } from 'lucide-react';
@@ -16,11 +16,12 @@ import { getCache, readCache, setCache } from '@/lib/pageCache';
 
 /* ── Types ── */
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
+type FeedMetrics = Metrics & { percentile?: number | string | null };
 type Feeder = {
   handle: string; isAnchor: boolean; profilePicUrl?: string | null;
   followerCount?: number | null; verificationStatus?: 'pending' | 'verified' | 'failed'; metrics: Metrics;
 };
-type Feed = { id: string; title: string; feeders: Feeder[]; metrics: Metrics };
+type Feed = { id: string; title: string; feeders: Feeder[]; metrics: FeedMetrics; compositePercentile?: number | string | null };
 type SortMode = 'recent' | 'name' | 'feeders';
 type SlotUsage = {
   used: number;
@@ -31,6 +32,10 @@ type SlotUsage = {
 
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
+const FEED_CACHE_KEY = 'feed:bundle:v3';
+const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v2';
+const FEED_CACHE_TTL = 2 * 60 * 1000;
+const DASHBOARD_CACHE_TTL = 2 * 60 * 1000;
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   '4W': '1M',
   '12W': '3M',
@@ -53,7 +58,7 @@ function parseCompactNumber(value: unknown): number {
 
 function computeCompositePercentile(activeFeed: Feed | undefined): number {
   if (!activeFeed) return 50;
-  const fromData = Number((activeFeed as any)?.compositePercentile ?? (activeFeed as any)?.metrics?.percentile);
+  const fromData = Number(activeFeed.compositePercentile ?? activeFeed.metrics?.percentile);
   if (Number.isFinite(fromData) && fromData >= 1 && fromData <= 100) return Math.round(fromData);
   const views = parseCompactNumber(activeFeed?.metrics?.views);
   const likes = parseCompactNumber(activeFeed?.metrics?.likes);
@@ -106,15 +111,9 @@ function FeedPageContent() {
   const [timeframe, setTimeframe] = useState<Timeframe>('4W');
   const [selectedHandle, setSelectedHandle] = useState<string>('all');
   const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(null);
-  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
-
-  const FEED_CACHE_KEY = 'feed:bundle:v3';
-  const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v2';
-  const FEED_CACHE_TTL = 2 * 60 * 1000;
-  const DASHBOARD_CACHE_TTL = 2 * 60 * 1000;
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
   const sortedFeeds = useMemo(() => {
@@ -131,11 +130,11 @@ function FeedPageContent() {
   );
   const handles = useMemo<string[]>(() => {
     if (!activeFeed) return [];
-    return (activeFeed.feeders || []).map((f: any) => String(f.handle || '').trim()).filter(Boolean);
+    return (activeFeed.feeders || []).map((f) => String(f.handle || '').trim()).filter(Boolean);
   }, [activeFeed]);
 
   /* ── Data loading ── */
-  const loadFeeds = async () => {
+  const loadFeeds = useCallback(async () => {
     const cached = getCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY, FEED_CACHE_TTL);
     if (cached) {
       setFeeds(cached.feeds);
@@ -157,9 +156,9 @@ function FeedPageContent() {
     } catch (err) {
       throw err;
     }
-  };
+  }, []);
 
-  useEffect(() => { loadFeeds().catch(err => setApiError(err instanceof Error ? err.message : 'Failed to load feeds')); }, []);
+  useEffect(() => { loadFeeds().catch(err => setApiError(err instanceof Error ? err.message : 'Failed to load feeds')); }, [loadFeeds]);
   useEffect(() => { setSelectedHandle('all'); setTimeframe('4W'); }, [selectedFeedId]);
 
   useEffect(() => {
@@ -172,10 +171,8 @@ function FeedPageContent() {
     const hadCache = Boolean(cached);
     if (cached && Date.now() - cached.ts <= DASHBOARD_CACHE_TTL) {
       setDashboardData(cached.data);
-      setDashboardLoading(false);
       return () => controller.abort();
     }
-    setDashboardLoading(true);
     fetch(`/api/feed/dashboard?${params}`, { signal: controller.signal })
       .then(async res => {
         const json = await res.json();
@@ -184,10 +181,13 @@ function FeedPageContent() {
         setDashboardData(next);
         if (next) setCache(cacheKey, next);
       })
-      .catch((err: any) => { if (err?.name !== 'AbortError' && !hadCache) setApiError(err instanceof Error ? err.message : 'Failed'); })
-      .finally(() => setDashboardLoading(false));
+      .catch((err: unknown) => {
+        if (!(err instanceof DOMException && err.name === 'AbortError') && !hadCache) {
+          setApiError(err instanceof Error ? err.message : 'Failed');
+        }
+      });
     return () => controller.abort();
-  }, [activeFeed?.id, timeframe, selectedHandle]);
+  }, [activeFeed, timeframe, selectedHandle]);
 
   /* ── Actions ── */
   const runFeedAction = async (payload: Record<string, unknown>) => {
@@ -226,7 +226,9 @@ function FeedPageContent() {
       setTickerItems(nextTicker);
       if (nextSlots) setSlotUsage(nextSlots);
       setCache(FEED_CACHE_KEY, { feeds: nextFeeds, ticker: nextTicker, slots: nextSlots || undefined });
-    } catch (err: any) { setApiError(err?.name === 'AbortError' ? 'Timed out' : (err instanceof Error ? err.message : 'Unable to add feeder')); }
+    } catch (err: unknown) {
+      setApiError(err instanceof DOMException && err.name === 'AbortError' ? 'Timed out' : (err instanceof Error ? err.message : 'Unable to add feeder'));
+    }
     finally { clearTimeout(tid); setAddingFeeder(null); setIsBusy(false); }
   };
   const removeFeeder = async (feedId: string, handle: string) => runFeedAction({ action: 'remove_feeder', feedId: Number(feedId), handle });
@@ -256,7 +258,7 @@ function FeedPageContent() {
 
       {/* ═══ LOCKED HEADER ═══ */}
       <div className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4">
-        <div className="relative fm-app-shell">
+        <div className="relative fm-tab-header-shell">
           <div
             className={cn(
               'w-full overflow-hidden rounded-[32px] relative transition-all duration-500 ease-[cubic-bezier(0.4,0,0.1,1)]',
@@ -441,7 +443,7 @@ function FeedPageContent() {
               style={{ WebkitOverflowScrolling: 'touch' }}>
               <div className="w-full px-3 sm:px-4 lg:px-4">
                 <LayoutGroup>
-                <div className="fm-app-shell mx-auto grid max-w-[1440px] grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5">
+                <div className="fm-tab-content-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5">
                   {sortedFeeds.map((feed, i) => (
                     <motion.div
                       key={feed.id}
@@ -474,7 +476,7 @@ function FeedPageContent() {
             exit={{ opacity: 0, y: -8, scale: 0.995 }}
             transition={{ duration: 0.34, ease: APPLE_EASE }}
             className="absolute inset-0 z-10 will-change-[opacity] transform-gpu">
-            <FeedDetailV2 activeFeed={activeFeed} timeframe={timeframe} selectedHandle={selectedHandle} dashboardData={dashboardData} dashboardLoading={dashboardLoading}>
+            <FeedDetailV2 activeFeed={activeFeed} timeframe={timeframe} dashboardData={dashboardData}>
               {addingFeeder && <ScanningCard key="scanning" handle={addingFeeder} />}
               {activeFeed?.feeders.length === 0 && !addingFeeder ? (
                 <div className="col-span-full fm-depth-glass flex flex-col items-center justify-center py-20">

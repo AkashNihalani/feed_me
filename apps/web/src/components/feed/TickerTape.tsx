@@ -85,7 +85,6 @@ export default function TickerTape({ items, className }: TickerTapeProps) {
   /* Build a flat tape: [TAG entries...] [TAG entries...] [TAG entries...] */
   const tapeSegments = useMemo(() => {
     if (items.length === 0) return [];
-    const segments: { type: 'tag'; label: string; key: string }[] | { type: 'entry'; handle: string; delta: number; key: string }[] = [];
     const result: Array<{ type: 'tag'; label: string; key: string } | { type: 'entry'; handle: string; delta: number; key: string }> = [];
 
     for (const mode of MODES) {
