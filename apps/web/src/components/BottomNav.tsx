@@ -41,7 +41,7 @@ export default function BottomNav() {
   if (pathname === '/login') return null;
 
   return (
-    <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex justify-center pointer-events-none md:bottom-5">
+    <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
       <div className={cn(
         'pointer-events-auto relative flex items-center gap-0.5 overflow-hidden rounded-[28px] px-1 py-1 lg:rounded-[26px]',
         /* Neumorphic frosted glass — matching header depth */

@@ -660,7 +660,7 @@ export default function FirePage() {
         onChange={setFilters}
       />
 
-      <div className="h-full w-full contain-paint">
+      <div className="h-full w-full">
         <div
           ref={headerRef}
           className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4"
@@ -844,7 +844,7 @@ export default function FirePage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.996 }}
                   transition={{ duration: 0.3, ease: APPLE_EASE }}
-                  className="h-full will-change-transform transform-gpu"
+                  className="h-full"
                 >
                   {cards.length === 0 ? (
                     <div className="flex h-full w-full items-center justify-center px-6 text-center">

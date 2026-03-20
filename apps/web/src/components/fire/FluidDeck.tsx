@@ -61,7 +61,7 @@ function VirtualSlot({
                 filter: isActive ? 'blur(0px)' : 'blur(0.4px)',
               }}
           transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
-          className="relative w-full will-change-transform"
+          className="relative w-full"
           style={{ zIndex: isActive ? 30 : 10 }}
         >
           <div
@@ -191,7 +191,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
       <div
         ref={containerRef}
         className={[
-          'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth transform-gpu hide-scrollbar',
+          'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth hide-scrollbar',
           'px-2 sm:px-3 lg:px-4',
           'pb-[calc(var(--fire-bottom-clearance,188px)+env(safe-area-inset-bottom))]',
           'pt-[calc(var(--fire-header-height,168px)+24px)]',
