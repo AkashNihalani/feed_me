@@ -3,18 +3,30 @@ from __future__ import annotations
 import re
 import json
 import time
+import mimetypes
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta, date
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import psycopg
+import requests
 from dateutil import parser as date_parser
 from psycopg.rows import dict_row
 
 from .apify import run_actor_handle, run_actor_post_urls
-from .config import POSTGRES_DSN, RETRY_BACKOFF_MINUTES, APP_TIMEZONE, RUN_JOB_CONCURRENCY
+from .config import (
+    POSTGRES_DSN,
+    RETRY_BACKOFF_MINUTES,
+    APP_TIMEZONE,
+    RUN_JOB_CONCURRENCY,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_MEDIA_BUCKET,
+    FIRE_MEDIA_RETENTION_ENABLED,
+)
 from .web_push import is_enabled as web_push_enabled, send as send_web_push
 
 
@@ -48,6 +60,14 @@ _HARD_FAILURE_TOKENS = (
     'missing post',
 )
 _PUSH_TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+_MEDIA_CAPTURE_TIMEOUT_SECONDS = 60
+_MEDIA_UPLOAD_TIMEOUT_SECONDS = 120
+_MEDIA_ALLOWED_FETCH_PROTOCOLS = ("http://", "https://")
+_MEDIA_FETCH_HEADERS = {
+    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
+    "accept": "*/*",
+    "referer": "https://www.instagram.com/",
+}
 
 
 def _normalize_error(err: str | None) -> str:
@@ -209,6 +229,25 @@ def _extract_media_refs(item: dict) -> tuple[str | None, str | None, str | None,
     return _clean(thumbnail_url), _clean(display_url), _clean(video_url), carousel_urls, _clean(audio_url)
 
 
+def _fire_media_object_key(post_key: str, asset_role: str, source_url: str | None, content_type: str | None = None) -> str:
+    safe_post_key = re.sub(r"[^a-z0-9._-]+", "_", (post_key or "").strip().lower()) or "post"
+    safe_role = re.sub(r"[^a-z0-9._-]+", "_", (asset_role or "").strip().lower()) or "asset"
+    ext = ""
+    guessed = mimetypes.guess_extension((content_type or "").split(";", 1)[0].strip()) if content_type else None
+    if guessed:
+        ext = guessed
+    elif source_url:
+        src = str(source_url).split("?", 1)[0].split("#", 1)[0]
+        m = re.search(r"(\.[A-Za-z0-9]{2,6})$", src)
+        if m:
+            ext = m.group(1).lower()
+    return f"posts/{safe_post_key}/{safe_role}{ext}"
+
+
+def _storage_object_url(bucket: str, path: str) -> str:
+    return f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket}/{quote(path, safe='/')}"
+
+
 def _daily_checkpoint_for_post(posted_at: datetime | None, business_date_ist: date | None) -> str:
     if posted_at is None:
         return ""
@@ -319,6 +358,233 @@ class PureEngine:
 
     def close(self):
         self.conn.close()
+
+    def _storage_headers(self, content_type: str | None = None) -> dict[str, str]:
+        headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "x-upsert": "true",
+        }
+        if content_type:
+            headers["Content-Type"] = content_type
+        return headers
+
+    def _stage_post_media_assets(
+        self,
+        post_key: str,
+        posted_at: datetime | None,
+        thumbnail_url: str | None,
+        display_url: str | None,
+        video_url: str | None,
+        carousel_urls: list[str] | None,
+        audio_url: str | None,
+    ):
+        if not FIRE_MEDIA_RETENTION_ENABLED:
+            return
+
+        payloads: list[tuple[str, str]] = []
+        if thumbnail_url:
+            payloads.append(("thumbnail", thumbnail_url))
+        if display_url:
+            payloads.append(("display", display_url))
+        if video_url:
+            payloads.append(("video", video_url))
+        if audio_url:
+            payloads.append(("audio", audio_url))
+        for idx, url in enumerate(carousel_urls or []):
+            if url:
+                payloads.append((f"carousel_{idx}", url))
+
+        for asset_role, source_url in payloads:
+            self.conn.execute(
+                """
+                insert into public.post_media_assets (
+                  post_key, asset_role, source_url, storage_bucket, status, attempt,
+                  next_run_at, purge_after, last_error, updated_at
+                )
+                values (
+                  %s,
+                  %s,
+                  %s,
+                  %s,
+                  'pending_capture',
+                  0,
+                  now(),
+                  coalesce(%s, now()) + interval '8 days',
+                  null,
+                  now()
+                )
+                on conflict (post_key, asset_role) do update
+                set source_url = excluded.source_url,
+                    storage_bucket = excluded.storage_bucket,
+                    purge_after = excluded.purge_after,
+                    deleted_at = null,
+                    updated_at = now(),
+                    last_error = null,
+                    status = case
+                      when public.post_media_assets.status = 'active'
+                           and coalesce(public.post_media_assets.storage_path, '') <> ''
+                           and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                        then 'active'
+                      when public.post_media_assets.status = 'purge_pending'
+                           and coalesce(public.post_media_assets.storage_path, '') <> ''
+                           and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                        then 'active'
+                      else 'pending_capture'
+                    end,
+                    attempt = case
+                      when public.post_media_assets.status = 'active'
+                           and coalesce(public.post_media_assets.storage_path, '') <> ''
+                           and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                        then public.post_media_assets.attempt
+                      else 0
+                    end,
+                    next_run_at = case
+                      when public.post_media_assets.status = 'active'
+                           and coalesce(public.post_media_assets.storage_path, '') <> ''
+                           and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                        then public.post_media_assets.next_run_at
+                      else now()
+                    end
+                """,
+                (post_key, asset_role, source_url, SUPABASE_MEDIA_BUCKET, posted_at),
+            )
+
+    def _claim_post_media_assets_for_capture(self, limit: int) -> list[dict]:
+        if not FIRE_MEDIA_RETENTION_ENABLED:
+            return []
+        rows = self.conn.execute(
+            "select * from public.claim_post_media_assets_for_capture(%s)",
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+        return rows
+
+    def _claim_post_media_assets_for_purge(self, limit: int) -> list[dict]:
+        if not FIRE_MEDIA_RETENTION_ENABLED:
+            return []
+        rows = self.conn.execute(
+            "select * from public.claim_post_media_assets_for_purge(%s)",
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+        return rows
+
+    def _set_post_media_asset_result(
+        self,
+        asset_id: int,
+        status: str,
+        *,
+        attempt: int | None = None,
+        next_run_at: datetime | None = None,
+        storage_path: str | None = None,
+        mime_type: str | None = None,
+        byte_size: int | None = None,
+        captured_at: datetime | None = None,
+        deleted_at: datetime | None = None,
+        error: str | None = None,
+    ):
+        self.conn.execute(
+            """
+            update public.post_media_assets
+            set status = %s,
+                attempt = coalesce(%s, attempt),
+                next_run_at = coalesce(%s, next_run_at),
+                storage_path = coalesce(%s, storage_path),
+                mime_type = coalesce(%s, mime_type),
+                byte_size = coalesce(%s, byte_size),
+                captured_at = coalesce(%s, captured_at),
+                deleted_at = coalesce(%s, deleted_at),
+                last_error = case when %s is null then null else left(%s, 1000) end,
+                updated_at = now()
+            where id = %s
+            """,
+            (
+                status,
+                attempt,
+                next_run_at,
+                storage_path,
+                mime_type,
+                byte_size,
+                captured_at,
+                deleted_at,
+                error,
+                error,
+                asset_id,
+            ),
+        )
+        self.conn.commit()
+
+    def _capture_post_media_asset(self, asset: dict):
+        source_url = str(asset.get("source_url") or "").strip()
+        if not source_url.startswith(_MEDIA_ALLOWED_FETCH_PROTOCOLS):
+            raise RuntimeError("invalid media source url")
+
+        upstream = requests.get(
+            source_url,
+            headers=_MEDIA_FETCH_HEADERS,
+            timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
+        )
+        upstream.raise_for_status()
+        content_type = (upstream.headers.get("content-type") or "application/octet-stream").split(";", 1)[0].strip()
+        body = upstream.content
+        if not body:
+            raise RuntimeError("empty media payload")
+
+        storage_path = _fire_media_object_key(
+            str(asset.get("post_key") or ""),
+            str(asset.get("asset_role") or ""),
+            source_url,
+            content_type,
+        )
+        upload = requests.post(
+            _storage_object_url(str(asset.get("storage_bucket") or SUPABASE_MEDIA_BUCKET), storage_path),
+            headers=self._storage_headers(content_type),
+            data=body,
+            timeout=_MEDIA_UPLOAD_TIMEOUT_SECONDS,
+        )
+        upload.raise_for_status()
+        self._set_post_media_asset_result(
+            int(asset["id"]),
+            "active",
+            attempt=0,
+            next_run_at=None,
+            storage_path=storage_path,
+            mime_type=content_type,
+            byte_size=len(body),
+            captured_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            error=None,
+        )
+
+    def _delete_post_media_asset(self, asset: dict):
+        storage_path = str(asset.get("storage_path") or "").strip()
+        if not storage_path:
+            self._set_post_media_asset_result(
+                int(asset["id"]),
+                "deleted",
+                attempt=0,
+                next_run_at=None,
+                deleted_at=datetime.now(timezone.utc),
+                error=None,
+            )
+            return
+
+        resp = requests.delete(
+            _storage_object_url(str(asset.get("storage_bucket") or SUPABASE_MEDIA_BUCKET), storage_path),
+            headers=self._storage_headers(),
+            timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
+        )
+        if resp.status_code not in (200, 204, 404):
+            resp.raise_for_status()
+        self._set_post_media_asset_result(
+            int(asset["id"]),
+            "deleted",
+            attempt=0,
+            next_run_at=None,
+            deleted_at=datetime.now(timezone.utc),
+            error=None,
+        )
 
     def enqueue_daily(self) -> int:
         r = self.conn.execute("select public.enqueue_daily_jobs(now()) as c").fetchone()
@@ -691,6 +957,16 @@ class PureEngine:
                             carousel_urls=carousel_urls,
                             audio_url=audio_url,
                         )
+                        if daily_checkpoint == "d1":
+                            self._stage_post_media_assets(
+                                post_key,
+                                posted_at,
+                                thumbnail_url,
+                                display_url,
+                                video_url,
+                                carousel_urls,
+                                audio_url,
+                            )
                         self._upsert_metric(post_key, daily_checkpoint, views, likes, comments, business_date_ist, 'on_time' if daily_checkpoint == 'd1' else None)
 
                         # Buffer capture fallback: if this post was first seen in D2, stamp D1 once
@@ -841,6 +1117,61 @@ class PureEngine:
                         self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
                     else:
                         self._set_checkpoint_result(jid, "failed", na, None, err)
+
+    def process_post_media_assets(self, capture_limit: int = 40, purge_limit: int = 80):
+        if not FIRE_MEDIA_RETENTION_ENABLED:
+            return
+
+        capture_jobs = self._claim_post_media_assets_for_capture(capture_limit)
+        for asset in capture_jobs:
+            attempt = int(asset.get("attempt") or 0) + 1
+            try:
+                self._capture_post_media_asset(asset)
+            except Exception as exc:
+                err = str(exc)[:1000] or "post media capture failed"
+                if attempt <= len(RETRY_BACKOFF_MINUTES):
+                    self._set_post_media_asset_result(
+                        int(asset["id"]),
+                        "capture_failed",
+                        attempt=attempt,
+                        next_run_at=_next_retry_time(attempt),
+                        error=err,
+                    )
+                else:
+                    purge_after = _to_dt(asset.get("purge_after"))
+                    final_status = "deleted" if purge_after is not None and purge_after <= datetime.now(timezone.utc) else "capture_failed"
+                    self._set_post_media_asset_result(
+                        int(asset["id"]),
+                        final_status,
+                        attempt=attempt,
+                        next_run_at=None,
+                        deleted_at=datetime.now(timezone.utc) if final_status == "deleted" else None,
+                        error=err,
+                    )
+
+        purge_jobs = self._claim_post_media_assets_for_purge(purge_limit)
+        for asset in purge_jobs:
+            attempt = int(asset.get("attempt") or 0) + 1
+            try:
+                self._delete_post_media_asset(asset)
+            except Exception as exc:
+                err = str(exc)[:1000] or "post media purge failed"
+                if attempt <= len(RETRY_BACKOFF_MINUTES):
+                    self._set_post_media_asset_result(
+                        int(asset["id"]),
+                        "purge_failed",
+                        attempt=attempt,
+                        next_run_at=_next_retry_time(attempt),
+                        error=err,
+                    )
+                else:
+                    self._set_post_media_asset_result(
+                        int(asset["id"]),
+                        "purge_failed",
+                        attempt=attempt,
+                        next_run_at=None,
+                        error=err,
+                    )
 
     def process_web_push_jobs(self, limit: int = 200):
         if not web_push_enabled():
@@ -1022,6 +1353,7 @@ def run_once(run_limit: int = 120, checkpoint_limit: int = 5000):
         eng.requeue_stale(30)
         eng.process_run_jobs(run_limit)
         eng.process_checkpoint_jobs(checkpoint_limit)
+        eng.process_post_media_assets()
         eng.process_web_push_jobs()
     finally:
         eng.close()
@@ -1170,6 +1502,7 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
             try:
                 eng.process_run_jobs(run_limit)
                 eng.process_checkpoint_jobs(checkpoint_limit)
+                eng.process_post_media_assets()
                 eng.process_web_push_jobs()
             except Exception as e:
                 try:
