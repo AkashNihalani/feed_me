@@ -489,13 +489,13 @@ class PureEngine:
             update public.post_media_assets
             set status = %s,
                 attempt = coalesce(%s, attempt),
-                next_run_at = coalesce(%s, next_run_at),
-                storage_path = coalesce(%s, storage_path),
-                mime_type = coalesce(%s, mime_type),
+                next_run_at = coalesce(%s::timestamptz, next_run_at),
+                storage_path = coalesce(%s::text, storage_path),
+                mime_type = coalesce(%s::text, mime_type),
                 byte_size = coalesce(%s, byte_size),
-                captured_at = coalesce(%s, captured_at),
-                deleted_at = coalesce(%s, deleted_at),
-                last_error = case when %s is null then null else left(%s, 1000) end,
+                captured_at = coalesce(%s::timestamptz, captured_at),
+                deleted_at = coalesce(%s::timestamptz, deleted_at),
+                last_error = case when %s::text is null then null else left(%s::text, 1000) end,
                 updated_at = now()
             where id = %s
             """,
