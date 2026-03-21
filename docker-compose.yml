@@ -5,8 +5,11 @@ services:
       dockerfile: Dockerfile
     container_name: feedme-worker
     restart: always
+    network_mode: host
     env_file:
       - ./apps/worker/.env
+    environment:
+      PYTHONUNBUFFERED: "1"
     logging:
       driver: json-file
       options:
