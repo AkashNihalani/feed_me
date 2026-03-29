@@ -1116,15 +1116,15 @@ class PureEngine:
 
     def _extract_post_intelligence_for_checkpoint(self, feeder_id: int, checkpoint: str, business_date: date | None):
         """
-        Extract semantic tags for the current D21 batch using Supabase-cached media.
-        Only processes posts from this feeder/business day whose D7 checkpoint
-        qualified as hot and do not already have intelligence tags.
+        Extract semantic tags for the current hot D7 batch using Supabase-cached media.
+        Only processes posts from this feeder/business day that qualified as hot
+        and do not already have intelligence tags.
         """
         if not pi_enabled():
             return
 
-        # Only run once the long-tail D21 scrape lands.
-        if (checkpoint or "").lower() != "d21":
+        # Pattern intelligence is produced as soon as a post qualifies hot at D7.
+        if (checkpoint or "").lower() != "d7":
             return
 
         if business_date is None:
@@ -1134,32 +1134,27 @@ class PureEngine:
                 tz = timezone.utc
             business_date = datetime.now(tz).date()
 
-        # Find D21 posts for this feeder+business day whose D7 checkpoint was hot
-        # and that do not already have intelligence yet.
+        # Find hot D7 posts for this feeder+business day that don't have intelligence yet.
         with self.conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """SELECT p.post_key,
                           p.caption,
                           lower(coalesce(p.media_type, 'image')) as media_type,
-                          d7.percentile_performance,
+                          pm.percentile_performance,
                           p.posted_at
                    FROM public.posts p
-                   JOIN public.post_metrics pm
-                     ON pm.post_key = p.post_key
-                    AND lower(pm.checkpoint) = 'd21'
-                    AND pm.business_date_ist = %s
-                   JOIN public.post_metrics d7
-                     ON d7.post_key = p.post_key
-                    AND lower(d7.checkpoint) = 'd7'
+                   JOIN public.post_metrics pm ON pm.post_key = p.post_key
                    WHERE p.feeder_id = %s
-                     AND public.fn_is_hot_percentile(d7.percentile_performance)
+                     AND lower(pm.checkpoint) = 'd7'
+                     AND pm.business_date_ist = %s
+                     AND public.fn_is_hot_percentile(pm.percentile_performance)
                      AND NOT EXISTS (
                        SELECT 1 FROM public.post_intelligence pi
                        WHERE pi.post_key = p.post_key
                      )
-                   ORDER BY d7.percentile_performance ASC, p.posted_at DESC NULLS LAST
+                   ORDER BY pm.percentile_performance ASC, p.posted_at DESC NULLS LAST
                    LIMIT 50""",
-                (business_date, feeder_id),
+                (feeder_id, business_date),
             )
             posts = cur.fetchall()
 
@@ -1191,13 +1186,13 @@ class PureEngine:
                         (post_key, json.dumps(tags), model),
                     )
                     self.conn.commit()
-                    print(f"[post-intelligence] D21 extracted tags for {post_key} ({tags.get('_visual_source', 'unknown')})")
+                    print(f"[post-intelligence] D7 extracted tags for {post_key} ({tags.get('_visual_source', 'unknown')})")
             except Exception as exc:
                 try:
                     self.conn.rollback()
                 except Exception:
                     pass
-                print(f"[post-intelligence] D21 extraction failed for {post_key}: {exc}")
+                print(f"[post-intelligence] D7 extraction failed for {post_key}: {exc}")
 
     def process_run_jobs(self, limit: int = 120):
         jobs = self._claim_run_jobs(limit)
@@ -1494,7 +1489,7 @@ class PureEngine:
                 # At D7: extract AI tags from Supabase-cached media before resolving
                 # (tags feed into pattern enrichment in _resolve_for_feeder)
                 try:
-                    if cp == "d21":
+                    if cp == "d7":
                         self._extract_post_intelligence_for_checkpoint(feeder_id, cp, business_day)
                     self._resolve_for_feeder(feeder_id, cp, business_day)
                     self._try_resolve_feed(feeder_id, cp, business_day)
