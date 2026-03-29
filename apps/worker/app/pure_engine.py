@@ -25,6 +25,7 @@ from .config import (
     RUN_JOB_CONCURRENCY,
     CHECKPOINT_SCRAPE_CHUNK_SIZE,
     CHECKPOINT_JOB_CLAIM_LIMIT,
+    STALE_JOB_MINUTES,
     CHECKPOINT_BATCH_HOUR_24,
     CHECKPOINT_BATCH_MINUTE,
     CHECKPOINT_BUCKET_MINUTES,
@@ -1772,7 +1773,7 @@ def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
     try:
         effective_checkpoint_limit = max(1, int(checkpoint_limit or CHECKPOINT_JOB_CLAIM_LIMIT))
         eng.ensure_connection("run_once start", verify=True)
-        eng.requeue_stale(30)
+        eng.requeue_stale(STALE_JOB_MINUTES)
         eng.ensure_connection("before run jobs", verify=True)
         eng.process_run_jobs(run_limit)
         eng.ensure_connection("before checkpoint jobs", verify=True)
@@ -1827,7 +1828,7 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
             if now_ts - last_watchdog >= 60:
                 try:
                     eng.ensure_connection("watchdog", verify=True)
-                    eng.requeue_stale(30)
+                    eng.requeue_stale(STALE_JOB_MINUTES)
                 except Exception as e:
                     try:
                         eng.conn.rollback()
