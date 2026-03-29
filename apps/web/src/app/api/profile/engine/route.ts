@@ -40,6 +40,8 @@ export async function GET() {
         totalFeeders: 0,
         totalPosts: 0,
         jobStats: { done: 0, failed: 0, pending: 0, running: 0 },
+        queuedRuns: [],
+        completedRuns: [],
       });
     }
 
@@ -102,11 +104,187 @@ export async function GET() {
       }
     }
 
+    // --- Unified runs: queued + completed from run_jobs + checkpoint_jobs ---
+    type UnifiedRun = {
+      id: string;
+      kind: string;
+      label: string;
+      checkpoint?: string;
+      mediaType?: string;
+      handle?: string;
+      status: string;
+      scheduledAt: string;
+      completedAt?: string;
+    };
+
+    function takeVisibleRuns(
+      runJobs: UnifiedRun[],
+      checkpointJobs: UnifiedRun[],
+      mode: 'queued' | 'completed',
+      limit = 15,
+      minRunJobs = 4,
+    ): UnifiedRun[] {
+      const runSorted = [...runJobs].sort((a, b) => {
+        const aTs = new Date((mode === 'queued' ? a.scheduledAt : (a.completedAt || a.scheduledAt))).getTime();
+        const bTs = new Date((mode === 'queued' ? b.scheduledAt : (b.completedAt || b.scheduledAt))).getTime();
+        return mode === 'queued' ? aTs - bTs : bTs - aTs;
+      });
+      const cpSorted = [...checkpointJobs].sort((a, b) => {
+        const aTs = new Date((mode === 'queued' ? a.scheduledAt : (a.completedAt || a.scheduledAt))).getTime();
+        const bTs = new Date((mode === 'queued' ? b.scheduledAt : (b.completedAt || b.scheduledAt))).getTime();
+        return mode === 'queued' ? aTs - bTs : bTs - aTs;
+      });
+
+      const visible: UnifiedRun[] = [];
+      const seen = new Set<string>();
+      const reservedRuns = Math.min(minRunJobs, runSorted.length, limit);
+
+      for (const run of runSorted.slice(0, reservedRuns)) {
+        visible.push(run);
+        seen.add(run.id);
+      }
+
+      let runIndex = reservedRuns;
+      let cpIndex = 0;
+      while (visible.length < limit && (runIndex < runSorted.length || cpIndex < cpSorted.length)) {
+        const nextRun = runIndex < runSorted.length ? runSorted[runIndex] : null;
+        const nextCp = cpIndex < cpSorted.length ? cpSorted[cpIndex] : null;
+        const nextRunTs = nextRun ? new Date(mode === 'queued' ? nextRun.scheduledAt : (nextRun.completedAt || nextRun.scheduledAt)).getTime() : null;
+        const nextCpTs = nextCp ? new Date(mode === 'queued' ? nextCp.scheduledAt : (nextCp.completedAt || nextCp.scheduledAt)).getTime() : null;
+
+        let pick: UnifiedRun | null = null;
+        if (nextRun && nextRunTs != null && (nextCpTs == null || (mode === 'queued' ? nextRunTs <= nextCpTs : nextRunTs >= nextCpTs))) {
+          pick = nextRun;
+          runIndex += 1;
+        } else if (nextCp) {
+          pick = nextCp;
+          cpIndex += 1;
+        } else {
+          break;
+        }
+
+        if (pick && !seen.has(pick.id)) {
+          visible.push(pick);
+          seen.add(pick.id);
+        }
+      }
+
+      return visible;
+    }
+
+    let queuedRuns: UnifiedRun[] = [];
+    let completedRuns: UnifiedRun[] = [];
+
+    if (feederIds.length > 0) {
+      const RUN_LIMIT = 40; // fetch extra so discovery stays visible after merge
+
+      // Map run_jobs.job_type to kind/label
+      const runKindMap: Record<string, { kind: string; label: string }> = {
+        daily: { kind: 'DISCOVERY', label: 'DAILY' },
+        poll: { kind: 'POLL', label: 'POLL' },
+        followers: { kind: 'PROFILE', label: 'FOLLOWERS' },
+        repair: { kind: 'REPAIR', label: 'REPAIR' },
+      };
+
+      // Queued run_jobs
+      const { data: queuedRunJobs } = await sb
+        .from('run_jobs')
+        .select('id,feeder_id,job_type,status,next_run_at,updated_at')
+        .in('feeder_id', feederIds)
+        .in('status', ['pending', 'retry', 'running'])
+        .order('next_run_at', { ascending: true })
+        .limit(RUN_LIMIT);
+
+      // Completed run_jobs
+      const { data: completedRunJobs } = await sb
+        .from('run_jobs')
+        .select('id,feeder_id,job_type,status,next_run_at,updated_at')
+        .in('feeder_id', feederIds)
+        .in('status', ['done', 'failed', 'skipped'])
+        .order('updated_at', { ascending: false })
+        .limit(RUN_LIMIT);
+
+      // Get all post_keys for this user's feeders to scope checkpoint queries
+      const { data: postRows } = await sb
+        .from('posts')
+        .select('post_key,feeder_id,media_type')
+        .in('feeder_id', feederIds);
+      const postMap = new Map((postRows || []).map((p: any) => [p.post_key, p]));
+      const postKeys = Array.from(postMap.keys());
+
+      let queuedCpJobs: any[] = [];
+      let completedCpJobs: any[] = [];
+
+      if (postKeys.length > 0) {
+        const { data: qCp } = await sb
+          .from('checkpoint_jobs')
+          .select('id,post_key,checkpoint,status,next_run_at,updated_at')
+          .in('post_key', postKeys)
+          .in('status', ['pending', 'retry', 'running'])
+          .order('next_run_at', { ascending: true })
+          .limit(RUN_LIMIT);
+        queuedCpJobs = qCp || [];
+
+        const { data: cCp } = await sb
+          .from('checkpoint_jobs')
+          .select('id,post_key,checkpoint,status,next_run_at,updated_at')
+          .in('post_key', postKeys)
+          .in('status', ['done', 'failed', 'skipped'])
+          .order('updated_at', { ascending: false })
+          .limit(RUN_LIMIT);
+        completedCpJobs = cCp || [];
+      }
+
+      // Normalize run_jobs
+      const normalizeRunJob = (j: any): UnifiedRun => {
+        const mapped = runKindMap[j.job_type] || { kind: 'DISCOVERY', label: j.job_type?.toUpperCase() || '?' };
+        return {
+          id: `run-${j.id}`,
+          kind: mapped.kind,
+          label: mapped.label,
+          handle: feederMap.get(j.feeder_id) || undefined,
+          status: j.status,
+          scheduledAt: j.next_run_at || j.updated_at,
+          completedAt: j.updated_at,
+        };
+      };
+
+      // Normalize checkpoint_jobs
+      const normalizeCpJob = (j: any): UnifiedRun => {
+        const post = postMap.get(j.post_key);
+        return {
+          id: `cp-${j.id}`,
+          kind: 'CHECKPOINT',
+          label: (j.checkpoint || '').toUpperCase(),
+          checkpoint: (j.checkpoint || '').toUpperCase(),
+          mediaType: post?.media_type || undefined,
+          handle: post ? (feederMap.get(post.feeder_id) || undefined) : undefined,
+          status: j.status,
+          scheduledAt: j.next_run_at || j.updated_at,
+          completedAt: j.updated_at,
+        };
+      };
+
+      // Merge & sort
+      queuedRuns = takeVisibleRuns(
+        (queuedRunJobs || []).map(normalizeRunJob),
+        queuedCpJobs.map(normalizeCpJob),
+        'queued',
+      );
+      completedRuns = takeVisibleRuns(
+        (completedRunJobs || []).map(normalizeRunJob),
+        completedCpJobs.map(normalizeCpJob),
+        'completed',
+      );
+    }
+
     return NextResponse.json({
       recentJobs,
       totalFeeders: activeFeeders.length,
       totalPosts,
       jobStats,
+      queuedRuns,
+      completedRuns,
     });
   } catch (error: any) {
     return NextResponse.json(

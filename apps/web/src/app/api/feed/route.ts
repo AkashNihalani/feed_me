@@ -18,7 +18,6 @@ type FeederRow = {
   status: string;
   profile_pic_url: string | null;
   follower_count: number | null;
-  verification_status: 'pending' | 'verified' | 'failed' | null;
 };
 
 type PostRow = {
@@ -207,7 +206,7 @@ async function getFeedBundle(userId: string) {
 
   const { data: feederData, error: feederError } = await sb
     .from('feeders')
-    .select('id,feed_id,handle,role,status,profile_pic_url,follower_count,verification_status')
+    .select('id,feed_id,handle,role,status,profile_pic_url,follower_count')
     .in('feed_id', feedIds)
     .eq('status', 'active');
   if (feederError) throw feederError;
@@ -299,7 +298,6 @@ async function getFeedBundle(userId: string) {
         isAnchor: feeder.role === 'anchor',
         profilePicUrl: feeder.profile_pic_url && !feeder.profile_pic_url.includes('unavatar.io/instagram') ? feeder.profile_pic_url : null,
         followerCount: feeder.follower_count,
-        verificationStatus: feeder.verification_status || 'pending',
         metrics: {
           likes: toMetricString(stats.likes),
           comments: toMetricString(stats.comments),
@@ -420,13 +418,6 @@ export async function POST(request: NextRequest) {
       if (probe.ok) {
         feederRow.profile_pic_url = probe.profilePicUrl;
         feederRow.follower_count = probe.followerCount;
-        feederRow.verification_status = 'verified';
-        feederRow.profile_pic_fetched_at = new Date().toISOString();
-        feederRow.verified_at = new Date().toISOString();
-        feederRow.verification_error = null;
-      } else {
-        feederRow.verification_status = 'pending';
-        feederRow.verification_error = probe.error || null;
       }
 
       const { data: upsertedFeeder, error: upsertErr } = await sb
@@ -438,14 +429,18 @@ export async function POST(request: NextRequest) {
       const feederId = Number(upsertedFeeder?.[0]?.id || 0);
       if (feederId > 0) {
         const nowIso = new Date().toISOString();
-        const { data: enqueueCount, error: enqueueErr } = await sb.rpc('enqueue_daily_job_for_feeder', {
+        const { error: bootstrapErr } = await sb.rpc('bootstrap_feeder_jobs', {
           p_feeder_id: feederId,
           p_run_at: nowIso,
         });
 
-        // Some environments may not yet have the helper function applied, or may still
-        // have a Graph-era version of the helper. Fall back to a direct daily queue insert.
-        if (enqueueErr || Number(enqueueCount || 0) === 0) {
+        // Keep a safe fallback for partially migrated environments.
+        if (bootstrapErr) {
+          const { data: enqueueCount, error: enqueueErr } = await sb.rpc('enqueue_daily_job_for_feeder', {
+            p_feeder_id: feederId,
+            p_run_at: nowIso,
+          });
+
           const { data: openJob, error: openJobErr } = await sb
             .from('run_jobs')
             .select('id')
@@ -465,6 +460,13 @@ export async function POST(request: NextRequest) {
               last_error: null,
             });
             if (runJobErr) throw runJobErr;
+          }
+
+          if (!enqueueErr && Number(enqueueCount || 0) > 0) {
+            await sb.rpc('enqueue_weekly_follower_job_for_feeder', {
+              p_feeder_id: feederId,
+              p_run_at: nowIso,
+            });
           }
         }
       }

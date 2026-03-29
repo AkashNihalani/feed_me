@@ -5,7 +5,11 @@ from .pure_engine import PureEngine, run_once, run_worker
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", choices=["enqueue_daily", "enqueue_weekly", "once", "worker", "backfill_d1_media"], required=True)
+    p.add_argument(
+        "--mode",
+        choices=["enqueue_daily", "enqueue_poll", "enqueue_weekly_followers", "once", "worker", "backfill_d1_media"],
+        required=True,
+    )
     p.add_argument("--limit", type=int, default=300)
     p.add_argument("--days", type=int, default=14)
     p.add_argument("--batch-size", type=int, default=50)
@@ -17,10 +21,16 @@ def main():
             print(f"enqueued_daily={eng.enqueue_daily()}")
         finally:
             eng.close()
-    elif args.mode == "enqueue_weekly":
+    elif args.mode == "enqueue_poll":
         eng = PureEngine()
         try:
-            print(f"enqueued_weekly={eng.enqueue_weekly()}")
+            print(f"enqueued_poll={eng.enqueue_poll()}")
+        finally:
+            eng.close()
+    elif args.mode == "enqueue_weekly_followers":
+        eng = PureEngine()
+        try:
+            print(f"enqueued_weekly_followers={eng.enqueue_weekly_followers()}")
         finally:
             eng.close()
     elif args.mode == "once":
