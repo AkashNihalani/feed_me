@@ -222,6 +222,21 @@ def _extract_metrics(item: dict) -> tuple[int | None, int | None, int | None]:
     return views, likes, comments
 
 
+def _is_reel_media_type(media_type: Any) -> bool:
+    return str(media_type or "").strip().lower() == "reel"
+
+
+def _checkpoint_scrape_url(job: dict) -> str:
+    post_url = str(job.get("post_url") or "").strip()
+    provider_post_id = str(job.get("provider_post_id") or "").strip()
+    shortcode = shortcode_from_media_id(provider_post_id) or shortcode_from_url(post_url)
+    if not shortcode:
+        return canonical_post_url(shortcode, post_url)
+    if _is_reel_media_type(job.get("media_type")):
+        return f"https://www.instagram.com/reel/{shortcode}/"
+    return canonical_post_url(shortcode, post_url)
+
+
 def _checkpoint_item_error(item: dict) -> str | None:
     code = str(item.get("errorCode") or item.get("error_code") or "").strip()
     message = str(item.get("error") or "").strip()
@@ -1350,16 +1365,15 @@ class PureEngine:
 
         jobs_by_post_key: dict[str, list[dict]] = defaultdict(list)
         urls_by_post_key: dict[str, str] = {}
+        mode_by_post_key: dict[str, str] = {}
         for job in jobs:
             post_key = str(job.get("post_key") or "").strip().lower()
-            post_url = str(job.get("post_url") or "").strip()
-            provider_post_id = str(job.get("provider_post_id") or "").strip()
-            shortcode = shortcode_from_media_id(provider_post_id) or shortcode_from_url(post_url)
-            resolved_post_url = canonical_post_url(shortcode, post_url)
+            resolved_post_url = _checkpoint_scrape_url(job)
             if not post_key or not resolved_post_url:
                 continue
             jobs_by_post_key[post_key].append(job)
             urls_by_post_key.setdefault(post_key, resolved_post_url)
+            mode_by_post_key.setdefault(post_key, "reel" if _is_reel_media_type(job.get("media_type")) else "post")
 
         ordered_post_keys = [post_key for post_key in jobs_by_post_key.keys() if urls_by_post_key.get(post_key)]
         if not ordered_post_keys:
@@ -1367,78 +1381,49 @@ class PureEngine:
 
         try:
             touched: set[tuple[int, str, date]] = set()
-            for post_key_chunk in _chunk_list(ordered_post_keys, CHECKPOINT_SCRAPE_CHUNK_SIZE):
-                chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
-                items = run_actor_post_urls("", chunk_urls)
+            ordered_modes = ["post", "reel"]
+            for mode in ordered_modes:
+                scoped_post_keys = [post_key for post_key in ordered_post_keys if mode_by_post_key.get(post_key) == mode]
+                if not scoped_post_keys:
+                    continue
+                for post_key_chunk in _chunk_list(scoped_post_keys, CHECKPOINT_SCRAPE_CHUNK_SIZE):
+                    chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
+                    items = run_actor_post_urls("", chunk_urls, mode=mode)
 
-                # Match by shortcode/post_key so /p vs /reel URL variants do not trigger false retries.
-                by_short: dict[str, dict] = {}
-                by_post_key: dict[str, dict] = {}
-                for item in items:
-                    source_url = str(item.get("url") or "")
-                    provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
-                    shortcode = (
-                        str(item.get("shortCode") or item.get("shortcode") or "").strip()
-                        or shortcode_from_media_id(provider_post_id)
-                        or shortcode_from_url(source_url)
-                    )
-                    if shortcode:
-                        by_short[shortcode.lower()] = item
-                    k = _post_key_from_url(canonical_post_url(shortcode, source_url) or source_url)
-                    if k:
-                        by_post_key[k] = item
+                    # Match by shortcode/post_key so /p vs /reel URL variants do not trigger false retries.
+                    by_short: dict[str, dict] = {}
+                    by_post_key: dict[str, dict] = {}
+                    for item in items:
+                        source_url = str(item.get("url") or "")
+                        provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
+                        shortcode = (
+                            str(item.get("shortCode") or item.get("shortcode") or "").strip()
+                            or shortcode_from_media_id(provider_post_id)
+                            or shortcode_from_url(source_url)
+                        )
+                        if shortcode:
+                            by_short[shortcode.lower()] = item
+                        k = _post_key_from_url(canonical_post_url(shortcode, source_url) or source_url)
+                        if k:
+                            by_post_key[k] = item
 
-                for chunk_post_key in post_key_chunk:
-                    for j in jobs_by_post_key.get(chunk_post_key, []):
-                        jid = int(j["id"])
-                        att = int(j.get("attempt") or 0)
-                        checkpoint = str(j.get("checkpoint") or "")
-                        cp = checkpoint.lower()
-                        job_posted_at = _to_dt(j.get("posted_at"))
-                        expected_due_at = _checkpoint_due_at_for_post(job_posted_at, cp)
-                        window_end = _checkpoint_window_end_for_post(job_posted_at, cp)
+                    for chunk_post_key in post_key_chunk:
+                        for j in jobs_by_post_key.get(chunk_post_key, []):
+                            jid = int(j["id"])
+                            att = int(j.get("attempt") or 0)
+                            checkpoint = str(j.get("checkpoint") or "")
+                            cp = checkpoint.lower()
+                            job_posted_at = _to_dt(j.get("posted_at"))
+                            expected_due_at = _checkpoint_due_at_for_post(job_posted_at, cp)
+                            window_end = _checkpoint_window_end_for_post(job_posted_at, cp)
 
-                        job_post_key = str(j.get("post_key") or "").strip().lower()
-                        job_post_url = str(j.get("post_url") or "")
-                        job_provider_post_id = str(j.get("provider_post_id") or "").strip()
-                        job_short = (shortcode_from_media_id(job_provider_post_id) or shortcode_from_url(job_post_url)).lower()
+                            job_post_key = str(j.get("post_key") or "").strip().lower()
+                            job_post_url = str(j.get("post_url") or "")
+                            job_provider_post_id = str(j.get("provider_post_id") or "").strip()
+                            job_short = (shortcode_from_media_id(job_provider_post_id) or shortcode_from_url(job_post_url)).lower()
 
-                        item = by_post_key.get(job_post_key) or (by_short.get(job_short) if job_short else None)
-                        if not item:
-                            try:
-                                self.conn.rollback()
-                            except Exception:
-                                pass
-                            self._set_checkpoint_result(
-                                jid,
-                                "skipped",
-                                att,
-                                None,
-                                _hard_skip_error("Post missing in checkpoint batch", "checkpoint hard failure"),
-                            )
-                            continue
-
-                        provider_error = _checkpoint_item_error(item)
-                        if provider_error:
-                            try:
-                                self.conn.rollback()
-                            except Exception:
-                                pass
-                            self._set_checkpoint_result(
-                                jid,
-                                "skipped",
-                                att,
-                                None,
-                                _hard_skip_error(provider_error, "checkpoint hard failure"),
-                            )
-                            continue
-
-                        feeder_id = int(j.get("feeder_id") or 0)
-                        if cp in ("d1", "d3", "d7", "d21"):
-                            business_day = _checkpoint_business_day_for_post(job_posted_at, cp)
-                            if business_day is None:
-                                business_day = _checkpoint_business_day(j.get("next_run_at"))
-                            if window_end is not None and datetime.now(timezone.utc) > window_end:
+                            item = by_post_key.get(job_post_key) or (by_short.get(job_short) if job_short else None)
+                            if not item:
                                 try:
                                     self.conn.rollback()
                                 except Exception:
@@ -1448,42 +1433,76 @@ class PureEngine:
                                     "skipped",
                                     att,
                                     None,
-                                    _hard_skip_error("checkpoint missed exact-age window", "checkpoint hard failure"),
+                                    _hard_skip_error("Post missing in checkpoint batch", "checkpoint hard failure"),
                                 )
                                 continue
-                        else:
-                            business_day = _business_date_from_job(j)
-                            if business_day is None:
-                                business_day = _checkpoint_business_day(j.get("next_run_at"))
 
-                        views, likes, comments = _extract_metrics(item)
-                        if views is None and likes is None and comments is None:
-                            try:
-                                self.conn.rollback()
-                            except Exception:
-                                pass
-                            na = att + 1
-                            err = "Checkpoint scrape returned no usable metrics"
-                            if na <= len(RETRY_BACKOFF_MINUTES):
-                                self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                            provider_error = _checkpoint_item_error(item)
+                            if provider_error:
+                                try:
+                                    self.conn.rollback()
+                                except Exception:
+                                    pass
+                                self._set_checkpoint_result(
+                                    jid,
+                                    "skipped",
+                                    att,
+                                    None,
+                                    _hard_skip_error(provider_error, "checkpoint hard failure"),
+                                )
+                                continue
+
+                            feeder_id = int(j.get("feeder_id") or 0)
+                            if cp in ("d1", "d3", "d7", "d21"):
+                                business_day = _checkpoint_business_day_for_post(job_posted_at, cp)
+                                if business_day is None:
+                                    business_day = _checkpoint_business_day(j.get("next_run_at"))
+                                if window_end is not None and datetime.now(timezone.utc) > window_end:
+                                    try:
+                                        self.conn.rollback()
+                                    except Exception:
+                                        pass
+                                    self._set_checkpoint_result(
+                                        jid,
+                                        "skipped",
+                                        att,
+                                        None,
+                                        _hard_skip_error("checkpoint missed exact-age window", "checkpoint hard failure"),
+                                    )
+                                    continue
                             else:
-                                self._set_checkpoint_result(jid, "failed", na, None, err)
-                            continue
-                        thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
-                        self._refresh_post_media(
-                            str(j["post_key"]),
-                            thumbnail_url,
-                            video_url,
-                            carousel_urls,
-                        )
-                        # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
-                        # update the same row while preserving the checkpoint business day stamp.
-                        self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, business_day)
-                        self.conn.commit()
-                        self._set_checkpoint_result(jid, "done", att, None, None)
+                                business_day = _business_date_from_job(j)
+                                if business_day is None:
+                                    business_day = _checkpoint_business_day(j.get("next_run_at"))
 
-                        if feeder_id and cp in ("d1", "d3", "d7", "d21"):
-                            touched.add((feeder_id, cp, business_day))
+                            views, likes, comments = _extract_metrics(item)
+                            if views is None and likes is None and comments is None:
+                                try:
+                                    self.conn.rollback()
+                                except Exception:
+                                    pass
+                                na = att + 1
+                                err = "Checkpoint scrape returned no usable metrics"
+                                if na <= len(RETRY_BACKOFF_MINUTES):
+                                    self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                                else:
+                                    self._set_checkpoint_result(jid, "failed", na, None, err)
+                                continue
+                            thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                            self._refresh_post_media(
+                                str(j["post_key"]),
+                                thumbnail_url,
+                                video_url,
+                                carousel_urls,
+                            )
+                            # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
+                            # update the same row while preserving the checkpoint business day stamp.
+                            self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, business_day)
+                            self.conn.commit()
+                            self._set_checkpoint_result(jid, "done", att, None, None)
+
+                            if feeder_id and cp in ("d1", "d3", "d7", "d21"):
+                                touched.add((feeder_id, cp, business_day))
 
             # Resolver chain for checkpoint jobs once batch writes are done
             for feeder_id, cp, business_day in sorted(touched, key=lambda item: (item[2], item[0], item[1])):

@@ -17,6 +17,7 @@ from .config import (
     BRIGHTDATA_POSTED_AT_FALLBACK_HOUR_24,
     BRIGHTDATA_PROFILES_DATASET_ID,
     BRIGHTDATA_POSTS_DATASET_ID,
+    BRIGHTDATA_REELS_DATASET_ID,
     BRIGHTDATA_POLL_INTERVAL_SECONDS,
     BRIGHTDATA_SNAPSHOT_TIMEOUT_SECONDS,
 )
@@ -165,6 +166,23 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _normalize_reel_item(item: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_item(item)
+    video_play_count = (
+        item.get("video_play_count")
+        or item.get("videoPlayCount")
+        or item.get("plays")
+    )
+    if video_play_count is not None:
+        # Product contract: for reels we treat play count as the canonical
+        # "views" metric so the stored value matches the visible Instagram reel counter.
+        normalized["videoViewCount"] = video_play_count
+        normalized["videoPlayCount"] = video_play_count
+    elif item.get("views") is not None:
+        normalized["videoViewCount"] = item.get("views")
+    return normalized
+
+
 def _flatten_result(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         rows: list[dict[str, Any]] = []
@@ -279,3 +297,12 @@ def run_post_urls(post_urls: list[str]) -> list[dict[str, Any]]:
 
     items = _scrape_dataset(BRIGHTDATA_POSTS_DATASET_ID, [{"url": url} for url in urls])
     return [_normalize_item(item) for item in items]
+
+
+def run_reel_post_urls(post_urls: list[str]) -> list[dict[str, Any]]:
+    urls = [u.strip() for u in (post_urls or []) if (u or "").strip()]
+    if not urls:
+        return []
+
+    items = _scrape_dataset(BRIGHTDATA_REELS_DATASET_ID, [{"url": url} for url in urls])
+    return [_normalize_reel_item(item) for item in items]
