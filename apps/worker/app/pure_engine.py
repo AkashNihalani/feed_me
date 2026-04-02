@@ -374,13 +374,6 @@ def _checkpoint_due_at_for_post(posted_at: datetime | None, checkpoint: str) -> 
     return posted_at + timedelta(days=days_after)
 
 
-def _checkpoint_window_end_for_post(posted_at: datetime | None, checkpoint: str) -> datetime | None:
-    due_at = _checkpoint_due_at_for_post(posted_at, checkpoint)
-    if due_at is None:
-        return None
-    return due_at + timedelta(minutes=max(1, int(CHECKPOINT_BUCKET_MINUTES)))
-
-
 def _checkpoint_business_day_for_post(posted_at: datetime | None, checkpoint: str) -> date | None:
     due_at = _checkpoint_due_at_for_post(posted_at, checkpoint)
     if due_at is None:
@@ -1242,7 +1235,7 @@ class PureEngine:
                 if not done:
                     if time.time() - last_checkpoint_yield >= 5:
                         try:
-                            self.process_checkpoint_jobs(max(1, min(2, CHECKPOINT_JOB_CLAIM_LIMIT)))
+                            self.process_checkpoint_jobs(max(1, min(CHECKPOINT_SCRAPE_CHUNK_SIZE, CHECKPOINT_JOB_CLAIM_LIMIT)))
                         except Exception:
                             try:
                                 self.conn.rollback()
@@ -1350,7 +1343,7 @@ class PureEngine:
 
                 if time.time() - last_checkpoint_yield >= 5:
                     try:
-                        self.process_checkpoint_jobs(max(1, min(2, CHECKPOINT_JOB_CLAIM_LIMIT)))
+                        self.process_checkpoint_jobs(max(1, min(CHECKPOINT_SCRAPE_CHUNK_SIZE, CHECKPOINT_JOB_CLAIM_LIMIT)))
                     except Exception:
                         try:
                             self.conn.rollback()
@@ -1414,9 +1407,6 @@ class PureEngine:
                             checkpoint = str(j.get("checkpoint") or "")
                             cp = checkpoint.lower()
                             job_posted_at = _to_dt(j.get("posted_at"))
-                            expected_due_at = _checkpoint_due_at_for_post(job_posted_at, cp)
-                            window_end = _checkpoint_window_end_for_post(job_posted_at, cp)
-
                             job_post_key = str(j.get("post_key") or "").strip().lower()
                             job_post_url = str(j.get("post_url") or "")
                             job_provider_post_id = str(j.get("provider_post_id") or "").strip()
@@ -1457,19 +1447,6 @@ class PureEngine:
                                 business_day = _checkpoint_business_day_for_post(job_posted_at, cp)
                                 if business_day is None:
                                     business_day = _checkpoint_business_day(j.get("next_run_at"))
-                                if window_end is not None and datetime.now(timezone.utc) > window_end:
-                                    try:
-                                        self.conn.rollback()
-                                    except Exception:
-                                        pass
-                                    self._set_checkpoint_result(
-                                        jid,
-                                        "skipped",
-                                        att,
-                                        None,
-                                        _hard_skip_error("checkpoint missed exact-age window", "checkpoint hard failure"),
-                                    )
-                                    continue
                             else:
                                 business_day = _business_date_from_job(j)
                                 if business_day is None:

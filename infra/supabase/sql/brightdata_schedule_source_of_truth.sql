@@ -21,12 +21,12 @@
 --   D1 / D3 / D7 are scheduled from exact post age
 --   D21 is only enqueued after a post proves hot at D7
 --   next_run_at stays at the exact due timestamp
---   the worker may collect any jobs that become due within the next
---   60 minutes, which keeps checkpoint fetches batchable while staying
---   fair across timezones and strict about checkpoint age
+--   fresh checkpoint rows are claimed in hourly batches:
+--     during 18:00-18:59 the worker drains jobs due before 18:00,
+--     including the 17:00-17:59 bucket plus any older backlog
+--   retries may re-enter within the same hour once their retry timestamp is due
 --   official checkpoint rows are ignored if they land before the true age floor
---   (24h / 72h / 168h / 504h) or after the one-hour post-due buffer,
---   even if a legacy writer attempts them
+--   (24h / 72h / 168h / 504h), even if a legacy writer attempts them
 --   overdue checkpoints keep their original due timestamp instead of being
 --   restamped to "now", so Fire day assignment always follows true checkpoint day
 --
@@ -202,9 +202,6 @@ begin
   if v_due_at is null then
     v_status := 'skipped';
     v_error := 'D21 skipped - missing posted_at';
-  elsif (v_due_at + interval '60 minutes') <= now() then
-    v_status := 'skipped';
-    v_error := 'D21 skipped - eligibility window already passed';
   else
     v_status := 'pending';
     v_error := null;
