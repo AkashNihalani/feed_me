@@ -305,6 +305,49 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   };
 }
 
+function hasUsableRawThumbnailUrl(value: unknown): boolean {
+  const url = nullableString(value);
+  if (!url) return false;
+  return !/\.mp4(?:$|[?#])/i.test(url);
+}
+
+async function filterRowsForVisibleD21Thumbnails(
+  sb: ReturnType<typeof createClient>,
+  rows: AlertSurfaceRow[],
+): Promise<AlertSurfaceRow[]> {
+  const d21Rows = rows.filter((row) => normalizeCheckpoint(row.checkpoint) === 'D21');
+  if (d21Rows.length === 0) return rows;
+
+  const postKeysNeedingCachedImage = Array.from(
+    new Set(
+      d21Rows
+        .filter((row) => !hasUsableRawThumbnailUrl(row.thumbnail_url))
+        .map((row) => row.post_key?.trim())
+        .filter(Boolean),
+    ),
+  ) as string[];
+
+  if (postKeysNeedingCachedImage.length === 0) return rows;
+
+  const { data: assetRows } = await sb
+    .from('post_media_assets')
+    .select('post_key,storage_path')
+    .in('post_key', postKeysNeedingCachedImage)
+    .in('asset_role', ['thumbnail', 'display', 'carousel_0'])
+    .eq('status', 'active')
+    .not('storage_path', 'is', null)
+    .limit(Math.max(50, postKeysNeedingCachedImage.length * 3));
+
+  const cachedImagePostKeys = new Set(
+    (assetRows || []).map((row: { post_key?: string | null; storage_path?: string | null }) =>
+      typeof row.post_key === 'string' && row.post_key.trim() && typeof row.storage_path === 'string' && row.storage_path.trim()
+        ? row.post_key.trim()
+        : '').filter(Boolean),
+  );
+
+  return rows.filter((row) => normalizeCheckpoint(row.checkpoint) !== 'D21' || hasUsableRawThumbnailUrl(row.thumbnail_url) || cachedImagePostKeys.has((row.post_key || '').trim()));
+}
+
 export async function GET(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -539,6 +582,7 @@ export async function GET(request: NextRequest) {
     }
 
     let rows = (data ?? []) as Record<string, unknown>[];
+    rows = await filterRowsForVisibleD21Thumbnails(supabase, rows as AlertSurfaceRow[]) as Record<string, unknown>[];
 
     if (collapseCheckpointDuplicates) {
       rows = collapseRowsForAllCheckpoints(rows);
@@ -573,6 +617,7 @@ export async function GET(request: NextRequest) {
   }
 
   let rows = (data ?? []) as Record<string, unknown>[];
+  rows = await filterRowsForVisibleD21Thumbnails(supabase, rows as AlertSurfaceRow[]) as Record<string, unknown>[];
   if (collapseCheckpointDuplicates) {
     rows = collapseRowsForAllCheckpoints(rows);
   }

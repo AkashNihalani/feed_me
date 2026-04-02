@@ -115,6 +115,22 @@ async function fetchRemoteAsset(raw: string): Promise<Response> {
   }
 }
 
+async function fetchRemoteAssetForRole(raw: string, assetRole: string): Promise<Response> {
+  const response = await fetchRemoteAsset(raw);
+  if (!response.ok) {
+    return response;
+  }
+
+  if ((assetRole || 'thumbnail').trim().toLowerCase() === 'thumbnail') {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().startsWith('image/')) {
+      return new Response('thumbnail source not image', { status: 502 });
+    }
+  }
+
+  return response;
+}
+
 export async function GET(req: NextRequest) {
   const postKey = (req.nextUrl.searchParams.get('postKey') || '').trim();
   const assetRole = (req.nextUrl.searchParams.get('role') || 'thumbnail').trim().toLowerCase();
@@ -135,5 +151,5 @@ export async function GET(req: NextRequest) {
     return new Response('missing url', { status: 400 });
   }
 
-  return fetchRemoteAsset(raw);
+  return fetchRemoteAssetForRole(raw, assetRole || 'thumbnail');
 }
