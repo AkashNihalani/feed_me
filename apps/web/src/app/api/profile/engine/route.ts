@@ -172,11 +172,26 @@ export async function GET() {
       return visible;
     }
 
+    function queuedVisibilityFloor(now = new Date()): number {
+      const floor = new Date(now);
+      floor.setMinutes(0, 0, 0);
+      floor.setHours(floor.getHours() - 1);
+      return floor.getTime();
+    }
+
+    function isDisplayableQueuedRun(run: UnifiedRun, floorTs: number): boolean {
+      if (run.status === 'running') return true;
+      const scheduledTs = new Date(run.scheduledAt).getTime();
+      if (!Number.isFinite(scheduledTs)) return true;
+      return scheduledTs >= floorTs;
+    }
+
     let queuedRuns: UnifiedRun[] = [];
     let completedRuns: UnifiedRun[] = [];
 
     if (feederIds.length > 0) {
       const RUN_LIMIT = 40; // fetch extra so discovery stays visible after merge
+      const queueFloorTs = queuedVisibilityFloor();
 
       // Map run_jobs.job_type to kind/label
       const runKindMap: Record<string, { kind: string; label: string }> = {
@@ -267,8 +282,8 @@ export async function GET() {
 
       // Merge & sort
       queuedRuns = takeVisibleRuns(
-        (queuedRunJobs || []).map(normalizeRunJob),
-        queuedCpJobs.map(normalizeCpJob),
+        (queuedRunJobs || []).map(normalizeRunJob).filter((run) => isDisplayableQueuedRun(run, queueFloorTs)),
+        queuedCpJobs.map(normalizeCpJob).filter((run) => isDisplayableQueuedRun(run, queueFloorTs)),
         'queued',
       );
       completedRuns = takeVisibleRuns(

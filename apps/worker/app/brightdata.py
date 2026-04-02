@@ -218,6 +218,42 @@ def _flatten_result(payload: Any) -> list[dict[str, Any]]:
     return [payload]
 
 
+def _parse_json_payload(raw: str) -> Any:
+    text = (raw or "").strip()
+    if not text:
+        raise json.JSONDecodeError("Expecting value", raw or "", 0)
+
+    decoder = json.JSONDecoder()
+    values: list[Any] = []
+    index = 0
+    length = len(text)
+
+    while index < length:
+        while index < length and text[index].isspace():
+            index += 1
+        if index >= length:
+            break
+        value, index = decoder.raw_decode(text, index)
+        values.append(value)
+
+    if not values:
+        raise json.JSONDecodeError("Expecting value", text, 0)
+    if len(values) == 1:
+        return values[0]
+    return values
+
+
+def _load_json_payload(resp: requests.Response) -> Any:
+    try:
+        return resp.json()
+    except ValueError as exc:
+        try:
+            return _parse_json_payload(resp.text or "")
+        except json.JSONDecodeError as parse_exc:
+            message = f"Bright Data JSON parse error: {parse_exc}"
+            raise RuntimeError(message) from exc
+
+
 def _download_snapshot(snapshot_id: str) -> list[dict[str, Any]]:
     resp = requests.get(
         _api_url(f"/datasets/v3/snapshot/{snapshot_id}"),
@@ -228,7 +264,7 @@ def _download_snapshot(snapshot_id: str) -> list[dict[str, Any]]:
     if resp.status_code == 202:
         return []
     resp.raise_for_status()
-    return _flatten_result(resp.json())
+    return _flatten_result(_load_json_payload(resp))
 
 
 def _snapshot_ready(snapshot_id: str) -> bool:
@@ -238,7 +274,9 @@ def _snapshot_ready(snapshot_id: str) -> bool:
         timeout=30,
     )
     resp.raise_for_status()
-    payload = resp.json()
+    payload = _load_json_payload(resp)
+    if isinstance(payload, list):
+        payload = next((item for item in payload if isinstance(item, dict) and item.get("status")), {}) or {}
     status = str(payload.get("status") or "").strip().lower()
     if status in {"failed", "error", "aborted", "canceled"}:
         raise RuntimeError(f"Bright Data snapshot failed: {status}")
@@ -258,7 +296,7 @@ def _scrape_dataset(dataset_id: str, inputs: list[dict[str, Any]]) -> list[dict[
         timeout=120,
     )
     resp.raise_for_status()
-    result = resp.json()
+    result = _load_json_payload(resp)
     if resp.status_code == 200:
         return _flatten_result(result)
 

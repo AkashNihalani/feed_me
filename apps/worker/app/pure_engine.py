@@ -62,6 +62,10 @@ _TRANSIENT_FAILURE_TOKENS = (
     'gateway timeout',
     'internal server error',
     'connection reset',
+    'bright data json parse error',
+    'json decode',
+    'extra data',
+    'expecting value',
 )
 _HARD_FAILURE_TOKENS = (
     'not found',
