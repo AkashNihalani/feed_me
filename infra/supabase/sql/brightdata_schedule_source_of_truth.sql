@@ -21,6 +21,7 @@
 --   fresh posts bootstrap at D1 only, then advance D1 -> D3 -> D7
 --   D21 is only enqueued after a post proves hot at D7
 --   first-seen posts older than 7 days are not bootstrapped into checkpoints
+--   posts older than a feeder's tracking start are treated as legacy and ignored
 --   next_run_at stays at the exact due timestamp
 --   fresh checkpoint rows are claimed in hourly batches:
 --     during 18:00-18:59 the worker drains jobs due before 18:00,
@@ -93,8 +94,19 @@ as $$
 declare
   v_rows int := 0;
   v_due_at timestamptz;
+  v_tracking_started_at timestamptz;
 begin
   if p_posted_at is null then
+    return 0;
+  end if;
+
+  select fd.created_at
+  into v_tracking_started_at
+  from public.posts p
+  join public.feeders fd on fd.id = p.feeder_id
+  where p.post_key = p_post_key;
+
+  if v_tracking_started_at is not null and p_posted_at < v_tracking_started_at then
     return 0;
   end if;
 

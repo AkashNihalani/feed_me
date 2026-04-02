@@ -16,6 +16,7 @@ type FeederRow = {
   handle: string;
   role: 'anchor' | 'standard';
   status: string;
+  created_at: string;
   profile_pic_url: string | null;
   follower_count: number | null;
 };
@@ -28,6 +29,7 @@ type PostRow = {
 
 type MetricRow = {
   post_key: string;
+  checkpoint: string;
   likes: number | null;
   comments: number | null;
   views: number | null;
@@ -39,6 +41,7 @@ type TickerRow = {
   handle: string;
   likesDelta: number;
   commentsDelta: number;
+  viewsDelta: number;
   postsDelta: number;
 };
 
@@ -80,6 +83,21 @@ function isBadInstagramImageUrl(url: string | null | undefined) {
 
 function toMetricString(value: number) {
   return String(Math.max(0, Math.floor(value)));
+}
+
+function parseIsoTime(value: string | null | undefined) {
+  if (!value) return NaN;
+  return Date.parse(value);
+}
+
+function isTrackedPost(post: PostRow, feeder: FeederRow, checkpointsByPost: Map<string, Set<string>>) {
+  const checkpoints = checkpointsByPost.get(post.post_key);
+  if (!checkpoints?.has('d1')) return false;
+
+  const postedAt = parseIsoTime(post.posted_at);
+  const trackingStartedAt = parseIsoTime(feeder.created_at);
+  if (!Number.isFinite(postedAt) || !Number.isFinite(trackingStartedAt)) return false;
+  return postedAt >= trackingStartedAt;
 }
 
 async function fetchInstagramWebProfile(handle: string): Promise<InstagramProfileProbe | null> {
@@ -136,7 +154,7 @@ async function probeInstagramHandleQuick(handle: string): Promise<InstagramProfi
 
 
 
-function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: MetricRow[]): TickerRow[] {
+function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: MetricRow[], trackedPostKeys: Set<string>): TickerRow[] {
   const feederById = new Map<number, FeederRow>(feeders.map((feeder) => [feeder.id, feeder]));
   const postByKey = new Map<string, PostRow>(posts.map((post) => [post.post_key, post]));
   const metricsByPost = new Map<string, MetricRow[]>();
@@ -152,6 +170,7 @@ function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: Metri
   const tickerByHandle = new Map<string, TickerRow>();
 
   for (const [postKey, postMetrics] of metricsByPost.entries()) {
+    if (!trackedPostKeys.has(postKey)) continue;
     const post = postByKey.get(postKey);
     const feeder = post ? feederById.get(post.feeder_id) : null;
     if (!post || !feeder) continue;
@@ -165,11 +184,13 @@ function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: Metri
       handle: `@${feeder.handle}`,
       likesDelta: 0,
       commentsDelta: 0,
+      viewsDelta: 0,
       postsDelta: 0,
     };
 
     row.likesDelta += (latest?.likes || 0) - (previous?.likes || 0);
     row.commentsDelta += (latest?.comments || 0) - (previous?.comments || 0);
+    row.viewsDelta += (latest?.views || 0) - (previous?.views || 0);
 
     const postedAt = post.posted_at ? Date.parse(post.posted_at) : NaN;
     if (Number.isFinite(postedAt) && postedAt >= sevenDaysAgo) {
@@ -181,8 +202,8 @@ function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: Metri
 
   return [...tickerByHandle.values()]
     .sort((a, b) => {
-      const scoreA = Math.abs(a.likesDelta) + Math.abs(a.commentsDelta) + Math.abs(a.postsDelta) * 25;
-      const scoreB = Math.abs(b.likesDelta) + Math.abs(b.commentsDelta) + Math.abs(b.postsDelta) * 25;
+      const scoreA = Math.abs(a.likesDelta) + Math.abs(a.commentsDelta) + Math.abs(a.viewsDelta) * 0.01 + Math.abs(a.postsDelta) * 25;
+      const scoreB = Math.abs(b.likesDelta) + Math.abs(b.commentsDelta) + Math.abs(b.viewsDelta) * 0.01 + Math.abs(b.postsDelta) * 25;
       return scoreB - scoreA;
     })
     .slice(0, 8);
@@ -206,7 +227,7 @@ async function getFeedBundle(userId: string) {
 
   const { data: feederData, error: feederError } = await sb
     .from('feeders')
-    .select('id,feed_id,handle,role,status,profile_pic_url,follower_count')
+    .select('id,feed_id,handle,role,status,created_at,profile_pic_url,follower_count')
     .in('feed_id', feedIds)
     .eq('status', 'active');
   if (feederError) throw feederError;
@@ -229,7 +250,7 @@ async function getFeedBundle(userId: string) {
     if (postKeys.length > 0) {
       const { data: metricsData, error: metricsError } = await sb
         .from('post_metrics')
-        .select('post_key,likes,comments,views,computed_at')
+        .select('post_key,checkpoint,likes,comments,views,computed_at')
         .in('post_key', postKeys)
         .order('computed_at', { ascending: false });
       if (metricsError) throw metricsError;
@@ -238,11 +259,18 @@ async function getFeedBundle(userId: string) {
   }
 
   const latestMetricByPost = new Map<string, MetricRow>();
+  const checkpointsByPost = new Map<string, Set<string>>();
   for (const m of metrics) {
+    const checkpoints = checkpointsByPost.get(m.post_key) || new Set<string>();
+    checkpoints.add(String(m.checkpoint || '').toLowerCase());
+    checkpointsByPost.set(m.post_key, checkpoints);
     if (!latestMetricByPost.has(m.post_key)) {
       latestMetricByPost.set(m.post_key, m);
     }
   }
+
+  const feederById = new Map<number, FeederRow>(feeders.map((feeder) => [feeder.id, feeder]));
+  const postByKey = new Map<string, PostRow>(posts.map((post) => [post.post_key, post]));
 
   const postKeysByFeeder = new Map<number, string[]>();
   for (const p of posts) {
@@ -258,6 +286,15 @@ async function getFeedBundle(userId: string) {
     feedersByFeed.set(f.feed_id, arr);
   }
 
+  const trackedPostKeys = new Set<string>();
+  for (const post of posts) {
+    const feeder = feederById.get(post.feeder_id);
+    if (!feeder) continue;
+    if (isTrackedPost(post, feeder, checkpointsByPost)) {
+      trackedPostKeys.add(post.post_key);
+    }
+  }
+
   const feederMetrics = new Map<number, { likes: number; comments: number; views: number; postsTracked: number }>();
   for (const feeder of feeders) {
     const keys = postKeysByFeeder.get(feeder.id) || [];
@@ -267,6 +304,8 @@ async function getFeedBundle(userId: string) {
     let postsTracked = 0;
 
     for (const key of keys) {
+      const post = postByKey.get(key);
+      if (!post || !isTrackedPost(post, feeder, checkpointsByPost)) continue;
       const m = latestMetricByPost.get(key);
       if (!m) continue;
       likes += m.likes || 0;
@@ -322,7 +361,7 @@ async function getFeedBundle(userId: string) {
 
   return {
     feeds: mappedFeeds,
-    ticker: buildTickerItems(feeders, posts, metrics),
+    ticker: buildTickerItems(feeders, posts, metrics, trackedPostKeys),
   };
 }
 
@@ -340,8 +379,9 @@ export async function GET() {
 
     const bundle = await getFeedBundle(user.id);
     return NextResponse.json(bundle);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to load feeds' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to load feeds';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -463,10 +503,18 @@ export async function POST(request: NextRequest) {
           }
 
           if (!enqueueErr && Number(enqueueCount || 0) > 0) {
-            await sb.rpc('enqueue_weekly_follower_job_for_feeder', {
-              p_feeder_id: feederId,
-              p_run_at: nowIso,
-            });
+            const followerRpcNames = [
+              'enqueue_daily_follower_job_for_feeder',
+              'enqueue_weekly_follower_job_for_feeder',
+            ] as const;
+
+            for (const rpcName of followerRpcNames) {
+              const { error: followerErr } = await sb.rpc(rpcName, {
+                p_feeder_id: feederId,
+                p_run_at: nowIso,
+              });
+              if (!followerErr) break;
+            }
           }
         }
       }
@@ -570,7 +618,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to update feed' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to update feed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

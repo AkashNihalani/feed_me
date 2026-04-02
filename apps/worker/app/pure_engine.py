@@ -280,8 +280,10 @@ def _extract_media_refs(item: dict) -> tuple[str | None, str | None, list[str]]:
         or item.get("thumbnailUrl")
         or item.get("thumbnailSrc")
     )
-    thumbnail_url = item.get("thumbnailUrl") or item.get("thumbnailSrc") or display_url
     video_url = item.get("videoUrl") or item.get("video_url")
+    thumbnail_url = item.get("thumbnailUrl") or item.get("thumbnailSrc") or display_url
+    if thumbnail_url and video_url and str(thumbnail_url).strip() == str(video_url).strip():
+        thumbnail_url = display_url if display_url and str(display_url).strip() != str(video_url).strip() else None
 
     carousel_urls: list[str] = []
     children = item.get("childPosts") or item.get("sidecarImages") or item.get("carouselMedia") or []
@@ -479,6 +481,7 @@ def _build_fire_push_payload(rows: list[dict[str, Any]], threshold: int) -> dict
 class PureEngine:
     def __init__(self):
         self.conn = self._connect()
+        self._feeder_tracking_started_cache: dict[int, datetime | None] = {}
 
     def _connect(self):
         return psycopg.connect(
@@ -550,7 +553,7 @@ class PureEngine:
             return
 
         payloads: list[tuple[str, str]] = []
-        if thumbnail_url:
+        if thumbnail_url and thumbnail_url != video_url:
             payloads.append(("thumbnail", thumbnail_url))
         if video_url:
             payloads.append(("video", video_url))
@@ -560,6 +563,8 @@ class PureEngine:
 
         for asset_role, source_url in payloads:
             purge_after = _post_media_rollover_deadline(posted_at, asset_role)
+            if purge_after <= datetime.now(timezone.utc):
+                continue
             self.conn.execute(
                 """
                 insert into public.post_media_assets (
@@ -679,6 +684,16 @@ class PureEngine:
         )
         self.conn.commit()
 
+    def _delete_post_media_asset_row(self, asset_id: int):
+        self.conn.execute(
+            """
+            delete from public.post_media_assets
+            where id = %s
+            """,
+            (asset_id,),
+        )
+        self.conn.commit()
+
     def _capture_post_media_asset(self, asset: dict):
         source_url = str(asset.get("source_url") or "").strip()
         if not source_url.startswith(_MEDIA_ALLOWED_FETCH_PROTOCOLS):
@@ -724,14 +739,7 @@ class PureEngine:
     def _delete_post_media_asset(self, asset: dict):
         storage_path = str(asset.get("storage_path") or "").strip()
         if not storage_path:
-            self._set_post_media_asset_result(
-                int(asset["id"]),
-                "deleted",
-                attempt=0,
-                next_run_at=None,
-                deleted_at=datetime.now(timezone.utc),
-                error=None,
-            )
+            self._delete_post_media_asset_row(int(asset["id"]))
             return
 
         resp = requests.delete(
@@ -741,14 +749,7 @@ class PureEngine:
         )
         if resp.status_code not in (200, 204, 404):
             resp.raise_for_status()
-        self._set_post_media_asset_result(
-            int(asset["id"]),
-            "deleted",
-            attempt=0,
-            next_run_at=None,
-            deleted_at=datetime.now(timezone.utc),
-            error=None,
-        )
+        self._delete_post_media_asset_row(int(asset["id"]))
 
     def enqueue_daily(self) -> int:
         r = self.conn.execute("select public.enqueue_daily_jobs(now()) as c").fetchone()
@@ -760,14 +761,26 @@ class PureEngine:
         self.conn.commit()
         return int((r or {}).get("c") or 0)
 
-    def enqueue_weekly_followers(self) -> int:
-        r = self.conn.execute("select public.enqueue_weekly_follower_jobs(now()) as c").fetchone()
+    def enqueue_daily_followers(self) -> int:
+        try:
+            r = self.conn.execute("select public.enqueue_daily_follower_jobs(now()) as c").fetchone()
+        except Exception:
+            self.conn.rollback()
+            r = self.conn.execute("select public.enqueue_weekly_follower_jobs(now()) as c").fetchone()
         self.conn.commit()
         return int((r or {}).get("c") or 0)
+
+    def enqueue_weekly_followers(self) -> int:
+        return self.enqueue_daily_followers()
 
     def requeue_stale(self, minutes: int = 30):
         self.conn.execute("select * from public.requeue_stale_jobs(%s)", (max(1, minutes),)).fetchone()
         self.conn.commit()
+
+    def prune_expired_fire_state(self):
+        row = self.conn.execute("select public.prune_expired_fire_state() as payload").fetchone()
+        self.conn.commit()
+        return (row or {}).get("payload")
 
 
 
@@ -797,6 +810,22 @@ class PureEngine:
         ).fetchall()
         return [str(row.get("provider_post_id") or "").strip() for row in rows if str(row.get("provider_post_id") or "").strip()]
 
+    def _feeder_tracking_started_at(self, feeder_id: int) -> datetime | None:
+        if feeder_id in self._feeder_tracking_started_cache:
+            return self._feeder_tracking_started_cache[feeder_id]
+
+        row = self.conn.execute(
+            """
+            select created_at
+            from public.feeders
+            where id = %s
+            """,
+            (feeder_id,),
+        ).fetchone()
+        created_at = _to_dt((row or {}).get("created_at"))
+        self._feeder_tracking_started_cache[feeder_id] = created_at
+        return created_at
+
     def _upsert_post(
         self,
         feeder_id: int,
@@ -808,7 +837,11 @@ class PureEngine:
         thumbnail_url: str | None = None,
         video_url: str | None = None,
         carousel_urls: list[str] | None = None,
-    ) -> tuple[str, bool]:
+    ) -> tuple[str | None, bool]:
+        tracking_started_at = self._feeder_tracking_started_at(feeder_id)
+        if posted_at is not None and tracking_started_at is not None and posted_at < tracking_started_at:
+            return None, False
+
         post_key = _post_key_from_url(post_url)
         row = self.conn.execute(
             """
@@ -848,6 +881,8 @@ class PureEngine:
                 json.dumps(carousel_urls or []),
             ),
         ).fetchone()
+        if not row:
+            return None, False
         return str((row or {}).get("post_key") or post_key), bool((row or {}).get("inserted"))
 
     def _refresh_post_media(
@@ -1208,27 +1243,41 @@ class PureEngine:
                 print(f"[post-intelligence] D7 extraction failed for {post_key}: {exc}")
 
     def process_run_jobs(self, limit: int = 120):
-        jobs = self._claim_run_jobs(limit)
-        if not jobs:
+        if limit <= 0:
             return
 
-        # Fan out feeder scrapes concurrently, but consume results as they finish
-        # so a single slow discovery snapshot doesn't block all checkpoint work.
+        # Keep DB queue state aligned with real work: only claim jobs when we
+        # have an execution slot ready for them instead of marking a large tail
+        # of jobs as running while they are still waiting in the local executor.
+        remaining = int(limit)
+        max_workers = max(1, min(RUN_JOB_CONCURRENCY, remaining))
         futures_by_id: dict[int, Any] = {}
         future_to_id: dict[Any, int] = {}
         jobs_by_id: dict[int, dict] = {}
-        max_workers = max(1, RUN_JOB_CONCURRENCY)
+
+        def submit_job(pool: ThreadPoolExecutor, job: dict):
+            handle = (job.get("handle") or "").lstrip("@")
+            job_type = str(job.get("job_type") or "daily").strip().lower()
+            days_window = 2 if job_type in ("daily", "repair", "poll") else 1
+            recent_provider_post_ids = None if job_type == "followers" else self._recent_provider_post_ids(int(job["feeder_id"]))
+            jid = int(job["id"])
+            jobs_by_id[jid] = job
+            future = pool.submit(run_actor_handle, handle, days_window, recent_provider_post_ids)
+            futures_by_id[jid] = future
+            future_to_id[future] = jid
+
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for job in jobs:
-                handle = (job.get("handle") or "").lstrip("@")
-                job_type = str(job.get("job_type") or "daily").strip().lower()
-                days_window = 2 if job_type in ("daily", "repair", "poll") else 1
-                recent_provider_post_ids = None if job_type == "followers" else self._recent_provider_post_ids(int(job["feeder_id"]))
-                jid = int(job["id"])
-                jobs_by_id[jid] = job
-                future = pool.submit(run_actor_handle, handle, days_window, recent_provider_post_ids)
-                futures_by_id[jid] = future
-                future_to_id[future] = jid
+            while remaining > 0 and len(futures_by_id) < max_workers:
+                claim_limit = min(max_workers - len(futures_by_id), remaining)
+                jobs = self._claim_run_jobs(claim_limit)
+                if not jobs:
+                    break
+                for job in jobs:
+                    submit_job(pool, job)
+                    remaining -= 1
+
+            if not futures_by_id:
+                return
 
             pending_job_ids = set(futures_by_id.keys())
             last_checkpoint_yield = time.time()
@@ -1253,7 +1302,9 @@ class PureEngine:
                     if jid is None:
                         continue
                     pending_job_ids.discard(jid)
-                    job = jobs_by_id[jid]
+                    future_to_id.pop(future, None)
+                    futures_by_id.pop(jid, None)
+                    job = jobs_by_id.pop(jid)
                     att = int(job.get("attempt") or 0)
                     feeder_id = int(job["feeder_id"])
                     job_type = str(job.get("job_type") or "daily").strip().lower()
@@ -1308,6 +1359,8 @@ class PureEngine:
                                 video_url=video_url,
                                 carousel_urls=carousel_urls,
                             )
+                            if not post_key:
+                                continue
                             self._stage_post_media_assets(
                                 post_key,
                                 posted_at,
@@ -1344,6 +1397,17 @@ class PureEngine:
                                 self._set_run_result(jid, "retry", na, _next_retry_time(na), err)
                             else:
                                 self._set_run_result(jid, "failed", na, None, err)
+
+                while remaining > 0 and len(pending_job_ids) < max_workers:
+                    claim_limit = min(max_workers - len(pending_job_ids), remaining)
+                    jobs = self._claim_run_jobs(claim_limit)
+                    if not jobs:
+                        break
+                    for job in jobs:
+                        submit_job(pool, job)
+                        jid = int(job["id"])
+                        pending_job_ids.add(jid)
+                        remaining -= 1
 
                 if time.time() - last_checkpoint_yield >= 5:
                     try:
@@ -1526,7 +1590,7 @@ class PureEngine:
         if not FIRE_MEDIA_RETENTION_ENABLED:
             return
 
-        capture_jobs = self._claim_post_media_assets_for_capture(capture_limit)
+        capture_jobs = self._claim_post_media_assets_for_capture(capture_limit) if capture_limit > 0 else []
         for asset in capture_jobs:
             attempt = int(asset.get("attempt") or 0) + 1
             try:
@@ -1544,16 +1608,19 @@ class PureEngine:
                 else:
                     purge_after = _to_dt(asset.get("purge_after"))
                     final_status = "deleted" if purge_after is not None and purge_after <= datetime.now(timezone.utc) else "capture_failed"
-                    self._set_post_media_asset_result(
-                        int(asset["id"]),
-                        final_status,
-                        attempt=attempt,
-                        next_run_at=None,
-                        deleted_at=datetime.now(timezone.utc) if final_status == "deleted" else None,
-                        error=err,
-                    )
+                    if final_status == "deleted":
+                        self._delete_post_media_asset_row(int(asset["id"]))
+                    else:
+                        self._set_post_media_asset_result(
+                            int(asset["id"]),
+                            final_status,
+                            attempt=attempt,
+                            next_run_at=None,
+                            deleted_at=None,
+                            error=err,
+                        )
 
-        purge_jobs = self._claim_post_media_assets_for_purge(purge_limit)
+        purge_jobs = self._claim_post_media_assets_for_purge(purge_limit) if purge_limit > 0 else []
         for asset in purge_jobs:
             attempt = int(asset.get("attempt") or 0) + 1
             try:
@@ -1766,6 +1833,115 @@ class PureEngine:
         self.conn.commit()
         return {"selected": len(rows), "updated": updated, "missing": missing}
 
+    def restore_missing_d7_fire_thumbnails(self, limit: int = 250, days: int = 21, batch_size: int = 25) -> dict[str, int]:
+        """Repair D7 Fire posts missing a thumbnail ref or an active cached thumbnail asset."""
+        rows = self.conn.execute(
+            """
+            select distinct on (p.post_key)
+              p.post_key,
+              p.post_url,
+              p.posted_at,
+              lower(coalesce(p.media_type, 'image')) as media_type
+            from public.posts p
+            join public.fire_alerts fa
+              on fa.post_key = p.post_key
+             and lower(fa.checkpoint) = 'd7'
+             and fa.status not in ('dropped', 'error', 'archived')
+            where coalesce(p.post_url, '') <> ''
+              and coalesce(p.posted_at, p.created_at, now()) >= now() - (%s::text || ' days')::interval
+              and (
+                coalesce(p.thumbnail_url, '') = ''
+                or not exists (
+                  select 1
+                  from public.post_media_assets assets
+                  where assets.post_key = p.post_key
+                    and assets.asset_role = 'thumbnail'
+                    and assets.status = 'active'
+                    and coalesce(assets.storage_path, '') <> ''
+                )
+              )
+            order by p.post_key, fa.created_at desc
+            limit %s
+            """,
+            (max(1, days), max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"selected": 0, "updated": 0, "missing": 0}
+
+        rows_by_post_key: dict[str, dict] = {}
+        urls_by_post_key: dict[str, str] = {}
+        mode_by_post_key: dict[str, str] = {}
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            post_url = str(row.get("post_url") or "").strip()
+            if not post_key or not post_url:
+                continue
+            rows_by_post_key[post_key] = row
+            urls_by_post_key[post_key] = post_url
+            mode_by_post_key[post_key] = "reel" if _is_reel_media_type(row.get("media_type")) else "post"
+
+        if not rows_by_post_key:
+            return {"selected": len(rows), "updated": 0, "missing": len(rows)}
+
+        updated = 0
+        missing = 0
+        ordered_post_keys = list(rows_by_post_key.keys())
+
+        for mode in ("post", "reel"):
+            scoped_post_keys = [post_key for post_key in ordered_post_keys if mode_by_post_key.get(post_key) == mode]
+            if not scoped_post_keys:
+                continue
+
+            for post_key_chunk in _chunk_list(scoped_post_keys, max(1, batch_size)):
+                chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
+                items = run_actor_post_urls("", chunk_urls, mode=mode)
+
+                by_short: dict[str, dict] = {}
+                by_post_key: dict[str, dict] = {}
+                for item in items:
+                    source_url = str(item.get("url") or "").strip()
+                    provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
+                    shortcode = (
+                        str(item.get("shortCode") or item.get("shortcode") or "").strip()
+                        or shortcode_from_media_id(provider_post_id)
+                        or shortcode_from_url(source_url)
+                    )
+                    if shortcode:
+                        by_short[shortcode.lower()] = item
+                    canonical = canonical_post_url(shortcode, source_url) or source_url
+                    item_post_key = _post_key_from_url(canonical)
+                    if item_post_key:
+                        by_post_key[item_post_key] = item
+
+                for chunk_post_key in post_key_chunk:
+                    row = rows_by_post_key[chunk_post_key]
+                    post_url = str(row.get("post_url") or "").strip()
+                    short = shortcode_from_url(post_url).lower()
+                    item = by_post_key.get(chunk_post_key) or (by_short.get(short) if short else None)
+                    if not item:
+                        missing += 1
+                        continue
+
+                    posted_at = _to_dt(row.get("posted_at"))
+                    thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                    self._refresh_post_media(chunk_post_key, thumbnail_url, video_url, carousel_urls)
+                    self._stage_post_media_assets(
+                        chunk_post_key,
+                        posted_at,
+                        thumbnail_url,
+                        video_url,
+                        carousel_urls,
+                    )
+                    updated += 1
+
+        self.conn.commit()
+        if updated > 0:
+            self.process_post_media_assets(capture_limit=max(40, updated * 3), purge_limit=0)
+
+        return {"selected": len(rows), "updated": updated, "missing": missing}
+
 
 
 def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
@@ -1782,6 +1958,8 @@ def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
         eng.process_post_media_assets()
         eng.ensure_connection("before web push jobs", verify=True)
         eng.process_web_push_jobs()
+        eng.ensure_connection("before retention cleanup", verify=True)
+        eng.prune_expired_fire_state()
     finally:
         eng.close()
 
@@ -1795,6 +1973,7 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
     eng = PureEngine()
     last_watchdog = 0.0
     last_dead_check = 0.0
+    last_retention_cleanup = 0.0
     last_summary_date = ""
     effective_checkpoint_limit = max(1, int(checkpoint_limit or CHECKPOINT_JOB_CLAIM_LIMIT))
 
@@ -1955,6 +2134,23 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
                             print(f"[db] daily-summary reconnect failed: {reconnect_exc}")
                     print(f"[daily-summary] {e}")
                 last_summary_date = today
+
+            if now_ts - last_retention_cleanup >= 3600:
+                try:
+                    eng.ensure_connection("retention-cleanup", verify=True)
+                    eng.prune_expired_fire_state()
+                except Exception as e:
+                    try:
+                        eng.conn.rollback()
+                    except Exception:
+                        pass
+                    if _is_connection_error(e):
+                        try:
+                            eng._reconnect(f"retention-cleanup: {e}")
+                        except Exception as reconnect_exc:
+                            print(f"[db] retention-cleanup reconnect failed: {reconnect_exc}")
+                    print(f"[retention-cleanup] {e}")
+                last_retention_cleanup = now_ts
 
             # Process jobs
             try:
