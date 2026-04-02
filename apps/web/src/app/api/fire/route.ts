@@ -312,7 +312,7 @@ function hasUsableRawThumbnailUrl(value: unknown): boolean {
 }
 
 async function filterRowsForVisibleD21Thumbnails(
-  sb: ReturnType<typeof createClient>,
+  sb: { from: ReturnType<typeof createClient>['from'] },
   rows: AlertSurfaceRow[],
 ): Promise<AlertSurfaceRow[]> {
   const d21Rows = rows.filter((row) => normalizeCheckpoint(row.checkpoint) === 'D21');
