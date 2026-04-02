@@ -18,8 +18,9 @@
 --   Monday 00:30 IST -> idempotent weekly follower watchdog
 --
 -- Checkpoints:
---   D1 / D3 / D7 are scheduled from exact post age
+--   fresh posts bootstrap at D1 only, then advance D1 -> D3 -> D7
 --   D21 is only enqueued after a post proves hot at D7
+--   first-seen posts older than 7 days are not bootstrapped into checkpoints
 --   next_run_at stays at the exact due timestamp
 --   fresh checkpoint rows are claimed in hourly batches:
 --     during 18:00-18:59 the worker drains jobs due before 18:00,
@@ -91,49 +92,150 @@ set search_path = public
 as $$
 declare
   v_rows int := 0;
+  v_due_at timestamptz;
 begin
-  with targets as (
-    select 'd1'::text as checkpoint, public.fn_checkpoint_due_at(p_posted_at, 1, p_tz, p_hour, p_minute, p_bucket_minutes) as due_at
-    union all
-    select 'd3'::text as checkpoint, public.fn_checkpoint_due_at(p_posted_at, 3, p_tz, p_hour, p_minute, p_bucket_minutes) as due_at
-    union all
-    select 'd7'::text as checkpoint, public.fn_checkpoint_due_at(p_posted_at, 7, p_tz, p_hour, p_minute, p_bucket_minutes) as due_at
-  )
+  if p_posted_at is null then
+    return 0;
+  end if;
+
+  if p_posted_at < (now() - interval '7 days') then
+    return 0;
+  end if;
+
+  v_due_at := public.fn_checkpoint_due_at(p_posted_at, 1, p_tz, p_hour, p_minute, p_bucket_minutes);
+  if v_due_at is null then
+    return 0;
+  end if;
+
   insert into public.checkpoint_jobs (post_key, checkpoint, status, next_run_at, last_error)
-  select
+  values (
     p_post_key,
-    t.checkpoint,
-    case when t.due_at is null then 'skipped' else 'pending' end as status,
-    coalesce(t.due_at, now()) as next_run_at,
-    case
-      when t.due_at is null then 'checkpoint skipped: missing posted_at'
-      else null
-    end as last_error
-  from targets t
+    'd1',
+    'pending',
+    v_due_at,
+    null
+  )
   on conflict (post_key, checkpoint) do update
     set status = case
-        when excluded.status = 'skipped' then public.checkpoint_jobs.status
         when public.checkpoint_jobs.status in ('done', 'running') then public.checkpoint_jobs.status
         else 'pending'
       end,
       next_run_at = case
-        when excluded.status = 'skipped' then public.checkpoint_jobs.next_run_at
         when public.checkpoint_jobs.status in ('done', 'running') then public.checkpoint_jobs.next_run_at
         else excluded.next_run_at
       end,
       last_error = case
-        when excluded.status = 'skipped' then public.checkpoint_jobs.last_error
         when public.checkpoint_jobs.status in ('done', 'running') then public.checkpoint_jobs.last_error
         else null
       end,
       updated_at = now()
-    where public.checkpoint_jobs.status not in ('done', 'running')
-      and excluded.status <> 'skipped';
+    where public.checkpoint_jobs.status not in ('done', 'running');
 
   get diagnostics v_rows = row_count;
   return v_rows;
 end;
 $$;
+
+create or replace function public.enqueue_followup_checkpoint(
+  p_post_key text,
+  p_completed_checkpoint text,
+  p_tz text default 'Asia/Kolkata',
+  p_hour int default 23,
+  p_minute int default 30,
+  p_bucket_minutes int default 60
+)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_posted_at timestamptz;
+  v_next_checkpoint text;
+  v_days_after int;
+  v_due_at timestamptz;
+  v_rows int := 0;
+begin
+  select p.posted_at
+  into v_posted_at
+  from public.posts p
+  where p.post_key = p_post_key;
+
+  if v_posted_at is null then
+    return 0;
+  end if;
+
+  case lower(coalesce(p_completed_checkpoint, ''))
+    when 'd1' then
+      v_next_checkpoint := 'd3';
+      v_days_after := 3;
+    when 'd3' then
+      v_next_checkpoint := 'd7';
+      v_days_after := 7;
+    else
+      return 0;
+  end case;
+
+  v_due_at := public.fn_checkpoint_due_at(v_posted_at, v_days_after, p_tz, p_hour, p_minute, p_bucket_minutes);
+  if v_due_at is null then
+    return 0;
+  end if;
+
+  insert into public.checkpoint_jobs (post_key, checkpoint, status, next_run_at, last_error)
+  values (
+    p_post_key,
+    v_next_checkpoint,
+    'pending',
+    v_due_at,
+    null
+  )
+  on conflict (post_key, checkpoint) do update
+    set status = case
+        when public.checkpoint_jobs.status in ('done', 'running') then public.checkpoint_jobs.status
+        else 'pending'
+      end,
+      next_run_at = case
+        when public.checkpoint_jobs.status in ('done', 'running') then public.checkpoint_jobs.next_run_at
+        else excluded.next_run_at
+      end,
+      last_error = case
+        when public.checkpoint_jobs.status in ('done', 'running') then public.checkpoint_jobs.last_error
+        else null
+      end,
+      updated_at = now()
+    where public.checkpoint_jobs.status not in ('done', 'running');
+
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$$;
+
+create or replace function public.tg_advance_checkpoint_chain()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  case lower(coalesce(new.checkpoint, ''))
+    when 'd1' then
+      perform public.enqueue_followup_checkpoint(new.post_key, 'd1');
+    when 'd3' then
+      perform public.enqueue_followup_checkpoint(new.post_key, 'd3');
+    else
+      null;
+  end case;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_05_advance_checkpoint_chain on public.post_metrics;
+
+create trigger trg_05_advance_checkpoint_chain
+after insert or update of checkpoint, computed_at on public.post_metrics
+for each row
+execute function public.tg_advance_checkpoint_chain();
 
 drop function if exists public.enqueue_checkpoint_jobs(text, timestamptz, text, integer, integer);
 
