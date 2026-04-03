@@ -4,25 +4,26 @@ This project is being actively maintained around a small, stable contract:
 
 ## Product contract
 
-- `Apify` is the ingestion backend.
+- `Bright Data` is the ingestion backend.
 - `Computation` stays untouched.
 - `Fire alerts` stay untouched.
-- `Daily discovery` runs at `12:05 AM IST`.
-- `Daily discovery` uses a `3-day` lookback.
-- `Checkpoint jobs` are due at `6:30 PM IST`.
+- `Daily discovery` runs at `12:05 AM IST` and `12:05 PM IST`.
+- `Daily discovery` uses a `2-day` overlap.
+- `Checkpoint jobs` are due from exact post age and rounded into `60-minute` buckets.
 - `Repair lane` remains active for self-healing.
 
 ## Active backend files
 
-- `/Users/Akash/feed_me/apps/worker/app/apify.py`
+- `/Users/Akash/feed_me/apps/worker/app/brightdata.py`
+- `/Users/Akash/feed_me/apps/worker/app/scraper.py`
 - `/Users/Akash/feed_me/apps/worker/app/pure_engine.py`
 - `/Users/Akash/feed_me/apps/web/src/app/api/feed/route.ts`
 - `/Users/Akash/feed_me/apps/web/src/app/api/feed/dashboard/route.ts`
 
 ## Active SQL files
 
-- `/Users/Akash/feed_me/infra/supabase/sql/apify_schedule_source_of_truth.sql`
-- `/Users/Akash/feed_me/infra/supabase/migrations/20260316200000_apify_schedule_contract_reset.sql`
+- `/Users/Akash/feed_me/infra/supabase/sql/brightdata_schedule_source_of_truth.sql`
+- `/Users/Akash/feed_me/infra/supabase/migrations/20260327113000_brightdata_exact_checkpoint_schedule.sql`
 
 ## Active frontend surfaces
 

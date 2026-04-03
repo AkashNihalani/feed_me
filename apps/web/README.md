@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FeedMe Web App
 
-## Getting Started
+Next.js frontend for FeedMe.
 
-First, run the development server:
+## Local Development
+
+1. Copy values into `.env.local` from your project secrets.
+2. Keep `NEXT_PUBLIC_SITE_URL` and `NEXT_PUBLIC_BASE_URL` aligned for each environment.
+3. Run:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Auth Email Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Supabase remains the auth provider, but branded auth email assets live in:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [`infra/supabase/auth-email/README.md`](/Users/Akash/feed_me/infra/supabase/auth-email/README.md)
+- [`infra/supabase/auth-email/confirm-signup.html`](/Users/Akash/feed_me/infra/supabase/auth-email/confirm-signup.html)
+- [`infra/supabase/auth-email/reset-password.html`](/Users/Akash/feed_me/infra/supabase/auth-email/reset-password.html)
 
-## Learn More
+The web app currently relies on:
 
-To learn more about Next.js, take a look at the following resources:
+- `/auth/callback` for signup and email verification completion
+- `/auth/update-password` for password recovery completion
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Environment Notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [`.env.example`](/Users/Akash/feed_me/apps/web/.env.example) for the expected variable names.

@@ -23,9 +23,9 @@ interface FeedTileProps {
     postsTracked: string;
   };
   onClick: () => void;
+  onPreview?: () => void;
   onDelete?: () => void;
   index: number;
-  layoutId?: string;
 }
 
 function StatPill({ label, value }: { label: string; value: string }) {
@@ -37,19 +37,21 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function FeedTile({ title, count, anchor, metrics, onClick, onDelete, index }: FeedTileProps) {
+export default function FeedTile({ title, count, anchor, metrics, onClick, onPreview, onDelete, index }: FeedTileProps) {
   return (
     <motion.div
       role="button"
       tabIndex={0}
       onClick={onClick}
+      onPointerEnter={onPreview}
+      onFocus={onPreview}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onClick();
         }
       }}
-      className="fm-depth-glass group relative flex min-h-[220px] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-[28px] p-4 text-left shadow-[0_12px_30px_-10px_rgba(15,23,42,0.22),0_24px_54px_-18px_rgba(15,23,42,0.16)] sm:min-h-[240px] sm:p-5 dark:shadow-[0_16px_36px_-14px_rgba(0,0,0,0.62),0_34px_70px_-22px_rgba(0,0,0,0.5)]"
+      className="fm-depth-glass group relative flex min-h-[220px] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-[28px] p-4 text-left shadow-[0_12px_30px_-10px_rgba(15,23,42,0.22),0_24px_54px_-18px_rgba(15,23,42,0.16)] sm:min-h-[240px] sm:p-5 lg:min-h-[200px] dark:shadow-[0_16px_36px_-14px_rgba(0,0,0,0.62),0_34px_70px_-22px_rgba(0,0,0,0.5)]"
       initial={{ y: 20, scale: 0.97 }}
       animate={{ y: 0, scale: 1 }}
       transition={{ delay: index * 0.06, duration: 0.42, ease: [0.22, 1, 0.36, 1] }}

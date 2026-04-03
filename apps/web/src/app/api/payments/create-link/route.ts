@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { getSupabase } from '@/lib/supabase';
+import { getSiteUrl } from '@/lib/site-url';
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
         sms: false,
         email: true,
       },
-      callback_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://feed-me-delta.vercel.app'}/profile?payment=success`,
+      callback_url: `${getSiteUrl()}/profile?payment=success`,
       callback_method: 'get',
       notes: {
         user_id: user.id,

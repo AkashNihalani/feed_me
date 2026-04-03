@@ -132,7 +132,7 @@ export default function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; 
   }, [days, weeks]);
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-4">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-4 lg:p-5">
 
       <div className="relative z-10 flex h-full justify-between flex-col">
         <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.14em] text-black dark:text-white/50 mb-1 fm-depth-title">Posting Pattern</span>

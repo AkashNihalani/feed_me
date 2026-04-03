@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
+import { Lock } from 'lucide-react';
 import { FireItem } from './types';
 import { compact } from '@/components/fire/fireLogicHelpers';
+import { useAppHaptics } from '@/lib/haptics';
 
 export type FireCard3DProps = {
   item: FireItem;
@@ -62,17 +64,29 @@ export function FireCard3D({
   layoutMode = 'mobile',
   onOpenDetails,
 }: FireCard3DProps) {
+  const { play } = useAppHaptics();
   const [openLocal, setOpenLocal] = useState(false);
+  const [imgDead, setImgDead] = useState(false);
   const [isPrimed, setIsPrimed] = useState(false);
   const primedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockControls = useAnimationControls();
   const isDesktopCard = layoutMode === 'desktop';
   const isCardInteractive = highlighted || forcedOpen;
-  const isOpen = forcedOpen || (isCardInteractive && openLocal);
-  const showPrimed = isCardInteractive && isPrimed;
+  const warmupGate = item.warmupGate;
+  const isLocked = warmupGate?.isLocked === true;
+  const isOpen = !isLocked && (forcedOpen || (isCardInteractive && openLocal));
+  const showPrimed = !isLocked && isCardInteractive && isPrimed;
+  const warmupProgress = Math.max(0, Math.min(warmupGate?.count ?? 0, warmupGate?.required ?? 0));
 
   useEffect(() => () => {
     if (primedTimeoutRef.current) clearTimeout(primedTimeoutRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!isLocked) return;
+    setOpenLocal(false);
+    setIsPrimed(false);
+  }, [isLocked]);
 
   const payload = asRec(item.payload);
   const metrics = asRec(payload.metrics);
@@ -137,10 +151,21 @@ export function FireCard3D({
 
   const cp = item.checkpoint.toUpperCase();
   const isD1 = cp === 'D1';
+  const lockedHandle = `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`;
+  const lockedMediaType = (item.surfaceMediaType || item.mediaType || 'POST').toUpperCase();
 
-  const stamp = `${`@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`} · ${(item.surfaceMediaType || 'POST').toUpperCase()} · ${bestMetric} ${compact(value)} · ${cp}`;
+  const stamp = `${lockedHandle} · ${lockedMediaType} · ${bestMetric} ${compact(value)} · ${cp}`;
 
   const handleCardActivate = () => {
+    if (isLocked) {
+      play('snapLock');
+      void lockControls.start({
+        x: [0, -8, 8, -6, 6, -3, 3, 0],
+        rotate: [0, -3, 3, -2, 2, 0],
+        transition: { duration: 0.36, ease: 'easeInOut' },
+      });
+      return;
+    }
     if (isDesktopCard) {
       onOpenDetails?.();
       return;
@@ -176,12 +201,13 @@ export function FireCard3D({
       whileTap={{ scale: 0.994 }}
       transition={{ duration: 0.08, ease: [0.22, 1, 0.36, 1] }}
     >
-      {item.thumbnailUrl ? (
+      {item.thumbnailUrl && !imgDead ? (
         <motion.img
           src={item.thumbnailUrl}
           alt="cover"
           className="absolute inset-0 h-full w-full object-cover"
           loading="lazy"
+          onError={() => setImgDead(true)}
           animate={{
             scale: isOpen ? 1.022 : highlighted ? 1.01 : 1,
           }}
@@ -200,10 +226,18 @@ export function FireCard3D({
         }}
       />
 
+      {isLocked && (
+        <div className="absolute inset-0 bg-black/40 dark:bg-black/54" />
+      )}
+
       <motion.div
         className={isDesktopCard ? 'absolute left-4 top-4 z-10' : 'absolute left-4 top-8 z-10 md:top-4'}
         style={{ marginTop: 'var(--pwa-top-pad)' }}
-        animate={{ opacity: !isDesktopCard && isOpen ? 0.08 : 1, y: !isDesktopCard && isOpen ? -10 : 0, scale: !isDesktopCard && isOpen ? 0.95 : 1 }}
+        animate={{
+          opacity: isLocked ? 0.24 : !isDesktopCard && isOpen ? 0.08 : 1,
+          y: !isDesktopCard && isOpen ? -10 : 0,
+          scale: isLocked ? 0.96 : !isDesktopCard && isOpen ? 0.95 : 1,
+        }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={isDesktopCard
@@ -218,11 +252,87 @@ export function FireCard3D({
         className={isDesktopCard
           ? 'absolute bottom-3.5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/24 bg-black/42 px-3 py-1.5 text-center text-[8px] font-black uppercase tracking-[0.08em] text-white/90 shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-[18px]'
           : 'absolute bottom-8 left-1/2 z-10 md:bottom-6 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/38 bg-white/14 px-3 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.1em] text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
-        animate={{ opacity: !isDesktopCard && isOpen ? 0.1 : 1, y: !isDesktopCard && isOpen ? 10 : 0 }}
+        animate={{
+          opacity: isLocked ? 0.14 : !isDesktopCard && isOpen ? 0.1 : 1,
+          y: !isDesktopCard && isOpen ? 10 : 0,
+        }}
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
         {stamp}
       </motion.div>
+
+      <AnimatePresence initial={false}>
+        {isLocked && warmupGate && (
+          <motion.div
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4 sm:px-5"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <motion.div
+              animate={lockControls}
+              className={[
+                'w-full max-w-[240px] rounded-[24px] border px-4 py-4 text-center backdrop-blur-[20px]',
+                'border-white/80 bg-white/[0.76] shadow-[0_18px_38px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.92)]',
+                'dark:border-white/[0.1] dark:bg-[rgba(8,8,8,0.62)] dark:shadow-[0_18px_44px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.08)]',
+              ].join(' ')}
+            >
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-black/10 bg-black/[0.04] dark:border-[#CCFF00]/28 dark:bg-[#CCFF00]/10">
+                <Lock className="h-5 w-5 text-black dark:text-[#CCFF00]" strokeWidth={2.4} />
+              </div>
+
+              <div className="mt-3 flex justify-center">
+                <div
+                  className={[
+                    'inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5',
+                    'border-black/8 bg-black/[0.035] text-black/58',
+                    'dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/54',
+                  ].join(' ')}
+                >
+                  <span className="max-w-[102px] truncate text-[8px] font-black uppercase tracking-[0.14em] text-black/74 dark:text-white/78">
+                    {lockedHandle}
+                  </span>
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-black/18 dark:bg-white/18" />
+                  <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em]">
+                    {lockedMediaType}
+                  </span>
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-black/18 dark:bg-white/18" />
+                  <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em]">
+                    {cp}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3 text-[18px] font-black leading-[0.92] tracking-[-0.03em] text-black dark:text-white">
+                {warmupGate.headline}
+              </div>
+              <div className="mt-1 text-[11px] font-semibold leading-[1.25] text-black/62 dark:text-white/58">
+                {warmupGate.body}
+              </div>
+
+              <div className="mt-4 flex items-center gap-1.5">
+                {Array.from({ length: warmupGate.required }, (_, index) => {
+                  const isActive = index < warmupProgress;
+                  return (
+                    <span
+                      key={`warmup-${item.id}-${index}`}
+                      className={[
+                        'h-1.5 flex-1 rounded-full transition-colors duration-200',
+                        isActive ? 'bg-black dark:bg-[#CCFF00]' : 'bg-black/12 dark:bg-white/12',
+                      ].join(' ')}
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-black/62 dark:text-white/60">
+                {warmupGate.progressLabel}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence initial={false}>
         {!isDesktopCard && isOpen && (

@@ -131,7 +131,7 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
     ).strip() or None
     follower_count = item.get("followers") or item.get("followers_count")
     media_display_url = photo_urls[0] if photo_urls else ""
-    media_thumbnail_url = photo_urls[0] if photo_urls else (video_urls[0] if video_urls else "")
+    media_thumbnail_url = photo_urls[0] if photo_urls else ""
 
     normalized: dict[str, Any] = {
         "url": canonical_url,

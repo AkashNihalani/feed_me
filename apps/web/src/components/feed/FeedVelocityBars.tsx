@@ -2,57 +2,60 @@
 
 import { useEffect, useState } from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
-import { FrequencyPoint, Timeframe } from './dashboardTypes';
+import { DashboardSummary } from './dashboardTypes';
 
-type MetricRow = { label: string; value: number };
+type MetricRow = { label: string; value: number | null };
 const SCALE_MAX = 3.5;
 
-function avg(values: Array<number | null | undefined>): number | null {
-  const clean = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-  if (clean.length === 0) return null;
-  return clean.reduce((sum, v) => sum + v, 0) / clean.length;
-}
-
-function percentileToRatio(value: number | null): number {
-  if (value === null) return 1;
+function percentileToRatio(value: number | null): number | null {
+  if (value === null) return null;
   return Math.max(0.4, Math.min(SCALE_MAX, (101 - value) / 35));
 }
 
-function AnimatedMultiplier({ value }: { value: number }) {
+function AnimatedMultiplier({ value }: { value: number | null }) {
   const mv = useMotionValue(0);
   const spring = useSpring(mv, { stiffness: 320, damping: 28, mass: 0.9 });
   const [renderValue, setRenderValue] = useState(0);
 
   useEffect(() => {
+    if (value === null) {
+      setRenderValue(0);
+      mv.set(0);
+      return;
+    }
     const unsub = spring.on('change', (v) => setRenderValue(v));
     mv.set(value);
     return unsub;
   }, [mv, spring, value]);
 
+  if (value === null) return <>--</>;
   return <>{renderValue.toFixed(1)}x</>;
 }
 
-export default function FeedVelocityBars({ series }: { timeframe: Timeframe; series: FrequencyPoint[] }) {
+export default function FeedVelocityBars({ summary }: { summary: DashboardSummary | null }) {
   const metrics: MetricRow[] = [
-    { label: 'Views', value: percentileToRatio(avg(series.map((r) => r.avg_views_percentile))) },
-    { label: 'Likes', value: percentileToRatio(avg(series.map((r) => r.avg_likes_percentile))) },
-    { label: 'Comments', value: percentileToRatio(avg(series.map((r) => r.avg_comments_percentile))) },
+    { label: 'Views', value: percentileToRatio(summary?.avg_views_percentile ?? null) },
+    { label: 'Likes', value: percentileToRatio(summary?.avg_likes_percentile ?? null) },
+    { label: 'Comments', value: percentileToRatio(summary?.avg_comments_percentile ?? null) },
   ];
+  const hasData = metrics.some((metric) => metric.value !== null);
+  const postsWithMetrics = Math.max(0, Number(summary?.posts_with_metrics) || 0);
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4 lg:p-5">
       <div className="relative z-10 flex flex-1 flex-col">
         <div className="mb-2.5 flex items-center justify-between">
           <span className="fm-label fm-depth-title">Pulse</span>
           <span className="fm-depth-chip rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/40">
-            1.0x baseline
+            {hasData ? `${postsWithMetrics} latest checkpoints` : 'Awaiting checkpoints'}
           </span>
         </div>
 
         <div className="grid flex-1 grid-cols-3 gap-2 sm:gap-2.5">
           {metrics.map((metric) => {
-            const fillPct = Math.max(16, Math.min(100, (metric.value / SCALE_MAX) * 100));
-            const isAbove = metric.value >= 1;
+            const fillPct =
+              metric.value == null ? 0 : Math.max(16, Math.min(100, (metric.value / SCALE_MAX) * 100));
+            const isAbove = metric.value != null && metric.value >= 1;
 
             return (
               <div key={metric.label} className="flex min-h-[140px] sm:min-h-[160px] flex-col">

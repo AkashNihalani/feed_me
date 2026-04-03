@@ -30,9 +30,11 @@ export type FireFeedOption = {
 };
 
 export type FireFilterThreshold = '10' | '25' | '50' | 'ALL';
+export type FireSortMode = 'best' | 'recent';
 
 export type FireFilterState = {
   threshold: FireFilterThreshold;
+  sort: FireSortMode;
   selectedFeedIds: number[];
   selectedFeederIdsByFeed: Record<string, number[]>;
   selectedCheckpoints: string[];
@@ -48,9 +50,22 @@ export type FirePayload = {
   [key: string]: unknown;
 };
 
+export type WarmupMediaBucket = 'REEL' | 'CAROUSEL' | 'IMAGE';
+
+export type FireWarmupGate = {
+  bucket: WarmupMediaBucket;
+  count: number;
+  required: number;
+  isLocked: boolean;
+  headline: string;
+  body: string;
+  progressLabel: string;
+};
+
 export type FireAlertItem = {
   id: string;
   postKey?: string;
+  feederId?: number;
   family: 'tracking' | 'insight';
   urgency: AlertUrgency;
   color: string;
@@ -84,6 +99,10 @@ export type FireAlertItem = {
   stamp?: FireStamp;
   payload: FirePayload;
   layers: FireLayers;
+  intelligenceSkipped?: boolean;
+  patternSignal?: string | null;
+  patternPayload?: Record<string, unknown> | null;
+  warmupGate?: FireWarmupGate | null;
 };
 
 // Backward compatibility while migrating references.

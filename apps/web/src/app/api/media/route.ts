@@ -26,52 +26,155 @@ function isAllowedHost(hostname: string): boolean {
 
 async function fetchStoredAsset(postKey: string, assetRole: string): Promise<Response | null> {
   const sb = adminClient();
+  const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  const candidateRoles = role === 'thumbnail'
+    ? ['thumbnail', 'display', 'carousel_0']
+    : [role];
+  const needsImageResponse = role === 'thumbnail';
+
+  for (const candidateRole of candidateRoles) {
+    const { data, error } = await sb
+      .from('post_media_assets')
+      .select('storage_bucket,storage_path,mime_type,status,purge_after,source_url')
+      .eq('post_key', postKey)
+      .eq('asset_role', candidateRole)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (error || !data) {
+      continue;
+    }
+    if (data.purge_after && new Date(data.purge_after).getTime() <= Date.now()) {
+      continue;
+    }
+    const sourceUrl = typeof data.source_url === 'string' ? data.source_url.trim() : '';
+
+    if (data.storage_bucket && data.storage_path) {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !serviceRole) return null;
+
+      const upstream = await fetch(
+        `${url.replace(/\/$/, '')}/storage/v1/object/authenticated/${encodeURIComponent(data.storage_bucket)}/${data.storage_path
+          .split('/')
+          .map((part: string) => encodeURIComponent(part))
+          .join('/')}`,
+        {
+          headers: {
+            apikey: serviceRole,
+            Authorization: `Bearer ${serviceRole}`,
+          },
+          cache: 'no-store',
+        },
+      );
+
+      if (upstream.ok) {
+        const contentType = upstream.headers.get('content-type') || data.mime_type || 'application/octet-stream';
+        if (!needsImageResponse || contentType.toLowerCase().startsWith('image/')) {
+          const body = await upstream.arrayBuffer();
+          return new Response(body, {
+            status: 200,
+            headers: {
+              'content-type': contentType,
+              'cache-control': 'public, max-age=3600, stale-while-revalidate=86400',
+            },
+          });
+        }
+      }
+    }
+
+    if (!sourceUrl) {
+      continue;
+    }
+
+    const fallback = await fetchRemoteAsset(sourceUrl);
+    if (!fallback.ok) {
+      continue;
+    }
+
+    const contentType = fallback.headers.get('content-type') || '';
+    if (needsImageResponse && !contentType.toLowerCase().startsWith('image/')) {
+      continue;
+    }
+
+    return fallback;
+  }
+
+  return null;
+}
+
+async function fetchFallbackSourceAsset(postKey: string, assetRole: string): Promise<Response | null> {
+  const sb = adminClient();
+  const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  const candidateRoles = role === 'thumbnail'
+    ? ['thumbnail', 'display', 'carousel_0']
+    : [role];
+  const needsImageResponse = role === 'thumbnail';
+
   const { data, error } = await sb
     .from('post_media_assets')
-    .select('storage_bucket,storage_path,mime_type,status,purge_after')
+    .select('source_url,asset_role,status,updated_at')
     .eq('post_key', postKey)
-    .eq('asset_role', assetRole)
-    .eq('status', 'active')
+    .in('asset_role', candidateRoles)
+    .neq('status', 'deleted')
+    .order('updated_at', { ascending: false })
+    .limit(12);
+
+  if (error || !data?.length) {
+    return null;
+  }
+
+  for (const row of data) {
+    const sourceUrl = typeof row.source_url === 'string' ? row.source_url.trim() : '';
+    if (!sourceUrl) continue;
+    const response = await fetchRemoteAsset(sourceUrl);
+    if (!response.ok) continue;
+    const contentType = response.headers.get('content-type') || '';
+    if (needsImageResponse && !contentType.toLowerCase().startsWith('image/')) continue;
+    return response;
+  }
+
+  return null;
+}
+
+async function fetchPostMediaFallback(postKey: string, assetRole: string): Promise<Response | null> {
+  const sb = adminClient();
+  const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  const { data, error } = await sb
+    .from('posts')
+    .select('thumbnail_url,carousel_urls,video_url')
+    .eq('post_key', postKey)
     .maybeSingle();
 
-  if (error || !data?.storage_bucket || !data.storage_path) {
-    return null;
-  }
-  if (data.purge_after && new Date(data.purge_after).getTime() <= Date.now()) {
+  if (error || !data) {
     return null;
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRole) return null;
+  const candidateUrls: string[] = [];
+  if (role === 'thumbnail') {
+    const thumbnailUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : '';
+    if (thumbnailUrl) candidateUrls.push(thumbnailUrl);
 
-  const upstream = await fetch(
-    `${url.replace(/\/$/, '')}/storage/v1/object/authenticated/${encodeURIComponent(data.storage_bucket)}/${data.storage_path
-      .split('/')
-      .map((part: string) => encodeURIComponent(part))
-      .join('/')}`,
-    {
-      headers: {
-        apikey: serviceRole,
-        Authorization: `Bearer ${serviceRole}`,
-      },
-      cache: 'no-store',
-    },
-  );
-
-  if (!upstream.ok) {
-    return null;
+    if (Array.isArray(data.carousel_urls)) {
+      for (const entry of data.carousel_urls) {
+        const value = typeof entry === 'string' ? entry.trim() : '';
+        if (value) candidateUrls.push(value);
+      }
+    }
+  } else if (role === 'video') {
+    const videoUrl = typeof data.video_url === 'string' ? data.video_url.trim() : '';
+    if (videoUrl) candidateUrls.push(videoUrl);
   }
 
-  const contentType = upstream.headers.get('content-type') || data.mime_type || 'application/octet-stream';
-  const body = await upstream.arrayBuffer();
-  return new Response(body, {
-    status: 200,
-    headers: {
-      'content-type': contentType,
-      'cache-control': 'public, max-age=3600, stale-while-revalidate=86400',
-    },
-  });
+  for (const candidateUrl of candidateUrls) {
+    const response = await fetchRemoteAsset(candidateUrl);
+    if (!response.ok) continue;
+    const contentType = response.headers.get('content-type') || '';
+    if (role === 'thumbnail' && !contentType.toLowerCase().startsWith('image/')) continue;
+    return response;
+  }
+
+  return null;
 }
 
 async function fetchRemoteAsset(raw: string): Promise<Response> {
@@ -141,6 +244,14 @@ export async function GET(req: NextRequest) {
       const stored = await fetchStoredAsset(postKey, assetRole || 'thumbnail');
       if (stored) {
         return stored;
+      }
+      const staged = await fetchFallbackSourceAsset(postKey, assetRole || 'thumbnail');
+      if (staged) {
+        return staged;
+      }
+      const postFallback = await fetchPostMediaFallback(postKey, assetRole || 'thumbnail');
+      if (postFallback) {
+        return postFallback;
       }
     } catch {
       // fall through to legacy proxy behavior

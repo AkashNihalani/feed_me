@@ -6,6 +6,52 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 30;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
+const WARMUP_META_PAGE_SIZE = 1000;
+const FIRE_ALERT_SELECT = [
+  'id',
+  'dedupe_key',
+  'feed_id',
+  'feeder_id',
+  'post_key',
+  'checkpoint',
+  'business_date_ist',
+  'signal_code',
+  'context',
+  'alert_type',
+  'status',
+  'metric_key',
+  'metric_value',
+  'surface_percentile',
+  'surface_delta',
+  'body',
+  'pattern_signal',
+  'pattern_payload',
+  'created_at',
+  'updated_at',
+  'handle',
+  'media_type',
+  'posted_at',
+  'post_url',
+  'thumbnail_url',
+  'views',
+  'likes',
+  'comments',
+  'views_baseline',
+  'likes_baseline',
+  'comments_baseline',
+  'views_multiple',
+  'likes_multiple',
+  'comments_multiple',
+  'hour_ist',
+  'hour_percentile',
+  'hour_multiple',
+  'best_in_last_n',
+  'trajectory_d1',
+  'trajectory_d3',
+  'trajectory_d7',
+  'trajectory_d21',
+  'intelligence_skipped',
+].join(',');
 
 function toIstDayKey(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -21,10 +67,6 @@ function shiftIstDayKey(base: Date, offsetDays: number): string {
   const utc = new Date(Date.UTC(year, month - 1, day));
   utc.setUTCDate(utc.getUTCDate() + offsetDays);
   return utc.toISOString().slice(0, 10);
-}
-
-function yesterdayIstDayKey(): string {
-  return shiftIstDayKey(new Date(), -1);
 }
 
 function todayIstDayKey(): string {
@@ -117,6 +159,19 @@ function peakWindowLabel(hour: number | null): string | null {
   return 'Late Night';
 }
 
+function normalizeWarmupMediaBucket(value: unknown): 'REEL' | 'CAROUSEL' | 'IMAGE' | null {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!normalized) return null;
+  if (normalized === 'reel' || normalized === 'video') return 'REEL';
+  if (normalized === 'carousel' || normalized === 'sidecar') return 'CAROUSEL';
+  if (normalized === 'image' || normalized === 'photo') return 'IMAGE';
+  return null;
+}
+
+function buildWarmupSummaryKey(feederId: number, bucket: 'REEL' | 'CAROUSEL' | 'IMAGE'): string {
+  return `${feederId}:${bucket}`;
+}
+
 function collapseRowsForAllCheckpoints(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   const byPostKey = new Map<string, Record<string, unknown>>();
 
@@ -153,7 +208,9 @@ function collapseRowsForAllCheckpoints(rows: Record<string, unknown>[]): Record<
 }
 
 type ActiveFeedRow = { id: number; name: string | null };
-type ActiveFeederRow = { id: number; feed_id: number; handle: string | null };
+type ActiveFeederRow = { id: number; feed_id: number; handle: string | null; created_at: string | null };
+type FirePostAnchorRow = { post_key: string | null; feeder_id: number | string | null; posted_at: string | null };
+type FireMetricCheckpointRow = { post_key: string | null; checkpoint: string | null };
 type AlertSurfaceRow = {
   id: number | string;
   dedupe_key: string | null;
@@ -183,10 +240,6 @@ type AlertSurfaceRow = {
   views: number | null;
   likes: number | null;
   comments: number | null;
-  views_percentile: number | null;
-  likes_percentile: number | null;
-  comments_percentile: number | null;
-  feed_percentile: number | null;
   views_baseline: number | null;
   likes_baseline: number | null;
   comments_baseline: number | null;
@@ -196,42 +249,94 @@ type AlertSurfaceRow = {
   hour_ist: number | null;
   hour_percentile: number | null;
   hour_multiple: number | null;
-  feeder_rank: number | null;
-  feed_rank: number | null;
   best_in_last_n: number | null;
   trajectory_d1: number | null;
   trajectory_d3: number | null;
   trajectory_d7: number | null;
   trajectory_d21: number | null;
-  anchor_handle: string | null;
-  anchor_best_pct: number | null;
-  anchor_gap: number | null;
   intelligence_skipped: boolean | null;
 };
 
-function buildMetricPayload(row: AlertSurfaceRow, metric: 'views' | 'likes' | 'comments', bestMetric: string) {
+type WarmupSurfaceRow = {
+  post_key: string | null;
+  feeder_id: number | string | null;
+  media_type: string | null;
+  posted_at: string | null;
+};
+
+type FireMetricKey = 'views' | 'likes' | 'comments';
+
+function metricPreferenceOrder(mediaType: string | null): FireMetricKey[] {
+  const normalized = (mediaType || '').trim().toLowerCase();
+  if (normalized === 'reel' || normalized === 'video') return ['views', 'likes', 'comments'];
+  return ['likes', 'comments', 'views'];
+}
+
+function rowMetricValue(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
+  return metric === 'views' ? nullableNumber(row.views) : metric === 'likes' ? nullableNumber(row.likes) : nullableNumber(row.comments);
+}
+
+function rowMetricBaseline(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
+  return metric === 'views'
+    ? nullableNumber(row.views_baseline)
+    : metric === 'likes'
+      ? nullableNumber(row.likes_baseline)
+      : nullableNumber(row.comments_baseline);
+}
+
+function rowMetricMultiple(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
+  return metric === 'views'
+    ? nullableNumber(row.views_multiple)
+    : metric === 'likes'
+      ? nullableNumber(row.likes_multiple)
+      : nullableNumber(row.comments_multiple);
+}
+
+function deriveBestMetric(row: AlertSurfaceRow): FireMetricKey {
+  const preferred = (nullableString(row.metric_key) || '').toLowerCase();
+  const ordered = metricPreferenceOrder(row.media_type);
+  let bestMetric: FireMetricKey | null = null;
+  let bestMultiple: number | null = null;
+
+  for (const metric of ordered) {
+    const multiple = rowMetricMultiple(row, metric);
+    if (multiple == null) continue;
+    if (bestMultiple == null || multiple > bestMultiple) {
+      bestMetric = metric;
+      bestMultiple = multiple;
+    }
+  }
+
+  if (bestMetric) return bestMetric;
+
+  if ((preferred === 'views' || preferred === 'likes' || preferred === 'comments') && rowMetricValue(row, preferred) != null) {
+    return preferred;
+  }
+
+  for (const metric of ordered) {
+    if (rowMetricValue(row, metric) != null) return metric;
+  }
+
+  return ordered[0];
+}
+
+function buildMetricPayload(row: AlertSurfaceRow, metric: FireMetricKey, bestMetric: FireMetricKey) {
   const isBestMetric = metric === bestMetric;
-  const value = metric === 'views' ? row.views : metric === 'likes' ? row.likes : row.comments;
-  const percentile =
-    metric === 'views' ? row.views_percentile : metric === 'likes' ? row.likes_percentile : row.comments_percentile;
-  const baseline =
-    metric === 'views' ? row.views_baseline : metric === 'likes' ? row.likes_baseline : row.comments_baseline;
-  const multiple =
-    metric === 'views' ? row.views_multiple : metric === 'likes' ? row.likes_multiple : row.comments_multiple;
+  const value = rowMetricValue(row, metric);
+  const baseline = rowMetricBaseline(row, metric);
+  const multiple = rowMetricMultiple(row, metric);
 
   return {
-    value: nullableNumber(value),
-    percentile: nullableNumber(percentile),
-    baseline: nullableNumber(baseline),
-    multiple: nullableNumber(multiple),
-    rank_feed: isBestMetric ? nullableNumber(row.feed_rank) : null,
-    feed_percentile: isBestMetric ? nullableNumber(row.feed_percentile) : null,
+    value,
+    baseline,
+    multiple,
     best_in_last_n: isBestMetric ? nullableNumber(row.best_in_last_n) : null,
   };
 }
 
 function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
-  const bestMetric = (nullableString(row.metric_key) || 'views').toLowerCase();
+  const bestMetric = deriveBestMetric(row);
+  const bestMetricValue = rowMetricValue(row, bestMetric);
   const payload = {
     best_metric: bestMetric,
     metrics: {
@@ -241,10 +346,6 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
     },
     position: {
       percentile: nullableNumber(row.surface_percentile),
-      feed_rank: nullableNumber(row.feed_rank),
-      feed_percentile: nullableNumber(row.feed_percentile),
-      feeder_rank: nullableNumber(row.feeder_rank),
-      rank_overall: nullableNumber(row.feeder_rank),
       shift: nullableNumber(row.surface_delta),
     },
     timing: {
@@ -259,11 +360,6 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       d7: nullableNumber(row.trajectory_d7),
       d21: nullableNumber(row.trajectory_d21),
       delta: nullableNumber(row.surface_delta),
-    },
-    anchor: {
-      feeder_handle: nullableString(row.anchor_handle),
-      best_pct: nullableNumber(row.anchor_best_pct),
-      gap: nullableNumber(row.anchor_gap),
     },
     meta: {
       handle: nullableString(row.handle),
@@ -290,7 +386,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
     surface_percentile: nullableNumber(row.surface_percentile),
     surface_delta: nullableNumber(row.surface_delta),
     metric_key: bestMetric,
-    metric_value: nullableNumber(row.metric_value),
+    metric_value: bestMetricValue ?? nullableNumber(row.metric_value),
     body: row.body ?? '',
     pattern_signal: row.pattern_signal,
     pattern_payload: row.pattern_payload,
@@ -339,13 +435,132 @@ async function filterRowsForVisibleD21Thumbnails(
     .limit(Math.max(50, postKeysNeedingCachedImage.length * 3));
 
   const cachedImagePostKeys = new Set(
-    (assetRows || []).map((row: { post_key?: string | null; storage_path?: string | null }) =>
-      typeof row.post_key === 'string' && row.post_key.trim() && typeof row.storage_path === 'string' && row.storage_path.trim()
-        ? row.post_key.trim()
-        : '').filter(Boolean),
+    (assetRows || [])
+      .map((row: { post_key?: string | null; storage_path?: string | null }) => {
+        const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
+        const storagePath = typeof row.storage_path === 'string' ? row.storage_path.trim() : '';
+        return postKey && storagePath ? postKey : '';
+      })
+      .filter(Boolean),
   );
 
-  return rows.filter((row) => normalizeCheckpoint(row.checkpoint) !== 'D21' || hasUsableRawThumbnailUrl(row.thumbnail_url) || cachedImagePostKeys.has((row.post_key || '').trim()));
+  return rows.filter((row) => {
+    if (normalizeCheckpoint(row.checkpoint) !== 'D21') return true;
+    if (hasUsableRawThumbnailUrl(row.thumbnail_url)) return true;
+    return cachedImagePostKeys.has((row.post_key || '').trim());
+  });
+}
+
+async function filterRowsForTrackedAnchors(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  rows: AlertSurfaceRow[],
+  feederCreatedAtById: Map<number, string | null>,
+): Promise<AlertSurfaceRow[]> {
+  const postKeys = Array.from(
+    new Set(
+      rows
+        .map((row) => (typeof row.post_key === 'string' ? row.post_key.trim() : ''))
+        .filter(Boolean),
+    ),
+  );
+
+  if (postKeys.length === 0) return rows;
+
+  const { data: postRowsData } = await sb
+    .from('posts')
+    .select('post_key,feeder_id,posted_at')
+    .in('post_key', postKeys);
+
+  const { data: metricRowsData } = await sb
+    .from('post_metrics')
+    .select('post_key,checkpoint')
+    .in('post_key', postKeys)
+    .in('checkpoint', ['d1', 'D1']);
+
+  const postRows = (postRowsData || []) as FirePostAnchorRow[];
+  const metricRows = (metricRowsData || []) as FireMetricCheckpointRow[];
+
+  const d1PostKeys = new Set(
+    metricRows
+      .map((row) => (typeof row.post_key === 'string' ? row.post_key.trim() : ''))
+      .filter(Boolean),
+  );
+
+  const validTrackedPostKeys = new Set<string>();
+  for (const row of postRows) {
+    const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
+    if (!postKey || !d1PostKeys.has(postKey)) continue;
+
+    const feederId = Number(row.feeder_id);
+    const feederCreatedAt = feederCreatedAtById.get(feederId);
+    const postedAtTs = parseIsoTime(row.posted_at);
+    const feederCreatedAtTs = parseIsoTime(feederCreatedAt);
+    if (postedAtTs <= 0 || feederCreatedAtTs <= 0) continue;
+    if (postedAtTs >= feederCreatedAtTs) {
+      validTrackedPostKeys.add(postKey);
+    }
+  }
+
+  return rows.filter((row) => validTrackedPostKeys.has((row.post_key || '').trim()));
+}
+
+async function fetchWarmupSummary(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  activeFeedIds: number[],
+  activeFeederIds: number[],
+  feederCreatedAtById: Map<number, string | null>,
+): Promise<Record<string, number>> {
+  if (activeFeedIds.length === 0 || activeFeederIds.length === 0) return {};
+
+  const rows: WarmupSurfaceRow[] = [];
+
+  for (let start = 0; ; start += WARMUP_META_PAGE_SIZE) {
+    const { data, error } = await sb
+      .from('v_fire_alert_surface')
+      .select('post_key,feeder_id,media_type,posted_at')
+      .eq('signal_code', 'slot_v3')
+      .eq('context', 'own')
+      .eq('checkpoint', 'd1')
+      .in('feed_id', activeFeedIds)
+      .in('feeder_id', activeFeederIds)
+      .not('status', 'in', '("dropped","error","archived")')
+      .order('feeder_id', { ascending: true })
+      .order('post_key', { ascending: true })
+      .range(start, start + WARMUP_META_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const batch = (data || []) as WarmupSurfaceRow[];
+    rows.push(...batch);
+    if (batch.length < WARMUP_META_PAGE_SIZE) break;
+  }
+
+  const seen = new Set<string>();
+  const counts: Record<string, number> = {};
+
+  for (const row of rows) {
+    const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
+    const feederId = Number(row.feeder_id);
+    if (!postKey || !Number.isFinite(feederId)) continue;
+
+    const bucket = normalizeWarmupMediaBucket(row.media_type);
+    if (!bucket) continue;
+
+    const feederCreatedAtTs = parseIsoTime(feederCreatedAtById.get(feederId));
+    const postedAtTs = parseIsoTime(row.posted_at);
+    if (feederCreatedAtTs <= 0 || postedAtTs <= 0 || postedAtTs < feederCreatedAtTs) {
+      continue;
+    }
+
+    const dedupeKey = `${feederId}:${bucket}:${postKey}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const summaryKey = buildWarmupSummaryKey(feederId, bucket);
+    counts[summaryKey] = (counts[summaryKey] ?? 0) + 1;
+  }
+
+  return counts;
 }
 
 export async function GET(request: NextRequest) {
@@ -383,7 +598,7 @@ export async function GET(request: NextRequest) {
   const activeFeedIds = normalizedFeeds.map((row) => Number(row.id)).filter(Number.isFinite);
   if (activeFeedIds.length === 0) {
     if (mode === 'meta') {
-      return NextResponse.json({ days: recentKeys, scopes: [], feeds: [], dayCounts: {} });
+      return NextResponse.json({ days: recentKeys, scopes: [], feeds: [], dayCounts: {}, warmupSummary: {} });
     }
     return NextResponse.json({
       rows: [],
@@ -397,7 +612,7 @@ export async function GET(request: NextRequest) {
 
   const { data: activeFeeders, error: activeFeedersErr } = await supabase
     .from('feeders')
-    .select('id,feed_id,handle')
+    .select('id,feed_id,handle,created_at')
     .eq('status', 'active')
     .in('feed_id', activeFeedIds)
     .limit(5000);
@@ -408,9 +623,12 @@ export async function GET(request: NextRequest) {
 
   const normalizedFeeders = (activeFeeders ?? []) as ActiveFeederRow[];
   const activeFeederIds = normalizedFeeders.map((row) => Number(row.id)).filter(Number.isFinite);
+  const feederCreatedAtById = new Map<number, string | null>(
+    normalizedFeeders.map((row) => [Number(row.id), row.created_at ?? null]),
+  );
   if (activeFeederIds.length === 0) {
     if (mode === 'meta') {
-      return NextResponse.json({ days: recentKeys, scopes: [], feeds: [], dayCounts: {} });
+      return NextResponse.json({ days: recentKeys, scopes: [], feeds: [], dayCounts: {}, warmupSummary: {} });
     }
     return NextResponse.json({
       rows: [],
@@ -483,7 +701,9 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    return NextResponse.json({ days, scopes: [], feeds, dayCounts });
+    const warmupSummary = await fetchWarmupSummary(supabase, activeFeedIds, activeFeederIds, feederCreatedAtById);
+
+    return NextResponse.json({ days, scopes: [], feeds, dayCounts, warmupSummary });
   }
 
   // ─── PAGINATED ALERTS MODE ─────────────────────────────────
@@ -554,7 +774,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('v_fire_alert_surface')
-    .select('*', { count: 'exact' })
+    .select(FIRE_ALERT_SELECT, { count: 'exact' })
     .eq('signal_code', 'slot_v3')
     .eq('context', 'own')
     .in('feed_id', effectiveFeedIds)
@@ -581,11 +801,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    let rows = (data ?? []) as Record<string, unknown>[];
-    rows = await filterRowsForVisibleD21Thumbnails(supabase, rows as AlertSurfaceRow[]) as Record<string, unknown>[];
+    let rows = (data ?? []) as unknown as AlertSurfaceRow[];
+    rows = await filterRowsForVisibleD21Thumbnails(supabase, rows);
+    rows = await filterRowsForTrackedAnchors(supabase, rows, feederCreatedAtById);
 
     if (collapseCheckpointDuplicates) {
-      rows = collapseRowsForAllCheckpoints(rows);
+      rows = collapseRowsForAllCheckpoints(rows) as AlertSurfaceRow[];
     }
 
     const sortedRows = [...rows].sort((a, b) => {
@@ -603,7 +824,7 @@ export async function GET(request: NextRequest) {
     const total = sortedRows.length;
     const pagedRows = sortedRows.slice(cursor, cursor + PAGE_SIZE);
     const hasMore = cursor + pagedRows.length < total;
-    return NextResponse.json({ rows: pagedRows.map((row) => serializeAlertRow(row as AlertSurfaceRow)), total, hasMore, day, cursor, availableCheckpoints });
+    return NextResponse.json({ rows: pagedRows.map((row) => serializeAlertRow(row)), total, hasMore, day, cursor, availableCheckpoints });
   }
 
   const { data, error } = await query
@@ -616,10 +837,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let rows = (data ?? []) as Record<string, unknown>[];
-  rows = await filterRowsForVisibleD21Thumbnails(supabase, rows as AlertSurfaceRow[]) as Record<string, unknown>[];
+  let rows = (data ?? []) as unknown as AlertSurfaceRow[];
+  rows = await filterRowsForVisibleD21Thumbnails(supabase, rows);
+  rows = await filterRowsForTrackedAnchors(supabase, rows, feederCreatedAtById);
   if (collapseCheckpointDuplicates) {
-    rows = collapseRowsForAllCheckpoints(rows);
+    rows = collapseRowsForAllCheckpoints(rows) as AlertSurfaceRow[];
   }
   rows = [...rows].sort((a, b) => {
     const aPercentile = percentileValue(a);
@@ -632,5 +854,5 @@ export async function GET(request: NextRequest) {
   const pagedRows = rows.slice(cursor, cursor + PAGE_SIZE);
   const hasMore = cursor + pagedRows.length < total;
 
-  return NextResponse.json({ rows: pagedRows.map((row) => serializeAlertRow(row as AlertSurfaceRow)), total, hasMore, day, cursor, availableCheckpoints });
+  return NextResponse.json({ rows: pagedRows.map((row) => serializeAlertRow(row)), total, hasMore, day, cursor, availableCheckpoints });
 }

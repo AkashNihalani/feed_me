@@ -43,7 +43,8 @@ export default function BottomNav() {
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
       <div className={cn(
-        'pointer-events-auto relative flex items-center gap-0.5 overflow-hidden rounded-[28px] px-1 py-1 lg:rounded-[26px]',
+        'pointer-events-auto relative flex items-center overflow-hidden',
+        'gap-0.5 rounded-[28px] px-1 py-1 lg:rounded-[26px]',
         /* Neumorphic frosted glass — matching header depth */
         'bg-white/65 backdrop-blur-[48px] backdrop-saturate-[200%]',
         'border border-white/80 border-t-white/90',
@@ -70,7 +71,8 @@ export default function BottomNav() {
                 } catch {}
               }}>
               <motion.div whileTap={{ scale: 0.92 }} transition={{ type: 'spring', stiffness: 500, damping: 28 }}
-                className={cn('relative flex min-w-[86px] flex-col items-center justify-center rounded-[22px] px-3 py-2.5 lg:min-w-[78px] lg:px-3 lg:py-2',
+                className={cn(
+                  'relative flex min-w-[86px] flex-col items-center justify-center rounded-[22px] px-3 py-2.5 lg:min-w-[78px] lg:px-3 lg:py-2',
                   isActive ? 'text-black dark:text-black' : 'text-black/50 dark:text-white/45')}>
                 {isActive && (
                   <motion.span layoutId="nav-active-pill"

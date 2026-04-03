@@ -26,6 +26,9 @@
 --   fresh checkpoint rows are claimed in hourly batches:
 --     during 18:00-18:59 the worker drains jobs due before 18:00,
 --     including the 17:00-17:59 bucket plus any older backlog
+--   stale backlog whose true checkpoint Fire day is already behind "today"
+--   is skipped instead of being claimed, so live checkpoint runs always map
+--   to the current Fire horizon users can actually see
 --   retries may re-enter within the same hour once their retry timestamp is due
 --   official checkpoint rows are ignored if they land before the true age floor
 --   (24h / 72h / 168h / 504h), even if a legacy writer attempts them

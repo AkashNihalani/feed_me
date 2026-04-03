@@ -20,13 +20,21 @@ function toLabel(weekStart: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
 }
 
+function shouldShowAxisLabel(index: number, total: number): boolean {
+  if (total <= 1) return true;
+  if (index === 0 || index === total - 1) return true;
+  const targetLabels = total <= 7 ? total : total <= 30 ? 5 : 6;
+  const step = Math.max(1, Math.ceil((total - 1) / Math.max(1, targetLabels - 1)));
+  return index % step === 0;
+}
+
 export default function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: AscentPoint[] }) {
   const data = useMemo<ChartPoint[]>(() => {
     if (!Array.isArray(series) || series.length === 0) {
       return [{ label: timeframe, followers: 0 }];
     }
     return series.map((point) => ({
-      label: toLabel(point.week_start_ist),
+      label: toLabel(point.snapshot_date_ist),
       followers: Number(point.follower_count) || 0,
     }));
   }, [series, timeframe]);
@@ -80,7 +88,7 @@ export default function FeedAscentChart({ timeframe, series }: { timeframe: Time
   };
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4 lg:p-5">
 
       <div className="relative z-10 flex flex-1 flex-col">
         {/* Header + hero value — compact */}
@@ -170,9 +178,13 @@ export default function FeedAscentChart({ timeframe, series }: { timeframe: Time
             </div>
           ) : null}
 
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex items-center justify-between px-[2px] text-[9px] font-black uppercase tracking-[0.1em] text-foreground/34">
-            {chart.points.map((p) => (
-              <span key={p.label}>{p.label}</span>
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 px-[2px] text-[9px] font-black uppercase tracking-[0.1em] text-foreground/34">
+            {chart.points.map((p, index) => (
+              shouldShowAxisLabel(index, chart.points.length) ? (
+                <span key={`${p.label}-${index}`} className="absolute -translate-x-1/2" style={{ left: `${p.x}%` }}>
+                  {p.label}
+                </span>
+              ) : null
             ))}
           </div>
         </div>

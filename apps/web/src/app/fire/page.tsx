@@ -1,7 +1,7 @@
 'use client';
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpDown, Loader2, SlidersHorizontal } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ChronoTabs from '@/components/fire/ChronoTabs';
 import FluidDeck from '@/components/fire/FluidDeck';
@@ -13,21 +13,36 @@ import {
   FireFeedOption,
   FireFilterState,
   FireFilterThreshold,
+  FireSortMode,
   FireLayers,
+  FireWarmupGate,
+  WarmupMediaBucket,
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 
 type AlertRow = Record<string, unknown>;
+type WarmupSummary = Record<string, number>;
 
 const TERMINAL_STATUSES = new Set(['dropped', 'error', 'archived']);
+const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
+  { label: 'PERCENTILE', value: 'best' },
+  { label: 'RECENT', value: 'recent' },
+];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v2';
 const FIRE_STATE_CACHE_KEY = 'fire:state:v2';
 const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v2';
 const FIRE_CACHE_TTL = 2 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
+const WARMUP_REQUIRED = 5;
+
+function isStandaloneDisplayMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches
+    || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+}
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -73,9 +88,14 @@ function compactNumber(v: number | null): string {
   return String(Math.round(v));
 }
 
-function toMediaProxyUrl(url: string): string {
+function toMediaProxyUrl(postKey: string, url: string, role = 'thumbnail'): string {
   const src = url.trim();
-  return src ? `/api/media?url=${encodeURIComponent(src)}` : '';
+  const key = postKey.trim();
+  const params = new URLSearchParams();
+  if (key) params.set('postKey', key);
+  if (role) params.set('role', role);
+  if (src) params.set('url', src);
+  return params.toString() ? `/api/media?${params.toString()}` : '';
 }
 
 function timeAgoText(iso: string): string {
@@ -102,6 +122,39 @@ function normalizeMediaLabel(raw: string): string {
   if (s.includes('sidecar') || s.includes('carousel')) return 'CAROUSEL';
   if (s.includes('image') || s.includes('photo')) return 'IMAGE';
   return s.toUpperCase();
+}
+
+function normalizeWarmupBucket(raw: string): WarmupMediaBucket | null {
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes('reel') || normalized.includes('video')) return 'REEL';
+  if (normalized.includes('sidecar') || normalized.includes('carousel')) return 'CAROUSEL';
+  if (normalized.includes('image') || normalized.includes('photo')) return 'IMAGE';
+  return null;
+}
+
+function buildWarmupSummaryKey(feederId: number, bucket: WarmupMediaBucket): string {
+  return `${feederId}:${bucket}`;
+}
+
+function buildWarmupGate(item: FireAlertItem, warmupSummary: WarmupSummary): FireWarmupGate | null {
+  const feederId = item.feederId ?? NaN;
+  if (!Number.isFinite(feederId)) return null;
+  const bucket = normalizeWarmupBucket(item.surfaceMediaType || item.mediaType || '');
+  if (!bucket) return null;
+
+  const count = Math.max(0, warmupSummary[buildWarmupSummaryKey(feederId, bucket)] ?? 0);
+  const cappedCount = Math.min(count, WARMUP_REQUIRED);
+
+  return {
+    bucket,
+    count,
+    required: WARMUP_REQUIRED,
+    isLocked: count < WARMUP_REQUIRED,
+    headline: 'Still warming up',
+    body: `Unlocks after ${WARMUP_REQUIRED} posts in this format.`,
+    progressLabel: `${cappedCount}/${WARMUP_REQUIRED} ready`,
+  };
 }
 
 function toIstDayKey(d: string | Date): string {
@@ -162,6 +215,7 @@ function serializeFilters(filters: FireFilterState): string {
 
   return JSON.stringify({
     threshold: filters.threshold,
+    sort: filters.sort,
     selectedFeedIds: sortNumberList(filters.selectedFeedIds),
     selectedFeederIdsByFeed: normalizedFeederState,
     selectedCheckpoints: sortCheckpointList(filters.selectedCheckpoints),
@@ -190,6 +244,7 @@ function pruneFilters(filters: FireFilterState, feeds: FireFeedOption[]): FireFi
 
   return {
     threshold: filters.threshold,
+    sort: filters.sort,
     selectedFeedIds,
     selectedFeederIdsByFeed,
     selectedCheckpoints: sortCheckpointList(filters.selectedCheckpoints),
@@ -229,15 +284,15 @@ function buildDesktopSelectionChips(filters: FireFilterState, feeds: FireFeedOpt
 
 function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   const payload = asRecord(row.payload);
-  const explicit = asRecord(row.intelligence_layers);
-  const layers = Object.keys(explicit).length > 0 ? explicit : asRecord(payload.layers);
+  const layers = asRecord(payload.layers);
   const status = asString(row.status).trim().toLowerCase();
   if (status && TERMINAL_STATUSES.has(status)) return null;
 
-  const checkpoint = asString(row.checkpoint) || asString(row.surface_checkpoint) || asString(asRecord(payload.meta).checkpoint) || 'd1';
-  const surfaceHandle = asString(row.surface_handle) || asString(row.surface_feeder) || asString(asRecord(payload.meta).handle);
+  const meta = asRecord(payload.meta);
+  const checkpoint = asString(row.checkpoint) || asString(meta.checkpoint) || 'd1';
+  const surfaceHandle = asString(row.surface_handle) || asString(meta.handle);
   const surfaceMediaType = normalizeMediaLabel(
-    asString(row.surface_media_type) || asString(row.surface_mediaType) || asString(asRecord(payload.meta).media_type),
+    asString(row.surface_media_type) || asString(row.surface_mediaType) || asString(meta.media_type),
   );
   const metrics = asRecord(payload.metrics);
   const bestMetric = pickBestMetric(metrics, asString(payload.best_metric) || asString(row.metric_key) || 'views');
@@ -249,20 +304,17 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     asNumber(row.surface_percentile) ??
     asNumber(bestMetricData.percentile);
   const metricValue = asNumber(bestMetricData.value) ?? asNumber(row.surface_metric_value) ?? asNumber(row.metric_value);
-  const surfaceDelta = asNumber(row.surface_delta) ?? asNumber(row.surface_shift);
-  const meta = asRecord(payload.meta);
+  const surfaceDelta = asNumber(row.surface_delta);
   const businessDateKey =
-    asString(row.captured_business_date_ist) ||
     asString(row.business_date_ist) ||
-    asString(meta.captured_business_date_ist) ||
     asString(meta.business_date_ist) ||
-    asString(meta.anchor_business_date_ist) ||
     toIstDayKey(asString(row.created_at));
   const title = `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${surfaceMediaType} · ${checkpoint.toUpperCase()} · ${compactNumber(metricValue)} ${bestMetric.toUpperCase()}`;
 
   return {
     id: `alert-${asString(row.id) || asString(row.dedupe_key) || Math.random().toString(36).slice(2)}`,
     postKey: asString(row.post_key),
+    feederId: asNumber(row.feeder_id) ?? undefined,
     family: 'insight',
     urgency: inferUrgency(asString(row.alert_type), surfacePercentile),
     color: '#FF6B00',
@@ -278,8 +330,8 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     evidence: [],
     timeAgo: timeAgoText(asString(row.created_at)),
     createdAt: asString(row.created_at),
-    postUrl: asString(meta.post_url ?? payload.post_url) || 'https://instagram.com',
-    thumbnailUrl: toMediaProxyUrl(asString(meta.thumbnail_url ?? payload.thumbnail_url)),
+    postUrl: asString(meta.post_url) || 'https://instagram.com',
+    thumbnailUrl: toMediaProxyUrl(asString(row.post_key), asString(meta.thumbnail_url)),
     businessDateKey,
     businessDateIst: businessDateKey,
     status,
@@ -293,6 +345,9 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     metricKey: bestMetric,
     payload,
     layers: layers as FireLayers,
+    intelligenceSkipped: row.intelligence_skipped === true,
+    patternSignal: asString(row.pattern_signal) || null,
+    patternPayload: row.pattern_payload && typeof row.pattern_payload === 'object' ? (row.pattern_payload as FireAlertItem['patternPayload']) : null,
     stamp: {
       handle: surfaceHandle,
       mediaType: surfaceMediaType,
@@ -303,11 +358,11 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   };
 }
 
-async function fetchMeta(): Promise<{ days: string[]; feeds: FireFeedOption[] }> {
-  const res = await fetch('/api/fire?mode=meta');
+async function fetchMeta(): Promise<{ days: string[]; feeds: FireFeedOption[]; warmupSummary: WarmupSummary }> {
+  const res = await fetch('/api/fire?mode=meta', { cache: 'no-store' });
   if (!res.ok) throw new Error(`Meta fetch failed: ${res.status}`);
   const data = await res.json();
-  return { days: data.days ?? [], feeds: data.feeds ?? [] };
+  return { days: data.days ?? [], feeds: data.feeds ?? [], warmupSummary: data.warmupSummary ?? {} };
 }
 
 async function fetchPage(
@@ -315,7 +370,7 @@ async function fetchPage(
   filters: FireFilterState,
   cursor: number,
 ): Promise<{ items: FireAlertItem[]; hasMore: boolean; total: number; availableCheckpoints: string[] }> {
-  const params = new URLSearchParams({ day, threshold: filters.threshold, cursor: String(cursor) });
+  const params = new URLSearchParams({ day, threshold: filters.threshold, cursor: String(cursor), sort: filters.sort });
   const feedIds = sortNumberList(filters.selectedFeedIds);
   const feederIds = flattenSelectedFeederIds(filters);
 
@@ -323,7 +378,7 @@ async function fetchPage(
   if (feederIds.length > 0) params.set('feeder_ids', feederIds.join(','));
   if (filters.selectedCheckpoints.length > 0) params.set('checkpoints', sortCheckpointList(filters.selectedCheckpoints).join(','));
 
-  const res = await fetch(`/api/fire?${params}`);
+  const res = await fetch(`/api/fire?${params}`, { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error || `HTTP ${res.status}`);
@@ -344,10 +399,12 @@ export default function FirePage() {
   const headerRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const fetchKeyRef = useRef('');
+  const pageRefreshInFlightRef = useRef(false);
 
   const [pickerDays, setPickerDays] = useState<string[]>([]);
   const [availableFeeds, setAvailableFeeds] = useState<FireFeedOption[]>([]);
   const [availableCheckpoints, setAvailableCheckpoints] = useState<string[]>([]);
+  const [warmupSummary, setWarmupSummary] = useState<WarmupSummary>({});
   const [cards, setCards] = useState<FireAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -358,12 +415,17 @@ export default function FirePage() {
   const [isZSpaceOpen, setIsZSpaceOpen] = useState(false);
   const [filters, setFilters] = useState<FireFilterState>({
     threshold: 'ALL',
+    sort: 'best',
     selectedFeedIds: [],
     selectedFeederIdsByFeed: {},
     selectedCheckpoints: [],
   });
   const [headerHeight, setHeaderHeight] = useState(168);
   const [desktopModalCard, setDesktopModalCard] = useState<FireAlertItem | null>(null);
+  const [isStandaloneMode, setIsStandaloneMode] = useState(isStandaloneDisplayMode);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  const useBrowserPageScroll = !isDesktopViewport;
+  const useRootSnap = useBrowserPageScroll && isStandaloneMode;
 
   const hasActiveFilters = filters.threshold !== 'ALL'
     || filters.selectedFeedIds.length > 0
@@ -372,6 +434,45 @@ export default function FirePage() {
 
   const feedSummaryLabel = useMemo(() => buildFeedSummaryLabel(filters), [filters]);
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
+  const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
+  const displayCards = useMemo(
+    () => cards.map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
+    [cards, warmupSummary],
+  );
+
+  const refreshCurrentPage = useCallback(async () => {
+    if (!selectedDay || pageRefreshInFlightRef.current) return;
+    const normalizedFilters = pruneFilters(filters, availableFeeds);
+    const key = `${selectedDay}:${serializeFilters(normalizedFilters)}`;
+    if (fetchKeyRef.current && fetchKeyRef.current !== key) return;
+
+    pageRefreshInFlightRef.current = true;
+    try {
+      const result = await fetchPage(selectedDay, normalizedFilters, 0);
+      if (fetchKeyRef.current && fetchKeyRef.current !== key) return;
+
+      fetchKeyRef.current = key;
+      setCards(result.items);
+      setHasMore(result.hasMore);
+      setTotal(result.total);
+      setAvailableCheckpoints((prev) => {
+        const next = result.availableCheckpoints;
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+      cursorRef.current = result.items.length;
+      setCache(`${FIRE_PAGE_CACHE_PREFIX}:${key}`, {
+        items: result.items,
+        hasMore: result.hasMore,
+        total: result.total,
+        cursor: result.items.length,
+        availableCheckpoints: result.availableCheckpoints,
+      });
+    } catch (err) {
+      console.error('[FirePage] Background refresh error:', err);
+    } finally {
+      pageRefreshInFlightRef.current = false;
+    }
+  }, [availableFeeds, filters, selectedDay]);
 
   useEffect(() => {
     const cachedState = getCache<{
@@ -381,6 +482,7 @@ export default function FirePage() {
       filters: FireFilterState;
       cards: FireAlertItem[];
       availableCheckpoints: string[];
+      warmupSummary: WarmupSummary;
       hasMore: boolean;
       total: number;
       cursor: number;
@@ -393,12 +495,14 @@ export default function FirePage() {
     setSelectedDay(cachedState.selectedDay || '');
     setFilters(pruneFilters(cachedState.filters || {
       threshold: 'ALL',
+      sort: 'best',
       selectedFeedIds: [],
       selectedFeederIdsByFeed: {},
       selectedCheckpoints: [],
     }, cachedState.availableFeeds || []));
     setCards(cachedState.cards || []);
     setAvailableCheckpoints(sortCheckpointList(cachedState.availableCheckpoints || []));
+    setWarmupSummary(cachedState.warmupSummary || {});
     setHasMore(Boolean(cachedState.hasMore));
     setTotal(cachedState.total || 0);
     cursorRef.current = cachedState.cursor || (cachedState.cards || []).length;
@@ -430,26 +534,125 @@ export default function FirePage() {
       filters,
       cards,
       availableCheckpoints,
+      warmupSummary,
       hasMore,
       total,
       cursor: cursorRef.current,
     });
-  }, [pickerDays, availableFeeds, selectedDay, filters, cards, availableCheckpoints, hasMore, total]);
+  }, [pickerDays, availableFeeds, selectedDay, filters, cards, availableCheckpoints, warmupSummary, hasMore, total]);
 
   useEffect(() => {
     document.title = 'Fire';
   }, []);
 
   useEffect(() => {
+    const standaloneMql = window.matchMedia('(display-mode: standalone)');
+    const desktopMql = window.matchMedia('(min-width: 1024px)');
+    const syncMode = () => {
+      setIsStandaloneMode(isStandaloneDisplayMode());
+      setIsDesktopViewport(desktopMql.matches);
+    };
+    syncMode();
+    standaloneMql.addEventListener?.('change', syncMode);
+    desktopMql.addEventListener?.('change', syncMode);
+    window.addEventListener('resize', syncMode);
+    return () => {
+      standaloneMql.removeEventListener?.('change', syncMode);
+      desktopMql.removeEventListener?.('change', syncMode);
+      window.removeEventListener('resize', syncMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.add('fm-fire-immersive');
+    return () => {
+      html.classList.remove('fm-fire-immersive');
+    };
+  }, []);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.toggle('fm-fire-root-scroll', useRootSnap);
+    return () => {
+      html.classList.remove('fm-fire-root-scroll');
+    };
+  }, [useRootSnap]);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    html.style.setProperty('--fire-header-height', `${headerHeight}px`);
+    html.style.setProperty('--fire-bottom-clearance', isStandaloneMode ? '86px' : '88px');
+    return () => {
+      html.style.removeProperty('--fire-header-height');
+      html.style.removeProperty('--fire-bottom-clearance');
+    };
+  }, [headerHeight, isStandaloneMode]);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const main = document.querySelector('main');
+    const prevHtmlOverflow = html.style.overflow;
+    const prevHtmlHeight = html.style.height;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyHeight = body.style.height;
+    const prevMainOverflow = main instanceof HTMLElement ? main.style.overflow : '';
+    const prevMainHeight = main instanceof HTMLElement ? main.style.height : '';
+
+    if (useBrowserPageScroll) {
+      html.style.overflow = 'auto';
+      html.style.height = 'auto';
+      body.style.overflow = 'auto';
+      body.style.height = 'auto';
+      if (main instanceof HTMLElement) {
+        main.style.overflow = 'visible';
+        main.style.height = 'auto';
+      }
+    }
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      html.style.height = prevHtmlHeight;
+      body.style.overflow = prevBodyOverflow;
+      body.style.height = prevBodyHeight;
+      if (main instanceof HTMLElement) {
+        main.style.overflow = prevMainOverflow;
+        main.style.height = prevMainHeight;
+      }
+    };
+  }, [useBrowserPageScroll]);
+
+  useEffect(() => {
+    const syncViewportHeight = () => {
+      const vv = window.visualViewport;
+      const visualHeight = Math.round(vv?.height ?? 0);
+      const innerHeight = Math.round(window.innerHeight);
+      const clientHeight = Math.round(document.documentElement.clientHeight);
+      const nextHeight = isStandaloneDisplayMode()
+        ? Math.max(innerHeight, clientHeight, visualHeight)
+        : visualHeight || innerHeight || clientHeight;
+      document.documentElement.style.setProperty('--fire-app-height', `${nextHeight}px`);
+    };
+    syncViewportHeight();
+    window.visualViewport?.addEventListener('resize', syncViewportHeight);
+    window.visualViewport?.addEventListener('scroll', syncViewportHeight);
+    window.addEventListener('resize', syncViewportHeight);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', syncViewportHeight);
+      window.visualViewport?.removeEventListener('scroll', syncViewportHeight);
+      window.removeEventListener('resize', syncViewportHeight);
+    };
+  }, []);
+
+  useEffect(() => {
     const updatePwaPad = () => {
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-        || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+      const isStandalone = isStandaloneDisplayMode();
       const vv = window.visualViewport;
       const offset = Math.max(0, Math.round(vv?.offsetTop ?? 0));
       const pad = offset + 8;
       document.documentElement.style.setProperty('--pwa-top-pad', isStandalone ? `${pad}px` : '0px');
       document.documentElement.style.setProperty('--pwa-top-fix', isStandalone ? `${-(offset + 6)}px` : '0px');
-      document.documentElement.style.setProperty('--pwa-bottom-pad', isStandalone ? '-24px' : '0px');
     };
     updatePwaPad();
     const mql = window.matchMedia('(display-mode: standalone)');
@@ -463,36 +666,58 @@ export default function FirePage() {
   }, []);
 
   const refreshMeta = useCallback(async () => {
-    const cached = getCache<{ days: string[]; feeds: FireFeedOption[] }>(FIRE_META_CACHE_KEY, FIRE_CACHE_TTL);
+    const cached = getCache<{ days: string[]; feeds: FireFeedOption[]; warmupSummary: WarmupSummary }>(FIRE_META_CACHE_KEY, FIRE_CACHE_TTL);
     if (cached) {
-      setAvailableFeeds(cached.feeds ?? []);
+      setAvailableFeeds((prev) => {
+        const next = cached.feeds ?? [];
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+      setWarmupSummary((prev) => {
+        const next = cached.warmupSummary ?? {};
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
       if ((cached.days ?? []).length > 0) {
         setPickerDays((prevDays) => {
           const prevTop = prevDays[0] || '';
           setSelectedDay((current) => {
             if (!current) return cached.days[0];
             if (!cached.days.includes(current)) return cached.days[0];
-            if (current === prevTop) return cached.days[0];
+            if (current === prevTop && prevTop !== cached.days[0]) return cached.days[0];
             return current;
           });
+          if (JSON.stringify(prevDays) === JSON.stringify(cached.days)) return prevDays;
           return cached.days;
         });
       }
-      return;
     }
 
-    const meta = await fetchMeta();
+    let meta: Awaited<ReturnType<typeof fetchMeta>>;
+    try {
+      meta = await fetchMeta();
+    } catch (error) {
+      if (cached) return;
+      throw error;
+    }
+
     setCache(FIRE_META_CACHE_KEY, meta);
-    setAvailableFeeds(meta.feeds);
+    setAvailableFeeds((prev) => {
+      const next = meta.feeds ?? [];
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+    setWarmupSummary((prev) => {
+      const next = meta.warmupSummary ?? {};
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
     if (meta.days.length > 0) {
       setPickerDays((prevDays) => {
         const prevTop = prevDays[0] || '';
         setSelectedDay((current) => {
           if (!current) return meta.days[0];
           if (!meta.days.includes(current)) return meta.days[0];
-          if (current === prevTop) return meta.days[0];
+          if (current === prevTop && prevTop !== meta.days[0]) return meta.days[0];
           return current;
         });
+        if (JSON.stringify(prevDays) === JSON.stringify(meta.days)) return prevDays;
         return meta.days;
       });
     }
@@ -517,34 +742,37 @@ export default function FirePage() {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') run();
     };
-    window.addEventListener('focus', run);
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       mounted = false;
       window.clearInterval(intervalId);
-      window.removeEventListener('focus', run);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [refreshMeta]);
 
   useEffect(() => {
-    setFilters((current) => pruneFilters(current, availableFeeds));
+    setFilters((current) => {
+      const pruned = pruneFilters(current, availableFeeds);
+      return serializeFilters(pruned) === serializeFilters(current) ? current : pruned;
+    });
   }, [availableFeeds]);
 
   useEffect(() => {
-    setFilters((current) => ({
-      ...current,
-      selectedCheckpoints: current.selectedCheckpoints.filter((checkpoint) => availableCheckpoints.includes(checkpoint)),
-    }));
+    setFilters((current) => {
+      const next = current.selectedCheckpoints.filter((checkpoint) => availableCheckpoints.includes(checkpoint));
+      return JSON.stringify(next) === JSON.stringify(current.selectedCheckpoints) ? current : { ...current, selectedCheckpoints: next };
+    });
   }, [availableCheckpoints]);
 
   useEffect(() => {
     setDesktopModalCard((current) => {
       if (!current) return null;
-      return cards.find((card) => card.id === current.id) || null;
+      const nextCard = displayCards.find((card) => card.id === current.id) || null;
+      if (!nextCard?.warmupGate?.isLocked) return nextCard;
+      return null;
     });
-  }, [cards]);
+  }, [displayCards]);
 
   useEffect(() => {
     if (!selectedDay) return;
@@ -567,10 +795,14 @@ export default function FirePage() {
       setCards(cached.items);
       setHasMore(cached.hasMore);
       setTotal(cached.total);
-      setAvailableCheckpoints(sortCheckpointList(cached.availableCheckpoints || []));
+      setAvailableCheckpoints((prev) => {
+        const next = sortCheckpointList(cached.availableCheckpoints || []);
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
       cursorRef.current = cached.cursor;
       setLoading(false);
       setError(null);
+      void refreshCurrentPage();
       return () => { mounted = false; };
     }
 
@@ -587,7 +819,10 @@ export default function FirePage() {
         setCards(result.items);
         setHasMore(result.hasMore);
         setTotal(result.total);
-        setAvailableCheckpoints(result.availableCheckpoints);
+        setAvailableCheckpoints((prev) => {
+          const next = result.availableCheckpoints;
+          return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+        });
         cursorRef.current = result.items.length;
         setCache(cacheKey, {
           items: result.items,
@@ -605,7 +840,34 @@ export default function FirePage() {
     })();
 
     return () => { mounted = false; };
-  }, [selectedDay, filters, availableFeeds]);
+  }, [selectedDay, filters, availableFeeds, refreshCurrentPage]);
+
+  useEffect(() => {
+    if (!selectedDay) return;
+
+    let mounted = true;
+    const tick = async () => {
+      if (!mounted || document.visibilityState !== 'visible') return;
+      await refreshCurrentPage();
+    };
+
+    const intervalId = window.setInterval(() => {
+      void tick();
+    }, 10_000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void tick();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshCurrentPage, selectedDay]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -638,19 +900,23 @@ export default function FirePage() {
 
   const rootStyle = {
     '--fire-header-height': `${headerHeight}px`,
-    '--fire-bottom-clearance': '208px',
+    '--fire-bottom-clearance': isStandaloneMode ? '86px' : '88px',
+    height: useBrowserPageScroll ? undefined : 'var(--fire-app-height, 100dvh)',
+    minHeight: useBrowserPageScroll ? '100dvh' : undefined,
   } as CSSProperties;
 
   return (
     <motion.div
+      data-fire-immersive="true"
       initial={{ opacity: 0, y: 14, scale: 0.992 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.42, ease: APPLE_EASE }}
-      className="relative h-[100svh] w-full overflow-hidden bg-background text-foreground select-none md:h-[100dvh]"
+      className={cn(
+        'relative w-full bg-transparent text-foreground select-none',
+        useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
+      )}
       style={rootStyle}
     >
-      <div className="pointer-events-none fixed inset-0 z-0 bg-white dark:bg-[#030303]" />
-
       <ZSpaceFilter
         isOpen={isZSpaceOpen}
         onClose={() => setIsZSpaceOpen(false)}
@@ -660,10 +926,13 @@ export default function FirePage() {
         onChange={setFilters}
       />
 
-      <div className="h-full w-full">
+      <div className={cn(useBrowserPageScroll ? 'relative z-10 min-h-[100dvh]' : 'absolute inset-0 z-10')}>
         <div
           ref={headerRef}
-          className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4"
+          className={cn(
+            'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+            useBrowserPageScroll ? 'fixed' : 'absolute',
+          )}
         >
           <div className="relative fm-tab-header-shell">
             <div className={cn(
@@ -687,20 +956,31 @@ export default function FirePage() {
                     <h1 className="shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">
                       FIRE
                     </h1>
-                    <motion.button
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => {
-                        play('snapLock');
-                        setIsZSpaceOpen(true);
-                      }}
-                      className={cn(
-                        'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
-                        'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
-                        hasActiveFilters ? 'text-lime dark:text-lime' : 'text-black/58 dark:text-white/45',
-                      )}
-                    >
-                      <SlidersHorizontal size={20} />
-                    </motion.button>
+                    <div className="flex items-center gap-2">
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        type="button"
+                        onClick={() => setFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
+                        className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                      >
+                        <ArrowUpDown size={14} />
+                        <span>{filters.sort === 'best' ? 'PCTL' : 'RECENT'}</span>
+                      </motion.button>
+                      <motion.button
+                        whileTap={{ scale: 0.92 }}
+                        onClick={() => {
+                          play('snapLock');
+                          setIsZSpaceOpen(true);
+                        }}
+                        className={cn(
+                          'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
+                          'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
+                          hasActiveFilters ? 'text-lime dark:text-lime' : 'text-black/58 dark:text-white/45',
+                        )}
+                      >
+                        <SlidersHorizontal size={20} />
+                      </motion.button>
+                    </div>
                   </div>
                   <div className="min-w-0 pointer-events-auto">
                     <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={setSelectedDay} />
@@ -708,27 +988,27 @@ export default function FirePage() {
                 </div>
 
                 <div className="hidden flex-col gap-2 lg:flex">
-                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-                    <div className="text-[22px] font-black uppercase tracking-[0.14em] text-black dark:text-white fm-depth-title">
+                  <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
+                    <div className="text-[28px] font-black uppercase tracking-[0.18em] text-black dark:text-white fm-depth-title">
                       FIRE
                     </div>
-                    <div className="flex justify-center">
+                    <div className="flex justify-center px-0.5">
                       <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={setSelectedDay} compact />
                     </div>
                     <div className="flex items-center justify-end">
-                      <div className="min-w-[150px] rounded-[18px] border border-black/6 bg-white/68 px-3.5 py-2 text-right shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
                         <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">
                           Signals
                         </div>
-                        <div className="mt-0.5 flex items-end justify-end gap-1.5">
-                          <span className="text-[28px] font-black leading-none tracking-[-0.06em] text-black dark:text-white">
+                        <div className="mt-0.5 flex items-end justify-center gap-1">
+                          <span className="text-[46px] font-black leading-[0.82] tracking-[-0.1em] text-black dark:text-white">
                             {total}
                           </span>
-                          <span className="mb-0.5 rounded-full bg-[#CCFF00]/22 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-black/70 dark:bg-[#CCFF00]/16 dark:text-[#CCFF00]">
+                          <span className="mb-1.5 rounded-full bg-[#CCFF00]/22 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-black/70 dark:bg-[#CCFF00]/16 dark:text-[#CCFF00]">
                             {filters.threshold === 'ALL' ? 'ALL' : `TOP ${filters.threshold}`}
                           </span>
                         </div>
-                        <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
+                        <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
                           {selectedDay || '--'}
                         </div>
                       </div>
@@ -766,6 +1046,28 @@ export default function FirePage() {
                     >
                       {feedSummaryLabel}
                     </motion.button>
+
+                    <div className="flex items-center gap-1 rounded-[14px] border border-black/6 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      {FIRE_SORT_OPTIONS.map((option) => {
+                        const isActive = filters.sort === option.value;
+                        return (
+                          <motion.button
+                            key={option.value}
+                            type="button"
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setFilters((current) => ({ ...current, sort: option.value }))}
+                            className={cn(
+                              'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                              isActive
+                                ? 'bg-[#CCFF00] text-black shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                : 'text-black/55 dark:text-white/45',
+                            )}
+                          >
+                            {option.label}
+                          </motion.button>
+                        );
+                      })}
+                    </div>
 
                     {desktopSelectionChips.map((chip) => (
                       <div
@@ -824,7 +1126,7 @@ export default function FirePage() {
           </div>
         </div>
 
-        <div className="h-full w-full">
+        <div className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
           {loading ? (
             <div className="flex h-full w-full items-center justify-center">
               <Loader2 className="h-12 w-12 animate-spin text-lime" />
@@ -836,7 +1138,7 @@ export default function FirePage() {
               </div>
             </div>
           ) : (
-            <div className="mx-auto h-full w-full">
+            <div className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}>
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.div
                   key={`${selectedDay}-${serializeFilters(filters)}`}
@@ -844,9 +1146,9 @@ export default function FirePage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.996 }}
                   transition={{ duration: 0.3, ease: APPLE_EASE }}
-                  className="h-full"
+                  className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}
                 >
-                  {cards.length === 0 ? (
+                  {displayCards.length === 0 ? (
                     <div className="flex h-full w-full items-center justify-center px-6 text-center">
                       <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
                         No alerts for this selection
@@ -854,11 +1156,13 @@ export default function FirePage() {
                     </div>
                   ) : (
                     <FluidDeck
-                      cards={cards}
+                      cards={displayCards}
                       hasMore={hasMore}
                       loadingMore={loadingMore}
                       onLoadMore={handleLoadMore}
                       onOpenCard={setDesktopModalCard}
+                      usePageScroll={useBrowserPageScroll}
+                      resetKey={deckResetKey}
                     />
                   )}
                 </motion.div>

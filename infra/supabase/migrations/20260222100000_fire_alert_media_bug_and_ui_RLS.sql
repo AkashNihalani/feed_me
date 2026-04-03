@@ -1,2 +1,0 @@
--- This file was mistakenly created and is scheduled for deletion by the user. 
--- No migrations should be applied from this file.

@@ -28,15 +28,19 @@ export async function GET(request: NextRequest) {
     }
 
     const feedId = Number(request.nextUrl.searchParams.get('feedId') || 0);
-    const weeks = Number(request.nextUrl.searchParams.get('weeks') || 4);
+    const windowParam = Number(
+      request.nextUrl.searchParams.get('days')
+      || request.nextUrl.searchParams.get('weeks')
+      || 30
+    );
     const handleRaw = (request.nextUrl.searchParams.get('handle') || '').trim();
     const handle = handleRaw ? handleRaw.replace(/^@+/, '').toLowerCase() : null;
 
     if (!feedId) {
       return NextResponse.json({ error: 'feedId is required' }, { status: 400 });
     }
-    if (![4, 12, 26, 52].includes(weeks)) {
-      return NextResponse.json({ error: 'weeks must be one of 4,12,26,52' }, { status: 400 });
+    if (![7, 30, 60, 90, 4, 12, 26, 52].includes(windowParam)) {
+      return NextResponse.json({ error: 'days must be one of 7,30,60,90' }, { status: 400 });
     }
 
     const sb = adminClient();
@@ -52,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await sb.rpc('fn_feed_dashboard', {
       p_feed_id: feedId,
-      p_weeks: weeks,
+      p_weeks: windowParam,
       p_handle: handle,
     });
     if (error) throw error;
@@ -62,4 +66,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message || 'Failed to load dashboard' }, { status: 500 });
   }
 }
-

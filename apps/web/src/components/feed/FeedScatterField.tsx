@@ -64,7 +64,7 @@ export default function FeedScatterField({ points }: { points: ScatterPoint[] })
 
   return (
     <motion.div
-      className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4"
+      className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4 lg:p-5"
     >
       <div className="relative z-10 mb-4 flex items-start justify-between gap-2">
         <span className="fm-label fm-depth-title">The Field</span>

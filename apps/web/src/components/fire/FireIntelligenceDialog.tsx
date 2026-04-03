@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ExternalLink, Share2, X } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { FireItem } from './types';
 import { compact } from './fireLogicHelpers';
 
@@ -28,42 +28,153 @@ function text(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
-function MetricTile({
+function compactOrDash(v: number | null): string {
+  return v == null || !Number.isFinite(v) ? '--' : compact(v);
+}
+
+function multipleOrDash(v: number | null): string {
+  return v == null || !Number.isFinite(v) ? '--' : `${v.toFixed(2)}x`;
+}
+
+function topPercentOrDash(v: number | null): string {
+  return v == null || !Number.isFinite(v) ? '--' : `Top ${Math.round(v)}%`;
+}
+
+function hourAmPm(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return '--';
+  const normalized = ((Math.round(v) % 24) + 24) % 24;
+  const suffix = normalized >= 12 ? 'PM' : 'AM';
+  const twelve = normalized % 12 === 0 ? 12 : normalized % 12;
+  return `${twelve} ${suffix}`;
+}
+
+function metricLabel(metric: string): string {
+  if (metric === 'views') return 'Views';
+  if (metric === 'likes') return 'Likes';
+  if (metric === 'comments') return 'Comments';
+  return metric.toUpperCase();
+}
+
+function signedShift(delta: number | null): string {
+  if (delta == null || !Number.isFinite(delta)) return '--';
+  const rounded = Math.round(delta);
+  if (rounded > 0) return `+${rounded}`;
+  if (rounded < 0) return `${rounded}`;
+  return '0';
+}
+
+function shiftTone(delta: number | null): { label: string } {
+  if (delta == null || !Number.isFinite(delta) || Math.round(delta) === 0) return { label: 'Flat' };
+  return delta > 0 ? { label: 'Improving' } : { label: 'Cooling' };
+}
+
+function latestTrajectoryPoint(points: Array<number | null>): number | null {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    if (points[index] != null && Number.isFinite(points[index] as number)) {
+      return points[index];
+    }
+  }
+  return null;
+}
+
+function firstTrajectoryPoint(points: Array<number | null>): number | null {
+  for (const point of points) {
+    if (point != null && Number.isFinite(point)) return point;
+  }
+  return null;
+}
+
+/* ── Subcomponents ── */
+
+function MetaBadge({ value }: { value: string }) {
+  return (
+    <span className="rounded-full border border-white/[0.12] bg-black/40 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/80 backdrop-blur-sm dark:border-white/[0.12] dark:bg-black/40 dark:text-white/80">
+      {value}
+    </span>
+  );
+}
+
+function SectionTag({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400 dark:text-white/36">
+      {children}
+    </div>
+  );
+}
+
+function SupportMetricRow({
+  label,
+  value,
+  multiple,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  multiple: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]">
+      <div className="min-w-0">
+        <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-neutral-400 dark:text-white/36">
+          {label}
+        </div>
+        <div className="mt-0.5 text-[13px] font-semibold tabular-nums text-neutral-600 dark:text-white/60">
+          {value}
+        </div>
+      </div>
+      <div
+        className={
+          accent
+            ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-black dark:text-[#CCFF00]'
+            : 'text-[26px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
+        }
+      >
+        {multiple}
+      </div>
+    </div>
+  );
+}
+
+function CompactStat({
   label,
   value,
   accent = false,
-  compact = false,
 }: {
   label: string;
   value: string;
   accent?: boolean;
-  compact?: boolean;
 }) {
   return (
-    <div className={accent
-      ? 'rounded-[24px] border border-[#CCFF00]/20 bg-[#CCFF00] p-4 shadow-[0_18px_36px_rgba(204,255,0,0.2),inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-[#CCFF00]/10'
-      : 'rounded-[24px] border border-black/8 bg-white/[0.46] p-4 shadow-[0_20px_42px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-black/38 dark:shadow-[0_18px_42px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]'}>
-      <div className={accent
-        ? 'text-[10px] font-black uppercase tracking-[0.18em] text-black/55'
-        : 'text-[10px] font-black uppercase tracking-[0.18em] text-black/42 dark:text-white/34'}>
+    <div className="rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-3.5 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]">
+      <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-neutral-400 dark:text-white/36">
         {label}
       </div>
-      <div className={accent
-        ? `mt-3 ${compact ? 'text-[clamp(22px,2.4vw,32px)]' : 'text-[clamp(24px,3vw,38px)]'} font-black leading-[0.9] tracking-[-0.04em] text-black`
-        : `mt-3 ${compact ? 'text-[clamp(18px,2vw,28px)]' : 'text-[clamp(20px,2.4vw,34px)]'} font-black leading-[0.92] tracking-[-0.04em] text-black dark:text-white`}>
+      <div
+        className={
+          accent
+            ? 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-black dark:text-[#CCFF00]'
+            : 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90'
+        }
+      >
         {value}
       </div>
     </div>
   );
 }
 
-function MetricPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[20px] border border-black/8 bg-white/[0.42] px-4 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_16px_34px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
-      <div className="text-[9px] font-black uppercase tracking-[0.18em] text-black/42 dark:text-white/34">{label}</div>
-      <div className="mt-2 text-[24px] font-black leading-[0.92] tracking-[-0.04em] text-black dark:text-white">{value}</div>
-    </div>
-  );
+function TrajectoryBadge({ delta }: { delta: number | null }) {
+  const tone = shiftTone(delta);
+  // Flat
+  if (delta == null || !Number.isFinite(delta) || Math.round(delta) === 0) {
+    return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/50">{tone.label}</span>;
+  }
+  // Improving
+  if (delta > 0) {
+    return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-[#CCFF00]">{tone.label}</span>;
+  }
+  // Cooling
+  return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-500 dark:text-[#ff8a65]">{tone.label}</span>;
 }
 
 export default function FireIntelligenceDialog({ item, onClose }: FireIntelligenceDialogProps) {
@@ -80,7 +191,6 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     if (!item) return null;
     const payload = asRecord(item.payload);
     const metrics = asRecord(payload.metrics);
-    const position = asRecord(payload.position);
     const timing = asRecord(payload.timing);
     const trajectory = asRecord(payload.trajectory);
     const bestMetric = (text(payload.best_metric) || item.metricKey || 'views').toUpperCase();
@@ -88,9 +198,6 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     const value = num(bestMetricObj.value) ?? item.metricValue;
     const baseline = num(bestMetricObj.baseline);
     const multiple = num(bestMetricObj.multiple);
-    const feedRank = num(bestMetricObj.rank_feed) ?? num(position.feed_rank);
-    const feedPercent = num(bestMetricObj.feed_percentile) ?? num(position.feed_percentile) ?? num(bestMetricObj.percentile) ?? item.surfacePercentile;
-    const feederRank = num(position.feeder_rank) ?? num(position.rank_overall) ?? num(position.rank_all_time);
     const bestInLastN = num(bestMetricObj.best_in_last_n);
     const hour = num(timing.hour);
     const hourPct = num(timing.hour_percentile);
@@ -98,16 +205,22 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     const d1 = num(trajectory.d1);
     const d3 = num(trajectory.d3);
     const d7 = num(trajectory.d7);
+    const d21 = num(trajectory.d21);
     const delta = num(trajectory.delta) ?? item.trajectoryDeltaPercentile;
+    const trajectoryPoints = [d1, d3, d7, d21];
+    const currentTrajectory = latestTrajectoryPoint(trajectoryPoints) ?? item.surfacePercentile;
+    const firstTrajectory = firstTrajectoryPoint(trajectoryPoints);
     const supportMetrics = ['views', 'likes', 'comments']
       .filter((metric) => metric !== bestMetric.toLowerCase())
       .map((metric) => {
         const metricObj = asRecord(metrics[metric]);
         const metricMultiple = num(metricObj.multiple);
+        const metricValue = num(metricObj.value);
         return {
           key: metric,
-          label: metric === 'views' ? 'View Rate' : metric === 'likes' ? 'Like Rate' : 'Comment Rate',
-          value: metricMultiple == null ? 'x--' : `${metricMultiple.toFixed(2)}x`,
+          label: metricLabel(metric),
+          multiple: multipleOrDash(metricMultiple),
+          value: compactOrDash(metricValue),
         };
       });
 
@@ -116,9 +229,6 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
       value,
       baseline,
       multiple,
-      feedRank,
-      feedPercent,
-      feederRank,
       bestInLastN,
       hour,
       hourPct,
@@ -126,7 +236,10 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
       d1,
       d3,
       d7,
+      d21,
       delta,
+      currentTrajectory,
+      firstTrajectory,
       supportMetrics,
       checkpoint: item.checkpoint.toUpperCase(),
       handle: `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`,
@@ -143,179 +256,188 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
           onClick={onClose}
         >
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-[20px] dark:bg-black/54" />
-
+          {/* Backdrop — dark overlay only, no blur */}
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.97 }}
+            className="absolute inset-0 bg-black/60 dark:bg-black/72"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
+
+          {/* Dialog */}
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 18, scale: 0.97 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10 flex w-full max-w-[920px] flex-col overflow-hidden rounded-[34px] border border-white/85 bg-[rgba(255,255,255,0.52)] text-black shadow-[0_42px_120px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.86)] backdrop-blur-[54px] backdrop-saturate-[190%] dark:border-white/10 dark:bg-[rgba(8,8,8,0.52)] dark:text-white dark:shadow-[0_42px_120px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.08)]"
-            style={{ width: 'min(920px, calc(100vw - 5rem))', maxHeight: 'min(700px, calc(100vh - 5rem))' }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-10 overflow-hidden rounded-3xl border border-neutral-200/60 shadow-2xl dark:border-white/[0.08] dark:shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
+            style={{ width: 'min(800px, calc(100vw - 4rem))', maxHeight: 'min(600px, calc(100vh - 4rem))' }}
           >
-            {item.thumbnailUrl ? (
-              <div className="pointer-events-none absolute inset-0">
-                <img src={item.thumbnailUrl} alt="cover" className="h-full w-full scale-[1.06] object-cover opacity-12 dark:opacity-10" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(204,255,0,0.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.54))] dark:bg-[radial-gradient(circle_at_top_left,rgba(204,255,0,0.14),transparent_32%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_26%),linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.82))]" />
-              </div>
-            ) : (
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(204,255,0,0.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.32),rgba(255,255,255,0.56))] dark:bg-[radial-gradient(circle_at_top_left,rgba(204,255,0,0.12),transparent_35%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.05),transparent_24%),linear-gradient(180deg,rgba(15,15,15,0.72),rgba(0,0,0,0.92))]" />
-            )}
+            <div className="grid h-full min-h-[520px] grid-cols-[320px_minmax(0,1fr)]">
+              {/* ── Left: Thumbnail Panel (clear view) ── */}
+              <div className="relative min-h-[520px] overflow-hidden bg-black">
+                {item.thumbnailUrl ? (
+                  <img
+                    src={item.thumbnailUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(204,255,0,0.14),transparent_50%),linear-gradient(180deg,#161616_0%,#050505_100%)]" />
+                )}
+                {/* Bottom gradient for legibility */}
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_30%,rgba(0,0,0,0.7)_70%,rgba(0,0,0,0.92)_100%)]" />
 
-            <div className="relative z-10 grid h-full grid-rows-[auto_1fr_auto] gap-5 px-7 pb-7 pt-7">
-            <div className="flex items-start justify-between gap-5">
-              <div className="max-w-[560px]">
-                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-black/55 dark:text-[#CCFF00]/90">
-                  Intelligence Window
-                </div>
-                <div className="mt-3 text-[clamp(40px,4.8vw,66px)] font-black leading-[0.9] tracking-[-0.06em] text-black dark:text-white">
-                  {compact(stats.value)} {stats.bestMetric}
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-[#CCFF00] px-4 py-2 text-[13px] font-black uppercase tracking-[0.12em] text-black shadow-[0_10px_24px_rgba(204,255,0,0.18)]">
-                    {stats.multiple == null ? '--' : `${stats.multiple.toFixed(2)}x`} multiple
-                  </span>
-                  <span className="text-[20px] font-black tracking-[-0.03em] text-black/68 dark:text-white/76">
-                    {compact(stats.baseline)} usual
-                  </span>
-                </div>
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  <span className="rounded-[12px] border border-black/8 bg-white/[0.42] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-black/72 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/72 dark:shadow-[0_14px_30px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    {stats.handle}
-                  </span>
-                  <span className="rounded-[12px] border border-black/8 bg-white/[0.42] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-black/58 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/54 dark:shadow-[0_14px_30px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    {stats.mediaType}
-                  </span>
-                  <span className="rounded-[12px] border border-black/8 bg-white/[0.42] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-black/58 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/54 dark:shadow-[0_14px_30px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    {stats.checkpoint}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!item.postUrl) return;
-                    navigator.clipboard?.writeText(item.postUrl).catch(() => undefined);
-                  }}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-black/8 bg-white/[0.42] text-black/48 shadow-[0_12px_26px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.78)] transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-white/46 dark:shadow-[0_10px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
-                >
-                  <Share2 size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-black/8 bg-white/[0.42] text-black/48 shadow-[0_12px_26px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.78)] transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-white/46 dark:shadow-[0_10px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="grid min-h-0 grid-cols-12 gap-4">
-              <div className="col-span-4 grid auto-rows-fr grid-cols-2 gap-4">
-                <MetricTile
-                  label="Performance"
-                  value={stats.bestInLastN == null ? 'BEST IN -- POSTS' : `BEST IN ${Math.max(1, Math.round(stats.bestInLastN))} POSTS`}
-                  compact
-                />
-                <MetricTile
-                  label="Feed Rank"
-                  value={
-                    stats.feedRank == null
-                      ? '--'
-                      : `#${Math.round(stats.feedRank)}${stats.feedPercent == null ? '' : ` · ${Math.round(stats.feedPercent)}%`}`
-                  }
-                  compact
-                />
-                <MetricTile label="Feeder Rank" value={stats.feederRank == null ? '--' : `#${Math.round(stats.feederRank)}`} accent compact />
-              </div>
-
-              <div className="col-span-5 flex flex-col rounded-[28px] border border-black/8 bg-white/[0.42] p-4 shadow-[0_22px_46px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.76)] backdrop-blur-[24px] dark:border-white/8 dark:bg-black/34 dark:shadow-[0_18px_42px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-black/42 dark:text-white/34">
-                    {stats.isD1 ? 'Timing' : 'Trajectory'}
+                {/* Bottom content over thumbnail */}
+                <div className="absolute inset-x-0 bottom-0 z-10 p-5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <MetaBadge value={stats.handle} />
+                    <MetaBadge value={stats.mediaType} />
+                    <MetaBadge value={stats.checkpoint} />
                   </div>
-                  {stats.delta != null && (
-                    <div className="rounded-full bg-[#CCFF00]/18 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-black/72 dark:bg-[#CCFF00]/12 dark:text-[#CCFF00]">
-                      {stats.delta <= 0 ? '+' : '-'}{Math.abs(Math.round(stats.delta))} trending
-                    </div>
-                  )}
+                  <div className="mt-3 text-[36px] font-black leading-[0.9] tracking-[-0.04em] text-white">
+                    {compactOrDash(stats.value)}
+                  </div>
+                  <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                    {stats.bestMetric}
+                  </div>
                 </div>
+              </div>
 
-                <div className="mt-4 grid flex-1 grid-cols-3 gap-3">
-                  {stats.isD1 ? (
+              {/* ── Right: Intelligence Panel — frosted glass over thumbnail bleed ── */}
+              <div className="relative flex min-h-[520px] flex-col overflow-hidden bg-white/72 backdrop-blur-2xl dark:bg-black/72">
+                <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                  {item.thumbnailUrl ? (
                     <>
-                      <div className="rounded-[22px] border border-black/8 bg-white/[0.4] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.04] dark:shadow-[0_10px_22px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.05)]">
-                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/34">Posting Hour</div>
-                        <div className="mt-3 text-[26px] font-black tracking-[-0.04em] text-black dark:text-white">
-                          {stats.hour == null ? '--:--' : `${String(Math.round(stats.hour)).padStart(2, '0')}:00`}
-                        </div>
-                      </div>
-                      <div className="rounded-[22px] border border-black/8 bg-white/[0.4] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.04] dark:shadow-[0_10px_22px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.05)]">
-                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/34">Hour Percentile</div>
-                        <div className="mt-3 text-[26px] font-black tracking-[-0.04em] text-black dark:text-white">
-                          {stats.hourPct == null ? 'P--' : `P${Math.round(stats.hourPct)}`}
-                        </div>
-                      </div>
-                      <div className="rounded-[22px] border border-black/8 bg-white/[0.4] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.04] dark:shadow-[0_10px_22px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.05)]">
-                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/34">Hour Multiple</div>
-                        <div className="mt-3 text-[26px] font-black tracking-[-0.04em] text-black dark:text-white">
-                          {stats.hourMult == null ? 'x--' : `x${stats.hourMult.toFixed(2)}`}
-                        </div>
-                      </div>
+                      <img
+                        src={item.thumbnailUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl opacity-18 dark:opacity-14"
+                      />
+                      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.82))] dark:bg-[linear-gradient(180deg,rgba(8,8,8,0.52),rgba(8,8,8,0.82))]" />
                     </>
                   ) : (
-                    <>
-                      {[
-                        { label: 'D1', value: stats.d1 },
-                        { label: 'D3', value: stats.d3 },
-                        { label: 'D7', value: stats.d7 },
-                      ].map((point) => (
-                        <div key={point.label} className="rounded-[22px] border border-black/8 bg-white/[0.4] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.04] dark:shadow-[0_10px_22px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.05)]">
-                          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/34">{point.label}</div>
-                          <div className="mt-3 text-[26px] font-black tracking-[-0.04em] text-black dark:text-white">
-                            {point.value == null ? '--' : Math.round(point.value)}
-                          </div>
-                        </div>
-                      ))}
-                    </>
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.88))] dark:bg-[linear-gradient(180deg,rgba(12,12,12,0.68),rgba(12,12,12,0.84))]" />
                   )}
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <MetricPill label="Signal Baseline" value={compact(stats.baseline)} />
-                  <MetricPill label="Signal Multiple" value={stats.multiple == null ? 'x--' : `${stats.multiple.toFixed(2)}x`} />
+
+                <div className="relative flex flex-1 flex-col overflow-y-auto p-6">
+                  {/* Header */}
+                  <div>
+                    <SectionTag>Intelligence Window</SectionTag>
+                    <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
+                      Signal vs baseline for this post
+                    </p>
+                  </div>
+
+                  {/* Hero Metric — neon green base, black text */}
+                  <div className="mt-5 rounded-2xl bg-[#CCFF00] px-5 py-4">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-black/40">
+                      Hero Metric
+                    </div>
+                    <div className="mt-3 flex items-end justify-between gap-4">
+                      <div>
+                        <div className="text-[42px] font-black leading-none tracking-[-0.05em] text-black">
+                          {compactOrDash(stats.value)}
+                        </div>
+                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-black/44">
+                          {stats.bestMetric}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[30px] font-black leading-none tracking-[-0.04em] text-black">
+                          {multipleOrDash(stats.multiple)}
+                        </div>
+                        <div className="mt-1 text-[11px] font-medium text-black/44">
+                          {compactOrDash(stats.baseline)} usual
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Supporting Metrics */}
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <SectionTag>Supporting Metrics</SectionTag>
+                      <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
+                        {stats.bestInLastN == null ? 'Best in -- posts' : `Best in ${Math.max(1, Math.round(stats.bestInLastN))} posts`}
+                      </div>
+                    </div>
+                    <div className="mt-2.5 space-y-2">
+                      {stats.supportMetrics.map((metric, index) => (
+                        <SupportMetricRow
+                          key={metric.key}
+                          label={metric.label}
+                          value={metric.value}
+                          multiple={metric.multiple}
+                          accent={index === 0}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="my-4 h-px w-full bg-neutral-200/80 dark:bg-white/[0.06]" />
+
+                  {/* Timing or Trajectory */}
+                  {stats.isD1 ? (
+                    <div>
+                      <SectionTag>Timing</SectionTag>
+                      <div className="mt-2.5 grid grid-cols-3 gap-2">
+                        <CompactStat label="Post Time" value={hourAmPm(stats.hour)} accent />
+                        <CompactStat label="Hour %" value={stats.hourPct == null ? '--' : `Top ${Math.round(stats.hourPct)}%`} />
+                        <CompactStat label="Hour Mult." value={multipleOrDash(stats.hourMult)} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <SectionTag>Trajectory</SectionTag>
+                        <TrajectoryBadge delta={stats.delta} />
+                      </div>
+                      <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                        <div className="flex items-end justify-between gap-4">
+                          <div>
+                            <div className="text-[36px] font-black leading-none tracking-[-0.05em] text-neutral-900 dark:text-white">
+                              {signedShift(stats.delta)}
+                            </div>
+                            <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
+                              Shift vs first checkpoint
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[17px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90">
+                              {topPercentOrDash(stats.currentTrajectory)}
+                            </div>
+                            <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
+                              {stats.firstTrajectory == null || stats.currentTrajectory == null ? 'Awaiting data' : 'Current position'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Open Post CTA */}
+                  <div className="mt-auto pt-5">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
+                      }}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#CCFF00] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_8px_24px_rgba(204,255,0,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(204,255,0,0.2)] active:scale-[0.995]"
+                    >
+                      Open Post
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              <div className="col-span-3 grid auto-rows-fr gap-4">
-                {stats.supportMetrics.map((metric, index) => (
-                  <MetricTile
-                    key={metric.key}
-                    label={metric.label}
-                    value={metric.value}
-                    accent={index === 0}
-                    compact
-                  />
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
-              }}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-[#CCFF00] px-6 py-4 text-[14px] font-black uppercase tracking-[0.22em] text-black shadow-[0_22px_40px_rgba(204,255,0,0.16),inset_0_1px_0_rgba(255,255,255,0.8)] transition-transform hover:scale-[0.995] active:scale-[0.99]"
-            >
-              Open Post
-              <ExternalLink size={18} />
-            </button>
             </div>
           </motion.div>
         </motion.div>

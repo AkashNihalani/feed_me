@@ -16,25 +16,23 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
 
   const segments: Segment[] = useMemo(() => {
     const normalized = Array.isArray(mix) ? mix.slice(0, 4) : [];
-    const fallback: Segment[] = [
-      { id: 'reels', label: 'Reels', percentage: 58, count: 58 },
-      { id: 'carousel', label: 'Carousel', percentage: 27, count: 27 },
-      { id: 'image', label: 'Image', percentage: 15, count: 15 },
-    ];
-    if (normalized.length === 0) return fallback;
+    if (normalized.length === 0) return [];
     return normalized.map((item, idx) => ({
       id: `${item.media_type}-${idx}`,
       label: item.media_type || 'Unknown',
-      percentage: Math.max(1, Math.round((item.share > 0 ? item.share : 0) * 100)),
+      percentage: Math.max(0, Math.round((item.share > 0 ? item.share : 0) * 100)),
       count: Math.max(0, Number(item.post_count) || 0),
     }));
   }, [mix]);
 
-  const total = segments.reduce((sum, s) => sum + s.percentage, 0) || 1;
+  const total = segments.reduce((sum, s) => sum + s.percentage, 0);
   const totalPostCount = segments.reduce((sum, s) => sum + s.count, 0);
-  const normalizedSegments = segments
-    .map((s) => ({ ...s, percentage: Math.round((s.percentage / total) * 100) }))
-    .sort((a, b) => b.percentage - a.percentage);
+  const hasData = total > 0 && totalPostCount > 0;
+  const normalizedSegments = hasData
+    ? segments
+        .map((s) => ({ ...s, percentage: Math.round((s.percentage / total) * 100) }))
+        .sort((a, b) => b.percentage - a.percentage)
+    : [];
 
   // Donut ring geometry
   const size = 160;
@@ -69,7 +67,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
   }, [center, gapDeg, normalizedSegments, radius]);
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-4">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-4 lg:p-5">
       <div className="relative z-10 flex h-full flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
@@ -161,11 +159,16 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     className="flex flex-col items-center"
                   >
                     <span className="text-[8px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/35">
-                      Posts Tracked
+                      {hasData ? 'Posts Tracked' : 'Awaiting Discovery'}
                     </span>
                     <span className="text-[32px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
                       {totalPostCount}
                     </span>
+                    {!hasData ? (
+                      <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/35 dark:text-white/30">
+                        mix appears after tracked posts land
+                      </span>
+                    ) : null}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -174,7 +177,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
 
           {/* Legend */}
           <div className="flex flex-1 flex-col gap-2.5">
-            {normalizedSegments.map((seg, idx) => {
+            {hasData ? normalizedSegments.map((seg, idx) => {
               const isTop = idx === 0;
               const isActive = activeSegment === seg.id;
 
@@ -210,7 +213,11 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                   </span>
                 </motion.div>
               );
-            })}
+            }) : (
+              <div className="rounded-[16px] border border-black/6 bg-black/[0.025] px-3 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-black/42 dark:border-white/8 dark:bg-white/[0.03] dark:text-white/38">
+                No media mix yet. Discovery and the first checkpoint batch will populate this panel.
+              </div>
+            )}
           </div>
         </div>
       </div>

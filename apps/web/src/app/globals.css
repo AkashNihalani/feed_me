@@ -81,20 +81,36 @@ html.dark {
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* AI insight shimmer — conic gradient rotates along card border once per 10s */
+@property --shimmer-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes fire-insight-shimmer {
+  0%   { --shimmer-angle: 0deg; }
+  100% { --shimmer-angle: 360deg; }
+}
+
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: "Space Grotesk", sans-serif;
   transition: background 0.3s, color 0.3s;
   overflow: hidden;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
 }
 
 html {
+  background: var(--background);
   overflow: hidden;
   height: 100%;
   min-height: 100svh;
   min-height: 100dvh;
-  width: 100vw;
+  width: 100%;
+  overscroll-behavior-y: none;
 }
 
 /* Neo-Brutalist Utilities */
@@ -348,6 +364,21 @@ html {
   100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 
+@keyframes loginFloat {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.08; }
+  50% { transform: translateY(-8px) scale(1.05); opacity: 0.14; }
+}
+
+@keyframes loginBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes loginConveyor {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 @keyframes tickerScroll {
   0% { transform: translate3d(0, 0, 0); }
   100% { transform: translate3d(-33.333%, 0, 0); }
@@ -379,6 +410,54 @@ html {
   --pwa-bottom-pad: 0px;
 }
 
+:root:has([data-fire-immersive="true"]),
+html.fm-fire-immersive,
+:root:has(.fm-mobile-browser-immersive),
+html.fm-mobile-browser-immersive,
+:root:has([data-fire-immersive="true"]) body,
+html.fm-fire-immersive body,
+:root:has(.fm-mobile-browser-immersive) body,
+html.fm-mobile-browser-immersive body,
+:root:has([data-fire-immersive="true"]) body > main,
+html.fm-fire-immersive body > main {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+:root:has(.fm-mobile-browser-immersive) body > main,
+html.fm-mobile-browser-immersive body > main {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+html.fm-fire-root-scroll {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  scroll-behavior: auto;
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: calc(var(--fire-header-height, 168px) + 24px);
+  scroll-padding-bottom: calc(var(--fire-bottom-clearance, 86px) + 16px);
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.fm-fire-root-scroll body,
+html.fm-fire-root-scroll body > main {
+  min-height: 100lvh;
+}
+
+html.fm-fire-root-scroll body {
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: calc(var(--fire-header-height, 168px) + 24px);
+  scroll-padding-bottom: calc(var(--fire-bottom-clearance, 86px) + 16px);
+  overscroll-behavior-y: contain;
+}
+
+.fm-mobile-browser-immersive .fm-feed-immersive-panel {
+  min-height: max(460px, calc(100svh - 180px - env(safe-area-inset-top) - 12px));
+}
+
 .fm-app-shell {
   width: 94%;
   margin-left: auto;
@@ -398,10 +477,20 @@ html {
   margin-right: auto;
 }
 
+.fm-tab-canvas-shell {
+  width: calc(100% - 16px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @media (min-width: 768px) {
   .fm-tab-header-shell,
   .fm-tab-content-shell {
     width: 88%;
+  }
+
+  .fm-tab-canvas-shell {
+    width: 92%;
   }
 }
 
@@ -412,8 +501,13 @@ html {
   }
 
   .fm-tab-content-shell {
-    width: 92%;
-    max-width: 1640px;
+    width: 96%;
+    max-width: 1800px;
+  }
+
+  .fm-tab-canvas-shell {
+    width: 98%;
+    max-width: 1860px;
   }
 }
 
@@ -423,7 +517,11 @@ html {
   }
 
   .fm-tab-content-shell {
-    max-width: 1700px;
+    max-width: 1900px;
+  }
+
+  .fm-tab-canvas-shell {
+    max-width: 1960px;
   }
 }
 
@@ -505,8 +603,7 @@ html {
     grid-template-columns: repeat(4, 1fr);
     grid-template-areas:
       "ascent ascent pulse pulse"
-      "kill kill apex apex"
-      "heatmap heatmap heatmap heatmap"
+      "kill apex heatmap heatmap"
       "scatter scatter scatter scatter"
       "targets targets targets targets";
   }
@@ -516,11 +613,10 @@ html {
   .bento-feed-grid {
     grid-template-columns: repeat(12, minmax(0, 1fr));
     grid-template-areas:
-      "ascent ascent ascent ascent ascent ascent ascent pulse pulse pulse pulse pulse"
-      "kill kill kill kill apex apex apex apex apex apex apex apex"
-      "heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap"
-      "scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter"
-      "targets targets targets targets targets targets targets targets targets targets targets targets";
+      "ascent  ascent  ascent  ascent  ascent  ascent  ascent   pulse  pulse  pulse  pulse  pulse"
+      "kill    kill    kill    apex    apex    apex    heatmap  heatmap heatmap heatmap heatmap heatmap"
+      "scatter scatter scatter scatter scatter scatter scatter  scatter scatter scatter scatter scatter"
+      "targets targets targets targets targets targets targets  targets targets targets targets targets";
   }
 }
 
@@ -538,6 +634,10 @@ html {
 
 @media (min-width: 1024px) {
   .fm-feed-mobile-panel {
+    min-height: 0;
+  }
+
+  .fm-mobile-browser-immersive .fm-feed-immersive-panel {
     min-height: 0;
   }
 }

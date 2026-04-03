@@ -3,13 +3,26 @@ import "./globals.css";
 import { StatusBar } from "@/components/StatusBar";
 import BottomNav from "@/components/BottomNav";
 import PwaNotificationsBridge from "@/components/PwaNotificationsBridge";
+import { getSiteUrl } from "@/lib/site-url";
 
-const metadataBase =
-  process.env.NEXT_PUBLIC_SITE_URL
-    ? new URL(process.env.NEXT_PUBLIC_SITE_URL)
-    : process.env.VERCEL_URL
-      ? new URL(`https://${process.env.VERCEL_URL}`)
-      : new URL("http://localhost:3000");
+const metadataBase = new URL(getSiteUrl());
+const themeBootstrapScript = `
+(() => {
+  try {
+    const savedTheme = localStorage.getItem('theme');
+    const isDark = savedTheme !== 'light';
+    const root = document.documentElement;
+    root.classList.toggle('dark', isDark);
+    root.classList.toggle('light', !isDark);
+    root.style.colorScheme = isDark ? 'dark' : 'light';
+  } catch {
+    const root = document.documentElement;
+    root.classList.add('dark');
+    root.classList.remove('light');
+    root.style.colorScheme = 'dark';
+  }
+})();
+`;
 
 export const metadata: Metadata = {
   metadataBase,
@@ -75,9 +88,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full w-full overflow-hidden">
-      <body className="antialiased bg-background h-full w-full overflow-hidden transition-colors duration-300">
-        <main className="h-full w-full overflow-hidden">{children}</main>
+    <html lang="en" suppressHydrationWarning className="h-full min-h-[100dvh] w-full overflow-x-hidden bg-background">
+      <body className="antialiased bg-background h-full min-h-[100dvh] w-full overflow-hidden transition-colors duration-300">
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+        <main className="h-full min-h-[100dvh] w-full overflow-hidden">{children}</main>
         <PwaNotificationsBridge />
         <BottomNav />
         <StatusBar />

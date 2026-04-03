@@ -15,3 +15,4 @@ where status = 'skipped'
     or lower(coalesce(last_error, '')) like 'hard-skip:unterminated string%'
   );
 
+commit;

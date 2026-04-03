@@ -8,7 +8,7 @@ import FeedApexArch from './FeedApexArch';
 import FeedKillZone from './FeedKillZone';
 import FeedScatterField from './FeedScatterField';
 import PostingHeatmap from './PostingHeatmap';
-import { DashboardPayload, Timeframe } from './dashboardTypes';
+import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from './dashboardTypes';
 
 type ActiveFeed = {
   id: string;
@@ -19,6 +19,9 @@ interface FeedDetailV2Props {
   children: React.ReactNode;
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
+  usePageScroll?: boolean;
+  bottomClearance?: string;
+  immersiveBrowserMode?: boolean;
 }
 
 const staggerContainer = {
@@ -42,18 +45,26 @@ export default function FeedDetailV2({
   children,
   timeframe,
   dashboardData,
+  usePageScroll = false,
+  bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
+  immersiveBrowserMode = false,
 }: FeedDetailV2Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const heatmapWeeks = Math.max(1, Math.ceil(TIMEFRAME_TO_DAYS[timeframe] / 7));
   if (!activeFeed) return null;
 
   return (
     <div
       ref={scrollRef}
-      className="hide-scrollbar h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth transform-gpu"
+      className={
+        usePageScroll
+          ? 'w-full min-h-[var(--fm-app-height,100dvh)] overflow-visible overflow-x-hidden scroll-smooth transform-gpu'
+          : 'hide-scrollbar h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth transform-gpu'
+      }
       style={{
         WebkitOverflowScrolling: 'touch',
         scrollPaddingTop: 'calc(220px + env(safe-area-inset-top))',
-        scrollPaddingBottom: 'calc(170px + env(safe-area-inset-bottom))',
+        scrollPaddingBottom: bottomClearance,
       }}
     >
       {/* Header clearance */}
@@ -64,36 +75,37 @@ export default function FeedDetailV2({
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
-        className="fm-tab-content-shell mx-auto w-full px-3 pb-[calc(120px+env(safe-area-inset-bottom))] sm:px-0 lg:pb-[calc(136px+env(safe-area-inset-bottom))] transform-gpu"
+        className="fm-tab-canvas-shell mx-auto w-full px-2 sm:px-0 transform-gpu"
+        style={{ paddingBottom: bottomClearance }}
       >
-        <div className="bento-feed-grid grid gap-3 sm:gap-4 lg:gap-5 xl:gap-6">
+        <div className="bento-feed-grid grid gap-3 sm:gap-4 lg:gap-4 xl:gap-4">
           {/* Ascent — hero card */}
-          <motion.div data-lock-id="ascent" variants={tileVariant} style={{ gridArea: 'ascent' }} className="fm-feed-mobile-panel min-w-0 min-h-[220px] sm:min-h-[260px] lg:min-h-[320px]">
+          <motion.div data-lock-id="ascent" variants={tileVariant} style={{ gridArea: 'ascent' }} className={`fm-feed-mobile-panel min-w-0 min-h-[220px] sm:min-h-[260px] lg:min-h-[300px] xl:min-h-[300px] ${immersiveBrowserMode ? 'fm-feed-immersive-panel' : ''}`}>
             <FeedAscentChart timeframe={timeframe} series={dashboardData?.ascent_series ?? []} />
           </motion.div>
 
           {/* Pulse */}
-          <motion.div data-lock-id="pulse" variants={tileVariant} style={{ gridArea: 'pulse' }} className="fm-feed-mobile-panel min-w-0 min-h-[170px] sm:min-h-[210px] lg:min-h-[240px]">
-            <FeedVelocityBars timeframe={timeframe} series={dashboardData?.frequency_series ?? []} />
+          <motion.div data-lock-id="pulse" variants={tileVariant} style={{ gridArea: 'pulse' }} className={`fm-feed-mobile-panel min-w-0 min-h-[170px] sm:min-h-[210px] lg:min-h-[300px] xl:min-h-[300px] ${immersiveBrowserMode ? 'fm-feed-immersive-panel' : ''}`}>
+            <FeedVelocityBars summary={dashboardData?.summary ?? null} />
           </motion.div>
 
           {/* Apex Arch */}
-          <motion.div data-lock-id="apex" variants={tileVariant} style={{ gridArea: 'apex' }} className="fm-feed-mobile-panel min-w-0 min-h-[170px] sm:min-h-[210px] lg:min-h-[240px]">
+          <motion.div data-lock-id="apex" variants={tileVariant} style={{ gridArea: 'apex' }} className={`fm-feed-mobile-panel min-w-0 min-h-[170px] sm:min-h-[210px] lg:min-h-[240px] xl:min-h-[240px] ${immersiveBrowserMode ? 'fm-feed-immersive-panel' : ''}`}>
             <FeedApexArch mix={dashboardData?.apex_mix ?? []} />
           </motion.div>
 
-          {/* Heatmap — always 52 weeks */}
-          <motion.div data-lock-id="heatmap" variants={tileVariant} style={{ gridArea: 'heatmap' }} className="min-w-0 min-h-[180px] sm:min-h-[200px] lg:min-h-[220px]">
-            <PostingHeatmap days={dashboardData?.heatmap_daily ?? []} weeks={52} />
+          {/* Heatmap */}
+          <motion.div data-lock-id="heatmap" variants={tileVariant} style={{ gridArea: 'heatmap' }} className="min-w-0 min-h-[180px] sm:min-h-[200px] lg:min-h-[240px] xl:min-h-[240px]">
+            <PostingHeatmap days={dashboardData?.heatmap_daily ?? []} weeks={heatmapWeeks} />
           </motion.div>
 
           {/* Kill Zone */}
-          <motion.div data-lock-id="kill" variants={tileVariant} style={{ gridArea: 'kill' }} className="fm-feed-mobile-panel min-w-0 min-h-[160px] sm:min-h-[200px] lg:min-h-[240px]">
+          <motion.div data-lock-id="kill" variants={tileVariant} style={{ gridArea: 'kill' }} className={`fm-feed-mobile-panel min-w-0 min-h-[160px] sm:min-h-[200px] lg:min-h-[240px] xl:min-h-[240px] ${immersiveBrowserMode ? 'fm-feed-immersive-panel' : ''}`}>
             <FeedKillZone hours={dashboardData?.killzone_hours ?? []} />
           </motion.div>
 
           {/* Scatter */}
-          <motion.div data-lock-id="scatter" variants={tileVariant} style={{ gridArea: 'scatter' }} className="fm-feed-mobile-panel min-w-0 min-h-[220px] sm:min-h-[260px] lg:min-h-[320px]">
+          <motion.div data-lock-id="scatter" variants={tileVariant} style={{ gridArea: 'scatter' }} className={`fm-feed-mobile-panel min-w-0 min-h-[220px] sm:min-h-[260px] lg:min-h-[280px] xl:min-h-[280px] xl:max-h-[380px] ${immersiveBrowserMode ? 'fm-feed-immersive-panel' : ''}`}>
             <FeedScatterField points={dashboardData?.scatter_points ?? []} />
           </motion.div>
 
@@ -107,6 +119,7 @@ export default function FeedDetailV2({
             </div>
           </motion.div>
         </div>
+
       </motion.div>
     </div>
   );

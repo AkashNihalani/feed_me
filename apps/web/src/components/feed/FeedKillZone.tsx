@@ -18,22 +18,31 @@ export default function FeedKillZone({ hours }: { hours: KillzonePoint[] }) {
     byHour.set(hour, Number(row.post_count) || 0);
   }
 
+  const totalPosts = Array.from(byHour.values()).reduce((s, v) => s + v, 0);
+  const hasData = totalPosts > 0;
+
   let peakStart = 18;
-  let peakCount = -1;
-  for (let h = 0; h < 24; h++) {
-    const score = (byHour.get(h) || 0) + (byHour.get((h + 1) % 24) || 0);
-    if (score > peakCount) { peakCount = score; peakStart = h; }
+  let peakCount = 0;
+  if (hasData) {
+    let bestCount = -1;
+    for (let h = 0; h < 24; h++) {
+      const score = (byHour.get(h) || 0) + (byHour.get((h + 1) % 24) || 0);
+      if (score > bestCount) {
+        bestCount = score;
+        peakStart = h;
+        peakCount = score;
+      }
+    }
   }
   const peakEnd = (peakStart + 2) % 24;
-  const totalPosts = Array.from(byHour.values()).reduce((s, v) => s + v, 0);
-  const arcShare = totalPosts > 0 ? Math.max(8, Math.round((peakCount / totalPosts) * 100)) : 0;
-  const maxCount = Math.max(1, ...Array.from(byHour.values()));
+  const arcShare = hasData ? Math.max(8, Math.round((peakCount / totalPosts) * 100)) : null;
+  const maxCount = hasData ? Math.max(1, ...Array.from(byHour.values())) : 0;
 
   // 24 hour bars layout
   const hourKeys = Array.from({ length: 24 }, (_, i) => i);
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4 lg:p-5">
       <div className="relative z-10 flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between">
           <span className="fm-label fm-depth-title">Kill Zone</span>
@@ -46,17 +55,17 @@ export default function FeedKillZone({ hours }: { hours: KillzonePoint[] }) {
         <div className="mb-3 flex items-center gap-3">
           <div className="flex items-baseline gap-1.5">
             <span className="text-[22px] sm:text-[26px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white fm-depth-title">
-              {hourLabel(peakStart)}
+              {hasData ? hourLabel(peakStart) : '--'}
             </span>
             <span className="text-[11px] font-black uppercase tracking-[0.1em] text-foreground/30 dark:text-white/30">to</span>
             <span className="text-[22px] sm:text-[26px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white fm-depth-title">
-              {hourLabel(peakEnd)}
+              {hasData ? hourLabel(peakEnd) : '--'}
             </span>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <div className="fm-depth-chip rounded-[10px] px-2.5 py-1.5 text-right">
               <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/32">Share</div>
-              <div className="text-[16px] font-black leading-none text-foreground dark:text-[#CCFF00] fm-depth-title">{arcShare}%</div>
+              <div className="text-[16px] font-black leading-none text-foreground dark:text-[#CCFF00] fm-depth-title">{arcShare == null ? '--' : `${arcShare}%`}</div>
             </div>
             <div className="fm-depth-chip rounded-[10px] px-2.5 py-1.5 text-right">
               <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/32">Posts</div>
@@ -69,10 +78,10 @@ export default function FeedKillZone({ hours }: { hours: KillzonePoint[] }) {
         <div className="flex flex-1 items-end gap-[2px] min-h-[80px]">
           {hourKeys.map((h) => {
             const count = byHour.get(h) || 0;
-            const pct = Math.max(4, (count / maxCount) * 100);
+            const pct = !hasData ? 0 : count <= 0 ? 4 : (count / maxCount) * 100;
             const isKill = h >= peakStart && h < peakStart + 2;
             const isKillWrap = peakStart + 2 > 24 && h < (peakStart + 2) % 24;
-            const inZone = isKill || isKillWrap;
+            const inZone = hasData && (isKill || isKillWrap);
 
             return (
               <div key={h} className="relative flex flex-1 flex-col items-center justify-end h-full">

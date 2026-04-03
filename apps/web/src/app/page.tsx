@@ -1,25 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useState, useMemo, Suspense } from 'react';
+import { startTransition, useCallback, useEffect, useState, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { Plus, Target, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Download, Plus, Target, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
-import TickerTape, { TickerItem } from '@/components/feed/TickerTape';
-import { DashboardPayload, TIMEFRAME_TO_WEEKS, Timeframe } from '@/components/feed/dashboardTypes';
+import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
+import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
+import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 
 /* ── Types ── */
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
 type FeedMetrics = Metrics & { percentile?: number | string | null };
 type Feeder = {
   handle: string; isAnchor: boolean; profilePicUrl?: string | null;
-  followerCount?: number | null; verificationStatus?: 'pending' | 'verified' | 'failed'; metrics: Metrics;
+  followerCount?: number | null; metrics: Metrics;
 };
 type Feed = { id: string; title: string; feeders: Feeder[]; metrics: FeedMetrics; compositePercentile?: number | string | null };
 type SortMode = 'recent' | 'name' | 'feeders';
@@ -32,40 +33,46 @@ type SlotUsage = {
 
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FEED_CACHE_KEY = 'feed:bundle:v3';
-const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v2';
+const FEED_CACHE_KEY = 'feed:bundle:v5';
+const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v4';
 const FEED_CACHE_TTL = 2 * 60 * 1000;
 const DASHBOARD_CACHE_TTL = 2 * 60 * 1000;
+const dashboardInflight = new Map<string, Promise<DashboardPayload | null>>();
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
-  '4W': '1M',
-  '12W': '3M',
-  '26W': '6M',
-  '52W': '12M',
+  '7D': '7D',
+  '30D': '30D',
+  '60D': '60D',
+  '90D': '90D',
 };
 
-function parseCompactNumber(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value !== 'string') return 0;
-  const src = value.trim().toUpperCase().replace(/,/g, '');
-  const m = src.match(/^(\d+(?:\.\d+)?)([KMB])?$/);
-  if (!m) { const n = Number(src); return Number.isFinite(n) ? n : 0; }
-  const base = parseFloat(m[1]);
-  if (m[2] === 'K') return base * 1_000;
-  if (m[2] === 'M') return base * 1_000_000;
-  if (m[2] === 'B') return base * 1_000_000_000;
-  return base;
+function istDateKey(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
 }
 
-function computeCompositePercentile(activeFeed: Feed | undefined): number {
-  if (!activeFeed) return 50;
-  const fromData = Number(activeFeed.compositePercentile ?? activeFeed.metrics?.percentile);
-  if (Number.isFinite(fromData) && fromData >= 1 && fromData <= 100) return Math.round(fromData);
-  const views = parseCompactNumber(activeFeed?.metrics?.views);
-  const likes = parseCompactNumber(activeFeed?.metrics?.likes);
-  const comments = parseCompactNumber(activeFeed?.metrics?.comments);
-  const strength = Math.log10(views + 1) * 0.5 + Math.log10(likes + 1) * 0.3 + Math.log10(comments + 1) * 0.2;
-  const normalized = Math.max(0, Math.min(1, strength / 6));
-  return Math.max(1, Math.min(100, Math.round(100 - normalized * 90) || 32));
+function utcDateKey(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function shiftIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return utcDateKey(date);
+}
+
+function defaultExportRange() {
+  const to = istDateKey(new Date());
+  return { from: shiftIsoDate(to, -89), to };
 }
 
 /* ── Slide-up entrance ── */
@@ -79,10 +86,49 @@ const pageVariants = {
   },
 };
 
+function dashboardCacheKey(feedId: string, timeframe: Timeframe, handle: string) {
+  return `${DASHBOARD_CACHE_PREFIX}:${feedId}:${TIMEFRAME_TO_DAYS[timeframe]}:${handle}`;
+}
+
+async function fetchDashboardSnapshot(feedId: string, timeframe: Timeframe, handle: string): Promise<DashboardPayload | null> {
+  const cacheKey = dashboardCacheKey(feedId, timeframe, handle);
+  const cached = getCache<DashboardPayload>(cacheKey, DASHBOARD_CACHE_TTL);
+  if (cached) return cached;
+
+  const existing = dashboardInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const params = new URLSearchParams({ feedId, days: String(TIMEFRAME_TO_DAYS[timeframe]) });
+  if (handle !== 'all') params.set('handle', handle);
+
+  const request = fetch(`/api/feed/dashboard?${params}`, { cache: 'no-store' })
+    .then(async (res) => {
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed');
+      const next = (json.dashboard || null) as DashboardPayload | null;
+      if (next) setCache(cacheKey, next);
+      return next;
+    })
+    .finally(() => {
+      dashboardInflight.delete(cacheKey);
+    });
+
+  dashboardInflight.set(cacheKey, request);
+  return request;
+}
+
 function FeedPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { play } = useAppHaptics();
+  const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
+  const urlSelectedFeedId = searchParams.get('id');
+  const mobileBottomClearance = useTranslucentBrowserChrome
+    ? 'calc(18px + env(safe-area-inset-bottom))'
+    : 'calc(120px + env(safe-area-inset-bottom))';
+  const mobileListBottomClearance = useTranslucentBrowserChrome
+    ? 'calc(18px + env(safe-area-inset-bottom))'
+    : 'calc(190px + env(safe-area-inset-bottom))';
 
   useEffect(() => {
     try {
@@ -91,13 +137,21 @@ function FeedPageContent() {
       const lastTab = sessionStorage.getItem('feedme:last-tab');
       const lastTs = Number(sessionStorage.getItem('feedme:last-tab-ts') || 0);
       const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+      const initialDocumentPath = (() => {
+        try {
+          return nav?.name ? new URL(nav.name).pathname : window.location.pathname;
+        } catch {
+          return window.location.pathname;
+        }
+      })();
+      if (initialDocumentPath !== '/') return;
       const recent = lastTab === '/fire' && Date.now() - lastTs < 120000;
       const cameFromFire = (document.referrer || '').includes('/fire');
       if (recent && (nav?.type === 'reload' || cameFromFire)) router.replace('/fire');
     } catch {}
   }, [router]);
 
-  const selectedFeedId = searchParams.get('id');
+  const [selectedFeedId, setSelectedFeedId] = useState<string | null>(urlSelectedFeedId);
   const view = selectedFeedId ? 'detail' : 'list';
 
   const [feeds, setFeeds] = useState<Feed[]>(INITIAL_FEEDS);
@@ -108,12 +162,14 @@ function FeedPageContent() {
   const [newFeedName, setNewFeedName] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [timeframe, setTimeframe] = useState<Timeframe>('4W');
+  const [timeframe, setTimeframe] = useState<Timeframe>('30D');
   const [selectedHandle, setSelectedHandle] = useState<string>('all');
   const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(null);
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
+  const [exportFrom, setExportFrom] = useState<string>(() => defaultExportRange().from);
+  const [exportTo, setExportTo] = useState<string>(() => defaultExportRange().to);
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
   const sortedFeeds = useMemo(() => {
@@ -122,7 +178,6 @@ function FeedPageContent() {
     if (sortMode === 'feeders') return list.sort((a, b) => b.feeders.length - a.feeders.length || a.title.localeCompare(b.title));
     return list;
   }, [feeds, sortMode]);
-  const composite = useMemo(() => computeCompositePercentile(activeFeed), [activeFeed]);
   const shortTitle = String(activeFeed?.title || 'Feed').toUpperCase();
   const pendingDeleteFeed = useMemo(
     () => (pendingDeleteFeedId ? feeds.find((feed) => feed.id === pendingDeleteFeedId) ?? null : null),
@@ -133,6 +188,18 @@ function FeedPageContent() {
     return (activeFeed.feeders || []).map((f) => String(f.handle || '').trim()).filter(Boolean);
   }, [activeFeed]);
 
+  const topAveragePercentile = useMemo(() => {
+    const raw = Number(dashboardData?.summary?.avg_percentile_performance);
+    if (!Number.isFinite(raw) || raw <= 0) return null;
+    return Math.max(1, Math.min(100, Math.round(raw)));
+  }, [dashboardData]);
+  const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
+  const topAveragePosts = Math.max(0, Number(dashboardData?.summary?.posts_with_metrics) || 0);
+
+  useEffect(() => {
+    setSelectedFeedId(urlSelectedFeedId);
+  }, [urlSelectedFeedId]);
+
   /* ── Data loading ── */
   const loadFeeds = useCallback(async () => {
     const cached = getCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY, FEED_CACHE_TTL);
@@ -140,7 +207,6 @@ function FeedPageContent() {
       setFeeds(cached.feeds);
       setTickerItems(cached.ticker);
       if (cached.slots) setSlotUsage(cached.slots);
-      return;
     }
     try {
       const res = await fetch('/api/feed');
@@ -159,35 +225,35 @@ function FeedPageContent() {
   }, []);
 
   useEffect(() => { loadFeeds().catch(err => setApiError(err instanceof Error ? err.message : 'Failed to load feeds')); }, [loadFeeds]);
-  useEffect(() => { setSelectedHandle('all'); setTimeframe('4W'); }, [selectedFeedId]);
+  useEffect(() => { setSelectedHandle('all'); setTimeframe('30D'); }, [selectedFeedId]);
 
   useEffect(() => {
     if (!activeFeed) { setDashboardData(null); return; }
-    const controller = new AbortController();
-    const params = new URLSearchParams({ feedId: String(activeFeed.id), weeks: String(TIMEFRAME_TO_WEEKS[timeframe]) });
-    if (selectedHandle !== 'all') params.set('handle', selectedHandle);
-    const cacheKey = `${DASHBOARD_CACHE_PREFIX}:${activeFeed.id}:${TIMEFRAME_TO_WEEKS[timeframe]}:${selectedHandle}`;
+    let cancelled = false;
+    const cacheKey = dashboardCacheKey(String(activeFeed.id), timeframe, selectedHandle);
     const cached = readCache<DashboardPayload>(cacheKey);
     const hadCache = Boolean(cached);
     if (cached && Date.now() - cached.ts <= DASHBOARD_CACHE_TTL) {
       setDashboardData(cached.data);
-      return () => controller.abort();
     }
-    fetch(`/api/feed/dashboard?${params}`, { signal: controller.signal })
-      .then(async res => {
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'Failed');
-        const next = (json.dashboard || null) as DashboardPayload | null;
+    fetchDashboardSnapshot(String(activeFeed.id), timeframe, selectedHandle)
+      .then((next) => {
+        if (cancelled) return;
         setDashboardData(next);
-        if (next) setCache(cacheKey, next);
       })
       .catch((err: unknown) => {
-        if (!(err instanceof DOMException && err.name === 'AbortError') && !hadCache) {
+        if (!cancelled && !hadCache) {
           setApiError(err instanceof Error ? err.message : 'Failed');
         }
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [activeFeed, timeframe, selectedHandle]);
+
+  const preloadDashboard = useCallback((feedId: string, tf: Timeframe = '30D', handle: string = 'all') => {
+    fetchDashboardSnapshot(feedId, tf, handle).catch(() => {});
+  }, []);
 
   /* ── Actions ── */
   const runFeedAction = async (payload: Record<string, unknown>) => {
@@ -208,8 +274,38 @@ function FeedPageContent() {
     finally { setIsBusy(false); }
   };
 
-  const handleFeedClick = (id: string) => router.push(`/?id=${id}`);
-  const handleBack = () => router.push('/');
+  const handleFeedClick = (id: string) => {
+    setApiError(null);
+    setSelectedHandle('all');
+    setTimeframe('30D');
+    setSelectedFeedId(id);
+    const cached = getCache<DashboardPayload>(dashboardCacheKey(id, '30D', 'all'), DASHBOARD_CACHE_TTL);
+    setDashboardData(cached);
+    preloadDashboard(id, '30D', 'all');
+    startTransition(() => {
+      router.push(`/?id=${id}`, { scroll: false });
+    });
+  };
+  const handleBack = () => {
+    setSelectedFeedId(null);
+    startTransition(() => {
+      router.push('/', { scroll: false });
+    });
+  };
+  const handleDownloadExport = () => {
+    if (!activeFeed) return;
+    if (exportFrom && exportTo && exportFrom > exportTo) {
+      setApiError('Export start date must be before end date');
+      return;
+    }
+    setApiError(null);
+    const params = new URLSearchParams();
+    if (selectedHandle !== 'all') params.set('handle', selectedHandle);
+    if (exportFrom) params.set('from', exportFrom);
+    if (exportTo) params.set('to', exportTo);
+    const query = params.toString();
+    window.location.assign(`/api/download/${activeFeed.id}${query ? `?${query}` : ''}`);
+  };
   const handleMakeAnchor = async (feedId: string, handle: string) => runFeedAction({ action: 'make_anchor', feedId: Number(feedId), handle });
   const handleAddFeeder = async (feedId: string, handle: string) => {
     const clean = (handle || '').trim().replace(/^@+/, '').toLowerCase();
@@ -251,13 +347,28 @@ function FeedPageContent() {
       variants={pageVariants}
       initial="hidden"
       animate="visible"
-      className="relative h-[100svh] w-full overflow-hidden bg-background text-foreground select-none md:h-[100dvh]"
+      className={cn(
+        'relative w-full text-foreground select-none',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-background',
+        useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
+      )}
+      style={appShellStyle}
     >
       {/* Ambient bg */}
-      <div className="pointer-events-none fixed inset-0 z-0 bg-white dark:bg-[#030303]" />
+      <div
+        className={cn(
+          'pointer-events-none fixed inset-0 z-0',
+          useTranslucentBrowserChrome
+            ? 'bg-[radial-gradient(circle_at_top,_rgba(28,28,28,0.96)_0%,_rgba(8,8,8,0.92)_42%,_rgba(0,0,0,0.84)_100%)]'
+            : 'bg-white dark:bg-[#030303]',
+        )}
+      />
 
       {/* ═══ LOCKED HEADER ═══ */}
-      <div className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4">
+      <div className={cn(
+        'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+        useBrowserPageScroll ? 'fixed' : 'absolute',
+      )}>
         <div className="relative fm-tab-header-shell">
           <div
             className={cn(
@@ -277,8 +388,9 @@ function FeedPageContent() {
               style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }}
             />
 
-            <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5">
-              <div className="flex flex-col gap-2 sm:gap-2.5">
+            <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5 lg:px-5 lg:py-2.5">
+              {/* ═══ MOBILE HEADER (< lg) ═══ */}
+              <div className="flex flex-col gap-2 sm:gap-2.5 lg:hidden">
                 {/* Row 1: Title + actions */}
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2.5">
@@ -298,24 +410,16 @@ function FeedPageContent() {
                         </motion.button>
                       )}
                     </AnimatePresence>
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      <motion.div
-                        key={view === 'list' ? 'feed-title' : `detail-${selectedFeedId}`}
-                        initial={{ opacity: 0, y: 8, scale: 0.99 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -6, scale: 0.99 }}
-                        transition={{ duration: 0.28, ease: APPLE_EASE }}
-                      >
-                        <h1 className={cn(
-                          'font-black leading-none text-black dark:text-white fm-depth-title',
-                          view === 'list'
-                            ? 'text-[30px] tracking-[0.14em] sm:text-[38px]'
-                            : 'truncate text-[28px] tracking-[-0.04em] sm:text-[34px]'
-                        )}>
-                          {view === 'list' ? 'FEED' : shortTitle}
-                        </h1>
-                      </motion.div>
-                    </AnimatePresence>
+                    <div className="min-w-0">
+                      <h1 className={cn(
+                        'font-black leading-none text-black dark:text-white fm-depth-title transition-[font-size,letter-spacing] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                        view === 'list'
+                          ? 'text-[30px] tracking-[0.14em] sm:text-[38px]'
+                          : 'truncate text-[28px] tracking-[-0.04em] sm:text-[34px]'
+                      )}>
+                        {view === 'list' ? 'FEED' : shortTitle}
+                      </h1>
+                    </div>
                   </div>
 
                   {/* Right side */}
@@ -350,9 +454,21 @@ function FeedPageContent() {
                         </motion.button>
                       </motion.div>
                     ) : (
-                      <motion.div key="detail-badge" initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.96 }} transition={{ duration: 0.26, ease: APPLE_EASE }}
-                        className="shrink-0 rounded-[12px] border border-white/82 bg-white/74 px-2.5 py-1.5 text-[clamp(18px,5vw,28px)] font-black leading-none text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:text-[#CCFF00] dark:bg-white/[0.05] dark:border-white/10 dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_0_22px_rgba(204,255,0,0.15),0_1px_0_rgba(255,255,255,0.06)_inset]">
-                        P{composite}
+                      <motion.div key="detail-badge" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: APPLE_EASE }}
+                        className="flex shrink-0 items-center gap-2">
+                        <motion.button
+                          type="button"
+                          whileTap={{ scale: 0.94 }}
+                          onClick={() => { play('snapLock'); handleDownloadExport(); }}
+                          className="flex h-[46px] items-center justify-center gap-1.5 rounded-[12px] border border-white/82 bg-white/74 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.05] dark:text-white dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                        >
+                          <Download size={15} strokeWidth={2.8} />
+                          XLS
+                        </motion.button>
+                        <div className="shrink-0 rounded-[12px] border border-white/82 bg-white/74 px-3 py-2 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:bg-white/[0.05] dark:border-white/10 dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_0_22px_rgba(204,255,0,0.15),0_1px_0_rgba(255,255,255,0.06)_inset]">
+                          <div className="text-[8px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/36">Avg Post Perf</div>
+                          <div className="mt-0.5 text-[clamp(18px,5vw,26px)] font-black leading-none dark:text-[#CCFF00]">{topAverageLabel}</div>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -361,9 +477,9 @@ function FeedPageContent() {
                 {/* Row 2 */}
                 <AnimatePresence mode="popLayout" initial={false}>
                   {view === 'detail' ? (
-                    <motion.div key="detail-filters" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4, ease: [0.4, 0, 0.1, 1] }} className="flex flex-col gap-1.5">
+                    <motion.div key="detail-filters" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: [0.4, 0, 0.1, 1] }} className="flex flex-col gap-1.5">
                       <div className="relative flex items-center gap-1 rounded-[14px] border border-white/82 bg-white/74 p-0.5 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
-                        {(['4W', '12W', '26W', '52W'] as Timeframe[]).map(tf => (
+                        {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
                           <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
                             className={cn('relative flex-1 rounded-[10px] py-1 text-center font-black',
                               tf === timeframe
@@ -407,6 +523,31 @@ function FeedPageContent() {
                           ))}
                         </div>
                       )}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <label className="flex flex-col gap-1 rounded-[14px] border border-white/82 bg-white/74 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]">
+                          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/46 dark:text-white/40">From</span>
+                          <input
+                            type="date"
+                            value={exportFrom}
+                            max={exportTo || undefined}
+                            onChange={(event) => setExportFrom(event.target.value)}
+                            className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 rounded-[14px] border border-white/82 bg-white/74 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]">
+                          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/46 dark:text-white/40">To</span>
+                          <input
+                            type="date"
+                            value={exportTo}
+                            min={exportFrom || undefined}
+                            onChange={(event) => setExportTo(event.target.value)}
+                            className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
+                          />
+                        </label>
+                      </div>
+                      <div className="px-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/38 dark:text-white/32">
+                        Dashboard performance uses each post&apos;s latest checkpoint in the selected window. Export defaults to the last 90 days.
+                      </div>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -417,7 +558,175 @@ function FeedPageContent() {
                       transition={{ duration: 0.4, ease: [0.4, 0, 0.1, 1] }}
                       className="min-w-0 pointer-events-auto"
                     >
-                      <TickerTape items={tickerItems} className="w-full" />
+                      <FlipTicker items={tickerItems} className="w-full" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {apiError && <div className="text-[10px] font-black uppercase tracking-[0.14em] text-red-600 dark:text-red-400">{apiError}</div>}
+              </div>
+
+              {/* ═══ DESKTOP HEADER (≥ lg) — Mirrors Fire tab ═══ */}
+              <div className="hidden flex-col gap-2 lg:flex">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {view === 'detail' ? (
+                    <motion.div key="desktop-detail-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-2">
+                      {/* Row 1: Back + Name | Timeframe pills | performance summary */}
+                      <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <motion.button
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => { play('snapLock'); handleBack(); }}
+                            className="relative flex shrink-0 items-center justify-center rounded-[14px] p-2 text-black/58 dark:text-white/45 bg-white/60 border border-white/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:bg-white/[0.06] dark:border-white/10 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                          >
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+                          </motion.button>
+                          <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-black dark:text-white fm-depth-title">
+                            {shortTitle}
+                          </h1>
+                        </div>
+                        <div className="flex justify-center px-0.5">
+                          <div className="relative flex items-center gap-1 rounded-[14px] border border-white/82 bg-white/74 p-0.5 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+                            {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
+                              <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
+                                className={cn('relative rounded-[10px] px-4 py-1.5 text-center font-black',
+                                  tf === timeframe
+                                    ? 'text-[18px] tracking-[-0.02em] text-black z-10'
+                                    : 'text-[13px] tracking-[0.04em] text-black/45 dark:text-white/40 z-0'
+                                )} style={{ WebkitTapHighlightColor: 'transparent' }}>
+                                {tf === timeframe && (
+                                  <motion.span
+                                    layoutId="timeframe-pill-bg-desk"
+                                    className="absolute inset-0 rounded-[10px] border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_4px_10px_rgba(204,255,0,0.25)] dark:border-[#dfff7a]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(204,255,0,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
+                                    transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
+                                  />
+                                )}
+                                <span className="relative z-10">{TIMEFRAME_LABELS[tf]}</span>
+                              </motion.button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <motion.button
+                            type="button"
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => { play('snapLock'); handleDownloadExport(); }}
+                            className="flex h-[72px] items-center justify-center gap-2 rounded-[18px] border border-black/6 bg-white/68 px-4 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:text-white dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
+                          >
+                            <Download size={16} strokeWidth={2.8} />
+                            Export XLS
+                          </motion.button>
+                          <div className="min-w-[176px] rounded-[18px] border border-black/6 bg-white/68 px-3 py-2 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                            <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">Avg Post Performance</div>
+                            <div className="mt-1 flex items-end justify-center gap-1">
+                              <span className="text-[34px] font-black leading-[0.9] tracking-[-0.05em] text-black dark:text-white">{topAverageLabel}</span>
+                            </div>
+                            <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
+                              {topAveragePosts > 0 ? `${topAveragePosts} posts · latest checkpoint` : `No checkpoints · ${TIMEFRAME_LABELS[timeframe]}`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Recessed filter tray with handle pills */}
+                      {handles.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                          <motion.button whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle('all'); }}
+                            className={cn('relative whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.1em]',
+                              selectedHandle === 'all' ? 'text-black z-10' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
+                            {selectedHandle === 'all' && (
+                              <motion.span layoutId="handle-pill-bg-desk"
+                                className="absolute inset-0 rounded-full border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_5px_12px_rgba(204,255,0,0.28)]"
+                                transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
+                            )}
+                            <span className="relative z-10">All Targets</span>
+                          </motion.button>
+                          {handles.map(h => (
+                            <motion.button key={h} whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle(h); }}
+                              className={cn('relative whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.08em]',
+                                selectedHandle === h ? 'text-black z-10' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
+                              {selectedHandle === h && (
+                                <motion.span layoutId="handle-pill-bg-desk"
+                                  className="absolute inset-0 rounded-full border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_5px_12px_rgba(204,255,0,0.28)]"
+                                  transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
+                              )}
+                              <span className="relative z-10">@{h}</span>
+                            </motion.button>
+                          ))}
+                          <div className="ml-auto flex items-center gap-2">
+                            <label className="flex items-center gap-2 rounded-[14px] border border-black/6 bg-white/68 px-3 py-2 shadow-[0_8px_16px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_10px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                              <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">From</span>
+                              <input
+                                type="date"
+                                value={exportFrom}
+                                max={exportTo || undefined}
+                                onChange={(event) => setExportFrom(event.target.value)}
+                                className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
+                              />
+                            </label>
+                            <label className="flex items-center gap-2 rounded-[14px] border border-black/6 bg-white/68 px-3 py-2 shadow-[0_8px_16px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_10px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                              <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">To</span>
+                              <input
+                                type="date"
+                                value={exportTo}
+                                min={exportFrom || undefined}
+                                onChange={(event) => setExportTo(event.target.value)}
+                                className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                      <div className="px-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/38 dark:text-white/32">
+                        Dashboard performance uses each post&apos;s latest checkpoint in the selected window. Export defaults to the last 90 days.
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div key="desktop-list-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-2">
+                      {/* Row 1: FEED title | FlipTicker | + Add Feed */}
+                      <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
+                        <div className="text-[28px] font-black uppercase tracking-[0.18em] text-black dark:text-white fm-depth-title">
+                          FEED
+                        </div>
+                        <div className="flex justify-center px-0.5 min-w-0">
+                          <FlipTicker items={tickerItems} className="w-full" />
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
+                            className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#CCFF00] px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(167,208,0,0.22),0_8px_18px_-4px_rgba(204,255,0,0.35)] dark:shadow-[0_2px_4px_rgba(204,255,0,0.15),0_8px_24px_-4px_rgba(204,255,0,0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
+                            <Plus size={15} strokeWidth={3} /> Add Feed
+                          </motion.button>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Recessed filter tray with sort + feed count */}
+                      <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                        <div className="flex items-center gap-1 rounded-[14px] border border-black/5 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                          {(['recent', 'name', 'feeders'] as SortMode[]).map(mode => {
+                            const isActive = sortMode === mode;
+                            return (
+                              <motion.button
+                                key={mode}
+                                type="button"
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => { play('snapLock'); setSortMode(mode); }}
+                                className={cn(
+                                  'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                                  isActive
+                                    ? 'bg-[#CCFF00] text-black shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                    : 'text-black/55 dark:text-white/45',
+                                )}
+                              >
+                                {mode === 'recent' ? 'RECENT' : mode === 'name' ? 'NAME' : 'FEEDERS'}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                          {feeds.length} {feeds.length === 1 ? 'FEED' : 'FEEDS'}
+                        </div>
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -431,29 +740,34 @@ function FeedPageContent() {
       </div>
 
       {/* ═══ CONTENT ═══ */}
-      <AnimatePresence mode="popLayout" initial={false}>
+      <AnimatePresence mode="wait" initial={false}>
         {view === 'list' ? (
           <motion.div key="list"
-            initial={{ opacity: 0, y: 10, scale: 0.995 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.995 }}
-            transition={{ duration: 0.34, ease: APPLE_EASE }}
-            className="absolute inset-0 z-10 will-change-[opacity] transform-gpu">
-            <div className="hide-scrollbar h-full w-full overflow-y-auto overflow-x-hidden pb-[calc(190px+env(safe-area-inset-bottom))] pt-[calc(168px+env(safe-area-inset-top))] sm:pt-[calc(174px+env(safe-area-inset-top))] md:pt-[208px]"
-              style={{ WebkitOverflowScrolling: 'touch' }}>
-              <div className="w-full px-3 sm:px-4 lg:px-4">
-                <LayoutGroup>
-                <div className="fm-tab-content-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5">
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            className={cn(
+              'z-10 will-change-[opacity] transform-gpu',
+              useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'absolute inset-0',
+            )}>
+            <div
+              className={cn(
+                'w-full overflow-x-hidden pt-[calc(168px+env(safe-area-inset-top))] sm:pt-[calc(174px+env(safe-area-inset-top))] md:pt-[208px]',
+                useBrowserPageScroll ? 'min-h-[var(--fm-app-height,100dvh)] overflow-visible' : 'hide-scrollbar h-full overflow-y-auto',
+              )}
+              style={{
+                WebkitOverflowScrolling: useBrowserPageScroll ? undefined : 'touch',
+                paddingBottom: isStandaloneMode ? 'calc(190px + env(safe-area-inset-bottom))' : mobileListBottomClearance,
+              }}
+            >
+              <div className="w-full px-2 sm:px-3 lg:px-4">
+                <div className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5 xl:grid-cols-3">
                   {sortedFeeds.map((feed, i) => (
-                    <motion.div
-                      key={feed.id}
-                      layout
-                      layoutId={`feed-cell-${feed.id}`}
-                      transition={{ layout: { type: 'spring', stiffness: 320, damping: 30, mass: 0.8 } }}
-                    >
+                    <div key={feed.id}>
                       <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle}
-                        metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} layoutId={`feed-${feed.id}`} />
-                    </motion.div>
+                        metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} />
+                    </div>
                   ))}
                   {feeds.length === 0 && (
                     <div className="col-span-full fm-depth-glass rounded-[28px] px-6 py-10 text-center">
@@ -465,18 +779,27 @@ function FeedPageContent() {
                     </div>
                   )}
                 </div>
-                </LayoutGroup>
               </div>
             </div>
           </motion.div>
         ) : (
           <motion.div key={`detail-${selectedFeedId}`}
-            initial={{ opacity: 0, y: 10, scale: 0.995 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.995 }}
-            transition={{ duration: 0.34, ease: APPLE_EASE }}
-            className="absolute inset-0 z-10 will-change-[opacity] transform-gpu">
-            <FeedDetailV2 activeFeed={activeFeed} timeframe={timeframe} dashboardData={dashboardData}>
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            className={cn(
+              'z-10 will-change-[opacity] transform-gpu',
+              useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'absolute inset-0',
+            )}>
+            <FeedDetailV2
+              activeFeed={activeFeed}
+              timeframe={timeframe}
+              dashboardData={dashboardData}
+              usePageScroll={useBrowserPageScroll}
+              bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
+              immersiveBrowserMode={useTranslucentBrowserChrome}
+            >
               {addingFeeder && <ScanningCard key="scanning" handle={addingFeeder} />}
               {activeFeed?.feeders.length === 0 && !addingFeeder ? (
                 <div className="col-span-full fm-depth-glass flex flex-col items-center justify-center py-20">
@@ -522,7 +845,7 @@ function FeedPageContent() {
       <AnimatePresence>
         {isCreatingFeed && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22, ease: APPLE_EASE }}
-            className="absolute inset-0 z-[120] flex items-center justify-center bg-[rgba(244,247,249,0.5)] px-4 dark:bg-[rgba(3,3,3,0.64)]">
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(244,247,249,0.5)] px-4 dark:bg-[rgba(3,3,3,0.64)]">
             <motion.div initial={{ y: 20, opacity: 0, scale: 0.985 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0, scale: 0.985 }}
               transition={{ duration: 0.28, ease: APPLE_EASE }}
               className="fm-depth-glass relative w-full max-w-[560px] overflow-hidden rounded-[32px] border border-white/85 p-6 shadow-[0_20px_60px_-20px_rgba(15,23,42,0.28)] dark:border-white/10 dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]">
@@ -564,7 +887,7 @@ function FeedPageContent() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: APPLE_EASE }}
-            className="absolute inset-0 z-[125] flex items-center justify-center bg-[rgba(244,247,249,0.54)] px-4 dark:bg-[rgba(3,3,3,0.68)]"
+            className="fixed inset-0 z-[125] flex items-center justify-center bg-[rgba(244,247,249,0.54)] px-4 dark:bg-[rgba(3,3,3,0.68)]"
           >
             <motion.div
               initial={{ y: 18, opacity: 0, scale: 0.985 }}

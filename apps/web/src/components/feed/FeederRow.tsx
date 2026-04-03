@@ -73,7 +73,7 @@ export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, on
       </div>
 
       {/* Metrics — 2x2 grid for breathing room */}
-      <div className="relative z-10 mb-3 grid grid-cols-2 gap-2">
+      <div className="relative z-10 mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4 lg:gap-1.5">
         <MetricStamp label="Likes" value={formatCompact(metrics.likes)} isAnchor={isAnchor} />
         <MetricStamp label="Views" value={formatCompact(metrics.views)} isAnchor={isAnchor} />
         <MetricStamp label="Comms" value={formatCompact(metrics.comments)} isAnchor={isAnchor} />

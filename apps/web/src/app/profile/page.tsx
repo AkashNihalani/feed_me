@@ -23,15 +23,20 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   Bell,
+  Bug,
   Check,
+  CreditCard,
+  FileText,
+  LifeBuoy,
   Lock,
+  X,
   Moon,
   Sun,
-  Package,
-  Plus,
   Target,
   Unlock,
 } from 'lucide-react';
+import FeedPassCard from '@/components/profile/FeedPassCard';
+import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
 
@@ -69,11 +74,46 @@ type EngineJob = {
   lastError: string | null;
 };
 
+type EngineRunBatchBreakdown = {
+  label: string;
+  count: number;
+};
+
+type EngineRunBatch = {
+  id: string;
+  headline: string;
+  windowStart: string;
+  windowEnd: string;
+  totalRuns: number;
+  creatorCount: number;
+  systemCount: number;
+  businessStart: string | null;
+  businessEnd: string | null;
+  types: EngineRunBatchBreakdown[];
+  statuses: EngineRunBatchBreakdown[];
+};
+
 type EngineStats = {
   recentJobs: EngineJob[];
   totalFeeders: number;
   totalPosts: number;
   jobStats: { done: number; failed: number; pending: number; running: number };
+  queuedBatches: EngineRunBatch[];
+  completedBatches: EngineRunBatch[];
+  queuedRuns: EngineRun[];
+  completedRuns: EngineRun[];
+};
+
+type EngineRun = {
+  id: string;
+  kind: string;
+  label: string;
+  checkpoint?: string;
+  mediaType?: string;
+  handle?: string;
+  status: string;
+  scheduledAt: string;
+  completedAt?: string;
 };
 
 const emptyStats: EngineStats = {
@@ -81,6 +121,10 @@ const emptyStats: EngineStats = {
   totalFeeders: 0,
   totalPosts: 0,
   jobStats: { done: 0, failed: 0, pending: 0, running: 0 },
+  queuedBatches: [],
+  completedBatches: [],
+  queuedRuns: [],
+  completedRuns: [],
 };
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
@@ -105,6 +149,90 @@ const tileVariant = {
   },
 };
 
+function formatRunBatchMoment(start?: string, end?: string) {
+  if (!start) return '--';
+  try {
+    const startDate = new Date(start);
+    const endDate = end ? new Date(end) : startDate;
+    const day = new Intl.DateTimeFormat('en-IN', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    }).format(startDate);
+    const timeFormatter = new Intl.DateTimeFormat('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    });
+    const startTime = timeFormatter.format(startDate);
+    const endTime = timeFormatter.format(endDate);
+    if (!end || startDate.getTime() === endDate.getTime()) {
+      return `${day} · ${startTime}`;
+    }
+    return `${day} · ${startTime} to ${endTime}`;
+  } catch {
+    return '--';
+  }
+}
+
+function formatBusinessDayRange(start?: string | null, end?: string | null) {
+  if (!start) return null;
+  try {
+    const formatDay = (value: string) =>
+      new Intl.DateTimeFormat('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      }).format(new Date(`${value}T00:00:00+05:30`));
+
+    if (!end || end === start) {
+      return `Tracking posts from ${formatDay(start)}`;
+    }
+    return `Tracking posts from ${formatDay(start)} to ${formatDay(end)}`;
+  } catch {
+    return start === end || !end ? `Tracking posts from ${start}` : `Tracking posts from ${start} to ${end}`;
+  }
+}
+
+function formatBatchSummary(batch: EngineRunBatch) {
+  const parts: string[] = [];
+  if (batch.creatorCount > 0) {
+    parts.push(`${batch.creatorCount} account${batch.creatorCount === 1 ? '' : 's'}`);
+  }
+  if (batch.systemCount > 0) {
+    parts.push(`${batch.systemCount} system`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : `${batch.totalRuns} check${batch.totalRuns === 1 ? '' : 's'}`;
+}
+
+function formatBatchProgress(statuses: EngineRunBatchBreakdown[]) {
+  if (!statuses.length) return '--';
+  return statuses
+    .slice(0, 3)
+    .map((item) => {
+      const label = item.label.toLowerCase();
+      const icon = label === 'done' || label === 'live' ? '✓' : label === 'failed' ? '✕' : '◷';
+      return `${icon} ${item.count}`;
+    })
+    .join(' · ');
+}
+
+const RUN_TYPE_LABELS: Record<string, string> = {
+  D1: 'Day 1',
+  D3: 'Day 3',
+  D7: 'Day 7',
+  D21: 'Day 21',
+  DAILY: 'Discovery',
+  POLL: 'Discovery',
+  FOLLOWERS: 'Followers',
+  REPAIR: 'Repair',
+};
+
+function humanRunTypeLabel(raw: string) {
+  return RUN_TYPE_LABELS[raw.toUpperCase()] || raw;
+}
+
 function parseMetric(value: string | number | undefined) {
   if (typeof value === 'number') return value;
   if (!value) return 0;
@@ -119,6 +247,13 @@ type NotificationSettingsResponse = {
   fireAlertThreshold?: number;
   hasActiveSubscription?: boolean;
   pwaPushEnabled?: boolean;
+};
+
+type BillingLineItem = {
+  handle: string;
+  posts: number;
+  excess: number;
+  cost: number;
 };
 
 // Deep Hardware Toggle (Signature Deep Neumorphism - Solid Neon)
@@ -166,6 +301,10 @@ function HardwareToggle({ active }: { active: boolean }) {
 export default function FundPage() {
   const router = useRouter();
   const { play } = useAppHaptics();
+  const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
+  const mobileBottomClearance = useTranslucentBrowserChrome
+    ? 'calc(18px + env(safe-area-inset-bottom))'
+    : 'calc(170px + env(safe-area-inset-bottom))';
 
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [alertThreshold, setAlertThreshold] = useState(25);
@@ -185,6 +324,7 @@ export default function FundPage() {
   const [notificationPrefsReady, setNotificationPrefsReady] = useState(false);
   const [notificationTestBusy, setNotificationTestBusy] = useState(false);
   const [notificationTestNotice, setNotificationTestNotice] = useState<string | null>(null);
+  const [showManageSubscriptionModal, setShowManageSubscriptionModal] = useState(false);
 
   // Launch sequence states removed
 
@@ -411,9 +551,11 @@ export default function FundPage() {
     if (shouldBeDark) {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('light');
+      document.documentElement.style.colorScheme = 'dark';
     } else {
       document.documentElement.classList.remove('dark');
       document.documentElement.classList.add('light');
+      document.documentElement.style.colorScheme = 'light';
     }
   }, []);
 
@@ -438,9 +580,38 @@ export default function FundPage() {
   const totalFeeders = feeds.reduce((sum, feed) => sum + (feed.feeders?.length || 0), 0);
   const slotsUsed = slots.used ?? 0;
   const slotPlanPrice = slots.plan?.price ?? 499;
-  const slotPostsCap = slots.plan?.postsCap ?? 35;
+  const slotPostsCap = slots.plan?.postsCap ?? 30;
   const monthlySpend = slotsUsed * slotPlanPrice;
   const lastScrape = engineStats.recentJobs[0]?.updatedAt || engineStats.recentJobs[0]?.createdAt || '';
+  const billingSummary = useMemo(() => {
+    const allFeeders = feeds.flatMap((feed) => feed.feeders || []);
+    const feederCount = allFeeders.length;
+    const baseCost = feederCount * slotPlanPrice;
+    const overages: BillingLineItem[] = allFeeders
+      .map((feeder) => {
+        const posts = parseMetric(feeder.metrics?.postsTracked);
+        const excess = Math.max(0, posts - slotPostsCap);
+        return { handle: feeder.handle, posts, excess, cost: excess * 15 };
+      })
+      .filter((item) => item.excess > 0)
+      .sort((a, b) => b.excess - a.excess);
+    const overageCost = overages.reduce((sum, item) => sum + item.cost, 0);
+    return { feederCount, baseCost, overages, overageCost, total: baseCost + overageCost };
+  }, [feeds, slotPlanPrice, slotPostsCap]);
+  const upcomingRuns = useMemo(
+    () =>
+      [...engineStats.queuedBatches]
+        .sort((a, b) => new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime())
+        .slice(0, 5),
+    [engineStats.queuedBatches],
+  );
+  const recentRuns = useMemo(
+    () =>
+      [...engineStats.completedBatches]
+        .sort((a, b) => new Date(b.windowStart).getTime() - new Date(a.windowStart).getTime())
+        .slice(0, 5),
+    [engineStats.completedBatches],
+  );
   const alertsArmed = pwaNotificationsEnabled;
   const pwaStatusText = notificationBusy
     ? 'Requesting browser permission...'
@@ -497,6 +668,45 @@ export default function FundPage() {
     };
     lockRafRef.current = requestAnimationFrame(tick);
   }
+
+  const [manageSubscriptionBusy, setManageSubscriptionBusy] = useState(false);
+  const supportEmail = 'support@feedmemore.com';
+  const siteUrl = 'https://feedmemore.vercel.app';
+
+  const openManageSubscription = useCallback(() => {
+    setShowManageSubscriptionModal(true);
+  }, []);
+
+  const closeManageSubscription = useCallback(() => {
+    setShowManageSubscriptionModal(false);
+  }, []);
+
+  const startManageSubscriptionCheckout = useCallback(async () => {
+    if (manageSubscriptionBusy || typeof window === 'undefined') return;
+    setManageSubscriptionBusy(true);
+    try {
+      const response = await fetch('/api/payments/create-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: slotPlanPrice }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response, 'Unable to open subscription checkout'));
+      const data = await response.json() as { paymentLinkUrl?: string };
+      if (!data.paymentLinkUrl) throw new Error('Payment link unavailable');
+      window.location.href = data.paymentLinkUrl;
+    } catch (error) {
+      console.error('[fund] subscription link error', error);
+      window.alert(error instanceof Error ? error.message : 'Unable to open subscription checkout');
+    } finally {
+      setManageSubscriptionBusy(false);
+    }
+  }, [manageSubscriptionBusy, readApiError, slotPlanPrice]);
+
+  const openSupportEmail = useCallback((subject: string) => {
+    if (typeof window === 'undefined') return;
+    const href = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}`;
+    window.location.href = href;
+  }, []);
 
   const handlePwaNotificationToggle = useCallback(async () => {
     if (notificationBusy || typeof window === 'undefined') return;
@@ -607,9 +817,187 @@ export default function FundPage() {
       initial={{ opacity: 0, y: 14, scale: 0.992 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.42, ease: APPLE_EASE }}
-      className="relative h-[100svh] w-full overflow-hidden bg-background text-foreground select-none md:h-[100dvh]"
+      className={cn(
+        'relative w-full text-foreground select-none',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-background',
+        useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
+      )}
+      style={appShellStyle}
     >
-      <div className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]" />
+      <div
+        className={cn(
+          'pointer-events-none fixed inset-0 z-0',
+          useTranslucentBrowserChrome
+            ? 'bg-[radial-gradient(circle_at_top,_rgba(28,28,28,0.96)_0%,_rgba(8,8,8,0.92)_42%,_rgba(0,0,0,0.84)_100%)]'
+            : 'bg-[#f4f7f9] dark:bg-[#030303]',
+        )}
+      />
+
+      <AnimatePresence>
+        {showManageSubscriptionModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[180] flex items-end justify-center sm:items-center sm:px-4 sm:py-6"
+            style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            onClick={closeManageSubscription}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 30 }}
+              transition={{ duration: 0.32, ease: APPLE_EASE }}
+              onClick={(event) => event.stopPropagation()}
+              className="relative w-full max-h-[92vh] overflow-y-auto overflow-x-hidden sm:max-w-[520px] sm:rounded-[28px]"
+              style={{
+                background: '#080808',
+                borderRadius: 'clamp(24px, 4vw, 28px)',
+                boxShadow: '0 0 80px rgba(204,255,0,0.06), 0 40px 100px rgba(0,0,0,0.7)',
+              }}
+            >
+              {/* Top accent line */}
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#CCFF00]/30 to-transparent" />
+
+              {/* ── Header ── */}
+              <div className="relative px-5 pb-0 pt-5 sm:px-7 sm:pt-7">
+                {/* Close */}
+                <button
+                  type="button"
+                  onClick={closeManageSubscription}
+                  className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/40 transition-colors hover:bg-white/[0.1] hover:text-white/60 sm:right-6 sm:top-6"
+                >
+                  <X size={15} strokeWidth={2.5} />
+                </button>
+
+                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#CCFF00]/50 sm:text-[10px]">Feed Pass</div>
+                <div className="mt-2 text-[26px] font-black leading-none tracking-[-0.04em] text-white sm:text-[32px]">
+                  Subscription
+                </div>
+              </div>
+
+              {/* ── Vibrant total pill ── */}
+              <div className="px-5 pt-5 sm:px-7 sm:pt-6">
+                <div
+                  className="relative overflow-hidden rounded-[18px] bg-[#CCFF00] px-5 py-4 sm:rounded-[20px] sm:px-6 sm:py-5"
+                  style={{ boxShadow: '0 12px 40px rgba(204,255,0,0.16), 0 0 80px rgba(204,255,0,0.06)' }}
+                >
+                  {/* Subtle inner glow */}
+                  <div className="pointer-events-none absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 40%, rgba(0,0,0,0.04) 100%)' }} />
+                  <div className="relative flex items-end justify-between gap-4">
+                    <div>
+                      <div className="text-[8px] font-black uppercase tracking-[0.16em] text-black/40 sm:text-[9px]">Monthly total</div>
+                      <div className="mt-1 text-[38px] font-black leading-none tracking-[-0.05em] text-black sm:text-[46px]">
+                        ₹{billingSummary.total.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                    <div className="mb-1 rounded-full bg-black/10 px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/55 sm:text-[9px]">
+                      {billingSummary.feederCount} feeder{billingSummary.feederCount === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Cost breakdown ── */}
+              <div className="px-5 pt-5 sm:px-7 sm:pt-6">
+                <div className="space-y-0">
+                  {/* Base row */}
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-3.5 first:pt-0 sm:py-4">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.06em] text-white/80 sm:text-[12px]">Base passes</div>
+                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white/25 sm:text-[10px]">
+                        {billingSummary.feederCount} × ₹{slotPlanPrice} per feeder
+                      </div>
+                    </div>
+                    <div className="text-[16px] font-black tracking-[-0.02em] text-white sm:text-[18px]">
+                      ₹{billingSummary.baseCost.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+
+                  {/* Overage row */}
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-3.5 sm:py-4">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.06em] text-white/80 sm:text-[12px]">Overage charges</div>
+                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white/25 sm:text-[10px]">
+                        {billingSummary.overages.length > 0
+                          ? `${billingSummary.overages.length} feeder${billingSummary.overages.length === 1 ? '' : 's'} over ${slotPostsCap}-post cap`
+                          : `All within ${slotPostsCap}-post cap`}
+                      </div>
+                    </div>
+                    <div className={cn(
+                      'text-[16px] font-black tracking-[-0.02em] sm:text-[18px]',
+                      billingSummary.overageCost > 0 ? 'text-[#FF55A3]' : 'text-white/30'
+                    )}>
+                      {billingSummary.overageCost > 0 ? `₹${billingSummary.overageCost.toLocaleString('en-IN')}` : '₹0'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Feeder ledger (overages only) ── */}
+              {billingSummary.overages.length > 0 && (
+                <div className="px-5 pt-5 sm:px-7 sm:pt-6">
+                  <div className="mb-3 text-[9px] font-black uppercase tracking-[0.16em] text-white/22 sm:text-[10px]">
+                    Overage detail
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    {billingSummary.overages.map((item) => (
+                      <div
+                        key={item.handle}
+                        className="flex items-center justify-between rounded-[14px] bg-white/[0.03] px-4 py-3 sm:rounded-[16px] sm:py-3.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[11px] font-black tracking-[-0.01em] text-white/75 sm:text-[12px]">
+                            @{item.handle}
+                          </div>
+                          <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-white/22 sm:text-[9px]">
+                            {item.posts} posts · +{item.excess} over cap
+                          </div>
+                        </div>
+                        <div className="ml-3 text-[13px] font-black text-[#FF55A3] sm:text-[14px]">
+                          +₹{item.cost}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Add feeder CTA ── */}
+              <div className="px-5 pb-6 pt-5 sm:px-7 sm:pb-7 sm:pt-6">
+                <button
+                  type="button"
+                  onClick={startManageSubscriptionCheckout}
+                  disabled={manageSubscriptionBusy}
+                  className="group flex w-full items-center justify-between rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-left transition-all duration-200 hover:border-[#CCFF00]/16 hover:bg-[#CCFF00]/[0.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[18px] sm:px-5 sm:py-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#CCFF00] text-black sm:h-10 sm:w-10"
+                      style={{ boxShadow: '0 6px 20px rgba(204,255,0,0.18)' }}
+                    >
+                      <CreditCard size={15} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white/70 sm:text-[11px]">
+                        Add feeder pass
+                      </div>
+                      <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-white/25 sm:text-[9px]">
+                        ₹{slotPlanPrice} per slot · {slotPostsCap} posts included
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={16} className="text-white/20 transition-colors group-hover:text-[#CCFF00]/60" />
+                </button>
+              </div>
+
+              {/* Bottom safe area for mobile */}
+              <div className="h-[env(safe-area-inset-bottom)]" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ PREMIUM THEME RIPPLE TRANSITION ═══ */}
       {themeRipple && (
@@ -629,7 +1017,10 @@ export default function FundPage() {
       )}
 
       {/* ═══ MINIMAL LOCKED HEADER ═══ */}
-      <div className="pointer-events-auto absolute inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4">
+      <div className={cn(
+        'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+        useBrowserPageScroll ? 'fixed' : 'absolute',
+      )}>
         <div className="relative fm-tab-header-shell">
           <div
             className={cn(
@@ -660,16 +1051,25 @@ export default function FundPage() {
       </div>
 
       {/* ═══ CONTENT STAGGER GRID ═══ */}
-      <div className="absolute inset-0 z-10 pointer-events-none">
+      <div className={cn(
+        'z-10 pointer-events-none',
+        useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'absolute inset-0',
+      )}>
         <div
-          className="hide-scrollbar h-full w-full overflow-y-auto overflow-x-hidden pb-[calc(170px+env(safe-area-inset-bottom))] pt-[calc(96px+env(safe-area-inset-top))] sm:pt-[calc(108px+env(safe-area-inset-top))] md:pt-[118px] pointer-events-auto"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          className={cn(
+            'w-full overflow-x-hidden pt-[calc(96px+env(safe-area-inset-top))] sm:pt-[calc(108px+env(safe-area-inset-top))] md:pt-[118px] pointer-events-auto',
+            useBrowserPageScroll ? 'min-h-[var(--fm-app-height,100dvh)] overflow-visible' : 'hide-scrollbar h-full overflow-y-auto',
+          )}
+          style={{
+            WebkitOverflowScrolling: useBrowserPageScroll ? undefined : 'touch',
+            paddingBottom: isStandaloneMode ? 'calc(170px + env(safe-area-inset-bottom))' : mobileBottomClearance,
+          }}
         >
           <motion.div
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="fm-tab-content-shell mx-auto space-y-4 px-4 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7 transform-gpu will-change-transform"
+            className="fm-tab-canvas-shell mx-auto space-y-4 px-2 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7 transform-gpu will-change-transform"
           >
             {/* Account Overview Bar */}
             <motion.div variants={tileVariant} className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:gap-4 xl:gap-5">
@@ -695,84 +1095,208 @@ export default function FundPage() {
             {/* Launch Sequence Removed per User Request */}
 
             {/* Middle Section: Management & Control Center */}
-            <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr] xl:gap-5 2xl:gap-6">
-              {/* Left Column: Slot Plan & Actions */}
-              <motion.div variants={tileVariant} className={cn(
-                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col justify-between lg:p-6 xl:p-7',
-                'bg-gradient-to-br from-white/90 to-white/60 border border-white/90',
-                'shadow-[inset_0_2px_4px_rgba(255,255,255,1),inset_0_-2px_4px_rgba(0,0,0,0.03),0_12px_32px_-4px_rgba(15,23,42,0.08),0_24px_64px_-16px_rgba(15,23,42,0.06)]',
-                'dark:from-white/[0.05] dark:to-white/[0.01] dark:border-white/[0.08] dark:border-t-white/[0.12]',
-                'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(0,0,0,0.6),0_24px_48px_rgba(0,0,0,0.5),0_32px_80px_rgba(0,0,0,0.4)]',
-              )}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50">Base Plan</div>
-                    <div className="mt-1 text-[28px] font-black uppercase tracking-[-0.04em] text-foreground sm:text-[36px] drop-shadow-sm dark:drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
-                      ₹{slotPlanPrice} <span className="text-[14px] text-foreground/40 sm:text-[18px]">/ Slot / Month</span>
+            <div className="grid items-stretch gap-4 xl:grid-cols-[0.92fr_1.08fr] xl:gap-5 2xl:grid-cols-[0.88fr_1.12fr] 2xl:gap-6">
+              <motion.div variants={tileVariant} className="flex h-full flex-col gap-4 lg:gap-5">
+                <FeedPassCard
+                  feeds={feeds}
+                  slotPlanPrice={slotPlanPrice}
+                  slotPostsCap={slotPostsCap}
+                  onManageSubscription={openManageSubscription}
+                  manageBusy={manageSubscriptionBusy}
+                />
+
+                <div className={cn(
+                  'fm-depth-glass rounded-[30px] p-4 relative overflow-hidden flex flex-col gap-4 lg:min-h-[236px] lg:p-5 xl:p-5 2xl:p-6',
+                  'bg-white/72 border border-white/82',
+                  'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
+                  'dark:bg-[rgba(10,10,10,0.72)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
+                  'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.52)]'
+                )}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/46 dark:text-white/42">Support</div>
+                      <div className="mt-2 text-[24px] font-black tracking-[-0.04em] text-foreground dark:text-white">Help and policy</div>
+                      <div className="mt-2 max-w-[30rem] text-[10px] font-bold uppercase tracking-[0.1em] leading-relaxed text-foreground/42 dark:text-white/34">
+                        Quick support, billing help, and policy access in the same premium language as the pass.
+                      </div>
+                    </div>
+                    <div className="rounded-full border border-black/8 bg-black/[0.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.13em] text-foreground/50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white/48">
+                      Launch ready
                     </div>
                   </div>
-                  <div className={cn(
-                    'rounded-[20px] px-4 py-2.5 text-center',
-                    'bg-white/80 border border-white shadow-[inset_0_1px_4px_rgba(0,0,0,0.04)]',
-                    'dark:bg-black/40 dark:border-white/5 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.7),0_4px_12px_rgba(0,0,0,0.4)]',
-                  )}>
-                    <div className="text-[9px] font-black uppercase tracking-[0.16em] text-foreground/50 dark:text-white/40">Slots Used</div>
-                    <div className="text-[24px] font-black text-foreground drop-shadow-sm dark:text-white/90">{slotsUsed}</div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => openSupportEmail('FeedMe bug report')}
+                      className={cn(
+                        'flex items-center justify-between rounded-[20px] px-4 py-4 text-left transition-colors duration-200',
+                        'bg-white/72 border border-white/86 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_10px_20px_rgba(15,23,42,0.05)] hover:bg-white/88',
+                        'dark:bg-white/[0.04] dark:border-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_24px_rgba(0,0,0,0.28)] dark:hover:bg-white/[0.06]'
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Bug size={15} className="text-foreground/52 dark:text-white/58" />
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-foreground/72 dark:text-white/72">Report a bug</div>
+                          <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-foreground/34 dark:text-white/28">Flag UI or product issues fast</div>
+                        </div>
+                      </div>
+                      <ArrowUpRight size={14} className="text-foreground/40 dark:text-white/40" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openSupportEmail('FeedMe refund or cancellation help')}
+                      className={cn(
+                        'flex items-center justify-between rounded-[20px] px-4 py-4 text-left transition-colors duration-200',
+                        'bg-white/72 border border-white/86 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_10px_20px_rgba(15,23,42,0.05)] hover:bg-white/88',
+                        'dark:bg-white/[0.04] dark:border-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_24px_rgba(0,0,0,0.28)] dark:hover:bg-white/[0.06]'
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <LifeBuoy size={15} className="text-foreground/52 dark:text-white/58" />
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-foreground/72 dark:text-white/72">Refund / cancel help</div>
+                          <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-foreground/34 dark:text-white/28">Resolve billing support directly</div>
+                        </div>
+                      </div>
+                      <ArrowUpRight size={14} className="text-foreground/40 dark:text-white/40" />
+                    </button>
                   </div>
-                </div>
 
-                <div className="mt-8 grid gap-4 lg:grid-cols-2 xl:mt-10 xl:gap-5 relative z-10">
-                  {/* Neon on Black / Black on Neon Action Tile */}
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.96 }}
-                    className={cn(
-                    'flex items-center justify-between rounded-[24px] px-5 py-4 text-left group',
-                    'bg-[#CCFF00]',
-                    'shadow-[inset_0_2px_6px_rgba(255,255,255,0.6),inset_0_-2px_6px_rgba(130,156,0,0.6),0_8px_24px_rgba(204,255,0,0.25)]',
-                  )}
-                  >
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-black/60">New Connection</div>
-                      <div className="mt-1 text-[22px] font-black tracking-tight text-black drop-shadow-sm">Add Slot</div>
-                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-black/50 leading-tight max-w-[120px]">Deploy a new feeder into any bundle</div>
+                  <div className="mt-auto rounded-[20px] border border-black/6 bg-black/[0.025] px-4 py-3.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                    <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.1em] text-foreground/34 dark:text-white/28">
+                      Support and policy access for billing and app review.
                     </div>
-                    <div className="flex flex-col items-center justify-center gap-1.5 lg:gap-2">
-                      <div className="flex h-[42px] w-[42px] lg:h-[60px] lg:w-[60px] xl:h-[72px] xl:w-[72px] items-center justify-center rounded-full bg-black shadow-[0_4px_16px_rgba(0,0,0,0.4),inset_0_1px_2px_rgba(255,255,255,0.2)] group-hover:scale-105 group-active:scale-90 transition-transform duration-300">
-                        <Plus size={22} strokeWidth={3} className="text-[#CCFF00] lg:w-8 lg:h-8 xl:w-10 xl:h-10" />
-                      </div>
-                      <div className="text-[12px] lg:text-[18px] xl:text-[22px] font-black uppercase text-black">₹{slotPlanPrice}</div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <a
+                        href={`${siteUrl}/privacy`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/54 transition-colors hover:text-foreground dark:text-white/52 dark:hover:text-white/76"
+                      >
+                        <FileText size={12} />
+                        Privacy
+                      </a>
+                      <a
+                        href={`${siteUrl}/terms`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/54 transition-colors hover:text-foreground dark:text-white/52 dark:hover:text-white/76"
+                      >
+                        <FileText size={12} />
+                        Tos
+                      </a>
                     </div>
-                  </motion.button>
-
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.96 }}
-                    className={cn(
-                    'flex items-center justify-between rounded-[24px] px-5 py-4 text-left group',
-                    'bg-[#111] dark:bg-black',
-                    'border border-black dark:border-white/5',
-                    'shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_24px_rgba(0,0,0,0.3)]',
-                  )}
-                  >
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#CCFF00]/60 dark:text-white/40">Expansion</div>
-                      <div className="mt-1 text-[22px] font-black tracking-tight text-[#CCFF00] drop-shadow-[0_0_12px_rgba(204,255,0,0.2)]">Buy Sub</div>
-                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#CCFF00]/40 leading-tight max-w-[140px]">Fund wallet and activate tracking</div>
-                    </div>
-                    <div className="flex flex-col items-center justify-center gap-1.5 lg:gap-2">
-                      <div className="flex h-[42px] w-[42px] lg:h-[60px] lg:w-[60px] xl:h-[72px] xl:w-[72px] items-center justify-center rounded-full bg-black shadow-[inset_0_4px_8px_rgba(0,0,0,0.8),inset_0_-1px_2px_rgba(255,255,255,0.08),0_1px_1px_rgba(255,255,255,0.1)] group-hover:scale-105 group-active:scale-90 transition-transform duration-300">
-                        <Package size={20} strokeWidth={2.5} className="text-[#CCFF00] drop-shadow-[0_0_8px_rgba(204,255,0,0.5)] lg:w-7 lg:h-7 xl:w-9 xl:h-9" />
-                      </div>
-                      <div className="text-[12px] lg:text-[18px] xl:text-[22px] font-black uppercase text-[#CCFF00]">₹{Math.max(100, slotPlanPrice)}</div>
-                    </div>
-                  </motion.button>
+                  </div>
                 </div>
               </motion.div>
 
               {/* Right Column: Deep Settings & Alerts Panel */}
+              <div className="flex h-full flex-col gap-4 lg:gap-5">
               <motion.div variants={tileVariant} className={cn(
-                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col lg:p-6 xl:p-7',
+                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col xl:min-h-[380px] lg:p-5 xl:p-6',
+                'bg-white/70 border border-white/80',
+                'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
+                'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
+                'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.5)]',
+              )}>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 dark:text-white/40">Feed Activity</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-foreground/34 dark:text-white/28">
+                    What&apos;s happening across your feeds
+                  </div>
+                </div>
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {[
+                    {
+                      title: 'Coming Up',
+                      items: upcomingRuns,
+                      badgeLabel: 'Scheduled',
+                      badgeClass: 'bg-[#CCFF00] text-black border-transparent',
+                      badgeStyle: { boxShadow: '0 4px 12px rgba(204,255,0,0.18)' } as React.CSSProperties,
+                      mode: 'upcoming' as const,
+                      emptyText: 'Nothing scheduled yet',
+                    },
+                    {
+                      title: 'Recently Completed',
+                      items: recentRuns,
+                      badgeLabel: 'Done',
+                      badgeClass: 'bg-black/[0.06] text-foreground/60 border-black/8 dark:bg-white/[0.08] dark:text-white/60 dark:border-white/[0.08]',
+                      badgeStyle: {} as React.CSSProperties,
+                      mode: 'recent' as const,
+                      emptyText: 'No recent activity',
+                    },
+                  ].map((group) => (
+                    <div key={group.title} className="rounded-[24px] border border-black/6 bg-black/[0.025] p-3.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">{group.title}</div>
+                        <div className={cn('rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em]', group.badgeClass)} style={group.badgeStyle}>
+                          {group.badgeLabel}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        {group.items.length === 0 ? (
+                          <div className="rounded-[16px] border border-dashed border-black/8 bg-white/55 px-3 py-4 text-center text-[9px] font-bold uppercase tracking-[0.1em] text-foreground/34 dark:border-white/[0.08] dark:bg-black/20 dark:text-white/28">
+                            {group.emptyText}
+                          </div>
+                        ) : (
+                          group.items.map((item) => (
+                            <div key={item.id} className="rounded-[16px] border border-black/6 bg-white/75 px-3 py-3 dark:border-white/[0.06] dark:bg-black/24">
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-black tracking-[-0.01em] text-foreground/80 dark:text-white/80">
+                                  {formatBatchSummary(item)}
+                                </div>
+                                <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-foreground/34 dark:text-white/28">
+                                  {group.mode === 'recent'
+                                    ? `Completed ${formatRunBatchMoment(item.windowStart, item.windowEnd)}`
+                                    : `Runs at ${formatRunBatchMoment(item.windowStart, item.windowEnd)}`}
+                                </div>
+                                {item.businessStart ? (
+                                  <div className="mt-1 text-[8px] font-bold uppercase tracking-[0.1em] text-foreground/26 dark:text-white/24">
+                                    {formatBusinessDayRange(item.businessStart, item.businessEnd)}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div
+                                className="mt-3 flex items-center justify-between rounded-[12px] bg-[#CCFF00] px-3 py-2"
+                                style={{ boxShadow: '0 4px 14px rgba(204,255,0,0.14)' }}
+                              >
+                                <div className="text-[13px] font-black tracking-[-0.02em] text-black">
+                                  {item.totalRuns} <span className="text-[9px] font-black uppercase tracking-[0.1em] text-black/50">checks</span>
+                                </div>
+                                <div className="text-[8px] font-black uppercase tracking-[0.12em] text-black/40">
+                                  {formatBatchProgress(item.statuses)}
+                                </div>
+                              </div>
+
+                              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                {item.types.slice(0, 4).map((typeItem) => (
+                                  <div
+                                    key={`${item.id}-${typeItem.label}`}
+                                    className="rounded-full border border-black/6 bg-black/[0.04] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/50 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/54"
+                                  >
+                                    {humanRunTypeLabel(typeItem.label)} · {typeItem.count}
+                                  </div>
+                                ))}
+                                {item.types.length > 4 ? (
+                                  <div className="rounded-full border border-dashed border-black/8 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:border-white/[0.08] dark:text-white/34">
+                                    +{item.types.length - 4} more
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+
+              <motion.div variants={tileVariant} className={cn(
+                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col lg:flex-1 lg:p-6 xl:p-7',
                 'bg-white/70 border border-white/80',
                 'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
                 'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
@@ -836,10 +1360,12 @@ export default function FundPage() {
                         if (newIsDarkMode) {
                           document.documentElement.classList.add('dark');
                           document.documentElement.classList.remove('light');
+                          document.documentElement.style.colorScheme = 'dark';
                           localStorage.setItem('theme', 'dark');
                         } else {
                           document.documentElement.classList.remove('dark');
                           document.documentElement.classList.add('light');
+                          document.documentElement.style.colorScheme = 'light';
                           localStorage.setItem('theme', 'light');
                         }
                       }, 350);
@@ -1127,6 +1653,7 @@ export default function FundPage() {
 
                 </div>
               </motion.div>
+              </div>
             </div>
 
             {/* Bottom Section: Unified Feed Coverage & Feed-Wise Usage (The Crown Jewel) */}

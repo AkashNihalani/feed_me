@@ -1,14 +1,14 @@
-export type Timeframe = '4W' | '12W' | '26W' | '52W';
+export type Timeframe = '7D' | '30D' | '60D' | '90D';
 
-export const TIMEFRAME_TO_WEEKS: Record<Timeframe, number> = {
-  '4W': 4,
-  '12W': 12,
-  '26W': 26,
-  '52W': 52,
+export const TIMEFRAME_TO_DAYS: Record<Timeframe, number> = {
+  '7D': 7,
+  '30D': 30,
+  '60D': 60,
+  '90D': 90,
 };
 
 export type AscentPoint = {
-  week_start_ist: string;
+  snapshot_date_ist: string;
   follower_count: number;
 };
 
@@ -46,6 +46,18 @@ export type ScatterPoint = {
   posted_at_ist: string | null;
 };
 
+export type DashboardSummary = {
+  window_days: number;
+  window_start_ist: string;
+  window_end_ist: string;
+  post_count: number;
+  posts_with_metrics: number;
+  avg_percentile_performance: number | null;
+  avg_views_percentile: number | null;
+  avg_likes_percentile: number | null;
+  avg_comments_percentile: number | null;
+};
+
 export type DashboardPayload = {
   ascent_series: AscentPoint[];
   frequency_series: FrequencyPoint[];
@@ -53,5 +65,5 @@ export type DashboardPayload = {
   killzone_hours: KillzonePoint[];
   apex_mix: ApexMixPoint[];
   scatter_points: ScatterPoint[];
+  summary: DashboardSummary;
 };
-

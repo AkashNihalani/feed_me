@@ -7,7 +7,16 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument(
         "--mode",
-        choices=["enqueue_daily", "enqueue_poll", "enqueue_weekly_followers", "once", "worker", "backfill_d1_media"],
+        choices=[
+            "enqueue_daily",
+            "enqueue_poll",
+            "enqueue_daily_followers",
+            "enqueue_weekly_followers",
+            "once",
+            "worker",
+            "backfill_d1_media",
+            "restore_d7_fire_thumbnails",
+        ],
         required=True,
     )
     p.add_argument("--limit", type=int, default=300)
@@ -27,10 +36,16 @@ def main():
             print(f"enqueued_poll={eng.enqueue_poll()}")
         finally:
             eng.close()
+    elif args.mode == "enqueue_daily_followers":
+        eng = PureEngine()
+        try:
+            print(f"enqueued_daily_followers={eng.enqueue_daily_followers()}")
+        finally:
+            eng.close()
     elif args.mode == "enqueue_weekly_followers":
         eng = PureEngine()
         try:
-            print(f"enqueued_weekly_followers={eng.enqueue_weekly_followers()}")
+            print(f"enqueued_daily_followers={eng.enqueue_weekly_followers()}")
         finally:
             eng.close()
     elif args.mode == "once":
@@ -43,6 +58,16 @@ def main():
             result = eng.backfill_d1_media(limit=args.limit, days=args.days, batch_size=args.batch_size)
             print(
                 f"backfill_d1_media selected={result.get('selected', 0)} "
+                f"updated={result.get('updated', 0)} missing={result.get('missing', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "restore_d7_fire_thumbnails":
+        eng = PureEngine()
+        try:
+            result = eng.restore_missing_d7_fire_thumbnails(limit=args.limit, days=args.days, batch_size=args.batch_size)
+            print(
+                f"restore_d7_fire_thumbnails selected={result.get('selected', 0)} "
                 f"updated={result.get('updated', 0)} missing={result.get('missing', 0)}"
             )
         finally:
