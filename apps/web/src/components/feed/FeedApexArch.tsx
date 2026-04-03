@@ -159,14 +159,14 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     className="flex flex-col items-center"
                   >
                     <span className="text-[8px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/35">
-                      {hasData ? 'Posts Tracked' : 'Awaiting Discovery'}
+                      {hasData ? 'Posts Tracked' : 'Awaiting Checkpoints'}
                     </span>
                     <span className="text-[32px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
                       {totalPostCount}
                     </span>
                     {!hasData ? (
                       <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/35 dark:text-white/30">
-                        mix appears after tracked posts land
+                        mix appears after first checkpoint lands
                       </span>
                     ) : null}
                   </motion.div>
@@ -215,7 +215,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
               );
             }) : (
               <div className="rounded-[16px] border border-black/6 bg-black/[0.025] px-3 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-black/42 dark:border-white/8 dark:bg-white/[0.03] dark:text-white/38">
-                No media mix yet. Discovery and the first checkpoint batch will populate this panel.
+                No tracked media mix yet. The first checkpoint batch will populate this panel.
               </div>
             )}
           </div>

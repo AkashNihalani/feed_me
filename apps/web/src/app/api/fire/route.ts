@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 30;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_META_PAGE_SIZE = 1000;
+const WARMUP_METRIC_CHUNK_SIZE = 250;
 const FIRE_ALERT_SELECT = [
   'id',
   'dedupe_key',
@@ -257,7 +258,7 @@ type AlertSurfaceRow = {
   intelligence_skipped: boolean | null;
 };
 
-type WarmupSurfaceRow = {
+type WarmupPostRow = {
   post_key: string | null;
   feeder_id: number | string | null;
   media_type: string | null;
@@ -506,38 +507,32 @@ async function filterRowsForTrackedAnchors(
 
 async function fetchWarmupSummary(
   sb: { from: ReturnType<typeof createClient>['from'] },
-  activeFeedIds: number[],
   activeFeederIds: number[],
   feederCreatedAtById: Map<number, string | null>,
 ): Promise<Record<string, number>> {
-  if (activeFeedIds.length === 0 || activeFeederIds.length === 0) return {};
+  if (activeFeederIds.length === 0) return {};
 
-  const rows: WarmupSurfaceRow[] = [];
+  const rows: WarmupPostRow[] = [];
 
   for (let start = 0; ; start += WARMUP_META_PAGE_SIZE) {
     const { data, error } = await sb
-      .from('v_fire_alert_surface')
+      .from('posts')
       .select('post_key,feeder_id,media_type,posted_at')
-      .eq('signal_code', 'slot_v3')
-      .eq('context', 'own')
-      .eq('checkpoint', 'd1')
-      .in('feed_id', activeFeedIds)
       .in('feeder_id', activeFeederIds)
-      .not('status', 'in', '("dropped","error","archived")')
       .order('feeder_id', { ascending: true })
       .order('post_key', { ascending: true })
       .range(start, start + WARMUP_META_PAGE_SIZE - 1);
 
     if (error) throw error;
 
-    const batch = (data || []) as WarmupSurfaceRow[];
+    const batch = (data || []) as WarmupPostRow[];
     rows.push(...batch);
     if (batch.length < WARMUP_META_PAGE_SIZE) break;
   }
 
-  const seen = new Set<string>();
-  const counts: Record<string, number> = {};
-
+  const eligibleRows: Array<{ postKey: string; feederId: number; bucket: 'REEL' | 'CAROUSEL' | 'IMAGE' }> = [];
+  const eligiblePostKeys: string[] = [];
+  const seenEligiblePostKeys = new Set<string>();
   for (const row of rows) {
     const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
     const feederId = Number(row.feeder_id);
@@ -552,11 +547,35 @@ async function fetchWarmupSummary(
       continue;
     }
 
-    const dedupeKey = `${feederId}:${bucket}:${postKey}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
+    if (seenEligiblePostKeys.has(postKey)) continue;
+    seenEligiblePostKeys.add(postKey);
+    eligibleRows.push({ postKey, feederId, bucket });
+    eligiblePostKeys.push(postKey);
+  }
 
-    const summaryKey = buildWarmupSummaryKey(feederId, bucket);
+  if (eligiblePostKeys.length === 0) return {};
+
+  const d1PostKeys = new Set<string>();
+  for (let start = 0; start < eligiblePostKeys.length; start += WARMUP_METRIC_CHUNK_SIZE) {
+    const chunk = eligiblePostKeys.slice(start, start + WARMUP_METRIC_CHUNK_SIZE);
+    const { data, error } = await sb
+      .from('post_metrics')
+      .select('post_key,checkpoint')
+      .in('post_key', chunk)
+      .in('checkpoint', ['d1', 'D1']);
+
+    if (error) throw error;
+
+    for (const row of (data || []) as FireMetricCheckpointRow[]) {
+      const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
+      if (postKey) d1PostKeys.add(postKey);
+    }
+  }
+
+  const counts: Record<string, number> = {};
+  for (const row of eligibleRows) {
+    if (!d1PostKeys.has(row.postKey)) continue;
+    const summaryKey = buildWarmupSummaryKey(row.feederId, row.bucket);
     counts[summaryKey] = (counts[summaryKey] ?? 0) + 1;
   }
 
@@ -701,7 +720,7 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const warmupSummary = await fetchWarmupSummary(supabase, activeFeedIds, activeFeederIds, feederCreatedAtById);
+    const warmupSummary = await fetchWarmupSummary(supabase, activeFeederIds, feederCreatedAtById);
 
     return NextResponse.json({ days, scopes: [], feeds, dayCounts, warmupSummary });
   }

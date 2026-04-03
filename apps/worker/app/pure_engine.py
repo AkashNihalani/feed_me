@@ -1486,13 +1486,18 @@ class PureEngine:
                                     self.conn.rollback()
                                 except Exception:
                                     pass
-                                self._set_checkpoint_result(
-                                    jid,
-                                    "skipped",
-                                    att,
-                                    None,
-                                    _hard_skip_error("Post missing in checkpoint batch", "checkpoint hard failure"),
-                                )
+                                na = att + 1
+                                err = "Post missing in checkpoint batch"
+                                if na <= len(RETRY_BACKOFF_MINUTES):
+                                    self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                                else:
+                                    self._set_checkpoint_result(
+                                        jid,
+                                        "skipped",
+                                        na,
+                                        None,
+                                        _hard_skip_error(err, "checkpoint hard failure"),
+                                    )
                                 continue
 
                             provider_error = _checkpoint_item_error(item)

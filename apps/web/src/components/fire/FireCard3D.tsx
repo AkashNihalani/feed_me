@@ -366,57 +366,101 @@ export function FireCard3D({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div className="col-span-12 sm:col-span-6">
-                  <GlassTile
-                    label="Best in Last N Post"
-                    value={bestInLastN == null ? 'BEST IN -- POSTS' : `BEST IN ${Math.max(1, Math.round(bestInLastN))} POSTS`}
-                    className="[&>div:last-child]:text-[20px]"
-                  />
+                {/* ── Supporting Metrics (matches desktop) ── */}
+                <div className="col-span-12">
+                  <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7),inset_0_-8px_16px_rgba(255,255,255,0.12)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Supporting Metrics</div>
+                      <div className="text-[7px] sm:text-[8px] font-bold uppercase tracking-[0.12em] text-foreground/40">
+                        {bestInLastN == null ? 'Best in — posts' : `Best in ${Math.max(1, Math.round(bestInLastN))} posts`}
+                      </div>
+                    </div>
+                    <div className="mt-1.5 grid grid-cols-2 gap-1">
+                      {supportMetrics.map((metric) => {
+                        const metricObj = asRec(metrics[metric.key]);
+                        const metricValue = num(metricObj.value);
+                        return (
+                          <div key={metric.key} className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
+                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/60">{metric.label}</div>
+                            <div className="mt-0.5 flex items-end justify-between gap-1">
+                              <div className="text-[14px] sm:text-[16px] font-black leading-none text-foreground/90">
+                                {metricValue == null ? '--' : compact(metricValue)}
+                              </div>
+                              <div className="text-[16px] sm:text-[20px] font-black leading-none tracking-[-0.03em] text-foreground/95">
+                                {metric.value}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="col-span-6 sm:col-span-3">
-                  <GlassTile label="Feed Rank" value={feedRank == null ? '--' : `#${Math.round(feedRank)}`} />
-                </div>
-
-                <div className="col-span-6 sm:col-span-3">
-                  <GlassTile label="Feeder Rank" value={feederRank == null ? '--' : `#${Math.round(feederRank)}`} />
-                </div>
-
+                {/* ── Timing (D1) or Trajectory (D3+) — matches desktop ── */}
                 {isD1 ? (
                   <>
-                    <div className="col-span-12 sm:col-span-4">
-                      <GlassTile label="Posting Hour" value={hour == null ? '--:--' : `${String(Math.round(hour)).padStart(2, '0')}:00`} />
-                    </div>
-                    <div className="col-span-6 sm:col-span-4">
-                      <GlassTile label="Hour Performance" value={hourPct == null ? 'P--' : `P${Math.round(hourPct)}`} />
-                    </div>
-                    <div className="col-span-6 sm:col-span-4">
-                      <GlassTile label="Hour Engagement" value={hourMult == null ? 'x--' : `x${hourMult.toFixed(2)}`} />
-                    </div>
-                  </>
-                ) : (
-                  <>
                     <div className="col-span-12">
-                      <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
-                        <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Trajectory</div>
-                        <div className="mt-1 grid grid-cols-4 gap-1.5">
-                          <div className="rounded-[8px] bg-white/55 p-1.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14"><div className="text-[8px] font-black uppercase text-foreground/70">D1</div><div className="text-[16px] sm:text-[18px] font-black leading-none text-foreground/95">{d1 == null ? '--' : Math.round(d1)}</div></div>
-                          <div className="rounded-[8px] bg-white/55 p-1.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14"><div className="text-[8px] font-black uppercase text-foreground/70">D3</div><div className="text-[16px] sm:text-[18px] font-black leading-none text-foreground/95">{d3 == null ? '--' : Math.round(d3)}</div></div>
-                          <div className="rounded-[8px] bg-white/55 p-1.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14"><div className="text-[8px] font-black uppercase text-foreground/70">D7</div><div className="text-[16px] sm:text-[18px] font-black leading-none text-foreground/95">{d7 == null ? '--' : Math.round(d7)}</div></div>
-                          <div className={`rounded-[8px] p-1.5 text-center transition-colors duration-300 ${deltaBgClass}`}>
-                            <div className={`text-[8px] font-black uppercase ${deltaLabelClass}`}>Δ</div>
-                            <div className={`text-[16px] sm:text-[18px] font-black leading-none ${deltaTextClass}`}>
-                              {displayDeltaStr}
+                      <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
+                        <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Timing</div>
+                        <div className="mt-1.5 grid grid-cols-3 gap-1">
+                          <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
+                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Post Time</div>
+                            <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
+                              {hour == null ? '--' : (() => { const h = ((Math.round(hour) % 24) + 24) % 24; const suffix = h >= 12 ? 'PM' : 'AM'; const twelve = h % 12 === 0 ? 12 : h % 12; return `${twelve} ${suffix}`; })()}
+                            </div>
+                          </div>
+                          <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
+                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Hour %</div>
+                            <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
+                              {hourPct == null ? '--' : `Top ${Math.round(hourPct)}%`}
+                            </div>
+                          </div>
+                          <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
+                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Hour Mult.</div>
+                            <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
+                              {hourMult == null ? '--' : `${hourMult.toFixed(2)}x`}
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
-
-                    <div className="col-span-12 grid grid-cols-2 gap-1">
-                      {supportMetrics.map((metric) => (
-                        <MetricChip key={metric.key} label={metric.label} value={metric.value} />
-                      ))}
+                  </>
+                ) : (
+                  <>
+                    <div className="col-span-12">
+                      <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Trajectory</div>
+                          <div className={`text-[8px] sm:text-[9px] font-bold uppercase tracking-[0.12em] ${
+                            delta != null && delta < 0 ? 'text-emerald-600 dark:text-[#CCFF00]'
+                            : delta != null && delta > 0 ? 'text-orange-500 dark:text-[#ff8a65]'
+                            : 'text-foreground/40'
+                          }`}>
+                            {delta == null || Math.round(delta) === 0 ? 'Flat' : delta < 0 ? 'Improving' : 'Cooling'}
+                          </div>
+                        </div>
+                        <div className="mt-1.5 flex items-end justify-between gap-3">
+                          <div>
+                            <div className={`text-[28px] sm:text-[32px] font-black leading-none tracking-[-0.04em] ${
+                              isPositiveShift ? 'text-foreground dark:text-[#CCFF00]' : 'text-foreground/95'
+                            }`}>
+                              {displayDeltaStr}
+                            </div>
+                            <div className="mt-0.5 text-[8px] sm:text-[9px] font-medium text-foreground/40">
+                              Shift vs first checkpoint
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[16px] sm:text-[18px] font-black leading-none tracking-[-0.03em] text-foreground/90">
+                              {lastTraj == null ? '--' : `Top ${Math.round(lastTraj)}%`}
+                            </div>
+                            <div className="mt-0.5 text-[8px] sm:text-[9px] font-medium text-foreground/40">
+                              Current position
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </>
                 )}
