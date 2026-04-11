@@ -3,15 +3,33 @@
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, Flame, IndianRupee } from 'lucide-react';
+import { LayoutGrid, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 
+type NavIconProps = {
+  size?: number;
+  className?: string;
+  strokeWidth?: number;
+};
+
+function FundNavIcon({ size = 20, className = '' }: NavIconProps) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn('flex items-center justify-center font-black leading-none tracking-[-0.08em]', className)}
+      style={{ fontSize: size + 1, transform: 'translateY(1px)' }}
+    >
+      ₹
+    </span>
+  );
+}
+
 const NAV_ITEMS = [
   { label: 'Feed', href: '/', icon: LayoutGrid },
   { label: 'Fire', href: '/fire', icon: Flame },
-  { label: 'Fund', href: '/profile', icon: IndianRupee },
+  { label: 'Fund', href: '/profile', icon: FundNavIcon },
 ];
 
 export default function BottomNav() {
@@ -73,17 +91,16 @@ export default function BottomNav() {
               <motion.div whileTap={{ scale: 0.92 }} transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                 className={cn(
                   'relative flex min-w-[86px] flex-col items-center justify-center rounded-[22px] px-3 py-2.5 lg:min-w-[78px] lg:px-3 lg:py-2',
-                  isActive ? 'text-black dark:text-black' : 'text-black/50 dark:text-white/45')}>
+                  isActive ? 'text-white' : 'text-[#8f6b75] dark:text-[#a3828b]')}>
                 {isActive && (
                   <motion.span layoutId="nav-active-pill"
-                    className="absolute inset-0 rounded-[22px] bg-[#CCFF00] shadow-[0_4px_16px_rgba(204,255,0,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(204,255,0,0.25),0_8px_24px_rgba(0,0,0,0.4)]"
+                    className="absolute inset-0 rounded-[22px] bg-[#E11D48] shadow-[0_4px_16px_rgba(225,29,72,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(225,29,72,0.25),0_8px_24px_rgba(0,0,0,0.4)]"
                     transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
                 )}
                 <span className="relative z-10">
                   <item.icon size={20} strokeWidth={2.75} />
                 </span>
-                <span className={cn('relative z-10 mt-1 text-[10px] font-black uppercase tracking-[0.18em]',
-                  isActive ? 'text-black' : '')}>
+                <span className="relative z-10 mt-1 text-[10px] font-black uppercase tracking-[0.18em]">
                   {item.label}
                 </span>
               </motion.div>

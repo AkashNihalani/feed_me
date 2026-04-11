@@ -538,8 +538,6 @@ begin
       'feedme_enqueue_daily_0005_ist',
       'feedme_enqueue_daily_0030_ist_watchdog',
       'feedme_repair_lane_0045_ist_watchdog',
-      'feedme_enqueue_poll_1205_ist',
-      'feedme_enqueue_poll_1230_ist_watchdog',
       'feedme_enqueue_weekly_followers_mon_0010_ist',
       'feedme_enqueue_weekly_followers_mon_0030_ist_watchdog'
     )
@@ -563,18 +561,6 @@ begin
     'feedme_repair_lane_0045_ist_watchdog',
     '15 19 * * *',
     $q$select public.enqueue_repair_jobs_from_previous_day('Asia/Kolkata');$q$
-  );
-
-  perform cron.schedule(
-    'feedme_enqueue_poll_1205_ist',
-    '35 6 * * *',
-    $q$select public.enqueue_poll_jobs(now());$q$
-  );
-
-  perform cron.schedule(
-    'feedme_enqueue_poll_1230_ist_watchdog',
-    '0 7 * * *',
-    $q$select public.enqueue_poll_jobs(now());$q$
   );
 
   perform cron.schedule(

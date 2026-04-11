@@ -19,6 +19,7 @@ import {
   WarmupMediaBucket,
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
+import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 
@@ -32,8 +33,8 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v2';
-const FIRE_STATE_CACHE_KEY = 'fire:state:v2';
-const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v2';
+const FIRE_STATE_CACHE_KEY = 'fire:state:v3';
+const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v3';
 const FIRE_CACHE_TTL = 2 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_REQUIRED = 5;
@@ -79,13 +80,6 @@ function pickBestMetric(metrics: Record<string, unknown>, preferred: string): st
     if (asNumber(metricData.percentile) != null) return metric;
   }
   return order[0] ?? 'views';
-}
-
-function compactNumber(v: number | null): string {
-  if (v == null || !Number.isFinite(v)) return '?';
-  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  return String(Math.round(v));
 }
 
 function toMediaProxyUrl(postKey: string, url: string, role = 'thumbnail'): string {
@@ -170,12 +164,31 @@ function toIstDayKey(d: string | Date): string {
 
 function inferUrgency(alertType: string, p: number | null): AlertUrgency {
   const t = alertType.toLowerCase();
-  if (t === 'blaze') return 'now';
-  if (t === 'burn') return 'today';
-  if (t === 'spark') return 'watch';
+  if (t === 'now' || t === 'today' || t === 'watch') return t;
   if (p != null && p <= 10) return 'now';
   if (p != null && p <= 25) return 'today';
   return 'watch';
+}
+
+function normalizeSignalContext(value: string): 'own' | 'cross' | 'anchor' {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'cross' || normalized === 'anchor') return normalized;
+  return 'own';
+}
+
+function signalColor(context: 'own' | 'cross' | 'anchor'): string {
+  if (context === 'cross') return '#E11D48';
+  if (context === 'anchor') return '#4DA3FF';
+  return '#FF6B00';
+}
+
+function fallbackSignalLabel(code: string): string {
+  return code
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatDelta(n: number | null, cp: string): string | undefined {
@@ -309,25 +322,45 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     asString(row.business_date_ist) ||
     asString(meta.business_date_ist) ||
     toIstDayKey(asString(row.created_at));
-  const title = `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${surfaceMediaType} · ${checkpoint.toUpperCase()} · ${compactNumber(metricValue)} ${bestMetric.toUpperCase()}`;
+  const signalCode = asString(row.signal_code) || asString(meta.signal_code) || 'UNKNOWN_SIGNAL';
+  const signalContext = normalizeSignalContext(asString(row.context) || asString(meta.signal_context));
+  const signalMeta = getFireSignalMeta(signalCode);
+  const hideSignalChrome = meta.hide_signal_chrome === true;
+  const patternAlerts = Array.isArray(meta.pattern_alerts) ? meta.pattern_alerts.map((entry) => asRecord(entry)) : [];
+  const primaryPattern = patternAlerts.length > 0 ? patternAlerts[0] : null;
+  const patternLabel = primaryPattern ? getPatternMechanicLabel(asString(primaryPattern.pattern_name)) : null;
+  const cueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
+    ? primaryPattern.cues
+      .map((cue) => asRecord(cue))
+      .map((cue) => getPatternCueLabel(asString(cue.key), asString(cue.value)))
+      .filter((value): value is string => Boolean(value))
+    : [];
+  const signalLabel = hideSignalChrome ? '' : signalMeta?.shortLabel ?? fallbackSignalLabel(signalCode);
+  const signalHeadline = hideSignalChrome ? '' : patternLabel || signalMeta?.headline || signalLabel;
+  const title = hideSignalChrome
+    ? `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`
+    : `${signalHeadline} · @${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`;
 
   return {
     id: `alert-${asString(row.id) || asString(row.dedupe_key) || Math.random().toString(36).slice(2)}`,
     postKey: asString(row.post_key),
     feederId: asNumber(row.feeder_id) ?? undefined,
-    family: 'insight',
+    signalCode,
+    signalContext,
+    signalLabel,
+    signalHeadline,
     urgency: inferUrgency(asString(row.alert_type), surfacePercentile),
-    color: '#FF6B00',
+    color: signalColor(signalContext),
     handle: `@${surfaceHandle || 'feed'}`,
     title,
-    whyNow: asString(row.body) || '',
+    whyNow: hideSignalChrome ? '' : asString(row.body) || signalHeadline,
     action: '',
     percentileTag: percentileToTag(surfacePercentile),
     mediaType: surfaceMediaType,
     stage: checkpoint.toUpperCase(),
     percentile: surfacePercentile == null ? undefined : String(Math.round(surfacePercentile)),
     delta: formatDelta(surfaceDelta, checkpoint),
-    evidence: [],
+    evidence: cueLabels,
     timeAgo: timeAgoText(asString(row.created_at)),
     createdAt: asString(row.created_at),
     postUrl: asString(meta.post_url) || 'https://instagram.com',
@@ -346,8 +379,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     payload,
     layers: layers as FireLayers,
     intelligenceSkipped: row.intelligence_skipped === true,
-    patternSignal: asString(row.pattern_signal) || null,
-    patternPayload: row.pattern_payload && typeof row.pattern_payload === 'object' ? (row.pattern_payload as FireAlertItem['patternPayload']) : null,
+    hideSignalChrome,
     stamp: {
       handle: surfaceHandle,
       mediaType: surfaceMediaType,
@@ -369,28 +401,40 @@ async function fetchPage(
   day: string,
   filters: FireFilterState,
   cursor: number,
-): Promise<{ items: FireAlertItem[]; hasMore: boolean; total: number; availableCheckpoints: string[] }> {
-  const params = new URLSearchParams({ day, threshold: filters.threshold, cursor: String(cursor), sort: filters.sort });
+  snapshotToken: string | null,
+): Promise<{ items: FireAlertItem[]; hasMore: boolean; total: number; availableCheckpoints: string[]; snapshotToken: string | null }> {
   const feedIds = sortNumberList(filters.selectedFeedIds);
   const feederIds = flattenSelectedFeederIds(filters);
+  const checkpoints = sortCheckpointList(filters.selectedCheckpoints);
 
-  if (feedIds.length > 0) params.set('feed_ids', feedIds.join(','));
-  if (feederIds.length > 0) params.set('feeder_ids', feederIds.join(','));
-  if (filters.selectedCheckpoints.length > 0) params.set('checkpoints', sortCheckpointList(filters.selectedCheckpoints).join(','));
-
-  const res = await fetch(`/api/fire?${params}`, { cache: 'no-store' });
+  const res = await fetch('/api/fire', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      day,
+      threshold: filters.threshold,
+      sort: filters.sort,
+      cursor,
+      feedIds,
+      feederIds,
+      checkpoints,
+      snapshotToken,
+    }),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error || `HTTP ${res.status}`);
   }
 
-  const { rows, hasMore, total, availableCheckpoints } = await res.json();
+  const { rows, hasMore, total, availableCheckpoints, snapshotToken: nextSnapshotToken } = await res.json();
   const items = (rows as AlertRow[]).map(normalizeAlertRow).filter((row): row is FireAlertItem => row !== null);
   return {
     items,
     hasMore: hasMore ?? false,
     total: total ?? 0,
     availableCheckpoints: sortCheckpointList((availableCheckpoints ?? []).map((value: string) => String(value).toUpperCase())),
+    snapshotToken: typeof nextSnapshotToken === 'string' && nextSnapshotToken.trim() ? nextSnapshotToken : null,
   };
 }
 
@@ -399,7 +443,7 @@ export default function FirePage() {
   const headerRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const fetchKeyRef = useRef('');
-  const pageRefreshInFlightRef = useRef(false);
+  const snapshotTokenRef = useRef<string | null>(null);
 
   const [pickerDays, setPickerDays] = useState<string[]>([]);
   const [availableFeeds, setAvailableFeeds] = useState<FireFeedOption[]>([]);
@@ -440,40 +484,6 @@ export default function FirePage() {
     [cards, warmupSummary],
   );
 
-  const refreshCurrentPage = useCallback(async () => {
-    if (!selectedDay || pageRefreshInFlightRef.current) return;
-    const normalizedFilters = pruneFilters(filters, availableFeeds);
-    const key = `${selectedDay}:${serializeFilters(normalizedFilters)}`;
-    if (fetchKeyRef.current && fetchKeyRef.current !== key) return;
-
-    pageRefreshInFlightRef.current = true;
-    try {
-      const result = await fetchPage(selectedDay, normalizedFilters, 0);
-      if (fetchKeyRef.current && fetchKeyRef.current !== key) return;
-
-      fetchKeyRef.current = key;
-      setCards(result.items);
-      setHasMore(result.hasMore);
-      setTotal(result.total);
-      setAvailableCheckpoints((prev) => {
-        const next = result.availableCheckpoints;
-        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-      });
-      cursorRef.current = result.items.length;
-      setCache(`${FIRE_PAGE_CACHE_PREFIX}:${key}`, {
-        items: result.items,
-        hasMore: result.hasMore,
-        total: result.total,
-        cursor: result.items.length,
-        availableCheckpoints: result.availableCheckpoints,
-      });
-    } catch (err) {
-      console.error('[FirePage] Background refresh error:', err);
-    } finally {
-      pageRefreshInFlightRef.current = false;
-    }
-  }, [availableFeeds, filters, selectedDay]);
-
   useEffect(() => {
     const cachedState = getCache<{
       pickerDays: string[];
@@ -486,6 +496,7 @@ export default function FirePage() {
       hasMore: boolean;
       total: number;
       cursor: number;
+      snapshotToken: string | null;
     }>(FIRE_STATE_CACHE_KEY, FIRE_CACHE_TTL);
 
     if (!cachedState) return;
@@ -506,6 +517,9 @@ export default function FirePage() {
     setHasMore(Boolean(cachedState.hasMore));
     setTotal(cachedState.total || 0);
     cursorRef.current = cachedState.cursor || (cachedState.cards || []).length;
+    snapshotTokenRef.current = typeof cachedState.snapshotToken === 'string' && cachedState.snapshotToken.trim()
+      ? cachedState.snapshotToken
+      : null;
     setLoading(false);
   }, []);
 
@@ -538,6 +552,7 @@ export default function FirePage() {
       hasMore,
       total,
       cursor: cursorRef.current,
+      snapshotToken: snapshotTokenRef.current,
     });
   }, [pickerDays, availableFeeds, selectedDay, filters, cards, availableCheckpoints, warmupSummary, hasMore, total]);
 
@@ -789,6 +804,7 @@ export default function FirePage() {
       total: number;
       cursor: number;
       availableCheckpoints: string[];
+      snapshotToken: string | null;
     }>(cacheKey, FIRE_CACHE_TTL);
 
     if (cached) {
@@ -800,13 +816,16 @@ export default function FirePage() {
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
       cursorRef.current = cached.cursor;
+      snapshotTokenRef.current = typeof cached.snapshotToken === 'string' && cached.snapshotToken.trim()
+        ? cached.snapshotToken
+        : null;
       setLoading(false);
       setError(null);
-      void refreshCurrentPage();
       return () => { mounted = false; };
     }
 
     cursorRef.current = 0;
+    snapshotTokenRef.current = null;
     setLoading(true);
     setCards([]);
     setHasMore(false);
@@ -814,7 +833,7 @@ export default function FirePage() {
 
     (async () => {
       try {
-        const result = await fetchPage(selectedDay, normalizedFilters, 0);
+        const result = await fetchPage(selectedDay, normalizedFilters, 0, null);
         if (!mounted || fetchKeyRef.current !== key) return;
         setCards(result.items);
         setHasMore(result.hasMore);
@@ -824,12 +843,14 @@ export default function FirePage() {
           return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
         });
         cursorRef.current = result.items.length;
+        snapshotTokenRef.current = result.snapshotToken;
         setCache(cacheKey, {
           items: result.items,
           hasMore: result.hasMore,
           total: result.total,
           cursor: result.items.length,
           availableCheckpoints: result.availableCheckpoints,
+          snapshotToken: result.snapshotToken,
         });
       } catch (err) {
         if (!mounted || fetchKeyRef.current !== key) return;
@@ -840,41 +861,15 @@ export default function FirePage() {
     })();
 
     return () => { mounted = false; };
-  }, [selectedDay, filters, availableFeeds, refreshCurrentPage]);
-
-  useEffect(() => {
-    if (!selectedDay) return;
-
-    let mounted = true;
-    const tick = async () => {
-      if (!mounted || document.visibilityState !== 'visible') return;
-      await refreshCurrentPage();
-    };
-
-    const intervalId = window.setInterval(() => {
-      void tick();
-    }, 10_000);
-
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void tick();
-      }
-    };
-
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      mounted = false;
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [refreshCurrentPage, selectedDay]);
+  }, [selectedDay, filters, availableFeeds]);
 
   const handleLoadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || !selectedDay) return;
     setLoadingMore(true);
     const key = fetchKeyRef.current;
     try {
-      const result = await fetchPage(selectedDay, filters, cursorRef.current);
+      const normalizedFilters = pruneFilters(filters, availableFeeds);
+      const result = await fetchPage(selectedDay, normalizedFilters, cursorRef.current, snapshotTokenRef.current);
       if (fetchKeyRef.current !== key) return;
       setCards((prev) => {
         const nextCards = [...prev, ...result.items];
@@ -884,19 +879,21 @@ export default function FirePage() {
           total: result.total,
           cursor: nextCards.length,
           availableCheckpoints: result.availableCheckpoints,
+          snapshotToken: result.snapshotToken,
         });
         return nextCards;
       });
       setHasMore(result.hasMore);
       setTotal(result.total);
       setAvailableCheckpoints(result.availableCheckpoints);
+      snapshotTokenRef.current = result.snapshotToken;
       cursorRef.current += result.items.length;
     } catch (err) {
       console.error('[FirePage] Load more error:', err);
     } finally {
       setLoadingMore(false);
     }
-  }, [filters, hasMore, loadingMore, selectedDay]);
+  }, [availableFeeds, filters, hasMore, loadingMore, selectedDay]);
 
   const rootStyle = {
     '--fire-header-height': `${headerHeight}px`,
@@ -975,7 +972,7 @@ export default function FirePage() {
                         className={cn(
                           'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
                           'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
-                          hasActiveFilters ? 'text-lime dark:text-lime' : 'text-black/58 dark:text-white/45',
+                          hasActiveFilters ? 'text-[#E11D48]' : 'text-black/58 dark:text-white/45',
                         )}
                       >
                         <SlidersHorizontal size={20} />
@@ -1004,7 +1001,7 @@ export default function FirePage() {
                           <span className="text-[46px] font-black leading-[0.82] tracking-[-0.1em] text-black dark:text-white">
                             {total}
                           </span>
-                          <span className="mb-1.5 rounded-full bg-[#CCFF00]/22 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-black/70 dark:bg-[#CCFF00]/16 dark:text-[#CCFF00]">
+                          <span className="mb-1.5 rounded-full bg-[#E11D48] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.22)]">
                             {filters.threshold === 'ALL' ? 'ALL' : `TOP ${filters.threshold}`}
                           </span>
                         </div>
@@ -1028,7 +1025,7 @@ export default function FirePage() {
                             className={cn(
                               'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                               isActive
-                                ? 'bg-[#CCFF00] text-black shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                ? 'bg-[#E11D48] text-white shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
                                 : 'text-black/55 dark:text-white/45',
                             )}
                           >
@@ -1059,7 +1056,7 @@ export default function FirePage() {
                             className={cn(
                               'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                               isActive
-                                ? 'bg-[#CCFF00] text-black shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                ? 'bg-[#E11D48] text-white shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
                                 : 'text-black/55 dark:text-white/45',
                             )}
                           >
@@ -1086,7 +1083,7 @@ export default function FirePage() {
                         className={cn(
                           'rounded-[12px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                           filters.selectedCheckpoints.length === 0
-                            ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[#CCFF00] dark:text-black dark:shadow-[0_8px_20px_rgba(204,255,0,0.22)]'
+                            ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_8px_20px_rgba(225,29,72,0.22)]'
                             : 'border border-black/6 bg-white/58 text-black/56 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/46 dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]',
                         )}
                       >
@@ -1110,7 +1107,7 @@ export default function FirePage() {
                             className={cn(
                               'rounded-[12px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                               isSelected
-                                ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[#CCFF00] dark:text-black dark:shadow-[0_8px_20px_rgba(204,255,0,0.22)]'
+                                ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_8px_20px_rgba(225,29,72,0.22)]'
                                 : 'border border-black/6 bg-white/58 text-black/56 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/46 dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]',
                             )}
                           >
@@ -1129,7 +1126,7 @@ export default function FirePage() {
         <div className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
           {loading ? (
             <div className="flex h-full w-full items-center justify-center">
-              <Loader2 className="h-12 w-12 animate-spin text-lime" />
+              <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
             </div>
           ) : error ? (
             <div className="flex h-full w-full items-center justify-center px-6 text-center">
@@ -1163,6 +1160,7 @@ export default function FirePage() {
                       onOpenCard={setDesktopModalCard}
                       usePageScroll={useBrowserPageScroll}
                       resetKey={deckResetKey}
+                      total={total}
                     />
                   )}
                 </motion.div>
@@ -1175,7 +1173,7 @@ export default function FirePage() {
       <FireIntelligenceDialog item={desktopModalCard} onClose={() => setDesktopModalCard(null)} />
 
       {process.env.NODE_ENV !== 'production' && (
-        <div className="pointer-events-none absolute bottom-3 left-3 z-[140] rounded-lg border border-white/30 bg-black/55 px-2.5 py-2 text-[10px] font-mono leading-tight text-lime/95 dark:border-white/20">
+        <div className="pointer-events-none absolute bottom-3 left-3 z-[140] rounded-lg border border-white/30 bg-black/55 px-2.5 py-2 text-[10px] font-mono leading-tight text-[#E11D48] dark:border-white/20">
           <div>cards: {cards.length} / {total}</div>
           <div>day: {selectedDay || '--'}</div>
           <div>filters: {serializeFilters(filters)}</div>

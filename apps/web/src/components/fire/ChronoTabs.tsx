@@ -38,8 +38,8 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false 
                 compact ? 'rounded-[10px] py-1.5 sm:py-2' : 'rounded-[12px] py-2.5 sm:py-3',
                 isActive
                   ? compact
-                    ? 'z-10 text-[16px] tracking-[-0.04em] text-black sm:text-[18px]'
-                    : 'z-10 text-[22px] tracking-[-0.04em] text-black sm:text-[28px]'
+                    ? 'z-10 text-[16px] tracking-[-0.04em] text-white sm:text-[18px]'
+                    : 'z-10 text-[22px] tracking-[-0.04em] text-white sm:text-[28px]'
                   : compact
                     ? 'z-0 text-[11px] tracking-[-0.02em] text-black/40 sm:text-[12px] dark:text-white/35'
                     : 'z-0 text-[14px] tracking-[-0.02em] text-black/40 sm:text-[16px] dark:text-white/35',
@@ -50,7 +50,7 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false 
                 <motion.span
                   layoutId="chrono-pill-bg"
                   className={[
-                    'absolute inset-0 bg-[#CCFF00] shadow-[0_4px_16px_rgba(204,255,0,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(204,255,0,0.2),0_12px_28px_rgba(0,0,0,0.5)]',
+                    'absolute inset-0 bg-[#E11D48] shadow-[0_4px_16px_rgba(225,29,72,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]',
                     compact ? 'rounded-[10px]' : 'rounded-[12px]',
                   ].join(' ')}
                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}

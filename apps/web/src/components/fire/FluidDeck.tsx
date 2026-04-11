@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
 import { FireCard3D } from './FireCard3D';
@@ -14,7 +14,19 @@ interface FluidDeckProps {
   onOpenCard?: (item: FireItem) => void;
   usePageScroll?: boolean;
   resetKey?: string;
+  total?: number;
 }
+
+type StandaloneDeckState = {
+  activeCardId: string | null;
+  currentIndex: number;
+  scrollTop: number;
+  ts: number;
+};
+
+const STANDALONE_DECK_STATE_PREFIX = 'fire:pwa-deck:v1';
+const STANDALONE_RESTORE_STEPS_MS = [0, 120, 280, 520, 860] as const;
+const PWA_NEIGHBOUR_OFFSET_RATIO = 0.62;
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -44,40 +56,6 @@ function getScrollContainer(root: HTMLDivElement | null, usePageScroll: boolean)
   return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : document.documentElement;
 }
 
-/** Fast, sharp scroll animation for TikTok-like snap feel. */
-function animateScrollTo(
-  target: HTMLElement | Window,
-  to: number,
-  duration = 260,
-): void {
-  const isWindow = target === window;
-  const getScroll = () => (isWindow ? window.scrollY : (target as HTMLElement).scrollTop);
-  const from = getScroll();
-  const delta = to - from;
-  if (Math.abs(delta) < 2) return;
-
-  const start = performance.now();
-  // Smooth ease-out curve — fast start, gentle deceleration
-  const ease = (t: number) => 1 - Math.pow(1 - t, 2.4);
-
-  const step = (now: number) => {
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const value = from + delta * ease(progress);
-
-    if (isWindow) {
-      window.scrollTo(0, value);
-    } else {
-      (target as HTMLElement).scrollTop = value;
-    }
-
-    if (progress < 1) {
-      requestAnimationFrame(step);
-    }
-  };
-  requestAnimationFrame(step);
-}
-
 function getCurrentScrollTop(root: HTMLDivElement | null, usePageScroll: boolean): number {
   const scrollContainer = getScrollContainer(root, usePageScroll);
   if (!scrollContainer) return 0;
@@ -99,18 +77,58 @@ function getSnapScrollTop(node: HTMLElement, root: HTMLDivElement | null, usePag
   return Math.max(0, currentScrollTop + (cardCenter - focusCenter));
 }
 
+function buildStandaloneDeckStateKey(resetKey?: string): string {
+  return `${STANDALONE_DECK_STATE_PREFIX}:${resetKey || 'default'}`;
+}
+
+function readStandaloneDeckState(key: string): StandaloneDeckState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StandaloneDeckState>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      activeCardId: typeof parsed.activeCardId === 'string' && parsed.activeCardId.trim() ? parsed.activeCardId : null,
+      currentIndex: Number.isFinite(parsed.currentIndex) ? Math.max(0, Math.floor(parsed.currentIndex as number)) : 0,
+      scrollTop: Number.isFinite(parsed.scrollTop) ? Math.max(0, parsed.scrollTop as number) : 0,
+      ts: Number.isFinite(parsed.ts) ? parsed.ts as number : Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStandaloneDeckState(
+  key: string,
+  state: Omit<StandaloneDeckState, 'ts'>,
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({
+      ...state,
+      ts: Date.now(),
+    }));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+// ─── VirtualSlot: used by desktop + non-PWA mobile only ──────────────────────
 function VirtualSlot({
   item,
   index,
   isActive,
   isDesktop,
   onOpenDetails,
+  onBeforeOpenPost,
 }: {
   item: FireItem;
   index: number;
   isActive: boolean;
   isDesktop: boolean;
   onOpenDetails: () => void;
+  onBeforeOpenPost?: (itemId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -118,7 +136,6 @@ function VirtualSlot({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
     const observer = new IntersectionObserver(
       ([entry]) => setIsVisible(entry.isIntersecting),
       { rootMargin: '200% 0px' },
@@ -133,12 +150,7 @@ function VirtualSlot({
         <motion.div
           initial={{ opacity: 0, y: 12, scale: 0.99 }}
           animate={isDesktop
-            ? {
-                opacity: 1,
-                y: 0,
-                scale: 1,
-                filter: 'none',
-              }
+            ? { opacity: 1, y: 0, scale: 1, filter: 'none' }
             : {
                 opacity: isActive ? 1 : 0.72,
                 y: isActive ? -8 : 18,
@@ -166,6 +178,7 @@ function VirtualSlot({
               highlighted={isActive}
               layoutMode={isDesktop ? 'desktop' : 'mobile'}
               onOpenDetails={onOpenDetails}
+              onBeforeOpenPost={onBeforeOpenPost}
             />
           </div>
         </motion.div>
@@ -176,9 +189,9 @@ function VirtualSlot({
   );
 }
 
-export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onOpenCard, usePageScroll = false, resetKey }: FluidDeckProps) {
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onOpenCard, usePageScroll = false, resetKey, total }: FluidDeckProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(cards[0]?.id ?? null);
   const activeCardIdRef = useRef<string | null>(cards[0]?.id ?? null);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
@@ -186,10 +199,28 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   const [isIOS] = useState(() => typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
   const currentIndexRef = useRef(0);
   const usePwaSnap = isStandalone;
+  const standaloneDeckStateKey = useMemo(() => buildStandaloneDeckStateKey(resetKey), [resetKey]);
+  const restoredStandaloneKeyRef = useRef<string | null>(null);
+  const restoreTimeoutIdsRef = useRef<number[]>([]);
+  const restoreRafIdsRef = useRef<number[]>([]);
+
+  // ── PWA-specific state ──────────────────────────────────────────────────────
+  // Independent index tracked outside scroll — drives the transform-based stack
+  const [pwaIndex, setPwaIndex] = useState(0);
+  const pwaLastNavRef = useRef(0);
+  // Height of one full-canvas card slot (used for PWA y offsets).
+  const [pwaSlotH, setPwaSlotH] = useState(() => {
+    if (typeof window === 'undefined') return 600;
+    return window.innerHeight * 0.82;
+  });
 
   useEffect(() => {
     activeCardIdRef.current = activeCardId;
   }, [activeCardId]);
+
+  useEffect(() => {
+    restoredStandaloneKeyRef.current = null;
+  }, [standaloneDeckStateKey]);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 1024px)');
@@ -205,65 +236,163 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     return () => mql.removeEventListener?.('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
 
-  // Only scroll to top when the page changes (day/filter), NOT on auto-refresh or load-more
+  // ── PWA: measure container slot height from CSS variables ──────────────────
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop) return;
+    const update = () => {
+      setPwaSlotH(Math.max(300, window.innerHeight));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isDesktop, usePwaSnap]);
+
+  // ── PWA: pwaIndex → activeCardId + currentIndexRef ────────────────────────
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop) return;
+    const card = cards[pwaIndex];
+    if (!card) return;
+    currentIndexRef.current = pwaIndex;
+    setActiveCardId(id => (id === card.id ? id : card.id));
+  }, [cards, isDesktop, pwaIndex, usePwaSnap]);
+
+  const clearScheduledStandaloneRestore = useCallback(() => {
+    restoreTimeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
+    restoreTimeoutIdsRef.current = [];
+    restoreRafIdsRef.current.forEach((id) => window.cancelAnimationFrame(id));
+    restoreRafIdsRef.current = [];
+  }, []);
+
+  // ── PWA: restore index from session storage (no scroll needed) ─────────────
+  const restorePwaIndex = useCallback(() => {
+    if (!usePwaSnap || isDesktop) return;
+    const saved = readStandaloneDeckState(standaloneDeckStateKey);
+    if (!saved) return;
+    const idx = saved.activeCardId
+      ? cards.findIndex(c => c.id === saved.activeCardId)
+      : -1;
+    const target = idx >= 0 ? idx : Math.min(saved.currentIndex, cards.length - 1);
+    if (target >= 0 && target < cards.length) {
+      setPwaIndex(target);
+    }
+  }, [cards, isDesktop, standaloneDeckStateKey, usePwaSnap]);
+
+  const schedulePwaRestore = useCallback(() => {
+    if (!usePwaSnap || isDesktop) return;
+    clearScheduledStandaloneRestore();
+    STANDALONE_RESTORE_STEPS_MS.forEach((delayMs) => {
+      const timeoutId = window.setTimeout(() => {
+        const rafId = window.requestAnimationFrame(restorePwaIndex);
+        restoreRafIdsRef.current.push(rafId);
+      }, delayMs);
+      restoreTimeoutIdsRef.current.push(timeoutId);
+    });
+  }, [clearScheduledStandaloneRestore, isDesktop, restorePwaIndex, usePwaSnap]);
+
+  const syncDeckFocusState = useCallback(() => {
+    if (isDesktop) return { currentIndex: 0, nodes: [] as HTMLElement[] };
+    // PWA uses pwaIndex, not scroll-based detection
+    if (usePwaSnap) return { currentIndex: currentIndexRef.current, nodes: [] as HTMLElement[] };
+
+    const root = containerRef.current;
+    if (!root) return { currentIndex: 0, nodes: [] as HTMLElement[] };
+
+    const centerY = usePageScroll
+      ? window.innerHeight * 0.5
+      : (() => {
+          const rootRect = root.getBoundingClientRect();
+          return rootRect.top + rootRect.height * 0.5;
+        })();
+
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>('[data-card-id]'));
+    let nextId: string | null = null;
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    nodes.forEach((node, index) => {
+      const rect = node.getBoundingClientRect();
+      const cardCenter = rect.top + rect.height * 0.5;
+      const absDistance = Math.abs(cardCenter - centerY);
+      if (absDistance < bestDistance) {
+        bestDistance = absDistance;
+        bestIndex = index;
+        nextId = node.dataset.cardId ?? null;
+      }
+    });
+
+    currentIndexRef.current = bestIndex;
+    if (nextId) setActiveCardId((current) => (current === nextId ? current : nextId));
+    return { currentIndex: bestIndex, nodes };
+  }, [isDesktop, usePageScroll, usePwaSnap]);
+
+  const persistStandaloneDeckState = useCallback((preferredCardId?: string) => {
+    if (isDesktop || !usePwaSnap) return;
+    const preferredIndex = preferredCardId ? cards.findIndex((card) => card.id === preferredCardId) : -1;
+    writeStandaloneDeckState(standaloneDeckStateKey, {
+      activeCardId: preferredCardId ?? activeCardIdRef.current,
+      currentIndex: preferredIndex >= 0 ? preferredIndex : currentIndexRef.current,
+      scrollTop: 0,
+    });
+  }, [cards, isDesktop, standaloneDeckStateKey, usePwaSnap]);
+
+  // ── PWA: navigation ────────────────────────────────────────────────────────
+  const navigatePwa = useCallback((dir: number) => {
+    const now = Date.now();
+    if (now - pwaLastNavRef.current < 320) return;
+    pwaLastNavRef.current = now;
+    setPwaIndex(prev => Math.max(0, Math.min(cards.length - 1, prev + dir)));
+  }, [cards.length]);
+
+  const handlePwaDragEnd = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    if (info.offset.y < -50) navigatePwa(1);       // swipe up → next card
+    else if (info.offset.y > 50) navigatePwa(-1);  // swipe down → prev card
+  }, [navigatePwa]);
+
+  // Returns the animate target for a card at cards[index] relative to pwaIndex
+  const getPwaCardStyle = useCallback((index: number) => {
+    const diff = index - pwaIndex;
+    if (diff === 0) return { y: 0,           scale: 1,    opacity: 1, zIndex: 10 };
+    if (diff === 1) return { y: pwaSlotH * PWA_NEIGHBOUR_OFFSET_RATIO,    scale: 1,    opacity: 1, zIndex: 8  };
+    if (diff === -1) return { y: -pwaSlotH * PWA_NEIGHBOUR_OFFSET_RATIO,  scale: 1,    opacity: 1, zIndex: 8  };
+    return { y: diff > 0 ? pwaSlotH * 1.08 : -pwaSlotH * 1.08, scale: 1, opacity: 0, zIndex: 2 };
+  }, [pwaIndex, pwaSlotH]);
+
+  // Reset pwaIndex when filter/day changes
   const prevResetKeyRef = useRef(resetKey);
   useEffect(() => {
     if (resetKey === prevResetKeyRef.current) return;
     prevResetKeyRef.current = resetKey;
 
-    const nextId = cards[0]?.id ?? null;
-    const frame = window.requestAnimationFrame(() => {
-      setActiveCardId(nextId);
-    });
-
-    const root = containerRef.current;
-    if (!root) {
-      return () => window.cancelAnimationFrame(frame);
+    if (usePwaSnap) {
+      setPwaIndex(0);
+      return;
     }
+
+    const nextId = cards[0]?.id ?? null;
+    const frame = window.requestAnimationFrame(() => setActiveCardId(nextId));
+    const root = containerRef.current;
+    if (!root) return () => window.cancelAnimationFrame(frame);
     if (usePageScroll) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
       root.scrollTo({ top: 0, behavior: 'smooth' });
     }
     return () => window.cancelAnimationFrame(frame);
-  }, [resetKey, cards, usePageScroll]);
+  }, [resetKey, cards, usePageScroll, usePwaSnap]);
 
+  // Scroll-based active card sync — non-PWA mobile only
   useEffect(() => {
-    if (isDesktop) return;
+    if (isDesktop || usePwaSnap) return;
     const root = containerRef.current;
     if (!root) return;
 
     let frame = 0;
-    const syncActiveToCenter = () => {
-      frame = 0;
-      const centerY = usePageScroll
-        ? usePwaSnap
-          ? getPageFocusCenterY()
-          : window.innerHeight * 0.5
-        : (() => {
-            const rootRect = root.getBoundingClientRect();
-            return rootRect.top + rootRect.height * 0.5;
-          })();
-      const nodes = root.querySelectorAll<HTMLElement>('[data-card-id]');
-
-      let nextId: string | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      nodes.forEach((node) => {
-        const rect = node.getBoundingClientRect();
-        const cardCenter = rect.top + rect.height * 0.5;
-        const distance = Math.abs(cardCenter - centerY);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          nextId = node.dataset.cardId ?? null;
-        }
-      });
-
-      if (nextId) setActiveCardId((current) => (current === nextId ? current : nextId));
-    };
-
     const requestSync = () => {
       if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(syncActiveToCenter);
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        syncDeckFocusState();
+      });
     };
 
     requestSync();
@@ -275,136 +404,61 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
       scrollTarget.removeEventListener('scroll', requestSync);
       window.removeEventListener('resize', requestSync);
     };
-  }, [cards, isDesktop, usePageScroll, usePwaSnap]);
+  }, [cards, isDesktop, syncDeckFocusState, usePageScroll, usePwaSnap]);
 
-  // PWA: fully take over touch scrolling — one swipe = one card, always
+  // PWA: restore index on mount/cards-change
   useEffect(() => {
-    if (isDesktop || !usePwaSnap) return;
-    const root = containerRef.current;
-    if (!root) return;
-
-    const getCardNodes = () => Array.from(root.querySelectorAll<HTMLElement>('[data-card-id]'));
-
-    const scrollToIndex = (index: number, animated = true) => {
-      const nodes = getCardNodes();
-      const target = nodes[index];
-      if (!target) return;
-      currentIndexRef.current = index;
-      const targetId = target.dataset.cardId ?? null;
-      setActiveCardId((current) => (current === targetId ? current : targetId));
-
-      const nextTop = getSnapScrollTop(target, root, usePageScroll);
-      if (animated) {
-        animateScrollTo(usePageScroll ? window : root, nextTop, 420);
-      } else {
-        if (usePageScroll) {
-          window.scrollTo(0, nextTop);
-        } else {
-          root.scrollTop = nextTop;
-        }
-      }
-    };
-
-    // Sync currentIndexRef to whatever card is closest on mount
-    const nodes = getCardNodes();
-    if (nodes.length > 0) {
-      const focusCenter = getSnapViewportCenter(root, usePageScroll);
-      let bestIdx = 0;
-      let bestDist = Infinity;
-      nodes.forEach((node, i) => {
-        const rect = node.getBoundingClientRect();
-        const d = Math.abs(rect.top + rect.height / 2 - focusCenter);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
-      });
-      currentIndexRef.current = bestIdx;
+    if (!usePwaSnap || isDesktop) return;
+    const alreadyRestored = restoredStandaloneKeyRef.current === standaloneDeckStateKey;
+    if (!alreadyRestored) {
+      restoredStandaloneKeyRef.current = standaloneDeckStateKey;
+      restorePwaIndex();
     }
+  }, [cards, isDesktop, restorePwaIndex, standaloneDeckStateKey, usePwaSnap]);
 
-    // Touch state (non-reactive, only used inside handlers)
-    let startY = 0;
-    let startX = 0;
-    let swiped = false;
-    let directionLocked: 'vertical' | 'horizontal' | null = null;
+  // PWA: persist + restore on visibility/lifecycle events
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop) return;
 
-    const onTouchStart = (e: TouchEvent) => {
-      const t = e.touches[0];
-      if (!t) return;
-      startY = t.clientY;
-      startX = t.clientX;
-      swiped = false;
-      directionLocked = null;
+    const onHide = () => persistStandaloneDeckState();
+    const onShow = () => schedulePwaRestore();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') persistStandaloneDeckState();
+      else if (document.visibilityState === 'visible') schedulePwaRestore();
     };
 
-    const onTouchMove = (e: TouchEvent) => {
-      const t = e.touches[0];
-      if (!t) return;
-      const dy = t.clientY - startY;
-      const dx = t.clientX - startX;
-
-      // Lock direction on first significant movement
-      if (!directionLocked) {
-        if (Math.abs(dy) > 8 || Math.abs(dx) > 8) {
-          directionLocked = Math.abs(dy) >= Math.abs(dx) ? 'vertical' : 'horizontal';
-        }
-      }
-
-      // Only intercept vertical swipes
-      if (directionLocked === 'vertical') {
-        e.preventDefault(); // Kill native scroll momentum entirely
-
-        if (!swiped && Math.abs(dy) > 30) {
-          swiped = true;
-          const nodes = getCardNodes();
-          const maxIdx = nodes.length - 1;
-          const nextIdx = dy < 0
-            ? Math.min(currentIndexRef.current + 1, maxIdx) // swipe up → next card
-            : Math.max(currentIndexRef.current - 1, 0);      // swipe down → prev card
-          scrollToIndex(nextIdx);
-        }
-      }
-    };
-
-    const onTouchEnd = () => {
-      directionLocked = null;
-      // If no swipe was triggered (tiny tap/drag), snap to current card
-      if (!swiped) {
-        scrollToIndex(currentIndexRef.current);
-      }
-    };
-
-    // Non-passive so we can preventDefault on touchmove
-    root.addEventListener('touchstart', onTouchStart, { passive: true });
-    root.addEventListener('touchmove', onTouchMove, { passive: false });
-    root.addEventListener('touchend', onTouchEnd, { passive: true });
-    root.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    // Initial snap
-    scrollToIndex(currentIndexRef.current, false);
-
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('pageshow', onShow);
+    window.addEventListener('focus', onShow);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      root.removeEventListener('touchstart', onTouchStart);
-      root.removeEventListener('touchmove', onTouchMove);
-      root.removeEventListener('touchend', onTouchEnd);
-      root.removeEventListener('touchcancel', onTouchEnd);
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('pageshow', onShow);
+      window.removeEventListener('focus', onShow);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [cards, isDesktop, usePageScroll, usePwaSnap]);
+  }, [isDesktop, persistStandaloneDeckState, schedulePwaRestore, usePwaSnap]);
+
+  // PWA: persist when index changes
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop) return;
+    persistStandaloneDeckState();
+  }, [pwaIndex, cards.length, isDesktop, persistStandaloneDeckState, usePwaSnap]);
+
+  useEffect(() => () => {
+    clearScheduledStandaloneRestore();
+  }, [clearScheduledStandaloneRestore]);
+
+  useEffect(() => {
+    if (isDesktop || !usePwaSnap || typeof window === 'undefined' || !('scrollRestoration' in window.history)) return;
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    return () => { window.history.scrollRestoration = previous; };
+  }, [isDesktop, usePwaSnap]);
 
   const handleLoadMore = useCallback(() => {
     if (hasMore && !loadingMore && onLoadMore) onLoadMore();
   }, [hasMore, loadingMore, onLoadMore]);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) handleLoadMore();
-      },
-      { rootMargin: '400px 0px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [handleLoadMore]);
 
   if (!cards || cards.length === 0) {
     return (
@@ -415,35 +469,114 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   }
 
   const resolvedActive = isDesktop ? null : activeCardId;
-  const mobileStackClass = isIOS && isStandalone
-    ? '-mt-[124px] flex w-full min-h-[56dvh] items-center justify-center first:mt-0 md:-mt-[136px] md:min-h-[58dvh]'
-    : isIOS
-      ? '-mt-[10vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[12vh] md:min-h-[76dvh]'
-      : '-mt-[14vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[16vh] md:min-h-[76dvh]';
+  const mobileStackClass = isIOS
+    ? '-mt-[10vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[12vh] md:min-h-[76dvh]'
+    : '-mt-[14vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[16vh] md:min-h-[76dvh]';
   const enableContainerSnap = usePwaSnap && !usePageScroll;
+  const remainingCount = Math.max(0, (total || 0) - cards.length);
+  // For load dock, use pwaIndex directly in PWA mode
+  const showStandaloneLoadDock = usePwaSnap
+    && Boolean(hasMore)
+    && pwaIndex >= Math.max(0, cards.length - 2);
 
+  // ── PWA render: fixed-position transform stack (TikTok/Reels style) ─────────
+  if (usePwaSnap) {
+    return (
+      <>
+        {/* Full-canvas PWA deck so cards pass under floating chrome. */}
+        <div
+          className="fixed inset-0 z-10 overflow-hidden"
+        >
+          {cards.map((card, index) => {
+            // Only render current card + immediate neighbours
+            if (Math.abs(index - pwaIndex) > 1) return null;
+            const style = getPwaCardStyle(index);
+            const isCurrent = index === pwaIndex;
+
+            return (
+              <motion.div
+                key={card.id}
+                className="absolute inset-0 flex items-center justify-center px-2"
+                animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 30,
+                  mass: 0.9,
+                }}
+                drag={isCurrent ? 'y' : false}
+                dragConstraints={{ top: 0, bottom: 0 }}
+                dragElastic={0.08}
+                onDragEnd={handlePwaDragEnd}
+                style={{ zIndex: style.zIndex, pointerEvents: isCurrent ? 'auto' : 'none' }}
+              >
+                <div className="w-full max-w-[472px] h-full flex items-center">
+                  <FireCard3D
+                    item={card}
+                    highlighted={isCurrent}
+                    layoutMode="mobile"
+                    onOpenDetails={() => undefined}
+                    onBeforeOpenPost={persistStandaloneDeckState}
+                  />
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Spacer so the page has height (needed for fixed positioning context) */}
+        <div style={{ height: '100dvh' }} />
+
+        {/* Load more dock */}
+        {showStandaloneLoadDock && (
+          <div
+            className="pointer-events-none fixed inset-x-0 z-[120] flex justify-center px-4"
+            style={{ bottom: 'calc(var(--fire-bottom-clearance,86px) + env(safe-area-inset-bottom) + 12px)' }}
+          >
+            <div className="pointer-events-auto w-full max-w-[320px]">
+              <div className="rounded-[22px] border border-white/70 bg-white/72 p-2 backdrop-blur-[24px] shadow-[0_16px_34px_rgba(0,0,0,0.14),inset_0_1px_0_rgba(255,255,255,0.86)] dark:border-white/12 dark:bg-black/55 dark:shadow-[0_18px_36px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="inline-flex w-full items-center justify-center rounded-[16px] bg-black px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 dark:bg-[#E11D48] dark:text-white dark:shadow-[0_12px_26px_rgba(225,29,72,0.18)]"
+                >
+                  {loadingMore ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading next batch
+                    </span>
+                  ) : (
+                    'Continue feeding'
+                  )}
+                </button>
+                <div className="pt-2 text-center text-[10px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/34">
+                  {remainingCount > 0 ? `${remainingCount} more signals waiting` : 'Loads the next batch of signals'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Desktop + non-PWA mobile render (unchanged) ───────────────────────────
   const containerClasses = [
     usePageScroll
       ? 'relative w-full overflow-visible'
       : enableContainerSnap
-        // PWA: no scroll-smooth, no CSS snap — JS handles snapping for TikTok-like feel
         ? 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain hide-scrollbar'
         : 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth hide-scrollbar',
     'px-2 sm:px-3 lg:px-4',
     'pt-[calc(var(--fire-header-height,168px)+40px)]',
-    usePwaSnap
-      ? 'pb-0'
-      : isDesktop
-        ? 'pb-8'
-        : 'pb-[88px]',
+    isDesktop ? 'pb-8' : 'pb-[88px]',
     'lg:snap-none',
   ].join(' ');
 
   const containerStyle = usePageScroll
     ? undefined
-    : enableContainerSnap
-      ? { touchAction: 'none' as const } // PWA: JS fully controls scroll, no native momentum
-      : { WebkitOverflowScrolling: 'touch' as const };
+    : { WebkitOverflowScrolling: 'touch' as const };
 
   return (
     <div ref={containerRef} className={containerClasses} style={containerStyle}>
@@ -468,6 +601,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                       isActive={isActive}
                       isDesktop
                       onOpenDetails={() => onOpenCard?.(card)}
+                      onBeforeOpenPost={persistStandaloneDeckState}
                     />
                   </motion.div>
                 );
@@ -496,6 +630,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                         isActive={isActive}
                         isDesktop={false}
                         onOpenDetails={() => undefined}
+                        onBeforeOpenPost={persistStandaloneDeckState}
                       />
                     </div>
                   </motion.div>
@@ -505,15 +640,31 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
           </div>
         )}
 
-        <div
-          ref={sentinelRef}
-          className={usePwaSnap ? 'h-[calc(var(--fire-bottom-clearance,86px)+18px)] w-full shrink-0' : 'h-1 w-full'}
-        />
-
-        {loadingMore && (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-lime" />
+        {hasMore ? (
+          <div className="py-8">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="inline-flex min-w-[220px] items-center justify-center rounded-[18px] border border-white/35 bg-white/55 px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-black shadow-[0_18px_40px_rgba(0,0,0,0.14),inset_0_1px_0_rgba(255,255,255,0.86)] transition hover:-translate-y-0.5 hover:bg-white/72 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:border-white/16 dark:bg-black/38 dark:text-[#E11D48] dark:shadow-[0_18px_36px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-black/52"
+              >
+                {loadingMore ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading next batch
+                  </span>
+                ) : (
+                  'Continue feeding'
+                )}
+              </button>
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/34">
+                {remainingCount > 0 ? `${remainingCount} more signals waiting` : 'Loads the next batch of signals'}
+              </div>
+            </div>
           </div>
+        ) : (
+          <div className="h-1 w-full" />
         )}
       </div>
     </div>

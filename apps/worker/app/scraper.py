@@ -8,7 +8,11 @@ from .brightdata import (
 
 
 def run_actor_handle(handle: str, days_window: int = 2, recent_post_ids: list[str] | None = None) -> list[dict]:
-    return brightdata_run_handle(handle, recent_post_ids=recent_post_ids)
+    return brightdata_run_handle(
+        handle,
+        recent_post_ids=recent_post_ids,
+        days_window=days_window,
+    )
 
 
 def run_actor_post_urls(handle: str, post_urls: list[str], mode: str = "post") -> list[dict]:

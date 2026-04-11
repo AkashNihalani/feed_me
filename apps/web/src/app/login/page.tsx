@@ -120,15 +120,15 @@ function PacManHero() {
 
       // Minimal glow — barely visible ambient
       const glowGrad = ctx.createRadialGradient(pacCX, pacCY, pacR * 0.8, pacCX, pacCY, pacR * 1.3);
-      glowGrad.addColorStop(0, 'rgba(204, 255, 0, 0.04)');
-      glowGrad.addColorStop(1, 'rgba(204, 255, 0, 0)');
+      glowGrad.addColorStop(0, 'rgba(225,29,72, 0.04)');
+      glowGrad.addColorStop(1, 'rgba(225,29,72, 0)');
       ctx.fillStyle = glowGrad;
       ctx.beginPath();
       ctx.arc(pacCX, pacCY, pacR * 1.3, 0, Math.PI * 2);
       ctx.fill();
 
       // Body — flat lime circle with wedge cut
-      ctx.fillStyle = '#CCFF00';
+      ctx.fillStyle = '#E11D48';
       ctx.beginPath();
       ctx.moveTo(pacCX, pacCY);
       ctx.arc(pacCX, pacCY, pacR, mouthRad, Math.PI * 2 - mouthRad);
@@ -240,7 +240,7 @@ function PacManHero() {
       }
 
       // ─── Redraw Pac-Man on top to clip any bubble overlap ───
-      ctx.fillStyle = '#CCFF00';
+      ctx.fillStyle = '#E11D48';
       ctx.beginPath();
       ctx.moveTo(pacCX, pacCY);
       ctx.arc(pacCX, pacCY, pacR, mouthRad, Math.PI * 2 - mouthRad);
@@ -319,7 +319,7 @@ function AmbientParticles() {
       {particles.map(p => (
         <div
           key={p.id}
-          className="absolute rounded-full bg-[#CCFF00]"
+          className="absolute rounded-full bg-[#E11D48]"
           style={{
             left: p.left,
             top: p.top,
@@ -421,21 +421,21 @@ export default function LoginPage() {
       <div
         className="absolute -right-[12%] -top-[8%] h-[55vh] w-[55vh] rounded-full opacity-[0.05]"
         style={{
-          background: 'radial-gradient(circle, #CCFF00 0%, transparent 70%)',
+          background: 'radial-gradient(circle, #E11D48 0%, transparent 70%)',
           animation: 'meshDrift 18s ease-in-out infinite',
         }}
       />
       <div
         className="absolute -bottom-[12%] -left-[8%] h-[45vh] w-[45vh] rounded-full opacity-[0.03]"
         style={{
-          background: 'radial-gradient(circle, #CCFF00 0%, transparent 70%)',
+          background: 'radial-gradient(circle, #E11D48 0%, transparent 70%)',
           animation: 'meshDrift 22s ease-in-out infinite reverse',
         }}
       />
       <div
         className="absolute left-1/2 top-[18%] h-[320px] w-[320px] -translate-x-1/2 rounded-full border border-white/[0.02] opacity-30 sm:h-[440px] sm:w-[440px] lg:h-[520px] lg:w-[520px]"
         style={{
-          background: 'radial-gradient(circle, transparent 55%, rgba(204,255,0,0.015) 100%)',
+          background: 'radial-gradient(circle, transparent 55%, rgba(225,29,72,0.015) 100%)',
           animation: 'loginFloat 14s ease-in-out infinite',
         }}
       />
@@ -461,10 +461,10 @@ export default function LoginPage() {
         </span>
         <span
           className={cn(
-            'font-black tracking-[-0.04em] text-[#CCFF00]',
+            'font-black tracking-[-0.04em] text-[#E11D48]',
             isLarge ? 'text-[64px] xl:text-[76px]' : 'text-[32px] sm:text-[44px]',
           )}
-          style={{ textShadow: '0 0 40px rgba(204,255,0,0.35)' }}
+          style={{ textShadow: '0 0 40px rgba(225,29,72,0.35)' }}
         >
           ME
         </span>
@@ -487,7 +487,7 @@ export default function LoginPage() {
         <span className="text-white/5">&middot;</span>
         <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-white/25">Terms</a>
         <span className="text-white/5">&middot;</span>
-        <a href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-[#CCFF00]/35">Home &rarr;</a>
+        <a href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-[#E11D48]/35">Home &rarr;</a>
       </div>
     </div>
   );
@@ -499,8 +499,8 @@ export default function LoginPage() {
         100% { transform: translate(-50%, -50%) rotate(360deg); }
       }
       @keyframes cta-breathe {
-        0%, 100% { box-shadow: 0 0 0px rgba(204,255,0,0), 0 2px 8px rgba(0,0,0,0.4); }
-        50% { box-shadow: 0 0 18px rgba(204,255,0,0.06), 0 2px 8px rgba(0,0,0,0.4); }
+        0%, 100% { box-shadow: 0 0 0px rgba(225,29,72,0), 0 2px 8px rgba(0,0,0,0.4); }
+        50% { box-shadow: 0 0 18px rgba(225,29,72,0.06), 0 2px 8px rgba(0,0,0,0.4); }
       }
       @keyframes loginFloat {
         0%, 100% { transform: translateY(0); }
@@ -511,7 +511,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative flex min-h-[100svh] w-full overflow-hidden bg-[#030303] selection:bg-[#CCFF00]/30 selection:text-white lg:h-[100vh] lg:min-h-0"
+      className="relative flex min-h-[100svh] w-full overflow-hidden bg-[#030303] selection:bg-[#E11D48]/30 selection:text-white lg:h-[100vh] lg:min-h-0"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
@@ -524,7 +524,7 @@ export default function LoginPage() {
       <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
         <a
           href="/"
-          className="group flex items-center gap-1.5 rounded-full border border-white/[0.05] bg-white/[0.02] px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/25 backdrop-blur-sm transition-all hover:border-[#CCFF00]/15 hover:text-[#CCFF00]/50"
+          className="group flex items-center gap-1.5 rounded-full border border-white/[0.05] bg-white/[0.02] px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/25 backdrop-blur-sm transition-all hover:border-[#E11D48]/15 hover:text-[#E11D48]/50"
         >
           feedme.app
           <ExternalLink size={10} strokeWidth={3} className="opacity-40 transition-transform group-hover:translate-x-0.5" />
@@ -592,7 +592,7 @@ export default function LoginPage() {
               style={{
                 background: [
                   'radial-gradient(ellipse 55% 30% at 12% 0%, rgba(255,255,255,0.06) 0%, transparent 70%)',
-                  'radial-gradient(ellipse 25% 50% at 100% 30%, rgba(204,255,0,0.008) 0%, transparent 50%)',
+                  'radial-gradient(ellipse 25% 50% at 100% 30%, rgba(225,29,72,0.008) 0%, transparent 50%)',
                   'linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 20%)',
                 ].join(', '),
               }}
@@ -726,7 +726,7 @@ export default function LoginPage() {
                           className="absolute left-1/2 top-1/2 h-[500px] w-[500px]"
                           style={{
                             animation: 'shimmer-sweep 3.5s linear infinite',
-                            background: 'conic-gradient(from 180deg, transparent 0deg, transparent 220deg, rgba(204,255,0,0.06) 250deg, rgba(204,255,0,0.35) 285deg, rgba(204,255,0,0.12) 320deg, transparent 350deg)',
+                            background: 'conic-gradient(from 180deg, transparent 0deg, transparent 220deg, rgba(225,29,72,0.06) 250deg, rgba(225,29,72,0.35) 285deg, rgba(225,29,72,0.12) 320deg, transparent 350deg)',
                           }}
                         />
                       </motion.div>
@@ -747,7 +747,7 @@ export default function LoginPage() {
                         placeholder="you@example.com"
                         autoComplete="email"
                         className="relative z-10 h-[54px] lg:h-[58px] w-full rounded-[14px] bg-transparent px-5 text-[14px] font-semibold text-white outline-none placeholder:text-white/[0.08] focus:ring-0"
-                        style={{ caretColor: '#CCFF00' }}
+                        style={{ caretColor: '#E11D48' }}
                       />
                     </motion.div>
                   </div>
@@ -763,7 +763,7 @@ export default function LoginPage() {
                           <button
                             type="button"
                             onClick={() => { setMode('forgot'); setError(null); setMessage(null); }}
-                            className="text-[9px] font-black uppercase tracking-[0.12em] text-[#CCFF00]/40 transition-colors hover:text-[#CCFF00]/70"
+                            className="text-[9px] font-black uppercase tracking-[0.12em] text-[#E11D48]/40 transition-colors hover:text-[#E11D48]/70"
                           >
                             Forgot?
                           </button>
@@ -795,7 +795,7 @@ export default function LoginPage() {
                             className="absolute left-1/2 top-1/2 h-[500px] w-[500px]"
                             style={{
                               animation: 'shimmer-sweep 3.5s linear infinite',
-                              background: 'conic-gradient(from 180deg, transparent 0deg, transparent 220deg, rgba(204,255,0,0.06) 250deg, rgba(204,255,0,0.35) 285deg, rgba(204,255,0,0.12) 320deg, transparent 350deg)',
+                              background: 'conic-gradient(from 180deg, transparent 0deg, transparent 220deg, rgba(225,29,72,0.06) 250deg, rgba(225,29,72,0.35) 285deg, rgba(225,29,72,0.12) 320deg, transparent 350deg)',
                             }}
                           />
                         </motion.div>
@@ -816,7 +816,7 @@ export default function LoginPage() {
                           placeholder="••••••••"
                           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                           className="relative z-10 h-[54px] lg:h-[58px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[14px] font-semibold text-white outline-none placeholder:text-white/[0.08] focus:ring-0"
-                          style={{ caretColor: '#CCFF00' }}
+                          style={{ caretColor: '#E11D48' }}
                         />
                         <button
                           type="button"
@@ -866,10 +866,10 @@ export default function LoginPage() {
                     className="overflow-hidden"
                   >
                     <div
-                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#CCFF00]/60"
+                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#E11D48]/60"
                       style={{
-                        background: 'rgba(204, 255, 0, 0.025)',
-                        border: '1px solid rgba(204, 255, 0, 0.06)',
+                        background: 'rgba(225,29,72, 0.025)',
+                        border: '1px solid rgba(225,29,72, 0.06)',
                         boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
                       }}
                     >
@@ -891,7 +891,7 @@ export default function LoginPage() {
                   'disabled:opacity-30 disabled:cursor-not-allowed'
                 )}
                 style={{
-                  background: '#CCFF00',
+                  background: '#E11D48',
                   animation: loading || isSuccess ? 'none' : 'cta-breathe 4s ease-in-out infinite',
                 }}
                 transition={{ layout: { duration: 0.4, ease: APPLE_EASE } }}
@@ -937,7 +937,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => { setMode('login'); setError(null); setMessage(null); }}
-                    className="text-[10px] font-black uppercase tracking-[0.12em] text-white/18 transition-colors hover:text-[#CCFF00]/50"
+                    className="text-[10px] font-black uppercase tracking-[0.12em] text-white/18 transition-colors hover:text-[#E11D48]/50"
                   >
                     &larr; Back to Login
                   </button>
@@ -961,7 +961,7 @@ export default function LoginPage() {
             initial={{ scale: 0.3, opacity: 0.6 }}
             animate={{ scale: 5, opacity: 0 }}
             transition={{ duration: 1.2, ease: 'easeOut' }}
-            className="pointer-events-none absolute z-20 h-32 w-32 rounded-full border border-[#CCFF00]/40"
+            className="pointer-events-none absolute z-20 h-32 w-32 rounded-full border border-[#E11D48]/40"
           />
         )}
       </AnimatePresence>
@@ -974,7 +974,7 @@ export default function LoginPage() {
         input:-webkit-autofill:active {
           -webkit-box-shadow: 0 0 0 30px rgba(3,3,3,0.99) inset !important;
           -webkit-text-fill-color: white !important;
-          caret-color: #CCFF00 !important;
+          caret-color: #E11D48 !important;
           transition: background-color 5000s ease-in-out 0s;
         }
       `}</style>

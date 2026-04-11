@@ -44,7 +44,7 @@ function EntryChip({ handle, delta }: { handle: string; delta: number }) {
       <span
         className={cn(
           'flex items-center gap-1 rounded-[8px] px-2 py-0.5 text-[10px] font-black tracking-[0.1em] sm:text-[11px]',
-          pos && 'border border-[#d7ff57]/60 bg-[#CCFF00]/30 text-[#4d6b10] dark:bg-[#CCFF00]/12 dark:text-[#CCFF00] dark:border-[#CCFF00]/20',
+          pos && 'border border-[#FB7185]/60 bg-[#E11D48]/78 text-white dark:bg-[#E11D48] dark:text-white dark:border-[#E11D48]/30',
           neg && 'bg-black/8 text-black/50 border border-black/8 dark:bg-white/6 dark:text-white/40 dark:border-white/8',
           !pos && !neg && 'bg-black/4 text-black/35 border border-black/4 dark:bg-white/4 dark:text-white/30 dark:border-white/4',
         )}
@@ -65,11 +65,11 @@ function ModeTag({ label }: { label: string }) {
       <span
         className={cn(
           'rounded-[10px] px-3 py-1.5',
-          'border border-[#d7ff57] bg-[#CCFF00]',
-          'shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_4px_10px_rgba(204,255,0,0.25)]',
-          'dark:border-[#dfff7a]/30',
-          'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(204,255,0,0.2),0_12px_28px_rgba(0,0,0,0.5)]',
-          'text-[9px] font-black tracking-[0.16em] text-black sm:text-[10px]',
+          'border border-[#FB7185] bg-[#E11D48]',
+          'shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_4px_10px_rgba(225,29,72,0.25)]',
+          'dark:border-[#FDA4AF]/30',
+          'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]',
+          'text-[9px] font-black tracking-[0.16em] text-white sm:text-[10px]',
         )}
       >
         {label}

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -14,6 +14,8 @@ from .config import (
     APP_TIMEZONE,
     BRIGHTDATA_API_BASE_URL,
     BRIGHTDATA_API_KEY,
+    BRIGHTDATA_DISCOVERY_MAX_POSTS,
+    BRIGHTDATA_DISCOVERY_OVERLAP_DAYS,
     BRIGHTDATA_POSTED_AT_FALLBACK_HOUR_24,
     BRIGHTDATA_PROFILES_DATASET_ID,
     BRIGHTDATA_POSTS_DATASET_ID,
@@ -95,6 +97,94 @@ def _extract_media_candidates(item: dict[str, Any], *keys: str) -> list[str]:
     return values
 
 
+def _normalize_handle(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    profile_match = re.search(r"(?:https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)/?", raw, re.IGNORECASE)
+    if profile_match:
+        raw = profile_match.group(1)
+
+    raw = raw.replace("@", "").strip().strip("/")
+    if not raw:
+        return None
+
+    lowered = raw.lower()
+    if lowered in {"p", "reel", "reels", "tv", "stories", "explore", "accounts", "api"}:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", raw):
+        return None
+    return lowered
+
+
+def _collect_handle_candidate(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        handles: list[str] = []
+        for item in value:
+            handles.extend(_collect_handle_candidate(item))
+        return handles
+    if isinstance(value, dict):
+        handles: list[str] = []
+        for key in ("username", "user_name", "handle", "owner_username", "ownerUsername"):
+            handle = _normalize_handle(value.get(key))
+            if handle:
+                handles.append(handle)
+        return handles
+
+    handle = _normalize_handle(value)
+    return [handle] if handle else []
+
+
+def _extract_related_handles(item: dict[str, Any]) -> list[str]:
+    handles: list[str] = []
+    seen: set[str] = set()
+
+    def add(values: list[str]):
+        for handle in values:
+            if handle and handle not in seen:
+                seen.add(handle)
+                handles.append(handle)
+
+    direct_keys = (
+        "username",
+        "user_name",
+        "handle",
+        "owner_username",
+        "ownerUsername",
+        "author_username",
+        "authorUsername",
+    )
+    for key in direct_keys:
+        add(_collect_handle_candidate(item.get(key)))
+
+    owner_keys = ("owner", "user", "author", "creator")
+    for key in owner_keys:
+        raw = item.get(key)
+        if isinstance(raw, (dict, list)):
+            add(_collect_handle_candidate(raw))
+
+    collaborator_keys = (
+        "coauthor_producers",
+        "coauthors",
+        "collaborators",
+        "collab_accounts",
+        "invited_coauthor_producers",
+        "invited_coauthors",
+        "shared_with_users",
+    )
+    for key in collaborator_keys:
+        raw = item.get(key)
+        if isinstance(raw, (dict, list)):
+            add(_collect_handle_candidate(raw))
+
+    return handles
+
+
 def _normalize_media_type(content_type: str, photo_count: int, video_count: int) -> str:
     m = (content_type or "").strip().lower()
     if m in ("reel", "video"):
@@ -130,8 +220,21 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
         or ""
     ).strip() or None
     follower_count = item.get("followers") or item.get("followers_count")
+    related_handles = _extract_related_handles(item)
     media_display_url = photo_urls[0] if photo_urls else ""
     media_thumbnail_url = photo_urls[0] if photo_urls else ""
+    carousel_media: list[dict[str, str]] = []
+    media_video_url = ""
+
+    if media_type == "sidecar":
+        carousel_media = _build_children(photo_urls, video_urls)
+        media_video_url = ""
+    elif media_type == "reel":
+        carousel_media = []
+        media_video_url = video_urls[0] if video_urls else ""
+    else:
+        carousel_media = []
+        media_video_url = ""
 
     normalized: dict[str, Any] = {
         "url": canonical_url,
@@ -151,19 +254,53 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
         "videoPlayCount": item.get("video_play_count") or item.get("videoPlayCount") or item.get("plays"),
         "displayUrl": media_display_url,
         "thumbnailUrl": media_thumbnail_url,
-        "videoUrl": video_urls[0] if video_urls else "",
-        "carouselMedia": _build_children(photo_urls, video_urls),
+        "videoUrl": media_video_url,
+        "carouselMedia": carousel_media,
         "ownerProfilePicUrl": owner_profile_pic,
         "ownerFollowersCount": follower_count,
         "owner": {
             "profilePicUrl": owner_profile_pic,
             "followersCount": follower_count,
         },
+        "relatedHandles": related_handles,
         "providerPostId": provider_post_id,
         "error": item.get("error"),
         "errorCode": item.get("error_code") or item.get("errorCode"),
     }
     return normalized
+
+
+def _to_dt(value: Any) -> datetime | None:
+    raw = _to_utc_string(value)
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _trim_recent_posts(
+    items: list[dict[str, Any]],
+    *,
+    recent_post_ids: list[str] | None = None,
+    days_window: int | None = None,
+    max_posts: int | None = None,
+) -> list[dict[str, Any]]:
+    recent = {str(v).strip() for v in (recent_post_ids or []) if str(v).strip()}
+    if recent:
+        items = [item for item in items if str(item.get("providerPostId") or "").strip() not in recent]
+
+    effective_days = max(1, days_window or BRIGHTDATA_DISCOVERY_OVERLAP_DAYS)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=effective_days)
+    trimmed: list[dict[str, Any]] = []
+    for item in items:
+        posted_at = _to_dt(item.get("timestamp") or item.get("date_posted") or item.get("datetime"))
+        if posted_at is None or posted_at >= cutoff:
+            trimmed.append(item)
+
+    effective_max = max(1, max_posts or BRIGHTDATA_DISCOVERY_MAX_POSTS)
+    return trimmed[:effective_max]
 
 
 def _normalize_reel_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -295,7 +432,10 @@ def _scrape_dataset(dataset_id: str, inputs: list[dict[str, Any]]) -> list[dict[
         data=json.dumps({"input": inputs}),
         timeout=120,
     )
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        body = (resp.text or "").strip()
+        detail = body[:500] if body else f"HTTP {resp.status_code}"
+        raise RuntimeError(f"Bright Data scrape error {resp.status_code}: {detail}")
     result = _load_json_payload(resp)
     if resp.status_code == 200:
         return _flatten_result(result)
@@ -315,17 +455,25 @@ def _scrape_dataset(dataset_id: str, inputs: list[dict[str, Any]]) -> list[dict[
         time.sleep(max(5, BRIGHTDATA_POLL_INTERVAL_SECONDS))
 
 
-def run_handle(handle: str, recent_post_ids: list[str] | None = None) -> list[dict[str, Any]]:
+def run_handle(
+    handle: str,
+    *,
+    recent_post_ids: list[str] | None = None,
+    days_window: int | None = None,
+    max_posts: int | None = None,
+) -> list[dict[str, Any]]:
     clean = (handle or "").lstrip("@").strip()
     if not clean:
         return []
 
     items = _scrape_dataset(BRIGHTDATA_PROFILES_DATASET_ID, [{"url": f"https://www.instagram.com/{clean}/"}])
     normalized = [_normalize_item(item) for item in items]
-    if not recent_post_ids:
-        return normalized
-    recent = {str(v).strip() for v in recent_post_ids if str(v).strip()}
-    return [item for item in normalized if str(item.get("providerPostId") or "").strip() not in recent]
+    return _trim_recent_posts(
+        normalized,
+        recent_post_ids=recent_post_ids,
+        days_window=days_window,
+        max_posts=max_posts,
+    )
 
 
 def run_post_urls(post_urls: list[str]) -> list[dict[str, Any]]:

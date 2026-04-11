@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ExternalLink } from 'lucide-react';
 import { FireItem } from './types';
 import { compact } from './fireLogicHelpers';
+import { getFireSignalMeta, getPatternMechanicLabel } from '@/lib/fireSignals';
 
 type FireIntelligenceDialogProps = {
   item: FireItem | null;
@@ -126,7 +127,7 @@ function SupportMetricRow({
       <div
         className={
           accent
-            ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-black dark:text-[#CCFF00]'
+            ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-black dark:text-[#E11D48]'
             : 'text-[26px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
         }
       >
@@ -153,7 +154,7 @@ function CompactStat({
       <div
         className={
           accent
-            ? 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-black dark:text-[#CCFF00]'
+            ? 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-black dark:text-[#E11D48]'
             : 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90'
         }
       >
@@ -171,7 +172,7 @@ function TrajectoryBadge({ delta }: { delta: number | null }) {
   }
   // Improving
   if (delta > 0) {
-    return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-[#CCFF00]">{tone.label}</span>;
+    return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-[#E11D48]">{tone.label}</span>;
   }
   // Cooling
   return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-500 dark:text-[#ff8a65]">{tone.label}</span>;
@@ -193,6 +194,7 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     const metrics = asRecord(payload.metrics);
     const timing = asRecord(payload.timing);
     const trajectory = asRecord(payload.trajectory);
+    const meta = asRecord(payload.meta);
     const bestMetric = (text(payload.best_metric) || item.metricKey || 'views').toUpperCase();
     const bestMetricObj = asRecord(metrics[bestMetric.toLowerCase()]);
     const value = num(bestMetricObj.value) ?? item.metricValue;
@@ -223,6 +225,54 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
           value: compactOrDash(metricValue),
         };
       });
+    const patternAlerts = Array.isArray(meta.pattern_alerts)
+      ? meta.pattern_alerts
+        .map((entry) => asRecord(entry))
+        .map((entry) => {
+          const signalCode = text(entry.signal_code);
+          const signalMeta = getFireSignalMeta(signalCode);
+          const patternName = text(entry.pattern_name);
+          const cues = Array.isArray(entry.cues)
+            ? entry.cues
+              .map((cue) => asRecord(cue))
+              .map((cue) => text(cue.label))
+              .filter(Boolean)
+              .slice(0, 4)
+            : [];
+          const supportPosts = Array.isArray(entry.support_posts)
+            ? entry.support_posts
+              .map((post) => asRecord(post))
+              .map((post) => ({
+                postKey: text(post.post_key),
+                handle: text(post.handle),
+                mediaType: text(post.media_type).toUpperCase(),
+                postUrl: text(post.post_url),
+                thumbnailUrl: text(post.thumbnail_url),
+              }))
+              .filter((post) => post.postKey || post.postUrl)
+            : [];
+          return {
+            signalCode,
+            signalLabel: signalMeta?.shortLabel || signalCode || 'Pattern Alert',
+            patternLabel: getPatternMechanicLabel(patternName) || signalMeta?.headline || signalCode || 'Pattern Alert',
+            context: text(entry.context).toUpperCase() || 'OWN',
+            alertType: text(entry.alert_type).toUpperCase() || 'WATCH',
+            body: text(entry.body),
+            percentile: num(entry.surface_percentile),
+            matchCount: num(entry.match_count),
+            feedersCount: num(entry.feeders_count),
+            avgHotPercentile: num(entry.avg_hot_percentile),
+            baselineShare: num(entry.baseline_share),
+            recentLift: num(entry.recent_lift),
+            contrastGap: num(entry.contrast_gap),
+            anchorAvgPercentile: num(entry.anchor_avg_percentile),
+            anchorGap: num(entry.anchor_gap),
+            cues,
+            supportPosts,
+          };
+        })
+        .filter((entry) => entry.signalCode || entry.body || entry.patternLabel)
+      : [];
 
     return {
       bestMetric,
@@ -244,7 +294,13 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
       checkpoint: item.checkpoint.toUpperCase(),
       handle: `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`,
       mediaType: (item.surfaceMediaType || 'POST').toUpperCase(),
+      signalLabel: item.signalLabel || 'Signal',
+      signalHeadline: item.signalHeadline || item.title || 'Live signal',
+      signalContext: item.signalContext.toUpperCase(),
+      whyNow: item.whyNow || '',
       isD1: item.checkpoint.toUpperCase() === 'D1',
+      patternAlerts,
+      hideSignalChrome: item.hideSignalChrome === true,
     };
   }, [item]);
 
@@ -287,7 +343,7 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(204,255,0,0.14),transparent_50%),linear-gradient(180deg,#161616_0%,#050505_100%)]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(225,29,72,0.14),transparent_50%),linear-gradient(180deg,#161616_0%,#050505_100%)]" />
                 )}
                 {/* Bottom gradient for legibility */}
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_30%,rgba(0,0,0,0.7)_70%,rgba(0,0,0,0.92)_100%)]" />
@@ -295,6 +351,8 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
                 {/* Bottom content over thumbnail */}
                 <div className="absolute inset-x-0 bottom-0 z-10 p-5">
                   <div className="flex flex-wrap gap-1.5">
+                    {!stats.hideSignalChrome && <MetaBadge value={stats.signalLabel} />}
+                    {!stats.hideSignalChrome && <MetaBadge value={stats.signalContext} />}
                     <MetaBadge value={stats.handle} />
                     <MetaBadge value={stats.mediaType} />
                     <MetaBadge value={stats.checkpoint} />
@@ -328,31 +386,128 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
                 <div className="relative flex flex-1 flex-col overflow-y-auto p-6">
                   {/* Header */}
                   <div>
-                    <SectionTag>Intelligence Window</SectionTag>
-                    <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
-                      Signal vs baseline for this post
-                    </p>
+                    <SectionTag>{stats.hideSignalChrome ? 'Checkpoint Snapshot' : 'Intelligence Window'}</SectionTag>
+                    <div className="mt-2 text-[26px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
+                      {stats.hideSignalChrome ? `${stats.handle} · ${stats.checkpoint}` : stats.signalHeadline}
+                    </div>
+                    {!stats.hideSignalChrome && (
+                      <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
+                        {stats.whyNow || 'Signal vs baseline for this post'}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Hero Metric — neon green base, black text */}
-                  <div className="mt-5 rounded-2xl bg-[#CCFF00] px-5 py-4">
-                    <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-black/40">
+                  {stats.patternAlerts.length > 0 && (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <SectionTag>Pattern Alerts</SectionTag>
+                        <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
+                          {stats.patternAlerts.length} active
+                        </div>
+                      </div>
+                      <div className="mt-2.5 space-y-2">
+                        {stats.patternAlerts.map((patternAlert) => (
+                          <div
+                            key={`${patternAlert.signalCode}:${patternAlert.context}:${patternAlert.alertType}`}
+                            className="rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[12px] font-black tracking-[-0.02em] text-neutral-800 dark:text-white/90">
+                                {patternAlert.patternLabel}
+                              </div>
+                              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
+                                {patternAlert.context} · {patternAlert.alertType}
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {patternAlert.matchCount != null && (
+                                <MetaBadge value={`${Math.round(patternAlert.matchCount)} Winners`} />
+                              )}
+                              {patternAlert.feedersCount != null && patternAlert.feedersCount > 1 && (
+                                <MetaBadge value={`${Math.round(patternAlert.feedersCount)} Feeders`} />
+                              )}
+                              {patternAlert.avgHotPercentile != null && (
+                                <MetaBadge value={`Avg Top ${Math.round(patternAlert.avgHotPercentile)}%`} />
+                              )}
+                              {patternAlert.anchorGap != null && (
+                                <MetaBadge value={`Gap +${Math.round(patternAlert.anchorGap)} pts`} />
+                              )}
+                              {patternAlert.recentLift != null && patternAlert.recentLift > 0 && (
+                                <MetaBadge value={`14d Lift ${patternAlert.recentLift.toFixed(1)}x`} />
+                              )}
+                              {patternAlert.baselineShare != null && (
+                                <MetaBadge value={`Baseline ${Math.round(patternAlert.baselineShare * 100)}%`} />
+                              )}
+                            </div>
+                            {(patternAlert.body || patternAlert.percentile != null) && (
+                              <div className="mt-1 text-[11px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
+                                {patternAlert.body || `Top ${Math.round(patternAlert.percentile || 0)}%`}
+                              </div>
+                            )}
+                            {patternAlert.cues.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {patternAlert.cues.map((cue) => (
+                                  <div
+                                    key={`${patternAlert.signalCode}:${cue}`}
+                                    className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
+                                  >
+                                    {cue}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {patternAlert.supportPosts.length > 0 && (
+                              <div className="mt-2.5">
+                                <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
+                                  Supporting Posts
+                                </div>
+                                <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
+                                  {patternAlert.supportPosts.map((post) => (
+                                    <a
+                                      key={`${patternAlert.signalCode}:${post.postKey || post.postUrl}`}
+                                      href={post.postUrl || '#'}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="shrink-0"
+                                    >
+                                      <div className="h-24 w-20 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                                        {post.thumbnailUrl ? (
+                                          <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-1 max-w-20 truncate text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
+                                        @{(post.handle || 'feed').toUpperCase()}
+                                      </div>
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hero Metric — accent base, white text */}
+                  <div className="mt-5 rounded-2xl bg-[#E11D48] px-5 py-4">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/68">
                       Hero Metric
                     </div>
                     <div className="mt-3 flex items-end justify-between gap-4">
                       <div>
-                        <div className="text-[42px] font-black leading-none tracking-[-0.05em] text-black">
+                        <div className="text-[42px] font-black leading-none tracking-[-0.05em] text-white">
                           {compactOrDash(stats.value)}
                         </div>
-                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-black/44">
+                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
                           {stats.bestMetric}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[30px] font-black leading-none tracking-[-0.04em] text-black">
+                        <div className="text-[30px] font-black leading-none tracking-[-0.04em] text-white">
                           {multipleOrDash(stats.multiple)}
                         </div>
-                        <div className="mt-1 text-[11px] font-medium text-black/44">
+                        <div className="mt-1 text-[11px] font-medium text-white/70">
                           {compactOrDash(stats.baseline)} usual
                         </div>
                       </div>
@@ -430,7 +585,7 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
                         event.stopPropagation();
                         if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
                       }}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#CCFF00] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_8px_24px_rgba(204,255,0,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(204,255,0,0.2)] active:scale-[0.995]"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
                     >
                       Open Post
                       <ExternalLink size={14} />

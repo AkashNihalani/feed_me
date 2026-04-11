@@ -66,9 +66,12 @@ export type FireAlertItem = {
   id: string;
   postKey?: string;
   feederId?: number;
-  family: 'tracking' | 'insight';
   urgency: AlertUrgency;
   color: string;
+  signalCode: string;
+  signalContext: 'own' | 'cross' | 'anchor';
+  signalLabel: string;
+  signalHeadline: string;
   handle: string;
   title: string;
   whyNow: string;
@@ -100,8 +103,7 @@ export type FireAlertItem = {
   payload: FirePayload;
   layers: FireLayers;
   intelligenceSkipped?: boolean;
-  patternSignal?: string | null;
-  patternPayload?: Record<string, unknown> | null;
+  hideSignalChrome?: boolean;
   warmupGate?: FireWarmupGate | null;
 };
 

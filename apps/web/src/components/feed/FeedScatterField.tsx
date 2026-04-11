@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ScatterPoint } from './dashboardTypes';
 
@@ -27,119 +27,206 @@ function formatPointDate(value: string | null): string {
 const POST_COUNTS = [5, 15, 25] as const;
 type PostCount = typeof POST_COUNTS[number];
 
-export default function FeedScatterField({ points }: { points: ScatterPoint[] }) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+export default function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; windowDays: number }) {
   const [activeCount, setActiveCount] = useState<PostCount>(15);
   const [hoveredPoint, setHoveredPoint] = useState<Blip | null>(null);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const deferredActiveCount = useDeferredValue(activeCount);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const media = window.matchMedia('(max-width: 768px)');
+    const handleChange = () => setIsCompactViewport(media.matches);
+    handleChange();
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleChange);
+      return () => media.removeEventListener('change', handleChange);
+    }
+
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, []);
 
   const allPoints = useMemo<Blip[]>(() => {
     const src = Array.isArray(points) ? points : [];
-    // Sort by days_ago ascending (most recent first)
-    const sorted = [...src].sort((a, b) => (Number(a.days_ago) || 0) - (Number(b.days_ago) || 0));
-    const maxDays = Math.max(1, ...sorted.map((p) => Number(p.days_ago) || 0));
+    const sorted = [...src].sort((a, b) => {
+      const dayDiff = (Number(a.days_ago) || 0) - (Number(b.days_ago) || 0);
+      if (dayDiff !== 0) return dayDiff;
+      return (b.posted_at_ist || '').localeCompare(a.posted_at_ist || '');
+    });
+
+    const days = sorted.map((p) => Math.max(0, Number(p.days_ago) || 0));
+    const trackedMaxDays = days.length > 0 ? Math.max(...days) : Math.max(0, windowDays - 1);
+    const groupSizes = new Map<number, number>();
+    for (const day of days) {
+      groupSizes.set(day, (groupSizes.get(day) ?? 0) + 1);
+    }
+    const groupOffsets = new Map<number, number>();
+
     return sorted.map((p, index) => {
       const percentile = typeof p.percentile_performance === 'number' ? p.percentile_performance : null;
+      const daysAgo = Math.max(0, Number(p.days_ago) || 0);
+      const groupSize = groupSizes.get(daysAgo) ?? 1;
+      const orderWithinDay = groupOffsets.get(daysAgo) ?? 0;
+      groupOffsets.set(daysAgo, orderWithinDay + 1);
+
+      const trackedRatio = trackedMaxDays <= 0 ? 0.5 : daysAgo / trackedMaxDays;
+      const windowRatio = Math.max(0, Math.min(1, daysAgo / Math.max(1, windowDays - 1)));
+      const easedWindowRatio = windowDays >= 60
+        ? Math.pow(windowRatio, 0.72)
+        : Math.pow(windowRatio, 0.82);
+      const blendedRatio = trackedMaxDays <= 0
+        ? (isCompactViewport ? easedWindowRatio : windowRatio)
+        : isCompactViewport
+          ? clamp(easedWindowRatio * 0.8 + trackedRatio * 0.2, 0, 1)
+          : clamp(windowRatio * 0.62 + trackedRatio * 0.38, 0, 1);
+      const baseX = blendedRatio * 100;
+      const spread = groupSize > 1 ? Math.min(20, 4 + groupSize * 0.55) : 0;
+      const centeredOffset = groupSize > 1
+        ? ((orderWithinDay / Math.max(1, groupSize - 1)) - 0.5) * spread
+        : 0;
+
       return {
         id: p.post_key || `${p.handle}-${p.days_ago}`,
-        x: Math.min(100, ((Number(p.days_ago) || 0) / maxDays) * 100),
+        x: clamp(baseX + centeredOffset, isCompactViewport ? 2.5 : 4, isCompactViewport ? 97.5 : 96),
         y: percentile === null ? 50 : Math.max(2, Math.min(98, 100 - percentile)),
         isCompetitor: false,
         percentile,
         handle: p.handle || 'unknown',
         date: formatPointDate(p.posted_at_ist),
         views: Math.max(0, Number(p.views) || 0),
-        daysAgo: Number(p.days_ago) || 0,
+        daysAgo,
         postIndex: index,
       };
     });
-  }, [points]);
+  }, [isCompactViewport, points, windowDays]);
 
-  // Show all points but only twinkle the most recent N
-  const twinkleSet = useMemo(() => {
+  const selectionMeta = useMemo(() => {
     const ids = new Set<string>();
-    for (let i = 0; i < Math.min(activeCount, allPoints.length); i++) {
+    const order = new Map<string, number>();
+    for (let i = 0; i < Math.min(deferredActiveCount, allPoints.length); i++) {
       ids.add(allPoints[i].id);
+      order.set(allPoints[i].id, i);
     }
-    return ids;
-  }, [activeCount, allPoints]);
+    return { ids, order };
+  }, [allPoints, deferredActiveCount]);
 
   return (
     <motion.div
-      className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3.5 sm:p-4 lg:p-5"
+      className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4"
     >
-      <div className="relative z-10 mb-4 flex items-start justify-between gap-2">
-        <span className="fm-label fm-depth-title">The Field</span>
-        {/* Post count pills */}
+      <div className="relative z-10 mb-2 flex items-start justify-between gap-2">
+        <div>
+          <span className="fm-label fm-depth-title">Percentage Map</span>
+          <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34">
+            {allPoints.length} tracked posts
+          </div>
+        </div>
         <div className="hide-scrollbar flex shrink-0 items-center gap-1 rounded-full border border-black/5 bg-black/[0.03] p-0.5 dark:border-white/5 dark:bg-white/[0.03]">
           {POST_COUNTS.map(count => (
             <motion.button
               key={count}
-              onClick={() => setActiveCount(count)}
+              onClick={() => {
+                startTransition(() => setActiveCount(count));
+              }}
               whileTap={{ scale: 0.95 }}
-              className={`relative rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${activeCount === count ? 'text-black z-10' : 'text-foreground/42 z-0'}`}
+              className={`relative rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] sm:px-4 sm:py-2 sm:text-[11px] ${activeCount === count ? 'z-10 text-white' : 'z-0 text-foreground/42'}`}
             >
               {activeCount === count && (
                 <motion.span
                   layoutId="scatter-pill-bg"
-                  className="absolute inset-0 rounded-full bg-[#CCFF00] shadow-[0_2px_8px_rgba(204,255,0,0.2)]"
+                  className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                 />
               )}
-              <span className="relative z-10">Last {count}</span>
+              <span className="relative z-10">{count}</span>
             </motion.button>
           ))}
         </div>
       </div>
 
       {/* Chart area */}
-      <div className="relative min-h-[200px] flex-1 w-full rounded-[14px] fm-depth-inner">
+      <div className="relative min-h-[190px] flex-1 w-full rounded-[14px] fm-depth-inner sm:min-h-[220px]">
         {[10, 25, 50].map((t) => (
           <div key={t} className="absolute left-0 right-0 border-t border-dashed border-black/10 dark:border-white/10" style={{ top: `${t}%` }}>
             <span className="absolute -top-3.5 right-1 text-[8px] font-black tracking-[0.1em] text-foreground/30">{t}%</span>
           </div>
         ))}
 
-        <div className="absolute inset-4">
-          <AnimatePresence>
-            {allPoints.map((blip) => {
-              const isInSelection = twinkleSet.has(blip.id);
-              const isTop = (blip.percentile ?? 100) <= 25;
+        <div className="absolute inset-x-2 inset-y-4 sm:inset-4">
+          {allPoints.map((blip) => {
+            const isInSelection = selectionMeta.ids.has(blip.id);
+            const selectionIndex = selectionMeta.order.get(blip.id) ?? 0;
+            const isTop = (blip.percentile ?? 100) <= 25;
+            const dotSize = isCompactViewport
+              ? isInSelection ? (isTop ? 13.5 : 11.5) : (isTop ? 8.2 : 6.4)
+              : isInSelection ? (isTop ? 16 : 13) : (isTop ? 11 : 8.5);
+            const targetLeft = `${100 - blip.x}%`;
+            const targetBottom = `${blip.y}%`;
 
-              return (
-                <motion.button
-                  key={blip.id}
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: blip.postIndex * 0.008 }}
-                  onClick={() => setHoveredPoint(blip)}
-                  onMouseEnter={() => setHoveredPoint(blip)}
-                  onMouseLeave={() => setHoveredPoint(null)}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-150 hover:z-50 focus:outline-none"
-                  style={{
-                    left: `${100 - blip.x}%`,
-                    bottom: `${blip.y}%`,
-                    zIndex: isTop ? 40 : 10,
+            return (
+              <motion.button
+                key={blip.id}
+                initial={{ opacity: 0, scale: 0.72, left: targetLeft, bottom: targetBottom }}
+                animate={{
+                  left: targetLeft,
+                  bottom: targetBottom,
+                  opacity: isInSelection ? 1 : isTop ? 0.56 : 0.38,
+                  scale: isInSelection ? 1.08 : 0.96,
+                  filter: isInSelection ? 'brightness(1)' : 'brightness(0.96)',
+                }}
+                transition={{
+                  duration: 0.72,
+                  ease: [0.22, 1, 0.36, 1],
+                  delay: isInSelection ? selectionIndex * 0.022 : 0,
+                }}
+                onClick={() => setHoveredPoint(blip)}
+                onMouseEnter={() => setHoveredPoint(blip)}
+                onMouseLeave={() => setHoveredPoint(null)}
+                className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-500 hover:scale-125 hover:z-50 focus:outline-none"
+                style={{
+                  zIndex: isInSelection ? 40 : isTop ? 20 : 10,
+                }}
+              >
+                <motion.div
+                  animate={{
+                    height: dotSize,
+                    width: dotSize,
+                    opacity: isInSelection ? 1 : isTop ? 0.96 : 0.9,
                   }}
-                >
-                  <div
-                    className={`rounded-full ${
-                      isTop
-                        ? 'bg-[#CCFF00] h-[10px] w-[10px] md:h-[12px] md:w-[12px]'
-                        : 'bg-black/30 dark:bg-white/45 h-[6px] w-[6px] md:h-[8px] md:w-[8px]'
-                    }`}
-                    style={{ boxShadow: isTop ? '0 0 12px rgba(204,255,0,0.6)' : 'none' }}
+                  transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                  className={[
+                    'rounded-full',
+                    isInSelection
+                      ? isTop
+                        ? 'bg-[#FB7185] shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_0_18px_rgba(225,29,72,0.22)] dark:bg-[#E11D48] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgba(225,29,72,0.45)]'
+                        : 'bg-[#FB7185]/84 shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_0_14px_rgba(225,29,72,0.14)] dark:bg-[#E11D48]/84 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgba(225,29,72,0.3)]'
+                      : isTop
+                        ? 'bg-black/28 shadow-[0_0_0_1px_rgba(255,255,255,0.12)] dark:bg-white/24'
+                        : 'bg-black/18 shadow-[0_0_0_1px_rgba(255,255,255,0.1)] dark:bg-white/14',
+                  ].join(' ')}
+                />
+                {isInSelection && (
+                  <motion.div
+                    className="absolute inset-[-7px] rounded-full border border-[#FB7185]/34 dark:border-[#E11D48]/42"
+                    animate={{ scale: [1, 1.4, 1], opacity: [0, 0.28, 0] }}
+                    transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut', delay: selectionIndex * 0.08 }}
                   />
-                  {/* Twinkle animation on selected recent posts */}
-                  {isInSelection && isTop && (
-                    <motion.div
-                      className="absolute inset-[-3px] rounded-full border border-[#CCFF00]/40"
-                      animate={{ scale: [1, 1.8, 1], opacity: [0.6, 0, 0.6] }}
-                      transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: blip.postIndex * 0.15 }}
-                    />
-                  )}
-                </motion.button>
-              );
-            })}
-          </AnimatePresence>
+                )}
+              </motion.button>
+            );
+          })}
+        </div>
+
+        <div className="pointer-events-none absolute bottom-1.5 left-3 right-3 flex items-center justify-between text-[8px] font-black uppercase tracking-[0.14em] text-foreground/30 sm:bottom-2 sm:left-4 sm:right-4">
+          <span>Older</span>
+          <span>Latest</span>
         </div>
         
         {/* Tooltip */}
@@ -153,7 +240,7 @@ export default function FeedScatterField({ points }: { points: ScatterPoint[] })
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-black uppercase tracking-[0.1em] text-black/50 dark:text-white/40">{hoveredPoint.date}</span>
-                <span className="text-[12px] font-black text-[#CCFF00]">{hoveredPoint.percentile === null ? '--' : `${Math.round(hoveredPoint.percentile)}%`}</span>
+                <span className="text-[12px] font-black text-black/62 dark:text-white/72">{hoveredPoint.percentile === null ? '--' : `${Math.round(hoveredPoint.percentile)}%`}</span>
               </div>
               <div className="text-[16px] font-black tracking-[-0.02em] text-black dark:text-white">@{hoveredPoint.handle}</div>
               <div className="mt-1 text-[12px] font-bold text-black/60 dark:text-white/60">{(hoveredPoint.views / 1000).toFixed(1)}k Views</div>

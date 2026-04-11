@@ -149,88 +149,38 @@ const tileVariant = {
   },
 };
 
-function formatRunBatchMoment(start?: string, end?: string) {
-  if (!start) return '--';
-  try {
-    const startDate = new Date(start);
-    const endDate = end ? new Date(end) : startDate;
-    const day = new Intl.DateTimeFormat('en-IN', {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'Asia/Kolkata',
-    }).format(startDate);
-    const timeFormatter = new Intl.DateTimeFormat('en-IN', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Kolkata',
-    });
-    const startTime = timeFormatter.format(startDate);
-    const endTime = timeFormatter.format(endDate);
-    if (!end || startDate.getTime() === endDate.getTime()) {
-      return `${day} · ${startTime}`;
-    }
-    return `${day} · ${startTime} to ${endTime}`;
-  } catch {
-    return '--';
-  }
+const ACTIVITY_CHECKPOINTS = ['D1', 'D3', 'D7', 'D21'] as const;
+const FIRE_RING_RADIUS = 70;
+const FIRE_RING_CIRCUMFERENCE = 2 * Math.PI * FIRE_RING_RADIUS;
+const FIRE_RING_WINDOW_MS = 60 * 60 * 1000;
+
+function formatCountdownDuration(ms: number | null) {
+  if (ms == null) return '--';
+  const totalMinutes = Math.ceil(Math.max(0, ms) / 60000);
+  if (totalMinutes <= 0) return 'now';
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
-function formatBusinessDayRange(start?: string | null, end?: string | null) {
-  if (!start) return null;
-  try {
-    const formatDay = (value: string) =>
-      new Intl.DateTimeFormat('en-IN', {
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'Asia/Kolkata',
-      }).format(new Date(`${value}T00:00:00+05:30`));
-
-    if (!end || end === start) {
-      return `Tracking posts from ${formatDay(start)}`;
-    }
-    return `Tracking posts from ${formatDay(start)} to ${formatDay(end)}`;
-  } catch {
-    return start === end || !end ? `Tracking posts from ${start}` : `Tracking posts from ${start} to ${end}`;
-  }
+function formatIstDayKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
 }
 
-function formatBatchSummary(batch: EngineRunBatch) {
-  const parts: string[] = [];
-  if (batch.creatorCount > 0) {
-    parts.push(`${batch.creatorCount} account${batch.creatorCount === 1 ? '' : 's'}`);
-  }
-  if (batch.systemCount > 0) {
-    parts.push(`${batch.systemCount} system`);
-  }
-  return parts.length > 0 ? parts.join(' · ') : `${batch.totalRuns} check${batch.totalRuns === 1 ? '' : 's'}`;
-}
-
-function formatBatchProgress(statuses: EngineRunBatchBreakdown[]) {
-  if (!statuses.length) return '--';
-  return statuses
-    .slice(0, 3)
-    .map((item) => {
-      const label = item.label.toLowerCase();
-      const icon = label === 'done' || label === 'live' ? '✓' : label === 'failed' ? '✕' : '◷';
-      return `${icon} ${item.count}`;
-    })
-    .join(' · ');
-}
-
-const RUN_TYPE_LABELS: Record<string, string> = {
-  D1: 'Day 1',
-  D3: 'Day 3',
-  D7: 'Day 7',
-  D21: 'Day 21',
-  DAILY: 'Discovery',
-  POLL: 'Discovery',
-  FOLLOWERS: 'Followers',
-  REPAIR: 'Repair',
-};
-
-function humanRunTypeLabel(raw: string) {
-  return RUN_TYPE_LABELS[raw.toUpperCase()] || raw;
+function buildCheckpointCounts(types: EngineRunBatchBreakdown[] = []) {
+  return ACTIVITY_CHECKPOINTS.map((checkpoint) => ({
+    checkpoint,
+    count: types.find((item) => item.label.toUpperCase() === checkpoint)?.count || 0,
+  }));
 }
 
 function parseMetric(value: string | number | undefined) {
@@ -264,9 +214,9 @@ function HardwareToggle({ active }: { active: boolean }) {
         'relative flex h-[32px] w-[56px] shrink-0 items-center rounded-full p-[3px] transition-all duration-300',
         active
           ? [
-              'bg-[#CCFF00]',
-              'shadow-[inset_0_3px_6px_rgba(130,156,0,0.55),inset_0_-1px_2px_rgba(255,255,255,0.35),0_2px_6px_rgba(204,255,0,0.15)]',
-              'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.15),0_0_16px_rgba(204,255,0,0.2),0_4px_12px_rgba(0,0,0,0.4)]',
+              'bg-[#E11D48]',
+              'shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.35),0_2px_6px_rgba(225,29,72,0.15)]',
+              'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.15),0_0_16px_rgba(225,29,72,0.2),0_4px_12px_rgba(0,0,0,0.4)]',
             ]
           : [
               'bg-black/[0.08] dark:bg-black/90',
@@ -318,6 +268,7 @@ export default function FundPage() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [slots, setSlots] = useState<SlotUsage>({ used: 0 });
   const [engineStats, setEngineStats] = useState<EngineStats>(emptyStats);
+  const [activityNow, setActivityNow] = useState(() => Date.now());
   const [pwaNotificationsEnabled, setPwaNotificationsEnabled] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>('default');
@@ -440,6 +391,11 @@ export default function FundPage() {
   }, [alertThreshold, notificationPrefsReady, readApiError]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setActivityNow(Date.now()), 30 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     async function fetchData() {
       const { data: { user: authUser }, error: authError } = await getSupabase().auth.getUser();
       if (authError || !authUser) {
@@ -464,9 +420,6 @@ export default function FundPage() {
             email: authUser.email || '',
             name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
             balance: 1000,
-            total_runs: 0,
-            data_points: 0,
-            success_rate: 0,
             email_notifications: true,
           })
           .select()
@@ -605,13 +558,36 @@ export default function FundPage() {
         .slice(0, 5),
     [engineStats.queuedBatches],
   );
-  const recentRuns = useMemo(
-    () =>
-      [...engineStats.completedBatches]
-        .sort((a, b) => new Date(b.windowStart).getTime() - new Date(a.windowStart).getTime())
-        .slice(0, 5),
-    [engineStats.completedBatches],
+  const nextFireBatch = upcomingRuns[0] || null;
+  const nextFireAtMs = useMemo(() => {
+    if (!nextFireBatch?.windowStart) return null;
+    const stamp = new Date(nextFireBatch.windowStart).getTime();
+    return Number.isFinite(stamp) ? stamp : null;
+  }, [nextFireBatch]);
+  const nextFireCountdownMs = nextFireAtMs == null ? null : Math.max(0, nextFireAtMs - activityNow);
+  const nextFireCountdown = formatCountdownDuration(nextFireCountdownMs);
+  const nextFireProgress = nextFireAtMs == null
+    ? 0
+    : Math.min(
+        1,
+        Math.max(
+          0.035,
+          1 - Math.min(nextFireCountdownMs ?? FIRE_RING_WINDOW_MS, FIRE_RING_WINDOW_MS) / FIRE_RING_WINDOW_MS,
+        ),
+      );
+  const nextCheckpointCounts = useMemo(
+    () => buildCheckpointCounts(nextFireBatch?.types || []),
+    [nextFireBatch],
   );
+  const nextFireTotalRuns = nextFireBatch?.totalRuns || nextCheckpointCounts.reduce((sum, item) => sum + item.count, 0);
+  const remainingRuns = engineStats.queuedRuns.length;
+  const completedToday = useMemo(() => {
+    const today = formatIstDayKey(new Date(activityNow));
+    return engineStats.completedRuns.filter((run) => {
+      const stamp = run.completedAt || run.scheduledAt;
+      return Boolean(stamp) && formatIstDayKey(stamp) === today;
+    }).length;
+  }, [activityNow, engineStats.completedRuns]);
   const alertsArmed = pwaNotificationsEnabled;
   const pwaStatusText = notificationBusy
     ? 'Requesting browser permission...'
@@ -840,7 +816,7 @@ export default function FundPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[180] flex items-end justify-center sm:items-center sm:px-4 sm:py-6"
+            className="fixed inset-0 z-[260] flex items-end justify-center sm:items-center sm:px-4 sm:py-6"
             style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
             onClick={closeManageSubscription}
           >
@@ -854,11 +830,11 @@ export default function FundPage() {
               style={{
                 background: '#080808',
                 borderRadius: 'clamp(24px, 4vw, 28px)',
-                boxShadow: '0 0 80px rgba(204,255,0,0.06), 0 40px 100px rgba(0,0,0,0.7)',
+                boxShadow: '0 0 80px rgba(225,29,72,0.06), 0 40px 100px rgba(0,0,0,0.7)',
               }}
             >
               {/* Top accent line */}
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#CCFF00]/30 to-transparent" />
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/30 to-transparent" />
 
               {/* ── Header ── */}
               <div className="relative px-5 pb-0 pt-5 sm:px-7 sm:pt-7">
@@ -871,7 +847,7 @@ export default function FundPage() {
                   <X size={15} strokeWidth={2.5} />
                 </button>
 
-                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#CCFF00]/50 sm:text-[10px]">Feed Pass</div>
+                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/50 sm:text-[10px]">Feed Pass</div>
                 <div className="mt-2 text-[26px] font-black leading-none tracking-[-0.04em] text-white sm:text-[32px]">
                   Subscription
                 </div>
@@ -880,19 +856,19 @@ export default function FundPage() {
               {/* ── Vibrant total pill ── */}
               <div className="px-5 pt-5 sm:px-7 sm:pt-6">
                 <div
-                  className="relative overflow-hidden rounded-[18px] bg-[#CCFF00] px-5 py-4 sm:rounded-[20px] sm:px-6 sm:py-5"
-                  style={{ boxShadow: '0 12px 40px rgba(204,255,0,0.16), 0 0 80px rgba(204,255,0,0.06)' }}
+                  className="relative overflow-hidden rounded-[18px] bg-[#E11D48] px-5 py-4 sm:rounded-[20px] sm:px-6 sm:py-5"
+                  style={{ boxShadow: '0 12px 40px rgba(225,29,72,0.16), 0 0 80px rgba(225,29,72,0.06)' }}
                 >
                   {/* Subtle inner glow */}
                   <div className="pointer-events-none absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 40%, rgba(0,0,0,0.04) 100%)' }} />
                   <div className="relative flex items-end justify-between gap-4">
                     <div>
-                      <div className="text-[8px] font-black uppercase tracking-[0.16em] text-black/40 sm:text-[9px]">Monthly total</div>
-                      <div className="mt-1 text-[38px] font-black leading-none tracking-[-0.05em] text-black sm:text-[46px]">
+                      <div className="text-[8px] font-black uppercase tracking-[0.16em] text-white/64 sm:text-[9px]">Monthly total</div>
+                      <div className="mt-1 text-[38px] font-black leading-none tracking-[-0.05em] text-white sm:text-[46px]">
                         ₹{billingSummary.total.toLocaleString('en-IN')}
                       </div>
                     </div>
-                    <div className="mb-1 rounded-full bg-black/10 px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/55 sm:text-[9px]">
+                    <div className="mb-1 rounded-full bg-white/12 px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[9px]">
                       {billingSummary.feederCount} feeder{billingSummary.feederCount === 1 ? '' : 's'}
                     </div>
                   </div>
@@ -927,7 +903,7 @@ export default function FundPage() {
                     </div>
                     <div className={cn(
                       'text-[16px] font-black tracking-[-0.02em] sm:text-[18px]',
-                      billingSummary.overageCost > 0 ? 'text-[#FF55A3]' : 'text-white/30'
+                      billingSummary.overageCost > 0 ? 'text-[#E11D48]' : 'text-white/30'
                     )}>
                       {billingSummary.overageCost > 0 ? `₹${billingSummary.overageCost.toLocaleString('en-IN')}` : '₹0'}
                     </div>
@@ -948,14 +924,14 @@ export default function FundPage() {
                         className="flex items-center justify-between rounded-[14px] bg-white/[0.03] px-4 py-3 sm:rounded-[16px] sm:py-3.5"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[11px] font-black tracking-[-0.01em] text-white/75 sm:text-[12px]">
-                            @{item.handle}
-                          </div>
-                          <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-white/22 sm:text-[9px]">
-                            {item.posts} posts · +{item.excess} over cap
-                          </div>
+                        <div className="truncate text-[11px] font-black tracking-[-0.01em] text-white/75 sm:text-[12px]">
+                          @{item.handle}
                         </div>
-                        <div className="ml-3 text-[13px] font-black text-[#FF55A3] sm:text-[14px]">
+                        <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-white/22 sm:text-[9px]">
+                          {item.posts} posts · +{item.excess} over cap
+                        </div>
+                      </div>
+                        <div className="ml-3 text-[13px] font-black text-white/78 sm:text-[14px]">
                           +₹{item.cost}
                         </div>
                       </div>
@@ -970,12 +946,12 @@ export default function FundPage() {
                   type="button"
                   onClick={startManageSubscriptionCheckout}
                   disabled={manageSubscriptionBusy}
-                  className="group flex w-full items-center justify-between rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-left transition-all duration-200 hover:border-[#CCFF00]/16 hover:bg-[#CCFF00]/[0.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[18px] sm:px-5 sm:py-4"
+                  className="group flex w-full items-center justify-between rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-left transition-all duration-200 hover:border-[#E11D48]/16 hover:bg-[#E11D48]/[0.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[18px] sm:px-5 sm:py-4"
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#CCFF00] text-black sm:h-10 sm:w-10"
-                      style={{ boxShadow: '0 6px 20px rgba(204,255,0,0.18)' }}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E11D48] text-white sm:h-10 sm:w-10"
+                      style={{ boxShadow: '0 6px 20px rgba(225,29,72,0.18)' }}
                     >
                       <CreditCard size={15} strokeWidth={2.5} />
                     </div>
@@ -988,7 +964,7 @@ export default function FundPage() {
                       </div>
                     </div>
                   </div>
-                  <ArrowUpRight size={16} className="text-white/20 transition-colors group-hover:text-[#CCFF00]/60" />
+                  <ArrowUpRight size={16} className="text-white/20 transition-colors group-hover:text-[#E11D48]/60" />
                 </button>
               </div>
 
@@ -1002,13 +978,25 @@ export default function FundPage() {
       {/* ═══ PREMIUM THEME RIPPLE TRANSITION ═══ */}
       {themeRipple && (
         <div
-          className="fixed inset-0 z-[9999] pointer-events-none"
+          className="pointer-events-none fixed inset-0 z-[9999] will-change-[clip-path,opacity]"
           style={{
-            background: themeRipple.toDark ? '#030303' : '#f4f7f9',
+            background: themeRipple.toDark
+              ? `radial-gradient(circle at ${themeRipple.x}px ${themeRipple.y}px, rgba(225,29,72,0.16) 0%, rgba(8,8,8,0.22) 28%, rgba(8,8,8,0.12) 62%, rgba(8,8,8,0.04) 100%)`
+              : `radial-gradient(circle at ${themeRipple.x}px ${themeRipple.y}px, rgba(255,255,255,0.58) 0%, rgba(244,247,249,0.34) 30%, rgba(255,255,255,0.18) 62%, rgba(255,255,255,0.06) 100%)`,
+            backdropFilter: themeRipple.toDark
+              ? 'blur(10px) saturate(115%) brightness(0.88)'
+              : 'blur(10px) saturate(112%) brightness(1.08)',
+            WebkitBackdropFilter: themeRipple.toDark
+              ? 'blur(10px) saturate(115%) brightness(0.88)'
+              : 'blur(10px) saturate(112%) brightness(1.08)',
             clipPath: themeRipple.active
               ? 'circle(150vmax at ' + themeRipple.x + 'px ' + themeRipple.y + 'px)'
               : 'circle(0px at ' + themeRipple.x + 'px ' + themeRipple.y + 'px)',
-            transition: 'clip-path 0.7s cubic-bezier(0.4, 0, 0.2, 1)',
+            opacity: themeRipple.active ? 1 : 0.35,
+            boxShadow: themeRipple.toDark
+              ? 'inset 0 0 0 1px rgba(255,255,255,0.05)'
+              : 'inset 0 0 0 1px rgba(255,255,255,0.24)',
+            transition: 'clip-path 0.72s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease',
           }}
           onTransitionEnd={() => {
             if (themeRipple.active) setThemeRipple(null);
@@ -1194,104 +1182,113 @@ export default function FundPage() {
 
               {/* Right Column: Deep Settings & Alerts Panel */}
               <div className="flex h-full flex-col gap-4 lg:gap-5">
-              <motion.div variants={tileVariant} className={cn(
-                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col xl:min-h-[380px] lg:p-5 xl:p-6',
-                'bg-white/70 border border-white/80',
-                'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
-                'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
-                'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.5)]',
-              )}>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 dark:text-white/40">Feed Activity</div>
-                  <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-foreground/34 dark:text-white/28">
-                    What&apos;s happening across your feeds
+              <motion.div variants={tileVariant} className="relative pb-7">
+                <div
+                  className={cn(
+                    'fm-depth-glass relative z-10 overflow-hidden rounded-[32px] p-5 lg:p-6',
+                    'bg-white/70 border border-white/80',
+                    'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
+                    'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
+                    'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.5)]',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 dark:text-white/40">Feed Activity</div>
+                    <div className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12 dark:text-[#FB7185]">
+                      Live queue
+                    </div>
                   </div>
-                </div>
-                <div className="grid gap-3 xl:grid-cols-2">
-                  {[
-                    {
-                      title: 'Coming Up',
-                      items: upcomingRuns,
-                      badgeLabel: 'Scheduled',
-                      badgeClass: 'bg-[#CCFF00] text-black border-transparent',
-                      badgeStyle: { boxShadow: '0 4px 12px rgba(204,255,0,0.18)' } as React.CSSProperties,
-                      mode: 'upcoming' as const,
-                      emptyText: 'Nothing scheduled yet',
-                    },
-                    {
-                      title: 'Recently Completed',
-                      items: recentRuns,
-                      badgeLabel: 'Done',
-                      badgeClass: 'bg-black/[0.06] text-foreground/60 border-black/8 dark:bg-white/[0.08] dark:text-white/60 dark:border-white/[0.08]',
-                      badgeStyle: {} as React.CSSProperties,
-                      mode: 'recent' as const,
-                      emptyText: 'No recent activity',
-                    },
-                  ].map((group) => (
-                    <div key={group.title} className="rounded-[24px] border border-black/6 bg-black/[0.025] p-3.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">{group.title}</div>
-                        <div className={cn('rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em]', group.badgeClass)} style={group.badgeStyle}>
-                          {group.badgeLabel}
+
+                  <div className="mt-5 flex flex-col items-center">
+                    <div className="relative flex size-[168px] items-center justify-center">
+                      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
+                        <circle
+                          cx="80"
+                          cy="80"
+                          r={FIRE_RING_RADIUS}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="9"
+                          className="text-foreground/[0.08] dark:text-white/[0.08]"
+                        />
+                        <motion.circle
+                          cx="80"
+                          cy="80"
+                          r={FIRE_RING_RADIUS}
+                          fill="none"
+                          stroke="#E11D48"
+                          strokeLinecap="round"
+                          strokeWidth="9"
+                          strokeDasharray={FIRE_RING_CIRCUMFERENCE}
+                          initial={false}
+                          animate={{ strokeDashoffset: FIRE_RING_CIRCUMFERENCE * (1 - nextFireProgress) }}
+                          transition={{ duration: 0.7, ease: APPLE_EASE }}
+                        />
+                      </svg>
+                      <div className="relative z-10 text-center">
+                        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">
+                          Next fire
+                        </div>
+                        <motion.div
+                          key={nextFireCountdown}
+                          initial={{ y: 4, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          transition={{ duration: 0.24, ease: APPLE_EASE }}
+                          className="mt-1 text-[30px] font-black tracking-[-0.08em] text-foreground dark:text-white"
+                        >
+                          {nextFireCountdown}
+                        </motion.div>
+                        <div className="mt-1 text-[9px] font-black uppercase tracking-[0.11em] text-foreground/36 dark:text-white/30">
+                          {nextFireTotalRuns > 0
+                            ? `${nextFireTotalRuns} check${nextFireTotalRuns === 1 ? '' : 's'} queued`
+                            : 'No batch queued'}
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        {group.items.length === 0 ? (
-                          <div className="rounded-[16px] border border-dashed border-black/8 bg-white/55 px-3 py-4 text-center text-[9px] font-bold uppercase tracking-[0.1em] text-foreground/34 dark:border-white/[0.08] dark:bg-black/20 dark:text-white/28">
-                            {group.emptyText}
-                          </div>
-                        ) : (
-                          group.items.map((item) => (
-                            <div key={item.id} className="rounded-[16px] border border-black/6 bg-white/75 px-3 py-3 dark:border-white/[0.06] dark:bg-black/24">
-                              <div className="min-w-0">
-                                <div className="text-[11px] font-black tracking-[-0.01em] text-foreground/80 dark:text-white/80">
-                                  {formatBatchSummary(item)}
-                                </div>
-                                <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-foreground/34 dark:text-white/28">
-                                  {group.mode === 'recent'
-                                    ? `Completed ${formatRunBatchMoment(item.windowStart, item.windowEnd)}`
-                                    : `Runs at ${formatRunBatchMoment(item.windowStart, item.windowEnd)}`}
-                                </div>
-                                {item.businessStart ? (
-                                  <div className="mt-1 text-[8px] font-bold uppercase tracking-[0.1em] text-foreground/26 dark:text-white/24">
-                                    {formatBusinessDayRange(item.businessStart, item.businessEnd)}
-                                  </div>
-                                ) : null}
-                              </div>
+                    </div>
 
-                              <div
-                                className="mt-3 flex items-center justify-between rounded-[12px] bg-[#CCFF00] px-3 py-2"
-                                style={{ boxShadow: '0 4px 14px rgba(204,255,0,0.14)' }}
-                              >
-                                <div className="text-[13px] font-black tracking-[-0.02em] text-black">
-                                  {item.totalRuns} <span className="text-[9px] font-black uppercase tracking-[0.1em] text-black/50">checks</span>
-                                </div>
-                                <div className="text-[8px] font-black uppercase tracking-[0.12em] text-black/40">
-                                  {formatBatchProgress(item.statuses)}
-                                </div>
-                              </div>
-
-                              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                                {item.types.slice(0, 4).map((typeItem) => (
-                                  <div
-                                    key={`${item.id}-${typeItem.label}`}
-                                    className="rounded-full border border-black/6 bg-black/[0.04] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/50 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/54"
-                                  >
-                                    {humanRunTypeLabel(typeItem.label)} · {typeItem.count}
-                                  </div>
-                                ))}
-                                {item.types.length > 4 ? (
-                                  <div className="rounded-full border border-dashed border-black/8 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:border-white/[0.08] dark:text-white/34">
-                                    +{item.types.length - 4} more
-                                  </div>
-                                ) : null}
-                              </div>
+                    <div className="fm-depth-inner mt-5 flex w-full items-center rounded-[22px] px-2 py-2">
+                      {nextCheckpointCounts.map((item, index) => (
+                        <div key={item.checkpoint} className="flex flex-1 items-center">
+                          <div className="min-w-0 flex-1 text-center">
+                            <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/34">
+                              {item.checkpoint}
                             </div>
-                          ))
-                        )}
+                            <div className={cn(
+                              'mt-0.5 text-[15px] font-black tracking-[-0.04em]',
+                              item.count > 0 ? 'text-[#E11D48]' : 'text-foreground/34 dark:text-white/28',
+                            )}>
+                              {item.count}
+                            </div>
+                          </div>
+                          {index < nextCheckpointCounts.length - 1 ? (
+                            <div className="h-8 w-px bg-foreground/[0.07] dark:bg-white/[0.07]" />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="absolute inset-x-5 bottom-0 z-0 rounded-b-[28px] border border-[#E11D48]/18 bg-[#E11D48]/10 px-5 pb-3 pt-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[22px] font-black leading-none tracking-[-0.07em] text-[#BE123C] dark:text-[#FB7185]">
+                        {completedToday}
+                      </div>
+                      <div className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/44 dark:text-white/40">
+                        completed today
                       </div>
                     </div>
-                  ))}
+                    <div className="h-9 w-px bg-[#E11D48]/18" />
+                    <div className="text-right">
+                      <div className="text-[22px] font-black leading-none tracking-[-0.07em] text-[#BE123C] dark:text-[#FB7185]">
+                        {remainingRuns}
+                      </div>
+                      <div className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/44 dark:text-white/40">
+                        remaining
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
 
@@ -1333,7 +1330,7 @@ export default function FundPage() {
                             </motion.div>
                           ) : (
                             <motion.div key="sun" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }} transition={{ duration: 0.3 }}>
-                              <Sun size={15} className="text-[#a7d000]" />
+                              <Sun size={15} className="text-[#E11D48]" />
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -1368,7 +1365,7 @@ export default function FundPage() {
                           document.documentElement.style.colorScheme = 'light';
                           localStorage.setItem('theme', 'light');
                         }
-                      }, 350);
+                      }, 260);
                     }}>
                       <div className="group-active:scale-90 transition-transform duration-200"><HardwareToggle active={isDarkMode} /></div>
                     </div>
@@ -1382,8 +1379,8 @@ export default function FundPage() {
                       ? [
                           'bg-[#111]',
                           'border border-black',
-                          'shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_24px_-10px_rgba(0,0,0,0.45),0_0_22px_rgba(204,255,0,0.12)]',
-                          'dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_18px_32px_-14px_rgba(0,0,0,0.65),0_0_28px_rgba(204,255,0,0.15)]',
+                          'shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_24px_-10px_rgba(0,0,0,0.45),0_0_22px_rgba(225,29,72,0.12)]',
+                          'dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_18px_32px_-14px_rgba(0,0,0,0.65),0_0_28px_rgba(225,29,72,0.15)]',
                         ]
                       : notificationPermission === 'denied'
                         ? [
@@ -1407,7 +1404,7 @@ export default function FundPage() {
                         'flex items-center justify-center w-8 h-8 rounded-[10px] transition-all duration-300',
                         'shrink-0',
                         pwaNotificationsEnabled
-                          ? 'bg-[#CCFF00] shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_1px_rgba(255,255,255,0.6)]'
+                          ? 'bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_1px_rgba(255,255,255,0.6)]'
                           : notificationPermission === 'denied'
                             ? 'bg-[#FF6B00]/15 border border-[#FF6B00]/25'
                             : [
@@ -1436,7 +1433,7 @@ export default function FundPage() {
                         <div className={cn(
                           'mt-1 text-[9px] font-bold uppercase tracking-[0.12em] leading-relaxed',
                           pwaNotificationsEnabled
-                            ? 'text-[#CCFF00]/70'
+                            ? 'text-[#E11D48]/70'
                             : notificationPermission === 'denied'
                               ? 'text-[#9f4b00] dark:text-[#ffb278]'
                               : 'text-foreground/45 dark:text-white/38'
@@ -1473,7 +1470,7 @@ export default function FundPage() {
                       <div className={cn(
                         'hidden rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.18em] sm:flex items-center gap-1.5',
                         pwaNotificationsEnabled
-                          ? 'bg-[#CCFF00]/14 text-[#CCFF00] border border-[#CCFF00]/18'
+                          ? 'bg-[#E11D48]/14 text-[#E11D48] border border-[#E11D48]/18'
                           : notificationPermission === 'denied'
                             ? 'bg-[#FF6B00]/10 text-[#FF6B00] border border-[#FF6B00]/20'
                             : 'bg-black/5 text-foreground/45 border border-black/5 dark:bg-white/5 dark:text-white/40 dark:border-white/[0.06]'
@@ -1534,14 +1531,14 @@ export default function FundPage() {
                           className={cn(
                             'relative flex items-center justify-center min-w-[56px] h-[34px] rounded-[10px] px-2.5',
                             thresholdLocked
-                              ? 'bg-[#CCFF00]/10 border border-[#CCFF00]/20 dark:bg-[#CCFF00]/[0.06] dark:border-[#CCFF00]/15'
+                              ? 'bg-[#E11D48]/10 border border-[#E11D48]/20 dark:bg-[#E11D48]/[0.06] dark:border-[#E11D48]/15'
                               : 'bg-black/[0.04] border border-black/[0.06] dark:bg-white/[0.04] dark:border-white/[0.06]'
                           )}
                         >
                           <span className={cn(
                             'text-[18px] font-black tabular-nums tracking-tight',
                             thresholdLocked
-                              ? 'text-[#7a9900] dark:text-[#CCFF00] dark:drop-shadow-[0_0_10px_rgba(204,255,0,0.3)]'
+                              ? 'text-[#BE123C] dark:text-[#E11D48] dark:drop-shadow-[0_0_10px_rgba(225,29,72,0.3)]'
                               : 'text-foreground/80 dark:text-white/80',
                             'transition-colors duration-300'
                           )}>
@@ -1555,7 +1552,7 @@ export default function FundPage() {
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.5, opacity: 0 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                                className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-[#CCFF00] shadow-[0_2px_6px_rgba(204,255,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.6)]"
+                                className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-[#E11D48] shadow-[0_2px_6px_rgba(225,29,72,0.4),inset_0_1px_1px_rgba(255,255,255,0.6)]"
                               >
                                 <Check size={9} strokeWidth={3.5} className="text-black" />
                               </motion.div>
@@ -1607,8 +1604,8 @@ export default function FundPage() {
                           transition={{ duration: 0.15, ease: 'easeOut' }}
                           className={cn(
                             'absolute inset-y-[2px] left-[2px] rounded-full',
-                            'bg-[#CCFF00] shadow-[0_0_14px_rgba(204,255,0,0.45),inset_0_1px_2px_rgba(255,255,255,0.8),inset_0_-1px_2px_rgba(0,0,0,0.15)]',
-                            isDraggingSlider && 'shadow-[0_0_22px_rgba(204,255,0,0.65),inset_0_1px_2px_rgba(255,255,255,1),inset_0_-1px_3px_rgba(0,0,0,0.2)]',
+                            'bg-[#E11D48] shadow-[0_0_14px_rgba(225,29,72,0.45),inset_0_1px_2px_rgba(255,255,255,0.8),inset_0_-1px_2px_rgba(0,0,0,0.15)]',
+                            isDraggingSlider && 'shadow-[0_0_22px_rgba(225,29,72,0.65),inset_0_1px_2px_rgba(255,255,255,1),inset_0_-1px_3px_rgba(0,0,0,0.2)]',
                             'transition-shadow duration-200'
                           )}
                         />
@@ -1627,14 +1624,14 @@ export default function FundPage() {
                             'shadow-[0_3px_10px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.15),inset_0_2px_3px_rgba(255,255,255,1),inset_0_-2px_3px_rgba(0,0,0,0.08)]',
                             'dark:from-[#2a2a2a] dark:to-[#1a1a1a] dark:border-white/10',
                             'dark:shadow-[0_3px_12px_rgba(0,0,0,0.7),0_1px_3px_rgba(0,0,0,0.5),inset_0_2px_3px_rgba(255,255,255,0.12),inset_0_-2px_3px_rgba(0,0,0,0.3)]',
-                            isDraggingSlider && 'dark:shadow-[0_6px_20px_rgba(204,255,0,0.25),0_3px_8px_rgba(0,0,0,0.6),inset_0_2px_3px_rgba(255,255,255,0.15)]',
+                            isDraggingSlider && 'dark:shadow-[0_6px_20px_rgba(225,29,72,0.25),0_3px_8px_rgba(0,0,0,0.6),inset_0_2px_3px_rgba(255,255,255,0.15)]',
                             'transition-opacity duration-300'
                           )}
                         >
                           {/* Inner dot indicator */}
                           <div className={cn(
                             'absolute inset-0 m-auto w-[6px] h-[6px] rounded-full',
-                            thresholdLocked ? 'bg-black/10 dark:bg-white/10' : 'bg-[#CCFF00]/80 shadow-[0_0_6px_rgba(204,255,0,0.4)]',
+                            thresholdLocked ? 'bg-black/10 dark:bg-white/10' : 'bg-[#E11D48]/80 shadow-[0_0_6px_rgba(225,29,72,0.4)]',
                             'transition-all duration-300'
                           )} />
                         </motion.div>
@@ -1696,7 +1693,7 @@ export default function FundPage() {
                       'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
                       'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_56px_rgba(0,0,0,0.5)]',
                       'transition-colors duration-500',
-                      isPrimed ? 'dark:bg-[rgba(15,15,15,0.85)] bg-white/90 ring-1 ring-[#CCFF00]/40' : 'hover:dark:bg-[rgba(15,15,15,0.7)] hover:bg-white/80'
+                      isPrimed ? 'dark:bg-[rgba(15,15,15,0.85)] bg-white/90 ring-1 ring-[#E11D48]/40' : 'hover:dark:bg-[rgba(15,15,15,0.7)] hover:bg-white/80'
                     )}>
                       {/* Card Header (Bundle Info & Link Arrow) */}
                       <div className="flex items-start justify-between mb-6">
@@ -1719,21 +1716,21 @@ export default function FundPage() {
                               'bg-white/90 border border-white/90 shadow-[0_4px_12px_rgba(0,0,0,0.05),inset_0_2px_4px_rgba(255,255,255,1)]',
                               'dark:bg-black dark:border-white/5 dark:shadow-[inset_0_4px_8px_rgba(0,0,0,0.8),inset_0_-1px_1px_rgba(255,255,255,0.06),0_1px_1px_rgba(255,255,255,0.05)]',
                               'transition-all duration-300',
-                              isPrimed && 'dark:shadow-[0_8px_24px_rgba(204,255,0,0.4)]'
+                              isPrimed && 'dark:shadow-[0_8px_24px_rgba(225,29,72,0.4)]'
                             )}>
                               {/* The Neon Fill Animation */}
                               <motion.div 
                                 initial={{ y: '100%' }}
                                 animate={{ y: isPrimed ? '0%' : '100%' }}
                                 transition={{ duration: 0.3, ease: 'easeOut' }}
-                                className="absolute inset-0 bg-[#CCFF00] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)]"
+                                className="absolute inset-0 bg-[#E11D48] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)]"
                               />
                               <ArrowUpRight 
                                 size={18} 
                                 strokeWidth={2.5} 
                                 className={cn(
                                   "relative z-10 transition-colors duration-300",
-                                  isPrimed ? "text-black drop-shadow-sm" : "text-foreground/40 dark:text-white/40 group-hover:dark:text-[#CCFF00]"
+                                  isPrimed ? "text-black drop-shadow-sm" : "text-foreground/40 dark:text-white/40 group-hover:dark:text-[#E11D48]"
                                 )} 
                               />
                             </div>
@@ -1743,7 +1740,7 @@ export default function FundPage() {
                                   initial={{ opacity: 0, y: 5 }}
                                   animate={{ opacity: 1, y: 0 }}
                                   exit={{ opacity: 0, y: 3 }}
-                                  className="absolute -bottom-5 right-6 text-[8px] font-black uppercase tracking-[0.14em] text-[#CCFF00]"
+                                  className="absolute -bottom-5 right-6 text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48]"
                                 >
                                   Tap To Enter
                                 </motion.div>
@@ -1765,7 +1762,7 @@ export default function FundPage() {
                                  initial={{ width: 0 }}
                                  animate={{ width: `${f.pct}%` }}
                                  transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}
-                                 className="absolute inset-[1.5px] rounded-full bg-[#CCFF00] shadow-[0_0_12px_rgba(204,255,0,0.4),inset_0_1px_2px_rgba(255,255,255,0.7),inset_0_-1px_2px_rgba(0,0,0,0.15)]"
+                                 className="absolute inset-[1.5px] rounded-full bg-[#E11D48] shadow-[0_0_12px_rgba(225,29,72,0.4),inset_0_1px_2px_rgba(255,255,255,0.7),inset_0_-1px_2px_rgba(0,0,0,0.15)]"
                                />
                              </div>
 

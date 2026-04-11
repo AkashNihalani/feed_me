@@ -48,7 +48,8 @@ with required_functions(name) as (
     ('enqueue_repair_jobs_from_previous_day'),
     ('skip_unqualified_d21_jobs'),
     ('fn_process_checkpoint'),
-    ('fn_enrich_pattern_signal'),
+    ('fn_fire_alert_urgency'),
+    ('fn_upsert_fire_signal'),
     ('fn_feed_dashboard')
 )
 select rf.name as function_name,

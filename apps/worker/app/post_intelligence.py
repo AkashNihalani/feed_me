@@ -42,29 +42,33 @@ _VIDEO_CAP_SECONDS = 120
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 
-_EXTRACTION_PROMPT = """You are a social media content analyst. You will be given a post's caption, media type, and the actual visual content (full video for reels, or images for static posts/carousels).
+_EXTRACTION_PROMPT = """You are a social media structure analyst. You will be given a post caption, media type, and the actual visual content (full video for reels, full image set for images/carousels).
 
-Analyze the FULL visual content — watch the entire video from start to finish. Pay attention to:
-- Camera work: handheld/shaky (UGC) vs stabilized/tripod (studio) vs fast cuts (montage)
-- Pacing and transitions: jump cuts, smooth pans, static talking head, fast montage
-- Lighting: natural/raw vs professional/controlled
-- Face presence: is someone talking to camera, or is it product-only, or groups of people?
-- Text overlays: are there captions, titles, bullet points burned into the video?
-- Visual density: minimal clean frames vs busy information-heavy frames
-- Content structure: is it a step-by-step breakdown, a before/after reveal, a demo, a story?
-- Subject focus: product, person, lifestyle setting, behind-the-scenes, testimonial
-- Overall energy: calm/educational vs hype/entertainment vs aspirational/cinematic
+Your job is NOT to summarize the topic. Your job is to classify how the post is built so similar posts can be grouped later.
 
-Return ONLY a JSON object with these keys (use the exact enum values listed):
+Analyze the FULL visual content from start to finish. Focus on:
+- Mechanic: how the viewer receives value (reveal, process, reaction, story, comparison, showcase, etc.)
+- Opening move: what appears in the first 1-3 seconds / first frame
+- Proof mode: what makes the claim believable on-screen
+- Pacing: how quickly the edit moves
+- Audio mode: whether the reel uses direct speech, voiceover, natural live sound, music-led edit, ASMR, or almost no meaningful audio
+- Style: ugc, studio, cinematic, screen recording, montage, or text-led
+- Face presence: none, one person, or multiple people
+- Text overlays: none, light support, or text-heavy frames
+- Density: clean/minimal vs balanced vs busy
+- Duration or depth: reel length bucket or carousel depth
+
+Return ONLY a JSON object with these keys and exact enum values:
 
 {
-  "hook": one of HOOK_PROBLEM, HOOK_CURIOSITY, HOOK_RESULT, HOOK_AUTHORITY, HOOK_RELATABILITY, HOOK_EMOTION, HOOK_NEWS,
-  "pillar": one of PILLAR_EDUCATIONAL, PILLAR_ENTERTAINMENT, PILLAR_ASPIRATIONAL, PILLAR_PROMOTIONAL, PILLAR_COMMUNITY,
-  "format": one of FORMAT_NARRATIVE, FORMAT_BREAKDOWN, FORMAT_SIDE_BY_SIDE, FORMAT_DEMO, FORMAT_INTERACTIVE,
-  "style": one of STYLE_UGC, STYLE_STUDIO, STYLE_TEXT_DRIVEN, STYLE_AUDIO_DRIVEN, STYLE_MONTAGE,
+  "mechanic": one of REVEAL, PROCESS, REACTION, SHOWCASE, STORY, COMPARE, LIST, CHALLENGE, CONVERSE, ACCESS, ANNOUNCE, COLLAB, SOCIAL_PROOF, AESTHETIC, EDUCATE,
+  "opening_move": one of RESULT_FIRST, PERSON_FIRST, TEXT_FIRST, OBJECT_FIRST, ACTION_FIRST, SCENE_FIRST,
+  "proof_mode": one of LIVE_DEMO, VISUAL_RESULT, EXPERT_TALK, SOCIAL_PROOF, DATA_PROOF, ACCESS_PROOF, PROOF_NONE,
+  "pacing": one of PACING_SLOW, PACING_MEDIUM, PACING_FAST,
+  "audio_mode": one of AUDIO_DIRECT_SPEECH, AUDIO_VOICEOVER, AUDIO_SOURCE_LIVE, AUDIO_MUSIC_LED, AUDIO_ASMR, AUDIO_MINIMAL, or null if the media is not a reel,
+  "style": one of STYLE_UGC, STYLE_STUDIO, STYLE_TEXT_DRIVEN, STYLE_MONTAGE, STYLE_CINEMATIC, STYLE_SCREEN_RECORD,
   "cta": one of CTA_ENGAGEMENT, CTA_TRAFFIC, CTA_PURCHASE, CTA_COMMUNITY, or null if none detected,
   "face": one of FACE_SINGLE, FACE_NONE, FACE_MULTIPLE,
-  "subject": one of SUBJECT_PRODUCT, SUBJECT_PERSON, SUBJECT_LIFESTYLE, SUBJECT_BEHIND_SCENES, SUBJECT_TESTIMONIAL,
   "language": ISO 639-1 code of the primary language in the caption (e.g. "en", "hi", "fr"). Use "mixed_X_Y" for code-switched content (e.g. "mixed_en_hi"),
   "depth": one of DEPTH_SINGLE, DEPTH_MINI, DEPTH_STANDARD, DEPTH_DEEP (carousel slide count context), or DEPTH_SINGLE for reels/images,
   "density": one of DENSITY_MINIMAL, DENSITY_MEDIUM, DENSITY_BUSY,
@@ -73,23 +77,39 @@ Return ONLY a JSON object with these keys (use the exact enum values listed):
 }
 
 Rules:
-- Base style, face, density, text_overlay, and subject PRIMARILY on the visual content, not the caption.
-- Base hook and pillar on BOTH caption intent and visual execution.
-- Pick the SINGLE best match for each field. Never leave required fields empty.
-- Return ONLY the JSON object, no explanation."""
+- Classify structure, not niche or topic.
+- Do not infer whether audio is trending or popular on Instagram.
+- Base style, face, density, text_overlay, pacing, opening_move, and proof_mode primarily on the visual media.
+- For reels, audio_mode must come from the reel audio itself.
+- Pick the single best match for each required field.
+- Return ONLY the JSON object, with no explanation."""
 
 _VALID_TAGS: dict[str, set[str]] = {
-    "hook": {"HOOK_PROBLEM", "HOOK_CURIOSITY", "HOOK_RESULT", "HOOK_AUTHORITY", "HOOK_RELATABILITY", "HOOK_EMOTION", "HOOK_NEWS"},
-    "pillar": {"PILLAR_EDUCATIONAL", "PILLAR_ENTERTAINMENT", "PILLAR_ASPIRATIONAL", "PILLAR_PROMOTIONAL", "PILLAR_COMMUNITY"},
-    "format": {"FORMAT_NARRATIVE", "FORMAT_BREAKDOWN", "FORMAT_SIDE_BY_SIDE", "FORMAT_DEMO", "FORMAT_INTERACTIVE"},
-    "style": {"STYLE_UGC", "STYLE_STUDIO", "STYLE_TEXT_DRIVEN", "STYLE_AUDIO_DRIVEN", "STYLE_MONTAGE"},
+    "mechanic": {"REVEAL", "PROCESS", "REACTION", "SHOWCASE", "STORY", "COMPARE", "LIST", "CHALLENGE", "CONVERSE", "ACCESS", "ANNOUNCE", "COLLAB", "SOCIAL_PROOF", "AESTHETIC", "EDUCATE"},
+    "opening_move": {"RESULT_FIRST", "PERSON_FIRST", "TEXT_FIRST", "OBJECT_FIRST", "ACTION_FIRST", "SCENE_FIRST"},
+    "proof_mode": {"LIVE_DEMO", "VISUAL_RESULT", "EXPERT_TALK", "SOCIAL_PROOF", "DATA_PROOF", "ACCESS_PROOF", "PROOF_NONE"},
+    "pacing": {"PACING_SLOW", "PACING_MEDIUM", "PACING_FAST"},
+    "audio_mode": {"AUDIO_DIRECT_SPEECH", "AUDIO_VOICEOVER", "AUDIO_SOURCE_LIVE", "AUDIO_MUSIC_LED", "AUDIO_ASMR", "AUDIO_MINIMAL"},
+    "style": {"STYLE_UGC", "STYLE_STUDIO", "STYLE_TEXT_DRIVEN", "STYLE_MONTAGE", "STYLE_CINEMATIC", "STYLE_SCREEN_RECORD"},
     "cta": {"CTA_ENGAGEMENT", "CTA_TRAFFIC", "CTA_PURCHASE", "CTA_COMMUNITY"},
     "face": {"FACE_SINGLE", "FACE_NONE", "FACE_MULTIPLE"},
-    "subject": {"SUBJECT_PRODUCT", "SUBJECT_PERSON", "SUBJECT_LIFESTYLE", "SUBJECT_BEHIND_SCENES", "SUBJECT_TESTIMONIAL"},
     "depth": {"DEPTH_SINGLE", "DEPTH_MINI", "DEPTH_STANDARD", "DEPTH_DEEP"},
     "density": {"DENSITY_MINIMAL", "DENSITY_MEDIUM", "DENSITY_BUSY"},
     "text_overlay": {"TEXT_NONE", "TEXT_LIGHT", "TEXT_HEAVY"},
     "duration_bucket": {"DUR_SHORT", "DUR_MEDIUM", "DUR_LONG", "DUR_EXTENDED"},
+}
+
+_REQUIRED_SIGNAL_TAGS = {
+    "mechanic",
+    "opening_move",
+    "proof_mode",
+    "pacing",
+    "style",
+    "face",
+    "language",
+    "depth",
+    "density",
+    "text_overlay",
 }
 
 
@@ -379,8 +399,8 @@ def extract_tags(
     Extract semantic tags from a post via Gemini multimodal models.
 
     For reels: downloads the FULL video (up to 120s, 50MB cap).
-    For sidecars: sends all available cached slide images + caption.
-    For images: sends the cached image + caption.
+    For sidecars: sends all available slide images + caption.
+    For images: sends the current preview image + caption.
     Falls back to thumbnail + caption if richer media fetch fails.
     """
     provider = _selected_provider()
@@ -513,6 +533,8 @@ def extract_tags(
 
         validated = _validate_tags(tags)
         if validated:
+            if not _has_required_signal_tags(validated):
+                return None
             validated["_visual_source"] = visual_source
         return validated if validated else None
     except Exception as exc:
@@ -527,7 +549,7 @@ def _validate_tags(tags: dict[str, Any]) -> dict[str, Any]:
         val = tags.get(key)
         if isinstance(val, str) and val.upper() in valid_set:
             result[key] = val.upper()
-        elif val is None and key in ("cta", "face", "text_overlay", "duration_bucket"):
+        elif val is None and key in ("audio_mode", "cta", "duration_bucket"):
             result[key] = None
 
     lang = tags.get("language")
@@ -535,3 +557,12 @@ def _validate_tags(tags: dict[str, Any]) -> dict[str, Any]:
         result["language"] = lang.lower().strip()
 
     return result
+
+
+def _has_required_signal_tags(tags: dict[str, Any]) -> bool:
+    """Only persist rows that can participate in the current pattern engine."""
+    for key in _REQUIRED_SIGNAL_TAGS:
+        value = tags.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return False
+    return True

@@ -18,18 +18,6 @@ select cron.schedule(
 );
 
 select cron.schedule(
-  'feedme_enqueue_poll_1205_ist',
-  '35 6 * * *',
-  $$select public.enqueue_poll_jobs(now());$$
-);
-
-select cron.schedule(
-  'feedme_enqueue_poll_1230_ist_watchdog',
-  '0 7 * * *',
-  $$select public.enqueue_poll_jobs(now());$$
-);
-
-select cron.schedule(
   'feedme_enqueue_weekly_followers_mon_0010_ist',
   '40 18 * * 0',
   $$select public.enqueue_weekly_follower_jobs(now());$$

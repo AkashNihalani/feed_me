@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useState, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Plus, Target, X } from 'lucide-react';
+import { Plus, Target, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
@@ -195,6 +195,7 @@ function FeedPageContent() {
   }, [dashboardData]);
   const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
   const topAveragePosts = Math.max(0, Number(dashboardData?.summary?.posts_with_metrics) || 0);
+  const exportScopeLabel = selectedHandle === 'all' ? 'FULL FEED' : `@${selectedHandle.toUpperCase()}`;
 
   useEffect(() => {
     setSelectedFeedId(urlSelectedFeedId);
@@ -348,7 +349,7 @@ function FeedPageContent() {
       initial="hidden"
       animate="visible"
       className={cn(
-        'relative w-full text-foreground select-none',
+        'fm-dashboard-mesh relative w-full text-foreground select-none',
         useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-background',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
@@ -366,7 +367,7 @@ function FeedPageContent() {
 
       {/* ═══ LOCKED HEADER ═══ */}
       <div className={cn(
-        'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+        'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(18px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
         useBrowserPageScroll ? 'fixed' : 'absolute',
       )}>
         <div className="relative fm-tab-header-shell">
@@ -388,9 +389,9 @@ function FeedPageContent() {
               style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }}
             />
 
-            <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5 lg:px-5 lg:py-2.5">
+            <div className="relative z-10 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2">
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
-              <div className="flex flex-col gap-2 sm:gap-2.5 lg:hidden">
+              <div className="flex flex-col gap-1.5 sm:gap-2 lg:hidden">
                 {/* Row 1: Title + actions */}
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2.5">
@@ -449,25 +450,19 @@ function FeedPageContent() {
                           </AnimatePresence>
                         </motion.button>
                         <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
-                          className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#CCFF00] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(167,208,0,0.22),0_8px_18px_-4px_rgba(204,255,0,0.35)] dark:shadow-[0_2px_4px_rgba(204,255,0,0.15),0_8px_24px_-4px_rgba(204,255,0,0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[11px]">
+                          className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[11px]">
                           <Plus size={15} strokeWidth={3} /> Add Feed
                         </motion.button>
                       </motion.div>
                     ) : (
                       <motion.div key="detail-badge" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: APPLE_EASE }}
-                        className="flex shrink-0 items-center gap-2">
-                        <motion.button
-                          type="button"
-                          whileTap={{ scale: 0.94 }}
-                          onClick={() => { play('snapLock'); handleDownloadExport(); }}
-                          className="flex h-[46px] items-center justify-center gap-1.5 rounded-[12px] border border-white/82 bg-white/74 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.05] dark:text-white dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
-                        >
-                          <Download size={15} strokeWidth={2.8} />
-                          XLS
-                        </motion.button>
-                        <div className="shrink-0 rounded-[12px] border border-white/82 bg-white/74 px-3 py-2 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:bg-white/[0.05] dark:border-white/10 dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_0_22px_rgba(204,255,0,0.15),0_1px_0_rgba(255,255,255,0.06)_inset]">
-                          <div className="text-[8px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/36">Avg Post Perf</div>
-                          <div className="mt-0.5 text-[clamp(18px,5vw,26px)] font-black leading-none dark:text-[#CCFF00]">{topAverageLabel}</div>
+                        className="flex shrink-0 items-center">
+                        <div className="rounded-[12px] border border-white/82 bg-white/74 px-2.5 py-1.5 text-right text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_3px_8px_rgba(15,23,42,0.05)] dark:bg-white/[0.05] dark:border-white/10 dark:shadow-[0_3px_10px_rgba(0,0,0,0.35),0_1px_0_rgba(255,255,255,0.06)_inset]">
+                          <div className="text-[7px] font-black uppercase tracking-[0.14em] text-black/38 dark:text-white/32">Avg perf</div>
+                          <div className="text-[20px] font-black leading-none tracking-[-0.04em] text-black dark:text-white sm:text-[22px]">{topAverageLabel}</div>
+                          <div className="text-[7px] font-black uppercase tracking-[0.1em] text-black/34 dark:text-white/28">
+                            {topAveragePosts > 0 ? `${topAveragePosts}p` : ''}
+                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -478,18 +473,18 @@ function FeedPageContent() {
                 <AnimatePresence mode="popLayout" initial={false}>
                   {view === 'detail' ? (
                     <motion.div key="detail-filters" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: [0.4, 0, 0.1, 1] }} className="flex flex-col gap-1.5">
-                      <div className="relative flex items-center gap-1 rounded-[14px] border border-white/82 bg-white/74 p-0.5 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+                      <div className="relative flex items-center gap-1.5 rounded-[18px] border border-white/82 bg-white/74 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
                         {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
                           <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
-                            className={cn('relative flex-1 rounded-[10px] py-1 text-center font-black',
+                            className={cn('relative flex-1 rounded-[14px] py-1.5 text-center font-black',
                               tf === timeframe
-                                ? 'text-[16px] tracking-[-0.02em] text-black sm:text-[18px] z-10'
-                                : 'text-[12px] tracking-[0.04em] text-black/45 sm:text-[13px] dark:text-white/40 z-0'
+                                ? 'z-10 text-[16px] tracking-[-0.02em] text-white sm:text-[18px]'
+                                : 'z-0 text-[12px] tracking-[0.04em] text-black/45 sm:text-[13px] dark:text-white/40'
                             )} style={{ WebkitTapHighlightColor: 'transparent' }}>
                             {tf === timeframe && (
                               <motion.span
                                 layoutId="timeframe-pill-bg"
-                                className="absolute inset-0 rounded-[10px] border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_4px_10px_rgba(204,255,0,0.25)] dark:border-[#dfff7a]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(204,255,0,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
+                                className="absolute inset-0 rounded-[14px] border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgba(225,29,72,0.26)] dark:border-[#FDA4AF]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
                                 transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                               />
                             )}
@@ -500,22 +495,22 @@ function FeedPageContent() {
                       {handles.length > 0 && (
                         <div className="hide-scrollbar flex items-center gap-2 overflow-x-auto pt-1">
                           <motion.button whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle('all'); }}
-                            className={cn('relative whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.1em]',
-                              selectedHandle === 'all' ? 'text-black z-10' : 'fm-depth-chip text-foreground/52 dark:text-foreground/40 z-0')}>
+                            className={cn('relative whitespace-nowrap rounded-full px-3.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em]',
+                              selectedHandle === 'all' ? 'z-10 text-white' : 'fm-depth-chip text-foreground/52 dark:text-foreground/40 z-0')}>
                             {selectedHandle === 'all' && (
                               <motion.span layoutId="handle-pill-bg"
-                                className="absolute inset-0 rounded-full border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_5px_12px_rgba(204,255,0,0.28)]"
+                                className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
                                 transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
                             )}
-                            <span className="relative z-10">All Targets</span>
+                            <span className="relative z-10">Full Feed</span>
                           </motion.button>
                           {handles.map(h => (
                             <motion.button key={h} whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle(h); }}
-                              className={cn('relative whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.08em]',
-                                selectedHandle === h ? 'text-black z-10' : 'fm-depth-chip text-foreground/52 dark:text-foreground/40 z-0')}>
+                              className={cn('relative whitespace-nowrap rounded-full px-3.5 py-1.25 text-[9px] font-black uppercase tracking-[0.08em]',
+                                selectedHandle === h ? 'z-10 text-white' : 'fm-depth-chip text-foreground/52 dark:text-foreground/40 z-0')}>
                               {selectedHandle === h && (
                                 <motion.span layoutId="handle-pill-bg"
-                                  className="absolute inset-0 rounded-full border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_5px_12px_rgba(204,255,0,0.28)]"
+                                  className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
                                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
                               )}
                               <span className="relative z-10">@{h}</span>
@@ -523,31 +518,6 @@ function FeedPageContent() {
                           ))}
                         </div>
                       )}
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <label className="flex flex-col gap-1 rounded-[14px] border border-white/82 bg-white/74 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]">
-                          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/46 dark:text-white/40">From</span>
-                          <input
-                            type="date"
-                            value={exportFrom}
-                            max={exportTo || undefined}
-                            onChange={(event) => setExportFrom(event.target.value)}
-                            className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 rounded-[14px] border border-white/82 bg-white/74 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_4px_10px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_3px_12px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]">
-                          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/46 dark:text-white/40">To</span>
-                          <input
-                            type="date"
-                            value={exportTo}
-                            min={exportFrom || undefined}
-                            onChange={(event) => setExportTo(event.target.value)}
-                            className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
-                          />
-                        </label>
-                      </div>
-                      <div className="px-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/38 dark:text-white/32">
-                        Dashboard performance uses each post&apos;s latest checkpoint in the selected window. Export defaults to the last 90 days.
-                      </div>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -567,13 +537,13 @@ function FeedPageContent() {
               </div>
 
               {/* ═══ DESKTOP HEADER (≥ lg) — Mirrors Fire tab ═══ */}
-              <div className="hidden flex-col gap-2 lg:flex">
+              <div className="hidden flex-col gap-1.5 lg:flex">
                 <AnimatePresence mode="popLayout" initial={false}>
                   {view === 'detail' ? (
-                    <motion.div key="desktop-detail-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-2">
+                    <motion.div key="desktop-detail-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-1.5">
                       {/* Row 1: Back + Name | Timeframe pills | performance summary */}
-                      <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
-                        <div className="flex items-center gap-2.5">
+                      <div className="grid grid-cols-[minmax(132px,auto)_minmax(0,1fr)_auto] items-center gap-2">
+                        <div className="flex items-center gap-2">
                           <motion.button
                             whileTap={{ scale: 0.92 }}
                             onClick={() => { play('snapLock'); handleBack(); }}
@@ -581,23 +551,23 @@ function FeedPageContent() {
                           >
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                           </motion.button>
-                          <h1 className="truncate text-[28px] font-black tracking-[-0.04em] text-black dark:text-white fm-depth-title">
+                          <h1 className="truncate text-[26px] font-black tracking-[-0.04em] text-black dark:text-white fm-depth-title">
                             {shortTitle}
                           </h1>
                         </div>
                         <div className="flex justify-center px-0.5">
-                          <div className="relative flex items-center gap-1 rounded-[14px] border border-white/82 bg-white/74 p-0.5 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+                          <div className="relative flex items-center gap-1.5 rounded-[18px] border border-white/82 bg-white/74 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
                             {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
                               <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
-                                className={cn('relative rounded-[10px] px-4 py-1.5 text-center font-black',
+                                className={cn('relative rounded-[14px] px-4 py-1.75 text-center font-black',
                                   tf === timeframe
-                                    ? 'text-[18px] tracking-[-0.02em] text-black z-10'
-                                    : 'text-[13px] tracking-[0.04em] text-black/45 dark:text-white/40 z-0'
+                                    ? 'z-10 text-[17px] tracking-[-0.02em] text-white'
+                                    : 'z-0 text-[13px] tracking-[0.04em] text-black/45 dark:text-white/40'
                                 )} style={{ WebkitTapHighlightColor: 'transparent' }}>
                                 {tf === timeframe && (
                                   <motion.span
                                     layoutId="timeframe-pill-bg-desk"
-                                    className="absolute inset-0 rounded-[10px] border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_4px_10px_rgba(204,255,0,0.25)] dark:border-[#dfff7a]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(204,255,0,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
+                                    className="absolute inset-0 rounded-[14px] border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgba(225,29,72,0.26)] dark:border-[#FDA4AF]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
                                     transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                                   />
                                 )}
@@ -606,23 +576,14 @@ function FeedPageContent() {
                             ))}
                           </div>
                         </div>
-                        <div className="flex items-center justify-end gap-2">
-                          <motion.button
-                            type="button"
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => { play('snapLock'); handleDownloadExport(); }}
-                            className="flex h-[72px] items-center justify-center gap-2 rounded-[18px] border border-black/6 bg-white/68 px-4 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:text-white dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
-                          >
-                            <Download size={16} strokeWidth={2.8} />
-                            Export XLS
-                          </motion.button>
-                          <div className="min-w-[176px] rounded-[18px] border border-black/6 bg-white/68 px-3 py-2 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                            <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">Avg Post Performance</div>
-                            <div className="mt-1 flex items-end justify-center gap-1">
-                              <span className="text-[34px] font-black leading-[0.9] tracking-[-0.05em] text-black dark:text-white">{topAverageLabel}</span>
-                            </div>
-                            <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
-                              {topAveragePosts > 0 ? `${topAveragePosts} posts · latest checkpoint` : `No checkpoints · ${TIMEFRAME_LABELS[timeframe]}`}
+                        <div className="flex items-center justify-end">
+                          <div className="rounded-[14px] border border-black/6 bg-white/68 px-3 py-1.5 text-right shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_8px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                            <div className="text-[7px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/30">Avg perf</div>
+                            <div className="flex items-baseline justify-end gap-1.5">
+                              <span className="text-[22px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">{topAverageLabel}</span>
+                              <span className="text-[8px] font-black uppercase tracking-[0.1em] text-black/36 dark:text-white/30">
+                                {topAveragePosts > 0 ? `${topAveragePosts}p` : ''}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -630,56 +591,31 @@ function FeedPageContent() {
 
                       {/* Row 2: Recessed filter tray with handle pills */}
                       {handles.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                        <div className="flex flex-wrap items-center gap-1.5 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2 py-1.5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
                           <motion.button whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle('all'); }}
-                            className={cn('relative whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.1em]',
-                              selectedHandle === 'all' ? 'text-black z-10' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
+                            className={cn('relative whitespace-nowrap rounded-full px-3.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em]',
+                              selectedHandle === 'all' ? 'z-10 text-white' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
                             {selectedHandle === 'all' && (
                               <motion.span layoutId="handle-pill-bg-desk"
-                                className="absolute inset-0 rounded-full border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_5px_12px_rgba(204,255,0,0.28)]"
+                                className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
                                 transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
                             )}
-                            <span className="relative z-10">All Targets</span>
+                            <span className="relative z-10">Full Feed</span>
                           </motion.button>
                           {handles.map(h => (
                             <motion.button key={h} whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle(h); }}
-                              className={cn('relative whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.08em]',
-                                selectedHandle === h ? 'text-black z-10' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
+                              className={cn('relative whitespace-nowrap rounded-full px-3.5 py-1.25 text-[9px] font-black uppercase tracking-[0.08em]',
+                                selectedHandle === h ? 'z-10 text-white' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
                               {selectedHandle === h && (
                                 <motion.span layoutId="handle-pill-bg-desk"
-                                  className="absolute inset-0 rounded-full border border-[#d7ff57] bg-[#CCFF00] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(130,156,0,0.18),0_5px_12px_rgba(204,255,0,0.28)]"
+                                  className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
                                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
                               )}
                               <span className="relative z-10">@{h}</span>
                             </motion.button>
                           ))}
-                          <div className="ml-auto flex items-center gap-2">
-                            <label className="flex items-center gap-2 rounded-[14px] border border-black/6 bg-white/68 px-3 py-2 shadow-[0_8px_16px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_10px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                              <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">From</span>
-                              <input
-                                type="date"
-                                value={exportFrom}
-                                max={exportTo || undefined}
-                                onChange={(event) => setExportFrom(event.target.value)}
-                                className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
-                              />
-                            </label>
-                            <label className="flex items-center gap-2 rounded-[14px] border border-black/6 bg-white/68 px-3 py-2 shadow-[0_8px_16px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_10px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                              <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">To</span>
-                              <input
-                                type="date"
-                                value={exportTo}
-                                min={exportFrom || undefined}
-                                onChange={(event) => setExportTo(event.target.value)}
-                                className="bg-transparent text-[12px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
-                              />
-                            </label>
-                          </div>
                         </div>
                       )}
-                      <div className="px-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/38 dark:text-white/32">
-                        Dashboard performance uses each post&apos;s latest checkpoint in the selected window. Export defaults to the last 90 days.
-                      </div>
                     </motion.div>
                   ) : (
                     <motion.div key="desktop-list-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-2">
@@ -693,7 +629,7 @@ function FeedPageContent() {
                         </div>
                         <div className="flex items-center justify-end gap-2">
                           <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
-                            className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#CCFF00] px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(167,208,0,0.22),0_8px_18px_-4px_rgba(204,255,0,0.35)] dark:shadow-[0_2px_4px_rgba(204,255,0,0.15),0_8px_24px_-4px_rgba(204,255,0,0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
+                            className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
                             <Plus size={15} strokeWidth={3} /> Add Feed
                           </motion.button>
                         </div>
@@ -713,7 +649,7 @@ function FeedPageContent() {
                                 className={cn(
                                   'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                                   isActive
-                                    ? 'bg-[#CCFF00] text-black shadow-[0_6px_14px_rgba(204,255,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                    ? 'bg-[#E11D48] text-white shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
                                     : 'text-black/55 dark:text-white/45',
                                 )}
                               >
@@ -753,7 +689,7 @@ function FeedPageContent() {
             )}>
             <div
               className={cn(
-                'w-full overflow-x-hidden pt-[calc(168px+env(safe-area-inset-top))] sm:pt-[calc(174px+env(safe-area-inset-top))] md:pt-[208px]',
+                'w-full overflow-x-hidden pt-[calc(178px+env(safe-area-inset-top))] sm:pt-[calc(184px+env(safe-area-inset-top))] md:pt-[214px]',
                 useBrowserPageScroll ? 'min-h-[var(--fm-app-height,100dvh)] overflow-visible' : 'hide-scrollbar h-full overflow-y-auto',
               )}
               style={{
@@ -765,7 +701,7 @@ function FeedPageContent() {
                 <div className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5 xl:grid-cols-3">
                   {sortedFeeds.map((feed, i) => (
                     <div key={feed.id}>
-                      <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle}
+                      <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
                         metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} />
                     </div>
                   ))}
@@ -799,6 +735,12 @@ function FeedPageContent() {
               usePageScroll={useBrowserPageScroll}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
               immersiveBrowserMode={useTranslucentBrowserChrome}
+              exportScopeLabel={exportScopeLabel}
+              exportFrom={exportFrom}
+              exportTo={exportTo}
+              onExportFromChange={setExportFrom}
+              onExportToChange={setExportTo}
+              onExport={() => { play('snapLock'); handleDownloadExport(); }}
             >
               {addingFeeder && <ScanningCard key="scanning" handle={addingFeeder} />}
               {activeFeed?.feeders.length === 0 && !addingFeeder ? (
@@ -810,11 +752,16 @@ function FeedPageContent() {
                 activeFeed?.feeders.map((feeder, i) => (
                   <FeederRow key={feeder.handle} index={i} handle={feeder.handle} isAnchor={feeder.isAnchor} profilePicUrl={feeder.profilePicUrl}
                     metrics={feeder.metrics} onMakeAnchor={() => activeFeed && handleMakeAnchor(activeFeed.id, feeder.handle)}
-                    onRemove={() => activeFeed && removeFeeder(activeFeed.id, feeder.handle)} />
+                    onRemove={() => activeFeed && removeFeeder(activeFeed.id, feeder.handle)}
+                    onOpenFeed={() => {
+                      if (!activeFeed) return;
+                      play('snapLock');
+                      router.push(`/feed/${activeFeed.id}/feeder/${encodeURIComponent(feeder.handle)}`, { scroll: false });
+                    }} />
                 ))
               )}
               <motion.div layout initial={{ scale: 0.95 }} animate={{ scale: 1 }} whileTap={{ scale: 0.98 }}
-                className={cn("fm-depth-glass rounded-[22px] p-4 min-h-[180px] flex flex-col justify-center items-center group cursor-pointer", isAddingFeeder ? "ring-1 ring-black/10 dark:ring-[#CCFF00]/45" : "")}
+                className={cn("fm-depth-glass rounded-[22px] p-4 min-h-[180px] flex flex-col justify-center items-center group cursor-pointer", isAddingFeeder ? "ring-1 ring-black/10 dark:ring-[#E11D48]/45" : "")}
                 style={{ willChange: 'transform' }} onClick={() => !isAddingFeeder && setIsAddingFeeder(true)}>
                 {!isAddingFeeder ? (
                   <div className="flex flex-col items-center gap-2">
@@ -823,9 +770,9 @@ function FeedPageContent() {
                     <span className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/30">Uses 1 slot · {slotUsage.used ?? 0} used</span>
                   </div>
                 ) : (
-                  <div className="w-full h-full flex flex-col justify-between" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="fm-depth-chip w-12 h-12 rounded-[12px] flex items-center justify-center text-black dark:text-[#CCFF00] font-black text-2xl shrink-0">@</div>
+                    <div className="w-full h-full flex flex-col justify-between" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-3 w-full">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] border border-[#FB7185] bg-[#E11D48] text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_18px_-8px_rgba(225,29,72,0.34)]">@</div>
                       <input autoFocus placeholder="HANDLE" className="bg-transparent text-2xl font-black uppercase w-full focus:outline-none placeholder:text-foreground/20 text-foreground h-12"
                         onKeyDown={e => { if (e.key === 'Enter') { handleAddFeeder(activeFeed!.id, e.currentTarget.value); setIsAddingFeeder(false); } if (e.key === 'Escape') setIsAddingFeeder(false); }} />
                     </div>
@@ -872,7 +819,7 @@ function FeedPageContent() {
               <div className="relative z-10 mt-5 flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/34">{newFeedName.length} / 15</span>
                 <motion.button type="button" whileTap={{ scale: 0.95 }} onClick={handleCreateFeed} disabled={!newFeedName.trim() || isBusy}
-                  className="rounded-[16px] bg-black px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_10px_22px_-10px_rgba(0,0,0,0.5)] disabled:opacity-40 dark:bg-[#CCFF00] dark:text-black dark:shadow-[0_14px_30px_-12px_rgba(204,255,0,0.3)]">
+                  className="rounded-[16px] bg-black px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_10px_22px_-10px_rgba(0,0,0,0.5)] disabled:opacity-40 dark:bg-[#E11D48] dark:text-white dark:shadow-[0_14px_30px_-12px_rgba(225,29,72,0.3)]">
                   {isBusy ? 'Creating' : 'Create Feed'}
                 </motion.button>
               </div>
@@ -907,7 +854,7 @@ function FeedPageContent() {
                       Remove {pendingDeleteFeed.title}?
                     </div>
                     <p className="mt-2 max-w-[360px] text-[11px] font-black uppercase tracking-[0.1em] text-foreground/38 dark:text-white/32">
-                      This archives the bundle and removes it from the active Feed view.
+                      This permanently removes the bundle and its tracked backend data.
                     </p>
                   </div>
                   <button

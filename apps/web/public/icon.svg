@@ -1,16 +1,16 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="116" fill="#D6FF00"/>
+  <rect width="512" height="512" rx="116" fill="#FFFFFF"/>
   <g filter="url(#outerShadow)">
-    <rect x="70" y="70" width="372" height="372" rx="88" fill="#111111"/>
+    <rect x="70" y="70" width="372" height="372" rx="88" fill="#E11D48"/>
   </g>
   <g filter="url(#innerShadow)">
-    <rect x="96" y="96" width="320" height="320" rx="66" fill="#D6FF00"/>
+    <rect x="96" y="96" width="320" height="320" rx="66" fill="#FFFFFF"/>
   </g>
   <g filter="url(#symbolShadow)">
-    <path d="M256.427 176C209.902 176 172.19 213.712 172.19 260.237C172.19 306.762 209.902 344.474 256.427 344.474C302.952 344.474 340.664 306.762 340.664 260.237V227.827L280.449 244.736L295.564 176H256.427Z" fill="#181818"/>
+    <path d="M256.427 176C209.902 176 172.19 213.712 172.19 260.237C172.19 306.762 209.902 344.474 256.427 344.474C302.952 344.474 340.664 306.762 340.664 260.237V227.827L280.449 244.736L295.564 176H256.427Z" fill="#E11D48"/>
   </g>
   <g filter="url(#dotShadow)">
-    <circle cx="355.5" cy="167.5" r="27.5" fill="#181818"/>
+    <circle cx="355.5" cy="167.5" r="27.5" fill="#E11D48"/>
   </g>
   <defs>
     <filter id="outerShadow" x="43" y="49" width="426" height="426" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">

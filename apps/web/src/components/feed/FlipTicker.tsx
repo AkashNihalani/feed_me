@@ -44,7 +44,7 @@ function ValueBadge({ value }: { value: number }) {
     <span
       className={cn(
         'inline-flex items-center gap-0.5 whitespace-nowrap rounded-[8px] font-black tracking-[0.06em]',
-        pos && 'border border-[#d7ff57]/60 bg-[#CCFF00]/30 text-[#4d6b10] dark:bg-[#CCFF00]/12 dark:text-[#CCFF00] dark:border-[#CCFF00]/20 dark:shadow-[0_0_10px_rgba(204,255,0,0.18)]',
+        pos && 'border border-[#FB7185]/60 bg-[#E11D48]/78 text-white dark:bg-[#E11D48] dark:text-white dark:border-[#E11D48]/30 dark:shadow-[0_0_10px_rgba(225,29,72,0.18)]',
         neg && 'border border-black/8 bg-black/8 text-black/50 dark:bg-white/6 dark:text-white/40 dark:border-white/8',
         !pos && !neg && 'border border-black/4 bg-black/4 text-black/35 dark:bg-white/4 dark:text-white/30 dark:border-white/4',
       )}

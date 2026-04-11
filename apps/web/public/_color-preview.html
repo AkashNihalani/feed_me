@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feed Me — Color Direction Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Space Grotesk', sans-serif; background: #0a0a0a; color: #fff; padding: 20px 16px; overflow-x: hidden; }
+
+  h1 { font-size: 24px; font-weight: 900; text-align: center; margin-bottom: 6px; letter-spacing: -0.03em; }
+  .subtitle { text-align: center; font-size: 12px; color: rgba(255,255,255,0.4); margin-bottom: 32px; font-weight: 600; }
+
+  .color-label { font-size: 10px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 12px; text-align: center; padding-top: 8px; }
+
+  .mode-pair { display: flex; gap: 10px; margin-bottom: 12px; }
+  .mode-card {
+    flex: 1;
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .mode-card.light {
+    background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,246,248,0.98));
+    border: 1px solid rgba(0,0,0,0.07);
+    color: #000;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.1), 0 1px 0 rgba(255,255,255,0.9) inset;
+  }
+  .mode-card.dark {
+    background: rgba(12,12,12,0.95);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #fff;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.04) inset;
+  }
+  .mode-tag {
+    font-size: 7px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase;
+    margin-bottom: 12px; opacity: 0.35;
+  }
+
+  .mock-title { font-size: 8px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.45; margin-bottom: 6px; }
+
+  .pill-row { display: flex; gap: 5px; margin-bottom: 12px; }
+  .pill {
+    font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+    padding: 4px 10px; border-radius: 7px; text-transform: uppercase;
+  }
+  .pill.inactive-light { background: rgba(0,0,0,0.05); color: rgba(0,0,0,0.35); }
+  .pill.inactive-dark { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.3); }
+
+  .hero-number { font-size: 32px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; margin-bottom: 3px; }
+  .hero-sub { font-size: 9px; font-weight: 700; opacity: 0.35; margin-bottom: 10px; }
+  .hero-delta {
+    display: inline-block; font-size: 9px; font-weight: 800; padding: 3px 8px;
+    border-radius: 6px; margin-bottom: 12px;
+  }
+
+  .chart-area { position: relative; height: 40px; margin-bottom: 12px; overflow: hidden; border-radius: 8px; }
+  .chart-area.light { background: rgba(0,0,0,0.02); }
+  .chart-area.dark { background: rgba(255,255,255,0.02); }
+
+  .bars-row { display: flex; gap: 4px; align-items: flex-end; height: 52px; margin-bottom: 12px; }
+  .bar-track { flex: 1; border-radius: 3px; position: relative; overflow: hidden; }
+  .bar-track.light { background: rgba(0,0,0,0.04); }
+  .bar-track.dark { background: rgba(255,255,255,0.05); }
+  .bar-fill { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 3px; }
+
+  .scatter-area { position: relative; height: 44px; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .scatter-area.light { background: rgba(0,0,0,0.02); border: 1px dashed rgba(0,0,0,0.07); }
+  .scatter-area.dark { background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.06); }
+  .dot { position: absolute; border-radius: 50%; }
+  .dot.muted-light { background: rgba(0,0,0,0.12); }
+  .dot.muted-dark { background: rgba(255,255,255,0.12); }
+
+  .heatmap-grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; margin-bottom: 12px; }
+  .heatmap-cell { aspect-ratio: 1; border-radius: 2.5px; }
+  .heatmap-cell.empty-light { background: rgba(0,0,0,0.035); }
+  .heatmap-cell.empty-dark { background: rgba(255,255,255,0.04); }
+
+  .mock-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
+  }
+
+  .section-divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 28px 0; }
+
+  .verdict-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 20px; padding-bottom: 40px; }
+  .verdict-card {
+    border-radius: 12px; padding: 14px 16px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);
+  }
+  .verdict-title { font-size: 11px; font-weight: 900; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .verdict-text { font-size: 10px; line-height: 1.55; opacity: 0.5; font-weight: 600; }
+
+  .comparison-title { font-size: 15px; font-weight: 900; letter-spacing: -0.02em; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Feed Me — Color Direction Preview</h1>
+<p class="subtitle">4 accent colors · Light & Dark · Same dashboard elements</p>
+
+<!-- ════════ HELPER: generates one color section ════════ -->
+
+<!-- ═══════════════════════════════════════════════════════
+     1. ELECTRIC VIOLET #7C3AED
+     ═══════════════════════════════════════════════════════ -->
+<div class="color-label" style="color: #7C3AED;">━━━ Electric Violet #7C3AED ━━━</div>
+<div class="mode-pair">
+  <div class="mode-card light">
+    <div class="mode-tag">Light</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#7C3AED;color:#fff;">7D</div>
+      <div class="pill inactive-light">30D</div>
+      <div class="pill inactive-light">60D</div>
+    </div>
+    <div class="hero-number" style="color:#000;">12,847</div>
+    <div class="hero-sub">Total Followers</div>
+    <div class="hero-delta" style="background:#7C3AED;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area light">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="vl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7C3AED" stop-opacity="0.14"/><stop offset="100%" stop-color="#7C3AED" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#vl)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#7C3AED" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:78%;background:#7C3AED;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:52%;background:#7C3AED;opacity:0.6;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:90%;background:#7C3AED;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:62%;background:#7C3AED;opacity:0.7;"></div></div>
+    </div>
+    <div class="scatter-area light">
+      <div class="dot" style="left:10%;top:18%;background:#7C3AED;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#7C3AED;width:7px;height:7px;"></div>
+      <div class="dot muted-light" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#7C3AED;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#7C3AED;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.12)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.28)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.5)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell" style="background:rgba(124,58,237,0.16)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.72)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.32)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.42)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.88)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.2)"></div>
+      <div class="heatmap-cell" style="background:rgba(124,58,237,0.1)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.55)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.15)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(124,58,237,0.38)"></div>
+    </div>
+    <div class="mock-btn" style="background:#7C3AED;color:#fff;">Export ↓</div>
+  </div>
+
+  <div class="mode-card dark">
+    <div class="mode-tag">Dark</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#7C3AED;color:#fff;">7D</div>
+      <div class="pill inactive-dark">30D</div>
+      <div class="pill inactive-dark">60D</div>
+    </div>
+    <div class="hero-number" style="color:#fff;">12,847</div>
+    <div class="hero-sub" style="color:rgba(255,255,255,0.35);">Total Followers</div>
+    <div class="hero-delta" style="background:#7C3AED;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area dark">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="vd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#A78BFA" stop-opacity="0.22"/><stop offset="100%" stop-color="#A78BFA" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#vd)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#A78BFA" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:78%;background:#7C3AED;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:52%;background:#7C3AED;opacity:0.7;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:90%;background:#7C3AED;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:62%;background:#7C3AED;opacity:0.8;"></div></div>
+    </div>
+    <div class="scatter-area dark">
+      <div class="dot" style="left:10%;top:18%;background:#A78BFA;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#A78BFA;width:7px;height:7px;"></div>
+      <div class="dot muted-dark" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#A78BFA;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#A78BFA;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.14)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.3)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.52)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell" style="background:rgba(167,139,250,0.18)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.68)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.35)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.44)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.88)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.22)"></div>
+      <div class="heatmap-cell" style="background:rgba(167,139,250,0.1)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.58)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.16)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(167,139,250,0.4)"></div>
+    </div>
+    <div class="mock-btn" style="background:#7C3AED;color:#fff;">Export ↓</div>
+  </div>
+</div>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════
+     2. ELECTRIC ROSE #E11D48
+     ═══════════════════════════════════════════════════════ -->
+<div class="color-label" style="color: #E11D48;">━━━ Electric Rose #E11D48 ━━━</div>
+<div class="mode-pair">
+  <div class="mode-card light">
+    <div class="mode-tag">Light</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#E11D48;color:#fff;">7D</div>
+      <div class="pill inactive-light">30D</div>
+      <div class="pill inactive-light">60D</div>
+    </div>
+    <div class="hero-number" style="color:#000;">12,847</div>
+    <div class="hero-sub">Total Followers</div>
+    <div class="hero-delta" style="background:#E11D48;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area light">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="rl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E11D48" stop-opacity="0.14"/><stop offset="100%" stop-color="#E11D48" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#rl)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#E11D48" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:78%;background:#E11D48;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:52%;background:#E11D48;opacity:0.6;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:90%;background:#E11D48;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:62%;background:#E11D48;opacity:0.7;"></div></div>
+    </div>
+    <div class="scatter-area light">
+      <div class="dot" style="left:10%;top:18%;background:#E11D48;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#E11D48;width:7px;height:7px;"></div>
+      <div class="dot muted-light" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#E11D48;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#E11D48;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.1)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.24)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.48)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell" style="background:rgba(225,29,72,0.14)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.68)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.3)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.38)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.85)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.18)"></div>
+      <div class="heatmap-cell" style="background:rgba(225,29,72,0.08)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.52)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.14)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.34)"></div>
+    </div>
+    <div class="mock-btn" style="background:#E11D48;color:#fff;">Export ↓</div>
+  </div>
+
+  <div class="mode-card dark">
+    <div class="mode-tag">Dark</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#E11D48;color:#fff;">7D</div>
+      <div class="pill inactive-dark">30D</div>
+      <div class="pill inactive-dark">60D</div>
+    </div>
+    <div class="hero-number" style="color:#fff;">12,847</div>
+    <div class="hero-sub" style="color:rgba(255,255,255,0.35);">Total Followers</div>
+    <div class="hero-delta" style="background:#E11D48;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area dark">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="rd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FB7185" stop-opacity="0.2"/><stop offset="100%" stop-color="#FB7185" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#rd)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#FB7185" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:78%;background:#E11D48;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:52%;background:#E11D48;opacity:0.7;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:90%;background:#E11D48;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:62%;background:#E11D48;opacity:0.8;"></div></div>
+    </div>
+    <div class="scatter-area dark">
+      <div class="dot" style="left:10%;top:18%;background:#FB7185;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#FB7185;width:7px;height:7px;"></div>
+      <div class="dot muted-dark" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#FB7185;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#FB7185;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.12)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.28)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.5)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell" style="background:rgba(251,113,133,0.16)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.66)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.34)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.42)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.86)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.2)"></div>
+      <div class="heatmap-cell" style="background:rgba(251,113,133,0.1)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.56)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.15)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(251,113,133,0.38)"></div>
+    </div>
+    <div class="mock-btn" style="background:#E11D48;color:#fff;">Export ↓</div>
+  </div>
+</div>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════
+     3. BLAZE ORANGE #FF6B00
+     ═══════════════════════════════════════════════════════ -->
+<div class="color-label" style="color: #FF6B00;">━━━ Blaze Orange #FF6B00 ━━━</div>
+<div class="mode-pair">
+  <div class="mode-card light">
+    <div class="mode-tag">Light</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#FF6B00;color:#fff;">7D</div>
+      <div class="pill inactive-light">30D</div>
+      <div class="pill inactive-light">60D</div>
+    </div>
+    <div class="hero-number" style="color:#000;">12,847</div>
+    <div class="hero-sub">Total Followers</div>
+    <div class="hero-delta" style="background:#FF6B00;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area light">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="ol" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF6B00" stop-opacity="0.14"/><stop offset="100%" stop-color="#FF6B00" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#ol)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#FF6B00" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:78%;background:#FF6B00;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:52%;background:#FF6B00;opacity:0.6;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:90%;background:#FF6B00;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:62%;background:#FF6B00;opacity:0.7;"></div></div>
+    </div>
+    <div class="scatter-area light">
+      <div class="dot" style="left:10%;top:18%;background:#FF6B00;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#FF6B00;width:7px;height:7px;"></div>
+      <div class="dot muted-light" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#FF6B00;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#FF6B00;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.1)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.24)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.48)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell" style="background:rgba(255,107,0,0.14)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.68)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.3)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.38)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.85)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.18)"></div>
+      <div class="heatmap-cell" style="background:rgba(255,107,0,0.08)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.52)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.14)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(255,107,0,0.34)"></div>
+    </div>
+    <div class="mock-btn" style="background:#FF6B00;color:#fff;">Export ↓</div>
+  </div>
+
+  <div class="mode-card dark">
+    <div class="mode-tag">Dark</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#FF6B00;color:#fff;">7D</div>
+      <div class="pill inactive-dark">30D</div>
+      <div class="pill inactive-dark">60D</div>
+    </div>
+    <div class="hero-number" style="color:#fff;">12,847</div>
+    <div class="hero-sub" style="color:rgba(255,255,255,0.35);">Total Followers</div>
+    <div class="hero-delta" style="background:#FF6B00;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area dark">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="od" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF8C3A" stop-opacity="0.2"/><stop offset="100%" stop-color="#FF8C3A" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#od)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#FF8C3A" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:78%;background:#FF6B00;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:52%;background:#FF6B00;opacity:0.7;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:90%;background:#FF6B00;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:62%;background:#FF6B00;opacity:0.8;"></div></div>
+    </div>
+    <div class="scatter-area dark">
+      <div class="dot" style="left:10%;top:18%;background:#FF8C3A;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#FF8C3A;width:7px;height:7px;"></div>
+      <div class="dot muted-dark" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#FF8C3A;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#FF8C3A;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.12)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.28)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.5)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell" style="background:rgba(255,140,58,0.16)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.66)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.34)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.42)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.86)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.2)"></div>
+      <div class="heatmap-cell" style="background:rgba(255,140,58,0.1)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.56)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.15)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(255,140,58,0.38)"></div>
+    </div>
+    <div class="mock-btn" style="background:#FF6B00;color:#fff;">Export ↓</div>
+  </div>
+</div>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════
+     4. ELECTRIC BLUE #2563EB
+     ═══════════════════════════════════════════════════════ -->
+<div class="color-label" style="color: #2563EB;">━━━ Electric Blue #2563EB ━━━</div>
+<div class="mode-pair">
+  <div class="mode-card light">
+    <div class="mode-tag">Light</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#2563EB;color:#fff;">7D</div>
+      <div class="pill inactive-light">30D</div>
+      <div class="pill inactive-light">60D</div>
+    </div>
+    <div class="hero-number" style="color:#000;">12,847</div>
+    <div class="hero-sub">Total Followers</div>
+    <div class="hero-delta" style="background:#2563EB;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area light">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="bl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2563EB" stop-opacity="0.14"/><stop offset="100%" stop-color="#2563EB" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#bl)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:78%;background:#2563EB;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:52%;background:#2563EB;opacity:0.6;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:90%;background:#2563EB;opacity:0.85;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:62%;background:#2563EB;opacity:0.7;"></div></div>
+    </div>
+    <div class="scatter-area light">
+      <div class="dot" style="left:10%;top:18%;background:#2563EB;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#2563EB;width:7px;height:7px;"></div>
+      <div class="dot muted-light" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#2563EB;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#2563EB;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.1)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.24)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.48)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell" style="background:rgba(37,99,235,0.14)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.68)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.3)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.38)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.85)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.18)"></div>
+      <div class="heatmap-cell" style="background:rgba(37,99,235,0.08)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.52)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.14)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(37,99,235,0.34)"></div>
+    </div>
+    <div class="mock-btn" style="background:#2563EB;color:#fff;">Export ↓</div>
+  </div>
+
+  <div class="mode-card dark">
+    <div class="mode-tag">Dark</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#2563EB;color:#fff;">7D</div>
+      <div class="pill inactive-dark">30D</div>
+      <div class="pill inactive-dark">60D</div>
+    </div>
+    <div class="hero-number" style="color:#fff;">12,847</div>
+    <div class="hero-sub" style="color:rgba(255,255,255,0.35);">Total Followers</div>
+    <div class="hero-delta" style="background:#2563EB;color:#fff;">↑ 14.2%</div>
+    <div class="chart-area dark">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="bd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60A5FA" stop-opacity="0.2"/><stop offset="100%" stop-color="#60A5FA" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#bd)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#60A5FA" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:78%;background:#2563EB;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:52%;background:#2563EB;opacity:0.7;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:90%;background:#2563EB;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:62%;background:#2563EB;opacity:0.8;"></div></div>
+    </div>
+    <div class="scatter-area dark">
+      <div class="dot" style="left:10%;top:18%;background:#60A5FA;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#60A5FA;width:7px;height:7px;"></div>
+      <div class="dot muted-dark" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#60A5FA;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#60A5FA;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.12)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.28)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.5)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell" style="background:rgba(96,165,250,0.16)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.66)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.34)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.42)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.86)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.2)"></div>
+      <div class="heatmap-cell" style="background:rgba(96,165,250,0.1)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.56)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.15)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(96,165,250,0.38)"></div>
+    </div>
+    <div class="mock-btn" style="background:#2563EB;color:#fff;">Export ↓</div>
+  </div>
+</div>
+
+<hr class="section-divider">
+
+<!-- ═══════════════════════════════════════════════════════
+     CURRENT GREEN (reference)
+     ═══════════════════════════════════════════════════════ -->
+<div class="color-label" style="color: #E11D48;">━━━ Current Neon Green #E11D48 (reference) ━━━</div>
+<div class="mode-pair">
+  <div class="mode-card light">
+    <div class="mode-tag">Light — the problem</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#E11D48;color:#000;">7D</div>
+      <div class="pill inactive-light">30D</div>
+      <div class="pill inactive-light">60D</div>
+    </div>
+    <div class="hero-number" style="color:#E11D48;text-shadow:0 0 8px rgba(225,29,72,0.4);">12,847</div>
+    <div class="hero-sub">Total Followers</div>
+    <div class="hero-delta" style="background:#E11D48;color:#000;">↑ 14.2%</div>
+    <div class="chart-area light">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E11D48" stop-opacity="0.18"/><stop offset="100%" stop-color="#E11D48" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#gl)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#E11D48" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:78%;background:#E11D48;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:52%;background:#E11D48;opacity:0.6;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:90%;background:#E11D48;"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(0,0,0,0.1);"></div></div>
+      <div class="bar-track light" style="height:52px"><div class="bar-fill" style="height:62%;background:#E11D48;opacity:0.7;"></div></div>
+    </div>
+    <div class="scatter-area light">
+      <div class="dot" style="left:10%;top:18%;background:#E11D48;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#E11D48;width:7px;height:7px;"></div>
+      <div class="dot muted-light" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#E11D48;width:8px;height:8px;"></div>
+      <div class="dot muted-light" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#E11D48;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.15)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.3)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.55)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell" style="background:rgba(225,29,72,0.18)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.7)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.35)"></div><div class="heatmap-cell empty-light"></div>
+      <div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.4)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.85)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.2)"></div>
+      <div class="heatmap-cell" style="background:rgba(225,29,72,0.1)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.5)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.15)"></div><div class="heatmap-cell empty-light"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.3)"></div>
+    </div>
+    <div class="mock-btn" style="background:#E11D48;color:#000;">Export ↓</div>
+  </div>
+
+  <div class="mode-card dark">
+    <div class="mode-tag">Dark — works great</div>
+    <div class="pill-row">
+      <div class="pill" style="background:#E11D48;color:#000;">7D</div>
+      <div class="pill inactive-dark">30D</div>
+      <div class="pill inactive-dark">60D</div>
+    </div>
+    <div class="hero-number" style="color:#E11D48;text-shadow:0 0 8px rgba(225,29,72,0.4),0 0 22px rgba(225,29,72,0.18);">12,847</div>
+    <div class="hero-sub" style="color:rgba(255,255,255,0.35);">Total Followers</div>
+    <div class="hero-delta" style="background:#E11D48;color:#000;">↑ 14.2%</div>
+    <div class="chart-area dark">
+      <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;">
+        <defs><linearGradient id="gd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E11D48" stop-opacity="0.22"/><stop offset="100%" stop-color="#E11D48" stop-opacity="0.01"/></linearGradient></defs>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8 V40 H0Z" fill="url(#gd)"/>
+        <path d="M0 34 Q60 28 120 22 T240 14 T360 18 T400 8" fill="none" stroke="#E11D48" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="bars-row">
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:78%;background:#E11D48;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:52%;background:#E11D48;opacity:0.7;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:38%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:90%;background:#E11D48;"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:28%;background:rgba(255,255,255,0.07);"></div></div>
+      <div class="bar-track dark" style="height:52px"><div class="bar-fill" style="height:62%;background:#E11D48;opacity:0.8;"></div></div>
+    </div>
+    <div class="scatter-area dark">
+      <div class="dot" style="left:10%;top:18%;background:#E11D48;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:22%;top:58%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:38%;top:12%;background:#E11D48;width:7px;height:7px;"></div>
+      <div class="dot muted-dark" style="left:52%;top:62%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:68%;top:8%;background:#E11D48;width:8px;height:8px;"></div>
+      <div class="dot muted-dark" style="left:82%;top:48%;width:6px;height:6px;"></div>
+      <div class="dot" style="left:92%;top:22%;background:#E11D48;width:7px;height:7px;"></div>
+    </div>
+    <div class="heatmap-grid">
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.14)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.3)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.52)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell" style="background:rgba(225,29,72,0.18)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.68)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.35)"></div><div class="heatmap-cell empty-dark"></div>
+      <div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.44)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.86)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.2)"></div>
+      <div class="heatmap-cell" style="background:rgba(225,29,72,0.1)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.55)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.15)"></div><div class="heatmap-cell empty-dark"></div><div class="heatmap-cell" style="background:rgba(225,29,72,0.38)"></div>
+    </div>
+    <div class="mock-btn" style="background:#E11D48;color:#000;">Export ↓</div>
+  </div>
+</div>
+
+<hr class="section-divider">
+
+<div class="comparison-title">The Verdict</div>
+<div class="verdict-row">
+  <div class="verdict-card">
+    <div class="verdict-title" style="color:#7C3AED;">Violet</div>
+    <div class="verdict-text">Tech-forward, rare in analytics. Naturally premium on both modes. Risk: trendy if overused.</div>
+  </div>
+  <div class="verdict-card">
+    <div class="verdict-title" style="color:#E11D48;">Rose</div>
+    <div class="verdict-text">Warm urgency, fits "fire" brand. Competitive energy. Bold on both backgrounds without tricks.</div>
+  </div>
+  <div class="verdict-card">
+    <div class="verdict-title" style="color:#FF6B00;">Orange</div>
+    <div class="verdict-text">Energetic, appetizing (Feed Me!). Warm and bold. Common in analytics — but could feel Strava-like.</div>
+  </div>
+  <div class="verdict-card">
+    <div class="verdict-title" style="color:#60A5FA;">Blue</div>
+    <div class="verdict-text">Most trustworthy, professional. Rock-solid contrast. But also the most common — every analytics tool is blue.</div>
+  </div>
+  <div class="verdict-card">
+    <div class="verdict-title" style="color:#E11D48;">Green (current)</div>
+    <div class="verdict-text">Incredible on dark. Broken on light. Forces two design languages. The light mode problem is structural.</div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:32px;padding-bottom:40px;">
+  <p style="font-size:10px;opacity:0.25;font-weight:700;">Static mockup — no app code was modified · Scroll to compare all options</p>
+</div>
+
+</body>
+</html>

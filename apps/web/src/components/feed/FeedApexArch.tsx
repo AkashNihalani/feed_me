@@ -11,6 +11,13 @@ interface Segment {
   count: number;
 }
 
+function formatMediaLabel(value: string | null | undefined): string {
+  const normalized = (value || '').trim().toLowerCase();
+  if (normalized === 'sidecar' || normalized === 'sidcar') return 'Carousel';
+  if (!normalized) return 'Unknown';
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
   const [activeSegment, setActiveSegment] = useState<string | null>(null);
 
@@ -19,7 +26,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
     if (normalized.length === 0) return [];
     return normalized.map((item, idx) => ({
       id: `${item.media_type}-${idx}`,
-      label: item.media_type || 'Unknown',
+      label: formatMediaLabel(item.media_type),
       percentage: Math.max(0, Math.round((item.share > 0 ? item.share : 0) * 100)),
       count: Math.max(0, Number(item.post_count) || 0),
     }));
@@ -27,18 +34,21 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
 
   const total = segments.reduce((sum, s) => sum + s.percentage, 0);
   const totalPostCount = segments.reduce((sum, s) => sum + s.count, 0);
-  const hasData = total > 0 && totalPostCount > 0;
-  const normalizedSegments = hasData
-    ? segments
+  const normalizedSegments = useMemo(
+    () => (total > 0 && totalPostCount > 0
+      ? segments
         .map((s) => ({ ...s, percentage: Math.round((s.percentage / total) * 100) }))
         .sort((a, b) => b.percentage - a.percentage)
-    : [];
+      : []),
+    [segments, total, totalPostCount]
+  );
+  const hasData = normalizedSegments.length > 0;
 
   // Donut ring geometry
-  const size = 160;
+  const size = 180;
   const center = size / 2;
-  const radius = 56;
-  const strokeWidth = 14;
+  const radius = 66;
+  const strokeWidth = 16;
   const gapDeg = 3;
 
   const arcs = useMemo(() => {
@@ -67,24 +77,22 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
   }, [center, gapDeg, normalizedSegments, radius]);
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-4 lg:p-5">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
       <div className="relative z-10 flex h-full flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.14em] text-black/60 dark:text-white/45 fm-depth-title">
-            Posting Pattern
+        <div className="flex items-center justify-between mb-2">
+          <span className="fm-label fm-depth-title">
+            Media Mix
           </span>
         </div>
 
-        {/* Ring + legend side by side */}
-        <div className="flex flex-1 items-center gap-4 sm:gap-6">
+        {/* Ring + legend */}
+        <div className="flex flex-1 flex-col justify-between gap-3 sm:flex-row sm:items-center sm:gap-5">
           {/* Donut ring */}
-          <div className="relative shrink-0" style={{ width: size, height: size }}>
+          <div className="relative mx-auto h-[170px] w-[170px] shrink-0 sm:mx-0 sm:h-[164px] sm:w-[164px]" style={{ maxWidth: size + 30, maxHeight: size + 30 }}>
             <svg
-              width={size}
-              height={size}
               viewBox={`0 0 ${size} ${size}`}
-              className="overflow-visible"
+              className="h-full w-full overflow-visible"
             >
               {/* Background track */}
               <circle
@@ -108,7 +116,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     key={arc.id}
                     d={arc.d}
                     fill="none"
-                    stroke={arc.isTop ? '#CCFF00' : 'currentColor'}
+                    stroke={arc.isTop ? '#E11D48' : 'currentColor'}
                     strokeWidth={isActive ? strokeWidth + 4 : strokeWidth}
                     strokeLinecap="round"
                     initial={{ pathLength: 0, opacity: 0 }}
@@ -116,7 +124,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     transition={{ duration: 0.8, ease: 'easeOut', opacity: { duration: 0.2 } }}
                     className={
                       arc.isTop
-                        ? 'cursor-pointer drop-shadow-[0_0_6px_rgba(204,255,0,0.2)]'
+                        ? 'cursor-pointer'
                         : 'cursor-pointer text-black/20 dark:text-white/20'
                     }
                     onMouseEnter={() => setActiveSegment(arc.id)}
@@ -139,13 +147,13 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     transition={{ duration: 0.15 }}
                     className="flex flex-col items-center"
                   >
-                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/35">
+                    <span className="max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.11em] text-black/40 dark:text-white/35">
                       {normalizedSegments.find((s) => s.id === activeSegment)?.label}
                     </span>
-                    <span className="text-[28px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
+                    <span className="mt-0.5 text-[30px] font-black leading-none tracking-tighter text-black dark:text-white">
                       {normalizedSegments.find((s) => s.id === activeSegment)?.count ?? 0}
                     </span>
-                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/35 dark:text-white/30">
+                    <span className="mt-1 max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.1em] text-black/35 dark:text-white/30">
                       {normalizedSegments.find((s) => s.id === activeSegment)?.percentage}% share
                     </span>
                   </motion.div>
@@ -158,7 +166,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     transition={{ duration: 0.15 }}
                     className="flex flex-col items-center"
                   >
-                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/35">
+                    <span className="max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.11em] text-black/40 dark:text-white/35">
                       {hasData ? 'Posts Tracked' : 'Awaiting Checkpoints'}
                     </span>
                     <span className="text-[32px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
@@ -176,7 +184,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
           </div>
 
           {/* Legend */}
-          <div className="flex flex-1 flex-col gap-2.5">
+          <div className="grid flex-1 grid-cols-3 gap-3 sm:flex sm:flex-col sm:gap-2.5">
             {hasData ? normalizedSegments.map((seg, idx) => {
               const isTop = idx === 0;
               const isActive = activeSegment === seg.id;
@@ -184,7 +192,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
               return (
                 <motion.div
                   key={seg.id}
-                  className="flex items-center justify-between cursor-pointer group"
+                  className="group flex cursor-pointer flex-col items-center gap-2 rounded-[14px] border border-black/6 bg-black/[0.025] px-2.5 py-3 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:text-left"
                   onMouseEnter={() => setActiveSegment(seg.id)}
                   onMouseLeave={() => setActiveSegment(null)}
                   animate={{ opacity: activeSegment && !isActive ? 0.4 : 1 }}
@@ -192,9 +200,9 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                 >
                   <div className="flex items-center gap-2">
                     <div
-                      className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
                         isTop
-                          ? 'bg-[#CCFF00] shadow-[0_0_6px_rgba(204,255,0,0.3)]'
+                          ? 'bg-[#E11D48] shadow-[0_0_6px_rgba(225,29,72,0.32)]'
                           : 'bg-black/15 dark:bg-white/15'
                       }`}
                     />
@@ -205,7 +213,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                   <span
                     className={`text-[13px] sm:text-[14px] font-black tabular-nums tracking-tight ${
                       isTop
-                        ? 'text-black dark:text-[#CCFF00]'
+                        ? 'text-foreground dark:text-white'
                         : 'text-black/40 dark:text-white/35'
                     }`}
                   >

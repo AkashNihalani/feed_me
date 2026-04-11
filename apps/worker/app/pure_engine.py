@@ -35,47 +35,21 @@ from .config import (
     FIRE_MEDIA_RETENTION_ENABLED,
 )
 from .web_push import is_enabled as web_push_enabled, send as send_web_push
-from .post_intelligence import (
-    current_model_version as pi_model_version,
-    extract_tags as pi_extract_tags,
-    is_enabled as pi_enabled,
+from .checkpoint_intelligence import (
+    extract_post_intelligence_for_checkpoint as run_checkpoint_intelligence,
+)
+from .pattern_alerts import (
+    resolve_pattern_alerts_for_feed as run_pattern_alerts_for_feed,
+)
+from .retry_policy import (
+    hard_skip_error as _hard_skip_error,
+    is_connection_error as _is_connection_error,
+    is_hard_failure as _is_hard_failure,
+    is_transient_failure as _is_transient_failure,
+    next_retry_time as _next_retry_time,
+    should_retry_web_push as _should_retry_web_push,
 )
 
-
-def _next_retry_time(attempt: int) -> datetime:
-    idx = min(attempt - 1, len(RETRY_BACKOFF_MINUTES) - 1)
-    return datetime.now(timezone.utc) + timedelta(minutes=RETRY_BACKOFF_MINUTES[idx])
-
-
-_HARD_SKIP_PREFIX = 'hard-skip:'
-_TRANSIENT_FAILURE_TOKENS = (
-    'timeout',
-    'timed out',
-    'too many requests',
-    '429',
-    'rate limit',
-    'connection',
-    'network',
-    'temporarily unavailable',
-    'service unavailable',
-    'bad gateway',
-    'gateway timeout',
-    'internal server error',
-    'connection reset',
-    'bright data json parse error',
-    'json decode',
-    'extra data',
-    'expecting value',
-)
-_HARD_FAILURE_TOKENS = (
-    'not found',
-    'private',
-    'deleted',
-    'post missing',
-    'missing in checkpoint batch',
-    'missing post',
-)
-_PUSH_TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 _MEDIA_CAPTURE_TIMEOUT_SECONDS = 60
 _MEDIA_UPLOAD_TIMEOUT_SECONDS = 120
 _MEDIA_ALLOWED_FETCH_PROTOCOLS = ("http://", "https://")
@@ -84,24 +58,8 @@ _MEDIA_FETCH_HEADERS = {
     "accept": "*/*",
     "referer": "https://www.instagram.com/",
 }
-_IMAGE_ASSET_RETENTION_DAYS = 30
-_HEAVY_ASSET_RETENTION_DAYS = 8
-_DB_CONNECTION_ERROR_TOKENS = (
-    "connection is closed",
-    "server closed the connection unexpectedly",
-    "consuming input failed",
-    "ssl error",
-    "unexpected eof",
-    "broken pipe",
-    "connection reset",
-    "connection refused",
-    "terminating connection",
-    "could not receive data from server",
-)
-
-
-def _normalize_error(err: str | None) -> str:
-    return (err or '').strip().lower()
+_IMAGE_ASSET_RETENTION_DAYS = 90
+_HEAVY_ASSET_RETENTION_DAYS = 1
 
 
 def _post_media_rollover_deadline(posted_at: datetime | None, asset_role: str | None) -> datetime:
@@ -110,42 +68,9 @@ def _post_media_rollover_deadline(posted_at: datetime | None, asset_role: str | 
     if base.tzinfo is None:
         base = base.replace(tzinfo=timezone.utc)
     days = _HEAVY_ASSET_RETENTION_DAYS
-    if role in ("thumbnail", "display") or role.startswith("carousel_"):
+    if role in ("thumbnail", "display"):
         days = _IMAGE_ASSET_RETENTION_DAYS
     return base + timedelta(days=days)
-
-
-def _is_transient_failure(err: str | None) -> bool:
-    e = _normalize_error(err)
-    return any(tok in e for tok in _TRANSIENT_FAILURE_TOKENS)
-
-
-def _is_hard_failure(err: str | None) -> bool:
-    e = _normalize_error(err)
-    if any(tok in e for tok in _HARD_FAILURE_TOKENS):
-        return True
-    # Policy: only transient failures are retried. Everything else is terminal skip.
-    return not _is_transient_failure(e)
-
-
-def _hard_skip_error(err: str | None, fallback: str) -> str:
-    msg = (err or '').strip() or fallback
-    return f"{_HARD_SKIP_PREFIX}{msg[:900]}"
-
-
-def _should_retry_web_push(status_code: int | None, err: str | None) -> bool:
-    if status_code in _PUSH_TRANSIENT_STATUS_CODES:
-        return True
-    return _is_transient_failure(err)
-
-
-def _is_connection_error(exc: Exception | None) -> bool:
-    if exc is None:
-        return False
-    msg = _normalize_error(str(exc))
-    if any(tok in msg for tok in _DB_CONNECTION_ERROR_TOKENS):
-        return True
-    return isinstance(exc, psycopg.OperationalError)
 
 
 def _to_dt(value: Any) -> datetime | None:
@@ -174,6 +99,26 @@ def _post_key_from_url(post_url: str) -> str:
     u = re.sub(r"^https?://(www\.)?instagram\.com/", "", u)
     u = u.split("?", 1)[0].split("#", 1)[0].strip("/")
     return u
+
+
+def _normalize_handle(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    raw = raw.replace("@", "").strip().strip("/")
+    if not raw:
+        return None
+    lowered = raw.lower()
+    if not re.fullmatch(r"[a-z0-9._]{1,30}", lowered):
+        return None
+    return lowered
+
+
+def _scoped_post_key(feeder_id: int, post_url: str) -> str:
+    base_key = _post_key_from_url(post_url)
+    return f"{base_key}#f{feeder_id}" if base_key else f"post#f{feeder_id}"
 
 
 def _media_type(item: dict) -> str:
@@ -249,6 +194,38 @@ def _checkpoint_item_error(item: dict) -> str | None:
         return detail or "checkpoint scrape returned provider error"
     return None
 
+
+def _extract_related_handles(item: dict, fallback_handle: str | None = None) -> list[str]:
+    handles: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: Any):
+        if isinstance(value, list):
+            for entry in value:
+                add(entry)
+            return
+        if value is None:
+            return
+        handle = _normalize_handle(value)
+        if handle and handle not in seen:
+            seen.add(handle)
+            handles.append(handle)
+
+    add(item.get("relatedHandles"))
+    add(item.get("ownerHandle"))
+
+    owner = item.get("owner") if isinstance(item.get("owner"), dict) else {}
+    for key in ("username", "user_name", "handle"):
+        add(owner.get(key))
+
+    add(item.get("username"))
+    add(item.get("handle"))
+
+    if fallback_handle:
+        add(fallback_handle)
+
+    return handles
+
 def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
     owner = item.get("owner") if isinstance(item.get("owner"), dict) else {}
 
@@ -273,6 +250,7 @@ def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
 
 def _extract_media_refs(item: dict) -> tuple[str | None, str | None, list[str]]:
     """Extract reusable media references for UI thumbnails and downstream vector jobs."""
+    media_kind = _media_type(item)
     display_url = (
         item.get("displayUrl")
         or item.get("display_url")
@@ -286,14 +264,19 @@ def _extract_media_refs(item: dict) -> tuple[str | None, str | None, list[str]]:
         thumbnail_url = display_url if display_url and str(display_url).strip() != str(video_url).strip() else None
 
     carousel_urls: list[str] = []
-    children = item.get("childPosts") or item.get("sidecarImages") or item.get("carouselMedia") or []
-    if isinstance(children, list):
-        for c in children:
-            if not isinstance(c, dict):
-                continue
-            u = c.get("displayUrl") or c.get("imageUrl") or c.get("videoUrl")
-            if u and str(u) not in carousel_urls:
-                carousel_urls.append(str(u))
+    if media_kind == "sidecar":
+        children = item.get("childPosts") or item.get("sidecarImages") or item.get("carouselMedia") or []
+        if isinstance(children, list):
+            for c in children:
+                if not isinstance(c, dict):
+                    continue
+                u = c.get("displayUrl") or c.get("imageUrl") or c.get("videoUrl")
+                if u and str(u) not in carousel_urls:
+                    carousel_urls.append(str(u))
+        if not carousel_urls and display_url:
+            carousel_urls.append(str(display_url))
+    elif media_kind != "reel":
+        video_url = None
 
     def _clean(u: Any) -> str | None:
         if u is None:
@@ -553,13 +536,8 @@ class PureEngine:
             return
 
         payloads: list[tuple[str, str]] = []
-        if thumbnail_url and thumbnail_url != video_url:
+        if thumbnail_url:
             payloads.append(("thumbnail", thumbnail_url))
-        if video_url:
-            payloads.append(("video", video_url))
-        for idx, url in enumerate(carousel_urls or []):
-            if url:
-                payloads.append((f"carousel_{idx}", url))
 
         for asset_role, source_url in payloads:
             purge_after = _post_media_rollover_deadline(posted_at, asset_role)
@@ -810,6 +788,29 @@ class PureEngine:
         ).fetchall()
         return [str(row.get("provider_post_id") or "").strip() for row in rows if str(row.get("provider_post_id") or "").strip()]
 
+    def _active_feeder_ids_by_handle(self, handles: set[str]) -> dict[str, list[int]]:
+        normalized_handles = sorted({handle for handle in (_normalize_handle(value) for value in handles) if handle})
+        if not normalized_handles:
+            return {}
+
+        rows = self.conn.execute(
+            """
+            select id, lower(handle) as handle
+            from public.feeders
+            where status = 'active'
+              and lower(handle) = any(%s)
+            """,
+            (normalized_handles,),
+        ).fetchall()
+
+        mapping: dict[str, list[int]] = defaultdict(list)
+        for row in rows:
+            handle = str(row.get("handle") or "").strip().lower()
+            feeder_id = int(row.get("id") or 0)
+            if handle and feeder_id > 0:
+                mapping[handle].append(feeder_id)
+        return dict(mapping)
+
     def _feeder_tracking_started_at(self, feeder_id: int) -> datetime | None:
         if feeder_id in self._feeder_tracking_started_cache:
             return self._feeder_tracking_started_cache[feeder_id]
@@ -842,7 +843,7 @@ class PureEngine:
         if posted_at is not None and tracking_started_at is not None and posted_at < tracking_started_at:
             return None, False
 
-        post_key = _post_key_from_url(post_url)
+        post_key = _scoped_post_key(feeder_id, post_url)
         row = self.conn.execute(
             """
             insert into public.posts (
@@ -851,9 +852,8 @@ class PureEngine:
               created_at, updated_at
             )
             values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,now(),now())
-            on conflict (post_key)
+            on conflict (feeder_id, post_url)
             do update set
-              feeder_id=excluded.feeder_id,
               post_url=excluded.post_url,
               media_type=coalesce(excluded.media_type, public.posts.media_type),
               posted_at=coalesce(excluded.posted_at, public.posts.posted_at),
@@ -918,9 +918,9 @@ class PureEngine:
         likes: int | None,
         comments: int | None,
         business_date_ist: date | None = None,
-    ):
+    ) -> bool:
         """Write raw metrics only — Supabase trigger computes derived fields."""
-        self.conn.execute(
+        row = self.conn.execute(
             """
             insert into public.post_metrics
               (post_key, checkpoint, views, likes, comments, computed_at, business_date_ist)
@@ -932,9 +932,11 @@ class PureEngine:
               comments=excluded.comments,
               computed_at=now(),
               business_date_ist=coalesce(excluded.business_date_ist, public.post_metrics.business_date_ist)
+            returning post_key
             """,
             (post_key, checkpoint, views, likes, comments, business_date_ist),
-        )
+        ).fetchone()
+        return bool(row and row.get("post_key"))
 
     def _insert_metric_if_missing(
         self,
@@ -1085,42 +1087,23 @@ class PureEngine:
         self.conn.commit()
 
     def _resolve_for_feeder(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
-        cp = (checkpoint or '').lower()
-        if cp not in ('d1', 'd3', 'd7', 'd21'):
-            return
-        # Canonical resolver path: one function owns post+feed alert resolution.
-        self.conn.execute("select public.fn_process_checkpoint(%s, %s, %s)", (feeder_id, cp, business_date_ist))
-        self.conn.commit()
-
-        # Pattern enrichment: attach semantic signals to freshly created/updated fire alerts.
-        if pi_enabled():
-            try:
-                with self.conn.cursor(row_factory=dict_row) as cur:
-                    cur.execute(
-                        """SELECT id FROM public.fire_alerts
-                           WHERE feeder_id = %s AND checkpoint = %s
-                             AND business_date_ist = %s
-                             AND pattern_signal IS NULL
-                             AND signal_code = 'slot_v3'
-                             AND context = 'own'
-                           LIMIT 50""",
-                        (feeder_id, cp, business_date_ist),
-                    )
-                    alert_ids = [row["id"] for row in cur.fetchall()]
-                for aid in alert_ids:
-                    self.conn.execute("SELECT public.fn_enrich_pattern_signal(%s)", (aid,))
-                if alert_ids:
-                    self.conn.commit()
-            except Exception as exc:
-                try:
-                    self.conn.rollback()
-                except Exception:
-                    pass
-                print(f"[pattern-enrich] failed for feeder {feeder_id}: {exc}")
+        # Checkpoint cards now come from post_metrics directly in the Fire API.
+        # Pattern alerts are resolved at the feed level on D7 only.
+        return
 
     def _try_resolve_feed(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
-        # Feed-level logic is integrated inside fn_process_checkpoint.
-        return
+        cp = (checkpoint or '').lower()
+        if cp != 'd7' or business_date_ist is None:
+            return
+        self._resolve_pattern_alerts_for_feed(feeder_id, business_date_ist)
+
+    def _resolve_pattern_alerts_for_feed(self, feeder_id: int, business_date_ist: date):
+        run_pattern_alerts_for_feed(
+            self.conn,
+            feeder_id,
+            business_date_ist,
+            app_timezone=APP_TIMEZONE,
+        )
 
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
         """Get an authenticated URL for a cached media asset in Supabase Storage."""
@@ -1163,84 +1146,13 @@ class PureEngine:
         return urls
 
     def _extract_post_intelligence_for_checkpoint(self, feeder_id: int, checkpoint: str, business_date: date | None):
-        """
-        Extract semantic tags for the current hot D7 batch using Supabase-cached media.
-        Only processes posts from this feeder/business day that qualified as hot
-        and do not already have intelligence tags.
-        """
-        if not pi_enabled():
-            return
-
-        # Pattern intelligence is produced as soon as a post qualifies hot at D7.
-        if (checkpoint or "").lower() != "d7":
-            return
-
-        if business_date is None:
-            try:
-                tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
-            except Exception:
-                tz = timezone.utc
-            business_date = datetime.now(tz).date()
-
-        # Find hot D7 posts for this feeder+business day that don't have intelligence yet.
-        with self.conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """SELECT p.post_key,
-                          p.caption,
-                          lower(coalesce(p.media_type, 'image')) as media_type,
-                          pm.percentile_performance,
-                          p.posted_at
-                   FROM public.posts p
-                   JOIN public.post_metrics pm ON pm.post_key = p.post_key
-                   WHERE p.feeder_id = %s
-                     AND lower(pm.checkpoint) = 'd7'
-                     AND pm.business_date_ist = %s
-                     AND public.fn_is_hot_percentile(pm.percentile_performance)
-                     AND NOT EXISTS (
-                       SELECT 1 FROM public.post_intelligence pi
-                       WHERE pi.post_key = p.post_key
-                     )
-                   ORDER BY pm.percentile_performance ASC, p.posted_at DESC NULLS LAST
-                   LIMIT 50""",
-                (feeder_id, business_date),
-            )
-            posts = cur.fetchall()
-
-        for post in posts:
-            post_key = str(post["post_key"])
-            caption = post.get("caption") or ""
-            media_type = str(post.get("media_type") or "image")
-
-            try:
-                # Resolve media URLs from Supabase cache (not Instagram CDN)
-                video_url = self._supabase_media_url(post_key, "video") if media_type == "reel" else None
-                carousel_urls = self._get_cached_carousel_urls(post_key) if media_type in ("sidecar", "carousel") else []
-                thumbnail_url = self._supabase_media_url(post_key, "thumbnail")
-
-                tags = pi_extract_tags(
-                    caption,
-                    media_type,
-                    thumbnail_url=thumbnail_url,
-                    video_url=video_url,
-                    carousel_urls=carousel_urls if carousel_urls else None,
-                    media_fetch_headers=self._storage_read_headers(),
-                )
-                if tags:
-                    model = pi_model_version(skipped=bool(tags.get("_skipped")))
-                    self.conn.execute(
-                        """INSERT INTO public.post_intelligence (post_key, tags, model_version, extracted_at)
-                           VALUES (%s, %s::jsonb, %s, now())
-                           ON CONFLICT (post_key) DO NOTHING""",
-                        (post_key, json.dumps(tags), model),
-                    )
-                    self.conn.commit()
-                    print(f"[post-intelligence] D7 extracted tags for {post_key} ({tags.get('_visual_source', 'unknown')})")
-            except Exception as exc:
-                try:
-                    self.conn.rollback()
-                except Exception:
-                    pass
-                print(f"[post-intelligence] D7 extraction failed for {post_key}: {exc}")
+        run_checkpoint_intelligence(
+            self.conn,
+            feeder_id,
+            checkpoint,
+            business_date,
+            app_timezone=APP_TIMEZONE,
+        )
 
     def process_run_jobs(self, limit: int = 120):
         if limit <= 0:
@@ -1258,7 +1170,7 @@ class PureEngine:
         def submit_job(pool: ThreadPoolExecutor, job: dict):
             handle = (job.get("handle") or "").lstrip("@")
             job_type = str(job.get("job_type") or "daily").strip().lower()
-            days_window = 2 if job_type in ("daily", "repair", "poll") else 1
+            days_window = 2 if job_type in ("repair", "poll") else 1
             recent_provider_post_ids = None if job_type == "followers" else self._recent_provider_post_ids(int(job["feeder_id"]))
             jid = int(job["id"])
             jobs_by_id[jid] = job
@@ -1311,6 +1223,16 @@ class PureEngine:
 
                     try:
                         items = future.result()
+                        feeder_handle = _normalize_handle(job.get("handle"))
+                        related_handles_by_item = [
+                            _extract_related_handles(item, feeder_handle)
+                            for item in items
+                        ]
+                        active_feeder_ids_by_handle = self._active_feeder_ids_by_handle({
+                            handle
+                            for handles in related_handles_by_item
+                            for handle in handles
+                        })
 
                         profile_pic_url = None
                         profile_followers = None
@@ -1331,7 +1253,7 @@ class PureEngine:
                             self._set_run_result(jid, "done", att, None, None)
                             continue
 
-                        for item in items:
+                        for item, related_handles in zip(items, related_handles_by_item):
                             source_url = item.get("url") or ""
                             provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip() or None
                             shortcode = (
@@ -1348,38 +1270,43 @@ class PureEngine:
                             caption = item.get("caption") or item.get("text") or item.get("description") or ""
 
                             thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
-                            post_key, is_new_post = self._upsert_post(
-                                feeder_id,
-                                post_url,
-                                media_type,
-                                posted_at,
-                                caption,
-                                provider_post_id=provider_post_id,
-                                thumbnail_url=thumbnail_url,
-                                video_url=video_url,
-                                carousel_urls=carousel_urls,
-                            )
-                            if not post_key:
-                                continue
-                            self._stage_post_media_assets(
-                                post_key,
-                                posted_at,
-                                thumbnail_url,
-                                video_url,
-                                carousel_urls,
-                            )
-                            if is_new_post:
-                                self.conn.execute(
-                                    "select public.enqueue_checkpoint_jobs(%s,%s,%s,%s,%s,%s)",
-                                    (
-                                        post_key,
-                                        posted_at,
-                                        APP_TIMEZONE,
-                                        CHECKPOINT_BATCH_HOUR_24,
-                                        CHECKPOINT_BATCH_MINUTE,
-                                        CHECKPOINT_BUCKET_MINUTES,
-                                    ),
+                            candidate_feeder_ids = {feeder_id}
+                            for related_handle in related_handles:
+                                candidate_feeder_ids.update(active_feeder_ids_by_handle.get(related_handle, []))
+
+                            for target_feeder_id in sorted(candidate_feeder_ids):
+                                post_key, is_new_post = self._upsert_post(
+                                    target_feeder_id,
+                                    post_url,
+                                    media_type,
+                                    posted_at,
+                                    caption,
+                                    provider_post_id=provider_post_id,
+                                    thumbnail_url=thumbnail_url,
+                                    video_url=video_url,
+                                    carousel_urls=carousel_urls,
                                 )
+                                if not post_key:
+                                    continue
+                                self._stage_post_media_assets(
+                                    post_key,
+                                    posted_at,
+                                    thumbnail_url,
+                                    video_url,
+                                    carousel_urls,
+                                )
+                                if is_new_post:
+                                    self.conn.execute(
+                                        "select public.enqueue_checkpoint_jobs(%s,%s,%s,%s,%s,%s)",
+                                        (
+                                            post_key,
+                                            posted_at,
+                                            APP_TIMEZONE,
+                                            CHECKPOINT_BATCH_HOUR_24,
+                                            CHECKPOINT_BATCH_MINUTE,
+                                            CHECKPOINT_BUCKET_MINUTES,
+                                        ),
+                                    )
 
                         self.conn.commit()
                         self._set_run_result(jid, "done", att, None, None)
@@ -1545,9 +1472,32 @@ class PureEngine:
                                 video_url,
                                 carousel_urls,
                             )
+                            self._stage_post_media_assets(
+                                str(j["post_key"]),
+                                job_posted_at,
+                                thumbnail_url,
+                                None,
+                                None,
+                            )
                             # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
                             # update the same row while preserving the checkpoint business day stamp.
-                            self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, business_day)
+                            metric_written = self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, business_day)
+                            if not metric_written:
+                                try:
+                                    self.conn.rollback()
+                                except Exception:
+                                    pass
+                                na = att + 1
+                                due_at = _to_dt(j.get("next_run_at"))
+                                now_utc = datetime.now(timezone.utc)
+                                err = "Checkpoint metric insert was rejected before a row was written"
+                                if due_at is not None and due_at > now_utc:
+                                    self._set_checkpoint_result(jid, "retry", na, due_at, err)
+                                elif na <= len(RETRY_BACKOFF_MINUTES):
+                                    self._set_checkpoint_result(jid, "retry", na, _next_retry_time(na), err)
+                                else:
+                                    self._set_checkpoint_result(jid, "failed", na, None, err)
+                                continue
                             self.conn.commit()
                             self._set_checkpoint_result(jid, "done", att, None, None)
 
@@ -1556,11 +1506,8 @@ class PureEngine:
 
             # Resolver chain for checkpoint jobs once batch writes are done
             for feeder_id, cp, business_day in sorted(touched, key=lambda item: (item[2], item[0], item[1])):
-                # At D7: extract AI tags from Supabase-cached media before resolving
-                # (tags feed into pattern enrichment in _resolve_for_feeder)
                 try:
-                    if cp == "d7":
-                        self._extract_post_intelligence_for_checkpoint(feeder_id, cp, business_day)
+                    self._extract_post_intelligence_for_checkpoint(feeder_id, cp, business_day)
                     self._resolve_for_feeder(feeder_id, cp, business_day)
                     self._try_resolve_feed(feeder_id, cp, business_day)
                 except Exception as resolve_exc:

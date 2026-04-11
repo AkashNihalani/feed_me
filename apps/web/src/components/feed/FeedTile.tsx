@@ -16,6 +16,10 @@ interface FeedTileProps {
   title: string;
   count: number;
   anchor?: string;
+  feeders?: Array<{
+    handle: string;
+    profilePicUrl?: string | null;
+  }>;
   metrics?: {
     likes: string;
     comments: string;
@@ -37,7 +41,52 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function FeedTile({ title, count, anchor, metrics, onClick, onPreview, onDelete, index }: FeedTileProps) {
+function FeederAvatarStack({ feeders }: { feeders?: FeedTileProps['feeders'] }) {
+  const visibleFeeders = (feeders || []).slice(0, 3);
+  const remainingCount = Math.max(0, (feeders?.length || 0) - visibleFeeders.length);
+  if (visibleFeeders.length === 0) return null;
+
+  const labels = visibleFeeders.map((feeder) => `@${feeder.handle}`).join(' · ');
+
+  return (
+    <div className="mt-4 flex items-center gap-3">
+      <div className="flex items-center -space-x-2.5">
+        {visibleFeeders.map((feeder) => {
+          const initial = feeder.handle.slice(0, 1).toUpperCase() || 'F';
+          return (
+            <div
+              key={feeder.handle}
+              className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/78 bg-[linear-gradient(135deg,rgba(225,29,72,0.22),rgba(255,255,255,0.92))] text-[11px] font-black uppercase tracking-[0.08em] text-[#7F1D1D] shadow-[0_6px_18px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-white/12 dark:bg-[linear-gradient(135deg,rgba(225,29,72,0.7),rgba(24,24,27,0.95))] dark:text-white"
+            >
+              {feeder.profilePicUrl ? (
+                <img src={feeder.profilePicUrl} alt={`@${feeder.handle}`} className="h-full w-full object-cover" />
+              ) : (
+                <span>{initial}</span>
+              )}
+            </div>
+          );
+        })}
+        {remainingCount > 0 ? (
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/74 bg-black/[0.04] text-[10px] font-black uppercase tracking-[0.08em] text-foreground shadow-[0_6px_16px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white">
+            +{remainingCount}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="min-w-0">
+        <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/30 fm-depth-title">
+          Feeder roster
+        </div>
+        <div className="mt-1 truncate text-[11px] font-black uppercase tracking-[0.1em] text-foreground/70 dark:text-white/68 fm-depth-title">
+          {labels}
+          {remainingCount > 0 ? ` · +${remainingCount} more` : ''}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function FeedTile({ title, count, anchor, feeders, metrics, onClick, onPreview, onDelete, index }: FeedTileProps) {
   return (
     <motion.div
       role="button"
@@ -65,9 +114,9 @@ export default function FeedTile({ title, count, anchor, metrics, onClick, onPre
               <span className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/72 dark:text-white/66">{count} {count === 1 ? 'Feeder' : 'Feeders'}</span>
             </div>
             {anchor ? (
-              <div className="fm-depth-chip flex items-center gap-1.5 rounded-[13px] px-3 py-1.5 dark:border-[#4f6410] dark:bg-[#171d07]">
-                <Crown size={14} strokeWidth={2.8} className="text-black/70 dark:text-[#CCFF00]" />
-                <span className="max-w-[120px] truncate text-[10px] font-black uppercase tracking-[0.12em] text-black/80 dark:text-[#CCFF00]">{anchor}</span>
+              <div className="fm-depth-chip flex items-center gap-1.5 rounded-[13px] border-[#E11D48]/22 bg-[#E11D48]/10 px-3 py-1.5 dark:border-[#E11D48]/28 dark:bg-[#E11D48]/12">
+                <Crown size={14} strokeWidth={2.8} className="text-[#BE123C] dark:text-white/78" />
+                <span className="max-w-[120px] truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#BE123C] dark:text-white/78">{anchor}</span>
               </div>
             ) : null}
           </div>
@@ -95,6 +144,7 @@ export default function FeedTile({ title, count, anchor, metrics, onClick, onPre
           <h2 className="mt-2 max-w-[92%] text-[28px] font-black uppercase leading-[0.9] tracking-[-0.04em] text-foreground sm:max-w-[88%] sm:text-[38px] dark:text-white fm-depth-title">
             {title}
           </h2>
+          <FeederAvatarStack feeders={feeders} />
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:grid-cols-4">
@@ -111,10 +161,10 @@ export default function FeedTile({ title, count, anchor, metrics, onClick, onPre
               transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
               className={cn(
                 'h-2.5 w-2.5 rounded-full',
-                count > 0 ? 'bg-black shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:bg-[#CCFF00] dark:shadow-[0_0_12px_rgba(204,255,0,0.7)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+                count > 0 ? 'bg-[#E11D48] shadow-[0_6px_12px_-8px_rgba(225,29,72,0.32)]' : 'bg-red-500 shadow-[0_6px_12px_-8px_rgba(239,68,68,0.35)]'
               )}
             />
-            <span className={cn('text-[10px] font-black uppercase tracking-[0.18em]', count > 0 ? 'text-[#7ca100] dark:text-[#CCFF00] dark:drop-shadow-[0_0_10px_rgba(204,255,0,0.45)]' : 'text-red-500')}>
+            <span className={cn('text-[10px] font-black uppercase tracking-[0.18em]', count > 0 ? 'text-foreground/64 dark:text-white/62' : 'text-red-500')}>
               {count > 0 ? 'Tracking' : 'Empty'}
             </span>
           </div>

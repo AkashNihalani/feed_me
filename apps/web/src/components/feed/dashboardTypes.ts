@@ -31,6 +31,14 @@ export type KillzonePoint = {
   post_count: number;
 };
 
+export type KillzoneDayPoint = {
+  day_of_week: number;
+  day_label: string;
+  post_count: number;
+  metric_count: number;
+  avg_percentile_performance: number | null;
+};
+
 export type ApexMixPoint = {
   media_type: string;
   post_count: number;
@@ -58,12 +66,28 @@ export type DashboardSummary = {
   avg_comments_percentile: number | null;
 };
 
+export type PatternBoardItem = {
+  signal_code: string;
+  context: 'own' | 'cross' | 'anchor';
+  pattern_name: string | null;
+  pattern_label: string;
+  trigger_count: number;
+  avg_hot_percentile: number | null;
+  feeders_count: number | null;
+  baseline_share: number | null;
+  recent_lift: number | null;
+  anchor_gap: number | null;
+  latest_business_day: string | null;
+};
+
 export type DashboardPayload = {
   ascent_series: AscentPoint[];
   frequency_series: FrequencyPoint[];
   heatmap_daily: HeatmapPoint[];
   killzone_hours: KillzonePoint[];
+  killzone_days?: KillzoneDayPoint[];
   apex_mix: ApexMixPoint[];
   scatter_points: ScatterPoint[];
   summary: DashboardSummary;
+  pattern_board?: PatternBoardItem[];
 };

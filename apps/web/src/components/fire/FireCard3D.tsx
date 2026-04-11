@@ -13,6 +13,7 @@ export type FireCard3DProps = {
   highlighted?: boolean;
   layoutMode?: 'mobile' | 'desktop';
   onOpenDetails?: () => void;
+  onBeforeOpenPost?: (itemId: string) => void;
 };
 
 function asRec(v: unknown): Record<string, unknown> {
@@ -32,37 +33,13 @@ function text(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
-function GlassTile({ label, value, className = '' }: { label: string; value: string; className?: string }) {
-  return (
-    <div
-      className={[
-        'rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5',
-        'shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7),inset_0_-8px_16px_rgba(255,255,255,0.12)]',
-        'dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]',
-        className,
-      ].join(' ')}
-    >
-      <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">{label}</div>
-      <div className="mt-1 text-[18px] sm:text-[24px] font-black leading-[0.9] tracking-[-0.02em] text-foreground/95">{value}</div>
-    </div>
-  );
-}
-
-function MetricChip({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[10px] border border-white/48 bg-white/34 px-2 py-1.5 sm:px-2.5 sm:py-2 shadow-[0_12px_24px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.66),inset_0_-6px_14px_rgba(255,255,255,0.08)] dark:border-white/16 dark:bg-black/38 dark:shadow-[0_14px_28px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.1)]">
-      <div className="text-[6px] sm:text-[7px] font-black uppercase tracking-[0.16em] text-foreground/62">{label}</div>
-      <div className="mt-1 text-[18px] sm:text-[24px] font-black leading-none tracking-[-0.03em] text-foreground/94">{value}</div>
-    </div>
-  );
-}
-
 export function FireCard3D({
   item,
   forcedOpen = false,
   highlighted = false,
   layoutMode = 'mobile',
   onOpenDetails,
+  onBeforeOpenPost,
 }: FireCard3DProps) {
   const { play } = useAppHaptics();
   const [openLocal, setOpenLocal] = useState(false);
@@ -84,15 +61,18 @@ export function FireCard3D({
 
   useEffect(() => {
     if (!isLocked) return;
-    setOpenLocal(false);
-    setIsPrimed(false);
+    const timer = window.setTimeout(() => {
+      setOpenLocal(false);
+      setIsPrimed(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [isLocked]);
 
   const payload = asRec(item.payload);
   const metrics = asRec(payload.metrics);
-  const position = asRec(payload.position);
   const timing = asRec(payload.timing);
   const trajectory = asRec(payload.trajectory);
+  const meta = asRec(payload.meta);
 
   const bestMetric = (text(payload.best_metric) || item.metricKey || 'views').toUpperCase();
   const bestMetricObj = asRec(metrics[bestMetric.toLowerCase()]);
@@ -112,8 +92,6 @@ export function FireCard3D({
       };
     });
 
-  const feedRank = num(bestMetricObj.rank_feed) ?? num(position.feed_rank);
-  const feederRank = num(position.feeder_rank) ?? num(position.rank_overall) ?? num(position.rank_all_time);
   const bestInLastN = num(bestMetricObj.best_in_last_n);
 
   const hour = num(timing.hour);
@@ -143,18 +121,47 @@ export function FireCard3D({
         ? `+${Math.abs(Math.round(delta))}`
         : `-${Math.abs(Math.round(delta))}`;
 
-  const deltaBgClass = isPositiveShift 
-    ? 'bg-[#CCFF00] dark:bg-[#CCFF00] shadow-[0_4px_12px_rgba(204,255,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.9),inset_0_-2px_4px_rgba(130,156,0,0.4)] border border-[#CCFF00]/10' 
-    : 'bg-white/55 dark:bg-white/14 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]';
-  const deltaLabelClass = isPositiveShift ? 'text-black/60' : 'text-foreground/70';
-  const deltaTextClass = isPositiveShift ? 'text-black drop-shadow-sm' : 'text-foreground/95';
-
   const cp = item.checkpoint.toUpperCase();
   const isD1 = cp === 'D1';
   const lockedHandle = `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`;
   const lockedMediaType = (item.surfaceMediaType || item.mediaType || 'POST').toUpperCase();
-
-  const stamp = `${lockedHandle} · ${lockedMediaType} · ${bestMetric} ${compact(value)} · ${cp}`;
+  const signalContextLabel = item.signalContext.toUpperCase();
+  const signalLabel = item.signalLabel || 'Signal';
+  const signalHeadline = item.signalHeadline || item.title || signalLabel;
+  const heroMetricStamp = value == null ? '--' : compact(value);
+  const hideSignalChrome = item.hideSignalChrome === true;
+  const patternAlerts = Array.isArray(meta.pattern_alerts)
+    ? meta.pattern_alerts
+      .map((entry) => asRec(entry))
+      .filter((entry) => Object.keys(entry).length > 0)
+    : [];
+  const primaryPattern = patternAlerts.length > 0 ? patternAlerts[0] : null;
+  const patternCueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
+    ? primaryPattern.cues
+      .map((cue) => asRec(cue))
+      .map((cue) => text(cue.label))
+      .filter(Boolean)
+      .slice(0, 4)
+    : [];
+  const supportPosts = primaryPattern && Array.isArray(primaryPattern.support_posts)
+    ? primaryPattern.support_posts
+      .map((post) => asRec(post))
+      .map((post) => ({
+        postKey: text(post.post_key),
+        handle: text(post.handle),
+        mediaType: text(post.media_type).toUpperCase(),
+        postUrl: text(post.post_url),
+        thumbnailUrl: text(post.thumbnail_url),
+      }))
+      .filter((post) => post.postKey && post.postUrl)
+      .slice(0, 4)
+    : [];
+  const patternMatchCount = num(primaryPattern?.match_count);
+  const patternFeedersCount = num(primaryPattern?.feeders_count);
+  const patternAverage = num(primaryPattern?.avg_hot_percentile);
+  const patternBaselineShare = num(primaryPattern?.baseline_share);
+  const patternRecentLift = num(primaryPattern?.recent_lift);
+  const patternAnchorGap = num(primaryPattern?.anchor_gap);
 
   const handleCardActivate = () => {
     if (isLocked) {
@@ -248,17 +255,65 @@ export function FireCard3D({
         </div>
       </motion.div>
 
+      {!hideSignalChrome && (
+        <motion.div
+          className={isDesktopCard ? 'absolute right-4 top-4 z-10' : 'absolute right-4 top-8 z-10 md:top-4'}
+          style={{ marginTop: 'var(--pwa-top-pad)' }}
+          animate={{
+            opacity: isLocked ? 0.4 : !isDesktopCard && isOpen ? 0.24 : 1,
+            y: !isDesktopCard && isOpen ? -8 : 0,
+          }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]">
+            {signalContextLabel}
+          </div>
+        </motion.div>
+      )}
+
       <motion.div
         className={isDesktopCard
-          ? 'absolute bottom-3.5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/24 bg-black/42 px-3 py-1.5 text-center text-[8px] font-black uppercase tracking-[0.08em] text-white/90 shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-[18px]'
-          : 'absolute bottom-8 left-1/2 z-10 md:bottom-6 -translate-x-1/2 whitespace-nowrap rounded-[12px] border border-white/38 bg-white/14 px-3 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.1em] text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
+          ? 'absolute inset-x-3 bottom-3.5 z-10'
+          : 'absolute inset-x-3 bottom-8 z-10 md:bottom-6'}
         animate={{
           opacity: isLocked ? 0.14 : !isDesktopCard && isOpen ? 0.1 : 1,
           y: !isDesktopCard && isOpen ? 10 : 0,
         }}
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
-        {stamp}
+        <div className={isDesktopCard
+          ? 'rounded-[14px] border border-white/24 bg-black/42 px-3 py-2 text-white/92 shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-[18px]'
+          : 'rounded-[14px] border border-white/38 bg-white/14 px-3 py-2.5 text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className={isDesktopCard
+              ? 'truncate text-[9px] font-black uppercase tracking-[0.1em] text-white/90'
+              : 'truncate text-[10px] font-black uppercase tracking-[0.1em] text-white/92'}
+            >
+              {lockedHandle}
+            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={isDesktopCard
+                ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
+                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
+              >
+                {lockedMediaType}
+              </span>
+              <span className={isDesktopCard
+                ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
+                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
+              >
+                {heroMetricStamp} {bestMetric}
+              </span>
+              <span className={isDesktopCard
+                ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
+                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
+              >
+                {cp}
+              </span>
+            </div>
+          </div>
+        </div>
       </motion.div>
 
       <AnimatePresence initial={false}>
@@ -278,8 +333,8 @@ export function FireCard3D({
                 'dark:border-white/[0.1] dark:bg-[rgba(8,8,8,0.62)] dark:shadow-[0_18px_44px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.08)]',
               ].join(' ')}
             >
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-black/10 bg-black/[0.04] dark:border-[#CCFF00]/28 dark:bg-[#CCFF00]/10">
-                <Lock className="h-5 w-5 text-black dark:text-[#CCFF00]" strokeWidth={2.4} />
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-black/10 bg-black/[0.04] dark:border-[#E11D48]/28 dark:bg-[#E11D48]/10">
+                <Lock className="h-5 w-5 text-black dark:text-[#E11D48]" strokeWidth={2.4} />
               </div>
 
               <div className="mt-3 flex justify-center">
@@ -319,7 +374,7 @@ export function FireCard3D({
                       key={`warmup-${item.id}-${index}`}
                       className={[
                         'h-1.5 flex-1 rounded-full transition-colors duration-200',
-                        isActive ? 'bg-black dark:bg-[#CCFF00]' : 'bg-black/12 dark:bg-white/12',
+                        isActive ? 'bg-black dark:bg-[#E11D48]' : 'bg-black/12 dark:bg-white/12',
                       ].join(' ')}
                     />
                   );
@@ -337,26 +392,129 @@ export function FireCard3D({
       <AnimatePresence initial={false}>
         {!isDesktopCard && isOpen && (
           <motion.div
-            className="absolute inset-x-2 top-2 z-20"
+            className="absolute inset-x-2 top-2 bottom-2 z-20"
             initial={{ opacity: 0, y: 10, scale: 0.986 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.992 }}
             transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.58 }}
             style={{ willChange: 'transform, opacity' }}
           >
-            <div className="relative overflow-hidden rounded-[24px] border border-white/80 bg-white/70 p-2 sm:p-3 shadow-[0_32px_80px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-16px_32px_rgba(255,255,255,0.1)] backdrop-blur-[48px] backdrop-saturate-[220%] dark:border-white/[0.08] dark:bg-[rgba(10,10,10,0.75)] dark:shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-1px_0_rgba(0,0,0,0.5)]">
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] border border-white/80 bg-white/70 p-2 sm:p-3 shadow-[0_32px_80px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-16px_32px_rgba(255,255,255,0.1)] backdrop-blur-[48px] backdrop-saturate-[220%] dark:border-white/[0.08] dark:bg-[rgba(10,10,10,0.75)] dark:shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-1px_0_rgba(0,0,0,0.5)]">
               <div className="pointer-events-none absolute inset-0 rounded-[24px] bg-gradient-to-br from-white/90 via-white/40 to-transparent dark:from-white/10 dark:via-white/[0.02] dark:to-transparent" />
               <div className="pointer-events-none absolute inset-[1px] rounded-[23px] z-0 dark:hidden" style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }} />
               
-              <div className="relative z-10">
-              <div className="mb-2 sm:mb-3 rounded-[16px] bg-[#CCFF00] p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(204,255,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(130,156,0,0.4)] dark:shadow-[0_12px_32px_rgba(204,255,0,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(130,156,0,0.4)] border border-[#CCFF00]/10">
-                <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-black/60">Performance</div>
-                <div className="mt-0.5 text-[clamp(28px,8.2vw,46px)] font-black leading-[0.88] tracking-[-0.04em] text-black drop-shadow-sm">
+              <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+              <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
+              {!hideSignalChrome && (
+                <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/56 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/42 dark:shadow-[0_14px_30px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.1)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/62">
+                      {signalLabel}
+                    </div>
+                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/44">
+                      {signalContextLabel}
+                    </div>
+                  </div>
+                  <div className="mt-1.5 text-[16px] sm:text-[18px] font-black leading-[0.94] tracking-[-0.025em] text-foreground/95">
+                    {signalHeadline}
+                  </div>
+                  <div className="mt-1.5 text-[10px] sm:text-[11px] font-semibold leading-[1.35] text-foreground/62">
+                    {item.whyNow}
+                  </div>
+                </div>
+              )}
+
+              {primaryPattern && (
+                <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/50 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/38 dark:shadow-[0_14px_30px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.1)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/62">
+                      Pattern Proof
+                    </div>
+                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/42">
+                      {patternMatchCount == null ? '--' : `${Math.round(patternMatchCount)} winners`}
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {patternAverage != null && (
+                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
+                        Avg top {Math.round(patternAverage)}%
+                      </span>
+                    )}
+                    {patternFeedersCount != null && patternFeedersCount > 1 && (
+                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
+                        {Math.round(patternFeedersCount)} feeders
+                      </span>
+                    )}
+                    {patternAnchorGap != null && (
+                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
+                        Gap +{Math.round(patternAnchorGap)} pts
+                      </span>
+                    )}
+                    {patternRecentLift != null && patternRecentLift > 0 && (
+                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
+                        14d lift {patternRecentLift.toFixed(1)}x
+                      </span>
+                    )}
+                    {patternBaselineShare != null && (
+                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
+                        Baseline {Math.round(patternBaselineShare * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  {patternCueLabels.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {patternCueLabels.map((label) => (
+                        <span
+                          key={`${item.id}-${label}`}
+                          className="rounded-full border border-black/8 bg-white/62 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/12 dark:bg-white/10 dark:text-white/72"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {supportPosts.length > 0 && (
+                    <div className="mt-2.5">
+                      <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/48">
+                        Supporting Posts
+                      </div>
+                      <div className="hide-scrollbar mt-2 -mx-0.5 flex gap-2 overflow-x-auto pb-1">
+                        {supportPosts.map((post) => (
+                          <button
+                            key={`${item.id}-${post.postKey}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (post.postUrl) window.open(post.postUrl, '_blank', 'noreferrer');
+                            }}
+                            className="shrink-0 text-left"
+                          >
+                            <div className="h-20 w-16 overflow-hidden rounded-[12px] border border-white/55 bg-black/12 shadow-[0_8px_18px_rgba(0,0,0,0.18)] dark:border-white/12 dark:bg-white/8">
+                              {post.thumbnailUrl ? (
+                                <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="h-full w-full bg-black/12 dark:bg-white/8" />
+                              )}
+                            </div>
+                            <div className="mt-1 max-w-16 truncate text-[8px] font-black uppercase tracking-[0.13em] text-foreground/68 dark:text-white/70">
+                              @{(post.handle || 'feed').toUpperCase()}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="mb-2 sm:mb-3 rounded-[16px] bg-[#E11D48] p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] border border-[#E11D48]/10">
+                <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-white/72">Performance</div>
+                <div className="mt-0.5 text-[clamp(28px,8.2vw,46px)] font-black leading-[0.88] tracking-[-0.04em] text-white drop-shadow-sm">
                   {compact(value)} {bestMetric}
                 </div>
                 <div className="mt-1 flex items-end gap-2 text-[clamp(11px,3.3vw,19px)] font-black leading-none">
-                  <span className="text-black/60">{compact(baseline)} USUAL</span>
-                  <span className="text-black">{multiple == null ? '--' : multiple.toFixed(2)}× MULTIPLE</span>
+                  <span className="text-white/72">{compact(baseline)} USUAL</span>
+                  <span className="text-white">{multiple == null ? '--' : multiple.toFixed(2)}× MULTIPLE</span>
                 </div>
               </div>
 
@@ -433,7 +591,7 @@ export function FireCard3D({
                         <div className="flex items-center justify-between">
                           <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Trajectory</div>
                           <div className={`text-[8px] sm:text-[9px] font-bold uppercase tracking-[0.12em] ${
-                            delta != null && delta < 0 ? 'text-emerald-600 dark:text-[#CCFF00]'
+                            delta != null && delta < 0 ? 'text-emerald-600 dark:text-[#E11D48]'
                             : delta != null && delta > 0 ? 'text-orange-500 dark:text-[#ff8a65]'
                             : 'text-foreground/40'
                           }`}>
@@ -443,7 +601,7 @@ export function FireCard3D({
                         <div className="mt-1.5 flex items-end justify-between gap-3">
                           <div>
                             <div className={`text-[28px] sm:text-[32px] font-black leading-none tracking-[-0.04em] ${
-                              isPositiveShift ? 'text-foreground dark:text-[#CCFF00]' : 'text-foreground/95'
+                              isPositiveShift ? 'text-foreground dark:text-[#E11D48]' : 'text-foreground/95'
                             }`}>
                               {displayDeltaStr}
                             </div>
@@ -464,12 +622,15 @@ export function FireCard3D({
                     </div>
                   </>
                 )}
+              </motion.div>
+              </div>
 
                 <div className="col-span-12 mt-1 sm:mt-2">
                   <div
                     onClick={(event) => {
                       event.stopPropagation();
                       if (showPrimed && item.postUrl) {
+                        onBeforeOpenPost?.(item.id);
                         window.open(item.postUrl, '_blank', 'noreferrer');
                         setIsPrimed(false);
                       } else {
@@ -485,16 +646,15 @@ export function FireCard3D({
                       initial={{ y: '100%' }}
                       animate={{ y: showPrimed ? '0%' : '100%' }}
                       transition={{ duration: 0.3, ease: 'easeOut' }}
-                      className="absolute inset-0 bg-[#CCFF00] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)] z-0"
+                      className="absolute inset-0 bg-[#E11D48] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)] z-0"
                     />
                     <span 
-                      className={`relative z-10 text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${showPrimed ? 'text-black drop-shadow-sm' : 'text-[#CCFF00] drop-shadow-[0_0_8px_rgba(204,255,0,0.3)] dark:text-white dark:drop-shadow-none'}`}
+                      className={`relative z-10 text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${showPrimed ? 'text-black drop-shadow-sm' : 'text-[#E11D48] drop-shadow-[0_0_8px_rgba(225,29,72,0.3)] dark:text-white dark:drop-shadow-none'}`}
                     >
                       {showPrimed ? 'Tap To Open' : 'Open Post'}
                     </span>
                   </div>
                 </div>
-              </motion.div>
               </div>
             </div>
           </motion.div>

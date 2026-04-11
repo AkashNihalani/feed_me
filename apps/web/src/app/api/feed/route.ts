@@ -52,6 +52,16 @@ type InstagramProfileProbe = {
   error?: string;
 };
 
+type SupabaseAdminClient = ReturnType<typeof adminClient>;
+
+type MediaAssetCleanupRow = {
+  storage_bucket: string | null;
+  storage_path: string | null;
+};
+
+const STORAGE_DELETE_BATCH_SIZE = 100;
+const DB_FETCH_BATCH_SIZE = 1000;
+
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -63,6 +73,77 @@ function adminClient() {
   });
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function fetchPostKeysForFeederIds(sb: SupabaseAdminClient, feederIds: number[]) {
+  if (feederIds.length === 0) return [];
+
+  const postKeys: string[] = [];
+  for (const feederChunk of chunkArray(feederIds, 100)) {
+    for (let from = 0; ; from += DB_FETCH_BATCH_SIZE) {
+      const { data, error } = await sb
+        .from('posts')
+        .select('post_key')
+        .in('feeder_id', feederChunk)
+        .range(from, from + DB_FETCH_BATCH_SIZE - 1);
+
+      if (error) throw error;
+      const rows = (data || []) as Array<{ post_key: string | null }>;
+      for (const row of rows) {
+        if (row.post_key) postKeys.push(row.post_key);
+      }
+      if (rows.length < DB_FETCH_BATCH_SIZE) break;
+    }
+  }
+
+  return Array.from(new Set(postKeys));
+}
+
+async function purgeStoredMediaForPostKeys(sb: SupabaseAdminClient, postKeys: string[]) {
+  if (postKeys.length === 0) return;
+
+  const pathsByBucket = new Map<string, Set<string>>();
+  for (const postKeyChunk of chunkArray(postKeys, 500)) {
+    for (let from = 0; ; from += DB_FETCH_BATCH_SIZE) {
+      const { data, error } = await sb
+        .from('post_media_assets')
+        .select('storage_bucket,storage_path')
+        .in('post_key', postKeyChunk)
+        .range(from, from + DB_FETCH_BATCH_SIZE - 1);
+
+      if (error) throw error;
+      const rows = (data || []) as MediaAssetCleanupRow[];
+      for (const row of rows) {
+        const bucket = (row.storage_bucket || '').trim();
+        const path = (row.storage_path || '').trim();
+        if (!bucket || !path) continue;
+        const bucketPaths = pathsByBucket.get(bucket) || new Set<string>();
+        bucketPaths.add(path);
+        pathsByBucket.set(bucket, bucketPaths);
+      }
+      if (rows.length < DB_FETCH_BATCH_SIZE) break;
+    }
+  }
+
+  for (const [bucket, paths] of pathsByBucket.entries()) {
+    for (const pathBatch of chunkArray(Array.from(paths), STORAGE_DELETE_BATCH_SIZE)) {
+      const { error } = await sb.storage.from(bucket).remove(pathBatch);
+      if (error) throw error;
+    }
+  }
+}
+
+async function purgeStoredMediaForFeederIds(sb: SupabaseAdminClient, feederIds: number[]) {
+  const postKeys = await fetchPostKeysForFeederIds(sb, feederIds);
+  await purgeStoredMediaForPostKeys(sb, postKeys);
+}
+
 function normalizeHandle(raw: string) {
   return (raw || '').trim().replace(/^@+/, '').toLowerCase();
 }
@@ -71,6 +152,16 @@ function normalizeUrl(url: string | null | undefined) {
   if (!url) return null;
   const trimmed = String(url).trim();
   return trimmed ? trimmed : null;
+}
+
+function buildProfileImageProxyUrl(url: string | null | undefined) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return null;
+  const search = new URLSearchParams({
+    role: 'thumbnail',
+    url: normalized,
+  });
+  return `/api/media?${search.toString()}`;
 }
 
 function isBadInstagramImageUrl(url: string | null | undefined) {
@@ -335,7 +426,9 @@ async function getFeedBundle(userId: string) {
       return {
         handle: feeder.handle,
         isAnchor: feeder.role === 'anchor',
-        profilePicUrl: feeder.profile_pic_url && !feeder.profile_pic_url.includes('unavatar.io/instagram') ? feeder.profile_pic_url : null,
+        profilePicUrl: feeder.profile_pic_url && !feeder.profile_pic_url.includes('unavatar.io/instagram')
+          ? buildProfileImageProxyUrl(feeder.profile_pic_url)
+          : null,
         followerCount: feeder.follower_count,
         metrics: {
           likes: toMetricString(stats.likes),
@@ -572,11 +665,26 @@ export async function POST(request: NextRequest) {
         .single();
       if (feedErr || !feedRow) return NextResponse.json({ error: 'Feed not found' }, { status: 404 });
 
-      const { error } = await sb
+      const { data: feederRows, error: feederLookupErr } = await sb
         .from('feeders')
-        .update({ status: 'removed', role: 'standard' })
+        .select('id')
         .eq('feed_id', feedId)
         .eq('handle', handle);
+      if (feederLookupErr) throw feederLookupErr;
+
+      const feederIds = ((feederRows || []) as Array<{ id: number | string | null }>)
+        .map((row) => Number(row.id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      if (feederIds.length === 0) {
+        return NextResponse.json({ error: 'Feeder not found' }, { status: 404 });
+      }
+
+      await purgeStoredMediaForFeederIds(sb, feederIds);
+
+      const { error } = await sb
+        .from('feeders')
+        .delete()
+        .in('id', feederIds);
       if (error) throw error;
 
       const bundle = await getFeedBundle(user.id);
@@ -599,16 +707,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Feed not found' }, { status: 404 });
       }
 
-      const { error: feederErr } = await sb
+      const { data: feederRows, error: feederErr } = await sb
         .from('feeders')
-        .update({ status: 'removed', role: 'standard' })
-        .eq('feed_id', feedId)
-        .eq('status', 'active');
+        .select('id')
+        .eq('feed_id', feedId);
       if (feederErr) throw feederErr;
+
+      const feederIds = ((feederRows || []) as Array<{ id: number | string | null }>)
+        .map((row) => Number(row.id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      await purgeStoredMediaForFeederIds(sb, feederIds);
 
       const { error: deleteErr } = await sb
         .from('feeds')
-        .update({ status: 'archived' })
+        .delete()
         .eq('id', feedId)
         .eq('user_id', user.id);
       if (deleteErr) throw deleteErr;

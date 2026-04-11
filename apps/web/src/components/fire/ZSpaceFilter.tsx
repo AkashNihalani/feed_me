@@ -180,7 +180,7 @@ export default function ZSpaceFilter({
                         className={cn(
                           'relative flex items-center justify-center rounded-[18px] px-2 py-4 transition-colors duration-200',
                           isActive
-                            ? 'bg-black text-white shadow-[0_4px_16px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] dark:bg-[#CCFF00] dark:text-black dark:shadow-[0_4px_20px_rgba(204,255,0,0.2),inset_0_1px_2px_rgba(255,255,255,0.5)]'
+                            ? 'bg-black text-white shadow-[0_4px_16px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_4px_20px_rgba(225,29,72,0.2),inset_0_1px_2px_rgba(255,255,255,0.5)]'
                             : 'border border-black/5 bg-black/5 text-black/60 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/5 dark:bg-white/5 dark:text-white/50 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]',
                         )}
                       >
@@ -219,7 +219,7 @@ export default function ZSpaceFilter({
                             className={cn(
                               'flex min-w-0 flex-1 items-center justify-between rounded-[18px] px-4 py-3.5 text-left transition-colors duration-200',
                               isSelected
-                                ? 'border border-black/5 bg-white text-black shadow-[0_4px_16px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-black dark:text-[#CCFF00] dark:shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.05)]'
+                                ? 'border border-black/5 bg-white text-black shadow-[0_4px_16px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-black dark:text-[#E11D48] dark:shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.05)]'
                                 : 'text-black/60 dark:text-white/52',
                             )}
                           >
@@ -234,8 +234,8 @@ export default function ZSpaceFilter({
                             </div>
 
                             {isSelected && (
-                              <div className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/5 dark:bg-[#CCFF00]/10">
-                                <Check size={14} strokeWidth={4} className="text-black dark:text-[#CCFF00]" />
+                              <div className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/5 dark:bg-[#E11D48]/10">
+                                <Check size={14} strokeWidth={4} className="text-black dark:text-[#E11D48]" />
                               </div>
                             )}
                           </motion.button>
@@ -271,7 +271,7 @@ export default function ZSpaceFilter({
                                     className={cn(
                                       'rounded-[14px] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                                       isFeederSelected
-                                        ? 'bg-[#CCFF00] text-black shadow-[0_8px_18px_rgba(204,255,0,0.26),inset_0_1px_0_rgba(255,255,255,0.7)]'
+                                        ? 'bg-[#E11D48] text-white shadow-[0_8px_18px_rgba(225,29,72,0.26),inset_0_1px_0_rgba(255,255,255,0.7)]'
                                         : 'border border-black/6 bg-white/55 text-black/54 shadow-[0_2px_6px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/48 dark:shadow-[0_8px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]',
                                     )}
                                   >
@@ -302,7 +302,7 @@ export default function ZSpaceFilter({
                     className={cn(
                       'rounded-[16px] px-4 py-3 text-[11px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                       filters.selectedCheckpoints.length === 0
-                        ? 'bg-black text-white shadow-[0_4px_16px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] dark:bg-[#CCFF00] dark:text-black dark:shadow-[0_4px_20px_rgba(204,255,0,0.2),inset_0_1px_2px_rgba(255,255,255,0.5)]'
+                        ? 'bg-black text-white shadow-[0_4px_16px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_4px_20px_rgba(225,29,72,0.2),inset_0_1px_2px_rgba(255,255,255,0.5)]'
                         : 'border border-black/5 bg-black/5 text-black/56 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/5 dark:bg-white/5 dark:text-white/48 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]',
                     )}
                   >
@@ -320,7 +320,7 @@ export default function ZSpaceFilter({
                         className={cn(
                           'rounded-[16px] px-4 py-3 text-[11px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                           isSelected
-                            ? 'bg-black text-white shadow-[0_4px_16px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] dark:bg-[#CCFF00] dark:text-black dark:shadow-[0_4px_20px_rgba(204,255,0,0.2),inset_0_1px_2px_rgba(255,255,255,0.5)]'
+                            ? 'bg-black text-white shadow-[0_4px_16px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_4px_20px_rgba(225,29,72,0.2),inset_0_1px_2px_rgba(255,255,255,0.5)]'
                             : 'border border-black/5 bg-black/5 text-black/56 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/5 dark:bg-white/5 dark:text-white/48 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]',
                         )}
                       >
@@ -349,10 +349,10 @@ export default function ZSpaceFilter({
                   className={cn(
                     'group relative w-full overflow-hidden rounded-[24px] py-5',
                     'bg-black shadow-[0_8px_24px_rgba(0,0,0,0.2),inset_0_1px_2px_rgba(255,255,255,0.2)]',
-                    'dark:bg-[#CCFF00] dark:shadow-[0_8px_32px_rgba(204,255,0,0.25),inset_0_1px_2px_rgba(255,255,255,0.6)]',
+                    'dark:bg-[#E11D48] dark:shadow-[0_8px_32px_rgba(225,29,72,0.25),inset_0_1px_2px_rgba(255,255,255,0.6)]',
                   )}
                 >
-                  <span className="relative z-10 text-[16px] font-black uppercase tracking-[0.15em] text-white dark:text-black">
+                  <span className="relative z-10 text-[16px] font-black uppercase tracking-[0.15em] text-white">
                     Find Your Fire
                   </span>
                 </motion.button>

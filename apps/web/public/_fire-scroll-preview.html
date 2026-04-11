@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Feed Me — Fire Tab + Intelligence Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Space Grotesk', sans-serif; background: #0a0a0a; overflow-x: hidden; color: #fff; }
+
+  /* ═══ LAYOUT ═══ */
+  .preview-container {
+    display: flex; gap: 28px; justify-content: center; align-items: flex-start;
+    padding: 20px 16px 60px; flex-wrap: wrap;
+  }
+
+  /* ═══ PHONE FRAME ═══ */
+  .phone-wrap { position: relative; flex-shrink: 0; }
+  .phone-frame {
+    width: 375px; height: 780px;
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 0 0 3px #1a1a1a, 0 0 0 5px #111, 0 20px 60px rgba(0,0,0,0.7);
+  }
+  .phone-label {
+    text-align: center; font-size: 9px; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(255,255,255,0.3); margin-top: 12px;
+  }
+
+  /* ═══ APP SHELL ═══ */
+  .app { width: 100%; height: 100%; position: relative; overflow: hidden; }
+  .app.dark { background: #000; color: #fff; }
+  .app.light { background: #f5f5f7; color: #000; }
+
+  /* Mesh bg */
+  .app::before {
+    content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  }
+  .app.dark::before {
+    background:
+      radial-gradient(ellipse 80% 50% at 15% 10%, rgba(225,29,72,0.09) 0%, transparent 50%),
+      radial-gradient(ellipse 50% 40% at 85% 50%, rgba(225,29,72,0.05) 0%, transparent 45%);
+  }
+  .app.light::before {
+    background:
+      radial-gradient(ellipse 80% 50% at 15% 10%, rgba(225,29,72,0.05) 0%, transparent 50%),
+      radial-gradient(ellipse 50% 40% at 85% 50%, rgba(225,29,72,0.03) 0%, transparent 45%);
+  }
+
+  /* ═══ GLASS HEADER ═══ */
+  .fire-header {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+    padding: 44px 14px 10px;
+  }
+  .fire-header-bg {
+    position: absolute; inset: 0; z-index: -1;
+    border-radius: 0 0 26px 26px;
+  }
+  .dark .fire-header-bg {
+    background: rgba(6,6,6,0.68);
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.06); border-top: none;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);
+  }
+  .light .fire-header-bg {
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.8); border-top: none;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 8px 20px rgba(15,23,42,0.08);
+  }
+  .light .fire-header-bg::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 30%);
+  }
+
+  .h-title { font-size: 28px; font-weight: 900; letter-spacing: -0.04em; margin-bottom: 8px; }
+  .h-row { display: flex; gap: 4px; margin-bottom: 6px; align-items: center; }
+  .h-chip {
+    font-size: 8px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 9px; border-radius: 7px;
+  }
+  .h-chip.active { background: #E11D48; color: #fff; box-shadow: 0 2px 8px rgba(225,29,72,0.22); }
+  .dark .h-chip.inactive { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.3); }
+  .light .h-chip.inactive { background: rgba(0,0,0,0.05); color: rgba(0,0,0,0.35); }
+  .h-count { font-size: 9px; font-weight: 800; opacity: 0.35; letter-spacing: 0.06em; margin-left: auto; }
+
+  /* ═══ SCROLLING CARD GRID ═══ */
+  .card-scroll {
+    position: absolute; inset: 0; z-index: 1;
+    overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: 168px 8px 94px;
+  }
+  .card-scroll::-webkit-scrollbar { display: none; }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  /* ═══ FIRE CARD (thumbnail-based) ═══ */
+  .fire-card {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    aspect-ratio: 4/5;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+  .fire-card:hover { transform: scale(1.01); }
+
+  .fire-card img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover;
+  }
+
+  /* Gradient overlay on thumbnail */
+  .card-overlay {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.06) 40%, rgba(0,0,0,0.65) 100%),
+      radial-gradient(ellipse 40% 30% at 18% 8%, rgba(0,0,0,0.25), transparent);
+    z-index: 1;
+  }
+
+  /* Percentile badge (top-left) */
+  .card-pct {
+    position: absolute; top: 10px; left: 12px; z-index: 2;
+    font-size: 36px; font-weight: 900; letter-spacing: -0.04em; line-height: 0.85;
+    color: #fff;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .card-pct sup { font-size: 14px; font-weight: 800; vertical-align: super; opacity: 0.7; }
+
+  /* Signal badge (top-right) */
+  .card-signal {
+    position: absolute; top: 10px; right: 10px; z-index: 2;
+    font-size: 7px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 4px 8px; border-radius: 6px;
+    background: rgba(0,0,0,0.36); border: 1px solid rgba(255,255,255,0.28);
+    backdrop-filter: blur(14px);
+    color: rgba(255,255,255,0.85);
+  }
+
+  /* Bottom metric bar */
+  .card-bottom {
+    position: absolute; bottom: 8px; left: 8px; right: 8px; z-index: 2;
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.2);
+    backdrop-filter: blur(18px);
+  }
+  .card-handle {
+    font-size: 8px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(255,255,255,0.9);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-meta-chip {
+    font-size: 7px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);
+  }
+
+  /* Signal dot */
+  .card-dot {
+    position: absolute; top: 14px; right: auto; left: auto; z-index: 3;
+    width: 6px; height: 6px; border-radius: 50%; background: #E11D48;
+    box-shadow: 0 0 8px rgba(225,29,72,0.5);
+  }
+  .fire-card .card-dot { top: auto; bottom: 52px; left: 12px; }
+
+  /* ═══ BOTTOM NAV ═══ */
+  .bottom-nav {
+    position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 80;
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 8px 0;
+  }
+  .dark .bottom-nav {
+    background: rgba(6,6,6,0.65);
+    backdrop-filter: blur(48px) saturate(200%);
+    border: 1px solid rgba(255,255,255,0.07);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);
+  }
+  .light .bottom-nav {
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(48px) saturate(200%);
+    border: 1px solid rgba(255,255,255,0.8);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 8px 20px rgba(15,23,42,0.08);
+  }
+  .nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 7px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 5px 18px; border-radius: 12px;
+  }
+  .nav-icon { font-size: 16px; line-height: 1; }
+  .nav-item.active {
+    background: #E11D48; color: #fff;
+    box-shadow: 0 4px 14px rgba(225,29,72,0.3), 0 1px 2px rgba(0,0,0,0.1);
+  }
+  .dark .nav-item:not(.active) { color: rgba(255,255,255,0.28); }
+  .light .nav-item:not(.active) { color: rgba(0,0,0,0.3); }
+
+  /* ═══ INTELLIGENCE DIALOG ═══ */
+  .intel-frame {
+    width: 520px; flex-shrink: 0;
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: 0 0 0 3px #1a1a1a, 0 20px 60px rgba(0,0,0,0.7);
+  }
+  .intel-dialog {
+    display: flex; height: 620px;
+  }
+
+  /* Left panel - thumbnail */
+  .intel-left {
+    width: 220px; flex-shrink: 0; position: relative; overflow: hidden;
+  }
+  .intel-left img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  }
+  .intel-left-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.92) 100%);
+    z-index: 1;
+  }
+  .intel-left-content {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+    padding: 16px;
+  }
+  .intel-signal-badge {
+    display: inline-flex; font-size: 7px; font-weight: 800; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 3px 7px; border-radius: 5px;
+    background: #E11D48; color: #fff; margin-bottom: 8px;
+  }
+  .intel-big-value {
+    font-size: 34px; font-weight: 900; letter-spacing: -0.04em; color: #fff; line-height: 1;
+  }
+  .intel-big-label { font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.45); margin-top: 2px; }
+  .intel-handle-sm { font-size: 9px; font-weight: 800; color: rgba(255,255,255,0.7); margin-bottom: 4px; }
+  .intel-meta-row { display: flex; gap: 4px; margin-bottom: 10px; }
+  .intel-meta-chip {
+    font-size: 7px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6);
+  }
+
+  /* Right panel */
+  .intel-right {
+    flex: 1; overflow-y: auto; position: relative;
+  }
+  .intel-right::-webkit-scrollbar { display: none; }
+  .dark .intel-right { background: rgba(10,10,10,0.92); }
+  .light .intel-right { background: rgba(250,250,252,0.95); }
+
+  /* Blurred thumbnail behind right panel */
+  .intel-right-blur {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    filter: blur(60px); opacity: 0.12;
+  }
+  .intel-right-blur img { width: 100%; height: 100%; object-fit: cover; }
+
+  .intel-right-content { position: relative; z-index: 1; padding: 20px 18px; }
+
+  .intel-section-tag {
+    font-size: 8px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase;
+    opacity: 0.4; margin-bottom: 6px;
+  }
+  .intel-title { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 6px; }
+  .dark .intel-subtitle { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.5); line-height: 1.5; margin-bottom: 16px; }
+  .light .intel-subtitle { font-size: 11px; font-weight: 600; color: rgba(0,0,0,0.5); line-height: 1.5; margin-bottom: 16px; }
+
+  /* Hero metric box */
+  .hero-metric-box {
+    background: #E11D48;
+    border-radius: 16px; padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 24px rgba(225,29,72,0.25);
+  }
+  .hero-metric-label { font-size: 8px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+  .hero-metric-row { display: flex; align-items: baseline; justify-content: space-between; }
+  .hero-metric-value { font-size: 36px; font-weight: 900; letter-spacing: -0.04em; color: #fff; }
+  .hero-metric-mult { font-size: 24px; font-weight: 900; letter-spacing: -0.03em; color: rgba(255,255,255,0.85); }
+  .hero-metric-sub { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.45); text-align: right; }
+
+  /* Supporting metrics */
+  .metric-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-radius: 12px; margin-bottom: 6px;
+  }
+  .dark .metric-row { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); }
+  .light .metric-row { background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.06); }
+  .metric-label { font-size: 10px; font-weight: 700; opacity: 0.6; }
+  .metric-value { font-size: 14px; font-weight: 900; letter-spacing: -0.02em; }
+  .metric-mult { font-size: 11px; font-weight: 800; opacity: 0.5; margin-left: 6px; }
+
+  /* Pattern alert */
+  .pattern-box {
+    border-radius: 14px; padding: 12px; margin-bottom: 12px;
+  }
+  .dark .pattern-box { border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); }
+  .light .pattern-box { border: 1px solid rgba(0,0,0,0.06); background: rgba(0,0,0,0.02); }
+  .pattern-name { font-size: 11px; font-weight: 900; letter-spacing: 0.02em; margin-bottom: 4px; }
+  .pattern-cue { font-size: 9px; font-weight: 600; opacity: 0.5; line-height: 1.4; }
+  .pattern-badges { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+  .pattern-badge {
+    font-size: 7px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .dark .pattern-badge { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); }
+  .light .pattern-badge { background: rgba(0,0,0,0.05); color: rgba(0,0,0,0.45); }
+  .pattern-badge.rose { background: rgba(225,29,72,0.12); color: #E11D48; }
+
+  /* Divider */
+  .intel-divider { height: 1px; margin: 14px 0; }
+  .dark .intel-divider { background: rgba(255,255,255,0.06); }
+  .light .intel-divider { background: rgba(0,0,0,0.06); }
+
+  /* Trajectory */
+  .traj-box { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  .traj-delta { font-size: 28px; font-weight: 900; letter-spacing: -0.03em; color: #E11D48; }
+  .traj-label { font-size: 9px; font-weight: 700; opacity: 0.45; }
+  .traj-current { font-size: 14px; font-weight: 900; }
+
+  /* Open post CTA */
+  .open-post-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 12px;
+    background: #E11D48; color: #fff;
+    border: none; border-radius: 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(225,29,72,0.2);
+    margin-top: 8px;
+  }
+
+  /* ═══ TOGGLE ═══ */
+  .toggle-bar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; z-index: 200;
+  }
+  .toggle-btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 8px 16px; border-radius: 10px; border: none; cursor: pointer;
+  }
+
+  /* Green override */
+  .green .h-chip.active { background: #E11D48 !important; color: #000 !important; box-shadow: 0 2px 8px rgba(225,29,72,0.22) !important; }
+  .green .nav-item.active { background: #E11D48 !important; color: #000 !important; box-shadow: 0 4px 14px rgba(225,29,72,0.3) !important; }
+  .green .hero-metric-box { background: #E11D48 !important; box-shadow: 0 8px 24px rgba(225,29,72,0.25) !important; }
+  .green .hero-metric-value, .green .hero-metric-label, .green .hero-metric-mult, .green .hero-metric-sub { color: #000 !important; }
+  .green .hero-metric-label { color: rgba(0,0,0,0.4) !important; }
+  .green .hero-metric-sub { color: rgba(0,0,0,0.45) !important; }
+  .green .intel-signal-badge { background: #E11D48 !important; color: #000 !important; }
+  .green .open-post-btn { background: #E11D48 !important; color: #000 !important; box-shadow: 0 8px 20px rgba(225,29,72,0.2) !important; }
+  .green .card-dot { background: #E11D48 !important; box-shadow: 0 0 8px rgba(225,29,72,0.5) !important; }
+  .green .pattern-badge.rose { background: rgba(225,29,72,0.14) !important; color: #E11D48 !important; }
+  .green .traj-delta { color: #E11D48 !important; }
+</style>
+</head>
+<body>
+
+<div class="preview-container">
+
+  <!-- ═══ PHONE: Dark Fire Tab ═══ -->
+  <div class="phone-wrap">
+    <div class="phone-frame">
+      <div class="app dark" id="phone-dark">
+        <!-- Glass header -->
+        <div class="fire-header">
+          <div class="fire-header-bg"></div>
+          <div class="h-title">FIRE</div>
+          <div class="h-row">
+            <div class="h-chip active">D1</div>
+            <div class="h-chip inactive">D3</div>
+            <div class="h-chip inactive">D7</div>
+            <div class="h-chip inactive">D21</div>
+            <div class="h-count">127 signals</div>
+          </div>
+          <div class="h-row">
+            <div class="h-chip active">Top 10</div>
+            <div class="h-chip inactive">Top 25</div>
+            <div class="h-chip inactive">All</div>
+            <div class="h-chip inactive">Pctl ↕</div>
+          </div>
+        </div>
+
+        <!-- Scrolling card grid -->
+        <div class="card-scroll" id="scroll-dark">
+          <div class="card-grid" id="grid-dark"></div>
+        </div>
+
+        <!-- Bottom nav -->
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">◫</div>Feed</div>
+          <div class="nav-item active"><div class="nav-icon">🔥</div>Fire</div>
+          <div class="nav-item"><div class="nav-icon">₹</div>Fund</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">Dark · Fire Tab Scroll</div>
+  </div>
+
+  <!-- ═══ PHONE: Light Fire Tab ═══ -->
+  <div class="phone-wrap">
+    <div class="phone-frame">
+      <div class="app light" id="phone-light">
+        <div class="fire-header">
+          <div class="fire-header-bg"></div>
+          <div class="h-title">FIRE</div>
+          <div class="h-row">
+            <div class="h-chip active">D1</div>
+            <div class="h-chip inactive">D3</div>
+            <div class="h-chip inactive">D7</div>
+            <div class="h-chip inactive">D21</div>
+            <div class="h-count">127 signals</div>
+          </div>
+          <div class="h-row">
+            <div class="h-chip active">Top 10</div>
+            <div class="h-chip inactive">Top 25</div>
+            <div class="h-chip inactive">All</div>
+            <div class="h-chip inactive">Pctl ↕</div>
+          </div>
+        </div>
+
+        <div class="card-scroll" id="scroll-light">
+          <div class="card-grid" id="grid-light"></div>
+        </div>
+
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">◫</div>Feed</div>
+          <div class="nav-item active"><div class="nav-icon">🔥</div>Fire</div>
+          <div class="nav-item"><div class="nav-icon">₹</div>Fund</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">Light · Fire Tab Scroll</div>
+  </div>
+
+  <!-- ═══ INTELLIGENCE DIALOG ═══ -->
+  <div class="phone-wrap">
+    <div class="intel-frame">
+      <div class="intel-dialog" id="intel-wrap">
+        <!-- Left: Thumbnail -->
+        <div class="intel-left">
+          <img src="https://picsum.photos/seed/intel1/440/900" alt="" />
+          <div class="intel-left-overlay"></div>
+          <div class="intel-left-content">
+            <div class="intel-signal-badge">Cross Signal</div>
+            <div class="intel-handle-sm">@designhustler</div>
+            <div class="intel-meta-row">
+              <div class="intel-meta-chip">Reel</div>
+              <div class="intel-meta-chip">D1</div>
+              <div class="intel-meta-chip">Views</div>
+            </div>
+            <div class="intel-big-value">2.4M</div>
+            <div class="intel-big-label">Total Views</div>
+          </div>
+        </div>
+
+        <!-- Right: Intelligence -->
+        <div class="intel-right dark">
+          <div class="intel-right-blur"><img src="https://picsum.photos/seed/intel1/440/900" alt="" /></div>
+          <div class="intel-right-content">
+            <div class="intel-section-tag">Intelligence Window</div>
+            <div class="intel-title">Reel spiking above 94th percentile in first 18 hours</div>
+            <div class="intel-subtitle">This creator's reels typically settle around P62 by D3. Early velocity suggests 2-3x above baseline performance.</div>
+
+            <!-- Pattern alert -->
+            <div class="pattern-box">
+              <div class="pattern-name">Weekend Reel Surge</div>
+              <div class="pattern-cue">Reels posted Sat 6-9pm IST by lifestyle creators in this feed consistently outperform weekday posts by 2.1x</div>
+              <div class="pattern-badges">
+                <div class="pattern-badge rose">3 triggers</div>
+                <div class="pattern-badge">Avg P88</div>
+                <div class="pattern-badge">4 feeders</div>
+              </div>
+            </div>
+
+            <!-- Hero metric -->
+            <div class="hero-metric-box">
+              <div class="hero-metric-label">Hero Metric</div>
+              <div class="hero-metric-row">
+                <div class="hero-metric-value">2.4M</div>
+                <div>
+                  <div class="hero-metric-mult">4.2x</div>
+                  <div class="hero-metric-sub">vs. baseline</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Supporting metrics -->
+            <div class="intel-section-tag" style="margin-top:4px;">Supporting Metrics · 3</div>
+            <div class="metric-row">
+              <div><div class="metric-label">Likes</div></div>
+              <div style="display:flex;align-items:baseline;"><div class="metric-value">186K</div><div class="metric-mult">2.8x</div></div>
+            </div>
+            <div class="metric-row">
+              <div><div class="metric-label">Comments</div></div>
+              <div style="display:flex;align-items:baseline;"><div class="metric-value">4.2K</div><div class="metric-mult">3.1x</div></div>
+            </div>
+            <div class="metric-row">
+              <div><div class="metric-label">Shares</div></div>
+              <div style="display:flex;align-items:baseline;"><div class="metric-value">12.8K</div><div class="metric-mult">5.4x</div></div>
+            </div>
+
+            <div class="intel-divider"></div>
+
+            <!-- Trajectory -->
+            <div class="intel-section-tag">Trajectory</div>
+            <div class="traj-box">
+              <div class="traj-delta">+32</div>
+              <div>
+                <div class="traj-current">P94 <span style="opacity:0.4;font-size:10px;">current</span></div>
+                <div class="traj-label">Improving rapidly — up from P62 baseline</div>
+              </div>
+            </div>
+
+            <!-- CTA -->
+            <button class="open-post-btn">Open Post ↗</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">Intelligence Dialog · Dark</div>
+  </div>
+
+</div>
+
+<!-- Toggle -->
+<div class="toggle-bar">
+  <button class="toggle-btn" style="background:#E11D48;color:#fff;" onclick="setAccent('rose')">Electric Rose</button>
+  <button class="toggle-btn" style="background:#E11D48;color:#fff;" onclick="setAccent('green')">Brand Rose</button>
+</div>
+
+<script>
+  // Thumbnail URLs using picsum with seeds for consistency
+  const cards = [
+    { pct: 94, handle: 'designhustler', signal: 'CROSS', media: 'REEL', views: '2.4M', hasSignal: true, seed: 'fm1' },
+    { pct: 91, handle: 'techfounder', signal: 'OWN', media: 'CAROUSEL', views: '890K', hasSignal: true, seed: 'fm2' },
+    { pct: 88, handle: 'minimal.studio', signal: null, media: 'REEL', views: '1.1M', hasSignal: false, seed: 'fm3' },
+    { pct: 76, handle: 'growthmarketer', signal: null, media: 'IMAGE', views: '340K', hasSignal: false, seed: 'fm4' },
+    { pct: 95, handle: 'uxcollective', signal: 'ANCHOR', media: 'REEL', views: '5.2M', hasSignal: true, seed: 'fm5' },
+    { pct: 68, handle: 'saas_playbook', signal: null, media: 'CAROUSEL', views: '210K', hasSignal: false, seed: 'fm6' },
+    { pct: 89, handle: 'indie.maker', signal: 'CROSS', media: 'REEL', views: '1.8M', hasSignal: true, seed: 'fm7' },
+    { pct: 72, handle: 'contentcreator', signal: null, media: 'IMAGE', views: '440K', hasSignal: false, seed: 'fm8' },
+    { pct: 92, handle: 'brandbuilder', signal: 'OWN', media: 'REEL', views: '3.1M', hasSignal: true, seed: 'fm9' },
+    { pct: 65, handle: 'startup.daily', signal: null, media: 'POST', views: '180K', hasSignal: false, seed: 'fm10' },
+  ];
+
+  function renderCards(containerId) {
+    const grid = document.getElementById(containerId);
+    grid.innerHTML = '';
+    cards.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'fire-card';
+      card.innerHTML = `
+        <img src="https://picsum.photos/seed/${c.seed}/400/500" alt="" loading="lazy" />
+        <div class="card-overlay"></div>
+        <div class="card-pct">${c.pct}<sup>%</sup></div>
+        ${c.signal ? `<div class="card-signal">${c.signal}</div>` : ''}
+        ${c.hasSignal ? '<div class="card-dot"></div>' : ''}
+        <div class="card-bottom">
+          <div class="card-handle">@${c.handle}</div>
+          <div class="card-meta-chip">${c.media}</div>
+          <div class="card-meta-chip">${c.views}</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  renderCards('grid-dark');
+  renderCards('grid-light');
+
+  // Auto scroll
+  function autoScroll(el, speed) {
+    let pos = 0, dir = 1;
+    function step() {
+      const max = el.scrollHeight - el.clientHeight;
+      pos += dir * speed;
+      if (pos >= max - 5) dir = -1;
+      if (pos <= 0) dir = 1;
+      el.scrollTop = pos;
+      requestAnimationFrame(step);
+    }
+    step();
+  }
+  setTimeout(() => {
+    autoScroll(document.getElementById('scroll-dark'), 0.35);
+    autoScroll(document.getElementById('scroll-light'), 0.3);
+  }, 800);
+
+  function setAccent(type) {
+    document.querySelectorAll('.app, .intel-dialog').forEach(el => {
+      el.classList.toggle('green', type === 'green');
+    });
+  }
+</script>
+
+</body>
+</html>
