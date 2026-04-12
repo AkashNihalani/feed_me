@@ -176,6 +176,47 @@ function toMetricString(value: number) {
   return String(Math.max(0, Math.floor(value)));
 }
 
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, numeric: string) => String.fromCodePoint(parseInt(numeric, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractMetaContent(html: string, property: string) {
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const propertyFirst = new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=(["'])(.*?)\\1`, 'i').exec(html);
+  if (propertyFirst?.[2]) return decodeHtmlEntities(propertyFirst[2]);
+  const contentFirst = new RegExp(`<meta[^>]+content=(["'])(.*?)\\1[^>]+property=["']${escaped}["']`, 'i').exec(html);
+  return contentFirst?.[2] ? decodeHtmlEntities(contentFirst[2]) : null;
+}
+
+function extractCanonicalHandle(html: string) {
+  const canonical = /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i.exec(html)?.[1];
+  if (!canonical) return null;
+  try {
+    const parsed = new URL(decodeHtmlEntities(canonical));
+    return parsed.pathname.split('/').filter(Boolean)[0]?.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
+function parseFollowerCountText(value: string | null) {
+  if (!value) return null;
+  const match = /([\d,.]+)\s*([kmb])?\s+followers/i.exec(value);
+  if (!match) return null;
+  const amount = Number(match[1].replace(/,/g, ''));
+  if (!Number.isFinite(amount)) return null;
+  const suffix = (match[2] || '').toLowerCase();
+  const multiplier = suffix === 'k' ? 1_000 : suffix === 'm' ? 1_000_000 : suffix === 'b' ? 1_000_000_000 : 1;
+  return Math.max(0, Math.round(amount * multiplier));
+}
+
 function parseIsoTime(value: string | null | undefined) {
   if (!value) return NaN;
   return Date.parse(value);
@@ -237,10 +278,46 @@ async function fetchInstagramWebProfile(handle: string): Promise<InstagramProfil
   }
 }
 
+async function fetchInstagramPageProfile(handle: string): Promise<InstagramProfileProbe | null> {
+  try {
+    const res = await fetch(`https://www.instagram.com/${encodeURIComponent(handle)}/`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'user-agent': 'Mozilla/5.0',
+        accept: 'text/html,application/xhtml+xml',
+      },
+    });
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    const canonicalHandle = extractCanonicalHandle(html);
+    const title = extractMetaContent(html, 'og:title');
+    const description = extractMetaContent(html, 'og:description');
+    if (
+      canonicalHandle !== handle.toLowerCase() &&
+      !String(title || '').toLowerCase().includes(`@${handle.toLowerCase()}`)
+    ) {
+      return { ok: false, profilePicUrl: null, followerCount: null, error: 'Handle verification failed' };
+    }
+
+    const image = normalizeUrl(extractMetaContent(html, 'og:image'));
+    return {
+      ok: true,
+      profilePicUrl: isBadInstagramImageUrl(image) ? null : image,
+      followerCount: parseFollowerCountText(description),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function probeInstagramHandleQuick(handle: string): Promise<InstagramProfileProbe> {
   const webProfile = await fetchInstagramWebProfile(handle);
   if (webProfile?.ok) return webProfile;
-  return webProfile || { ok: false, profilePicUrl: null, followerCount: null, error: 'Profile probe unavailable' };
+  const pageProfile = await fetchInstagramPageProfile(handle);
+  if (pageProfile?.ok) return pageProfile;
+  return pageProfile || webProfile || { ok: false, profilePicUrl: null, followerCount: null, error: 'Profile probe unavailable' };
 }
 
 

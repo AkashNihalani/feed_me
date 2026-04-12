@@ -338,8 +338,51 @@ html.fm-fire-root-scroll body {
   overscroll-behavior-y: contain;
 }
 
+html.fm-feed-root-scroll {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  scroll-behavior: auto;
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: calc(var(--fm-feed-header-height, 188px) + 22px);
+  scroll-padding-bottom: calc(var(--fm-feed-bottom-clearance, 120px) + env(safe-area-inset-bottom) + 14px);
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.fm-feed-root-scroll body,
+html.fm-feed-root-scroll body > main {
+  min-height: 100lvh;
+}
+
+html.fm-feed-root-scroll body {
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: calc(var(--fm-feed-header-height, 188px) + 22px);
+  scroll-padding-bottom: calc(var(--fm-feed-bottom-clearance, 120px) + env(safe-area-inset-bottom) + 14px);
+  overscroll-behavior-y: contain;
+}
+
 .fm-mobile-browser-immersive .fm-feed-immersive-panel {
   min-height: 0;
+}
+
+.fm-feed-detail-scroll {
+  --fm-feed-stack-gap: 12px;
+  --fm-mobile-detail-header-offset: calc(var(--fm-feed-header-height, 204px) + 22px);
+  --fm-feed-mobile-section-height: calc(var(--fm-app-height, 100dvh) - var(--fm-mobile-detail-header-offset) - var(--fm-feed-bottom-clearance, 120px) - env(safe-area-inset-bottom) - 8px);
+}
+
+@media (min-width: 640px) {
+  .fm-feed-detail-scroll {
+    --fm-feed-stack-gap: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .fm-feed-detail-scroll {
+    --fm-mobile-detail-header-offset: 148px;
+    --fm-feed-mobile-section-height: auto;
+  }
 }
 
 .fm-app-shell {

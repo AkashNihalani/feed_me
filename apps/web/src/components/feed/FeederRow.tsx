@@ -32,11 +32,11 @@ export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, on
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      initial={{ opacity: 0, scale: 0.88 }}
       animate={{ opacity: 1, scale: 1, y: 0, zIndex: isAnchor ? 50 : 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
+      exit={{ opacity: 0, scale: 0.88 }}
       whileTap={{ scale: 0.985 }}
-      transition={{ layout: { duration: 0.28, type: 'spring', stiffness: 220, damping: 24 } }}
+      transition={{ type: 'spring', stiffness: 300, damping: 26, mass: 0.8, layout: { type: 'spring', stiffness: 300, damping: 26, mass: 0.8 } }}
       className={cn(
         'fm-depth-glass group relative flex flex-col justify-between overflow-hidden rounded-[22px] p-4',
         isAnchor && 'ring-1 ring-[#E11D48]/35'

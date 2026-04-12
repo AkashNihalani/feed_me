@@ -193,9 +193,11 @@ export function FireCard3D({
       }}
       className={isDesktopCard
         ? 'relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left fm-depth-glass'
-        : 'relative block w-full aspect-[4/5] max-h-[78svh] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:max-h-none sm:rounded-[32px]'}
+        : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:rounded-[32px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
+        maxHeight: isDesktopCard ? undefined : 'var(--fire-card-max-height, 78svh)',
+        aspectRatio: isDesktopCard ? undefined : 'var(--fire-card-aspect, 4 / 5)',
         boxShadow: isDesktopCard
           ? highlighted
             ? '0 24px 46px rgba(0,0,0,0.34)'
@@ -320,40 +322,56 @@ export function FireCard3D({
         {isLocked && warmupGate && (
           <motion.div
             className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4 sm:px-5"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 28, mass: 0.7 }}
           >
             <motion.div
               animate={lockControls}
               className={[
-                'w-full max-w-[240px] rounded-[24px] border px-4 py-4 text-center backdrop-blur-[20px]',
-                'border-white/80 bg-white/[0.76] shadow-[0_18px_38px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.92)]',
-                'dark:border-white/[0.1] dark:bg-[rgba(8,8,8,0.62)] dark:shadow-[0_18px_44px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.08)]',
+                'w-full max-w-[240px] rounded-[24px] border px-4 py-4 text-center',
+                /* Light: frosted white glass — image bleeds through softly */
+                'border-white/60 bg-white/52 backdrop-blur-[16px] backdrop-saturate-[160%]',
+                'shadow-[0_18px_40px_rgba(0,0,0,0.10),0_1px_0_rgba(255,255,255,0.88)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
+                /* Dark: deep translucent black — image bleeds through with depth */
+                'dark:border-white/[0.08] dark:bg-[rgba(6,6,6,0.52)] dark:backdrop-blur-[16px] dark:backdrop-saturate-[140%]',
+                'dark:shadow-[0_20px_48px_rgba(0,0,0,0.52),0_1px_0_rgba(255,255,255,0.06)_inset,0_-1px_0_rgba(0,0,0,0.5)_inset]',
               ].join(' ')}
             >
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-black/10 bg-black/[0.04] dark:border-[#E11D48]/28 dark:bg-[#E11D48]/10">
-                <Lock className="h-5 w-5 text-black dark:text-[#E11D48]" strokeWidth={2.4} />
-              </div>
+              {/* Lock icon with breathing pulse */}
+              <motion.div
+                animate={{ scale: [1, 1.06, 1], opacity: [0.85, 1, 0.85] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+                className={[
+                  'mx-auto flex h-12 w-12 items-center justify-center rounded-full',
+                  'border border-[#E11D48]/30 bg-[#E11D48]/12',
+                  'shadow-[0_8px_22px_rgba(225,29,72,0.18),inset_0_1px_0_rgba(255,255,255,0.7)]',
+                  'dark:border-[#E11D48]/22 dark:bg-[#E11D48]/10',
+                  'dark:shadow-[0_8px_26px_rgba(225,29,72,0.14),inset_0_1px_0_rgba(255,255,255,0.06)]',
+                ].join(' ')}
+              >
+                <Lock className="h-5 w-5 text-[#E11D48]" strokeWidth={2.4} />
+              </motion.div>
 
+              {/* Handle · Media · Checkpoint pill */}
               <div className="mt-3 flex justify-center">
                 <div
                   className={[
                     'inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5',
-                    'border-black/8 bg-black/[0.035] text-black/58',
-                    'dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/54',
+                    'border-black/8 bg-black/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]',
+                    'dark:border-white/[0.06] dark:bg-white/[0.05] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]',
                   ].join(' ')}
                 >
-                  <span className="max-w-[102px] truncate text-[8px] font-black uppercase tracking-[0.14em] text-black/74 dark:text-white/78">
+                  <span className="max-w-[102px] truncate text-[8px] font-black uppercase tracking-[0.14em] text-black/68 dark:text-white/72">
                     {lockedHandle}
                   </span>
-                  <span className="h-1 w-1 shrink-0 rounded-full bg-black/18 dark:bg-white/18" />
-                  <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em]">
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-[#E11D48]/40 dark:bg-[#E11D48]/30" />
+                  <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em] text-black/50 dark:text-white/52">
                     {lockedMediaType}
                   </span>
-                  <span className="h-1 w-1 shrink-0 rounded-full bg-black/18 dark:bg-white/18" />
-                  <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em]">
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-[#E11D48]/40 dark:bg-[#E11D48]/30" />
+                  <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em] text-black/50 dark:text-white/52">
                     {cp}
                   </span>
                 </div>
@@ -362,10 +380,11 @@ export function FireCard3D({
               <div className="mt-3 text-[18px] font-black leading-[0.92] tracking-[-0.03em] text-black dark:text-white">
                 {warmupGate.headline}
               </div>
-              <div className="mt-1 text-[11px] font-semibold leading-[1.25] text-black/62 dark:text-white/58">
+              <div className="mt-1 text-[11px] font-semibold leading-[1.25] text-black/55 dark:text-white/52">
                 {warmupGate.body}
               </div>
 
+              {/* Progress track */}
               <div className="mt-4 flex items-center gap-1.5">
                 {Array.from({ length: warmupGate.required }, (_, index) => {
                   const isActive = index < warmupProgress;
@@ -374,14 +393,16 @@ export function FireCard3D({
                       key={`warmup-${item.id}-${index}`}
                       className={[
                         'h-1.5 flex-1 rounded-full transition-colors duration-200',
-                        isActive ? 'bg-black dark:bg-[#E11D48]' : 'bg-black/12 dark:bg-white/12',
+                        isActive
+                          ? 'bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.28)]'
+                          : 'bg-black/10 dark:bg-white/10',
                       ].join(' ')}
                     />
                   );
                 })}
               </div>
 
-              <div className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-black/62 dark:text-white/60">
+              <div className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-black/48 dark:text-white/44">
                 {warmupGate.progressLabel}
               </div>
             </motion.div>

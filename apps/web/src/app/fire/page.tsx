@@ -34,10 +34,10 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v2';
 const FIRE_STATE_CACHE_KEY = 'fire:state:v3';
-const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v3';
+const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v4';
 const FIRE_CACHE_TTL = 2 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
-const WARMUP_REQUIRED = 5;
+const WARMUP_REQUIRED = 3;
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;

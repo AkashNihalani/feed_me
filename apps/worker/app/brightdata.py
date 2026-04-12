@@ -205,6 +205,38 @@ def _build_children(photo_urls: list[str], video_urls: list[str]) -> list[dict[s
     return children
 
 
+def _first_present(item: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in item and item.get(key) is not None and item.get(key) != "":
+            return item.get(key)
+    return None
+
+
+def _profile_probe_from_items(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    profile_keys = (
+        "followers",
+        "followers_count",
+        "profile_image_link",
+        "profile_pic_url",
+        "profile_picture",
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if any(key in item and item.get(key) is not None and item.get(key) != "" for key in profile_keys):
+            return {key: item.get(key) for key in profile_keys if key in item}
+    return None
+
+
+def _normalized_has_profile(item: dict[str, Any]) -> bool:
+    owner = item.get("owner") if isinstance(item.get("owner"), dict) else {}
+    return (
+        bool(item.get("ownerProfilePicUrl") or owner.get("profilePicUrl"))
+        or item.get("ownerFollowersCount") is not None
+        or owner.get("followersCount") is not None
+    )
+
+
 def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
     photo_urls = _extract_media_candidates(item, "photos", "image_urls", "image_url", "display_url")
     video_urls = _extract_media_candidates(item, "videos", "video_urls", "video_url")
@@ -219,7 +251,7 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
         or item.get("profile_picture")
         or ""
     ).strip() or None
-    follower_count = item.get("followers") or item.get("followers_count")
+    follower_count = _first_present(item, "followers", "followers_count")
     related_handles = _extract_related_handles(item)
     media_display_url = photo_urls[0] if photo_urls else ""
     media_thumbnail_url = photo_urls[0] if photo_urls else ""
@@ -346,6 +378,10 @@ def _flatten_result(payload: Any) -> list[dict[str, Any]]:
             merged = dict(parent)
             merged.update(post)
             rows.append(merged)
+        if rows:
+            return rows
+        if any(value is not None and value != "" for value in parent.values()):
+            return [parent]
         return rows
 
     nested = payload.get("data") or payload.get("items") or payload.get("records")
@@ -467,13 +503,17 @@ def run_handle(
         return []
 
     items = _scrape_dataset(BRIGHTDATA_PROFILES_DATASET_ID, [{"url": f"https://www.instagram.com/{clean}/"}])
+    profile_probe = _profile_probe_from_items(items)
     normalized = [_normalize_item(item) for item in items]
-    return _trim_recent_posts(
+    trimmed = _trim_recent_posts(
         normalized,
         recent_post_ids=recent_post_ids,
         days_window=days_window,
         max_posts=max_posts,
     )
+    if profile_probe and not any(_normalized_has_profile(item) for item in trimmed):
+        trimmed.insert(0, _normalize_item(profile_probe))
+    return trimmed
 
 
 def run_post_urls(post_urls: list[str]) -> list[dict[str, Any]]:

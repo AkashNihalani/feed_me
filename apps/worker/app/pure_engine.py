@@ -238,12 +238,18 @@ def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
     )
     profile_pic = _clean_profile_pic_url(profile_pic)
 
-    followers = _to_int(
-        item.get("ownerFollowersCount")
-        or item.get("followersCount")
-        or owner.get("followersCount")
-        or (owner.get("edge_followed_by") or {}).get("count")
-    )
+    edge_followed_by = owner.get("edge_followed_by") if isinstance(owner.get("edge_followed_by"), dict) else {}
+    follower_raw = None
+    for candidate in (
+        item.get("ownerFollowersCount"),
+        item.get("followersCount"),
+        owner.get("followersCount"),
+        edge_followed_by.get("count"),
+    ):
+        if candidate is not None and candidate != "":
+            follower_raw = candidate
+            break
+    followers = _to_int(follower_raw)
 
     return profile_pic, followers
 

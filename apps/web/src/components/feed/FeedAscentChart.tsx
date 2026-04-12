@@ -25,11 +25,9 @@ const TREND_PATHS = {
 
 type TrendDirection = keyof typeof TREND_PATHS;
 
-function formatSignedFollowers(value: number): string {
+function formatDeltaFollowers(value: number): string {
   if (!Number.isFinite(value) || Math.abs(value) < 0.5) return '0';
-  const rounded = Math.round(value);
-  const formatted = new Intl.NumberFormat('en-US').format(Math.abs(rounded));
-  return `${rounded > 0 ? '+' : '-'}${formatted}`;
+  return new Intl.NumberFormat('en-US').format(Math.abs(Math.round(value)));
 }
 
 function signedPercent(value: number): string {
@@ -60,28 +58,32 @@ function TrendGlyph({ direction }: { direction: TrendDirection }) {
   const path = TREND_PATHS[direction];
 
   return (
-    <motion.svg
+    <motion.div
       aria-hidden="true"
-      viewBox="0 0 64 64"
-      className="h-10 w-12 overflow-hidden sm:h-11 sm:w-14 lg:h-12 lg:w-16"
+      className="inline-flex h-[1em] w-[1em] items-center justify-center text-[#E11D48]"
       initial={false}
       animate={{ scale: isFlat ? 0.92 : 1 }}
       transition={{ type: 'spring', stiffness: 240, damping: 22, mass: 0.74 }}
     >
-      <motion.g initial={false} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 260, damping: 24, mass: 0.74 }}>
-        <motion.path
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="5.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-          initial={{ d: TREND_PATHS.flat, opacity: 1 }}
-          animate={{ d: path, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 220, damping: 24, mass: 0.8 }}
-        />
-      </motion.g>
-    </motion.svg>
+      <svg
+        viewBox="0 0 64 64"
+        className="h-[1em] w-[1em] overflow-visible"
+      >
+        <motion.g initial={false} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 260, damping: 24, mass: 0.74 }}>
+          <motion.path
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="5.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+            initial={{ d: TREND_PATHS.flat, opacity: 1 }}
+            animate={{ d: path, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 24, mass: 0.8 }}
+          />
+        </motion.g>
+      </svg>
+    </motion.div>
   );
 }
 
@@ -156,13 +158,11 @@ export default function FeedAscentChart({ timeframe, series }: { timeframe: Time
   const displayDeltaPercent = displayPoint ? displayPoint.deltaPercentFromPrevious : chart.overallDeltaPercent;
   const displayFollowers = displayPoint?.followers ?? chart.latestFollowers;
   const direction: TrendDirection = displayDeltaCount > 0 ? 'rise' : displayDeltaCount < 0 ? 'drop' : 'flat';
-  const directionLabel = direction === 'rise' ? 'Rise' : direction === 'drop' ? 'Drop' : 'Flat';
   const contextLine = displayPoint
     ? displayPoint.previousLabel
       ? `${displayPoint.label} vs ${displayPoint.previousLabel}`
       : `${displayPoint.label} starting point`
     : `Net over ${timeframe}`;
-  const followersLabel = displayPoint ? `Followers on ${displayPoint.label}` : 'Current total';
 
   useEffect(() => {
     const stopCount = deltaCountSpring.on('change', (value) => setAnimatedDeltaCount(value));
@@ -195,47 +195,39 @@ export default function FeedAscentChart({ timeframe, series }: { timeframe: Time
   return (
     <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
       <div className="relative z-10 flex flex-1 flex-col">
-        <div className="flex flex-col gap-2.5 sm:gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3.5 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <div className="fm-label fm-depth-title">Follower Growth</div>
-            <div className="mt-1.5 flex flex-wrap items-end gap-x-3 gap-y-1.5">
-              <div className="text-[clamp(26px,5.5vw,42px)] font-black leading-[0.86] tracking-[-0.06em] text-black dark:text-white">
-                {formatSignedFollowers(animatedDeltaCount)}
+            <div className="mt-2 grid grid-cols-[1em_minmax(0,1fr)] items-center gap-x-3 text-[clamp(38px,10vw,64px)] leading-none sm:gap-x-4 lg:text-[clamp(44px,4.6vw,72px)]">
+              <div className="flex h-[1em] w-[1em] shrink-0 items-center justify-center">
+                <TrendGlyph direction={direction} />
               </div>
-              <div className="pb-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42">
-                {contextLine}
+              <div className="min-w-0 font-black leading-none tracking-[-0.07em] tabular-nums text-black dark:text-white">
+                {formatDeltaFollowers(animatedDeltaCount)}
               </div>
+            </div>
+            <div className="mt-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">
+              {contextLine}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 lg:flex lg:max-w-[420px] lg:flex-wrap lg:items-stretch lg:justify-end">
-            <div
-              className="inline-flex min-h-[64px] min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-[16px] border border-black/7 bg-white/68 px-2 py-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] sm:min-h-[68px] sm:px-2.5 lg:min-h-[72px] lg:rounded-[18px] lg:px-4 lg:py-2 dark:border-white/8 dark:bg-white/[0.04] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]"
-            >
-              <div className="flex items-center justify-center text-[#E11D48]">
-                <TrendGlyph direction={direction} />
-              </div>
-              <div className="min-w-0 text-center">
-                <div className="text-[6px] font-black uppercase tracking-[0.14em] text-foreground/38 sm:text-[7px] dark:text-white/32">
-                  Trend
+          <div className="w-full lg:max-w-[360px]">
+            <div className="grid grid-cols-2 gap-4 border-t border-black/8 pt-3 dark:border-white/10 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+              <div className="min-w-0">
+                <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/32">
+                  Current Total
                 </div>
-                <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-foreground sm:text-[10px] dark:text-white">
-                  {directionLabel}
-                </div>
-              </div>
-            </div>
-
-            <div className="min-w-0 rounded-[16px] border border-black/7 bg-black/[0.04] px-2 py-2 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.66)] sm:px-2.5 lg:min-w-[170px] lg:flex-1 lg:rounded-[18px] lg:px-3.5 lg:py-3 lg:text-left dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <div className="truncate text-[7px] font-black uppercase tracking-[0.1em] text-foreground/38 sm:text-[8px] sm:tracking-[0.14em] lg:tracking-[0.16em]">{followersLabel}</div>
-              <div className="mt-1 text-[15px] font-black leading-none tracking-[-0.055em] text-foreground sm:text-[17px] lg:mt-2 lg:text-[22px] dark:text-white xl:text-[24px]">
+                <div className="mt-1.5 text-[21px] font-black leading-none tracking-[-0.05em] tabular-nums text-foreground sm:text-[24px] lg:text-[28px] dark:text-white">
                 {formatFollowers(displayFollowers)}
+                </div>
               </div>
-            </div>
-
-            <div className="min-w-0 rounded-[16px] border border-black/6 bg-black/[0.03] px-2 py-2 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] sm:px-2.5 lg:min-w-[110px] lg:rounded-[18px] lg:px-3.5 lg:py-3 lg:text-left dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <div className="text-[7px] font-black uppercase tracking-[0.1em] text-foreground/38 sm:text-[8px] sm:tracking-[0.16em]">Change</div>
-              <div className="mt-1 text-[13px] font-black uppercase tracking-[0.04em] text-foreground sm:text-[14px] lg:mt-2 lg:text-[16px] lg:tracking-[0.08em] dark:text-white xl:text-[17px]">
-                {signedPercent(animatedDeltaPercent)}
+              <div className="min-w-0">
+                <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/32">
+                  Growth
+                </div>
+                <div className="mt-1.5 text-[19px] font-black leading-none tracking-[-0.045em] tabular-nums text-foreground sm:text-[21px] lg:text-[24px] dark:text-white">
+                  {signedPercent(animatedDeltaPercent)}
+                </div>
               </div>
             </div>
           </div>
@@ -243,7 +235,7 @@ export default function FeedAscentChart({ timeframe, series }: { timeframe: Time
 
         <div
           ref={rootRef}
-          className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-[18px] border border-black/8 bg-[linear-gradient(180deg,rgba(190,190,190,0.26),rgba(128,128,128,0.11))] px-3 pb-5 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),inset_0_-18px_26px_rgba(0,0,0,0.05)] dark:border-white/8 dark:bg-[linear-gradient(180deg,rgba(24,24,24,0.96),rgba(10,10,10,0.98))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-18px_30px_rgba(0,0,0,0.42)]"
+          className="relative mt-3.5 min-h-0 flex-1 overflow-hidden rounded-[18px] border border-black/8 bg-[linear-gradient(180deg,rgba(252,252,252,0.88),rgba(234,234,234,0.58))] px-3 pb-5 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.76),inset_0_-12px_20px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-[linear-gradient(180deg,rgba(20,20,20,0.95),rgba(6,6,6,0.99))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-18px_30px_rgba(0,0,0,0.42)]"
           style={{ minHeight: 148 }}
           onMouseMove={(event) => {
             const nextIndex = resolveIndex(event.clientX);

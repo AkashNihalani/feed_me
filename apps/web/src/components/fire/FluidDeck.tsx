@@ -26,7 +26,7 @@ type StandaloneDeckState = {
 
 const STANDALONE_DECK_STATE_PREFIX = 'fire:pwa-deck:v1';
 const STANDALONE_RESTORE_STEPS_MS = [0, 120, 280, 520, 860] as const;
-const PWA_NEIGHBOUR_OFFSET_RATIO = 0.62;
+const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -48,6 +48,11 @@ function getPageFocusCenterY(): number {
   const topBoundary = headerHeight + 24;
   const bottomBoundary = Math.max(topBoundary + 1, window.innerHeight - (bottomClearance + 12));
   return topBoundary + (bottomBoundary - topBoundary) * 0.5;
+}
+
+function getPwaViewportSlotHeight(): number {
+  if (typeof window === 'undefined') return 600;
+  return Math.max(420, readRootCssPx('--fire-app-height', window.innerHeight));
 }
 
 function getScrollContainer(root: HTMLDivElement | null, usePageScroll: boolean): HTMLElement | null {
@@ -211,8 +216,17 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   // Height of one full-canvas card slot (used for PWA y offsets).
   const [pwaSlotH, setPwaSlotH] = useState(() => {
     if (typeof window === 'undefined') return 600;
-    return window.innerHeight * 0.82;
+    return getPwaViewportSlotHeight();
   });
+
+  // Shift the center point of the card stack so the active card sits between
+  // header and bottom nav instead of the raw viewport center.
+  // offset = (headerHeight - bottomClearance) / 2  → pushes center down when header > bottom
+  const pwaHeaderH = useMemo(() => readRootCssPx('--fire-header-height', 168), [pwaSlotH]);
+  const pwaBottomH = useMemo(() => readRootCssPx('--fire-bottom-clearance', 86), [pwaSlotH]);
+  const pwaCenterOffset = `${Math.round((pwaHeaderH - pwaBottomH) / 2)}px`;
+  // Max card height = viewport minus both chrome bars minus breathing room
+  const pwaCardMaxH = Math.max(300, pwaSlotH - pwaHeaderH - pwaBottomH - 32);
 
   useEffect(() => {
     activeCardIdRef.current = activeCardId;
@@ -240,11 +254,17 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   useEffect(() => {
     if (!usePwaSnap || isDesktop) return;
     const update = () => {
-      setPwaSlotH(Math.max(300, window.innerHeight));
+      setPwaSlotH(getPwaViewportSlotHeight());
     };
     update();
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
+    };
   }, [isDesktop, usePwaSnap]);
 
   // ── PWA: pwaIndex → activeCardId + currentIndexRef ────────────────────────
@@ -484,9 +504,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     return (
       <>
         {/* Full-canvas PWA deck so cards pass under floating chrome. */}
-        <div
-          className="fixed inset-0 z-10 overflow-hidden"
-        >
+        <div className="fixed inset-0 z-10 overflow-hidden">
           {cards.map((card, index) => {
             // Only render current card + immediate neighbours
             if (Math.abs(index - pwaIndex) > 1) return null;
@@ -508,16 +526,27 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 dragConstraints={{ top: 0, bottom: 0 }}
                 dragElastic={0.08}
                 onDragEnd={handlePwaDragEnd}
-                style={{ zIndex: style.zIndex, pointerEvents: isCurrent ? 'auto' : 'none' }}
+                style={{
+                  zIndex: style.zIndex,
+                  pointerEvents: isCurrent ? 'auto' : 'none',
+                }}
               >
-                <div className="w-full max-w-[472px] h-full flex items-center">
-                  <FireCard3D
-                    item={card}
-                    highlighted={isCurrent}
-                    layoutMode="mobile"
-                    onOpenDetails={() => undefined}
-                    onBeforeOpenPost={persistStandaloneDeckState}
-                  />
+                <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset }}>
+                  <div
+                    className="w-full max-w-[472px]"
+                    style={{
+                      ['--fire-card-max-height' as string]: `${pwaCardMaxH}px`,
+                      ['--fire-card-aspect' as string]: '9 / 14',
+                    }}
+                  >
+                    <FireCard3D
+                      item={card}
+                      highlighted={isCurrent}
+                      layoutMode="mobile"
+                      onOpenDetails={() => undefined}
+                      onBeforeOpenPost={persistStandaloneDeckState}
+                    />
+                  </div>
                 </div>
               </motion.div>
             );
@@ -589,10 +618,11 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 return (
                   <motion.div
                     key={card.id}
-                    initial={{ opacity: 0, y: 14, scale: 0.986 }}
+                    layout
+                    initial={{ opacity: 0, scale: 0.88 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                    transition={{ type: 'spring', damping: 22, stiffness: 300, mass: 0.75 }}
+                    exit={{ opacity: 0, scale: 0.88 }}
+                    transition={{ type: 'spring', damping: 24, stiffness: 300, mass: 0.75 }}
                     whileHover={{ y: -4, scale: 1.008 }}
                   >
                     <VirtualSlot

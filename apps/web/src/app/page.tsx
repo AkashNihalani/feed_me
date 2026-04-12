@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useCallback, useEffect, useState, useMemo, Suspense } from 'react';
+import { startTransition, useCallback, useEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Target, X } from 'lucide-react';
@@ -122,6 +122,7 @@ function FeedPageContent() {
   const router = useRouter();
   const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
+  const headerRef = useRef<HTMLDivElement>(null);
   const urlSelectedFeedId = searchParams.get('id');
   const mobileBottomClearance = useTranslucentBrowserChrome
     ? 'calc(18px + env(safe-area-inset-bottom))'
@@ -170,8 +171,10 @@ function FeedPageContent() {
   const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
   const [exportFrom, setExportFrom] = useState<string>(() => defaultExportRange().from);
   const [exportTo, setExportTo] = useState<string>(() => defaultExportRange().to);
+  const [headerHeight, setHeaderHeight] = useState(204);
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
+  const useFeedRootSnap = view === 'detail' && useBrowserPageScroll;
   const sortedFeeds = useMemo(() => {
     const list = [...feeds];
     if (sortMode === 'name') return list.sort((a, b) => a.title.localeCompare(b.title));
@@ -227,6 +230,54 @@ function FeedPageContent() {
 
   useEffect(() => { loadFeeds().catch(err => setApiError(err instanceof Error ? err.message : 'Failed to load feeds')); }, [loadFeeds]);
   useEffect(() => { setSelectedHandle('all'); setTimeframe('30D'); }, [selectedFeedId]);
+
+  useEffect(() => {
+    const node = headerRef.current;
+    if (!node) return undefined;
+
+    const updateHeight = () => {
+      setHeaderHeight(Math.ceil(node.getBoundingClientRect().height));
+    };
+
+    updateHeight();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateHeight) : null;
+    observer?.observe(node);
+    window.addEventListener('resize', updateHeight);
+    window.visualViewport?.addEventListener('resize', updateHeight);
+    window.visualViewport?.addEventListener('scroll', updateHeight);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateHeight);
+      window.visualViewport?.removeEventListener('resize', updateHeight);
+      window.visualViewport?.removeEventListener('scroll', updateHeight);
+    };
+  }, [view, timeframe, selectedHandle, useBrowserPageScroll]);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.toggle('fm-feed-root-scroll', useFeedRootSnap);
+    return () => {
+      html.classList.remove('fm-feed-root-scroll');
+    };
+  }, [useFeedRootSnap]);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    if (!useFeedRootSnap) {
+      html.style.removeProperty('--fm-feed-header-height');
+      html.style.removeProperty('--fm-feed-bottom-clearance');
+      return undefined;
+    }
+
+    html.style.setProperty('--fm-feed-header-height', `${headerHeight}px`);
+    html.style.setProperty('--fm-feed-bottom-clearance', isStandaloneMode ? '120px' : '18px');
+
+    return () => {
+      html.style.removeProperty('--fm-feed-header-height');
+      html.style.removeProperty('--fm-feed-bottom-clearance');
+    };
+  }, [headerHeight, isStandaloneMode, useFeedRootSnap]);
 
   useEffect(() => {
     if (!activeFeed) { setDashboardData(null); return; }
@@ -360,13 +411,15 @@ function FeedPageContent() {
         className={cn(
           'pointer-events-none fixed inset-0 z-0',
           useTranslucentBrowserChrome
-            ? 'bg-[radial-gradient(circle_at_top,_rgba(28,28,28,0.96)_0%,_rgba(8,8,8,0.92)_42%,_rgba(0,0,0,0.84)_100%)]'
+            ? 'bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98)_0%,_rgba(244,247,249,0.94)_46%,_rgba(232,237,243,0.9)_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(28,28,28,0.96)_0%,_rgba(8,8,8,0.92)_42%,_rgba(0,0,0,0.84)_100%)]'
             : 'bg-white dark:bg-[#030303]',
         )}
       />
 
       {/* ═══ LOCKED HEADER ═══ */}
-      <div className={cn(
+      <div
+        ref={headerRef}
+        className={cn(
         'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(18px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
         useBrowserPageScroll ? 'fixed' : 'absolute',
       )}>
@@ -698,13 +751,22 @@ function FeedPageContent() {
               }}
             >
               <div className="w-full px-2 sm:px-3 lg:px-4">
-                <div className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5 xl:grid-cols-3">
-                  {sortedFeeds.map((feed, i) => (
-                    <div key={feed.id}>
-                      <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
-                        metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} />
-                    </div>
-                  ))}
+                <motion.div layout className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5 xl:grid-cols-3">
+                  <AnimatePresence mode="popLayout">
+                    {sortedFeeds.map((feed, i) => (
+                      <motion.div
+                        key={feed.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.88 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.88 }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 26, mass: 0.8 }}
+                      >
+                        <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
+                          metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                   {feeds.length === 0 && (
                     <div className="col-span-full fm-depth-glass rounded-[28px] px-6 py-10 text-center">
                       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] fm-depth-chip">
@@ -714,7 +776,7 @@ function FeedPageContent() {
                       <p className="mt-2 text-[12px] font-black uppercase tracking-[0.1em] text-foreground/42 dark:text-white/34">Create a feed to start tracking feeder-level momentum</p>
                     </div>
                   )}
-                </div>
+                </motion.div>
               </div>
             </div>
           </motion.div>

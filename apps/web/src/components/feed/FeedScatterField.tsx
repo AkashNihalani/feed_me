@@ -26,6 +26,7 @@ function formatPointDate(value: string | null): string {
 
 const POST_COUNTS = [5, 15, 25] as const;
 type PostCount = typeof POST_COUNTS[number];
+const TOP_ZONE_PERCENT = 35;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -62,12 +63,14 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
     });
 
     const days = sorted.map((p) => Math.max(0, Number(p.days_ago) || 0));
-    const trackedMaxDays = days.length > 0 ? Math.max(...days) : Math.max(0, windowDays - 1);
     const groupSizes = new Map<number, number>();
     for (const day of days) {
       groupSizes.set(day, (groupSizes.get(day) ?? 0) + 1);
     }
     const groupOffsets = new Map<number, number>();
+    const windowMaxDays = Math.max(1, windowDays - 1);
+    const edgePadding = isCompactViewport ? 6.5 : 5.25;
+    const usableWidth = 100 - edgePadding * 2;
 
     return sorted.map((p, index) => {
       const percentile = typeof p.percentile_performance === 'number' ? p.percentile_performance : null;
@@ -76,26 +79,19 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
       const orderWithinDay = groupOffsets.get(daysAgo) ?? 0;
       groupOffsets.set(daysAgo, orderWithinDay + 1);
 
-      const trackedRatio = trackedMaxDays <= 0 ? 0.5 : daysAgo / trackedMaxDays;
-      const windowRatio = Math.max(0, Math.min(1, daysAgo / Math.max(1, windowDays - 1)));
-      const easedWindowRatio = windowDays >= 60
-        ? Math.pow(windowRatio, 0.72)
-        : Math.pow(windowRatio, 0.82);
-      const blendedRatio = trackedMaxDays <= 0
-        ? (isCompactViewport ? easedWindowRatio : windowRatio)
-        : isCompactViewport
-          ? clamp(easedWindowRatio * 0.8 + trackedRatio * 0.2, 0, 1)
-          : clamp(windowRatio * 0.62 + trackedRatio * 0.38, 0, 1);
-      const baseX = blendedRatio * 100;
-      const spread = groupSize > 1 ? Math.min(20, 4 + groupSize * 0.55) : 0;
+      const latestRatio = 1 - clamp(daysAgo / windowMaxDays, 0, 1);
+      const baseX = edgePadding + latestRatio * usableWidth;
+      const spread = groupSize > 1
+        ? Math.min(isCompactViewport ? 7.25 : 6.25, 2.2 + groupSize * (isCompactViewport ? 0.42 : 0.34))
+        : 0;
       const centeredOffset = groupSize > 1
         ? ((orderWithinDay / Math.max(1, groupSize - 1)) - 0.5) * spread
         : 0;
 
       return {
         id: p.post_key || `${p.handle}-${p.days_ago}`,
-        x: clamp(baseX + centeredOffset, isCompactViewport ? 2.5 : 4, isCompactViewport ? 97.5 : 96),
-        y: percentile === null ? 50 : Math.max(2, Math.min(98, 100 - percentile)),
+        x: clamp(baseX + centeredOffset, edgePadding, 100 - edgePadding),
+        y: percentile === null ? 48 : clamp(100 - percentile, 6, 96),
         isCompetitor: false,
         percentile,
         handle: p.handle || 'unknown',
@@ -128,7 +124,7 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
             {allPoints.length} tracked posts
           </div>
         </div>
-        <div className="hide-scrollbar flex shrink-0 items-center gap-1 rounded-full border border-black/5 bg-black/[0.03] p-0.5 dark:border-white/5 dark:bg-white/[0.03]">
+        <div className="hide-scrollbar flex shrink-0 items-center gap-0.5 rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
           {POST_COUNTS.map(count => (
             <motion.button
               key={count}
@@ -136,7 +132,7 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
                 startTransition(() => setActiveCount(count));
               }}
               whileTap={{ scale: 0.95 }}
-              className={`relative rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] sm:px-4 sm:py-2 sm:text-[11px] ${activeCount === count ? 'z-10 text-white' : 'z-0 text-foreground/42'}`}
+              className={`relative rounded-full px-3 py-1.25 text-[10px] font-black uppercase tracking-[0.12em] sm:px-3.5 sm:py-1.5 ${activeCount === count ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
             >
               {activeCount === count && (
                 <motion.span
@@ -152,22 +148,25 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
       </div>
 
       {/* Chart area */}
-      <div className="relative min-h-[190px] flex-1 w-full rounded-[14px] fm-depth-inner sm:min-h-[220px]">
-        {[10, 25, 50].map((t) => (
-          <div key={t} className="absolute left-0 right-0 border-t border-dashed border-black/10 dark:border-white/10" style={{ top: `${t}%` }}>
-            <span className="absolute -top-3.5 right-1 text-[8px] font-black tracking-[0.1em] text-foreground/30">{t}%</span>
-          </div>
-        ))}
+      <div className="relative min-h-[208px] w-full flex-1 rounded-[14px] fm-depth-inner sm:min-h-[228px]">
+        <div
+          className="absolute inset-x-0 border-t border-black/12 dark:border-white/12"
+          style={{ top: `${TOP_ZONE_PERCENT}%` }}
+        >
+          <span className="absolute -top-3.5 right-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/32 dark:text-white/30">
+            Top 35%
+          </span>
+        </div>
 
-        <div className="absolute inset-x-2 inset-y-4 sm:inset-4">
+        <div className="absolute inset-x-1.5 inset-y-4 sm:inset-x-3 sm:inset-y-4 lg:inset-x-4">
           {allPoints.map((blip) => {
             const isInSelection = selectionMeta.ids.has(blip.id);
             const selectionIndex = selectionMeta.order.get(blip.id) ?? 0;
-            const isTop = (blip.percentile ?? 100) <= 25;
+            const isTop = (blip.percentile ?? 100) <= TOP_ZONE_PERCENT;
             const dotSize = isCompactViewport
-              ? isInSelection ? (isTop ? 13.5 : 11.5) : (isTop ? 8.2 : 6.4)
-              : isInSelection ? (isTop ? 16 : 13) : (isTop ? 11 : 8.5);
-            const targetLeft = `${100 - blip.x}%`;
+              ? isInSelection ? (isTop ? 15 : 13) : (isTop ? 10.25 : 8.75)
+              : isInSelection ? (isTop ? 16.5 : 14) : (isTop ? 12 : 10);
+            const targetLeft = `${blip.x}%`;
             const targetBottom = `${blip.y}%`;
 
             return (
@@ -177,9 +176,9 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
                 animate={{
                   left: targetLeft,
                   bottom: targetBottom,
-                  opacity: isInSelection ? 1 : isTop ? 0.56 : 0.38,
-                  scale: isInSelection ? 1.08 : 0.96,
-                  filter: isInSelection ? 'brightness(1)' : 'brightness(0.96)',
+                  opacity: isInSelection ? 1 : isTop ? 0.9 : 0.76,
+                  scale: isInSelection ? 1.08 : 0.98,
+                  filter: isInSelection ? 'brightness(1)' : 'brightness(1)',
                 }}
                 transition={{
                   duration: 0.72,
@@ -205,11 +204,11 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
                     'rounded-full',
                     isInSelection
                       ? isTop
-                        ? 'bg-[#FB7185] shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_0_18px_rgba(225,29,72,0.22)] dark:bg-[#E11D48] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgba(225,29,72,0.45)]'
-                        : 'bg-[#FB7185]/84 shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_0_14px_rgba(225,29,72,0.14)] dark:bg-[#E11D48]/84 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgba(225,29,72,0.3)]'
+                        ? 'bg-[#FB7185] shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_0_18px_rgba(225,29,72,0.22)] dark:bg-[#E11D48] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgba(225,29,72,0.45)]'
+                        : 'bg-[#FB7185]/88 shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_14px_rgba(225,29,72,0.14)] dark:bg-[#E11D48]/88 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgba(225,29,72,0.3)]'
                       : isTop
-                        ? 'bg-black/28 shadow-[0_0_0_1px_rgba(255,255,255,0.12)] dark:bg-white/24'
-                        : 'bg-black/18 shadow-[0_0_0_1px_rgba(255,255,255,0.1)] dark:bg-white/14',
+                        ? 'bg-black/48 shadow-[0_0_0_1px_rgba(255,255,255,0.34),0_3px_10px_rgba(15,23,42,0.08)] dark:bg-white/36 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_4px_12px_rgba(255,255,255,0.08)]'
+                        : 'bg-black/38 shadow-[0_0_0_1px_rgba(255,255,255,0.28),0_3px_10px_rgba(15,23,42,0.06)] dark:bg-white/28 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_4px_10px_rgba(255,255,255,0.05)]',
                   ].join(' ')}
                 />
                 {isInSelection && (
@@ -236,14 +235,14 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="pointer-events-none absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-[12px] border border-black/10 bg-white/90 px-4 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.15)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0A0A0A]/95 dark:shadow-[0_12px_32px_rgba(0,0,0,0.8)] min-w-[180px]"
+              className="pointer-events-none absolute left-1/2 top-3 z-50 min-w-[168px] -translate-x-1/2 rounded-[11px] border border-black/10 bg-white/90 px-3.5 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0A0A0A]/93 dark:shadow-[0_12px_30px_rgba(0,0,0,0.72)]"
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-[0.1em] text-black/50 dark:text-white/40">{hoveredPoint.date}</span>
                 <span className="text-[12px] font-black text-black/62 dark:text-white/72">{hoveredPoint.percentile === null ? '--' : `${Math.round(hoveredPoint.percentile)}%`}</span>
               </div>
               <div className="text-[16px] font-black tracking-[-0.02em] text-black dark:text-white">@{hoveredPoint.handle}</div>
-              <div className="mt-1 text-[12px] font-bold text-black/60 dark:text-white/60">{(hoveredPoint.views / 1000).toFixed(1)}k Views</div>
+              <div className="mt-1 text-[11px] font-bold text-black/60 dark:text-white/60">{(hoveredPoint.views / 1000).toFixed(1)}k Views</div>
             </motion.div>
           )}
         </AnimatePresence>
