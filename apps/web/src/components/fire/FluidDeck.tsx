@@ -27,6 +27,8 @@ type StandaloneDeckState = {
 const STANDALONE_DECK_STATE_PREFIX = 'fire:pwa-deck:v1';
 const STANDALONE_RESTORE_STEPS_MS = [0, 120, 280, 520, 860] as const;
 const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
+const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
+const PWA_RENDER_RADIUS = 2;
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -221,12 +223,9 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
 
   // Shift the center point of the card stack so the active card sits between
   // header and bottom nav instead of the raw viewport center.
-  // offset = (headerHeight - bottomClearance) / 2  → pushes center down when header > bottom
-  const pwaHeaderH = useMemo(() => readRootCssPx('--fire-header-height', 168), [pwaSlotH]);
-  const pwaBottomH = useMemo(() => readRootCssPx('--fire-bottom-clearance', 86), [pwaSlotH]);
-  const pwaCenterOffset = `${Math.round((pwaHeaderH - pwaBottomH) / 2)}px`;
-  // Max card height = viewport minus both chrome bars minus breathing room
-  const pwaCardMaxH = Math.max(300, pwaSlotH - pwaHeaderH - pwaBottomH - 32);
+  // Uses CSS calc() so values are always live — no stale measurements on tab switch.
+  const pwaCenterOffset = 'calc((var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 86px)) / 2)';
+  const pwaCardMaxHExpr = 'calc(var(--fire-app-height, 100dvh) - var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 86px) - 32px)';
 
   useEffect(() => {
     activeCardIdRef.current = activeCardId;
@@ -374,7 +373,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     if (diff === 0) return { y: 0,           scale: 1,    opacity: 1, zIndex: 10 };
     if (diff === 1) return { y: pwaSlotH * PWA_NEIGHBOUR_OFFSET_RATIO,    scale: 1,    opacity: 1, zIndex: 8  };
     if (diff === -1) return { y: -pwaSlotH * PWA_NEIGHBOUR_OFFSET_RATIO,  scale: 1,    opacity: 1, zIndex: 8  };
-    return { y: diff > 0 ? pwaSlotH * 1.08 : -pwaSlotH * 1.08, scale: 1, opacity: 0, zIndex: 2 };
+    return { y: diff > 0 ? pwaSlotH * PWA_OFFSCREEN_OFFSET_RATIO : -pwaSlotH * PWA_OFFSCREEN_OFFSET_RATIO, scale: 1, opacity: 1, zIndex: 2 };
   }, [pwaIndex, pwaSlotH]);
 
   // Reset pwaIndex when filter/day changes
@@ -506,10 +505,12 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
         {/* Full-canvas PWA deck so cards pass under floating chrome. */}
         <div className="fixed inset-0 z-10 overflow-hidden">
           {cards.map((card, index) => {
-            // Only render current card + immediate neighbours
-            if (Math.abs(index - pwaIndex) > 1) return null;
+            const diff = index - pwaIndex;
+            // Keep one offscreen buffer so neighbours glide out instead of popping away.
+            if (Math.abs(diff) > PWA_RENDER_RADIUS) return null;
             const style = getPwaCardStyle(index);
             const isCurrent = index === pwaIndex;
+            const isOffscreenBuffer = Math.abs(diff) === PWA_RENDER_RADIUS;
 
             return (
               <motion.div
@@ -518,9 +519,9 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
                 transition={{
                   type: 'spring',
-                  stiffness: 300,
-                  damping: 30,
-                  mass: 0.9,
+                  stiffness: isOffscreenBuffer ? 250 : 300,
+                  damping: isOffscreenBuffer ? 34 : 30,
+                  mass: isOffscreenBuffer ? 1 : 0.9,
                 }}
                 drag={isCurrent ? 'y' : false}
                 dragConstraints={{ top: 0, bottom: 0 }}
@@ -529,13 +530,15 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 style={{
                   zIndex: style.zIndex,
                   pointerEvents: isCurrent ? 'auto' : 'none',
+                  willChange: 'transform',
+                  backfaceVisibility: 'hidden',
                 }}
               >
                 <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset }}>
                   <div
                     className="w-full max-w-[472px]"
                     style={{
-                      ['--fire-card-max-height' as string]: `${pwaCardMaxH}px`,
+                      ['--fire-card-max-height' as string]: pwaCardMaxHExpr,
                       ['--fire-card-aspect' as string]: '9 / 14',
                     }}
                   >

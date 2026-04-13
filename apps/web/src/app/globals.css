@@ -509,6 +509,7 @@ html.fm-feed-root-scroll body {
     "kill"
     "apex"
     "scatter"
+    "pattern"
     "heatmap"
     "export"
     "targets";
@@ -522,6 +523,7 @@ html.fm-feed-root-scroll body {
       "pulse  kill"
       "apex   export"
       "scatter scatter"
+      "pattern pattern"
       "heatmap heatmap"
       "targets targets";
   }
@@ -534,7 +536,7 @@ html.fm-feed-root-scroll body {
       "ascent ascent ascent pulse  pulse  pulse"
       "kill   kill   apex   apex   export export"
       "scatter scatter scatter scatter scatter scatter"
-      "heatmap heatmap heatmap heatmap heatmap heatmap"
+      "pattern pattern pattern heatmap heatmap heatmap"
       "targets targets targets targets targets targets";
   }
 }
@@ -546,7 +548,7 @@ html.fm-feed-root-scroll body {
       "ascent  ascent  ascent  ascent  ascent  ascent  ascent  pulse   pulse   pulse   pulse   pulse"
       "kill    kill    kill    kill    apex    apex    apex    apex    export  export  export  export"
       "scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter"
-      "heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap heatmap"
+      "pattern pattern pattern pattern pattern pattern heatmap heatmap heatmap heatmap heatmap heatmap"
       "targets targets targets targets targets targets targets targets targets targets targets targets";
   }
 }

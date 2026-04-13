@@ -82,6 +82,27 @@ type ScopedFeeder = {
   follower_count: number | null;
 };
 
+type PostingPatternStatus = 'accelerating' | 'steady' | 'slowing' | 'dormant' | 'insufficient_data';
+
+type PostingPatternPostRow = {
+  feeder_id: number | string | null;
+  posted_at: string | null;
+  media_type: string | null;
+};
+
+type PostingPatternPost = {
+  feederId: number;
+  handle: string;
+  postedAtIst: string;
+  dayKey: string;
+  timestamp: number;
+  mediaType: string;
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const IST_OFFSET_MINUTES = 330;
+
 async function fetchScopedFeeders(
   sb: ReturnType<typeof adminClient>,
   feedId: number,
@@ -102,6 +123,342 @@ async function fetchScopedFeeders(
     }))
     .filter((row) => Number.isFinite(row.id))
     .filter((row) => !handle || row.handle?.toLowerCase() === handle);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function roundNumber(value: number | null, digits = 1): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+}
+
+function median(values: number[]): number | null {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function normalizeMediaType(value: string | null): string {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return 'unknown';
+  if (normalized.includes('sidecar') || normalized.includes('carousel')) return 'sidecar/carousel';
+  if (normalized.includes('reel') || normalized.includes('video')) return 'reel';
+  if (normalized.includes('image') || normalized.includes('photo')) return 'image';
+  return 'unknown';
+}
+
+function toIstDateTimeValue(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const shifted = new Date(date.getTime() + IST_OFFSET_MINUTES * 60 * 1000);
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(shifted.getUTCDate()).padStart(2, '0');
+  const hour = String(shifted.getUTCHours()).padStart(2, '0');
+  const minute = String(shifted.getUTCMinutes()).padStart(2, '0');
+  const second = String(shifted.getUTCSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}+05:30`;
+}
+
+function medianGapHours(posts: PostingPatternPost[]): number | null {
+  const timestamps = posts
+    .map((post) => post.timestamp)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (timestamps.length < 2) return null;
+
+  const gaps: number[] = [];
+  for (let index = 1; index < timestamps.length; index += 1) {
+    gaps.push(Math.max(0, (timestamps[index] - timestamps[index - 1]) / MS_PER_HOUR));
+  }
+  return roundNumber(median(gaps), 1);
+}
+
+function consistencyScore(posts: PostingPatternPost[]): number {
+  const timestamps = posts
+    .map((post) => post.timestamp)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (timestamps.length < 2) return 0;
+
+  const gaps: number[] = [];
+  for (let index = 1; index < timestamps.length; index += 1) {
+    gaps.push(Math.max(0, (timestamps[index] - timestamps[index - 1]) / MS_PER_HOUR));
+  }
+  if (gaps.length === 0) return 0;
+
+  const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+  if (mean <= 0) return 92;
+  const variance = gaps.reduce((sum, gap) => sum + ((gap - mean) ** 2), 0) / gaps.length;
+  const coefficientOfVariation = Math.sqrt(variance) / mean;
+  return Math.round(clampNumber(100 - coefficientOfVariation * 70, 8, 100));
+}
+
+function cadenceStatus(
+  currentCount: number,
+  baselineCount: number,
+  currentPpw: number,
+  baselinePpw: number,
+  deltaPercent: number | null,
+  daysSinceLastPost: number | null,
+  usualGapHours: number | null,
+): PostingPatternStatus {
+  if (currentCount + baselineCount < 2) return 'insufficient_data';
+  if (currentCount === 0 && baselineCount > 0) return 'dormant';
+  if (
+    daysSinceLastPost != null
+    && daysSinceLastPost >= 2
+    && usualGapHours != null
+    && daysSinceLastPost * 24 > usualGapHours * 2.35
+  ) {
+    return 'dormant';
+  }
+  if (baselinePpw <= 0 && currentPpw > 0) return 'accelerating';
+  if (deltaPercent != null && deltaPercent >= 25) return 'accelerating';
+  if (deltaPercent != null && deltaPercent <= -25) return 'slowing';
+  return 'steady';
+}
+
+function dominantMedia(posts: PostingPatternPost[]): { type: string | null; share: number } {
+  if (posts.length === 0) return { type: null, share: 0 };
+  const counts = new Map<string, number>();
+  for (const post of posts) counts.set(post.mediaType, (counts.get(post.mediaType) || 0) + 1);
+
+  let bestType: string | null = null;
+  let bestCount = 0;
+  for (const [type, count] of counts.entries()) {
+    if (count > bestCount) {
+      bestType = type;
+      bestCount = count;
+    }
+  }
+
+  return { type: bestType, share: bestCount / posts.length };
+}
+
+function mediaShare(posts: PostingPatternPost[], type: string | null): number {
+  if (!type || posts.length === 0) return 0;
+  const count = posts.reduce((sum, post) => sum + (post.mediaType === type ? 1 : 0), 0);
+  return count / posts.length;
+}
+
+function buildRhythmDays(currentRows: PostingPatternPost[], startDate: Date, endDate: Date) {
+  const counts = new Map<string, number>();
+  for (const post of currentRows) counts.set(post.dayKey, (counts.get(post.dayKey) || 0) + 1);
+
+  const days: Array<{ day_ist: string; post_count: number }> = [];
+  for (let cursor = new Date(startDate); cursor.getTime() <= endDate.getTime(); cursor = addUtcDays(cursor, 1)) {
+    const dayKey = formatIstDateKey(cursor);
+    days.push({ day_ist: dayKey, post_count: counts.get(dayKey) || 0 });
+  }
+  return days;
+}
+
+function buildMediaMix(posts: PostingPatternPost[]) {
+  if (posts.length === 0) return [];
+  const counts = new Map<string, number>();
+  for (const post of posts) {
+    const type = post.mediaType || 'unknown';
+    counts.set(type, (counts.get(type) || 0) + 1);
+  }
+  const total = posts.length;
+  return Array.from(counts.entries())
+    .filter(([type]) => type !== 'unknown')
+    .map(([type, count]) => ({ type, count, pct: Math.round((count / total) * 100) }))
+    .sort((a, b) => b.count - a.count);
+}
+
+async function fetchPostingPattern(
+  sb: ReturnType<typeof adminClient>,
+  feedId: number,
+  windowStartIst: string | null,
+  windowEndIst: string | null,
+  handle: string | null,
+) {
+  const currentStartDate = parseIstDateKey(windowStartIst);
+  const currentEndDate = parseIstDateKey(windowEndIst);
+  if (!currentStartDate || !currentEndDate || currentStartDate.getTime() > currentEndDate.getTime()) return null;
+
+  const feeders = await fetchScopedFeeders(sb, feedId, handle);
+  if (feeders.length === 0) return null;
+
+  const currentWindowDays = Math.max(1, Math.round((currentEndDate.getTime() - currentStartDate.getTime()) / MS_PER_DAY) + 1);
+  const baselineStartDate = addUtcDays(currentStartDate, -currentWindowDays);
+  const maxLookbackStartDate = addUtcDays(addUtcDays(currentEndDate, 1), -180);
+  const effectiveBaselineStartDate = baselineStartDate.getTime() < maxLookbackStartDate.getTime()
+    ? maxLookbackStartDate
+    : baselineStartDate;
+  const baselineStartIst = formatIstDateKey(effectiveBaselineStartDate);
+  const endExclusiveIst = formatIstDateKey(addUtcDays(currentEndDate, 1));
+  const startIso = istDayStartUtcIso(baselineStartIst);
+  const endExclusiveIso = istDayStartUtcIso(endExclusiveIst);
+  if (!startIso || !endExclusiveIso) return null;
+
+  const feederById = new Map<number, ScopedFeeder>();
+  for (const feeder of feeders) feederById.set(feeder.id, feeder);
+
+  const feederIds = feeders.map((feeder) => feeder.id);
+  const rows: PostingPatternPostRow[] = [];
+  for (let start = 0; ; start += 1000) {
+    const { data, error } = await sb
+      .from('posts')
+      .select('feeder_id,posted_at,media_type')
+      .in('feeder_id', feederIds)
+      .gte('posted_at', startIso)
+      .lt('posted_at', endExclusiveIso)
+      .order('posted_at', { ascending: false })
+      .range(start, start + 999);
+
+    if (error) throw error;
+    const batch = (data || []) as PostingPatternPostRow[];
+    rows.push(...batch);
+    if (batch.length < 1000) break;
+  }
+
+  const posts: PostingPatternPost[] = [];
+  for (const row of rows) {
+    const feederId = Number(row.feeder_id);
+    const postedAt = nullableString(row.posted_at);
+    const timestamp = postedAt ? Date.parse(postedAt) : NaN;
+    if (!Number.isFinite(feederId) || !postedAt || !Number.isFinite(timestamp)) continue;
+
+    const dayKey = toIstDateKey(postedAt);
+    const feeder = feederById.get(feederId);
+    if (!dayKey || !feeder) continue;
+
+    posts.push({
+      feederId,
+      handle: feeder.handle || `feeder-${feederId}`,
+      postedAtIst: toIstDateTimeValue(postedAt) || postedAt,
+      dayKey,
+      timestamp,
+      mediaType: normalizeMediaType(row.media_type),
+    });
+  }
+
+  const currentRows = posts.filter((post) => post.dayKey >= windowStartIst! && post.dayKey <= windowEndIst!);
+  const baselineRows = posts.filter((post) => post.dayKey >= baselineStartIst && post.dayKey < windowStartIst!);
+  const baselineWindowDays = Math.max(1, Math.round((currentStartDate.getTime() - effectiveBaselineStartDate.getTime()) / MS_PER_DAY));
+  const currentWeeks = currentWindowDays / 7;
+  const baselineWeeks = baselineWindowDays / 7;
+  const currentPpw = currentRows.length / currentWeeks;
+  const baselinePpw = baselineRows.length / baselineWeeks;
+  const deltaPercent = baselinePpw > 0 ? ((currentPpw - baselinePpw) / baselinePpw) * 100 : null;
+  const latestPost = posts.reduce<PostingPatternPost | null>((latest, post) => {
+    if (!latest || post.timestamp > latest.timestamp) return post;
+    return latest;
+  }, null);
+  const daysSinceLastPost = latestPost
+    ? Math.max(0, Math.floor((Date.now() - latestPost.timestamp) / MS_PER_DAY))
+    : null;
+  const currentMedianGap = medianGapHours(currentRows);
+  const usualGap = medianGapHours(baselineRows) ?? medianGapHours(posts);
+  const gapVsUsual = usualGap != null && usualGap > 0 && currentMedianGap != null
+    ? ((currentMedianGap - usualGap) / usualGap) * 100
+    : null;
+  const currentDominant = dominantMedia(currentRows);
+  const baselineDominant = dominantMedia(baselineRows);
+  const overallStatus = cadenceStatus(
+    currentRows.length,
+    baselineRows.length,
+    currentPpw,
+    baselinePpw,
+    deltaPercent,
+    daysSinceLastPost,
+    usualGap,
+  );
+
+  const currentByFeeder = new Map<number, PostingPatternPost[]>();
+  const baselineByFeeder = new Map<number, PostingPatternPost[]>();
+  for (const post of currentRows) {
+    const bucket = currentByFeeder.get(post.feederId) || [];
+    bucket.push(post);
+    currentByFeeder.set(post.feederId, bucket);
+  }
+  for (const post of baselineRows) {
+    const bucket = baselineByFeeder.get(post.feederId) || [];
+    bucket.push(post);
+    baselineByFeeder.set(post.feederId, bucket);
+  }
+
+  const feederRows = feeders
+    .map((feeder) => {
+      const current = currentByFeeder.get(feeder.id) || [];
+      const baseline = baselineByFeeder.get(feeder.id) || [];
+      const feederCurrentPpw = current.length / currentWeeks;
+      const feederBaselinePpw = baseline.length / baselineWeeks;
+      const feederDelta = feederBaselinePpw > 0 ? ((feederCurrentPpw - feederBaselinePpw) / feederBaselinePpw) * 100 : null;
+      const latest = [...current, ...baseline].reduce<PostingPatternPost | null>((candidate, post) => {
+        if (!candidate || post.timestamp > candidate.timestamp) return post;
+        return candidate;
+      }, null);
+      const latestAgeDays = latest
+        ? Math.max(0, Math.floor((Date.now() - latest.timestamp) / MS_PER_DAY))
+        : null;
+      const feederUsualGap = medianGapHours(baseline) ?? medianGapHours([...current, ...baseline]);
+      const feederMedia = dominantMedia(current).type ?? dominantMedia(baseline).type;
+      const feederStatus = cadenceStatus(
+        current.length,
+        baseline.length,
+        feederCurrentPpw,
+        feederBaselinePpw,
+        feederDelta,
+        latestAgeDays,
+        feederUsualGap,
+      );
+
+      return {
+        feeder_id: feeder.id,
+        handle: feeder.handle || `feeder-${feeder.id}`,
+        posts_per_week_current: roundNumber(feederCurrentPpw, 1) || 0,
+        delta_percent: roundNumber(feederDelta, 0),
+        days_since_last_post: latestAgeDays,
+        median_gap_hours: medianGapHours(current),
+        dominant_media_type: feederMedia,
+        status: feederStatus,
+      };
+    })
+    .filter((row) => row.posts_per_week_current > 0 || row.delta_percent != null || row.days_since_last_post != null)
+    .sort((a, b) => {
+      if (overallStatus === 'dormant' || overallStatus === 'slowing') {
+        return (b.days_since_last_post ?? -1) - (a.days_since_last_post ?? -1);
+      }
+      const aDelta = Math.abs(a.delta_percent ?? (a.posts_per_week_current > 0 ? 100 : 0));
+      const bDelta = Math.abs(b.delta_percent ?? (b.posts_per_week_current > 0 ? 100 : 0));
+      if (bDelta !== aDelta) return bDelta - aDelta;
+      return b.posts_per_week_current - a.posts_per_week_current;
+    })
+    .slice(0, 8);
+
+  return {
+    status: overallStatus,
+    posts_per_week_current: roundNumber(currentPpw, 1) || 0,
+    posts_per_week_baseline: roundNumber(baselinePpw, 1) || 0,
+    delta_percent: roundNumber(deltaPercent, 0),
+    last_post_at_ist: latestPost?.postedAtIst ?? null,
+    days_since_last_post: daysSinceLastPost,
+    median_gap_hours: currentMedianGap,
+    usual_gap_hours: usualGap,
+    gap_vs_usual_percent: roundNumber(gapVsUsual, 0),
+    consistency_score: consistencyScore(currentRows),
+    media_shift: {
+      current_dominant_type: currentDominant.type,
+      baseline_dominant_type: baselineDominant.type,
+      share_delta: currentDominant.type
+        ? roundNumber((currentDominant.share - mediaShare(baselineRows, currentDominant.type)) * 100, 0)
+        : null,
+    },
+    media_mix: buildMediaMix(currentRows),
+    rhythm_days: buildRhythmDays(currentRows, currentStartDate, currentEndDate),
+    feeder_rows: feederRows,
+  };
 }
 
 async function fetchAscentSeries(
@@ -485,7 +842,7 @@ export async function GET(request: NextRequest) {
     const windowStartIst = nullableString(summary.window_start_ist);
     const windowEndIst = nullableString(summary.window_end_ist);
 
-    const [patternBoard, ascentSeries, heatmapDaily, killzoneDays] = await Promise.all([
+    const [patternBoard, ascentSeries, heatmapDaily, killzoneDays, postingPattern] = await Promise.all([
       fetchPatternBoard(
         sb,
         feedId,
@@ -510,6 +867,13 @@ export async function GET(request: NextRequest) {
         windowEndIst,
         handle,
       ),
+      fetchPostingPattern(
+        sb,
+        feedId,
+        windowStartIst,
+        windowEndIst,
+        handle,
+      ),
     ]);
 
     return NextResponse.json({
@@ -519,6 +883,7 @@ export async function GET(request: NextRequest) {
         heatmap_daily: heatmapDaily,
         killzone_days: killzoneDays,
         pattern_board: patternBoard,
+        posting_pattern: postingPattern,
       },
     });
   } catch (error: unknown) {

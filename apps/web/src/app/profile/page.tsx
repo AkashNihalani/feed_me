@@ -1059,29 +1059,6 @@ export default function FundPage() {
             animate="visible"
             className="fm-tab-canvas-shell mx-auto space-y-4 px-2 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7 transform-gpu will-change-transform"
           >
-            {/* Account Overview Bar */}
-            <motion.div variants={tileVariant} className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:gap-4 xl:gap-5">
-              {[
-                { label: 'Active Feeds', value: totalFeeds },
-                { label: 'Total Feeders', value: totalFeeders },
-                { label: 'Monthly Spend', value: `₹${monthlySpend}` },
-                { label: 'Last Scrape', value: lastScrape ? formatShortIST(lastScrape) : '--' },
-              ].map((item) => (
-                <div key={item.label} className={cn(
-                  'fm-depth-chip rounded-[20px] px-4 py-3.5 text-center transition-all duration-300 xl:px-5 xl:py-4.5',
-                  'bg-white/70 border border-white/80',
-                  'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_6px_16px_rgba(15,23,42,0.06)]',
-                  'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
-                  'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_12px_24px_rgba(0,0,0,0.4)]',
-                )}>
-                  <div className="text-[9px] font-black uppercase tracking-[0.16em] text-foreground/45 dark:text-white/40 xl:text-[11px]">{item.label}</div>
-                  <div className="mt-1 text-[16px] font-black tracking-[-0.02em] text-foreground dark:text-white/90 drop-shadow-sm xl:text-[20px] xl:mt-2">{item.value}</div>
-                </div>
-              ))}
-            </motion.div>
-
-            {/* Launch Sequence Removed per User Request */}
-
             {/* Middle Section: Management & Control Center */}
             <div className="grid items-stretch gap-4 xl:grid-cols-[0.92fr_1.08fr] xl:gap-5 2xl:grid-cols-[0.88fr_1.12fr] 2xl:gap-6">
               <motion.div variants={tileVariant} className="flex h-full flex-col gap-4 lg:gap-5">
@@ -1093,213 +1070,139 @@ export default function FundPage() {
                   manageBusy={manageSubscriptionBusy}
                 />
 
+                {/* Compact Support & Policy Row */}
                 <div className={cn(
-                  'fm-depth-glass rounded-[30px] p-4 relative overflow-hidden flex flex-col gap-4 lg:min-h-[236px] lg:p-5 xl:p-5 2xl:p-6',
-                  'bg-white/72 border border-white/82',
-                  'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
-                  'dark:bg-[rgba(10,10,10,0.72)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
-                  'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.52)]'
+                  'fm-depth-chip rounded-[20px] px-3.5 py-3 sm:px-5 sm:py-3.5',
+                  'flex items-center gap-2 sm:gap-3',
                 )}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/46 dark:text-white/42">Support</div>
-                      <div className="mt-2 text-[24px] font-black tracking-[-0.04em] text-foreground dark:text-white">Help and policy</div>
-                      <div className="mt-2 max-w-[30rem] text-[10px] font-bold uppercase tracking-[0.1em] leading-relaxed text-foreground/42 dark:text-white/34">
-                        Quick support, billing help, and policy access in the same premium language as the pass.
-                      </div>
-                    </div>
-                    <div className="rounded-full border border-black/8 bg-black/[0.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.13em] text-foreground/50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white/48">
-                      Launch ready
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => openSupportEmail('FeedMe bug report')}
-                      className={cn(
-                        'flex items-center justify-between rounded-[20px] px-4 py-4 text-left transition-colors duration-200',
-                        'bg-white/72 border border-white/86 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_10px_20px_rgba(15,23,42,0.05)] hover:bg-white/88',
-                        'dark:bg-white/[0.04] dark:border-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_24px_rgba(0,0,0,0.28)] dark:hover:bg-white/[0.06]'
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Bug size={15} className="text-foreground/52 dark:text-white/58" />
-                        <div>
-                          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-foreground/72 dark:text-white/72">Report a bug</div>
-                          <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-foreground/34 dark:text-white/28">Flag UI or product issues fast</div>
-                        </div>
-                      </div>
-                      <ArrowUpRight size={14} className="text-foreground/40 dark:text-white/40" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openSupportEmail('FeedMe refund or cancellation help')}
-                      className={cn(
-                        'flex items-center justify-between rounded-[20px] px-4 py-4 text-left transition-colors duration-200',
-                        'bg-white/72 border border-white/86 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_10px_20px_rgba(15,23,42,0.05)] hover:bg-white/88',
-                        'dark:bg-white/[0.04] dark:border-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_24px_rgba(0,0,0,0.28)] dark:hover:bg-white/[0.06]'
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <LifeBuoy size={15} className="text-foreground/52 dark:text-white/58" />
-                        <div>
-                          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-foreground/72 dark:text-white/72">Refund / cancel help</div>
-                          <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-foreground/34 dark:text-white/28">Resolve billing support directly</div>
-                        </div>
-                      </div>
-                      <ArrowUpRight size={14} className="text-foreground/40 dark:text-white/40" />
-                    </button>
-                  </div>
-
-                  <div className="mt-auto rounded-[20px] border border-black/6 bg-black/[0.025] px-4 py-3.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
-                    <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.1em] text-foreground/34 dark:text-white/28">
-                      Support and policy access for billing and app review.
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <a
-                        href={`${siteUrl}/privacy`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/54 transition-colors hover:text-foreground dark:text-white/52 dark:hover:text-white/76"
-                      >
-                        <FileText size={12} />
-                        Privacy
-                      </a>
-                      <a
-                        href={`${siteUrl}/terms`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/54 transition-colors hover:text-foreground dark:text-white/52 dark:hover:text-white/76"
-                      >
-                        <FileText size={12} />
-                        Tos
-                      </a>
-                    </div>
+                  <button
+                    type="button"
+                    onClick={() => openSupportEmail('FeedMe bug report')}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-black/6 bg-black/[0.03] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60 transition-colors active:scale-[0.97] active:bg-black/[0.06] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-white/55 dark:active:bg-white/[0.08] sm:px-3 sm:text-[9px]"
+                  >
+                    <Bug size={11} />
+                    Bug
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openSupportEmail('FeedMe refund or cancellation help')}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-black/6 bg-black/[0.03] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60 transition-colors active:scale-[0.97] active:bg-black/[0.06] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-white/55 dark:active:bg-white/[0.08] sm:px-3 sm:text-[9px]"
+                  >
+                    <LifeBuoy size={11} />
+                    Billing
+                  </button>
+                  <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
+                    <a href={`${siteUrl}/privacy`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 transition-colors active:text-foreground dark:text-white/38 dark:active:text-white/70 sm:text-[9px]">
+                      <FileText size={10} />Privacy
+                    </a>
+                    <a href={`${siteUrl}/terms`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 transition-colors active:text-foreground dark:text-white/38 dark:active:text-white/70 sm:text-[9px]">
+                      <FileText size={10} />Terms
+                    </a>
                   </div>
                 </div>
+
+                {/* Spacer to push left column flush with right column bottom */}
+                <div className="hidden xl:block xl:flex-1" />
               </motion.div>
 
-              {/* Right Column: Deep Settings & Alerts Panel */}
-              <div className="flex h-full flex-col gap-4 lg:gap-5">
-              <motion.div variants={tileVariant} className="relative pb-7">
-                <div
-                  className={cn(
-                    'fm-depth-glass relative z-10 overflow-hidden rounded-[32px] p-5 lg:p-6',
-                    'bg-white/70 border border-white/80',
-                    'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
-                    'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
-                    'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.5)]',
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 dark:text-white/40">Feed Activity</div>
-                    <div className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12 dark:text-[#FB7185]">
-                      Live queue
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex flex-col items-center">
-                    <div className="relative flex size-[168px] items-center justify-center">
-                      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
-                        <circle
-                          cx="80"
-                          cy="80"
-                          r={FIRE_RING_RADIUS}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="9"
-                          className="text-foreground/[0.08] dark:text-white/[0.08]"
-                        />
-                        <motion.circle
-                          cx="80"
-                          cy="80"
-                          r={FIRE_RING_RADIUS}
-                          fill="none"
-                          stroke="#E11D48"
-                          strokeLinecap="round"
-                          strokeWidth="9"
-                          strokeDasharray={FIRE_RING_CIRCUMFERENCE}
-                          initial={false}
-                          animate={{ strokeDashoffset: FIRE_RING_CIRCUMFERENCE * (1 - nextFireProgress) }}
-                          transition={{ duration: 0.7, ease: APPLE_EASE }}
-                        />
-                      </svg>
-                      <div className="relative z-10 text-center">
-                        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">
-                          Next fire
-                        </div>
-                        <motion.div
-                          key={nextFireCountdown}
-                          initial={{ y: 4, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ duration: 0.24, ease: APPLE_EASE }}
-                          className="mt-1 text-[30px] font-black tracking-[-0.08em] text-foreground dark:text-white"
-                        >
-                          {nextFireCountdown}
-                        </motion.div>
-                        <div className="mt-1 text-[9px] font-black uppercase tracking-[0.11em] text-foreground/36 dark:text-white/30">
-                          {nextFireTotalRuns > 0
-                            ? `${nextFireTotalRuns} check${nextFireTotalRuns === 1 ? '' : 's'} queued`
-                            : 'No batch queued'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="fm-depth-inner mt-5 flex w-full items-center rounded-[22px] px-2 py-2">
-                      {nextCheckpointCounts.map((item, index) => (
-                        <div key={item.checkpoint} className="flex flex-1 items-center">
-                          <div className="min-w-0 flex-1 text-center">
-                            <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/34">
-                              {item.checkpoint}
-                            </div>
-                            <div className={cn(
-                              'mt-0.5 text-[15px] font-black tracking-[-0.04em]',
-                              item.count > 0 ? 'text-[#E11D48]' : 'text-foreground/34 dark:text-white/28',
-                            )}>
-                              {item.count}
-                            </div>
-                          </div>
-                          {index < nextCheckpointCounts.length - 1 ? (
-                            <div className="h-8 w-px bg-foreground/[0.07] dark:bg-white/[0.07]" />
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="absolute inset-x-5 bottom-0 z-0 rounded-b-[28px] border border-[#E11D48]/18 bg-[#E11D48]/10 px-5 pb-3 pt-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-[22px] font-black leading-none tracking-[-0.07em] text-[#BE123C] dark:text-[#FB7185]">
-                        {completedToday}
-                      </div>
-                      <div className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/44 dark:text-white/40">
-                        completed today
-                      </div>
-                    </div>
-                    <div className="h-9 w-px bg-[#E11D48]/18" />
-                    <div className="text-right">
-                      <div className="text-[22px] font-black leading-none tracking-[-0.07em] text-[#BE123C] dark:text-[#FB7185]">
-                        {remainingRuns}
-                      </div>
-                      <div className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/44 dark:text-white/40">
-                        remaining
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-
+              {/* Right Column: Unified Control Center */}
               <motion.div variants={tileVariant} className={cn(
-                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col lg:flex-1 lg:p-6 xl:p-7',
+                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col lg:p-6 xl:p-7',
                 'bg-white/70 border border-white/80',
                 'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
                 'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
                 'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_48px_rgba(0,0,0,0.5)]',
               )}>
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 mb-5">Settings & Alerts</div>
+                {/* ── Countdown Timer Box ── */}
+                <div className={cn(
+                  'relative w-full overflow-hidden rounded-[22px] p-[1.5px]',
+                )}>
+                  {/* Animated border — the box border IS the progress indicator */}
+                  <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible" aria-hidden="true">
+                    <rect
+                      x="1" y="1"
+                      width="99%" height="99%"
+                      rx="21" ry="21"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="text-foreground/[0.06] dark:text-white/[0.06]"
+                    />
+                    <motion.rect
+                      x="1" y="1"
+                      width="99%" height="99%"
+                      rx="21" ry="21"
+                      fill="none"
+                      stroke="#E11D48"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      pathLength={1}
+                      strokeDasharray="1"
+                      initial={false}
+                      animate={{ strokeDashoffset: 1 - nextFireProgress }}
+                      transition={{ duration: 0.7, ease: APPLE_EASE }}
+                      style={{ filter: 'drop-shadow(0 0 6px rgba(225,29,72,0.35))' }}
+                    />
+                  </svg>
+
+                  {/* Inner content */}
+                  <div className={cn(
+                    'relative z-0 flex items-center justify-between gap-4 rounded-[21px] px-5 py-4 sm:px-6 sm:py-5',
+                    'bg-gradient-to-b from-white/80 to-white/50',
+                    'dark:from-white/[0.04] dark:to-white/[0.015]',
+                  )}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">Next fire</div>
+                      <motion.div key={nextFireCountdown} initial={{ y: 4, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.24, ease: APPLE_EASE }} className="mt-1 text-[32px] font-black tracking-[-0.06em] leading-none text-foreground dark:text-white sm:text-[36px]">
+                        {nextFireCountdown}
+                      </motion.div>
+                      <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.11em] text-foreground/36 dark:text-white/30">
+                        {nextFireTotalRuns > 0 ? `${nextFireTotalRuns} check${nextFireTotalRuns === 1 ? '' : 's'} queued` : 'No batch queued'}
+                      </div>
+                    </div>
+                    <div className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12 dark:text-[#FB7185] shrink-0">
+                      Live
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Queue Stats Grid ── */}
+                <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-2.5">
+                  {/* Done / Left — hero stats */}
+                  {[
+                    { label: 'Done', value: completedToday, highlight: true },
+                    { label: 'Queued', value: remainingRuns, highlight: true },
+                  ].map((stat) => (
+                    <div key={stat.label} className={cn(
+                      'rounded-[14px] px-3 py-2.5 text-center sm:col-span-1',
+                      'bg-gradient-to-b from-white/80 to-white/50 border border-white/80',
+                      'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_12px_rgba(15,23,42,0.04)]',
+                      'dark:from-white/[0.05] dark:to-white/[0.02] dark:border-white/[0.06]',
+                      'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_6px_16px_rgba(0,0,0,0.3)]',
+                    )}>
+                      <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/34">{stat.label}</div>
+                      <div className="mt-0.5 text-[16px] font-black tracking-[-0.04em] text-[#E11D48]">{stat.value}</div>
+                    </div>
+                  ))}
+                  {/* Checkpoint slots */}
+                  {nextCheckpointCounts.map((item) => (
+                    <div key={item.checkpoint} className={cn(
+                      'rounded-[14px] px-2 py-2.5 text-center',
+                      'bg-gradient-to-b from-white/60 to-white/30 border border-white/60',
+                      'shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_2px_8px_rgba(15,23,42,0.03)]',
+                      'dark:from-white/[0.035] dark:to-white/[0.01] dark:border-white/[0.05]',
+                      'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_4px_12px_rgba(0,0,0,0.25)]',
+                    )}>
+                      <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/35 dark:text-white/30">{item.checkpoint}</div>
+                      <div className={cn('mt-0.5 text-[15px] font-black tracking-[-0.04em]', item.count > 0 ? 'text-[#E11D48]' : 'text-foreground/28 dark:text-white/22')}>{item.count}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Divider between activity and settings */}
+                <div className="mt-5 mb-5 h-px w-full bg-foreground/[0.06] dark:bg-white/[0.06]" />
+
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 mb-4">Settings & Alerts</div>
 
                 <div className="space-y-4 flex-1 flex flex-col">
 
@@ -1650,7 +1553,6 @@ export default function FundPage() {
 
                 </div>
               </motion.div>
-              </div>
             </div>
 
             {/* Bottom Section: Unified Feed Coverage & Feed-Wise Usage (The Crown Jewel) */}
@@ -1693,7 +1595,7 @@ export default function FundPage() {
                       'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
                       'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_56px_rgba(0,0,0,0.5)]',
                       'transition-colors duration-500',
-                      isPrimed ? 'dark:bg-[rgba(15,15,15,0.85)] bg-white/90 ring-1 ring-[#E11D48]/40' : 'hover:dark:bg-[rgba(15,15,15,0.7)] hover:bg-white/80'
+                      isPrimed && 'dark:bg-[rgba(15,15,15,0.85)] bg-white/90 ring-1 ring-[#E11D48]/40'
                     )}>
                       {/* Card Header (Bundle Info & Link Arrow) */}
                       <div className="flex items-start justify-between mb-6">
@@ -1730,7 +1632,7 @@ export default function FundPage() {
                                 strokeWidth={2.5} 
                                 className={cn(
                                   "relative z-10 transition-colors duration-300",
-                                  isPrimed ? "text-black drop-shadow-sm" : "text-foreground/40 dark:text-white/40 group-hover:dark:text-[#E11D48]"
+                                  isPrimed ? "text-black drop-shadow-sm" : "text-foreground/40 dark:text-white/40"
                                 )} 
                               />
                             </div>

@@ -186,9 +186,9 @@ export default function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; 
         
         <div className="min-w-0 w-full pt-2 pb-1">
           <div className="fm-depth-inner min-w-0 rounded-[14px] p-2.5 sm:p-3">
-            <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-2 overscroll-x-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0">
+            <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-2 overscroll-x-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:pb-2">
             <div
-              className="grid min-w-max items-center gap-x-1.5 gap-y-2 sm:min-w-0 sm:gap-x-2 sm:gap-y-2"
+              className="grid min-w-max items-center gap-x-1.5 gap-y-2 sm:gap-x-2 sm:gap-y-2"
               style={{ gridTemplateColumns: `30px repeat(${heatmapData.length}, minmax(54px, 1fr))` }}
             >
               <div />

@@ -9,10 +9,8 @@ function isStandaloneDisplayMode(): boolean {
 }
 
 export function useMobileImmersiveViewport() {
-  const [isStandaloneMode, setIsStandaloneMode] = useState(isStandaloneDisplayMode);
-  const [isDesktopViewport, setIsDesktopViewport] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
-  );
+  const [isStandaloneMode, setIsStandaloneMode] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const useBrowserPageScroll = !isDesktopViewport;
   const useTranslucentBrowserChrome = useBrowserPageScroll && !isStandaloneMode;
 

@@ -80,6 +80,53 @@ export type PatternBoardItem = {
   latest_business_day: string | null;
 };
 
+export type PostingPatternStatus = 'accelerating' | 'steady' | 'slowing' | 'dormant' | 'insufficient_data';
+
+export type PostingPatternMediaShift = {
+  current_dominant_type: string | null;
+  baseline_dominant_type: string | null;
+  share_delta: number | null;
+};
+
+export type PostingPatternRhythmDay = {
+  day_ist: string;
+  post_count: number;
+};
+
+export type PostingPatternFeederRow = {
+  feeder_id: number;
+  handle: string;
+  posts_per_week_current: number;
+  delta_percent: number | null;
+  days_since_last_post: number | null;
+  median_gap_hours: number | null;
+  dominant_media_type: string | null;
+  status: PostingPatternStatus;
+};
+
+export type PostingPatternMediaMix = {
+  type: string;
+  count: number;
+  pct: number;
+};
+
+export type PostingPatternPayload = {
+  status: PostingPatternStatus;
+  posts_per_week_current: number;
+  posts_per_week_baseline: number;
+  delta_percent: number | null;
+  last_post_at_ist: string | null;
+  days_since_last_post: number | null;
+  median_gap_hours: number | null;
+  usual_gap_hours: number | null;
+  gap_vs_usual_percent: number | null;
+  consistency_score: number;
+  media_shift: PostingPatternMediaShift;
+  media_mix: PostingPatternMediaMix[];
+  rhythm_days: PostingPatternRhythmDay[];
+  feeder_rows: PostingPatternFeederRow[];
+};
+
 export type DashboardPayload = {
   ascent_series: AscentPoint[];
   frequency_series: FrequencyPoint[];
@@ -90,4 +137,5 @@ export type DashboardPayload = {
   scatter_points: ScatterPoint[];
   summary: DashboardSummary;
   pattern_board?: PatternBoardItem[];
+  posting_pattern?: PostingPatternPayload;
 };

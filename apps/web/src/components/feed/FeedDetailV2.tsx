@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
@@ -8,6 +8,7 @@ import FeedApexArch from './FeedApexArch';
 import FeedExportTile from './FeedExportTile';
 import FeedKillZone from './FeedKillZone';
 import FeedScatterField from './FeedScatterField';
+import FeedPostingPattern from './FeedPostingPattern';
 import FeedPatternBoard from './FeedPatternBoard';
 import PostingHeatmap from './PostingHeatmap';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from './dashboardTypes';
@@ -53,6 +54,7 @@ const MOBILE_TILE_HEIGHTS = {
   standard: { minHeight: 'clamp(184px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) / 2), 248px)' },
   compact: { minHeight: 'clamp(164px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) / 2), 208px)' },
   scatter: { minHeight: 'clamp(248px, calc(var(--fm-feed-mobile-section-height) - 14px), 420px)' },
+  pattern: { minHeight: 'clamp(276px, calc(var(--fm-feed-mobile-section-height) - 14px), 450px)' },
   heatmap: { minHeight: 'clamp(252px, calc(var(--fm-feed-mobile-section-height) - 14px), 430px)' },
 } as const;
 
@@ -81,6 +83,7 @@ export default function FeedDetailV2({
   const killZoneTile = <FeedKillZone hours={dashboardData?.killzone_hours ?? []} days={dashboardData?.killzone_days ?? []} />;
   const apexTile = <FeedApexArch mix={dashboardData?.apex_mix ?? []} />;
   const scatterTile = <FeedScatterField points={dashboardData?.scatter_points ?? []} windowDays={TIMEFRAME_TO_DAYS[timeframe]} />;
+  const postingPatternTile = <FeedPostingPattern pattern={dashboardData?.posting_pattern ?? null} timeframe={timeframe} />;
   const heatmapTile = <PostingHeatmap days={dashboardData?.heatmap_daily ?? []} weeks={heatmapWeeks} />;
   const exportTile = (
     <FeedExportTile
@@ -93,7 +96,7 @@ export default function FeedDetailV2({
     />
   );
 
-  const mobileSections = useMemo(() => [
+  const mobileSections = [
     {
       id: 'ascent',
       items: [
@@ -151,6 +154,17 @@ export default function FeedDetailV2({
       ],
     },
     {
+      id: 'posting-pattern',
+      items: [
+        {
+          key: 'posting-pattern',
+          node: postingPatternTile,
+          className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
+          style: MOBILE_TILE_HEIGHTS.pattern,
+        },
+      ],
+    },
+    {
       id: 'heatmap',
       items: [
         {
@@ -161,7 +175,7 @@ export default function FeedDetailV2({
         },
       ],
     },
-  ], [apexTile, ascentTile, exportTile, heatmapTile, immersiveBrowserMode, killZoneTile, scatterTile, velocityTile]);
+  ];
 
   return (
     <div
@@ -256,7 +270,11 @@ export default function FeedDetailV2({
             {scatterTile}
           </motion.div>
 
-          <motion.div data-lock-id="heatmap" variants={tileVariant} style={{ gridArea: 'heatmap' }} className="min-w-0 min-h-[210px] xl:min-h-[218px]">
+          <motion.div data-lock-id="pattern" variants={tileVariant} style={{ gridArea: 'pattern' }} className="fm-feed-mobile-panel min-w-0 min-h-[252px] xl:min-h-[264px]">
+            {postingPatternTile}
+          </motion.div>
+
+          <motion.div data-lock-id="heatmap" variants={tileVariant} style={{ gridArea: 'heatmap' }} className="min-w-0 min-h-[252px] xl:min-h-[264px]">
             {heatmapTile}
           </motion.div>
 
