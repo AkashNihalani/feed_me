@@ -1,15 +1,24 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { FireItem } from './types';
 import { compact } from './fireLogicHelpers';
+import {
+  metricLabel,
+  orderedSupportMetricsFromPayload,
+  resolveBestMetricFromPayload,
+} from './fireMetricDisplay';
 import { getFireSignalMeta, getPatternMechanicLabel } from '@/lib/fireSignals';
 
 type FireIntelligenceDialogProps = {
   item: FireItem | null;
   onClose: () => void;
+  onPrevious?: () => void;
+  onNext?: () => void;
+  canPrevious?: boolean;
+  canNext?: boolean;
 };
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -27,6 +36,27 @@ function num(v: unknown): number | null {
 
 function text(v: unknown): string {
   return typeof v === 'string' ? v : '';
+}
+
+function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
+  const key = postKey.trim();
+  if (!key) return '';
+  const params = new URLSearchParams({ postKey: key, role });
+  return `/api/media?${params.toString()}`;
+}
+
+function withRetryBust(url: string, seed: string): string {
+  const value = url.trim();
+  if (!value) return '';
+  try {
+    const target = new URL(value, typeof window !== 'undefined' ? window.location.origin : 'https://feedmemore.vercel.app');
+    target.searchParams.set('_retry', seed);
+    const href = target.toString();
+    return href.startsWith('http') && value.startsWith('/') ? `${target.pathname}${target.search}` : href;
+  } catch {
+    const joiner = value.includes('?') ? '&' : '?';
+    return `${value}${joiner}_retry=${encodeURIComponent(seed)}`;
+  }
 }
 
 function compactOrDash(v: number | null): string {
@@ -47,13 +77,6 @@ function hourAmPm(v: number | null): string {
   const suffix = normalized >= 12 ? 'PM' : 'AM';
   const twelve = normalized % 12 === 0 ? 12 : normalized % 12;
   return `${twelve} ${suffix}`;
-}
-
-function metricLabel(metric: string): string {
-  if (metric === 'views') return 'Views';
-  if (metric === 'likes') return 'Likes';
-  if (metric === 'comments') return 'Comments';
-  return metric.toUpperCase();
 }
 
 function signedShift(delta: number | null): string {
@@ -127,7 +150,7 @@ function SupportMetricRow({
       <div
         className={
           accent
-            ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-black dark:text-[#E11D48]'
+            ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-[#E11D48]'
             : 'text-[26px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
         }
       >
@@ -178,15 +201,41 @@ function TrajectoryBadge({ delta }: { delta: number | null }) {
   return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-500 dark:text-[#ff8a65]">{tone.label}</span>;
 }
 
-export default function FireIntelligenceDialog({ item, onClose }: FireIntelligenceDialogProps) {
+export default function FireIntelligenceDialog({
+  item,
+  onClose,
+  onPrevious,
+  onNext,
+  canPrevious = false,
+  canNext = false,
+}: FireIntelligenceDialogProps) {
+  const [previewReady, setPreviewReady] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [useThumbnailFallback, setUseThumbnailFallback] = useState(false);
+  const [thumbnailRetrySeed, setThumbnailRetrySeed] = useState(0);
+  const [usePreviewFallback, setUsePreviewFallback] = useState(false);
+  const [previewRetrySeed, setPreviewRetrySeed] = useState(0);
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const previewSessionRef = useRef(0);
+  const previewRetryTimeoutRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!item) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft' && canPrevious) {
+        event.preventDefault();
+        onPrevious?.();
+      }
+      if (event.key === 'ArrowRight' && canNext) {
+        event.preventDefault();
+        onNext?.();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [item, onClose]);
+  }, [item, onClose, onPrevious, onNext, canPrevious, canNext]);
 
   const stats = useMemo(() => {
     if (!item) return null;
@@ -195,8 +244,12 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     const timing = asRecord(payload.timing);
     const trajectory = asRecord(payload.trajectory);
     const meta = asRecord(payload.meta);
-    const bestMetric = (text(payload.best_metric) || item.metricKey || 'views').toUpperCase();
-    const bestMetricObj = asRecord(metrics[bestMetric.toLowerCase()]);
+    const bestMetric = resolveBestMetricFromPayload(
+      metrics,
+      text(payload.best_metric) || item.metricKey || 'views',
+      item.surfaceMediaType || item.mediaType,
+    );
+    const bestMetricObj = asRecord(metrics[bestMetric]);
     const value = num(bestMetricObj.value) ?? item.metricValue;
     const baseline = num(bestMetricObj.baseline);
     const multiple = num(bestMetricObj.multiple);
@@ -212,19 +265,16 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     const trajectoryPoints = [d1, d3, d7, d21];
     const currentTrajectory = latestTrajectoryPoint(trajectoryPoints) ?? item.surfacePercentile;
     const firstTrajectory = firstTrajectoryPoint(trajectoryPoints);
-    const supportMetrics = ['views', 'likes', 'comments']
-      .filter((metric) => metric !== bestMetric.toLowerCase())
-      .map((metric) => {
-        const metricObj = asRecord(metrics[metric]);
-        const metricMultiple = num(metricObj.multiple);
-        const metricValue = num(metricObj.value);
-        return {
-          key: metric,
-          label: metricLabel(metric),
-          multiple: multipleOrDash(metricMultiple),
-          value: compactOrDash(metricValue),
-        };
-      });
+    const supportMetrics = orderedSupportMetricsFromPayload(
+      metrics,
+      bestMetric,
+      item.surfaceMediaType || item.mediaType,
+    ).map((metric) => ({
+      key: metric.key,
+      label: metricLabel(metric.key),
+      multiple: multipleOrDash(metric.multiple),
+      value: compactOrDash(metric.value),
+    }));
     const patternAlerts = Array.isArray(meta.pattern_alerts)
       ? meta.pattern_alerts
         .map((entry) => asRecord(entry))
@@ -275,7 +325,7 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
       : [];
 
     return {
-      bestMetric,
+      bestMetric: metricLabel(bestMetric),
       value,
       baseline,
       multiple,
@@ -304,6 +354,129 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
     };
   }, [item]);
 
+  const previewUrl = (item?.previewUrl || '').trim();
+  const directThumbnailUrl = (item?.thumbnailUrl || '').trim();
+  const thumbnailFallbackUrl = mediaProxyUrl(item?.postKey || '');
+  const previewFallbackUrl = mediaProxyUrl(item?.postKey || '', 'preview_5s');
+  const thumbnailBaseUrl = useThumbnailFallback
+    ? (thumbnailFallbackUrl || directThumbnailUrl)
+    : (directThumbnailUrl || thumbnailFallbackUrl);
+  const thumbnailUrl = useMemo(() => {
+    if (!thumbnailBaseUrl) return '';
+    return thumbnailRetrySeed > 0
+      ? withRetryBust(thumbnailBaseUrl, `${item?.id || 'fire'}-thumb-${thumbnailRetrySeed}`)
+      : thumbnailBaseUrl;
+  }, [item?.id, thumbnailBaseUrl, thumbnailRetrySeed]);
+  const resolvedPreviewUrl = useMemo(() => {
+    const baseUrl = usePreviewFallback ? (previewFallbackUrl || previewUrl) : (previewUrl || previewFallbackUrl);
+    if (!baseUrl) return '';
+    return previewRetrySeed > 0
+      ? withRetryBust(baseUrl, `${item?.id || 'fire'}-preview-${previewRetrySeed}`)
+      : baseUrl;
+  }, [item?.id, previewFallbackUrl, previewRetrySeed, previewUrl, usePreviewFallback]);
+  const canSwitchToPreviewFallback = Boolean(
+    previewFallbackUrl
+    && previewUrl
+    && previewUrl !== previewFallbackUrl,
+  );
+  const canPreview = Boolean(
+    item
+    && resolvedPreviewUrl
+    && ((item.surfaceMediaType || item.mediaType || '').toUpperCase() === 'REEL'),
+  );
+  const shouldRenderPreview = canPreview && !previewFailed;
+
+  useEffect(() => {
+    if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
+    setPreviewReady(false);
+    setPreviewFailed(false);
+    setPreviewPlaying(false);
+    setUseThumbnailFallback(false);
+    setThumbnailRetrySeed(0);
+    setUsePreviewFallback(false);
+    setPreviewRetrySeed(0);
+  }, [item?.id, previewUrl, directThumbnailUrl]);
+
+  useEffect(() => {
+    previewSessionRef.current += 1;
+    if (previewRetryTimeoutRef.current) {
+      clearTimeout(previewRetryTimeoutRef.current);
+      previewRetryTimeoutRef.current = null;
+    }
+  }, [item?.id, resolvedPreviewUrl]);
+
+  useEffect(() => () => {
+    if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
+  }, []);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!item || !video || !canPreview || !resolvedPreviewUrl) return;
+    video.load();
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setPreviewReady(true);
+      setPreviewFailed(false);
+    }
+  }, [item, canPreview, resolvedPreviewUrl]);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!item || !video || !canPreview || previewFailed) return;
+    if (!previewReady) return;
+    const session = previewSessionRef.current;
+    let cancelled = false;
+    let playRetried = false;
+
+    const attemptPlayback = () => {
+      if (cancelled || session !== previewSessionRef.current || previewRef.current !== video) return;
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((error) => {
+          if (cancelled || session !== previewSessionRef.current || previewRef.current !== video) return;
+          const errorName = error instanceof DOMException ? error.name : '';
+          if (errorName === 'AbortError') return;
+          if (!playRetried) {
+            playRetried = true;
+            previewRetryTimeoutRef.current = window.setTimeout(() => {
+              previewRetryTimeoutRef.current = null;
+              attemptPlayback();
+            }, 140);
+            return;
+          }
+          setPreviewPlaying(false);
+          setPreviewReady(false);
+          if (previewRetrySeed === 0 && resolvedPreviewUrl) {
+            setPreviewRetrySeed(1);
+            return;
+          }
+          if (!usePreviewFallback && canSwitchToPreviewFallback) {
+            setUsePreviewFallback(true);
+            setPreviewRetrySeed(0);
+            return;
+          }
+          setPreviewFailed(true);
+        });
+      }
+    };
+
+    attemptPlayback();
+
+    return () => {
+      cancelled = true;
+      if (previewRetryTimeoutRef.current) {
+        clearTimeout(previewRetryTimeoutRef.current);
+        previewRetryTimeoutRef.current = null;
+      }
+      setPreviewPlaying(false);
+      video.pause();
+      try {
+        video.currentTime = 0;
+      } catch {
+        // ignore seek reset failures
+      }
+    };
+  }, [canPreview, canSwitchToPreviewFallback, item, previewFailed, previewReady, previewRetrySeed, resolvedPreviewUrl, usePreviewFallback]);
+
   return (
     <AnimatePresence>
       {item && stats && (
@@ -324,27 +497,135 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
             transition={{ duration: 0.2 }}
           />
 
+          {canPrevious ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPrevious?.();
+              }}
+              className="absolute left-5 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-[8px] border border-white/12 bg-black/42 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:bg-black/58"
+              aria-label="Previous post"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          ) : null}
+
+          {canNext ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onNext?.();
+              }}
+              className="absolute right-5 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-[8px] border border-white/12 bg-black/42 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:bg-black/58"
+              aria-label="Next post"
+            >
+              <ChevronRight size={18} />
+            </button>
+          ) : null}
+
           {/* Dialog */}
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10 overflow-hidden rounded-3xl border border-neutral-200/60 shadow-2xl dark:border-white/[0.08] dark:shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
-            style={{ width: 'min(800px, calc(100vw - 4rem))', maxHeight: 'min(600px, calc(100vh - 4rem))' }}
-          >
+          <AnimatePresence initial={false} mode="wait">
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(event) => event.stopPropagation()}
+              className="relative z-10 overflow-hidden rounded-3xl border border-neutral-200/60 shadow-2xl dark:border-white/[0.08] dark:shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
+              style={{ width: 'min(800px, calc(100vw - 4rem))', maxHeight: 'min(600px, calc(100vh - 4rem))' }}
+            >
             <div className="grid h-full min-h-[520px] grid-cols-[320px_minmax(0,1fr)]">
               {/* ── Left: Thumbnail Panel (clear view) ── */}
               <div className="relative min-h-[520px] overflow-hidden bg-black">
-                {item.thumbnailUrl ? (
-                  <img
-                    src={item.thumbnailUrl}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover"
+                {thumbnailUrl ? (
+                    <img
+                      src={thumbnailUrl}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      opacity: shouldRenderPreview && previewPlaying ? 0 : 1,
+                      transition: 'opacity 180ms ease',
+                    }}
+                    onError={() => {
+                      if (!useThumbnailFallback && thumbnailFallbackUrl && directThumbnailUrl && directThumbnailUrl !== thumbnailFallbackUrl) {
+                        setUseThumbnailFallback(true);
+                        setThumbnailRetrySeed(1);
+                        return;
+                      }
+                      setThumbnailRetrySeed((current) => current + 1);
+                    }}
                   />
                 ) : (
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(225,29,72,0.14),transparent_50%),linear-gradient(180deg,#161616_0%,#050505_100%)]" />
                 )}
+                {shouldRenderPreview ? (
+                  <video
+                    key={`${item.id}:${resolvedPreviewUrl}`}
+                    ref={previewRef}
+                    src={resolvedPreviewUrl}
+                    poster={thumbnailUrl}
+                    muted
+                    playsInline
+                    loop
+                    preload="auto"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      opacity: previewPlaying ? 1 : 0,
+                      transition: 'opacity 180ms ease',
+                    }}
+                    onLoadedMetadata={() => undefined}
+                    onLoadedData={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewReady(true);
+                      setPreviewFailed(false);
+                    }}
+                    onCanPlay={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewReady(true);
+                      setPreviewFailed(false);
+                    }}
+                    onCanPlayThrough={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewReady(true);
+                      setPreviewFailed(false);
+                    }}
+                    onPlaying={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewPlaying(true);
+                      setPreviewFailed(false);
+                    }}
+                    onPause={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewPlaying(false);
+                    }}
+                    onWaiting={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewPlaying(false);
+                    }}
+                    onStalled={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewPlaying(false);
+                    }}
+                    onError={(event) => {
+                      if (event.currentTarget !== previewRef.current) return;
+                      setPreviewPlaying(false);
+                      setPreviewReady(false);
+                      if (previewRetrySeed === 0 && resolvedPreviewUrl) {
+                        setPreviewRetrySeed(1);
+                        return;
+                      }
+                      if (!usePreviewFallback && canSwitchToPreviewFallback) {
+                        setUsePreviewFallback(true);
+                        setPreviewRetrySeed(0);
+                        return;
+                      }
+                      setPreviewFailed(true);
+                    }}
+                  />
+                ) : null}
                 {/* Bottom gradient for legibility */}
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_30%,rgba(0,0,0,0.7)_70%,rgba(0,0,0,0.92)_100%)]" />
 
@@ -369,10 +650,10 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
               {/* ── Right: Intelligence Panel — frosted glass over thumbnail bleed ── */}
               <div className="relative flex min-h-[520px] flex-col overflow-hidden bg-white/72 backdrop-blur-2xl dark:bg-black/72">
                 <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                  {item.thumbnailUrl ? (
+                  {thumbnailUrl ? (
                     <>
                       <img
-                        src={item.thumbnailUrl}
+                        src={thumbnailUrl}
                         alt=""
                         className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl opacity-18 dark:opacity-14"
                       />
@@ -594,7 +875,8 @@ export default function FireIntelligenceDialog({ item, onClose }: FireIntelligen
                 </div>
               </div>
             </div>
-          </motion.div>
+            </motion.div>
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import os
 import re
 import json
 import time
+import tempfile
 import mimetypes
+import subprocess
+import statistics
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone, timedelta, date
+from html import unescape
 from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -32,6 +37,14 @@ from .config import (
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_MEDIA_BUCKET,
+    MEDIA_STORAGE_PROVIDER,
+    R2_ENDPOINT_URL,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET,
+    R2_REGION,
+    MEDIA_PUBLIC_BASE_URL,
+    R2_MEDIA_ENABLED,
     FIRE_MEDIA_RETENTION_ENABLED,
 )
 from .web_push import is_enabled as web_push_enabled, send as send_web_push
@@ -59,18 +72,246 @@ _MEDIA_FETCH_HEADERS = {
     "referer": "https://www.instagram.com/",
 }
 _IMAGE_ASSET_RETENTION_DAYS = 90
+_PREVIEW_ASSET_RETENTION_DAYS = 8
+_HOT_VISUAL_ASSET_RETENTION_DAYS = 30
+_PREVIEW_CLIP_SECONDS = 5
+_PREVIEW_MAX_DURATION_SECONDS = 5.0
+_PREVIEW_DURATION_TOLERANCE_SECONDS = 0.08
 _HEAVY_ASSET_RETENTION_DAYS = 1
+_HOT_PERCENTILE_MAX = 35
+_PREVIEW_CAPTURE_START_DAY = os.getenv("FIRE_PREVIEW_START_DAY", "2026-04-14").strip()
+_FIRE_RANKING_WINDOW_DAYS = 90
+_R2_CLIENT: Any | None = None
 
 
-def _post_media_rollover_deadline(posted_at: datetime | None, asset_role: str | None) -> datetime:
+def _post_media_rollover_deadline(
+    posted_at: datetime | None,
+    asset_role: str | None,
+    retention_days_override: int | None = None,
+) -> datetime:
     role = (asset_role or "").strip().lower()
     base = posted_at or datetime.now(timezone.utc)
     if base.tzinfo is None:
         base = base.replace(tzinfo=timezone.utc)
-    days = _HEAVY_ASSET_RETENTION_DAYS
-    if role in ("thumbnail", "display"):
+    if role == "preview_5s":
+        base = _preview_retention_anchor(base)
+    if retention_days_override is not None:
+        days = max(1, int(retention_days_override))
+    elif role in ("thumbnail", "display"):
         days = _IMAGE_ASSET_RETENTION_DAYS
+    elif role == "preview_5s":
+        days = _PREVIEW_ASSET_RETENTION_DAYS
+    else:
+        days = _HEAVY_ASSET_RETENTION_DAYS
     return base + timedelta(days=days)
+
+
+def _preview_extension_deadline(posted_at: datetime | None) -> datetime:
+    return _post_media_rollover_deadline(posted_at, "preview_5s", _HOT_VISUAL_ASSET_RETENTION_DAYS)
+
+
+def _preview_retention_anchor(posted_at: datetime | None) -> datetime:
+    base = posted_at or datetime.now(timezone.utc)
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+
+    cutoff_raw = (_PREVIEW_CAPTURE_START_DAY or "").strip()
+    if not cutoff_raw:
+        return base
+
+    try:
+        cutoff_date = date.fromisoformat(cutoff_raw)
+        cutoff_tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+        cutoff_dt = datetime(
+            cutoff_date.year,
+            cutoff_date.month,
+            cutoff_date.day,
+            0,
+            0,
+            0,
+            tzinfo=cutoff_tz,
+        ).astimezone(timezone.utc)
+        return cutoff_dt if base < cutoff_dt else base
+    except Exception:
+        return base
+
+
+def _preview_enabled_for_source(video_url: str | None) -> bool:
+    return bool(str(video_url or "").strip())
+
+
+def _preview_capture_allowed_for_business_day(business_day: str | None) -> bool:
+    day = str(business_day or "").strip()
+    cutoff = _PREVIEW_CAPTURE_START_DAY
+    if not day or not cutoff:
+        return True
+    return day >= cutoff
+
+
+def _render_preview_clip(video_bytes: bytes) -> tuple[bytes, str]:
+    tmp_in = None
+    tmp_out = None
+    try:
+        tmp_in = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp_in.write(video_bytes)
+        tmp_in.close()
+        tmp_out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp_out.close()
+
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-threads",
+                "1",
+                "-i",
+                tmp_in.name,
+                "-t",
+                str(_PREVIEW_CLIP_SECONDS),
+                "-an",
+                "-vf",
+                "scale=w=1280:h=720:force_original_aspect_ratio=decrease:force_divisible_by=2",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "24",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                tmp_out.name,
+            ],
+            capture_output=True,
+            timeout=90,
+        )
+        if proc.returncode != 0:
+            detail = proc.stderr.decode("utf-8", errors="replace").strip()[:500]
+            raise RuntimeError(f"ffmpeg preview render failed: {detail or proc.returncode}")
+
+        with open(tmp_out.name, "rb") as handle:
+            rendered = handle.read()
+        if not rendered:
+            raise RuntimeError("ffmpeg preview render produced empty output")
+        duration_seconds = _probe_media_duration_seconds(rendered, suffix=".mp4")
+        if duration_seconds is None:
+            raise RuntimeError("ffprobe preview validation failed")
+        max_allowed_duration = _PREVIEW_MAX_DURATION_SECONDS + _PREVIEW_DURATION_TOLERANCE_SECONDS
+        if duration_seconds > max_allowed_duration:
+            raise RuntimeError(
+                f"preview clip exceeded max duration: {duration_seconds:.3f}s > {max_allowed_duration:.3f}s"
+            )
+        return rendered, "video/mp4"
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg is required for preview generation in the worker image") from exc
+    finally:
+        for tmp in (tmp_in, tmp_out):
+            if tmp and getattr(tmp, "name", None):
+                try:
+                    os.unlink(tmp.name)
+                except Exception:
+                    pass
+
+
+def _looks_like_video_source(source_url: str | None, content_type: str | None) -> bool:
+    normalized_type = (content_type or "").strip().lower()
+    if normalized_type.startswith("video/"):
+        return True
+    guessed_type, _ = mimetypes.guess_type(str(source_url or "").split("?", 1)[0])
+    return bool(guessed_type and guessed_type.lower().startswith("video/"))
+
+
+def _probe_media_duration_seconds(media_bytes: bytes, suffix: str = ".mp4") -> float | None:
+    tmp = None
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(media_bytes)
+        tmp.close()
+        proc = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                tmp.name,
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            return None
+        output = proc.stdout.decode("utf-8", errors="replace").strip()
+        if not output:
+            return None
+        duration = float(output)
+        return duration if duration >= 0 else None
+    except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
+        return None
+    finally:
+        if tmp and getattr(tmp, "name", None):
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+
+
+def _render_video_thumbnail(video_bytes: bytes) -> tuple[bytes, str]:
+    tmp_in = None
+    tmp_out = None
+    try:
+        tmp_in = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp_in.write(video_bytes)
+        tmp_in.close()
+        tmp_out = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        tmp_out.close()
+
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                tmp_in.name,
+                "-ss",
+                "0.4",
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=w=1080:h=1920:force_original_aspect_ratio=decrease:force_divisible_by=2",
+                "-q:v",
+                "3",
+                tmp_out.name,
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+        if proc.returncode != 0:
+            detail = proc.stderr.decode("utf-8", errors="replace").strip()[:500]
+            raise RuntimeError(f"ffmpeg thumbnail render failed: {detail or proc.returncode}")
+
+        with open(tmp_out.name, "rb") as handle:
+            rendered = handle.read()
+        if not rendered:
+            raise RuntimeError("ffmpeg thumbnail render produced empty output")
+        return rendered, "image/jpeg"
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg is required for thumbnail generation in the worker image") from exc
+    finally:
+        for tmp in (tmp_in, tmp_out):
+            if tmp and getattr(tmp, "name", None):
+                try:
+                    os.unlink(tmp.name)
+                except Exception:
+                    pass
 
 
 def _to_dt(value: Any) -> datetime | None:
@@ -175,6 +416,141 @@ def _is_reel_media_type(media_type: Any) -> bool:
     return str(media_type or "").strip().lower() == "reel"
 
 
+def _canonical_fire_metric_order(media_type: Any) -> tuple[str, ...]:
+    normalized = str(media_type or "").strip().lower()
+    if normalized in {"reel", "video"}:
+        return ("views", "likes", "comments")
+    return ("likes", "comments", "views")
+
+
+def _round_half_up(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return int(value + 0.5)
+
+
+def _median_bigint(values: list[int | float | None]) -> int | None:
+    cleaned = sorted(float(value) for value in values if value is not None)
+    if not cleaned:
+        return None
+    return _round_half_up(float(statistics.median(cleaned)))
+
+
+def _metric_multiple(value: int | None, baseline: int | None) -> float | None:
+    if value is None or baseline is None or baseline <= 0:
+        return None
+    return round(float(value) / float(baseline), 4)
+
+
+def _competition_rank_maps(values: list[int | None]) -> tuple[dict[int, int], int]:
+    counts: dict[int, int] = defaultdict(int)
+    total = 0
+    for value in values:
+        if value is None:
+            continue
+        normalized = int(value)
+        counts[normalized] += 1
+        total += 1
+    if total <= 0:
+        return {}, 0
+
+    rank_map: dict[int, int] = {}
+    rank = 1
+    for value in sorted(counts.keys(), reverse=True):
+        rank_map[value] = rank
+        rank += counts[value]
+    return rank_map, total
+
+
+def _percentile_from_rank(rank: int | None, pool_size: int) -> tuple[int | None, float | None]:
+    if rank is None or pool_size <= 0:
+        return None, None
+    exact = max(1.0, min(100.0, (float(rank) / float(pool_size)) * 100.0))
+    rounded = _round_half_up(exact)
+    if rounded is None:
+        return None, None
+    return max(1, min(100, rounded)), exact
+
+
+def _reference_ts_for_metric_row(posted_at: Any, business_day: Any) -> datetime | None:
+    dt = _to_dt(posted_at)
+    if dt is not None:
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+    if business_day is None:
+        return None
+
+    day_value = business_day
+    if isinstance(day_value, str):
+        try:
+            day_value = date.fromisoformat(day_value.strip())
+        except Exception:
+            return None
+
+    if isinstance(day_value, date):
+        try:
+            local_zone = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
+        except Exception:
+            local_zone = timezone.utc
+        return datetime(
+            day_value.year,
+            day_value.month,
+            day_value.day,
+            12,
+            0,
+            0,
+            tzinfo=local_zone,
+        ).astimezone(timezone.utc)
+
+    return None
+
+
+def _metric_value_for_name(record: dict[str, Any], metric: str) -> int | None:
+    normalized = str(metric or "").strip().lower()
+    value = record.get(normalized)
+    return _to_int(value)
+
+
+def _baseline_value_for_name(record: dict[str, Any], metric: str) -> int | None:
+    normalized = str(metric or "").strip().lower()
+    value = record.get(f"{normalized}_baseline")
+    return _to_int(value)
+
+
+def _multiple_value_for_name(record: dict[str, Any], metric: str) -> float | None:
+    normalized = str(metric or "").strip().lower()
+    value = record.get(f"{normalized}_multiple")
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _choose_canonical_fire_metric(record: dict[str, Any], media_type: Any) -> str | None:
+    ordered = _canonical_fire_metric_order(media_type)
+    best_metric: str | None = None
+    best_multiple: float | None = None
+
+    for metric in ordered:
+        multiple = _multiple_value_for_name(record, metric)
+        if multiple is None:
+            continue
+        if best_multiple is None or multiple > best_multiple:
+            best_metric = metric
+            best_multiple = multiple
+
+    if best_metric:
+        return best_metric
+
+    for metric in ordered:
+        if _metric_value_for_name(record, metric) is not None:
+            return metric
+
+    return ordered[0] if ordered else None
+
+
 def _checkpoint_scrape_url(job: dict) -> str:
     post_url = str(job.get("post_url") or "").strip()
     provider_post_id = str(job.get("provider_post_id") or "").strip()
@@ -193,6 +569,19 @@ def _checkpoint_item_error(item: dict) -> str | None:
         detail = f"{code}: {message}".strip(": ").strip()
         return detail or "checkpoint scrape returned provider error"
     return None
+
+
+def _is_deleted_post_provider_error(error: str | None) -> bool:
+    normalized = str(error or "").strip().lower()
+    if not normalized:
+        return False
+    return (
+        "dead_page" in normalized
+        or "post isn't available" in normalized
+        or "link may be broken" in normalized
+        or "profile may have been removed" in normalized
+        or "removed" in normalized
+    )
 
 
 def _extract_related_handles(item: dict, fallback_handle: str | None = None) -> list[str]:
@@ -319,6 +708,64 @@ def _storage_object_url(bucket: str, path: str) -> str:
 
 def _storage_authenticated_object_url(bucket: str, path: str) -> str:
     return f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/authenticated/{bucket}/{quote(path, safe='/')}"
+
+
+def _active_media_storage_provider() -> str:
+    return "r2" if MEDIA_STORAGE_PROVIDER == "r2" and R2_MEDIA_ENABLED else "supabase"
+
+
+def _active_media_bucket() -> str:
+    return R2_BUCKET if _active_media_storage_provider() == "r2" else SUPABASE_MEDIA_BUCKET
+
+
+def _public_media_url(path: str) -> str | None:
+    base = (MEDIA_PUBLIC_BASE_URL or "").strip().rstrip("/")
+    clean_path = (path or "").strip().lstrip("/")
+    if not base or not clean_path:
+        return None
+    return f"{base}/{quote(clean_path, safe='/')}"
+
+
+def _r2_client():
+    global _R2_CLIENT
+    if _R2_CLIENT is not None:
+        return _R2_CLIENT
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise RuntimeError("MEDIA_STORAGE_PROVIDER=r2 requires boto3 in the worker environment") from exc
+
+    if not (R2_ENDPOINT_URL and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY):
+        raise RuntimeError("Missing R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY")
+
+    _R2_CLIENT = boto3.client(
+        "s3",
+        endpoint_url=R2_ENDPOINT_URL,
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name=R2_REGION or "auto",
+        config=Config(signature_version="s3v4"),
+    )
+    return _R2_CLIENT
+
+
+def _extract_instagram_meta_content(html: str, key: str) -> str | None:
+    if not html or not key:
+        return None
+    patterns = [
+        rf'<meta[^>]+property=["\']{re.escape(key)}["\'][^>]+content=["\']([^"\']+)["\']',
+        rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']{re.escape(key)}["\']',
+        rf'<meta[^>]+name=["\']{re.escape(key)}["\'][^>]+content=["\']([^"\']+)["\']',
+        rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']{re.escape(key)}["\']',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html, re.IGNORECASE)
+        if match:
+            value = unescape((match.group(1) or "").strip())
+            if value:
+                return value
+    return None
 
 
 def _daily_checkpoint_for_post(posted_at: datetime | None, business_date_ist: date | None) -> str:
@@ -537,25 +984,34 @@ class PureEngine:
         thumbnail_url: str | None,
         video_url: str | None,
         carousel_urls: list[str] | None,
+        *,
+        thumbnail_retention_days: int | None = None,
+        preview_retention_days: int | None = None,
     ):
         if not FIRE_MEDIA_RETENTION_ENABLED:
             return
 
-        payloads: list[tuple[str, str]] = []
+        payloads: list[tuple[str, str, int | None]] = []
         if thumbnail_url:
-            payloads.append(("thumbnail", thumbnail_url))
+            payloads.append(("thumbnail", thumbnail_url, thumbnail_retention_days))
+        if _preview_enabled_for_source(video_url):
+            payloads.append(("preview_5s", str(video_url).strip(), preview_retention_days))
 
-        for asset_role, source_url in payloads:
-            purge_after = _post_media_rollover_deadline(posted_at, asset_role)
+        storage_provider = _active_media_storage_provider()
+        storage_bucket = _active_media_bucket()
+
+        for asset_role, source_url, retention_days in payloads:
+            purge_after = _post_media_rollover_deadline(posted_at, asset_role, retention_days)
             if purge_after <= datetime.now(timezone.utc):
                 continue
             self.conn.execute(
                 """
                 insert into public.post_media_assets (
-                  post_key, asset_role, source_url, storage_bucket, status, attempt,
+                  post_key, asset_role, source_url, storage_provider, storage_bucket, status, attempt,
                   next_run_at, purge_after, last_error, updated_at
                 )
                 values (
+                  %s,
                   %s,
                   %s,
                   %s,
@@ -569,6 +1025,7 @@ class PureEngine:
                 )
                 on conflict (post_key, asset_role) do update
                 set source_url = excluded.source_url,
+                    storage_provider = excluded.storage_provider,
                     storage_bucket = excluded.storage_bucket,
                     purge_after = excluded.purge_after,
                     deleted_at = null,
@@ -578,10 +1035,22 @@ class PureEngine:
                       when public.post_media_assets.status = 'active'
                            and coalesce(public.post_media_assets.storage_path, '') <> ''
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                           and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                           and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                           and (
+                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
+                             or coalesce(public.post_media_assets.public_url, '') <> ''
+                           )
                         then 'active'
                       when public.post_media_assets.status = 'purge_pending'
                            and coalesce(public.post_media_assets.storage_path, '') <> ''
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                           and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                           and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                           and (
+                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
+                             or coalesce(public.post_media_assets.public_url, '') <> ''
+                           )
                         then 'active'
                       else 'pending_capture'
                     end,
@@ -589,6 +1058,12 @@ class PureEngine:
                       when public.post_media_assets.status = 'active'
                            and coalesce(public.post_media_assets.storage_path, '') <> ''
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                           and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                           and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                           and (
+                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
+                             or coalesce(public.post_media_assets.public_url, '') <> ''
+                           )
                         then public.post_media_assets.attempt
                       else 0
                     end,
@@ -596,12 +1071,494 @@ class PureEngine:
                       when public.post_media_assets.status = 'active'
                            and coalesce(public.post_media_assets.storage_path, '') <> ''
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                           and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                           and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                           and (
+                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
+                             or coalesce(public.post_media_assets.public_url, '') <> ''
+                           )
                         then public.post_media_assets.next_run_at
                       else now()
                     end
                 """,
-                (post_key, asset_role, source_url, SUPABASE_MEDIA_BUCKET, purge_after),
+                (post_key, asset_role, source_url, storage_provider, storage_bucket, purge_after),
             )
+
+    def _capture_post_media_assets_for_post_keys(
+        self,
+        post_keys: list[str],
+        *,
+        asset_roles: tuple[str, ...] = ("thumbnail", "preview_5s"),
+        stale_minutes: int = 5,
+    ) -> dict[str, int]:
+        normalized_post_keys = [str(value).strip().lower() for value in post_keys if str(value).strip()]
+        normalized_roles = [str(value).strip().lower() for value in asset_roles if str(value).strip()]
+        if not normalized_post_keys or not normalized_roles:
+            return {"selected": 0, "captured": 0, "failed": 0}
+
+        rows = self.conn.execute(
+            """
+            select *
+            from public.post_media_assets
+            where post_key = any(%s)
+              and asset_role = any(%s)
+              and (
+                status in ('pending_capture', 'capture_failed')
+                or (
+                  status = 'capturing'
+                  and coalesce(updated_at, now() - interval '365 days') <= now() - (%s::text || ' minutes')::interval
+                )
+              )
+              and coalesce(source_url, '') <> ''
+            order by
+              case
+                when lower(coalesce(asset_role, '')) = 'thumbnail' then 0
+                when lower(coalesce(asset_role, '')) = 'preview_5s' then 1
+                else 9
+              end,
+              updated_at asc,
+              id asc
+            """,
+            (normalized_post_keys, normalized_roles, max(1, stale_minutes)),
+        ).fetchall()
+        self.conn.commit()
+
+        captured = 0
+        failed = 0
+        for asset in rows:
+            attempt = int(asset.get("attempt") or 0) + 1
+            try:
+                self._capture_post_media_asset(asset)
+                captured += 1
+            except Exception as exc:
+                err = str(exc)[:1000] or "post media capture failed"
+                failed += 1
+                if attempt <= len(RETRY_BACKOFF_MINUTES):
+                    self._set_post_media_asset_result(
+                        int(asset["id"]),
+                        "capture_failed",
+                        attempt=attempt,
+                        next_run_at=_next_retry_time(attempt),
+                        error=err,
+                    )
+                else:
+                    purge_after = _to_dt(asset.get("purge_after"))
+                    final_status = "deleted" if purge_after is not None and purge_after <= datetime.now(timezone.utc) else "capture_failed"
+                    if final_status == "deleted":
+                        self._delete_post_media_asset_row(int(asset["id"]))
+                    else:
+                        self._set_post_media_asset_result(
+                            int(asset["id"]),
+                            final_status,
+                            attempt=attempt,
+                            next_run_at=None,
+                            deleted_at=None,
+                            error=err,
+                        )
+
+        return {"selected": len(rows), "captured": captured, "failed": failed}
+
+    def _retire_legacy_post_media_rows(
+        self,
+        post_keys: list[str] | None = None,
+        *,
+        limit: int = 1000,
+    ) -> dict[str, int]:
+        normalized_post_keys = [str(value).strip().lower() for value in (post_keys or []) if str(value).strip()]
+        scoped_keys = normalized_post_keys or None
+        rows = self.conn.execute(
+            """
+            with candidates as (
+              select assets.id
+              from public.post_media_assets assets
+              where assets.status <> 'deleted'
+                and (%s::text[] is null or assets.post_key = any(%s))
+                and (
+                  lower(coalesce(assets.asset_role, '')) = 'video'
+                  or lower(coalesce(assets.asset_role, '')) like 'carousel_%%'
+                  or (
+                    coalesce(assets.storage_provider, 'supabase') = 'supabase'
+                    and lower(coalesce(assets.asset_role, '')) in ('thumbnail', 'display', 'preview_5s')
+                    and exists (
+                      select 1
+                      from public.post_media_assets r2
+                      where r2.post_key = assets.post_key
+                        and r2.asset_role = assets.asset_role
+                        and r2.status in ('active', 'purge_pending')
+                        and coalesce(r2.storage_provider, 'supabase') = 'r2'
+                        and coalesce(r2.storage_path, '') <> ''
+                        and coalesce(r2.public_url, '') <> ''
+                    )
+                  )
+                )
+              order by assets.updated_at desc nulls last, assets.id desc
+              limit %s
+            )
+            update public.post_media_assets assets
+            set purge_after = now() - interval '1 minute',
+                status = case
+                  when coalesce(assets.storage_path, '') <> '' then 'purge_pending'
+                  else 'deleted'
+                end,
+                attempt = 0,
+                next_run_at = now(),
+                deleted_at = case
+                  when coalesce(assets.storage_path, '') <> '' then null
+                  else coalesce(assets.deleted_at, now())
+                end,
+                last_error = 'cleanup: retired legacy or superseded media asset',
+                updated_at = now()
+            from candidates
+            where assets.id = candidates.id
+            returning assets.id, assets.status
+            """,
+            (scoped_keys, scoped_keys, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        marked = len(rows)
+        purged = 0
+        if marked > 0:
+            self.process_post_media_assets(capture_limit=0, purge_limit=max(80, marked))
+            purged = marked
+        return {"marked": marked, "purged": purged}
+
+    def _metric_percentile(self, post_key: str, checkpoint: str) -> float | None:
+        row = self.conn.execute(
+            """
+            select percentile_performance
+            from public.post_metrics
+            where post_key = %s
+              and lower(checkpoint) = lower(%s)
+            """,
+            (post_key, checkpoint),
+        ).fetchone()
+        value = (row or {}).get("percentile_performance")
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
+    def _recompute_feeder_checkpoint_rankings(
+        self,
+        feeder_id: int,
+        checkpoint: str,
+        *,
+        window_days: int = _FIRE_RANKING_WINDOW_DAYS,
+    ) -> dict[str, int]:
+        cp = str(checkpoint or "").strip().lower()
+        if feeder_id <= 0 or cp not in {"d1", "d3", "d7", "d21"}:
+            return {"rows": 0, "lanes": 0}
+
+        rows = self.conn.execute(
+            """
+            select
+              pm.post_key,
+              lower(pm.checkpoint) as checkpoint,
+              pm.business_date_ist,
+              pm.computed_at,
+              pm.views,
+              pm.likes,
+              pm.comments,
+              lower(coalesce(p.media_type, 'unknown')) as media_type,
+              p.posted_at,
+              extract(hour from (p.posted_at at time zone %s))::smallint as hour_ist
+            from public.post_metrics pm
+            join public.posts p on p.post_key = pm.post_key
+            where p.feeder_id = %s
+              and lower(pm.checkpoint) = %s
+            order by
+              coalesce(p.posted_at, (pm.business_date_ist::text || ' 12:00:00+00')::timestamptz, pm.computed_at) asc,
+              pm.computed_at asc,
+              pm.post_key asc
+            """,
+            (APP_TIMEZONE, feeder_id, cp),
+        ).fetchall()
+
+        if not rows:
+            return {"rows": 0, "lanes": 0}
+
+        normalized_rows: list[dict[str, Any]] = []
+        for row in rows:
+            normalized = dict(row)
+            normalized["post_key"] = str(row.get("post_key") or "").strip().lower()
+            normalized["checkpoint"] = cp
+            normalized["media_type"] = str(row.get("media_type") or "unknown").strip().lower() or "unknown"
+            normalized["views"] = _to_int(row.get("views"))
+            normalized["likes"] = _to_int(row.get("likes"))
+            normalized["comments"] = _to_int(row.get("comments"))
+            normalized["hour_ist"] = _to_int(row.get("hour_ist"))
+            normalized["reference_ts"] = (
+                _reference_ts_for_metric_row(row.get("posted_at"), row.get("business_date_ist"))
+                or _to_dt(row.get("computed_at"))
+                or datetime.now(timezone.utc)
+            )
+            normalized_rows.append(normalized)
+
+        rows_by_lane: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in normalized_rows:
+            rows_by_lane[row["media_type"]].append(row)
+
+        updates_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        ranking_cutoff = timedelta(days=max(1, int(window_days)))
+        lane_count = 0
+
+        for media_type, lane_rows in rows_by_lane.items():
+            lane_rows.sort(
+                key=lambda item: (
+                    item.get("reference_ts") or datetime.now(timezone.utc),
+                    _to_dt(item.get("computed_at")) or datetime.now(timezone.utc),
+                    item.get("post_key") or "",
+                )
+            )
+            lane_count += 1
+            start = 0
+            for index, current in enumerate(lane_rows):
+                current_ts = current.get("reference_ts") or datetime.now(timezone.utc)
+                while start < index:
+                    compare_ts = lane_rows[start].get("reference_ts") or current_ts
+                    if compare_ts >= current_ts - ranking_cutoff:
+                        break
+                    start += 1
+                window = lane_rows[start:index + 1]
+
+                views_values = [_metric_value_for_name(candidate, "views") for candidate in window]
+                likes_values = [_metric_value_for_name(candidate, "likes") for candidate in window]
+                comments_values = [_metric_value_for_name(candidate, "comments") for candidate in window]
+
+                current["views_baseline"] = _median_bigint(views_values)
+                current["likes_baseline"] = _median_bigint(likes_values)
+                current["comments_baseline"] = _median_bigint(comments_values)
+                current["views_multiple"] = _metric_multiple(current.get("views"), current.get("views_baseline"))
+                current["likes_multiple"] = _metric_multiple(current.get("likes"), current.get("likes_baseline"))
+                current["comments_multiple"] = _metric_multiple(current.get("comments"), current.get("comments_baseline"))
+
+                views_rank_map, views_pool_size = _competition_rank_maps(views_values)
+                likes_rank_map, likes_pool_size = _competition_rank_maps(likes_values)
+                comments_rank_map, comments_pool_size = _competition_rank_maps(comments_values)
+
+                current_views = current.get("views")
+                current_likes = current.get("likes")
+                current_comments = current.get("comments")
+
+                current["views_percentile"], _ = _percentile_from_rank(
+                    views_rank_map.get(int(current_views)) if current_views is not None else None,
+                    views_pool_size,
+                )
+                current["likes_percentile"], _ = _percentile_from_rank(
+                    likes_rank_map.get(int(current_likes)) if current_likes is not None else None,
+                    likes_pool_size,
+                )
+                current["comments_percentile"], _ = _percentile_from_rank(
+                    comments_rank_map.get(int(current_comments)) if current_comments is not None else None,
+                    comments_pool_size,
+                )
+
+                current["ranking_metric"] = _choose_canonical_fire_metric(current, media_type)
+                ranking_metric = str(current.get("ranking_metric") or "").strip().lower()
+                ranking_value = _metric_value_for_name(current, ranking_metric)
+                current["metric_value"] = ranking_value
+                current["ranking_multiple"] = _multiple_value_for_name(current, ranking_metric)
+
+                if ranking_metric == "views":
+                    ranking_rank = views_rank_map.get(int(ranking_value)) if ranking_value is not None else None
+                    ranking_pool_size = views_pool_size
+                elif ranking_metric == "likes":
+                    ranking_rank = likes_rank_map.get(int(ranking_value)) if ranking_value is not None else None
+                    ranking_pool_size = likes_pool_size
+                else:
+                    ranking_rank = comments_rank_map.get(int(ranking_value)) if ranking_value is not None else None
+                    ranking_pool_size = comments_pool_size
+
+                percentile_rounded, percentile_exact = _percentile_from_rank(ranking_rank, ranking_pool_size)
+                current["percentile_performance"] = percentile_rounded
+                current["percentile_performance_exact"] = percentile_exact
+
+                hour_multiple = None
+                hour_ist = current.get("hour_ist")
+                if hour_ist is not None and ranking_metric in {"views", "likes", "comments"}:
+                    hour_values = [
+                        _metric_value_for_name(candidate, ranking_metric)
+                        for candidate in window
+                        if candidate.get("hour_ist") == hour_ist
+                    ]
+                    hour_baseline = _median_bigint(hour_values)
+                    hour_multiple = _metric_multiple(ranking_value, hour_baseline)
+                current["hour_multiple"] = hour_multiple
+                current["feed_percentile"] = None
+
+                updates_by_key[(current["post_key"], cp)] = current
+
+        if not updates_by_key:
+            return {"rows": 0, "lanes": lane_count}
+
+        d1_percentile_by_post: dict[str, int | None] = {}
+        if cp != "d1":
+            d1_rows = self.conn.execute(
+                """
+                select post_key, percentile_performance
+                from public.post_metrics
+                where post_key = any(%s)
+                  and lower(checkpoint) = 'd1'
+                """,
+                ([key[0] for key in updates_by_key.keys()],),
+            ).fetchall()
+            for row in d1_rows:
+                post_key = str(row.get("post_key") or "").strip().lower()
+                d1_percentile_by_post[post_key] = _to_int(row.get("percentile_performance"))
+
+        update_params: list[tuple[Any, ...]] = []
+        for (post_key, row_checkpoint), values in updates_by_key.items():
+            current_percentile = _to_int(values.get("percentile_performance"))
+            d1_percentile = d1_percentile_by_post.get(post_key)
+            delta_from_d1 = None
+            if row_checkpoint != "d1" and d1_percentile is not None and current_percentile is not None:
+                delta_from_d1 = d1_percentile - current_percentile
+
+            update_params.append(
+                (
+                    values.get("metric_value"),
+                    current_percentile,
+                    values.get("percentile_performance_exact"),
+                    values.get("views_percentile"),
+                    values.get("likes_percentile"),
+                    values.get("comments_percentile"),
+                    delta_from_d1,
+                    values.get("ranking_metric"),
+                    values.get("ranking_multiple"),
+                    values.get("views_baseline"),
+                    values.get("likes_baseline"),
+                    values.get("comments_baseline"),
+                    values.get("views_multiple"),
+                    values.get("likes_multiple"),
+                    values.get("comments_multiple"),
+                    values.get("hour_multiple"),
+                    post_key,
+                    row_checkpoint,
+                )
+            )
+
+        with self.conn.cursor() as cur:
+            cur.executemany(
+                """
+                update public.post_metrics
+                set metric_value = %s,
+                    percentile_performance = %s,
+                    percentile_performance_exact = %s,
+                    views_percentile = %s,
+                    likes_percentile = %s,
+                    comments_percentile = %s,
+                    feed_percentile = null,
+                    delta_from_d1 = %s,
+                    ranking_metric = %s,
+                    ranking_multiple = %s,
+                    views_baseline = %s,
+                    likes_baseline = %s,
+                    comments_baseline = %s,
+                    views_multiple = %s,
+                    likes_multiple = %s,
+                    comments_multiple = %s,
+                    hour_multiple = %s
+                where post_key = %s
+                  and lower(checkpoint) = %s
+                """,
+                update_params,
+            )
+        self.conn.commit()
+        return {"rows": len(update_params), "lanes": lane_count}
+
+    def recompute_fire_rankings(
+        self,
+        *,
+        limit: int = 300,
+        days: int | None = None,
+    ) -> dict[str, int]:
+        scoped_days = max(1, int(days)) if days is not None and int(days) > 0 else None
+        rows = self.conn.execute(
+            """
+            with scope as (
+              select
+                p.feeder_id,
+                lower(pm.checkpoint) as checkpoint,
+                max(coalesce(p.posted_at, (pm.business_date_ist::text || ' 12:00:00+00')::timestamptz, pm.computed_at)) as latest_ref_ts
+              from public.post_metrics pm
+              join public.posts p on p.post_key = pm.post_key
+              where lower(pm.checkpoint) in ('d1', 'd3', 'd7', 'd21')
+                and (
+                  %s::int is null
+                  or coalesce(p.posted_at, (pm.business_date_ist::text || ' 12:00:00+00')::timestamptz, pm.computed_at)
+                    >= now() - (%s::text || ' days')::interval
+                )
+              group by p.feeder_id, lower(pm.checkpoint)
+            )
+            select feeder_id, checkpoint
+            from scope
+            order by latest_ref_ts desc nulls last, feeder_id asc, checkpoint asc
+            limit %s
+            """,
+            (scoped_days, scoped_days, max(1, int(limit))),
+        ).fetchall()
+
+        processed = 0
+        updated_rows = 0
+        lane_count = 0
+        for row in rows:
+            feeder_id = int(row.get("feeder_id") or 0)
+            checkpoint = str(row.get("checkpoint") or "").strip().lower()
+            if feeder_id <= 0 or not checkpoint:
+                continue
+            result = self._recompute_feeder_checkpoint_rankings(feeder_id, checkpoint)
+            processed += 1
+            updated_rows += int(result.get("rows", 0))
+            lane_count += int(result.get("lanes", 0))
+
+        return {
+            "selected": len(rows),
+            "processed": processed,
+            "updated_rows": updated_rows,
+            "lanes": lane_count,
+        }
+
+    def _extend_hot_visual_media_for_day(self, feeder_id: int, checkpoint: str, business_day: date | None):
+        cp = str(checkpoint or "").strip().lower()
+        if feeder_id <= 0 or business_day is None or cp not in {"d7", "d21"}:
+            return
+
+        rows = self.conn.execute(
+            """
+            select
+              p.post_key,
+              p.posted_at,
+              p.thumbnail_url,
+              p.video_url,
+              pm.business_date_ist
+            from public.post_metrics pm
+            join public.posts p on p.post_key = pm.post_key
+            where p.feeder_id = %s
+              and lower(pm.checkpoint) = %s
+              and pm.business_date_ist = %s
+              and pm.percentile_performance is not null
+              and pm.percentile_performance <= %s
+            """,
+            (feeder_id, cp, business_day, _HOT_PERCENTILE_MAX),
+        ).fetchall()
+
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            if not post_key:
+                continue
+            posted_at = _to_dt(row.get("posted_at"))
+            thumbnail_url = str(row.get("thumbnail_url") or "").strip() or None
+            preview_allowed = _preview_capture_allowed_for_business_day(str(row.get("business_date_ist") or "").strip())
+            video_url = str(row.get("video_url") or "").strip() or None
+            self._stage_post_media_assets(
+                post_key,
+                posted_at,
+                thumbnail_url,
+                video_url if preview_allowed else None,
+                None,
+                preview_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
+            )
+        self.conn.commit()
 
     def _claim_post_media_assets_for_capture(self, limit: int) -> list[dict]:
         if not FIRE_MEDIA_RETENTION_ENABLED:
@@ -630,7 +1587,10 @@ class PureEngine:
         *,
         attempt: int | None = None,
         next_run_at: datetime | None = None,
+        storage_provider: str | None = None,
+        storage_bucket: str | None = None,
         storage_path: str | None = None,
+        public_url: str | None = None,
         mime_type: str | None = None,
         byte_size: int | None = None,
         captured_at: datetime | None = None,
@@ -643,7 +1603,10 @@ class PureEngine:
             set status = %s,
                 attempt = coalesce(%s, attempt),
                 next_run_at = coalesce(%s::timestamptz, next_run_at),
+                storage_provider = coalesce(%s::text, storage_provider),
+                storage_bucket = coalesce(%s::text, storage_bucket),
                 storage_path = coalesce(%s::text, storage_path),
+                public_url = %s::text,
                 mime_type = coalesce(%s::text, mime_type),
                 byte_size = coalesce(%s, byte_size),
                 captured_at = coalesce(%s::timestamptz, captured_at),
@@ -656,7 +1619,10 @@ class PureEngine:
                 status,
                 attempt,
                 next_run_at,
+                storage_provider,
+                storage_bucket,
                 storage_path,
+                public_url,
                 mime_type,
                 byte_size,
                 captured_at,
@@ -678,41 +1644,146 @@ class PureEngine:
         )
         self.conn.commit()
 
-    def _capture_post_media_asset(self, asset: dict):
-        source_url = str(asset.get("source_url") or "").strip()
-        if not source_url.startswith(_MEDIA_ALLOWED_FETCH_PROTOCOLS):
-            raise RuntimeError("invalid media source url")
+    def _delete_post_media_object(self, asset: dict):
+        storage_path = str(asset.get("storage_path") or "").strip()
+        if not storage_path:
+            return
 
-        upstream = requests.get(
-            source_url,
-            headers=_MEDIA_FETCH_HEADERS,
+        storage_provider = str(asset.get("storage_provider") or "supabase").strip().lower()
+        storage_bucket = str(asset.get("storage_bucket") or (_active_media_bucket() if storage_provider == "r2" else SUPABASE_MEDIA_BUCKET))
+        if storage_provider == "r2":
+            _r2_client().delete_object(Bucket=storage_bucket, Key=storage_path)
+        else:
+            resp = requests.delete(
+                _storage_object_url(storage_bucket, storage_path),
+                headers=self._storage_headers(),
+                timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
+            )
+            if resp.status_code not in (200, 204, 404):
+                resp.raise_for_status()
+
+    def _reset_post_media_asset_for_recapture(self, asset_id: int, error: str | None = None):
+        self.conn.execute(
+            """
+            update public.post_media_assets
+            set status = 'pending_capture',
+                attempt = 0,
+                next_run_at = now(),
+                storage_path = null,
+                public_url = null,
+                mime_type = null,
+                byte_size = null,
+                captured_at = null,
+                deleted_at = null,
+                last_error = case when %s::text is null then null else left(%s::text, 1000) end,
+                updated_at = now()
+            where id = %s
+            """,
+            (error, error, asset_id),
+        )
+        self.conn.commit()
+
+    def _fetch_stored_post_media_asset_bytes(self, asset: dict) -> bytes | None:
+        storage_path = str(asset.get("storage_path") or "").strip()
+        if not storage_path:
+            return None
+
+        storage_provider = str(asset.get("storage_provider") or "supabase").strip().lower()
+        storage_bucket = str(asset.get("storage_bucket") or (_active_media_bucket() if storage_provider == "r2" else SUPABASE_MEDIA_BUCKET))
+        if storage_provider == "r2":
+            obj = _r2_client().get_object(Bucket=storage_bucket, Key=storage_path)
+            body = obj.get("Body")
+            if body is None:
+                return None
+            data = body.read()
+            return data if data else None
+
+        resp = requests.get(
+            _storage_authenticated_object_url(storage_bucket, storage_path),
+            headers=self._storage_read_headers(),
             timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
         )
-        upstream.raise_for_status()
-        content_type = (upstream.headers.get("content-type") or "application/octet-stream").split(";", 1)[0].strip()
-        body = upstream.content
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.content or None
+
+    def _store_post_media_asset_body(
+        self,
+        asset: dict,
+        body: bytes,
+        content_type: str,
+    ) -> tuple[str, str, str | None]:
         if not body:
             raise RuntimeError("empty media payload")
 
         storage_path = _fire_media_object_key(
             str(asset.get("post_key") or ""),
             str(asset.get("asset_role") or ""),
-            source_url,
+            str(asset.get("source_url") or asset.get("public_url") or asset.get("storage_path") or "").strip() or None,
             content_type,
         )
-        upload = requests.post(
-            _storage_object_url(str(asset.get("storage_bucket") or SUPABASE_MEDIA_BUCKET), storage_path),
-            headers=self._storage_headers(content_type),
-            data=body,
-            timeout=_MEDIA_UPLOAD_TIMEOUT_SECONDS,
+        storage_provider = str(asset.get("storage_provider") or _active_media_storage_provider()).strip().lower()
+        if storage_provider not in ("supabase", "r2"):
+            storage_provider = _active_media_storage_provider()
+        storage_bucket = str(asset.get("storage_bucket") or _active_media_bucket())
+        public_url = None
+
+        if storage_provider == "r2":
+            _r2_client().put_object(
+                Bucket=storage_bucket,
+                Key=storage_path,
+                Body=body,
+                ContentType=content_type,
+                CacheControl="public, max-age=31536000, immutable",
+            )
+            public_url = _public_media_url(storage_path)
+        else:
+            upload = requests.post(
+                _storage_object_url(storage_bucket, storage_path),
+                headers=self._storage_headers(content_type),
+                data=body,
+                timeout=_MEDIA_UPLOAD_TIMEOUT_SECONDS,
+            )
+            upload.raise_for_status()
+
+        return storage_provider, storage_path, public_url
+
+    def _capture_post_media_asset(self, asset: dict):
+        source_url = str(asset.get("source_url") or "").strip()
+        if not source_url.startswith(_MEDIA_ALLOWED_FETCH_PROTOCOLS):
+            raise RuntimeError("invalid media source url")
+
+        asset_role = str(asset.get("asset_role") or "").strip().lower()
+        upstream = requests.get(
+            source_url,
+            headers=_MEDIA_FETCH_HEADERS,
+            timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
         )
-        upload.raise_for_status()
+        upstream.raise_for_status()
+        upstream_content_type = (upstream.headers.get("content-type") or "application/octet-stream").split(";", 1)[0].strip()
+        body = upstream.content
+        if not body:
+            raise RuntimeError("empty media payload")
+
+        if asset_role == "preview_5s":
+            body, content_type = _render_preview_clip(body)
+        elif asset_role in ("thumbnail", "display") and _looks_like_video_source(source_url, upstream_content_type):
+            body, content_type = _render_video_thumbnail(body)
+        else:
+            content_type = upstream_content_type
+
+        storage_provider, storage_path, public_url = self._store_post_media_asset_body(asset, body, content_type)
+
         self._set_post_media_asset_result(
             int(asset["id"]),
             "active",
             attempt=0,
             next_run_at=None,
+            storage_provider=storage_provider,
+            storage_bucket=str(asset.get("storage_bucket") or _active_media_bucket()),
             storage_path=storage_path,
+            public_url=public_url,
             mime_type=content_type,
             byte_size=len(body),
             captured_at=datetime.now(timezone.utc),
@@ -720,19 +1791,34 @@ class PureEngine:
             error=None,
         )
 
+    def _fetch_instagram_post_page_thumbnail_url(self, post_url: str) -> str | None:
+        url = str(post_url or "").strip()
+        if not url.startswith(_MEDIA_ALLOWED_FETCH_PROTOCOLS):
+            return None
+
+        response = requests.get(
+            url,
+            headers={"user-agent": _MEDIA_FETCH_HEADERS["user-agent"]},
+            timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        html = response.text or ""
+        if not html:
+            return None
+
+        for key in ("og:image", "twitter:image"):
+            value = _extract_instagram_meta_content(html, key)
+            if value and value.startswith(_MEDIA_ALLOWED_FETCH_PROTOCOLS):
+                return value
+        return None
+
     def _delete_post_media_asset(self, asset: dict):
         storage_path = str(asset.get("storage_path") or "").strip()
         if not storage_path:
             self._delete_post_media_asset_row(int(asset["id"]))
             return
 
-        resp = requests.delete(
-            _storage_object_url(str(asset.get("storage_bucket") or SUPABASE_MEDIA_BUCKET), storage_path),
-            headers=self._storage_headers(),
-            timeout=_MEDIA_CAPTURE_TIMEOUT_SECONDS,
-        )
-        if resp.status_code not in (200, 204, 404):
-            resp.raise_for_status()
+        self._delete_post_media_object(asset)
         self._delete_post_media_asset_row(int(asset["id"]))
 
     def enqueue_daily(self) -> int:
@@ -964,6 +2050,117 @@ class PureEngine:
             (post_key, checkpoint, views, likes, comments, business_date_ist),
         )
 
+    def _mark_post_availability(self, post_key: str, status: str, reason: str | None = None):
+        normalized_status = str(status or "active").strip().lower() or "active"
+        if normalized_status not in {"active", "deleted", "unavailable"}:
+            normalized_status = "unavailable"
+        self.conn.execute(
+            """
+            update public.posts
+            set availability_status = %s,
+                availability_error = case when %s::text is null then null else left(%s::text, 1000) end,
+                availability_checked_at = now(),
+                updated_at = now()
+            where post_key = %s
+            """,
+            (normalized_status, reason, reason, post_key),
+        )
+
+    def _latest_prior_metric_snapshot(self, post_key: str, checkpoint: str) -> dict[str, Any] | None:
+        cp = str(checkpoint or "").strip().lower()
+        if cp == "d21":
+            candidates = ("d7", "d3", "d1")
+        elif cp == "d7":
+            candidates = ("d3", "d1")
+        elif cp == "d3":
+            candidates = ("d1",)
+        else:
+            candidates = ()
+        if not candidates:
+            return None
+
+        row = self.conn.execute(
+            """
+            select checkpoint, views, likes, comments, business_date_ist
+            from public.post_metrics
+            where post_key = %s
+              and lower(checkpoint) = any(%s)
+            order by
+              case lower(checkpoint)
+                when 'd7' then 3
+                when 'd3' then 2
+                when 'd1' then 1
+                else 0
+              end desc,
+              computed_at desc nulls last
+            limit 1
+            """,
+            (post_key, list(candidates)),
+        ).fetchone()
+        return row or None
+
+    def _has_cached_thumbnail_asset(self, post_key: str) -> bool:
+        row = self.conn.execute(
+            """
+            select 1
+            from public.post_media_assets
+            where post_key = %s
+              and asset_role = 'thumbnail'
+              and status in ('active', 'purge_pending')
+              and coalesce(storage_provider, 'supabase') = 'r2'
+              and coalesce(storage_path, '') <> ''
+              and coalesce(public_url, '') <> ''
+            limit 1
+            """,
+            (post_key,),
+        ).fetchone()
+        return bool(row)
+
+    def _checkpoint_business_day_for_job(
+        self,
+        posted_at: datetime | None,
+        checkpoint: str,
+        next_run_at: Any,
+    ) -> date | None:
+        cp = str(checkpoint or "").strip().lower()
+        if cp in ("d1", "d3", "d7", "d21"):
+            business_day = _checkpoint_business_day_for_post(posted_at, cp)
+            if business_day is None:
+                business_day = _checkpoint_business_day(next_run_at)
+            return business_day
+        business_day = _business_date_from_job({"next_run_at": next_run_at})
+        if business_day is None:
+            business_day = _checkpoint_business_day(next_run_at)
+        return business_day
+
+    def _freeze_checkpoint_from_previous_metrics(
+        self,
+        job: dict,
+        business_day: date | None,
+        reason: str,
+    ) -> str | None:
+        post_key = str(job.get("post_key") or "").strip().lower()
+        checkpoint = str(job.get("checkpoint") or "").strip().lower()
+        if not post_key or not checkpoint or business_day is None:
+            return None
+        if not self._has_cached_thumbnail_asset(post_key):
+            return None
+
+        snapshot = self._latest_prior_metric_snapshot(post_key, checkpoint)
+        if not snapshot:
+            return None
+
+        self._insert_metric_if_missing(
+            post_key,
+            checkpoint,
+            snapshot.get("views"),
+            snapshot.get("likes"),
+            snapshot.get("comments"),
+            business_day,
+        )
+        prior_checkpoint = str(snapshot.get("checkpoint") or "").strip().upper() or "PREVIOUS"
+        return f"checkpoint frozen: post unavailable; reused {prior_checkpoint} metrics ({reason[:240]})"
+
     def _claim_run_jobs(self, limit: int) -> list[dict]:
         rows = self.conn.execute(
             """
@@ -982,6 +2179,9 @@ class PureEngine:
             """
             select cj.*, p.post_url, p.media_type, p.feeder_id, p.posted_at, fd.handle
                  , p.provider_post_id
+                 , p.availability_status
+                 , p.availability_error
+                 , p.availability_checked_at
             from public.claim_checkpoint_jobs(%s) cj
             join public.posts p on p.post_key = cj.post_key
             join public.feeders fd on fd.id = p.feeder_id
@@ -1112,10 +2312,10 @@ class PureEngine:
         )
 
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
-        """Get an authenticated URL for a cached media asset in Supabase Storage."""
+        """Get a URL for a cached media asset."""
         with self.conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                """SELECT storage_bucket, storage_path
+                """SELECT storage_provider, storage_bucket, storage_path, public_url
                    FROM public.post_media_assets
                    WHERE post_key = %s AND asset_role = %s
                      AND status = 'active'
@@ -1126,15 +2326,19 @@ class PureEngine:
             row = cur.fetchone()
         if not row or not row.get("storage_path"):
             return None
+        if row.get("public_url"):
+            return str(row["public_url"])
+        if row.get("storage_provider") == "r2":
+            return _public_media_url(str(row["storage_path"]))
         bucket = row.get("storage_bucket") or SUPABASE_MEDIA_BUCKET
         path = row["storage_path"]
         return _storage_authenticated_object_url(str(bucket), str(path))
 
     def _get_cached_carousel_urls(self, post_key: str) -> list[str]:
-        """Get authenticated URLs for cached carousel slides in Supabase Storage."""
+        """Get URLs for cached carousel slides."""
         with self.conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                """SELECT storage_bucket, storage_path, asset_role
+                """SELECT storage_provider, storage_bucket, storage_path, public_url, asset_role
                    FROM public.post_media_assets
                    WHERE post_key = %s
                      AND asset_role LIKE 'carousel_%%'
@@ -1146,6 +2350,14 @@ class PureEngine:
             rows = cur.fetchall()
         urls = []
         for row in rows:
+            if row.get("public_url"):
+                urls.append(str(row["public_url"]))
+                continue
+            if row.get("storage_provider") == "r2":
+                url = _public_media_url(str(row["storage_path"]))
+                if url:
+                    urls.append(url)
+                continue
             bucket = row.get("storage_bucket") or SUPABASE_MEDIA_BUCKET
             path = row["storage_path"]
             urls.append(_storage_authenticated_object_url(str(bucket), str(path)))
@@ -1298,8 +2510,8 @@ class PureEngine:
                                     post_key,
                                     posted_at,
                                     thumbnail_url,
-                                    video_url,
-                                    carousel_urls,
+                                    None,
+                                    None,
                                 )
                                 if is_new_post:
                                     self.conn.execute(
@@ -1360,9 +2572,45 @@ class PureEngine:
         jobs_by_post_key: dict[str, list[dict]] = defaultdict(list)
         urls_by_post_key: dict[str, str] = {}
         mode_by_post_key: dict[str, str] = {}
+        touched: set[tuple[int, str, date]] = set()
         for job in jobs:
             post_key = str(job.get("post_key") or "").strip().lower()
             resolved_post_url = _checkpoint_scrape_url(job)
+            checkpoint = str(job.get("checkpoint") or "").strip().lower()
+            feeder_id = int(job.get("feeder_id") or 0)
+            business_day = self._checkpoint_business_day_for_job(
+                _to_dt(job.get("posted_at")),
+                checkpoint,
+                job.get("next_run_at"),
+            )
+            availability_status = str(job.get("availability_status") or "active").strip().lower() or "active"
+
+            if availability_status in {"deleted", "unavailable"}:
+                jid = int(job["id"])
+                att = int(job.get("attempt") or 0)
+                reason = str(job.get("availability_error") or "post unavailable").strip() or "post unavailable"
+                frozen_message = self._freeze_checkpoint_from_previous_metrics(job, business_day, reason)
+                try:
+                    self.conn.commit()
+                except Exception:
+                    try:
+                        self.conn.rollback()
+                    except Exception:
+                        pass
+                if frozen_message:
+                    self._set_checkpoint_result(jid, "done", att, None, frozen_message)
+                    if feeder_id and checkpoint in ("d1", "d3", "d7", "d21") and business_day is not None:
+                        touched.add((feeder_id, checkpoint, business_day))
+                else:
+                    self._set_checkpoint_result(
+                        jid,
+                        "skipped",
+                        att,
+                        None,
+                        _hard_skip_error(reason, "checkpoint hard failure"),
+                    )
+                continue
+
             if not post_key or not resolved_post_url:
                 continue
             jobs_by_post_key[post_key].append(job)
@@ -1374,7 +2622,6 @@ class PureEngine:
             return
 
         try:
-            touched: set[tuple[int, str, date]] = set()
             ordered_modes = ["post", "reel"]
             for mode in ordered_modes:
                 scoped_post_keys = [post_key for post_key in ordered_post_keys if mode_by_post_key.get(post_key) == mode]
@@ -1407,6 +2654,7 @@ class PureEngine:
                             att = int(j.get("attempt") or 0)
                             checkpoint = str(j.get("checkpoint") or "")
                             cp = checkpoint.lower()
+                            feeder_id = int(j.get("feeder_id") or 0)
                             job_posted_at = _to_dt(j.get("posted_at"))
                             job_post_key = str(j.get("post_key") or "").strip().lower()
                             job_post_url = str(j.get("post_url") or "")
@@ -1439,24 +2687,46 @@ class PureEngine:
                                     self.conn.rollback()
                                 except Exception:
                                     pass
-                                self._set_checkpoint_result(
-                                    jid,
-                                    "skipped",
-                                    att,
-                                    None,
-                                    _hard_skip_error(provider_error, "checkpoint hard failure"),
-                                )
+                                if _is_deleted_post_provider_error(provider_error):
+                                    business_day = self._checkpoint_business_day_for_job(
+                                        job_posted_at,
+                                        cp,
+                                        j.get("next_run_at"),
+                                    )
+                                    self._mark_post_availability(job_post_key, "deleted", provider_error)
+                                    frozen_message = self._freeze_checkpoint_from_previous_metrics(
+                                        j,
+                                        business_day,
+                                        provider_error,
+                                    )
+                                    self.conn.commit()
+                                    if frozen_message:
+                                        self._set_checkpoint_result(jid, "done", att, None, frozen_message)
+                                        if feeder_id and cp in ("d1", "d3", "d7", "d21") and business_day is not None:
+                                            touched.add((feeder_id, cp, business_day))
+                                    else:
+                                        self._set_checkpoint_result(
+                                            jid,
+                                            "skipped",
+                                            att,
+                                            None,
+                                            _hard_skip_error(provider_error, "checkpoint hard failure"),
+                                        )
+                                else:
+                                    self._set_checkpoint_result(
+                                        jid,
+                                        "skipped",
+                                        att,
+                                        None,
+                                        _hard_skip_error(provider_error, "checkpoint hard failure"),
+                                    )
                                 continue
 
-                            feeder_id = int(j.get("feeder_id") or 0)
-                            if cp in ("d1", "d3", "d7", "d21"):
-                                business_day = _checkpoint_business_day_for_post(job_posted_at, cp)
-                                if business_day is None:
-                                    business_day = _checkpoint_business_day(j.get("next_run_at"))
-                            else:
-                                business_day = _business_date_from_job(j)
-                                if business_day is None:
-                                    business_day = _checkpoint_business_day(j.get("next_run_at"))
+                            business_day = self._checkpoint_business_day_for_job(
+                                job_posted_at,
+                                cp,
+                                j.get("next_run_at"),
+                            )
 
                             views, likes, comments = _extract_metrics(item)
                             if views is None and likes is None and comments is None:
@@ -1471,6 +2741,7 @@ class PureEngine:
                                 else:
                                     self._set_checkpoint_result(jid, "failed", na, None, err)
                                 continue
+                            self._mark_post_availability(job_post_key, "active", None)
                             thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
                             self._refresh_post_media(
                                 str(j["post_key"]),
@@ -1478,11 +2749,12 @@ class PureEngine:
                                 video_url,
                                 carousel_urls,
                             )
+                            preview_video_url = video_url if _preview_capture_allowed_for_business_day(business_day) else None
                             self._stage_post_media_assets(
                                 str(j["post_key"]),
                                 job_posted_at,
                                 thumbnail_url,
-                                None,
+                                preview_video_url,
                                 None,
                             )
                             # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
@@ -1504,15 +2776,46 @@ class PureEngine:
                                 else:
                                     self._set_checkpoint_result(jid, "failed", na, None, err)
                                 continue
+
+                            percentile = self._metric_percentile(str(j["post_key"]), checkpoint)
+                            should_extend_visual_media = (
+                                cp == "d21"
+                                or (cp == "d7" and percentile is not None and percentile <= _HOT_PERCENTILE_MAX)
+                            )
+                            if (
+                                should_extend_visual_media
+                                and (
+                                    thumbnail_url
+                                    or (
+                                        _preview_enabled_for_source(video_url)
+                                        and _preview_capture_allowed_for_business_day(business_day)
+                                    )
+                                )
+                            ):
+                                self._stage_post_media_assets(
+                                    str(j["post_key"]),
+                                    job_posted_at,
+                                    thumbnail_url,
+                                    video_url if _preview_capture_allowed_for_business_day(business_day) else None,
+                                    None,
+                                    preview_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
+                                )
                             self.conn.commit()
                             self._set_checkpoint_result(jid, "done", att, None, None)
 
                             if feeder_id and cp in ("d1", "d3", "d7", "d21"):
                                 touched.add((feeder_id, cp, business_day))
 
+            recomputed_pairs: set[tuple[int, str]] = set()
+
             # Resolver chain for checkpoint jobs once batch writes are done
             for feeder_id, cp, business_day in sorted(touched, key=lambda item: (item[2], item[0], item[1])):
                 try:
+                    recompute_key = (feeder_id, cp)
+                    if recompute_key not in recomputed_pairs:
+                        self._recompute_feeder_checkpoint_rankings(feeder_id, cp)
+                        recomputed_pairs.add(recompute_key)
+                    self._extend_hot_visual_media_for_day(feeder_id, cp, business_day)
                     self._extract_post_intelligence_for_checkpoint(feeder_id, cp, business_day)
                     self._resolve_for_feeder(feeder_id, cp, business_day)
                     self._try_resolve_feed(feeder_id, cp, business_day)
@@ -1721,26 +3024,71 @@ class PureEngine:
 
 
     def backfill_d1_media(self, limit: int = 300, days: int = 14, batch_size: int = 50) -> dict[str, int]:
-        """Backfill missing media refs and cached asset rows for existing D1 posts."""
+        """Backfill recent Fire media when thumbnail or preview assets are missing or still on the old provider."""
+        active_provider = _active_media_storage_provider()
         rows = self.conn.execute(
             """
-            select p.post_key, p.post_url, p.posted_at
+            with latest_metric as (
+              select
+                pm.post_key,
+                max(pm.business_date_ist) as business_day,
+                bool_or(
+                  lower(coalesce(pm.checkpoint, '')) = 'd7'
+                  and pm.percentile_performance is not null
+                  and pm.percentile_performance <= %s
+                ) as hot_d7
+              from public.post_metrics pm
+              where pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+              group by pm.post_key
+            )
+            select distinct
+              p.post_key,
+              p.post_url,
+              p.posted_at,
+              coalesce(p.posted_at, p.created_at) as sort_posted_at,
+              latest_metric.business_day,
+              latest_metric.hot_d7
             from public.posts p
-            join public.post_metrics pm on pm.post_key = p.post_key and pm.checkpoint = 'd1'
+            join latest_metric
+              on latest_metric.post_key = p.post_key
             where p.post_url is not null
-              and p.created_at >= now() - (%s::text || ' days')::interval
+              and coalesce(p.posted_at, p.created_at, now()) >= now() - (%s::text || ' days')::interval
               and (
-                p.thumbnail_url is null
+                coalesce(p.thumbnail_url, '') = ''
                 or not exists (
                   select 1
                   from public.post_media_assets assets
                   where assets.post_key = p.post_key
+                    and assets.asset_role = 'thumbnail'
+                    and assets.status = 'active'
+                    and coalesce(assets.storage_provider, 'supabase') = %s
+                    and coalesce(assets.storage_path, '') <> ''
+                    and (
+                      coalesce(assets.storage_provider, 'supabase') <> 'r2'
+                      or coalesce(assets.public_url, '') <> ''
+                    )
+                )
+                or (
+                  lower(coalesce(p.media_type, '')) = 'reel'
+                  and coalesce(p.video_url, '') <> ''
+                  and not exists (
+                    select 1
+                    from public.post_media_assets assets
+                    where assets.post_key = p.post_key
+                      and assets.asset_role = 'preview_5s'
+                      and assets.status = 'active'
+                      and coalesce(assets.storage_path, '') <> ''
+                      and (
+                        coalesce(assets.storage_provider, 'supabase') <> 'r2'
+                        or coalesce(assets.public_url, '') <> ''
+                      )
+                  )
                 )
               )
-            order by p.created_at desc
+            order by sort_posted_at desc
             limit %s
             """,
-            (max(1, days), max(1, limit)),
+            (_HOT_PERCENTILE_MAX, max(1, days), active_provider, max(1, limit)),
         ).fetchall()
         self.conn.commit()
 
@@ -1778,15 +3126,1229 @@ class PureEngine:
                 missing += 1
                 continue
             thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+            allow_preview_capture = _preview_capture_allowed_for_business_day(r.get("business_day"))
+            hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(r.get("hot_d7")) else None
             self._refresh_post_media(post_key, thumbnail_url, video_url, carousel_urls)
             self._stage_post_media_assets(
                 post_key,
                 posted_at,
                 thumbnail_url,
-                video_url,
+                video_url if allow_preview_capture else None,
                 carousel_urls,
+                preview_retention_days=hot_retention_days,
             )
             updated += 1
+
+        self.conn.commit()
+        if updated > 0:
+            self.process_post_media_assets(capture_limit=max(40, updated * 3), purge_limit=0)
+        return {"selected": len(rows), "updated": updated, "missing": missing}
+
+    def backfill_fire_day_media(self, day: str | None = None, limit: int = 400, batch_size: int = 50) -> dict[str, int]:
+        """Backfill thumbnail and 5s preview assets for Fire cards on a specific business day."""
+        try:
+            business_day = (day or "").strip() or datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date().isoformat()
+        except Exception:
+            business_day = (day or "").strip() or datetime.now(timezone.utc).date().isoformat()
+        allow_preview_capture = _preview_capture_allowed_for_business_day(business_day)
+        active_provider = _active_media_storage_provider()
+        rows = self.conn.execute(
+            """
+            with day_metric as (
+              select
+                pm.post_key,
+                max(coalesce(pm.computed_at, now())) as sort_ts,
+                bool_or(
+                  lower(coalesce(pm.checkpoint, '')) = 'd7'
+                  and pm.percentile_performance is not null
+                  and pm.percentile_performance <= %s
+                ) as hot_d7
+              from public.post_metrics pm
+              where pm.business_date_ist = %s
+                and pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+              group by pm.post_key
+            )
+            select distinct
+              p.post_key,
+              p.post_url,
+              p.posted_at,
+              p.thumbnail_url,
+              p.video_url,
+              p.carousel_urls,
+              lower(coalesce(p.media_type, 'image')) as media_type,
+              coalesce(day_metric.sort_ts, p.posted_at, p.created_at) as sort_ts,
+              coalesce(day_metric.hot_d7, false) as hot_d7
+            from public.posts p
+            join day_metric
+              on day_metric.post_key = p.post_key
+            where coalesce(p.post_url, '') <> ''
+              and (
+                not exists (
+                  select 1
+                  from public.post_media_assets assets
+                  where assets.post_key = p.post_key
+                    and assets.asset_role = 'thumbnail'
+                    and assets.status = 'active'
+                    and coalesce(assets.storage_provider, 'supabase') = %s
+                    and coalesce(assets.storage_path, '') <> ''
+                    and (
+                      coalesce(assets.storage_provider, 'supabase') <> 'r2'
+                      or coalesce(assets.public_url, '') <> ''
+                    )
+                )
+                or (
+                  lower(coalesce(p.media_type, '')) = 'reel'
+                  and not exists (
+                    select 1
+                    from public.post_media_assets assets
+                    where assets.post_key = p.post_key
+                      and assets.asset_role = 'preview_5s'
+                      and assets.status = 'active'
+                      and coalesce(assets.storage_path, '') <> ''
+                      and (
+                        coalesce(assets.storage_provider, 'supabase') <> 'r2'
+                        or coalesce(assets.public_url, '') <> ''
+                      )
+                  )
+                )
+              )
+            order by sort_ts desc
+            limit %s
+            """,
+            (_HOT_PERCENTILE_MAX, business_day, active_provider, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"selected": 0, "updated": 0, "missing": 0}
+
+        rows_by_post_key: dict[str, dict] = {}
+        urls_by_post_key: dict[str, str] = {}
+        mode_by_post_key: dict[str, str] = {}
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            post_url = str(row.get("post_url") or "").strip()
+            if not post_key or not post_url:
+                continue
+            rows_by_post_key[post_key] = row
+            urls_by_post_key[post_key] = post_url
+            mode_by_post_key[post_key] = "reel" if _is_reel_media_type(row.get("media_type")) else "post"
+
+        if not rows_by_post_key:
+            return {"selected": len(rows), "updated": 0, "missing": len(rows)}
+
+        updated = 0
+        missing = 0
+        ordered_post_keys = list(rows_by_post_key.keys())
+
+        for mode in ("post", "reel"):
+            scoped_post_keys = [post_key for post_key in ordered_post_keys if mode_by_post_key.get(post_key) == mode]
+            if not scoped_post_keys:
+                continue
+
+            for post_key_chunk in _chunk_list(scoped_post_keys, max(1, batch_size)):
+                chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
+                items = run_actor_post_urls("", chunk_urls, mode=mode)
+
+                by_short: dict[str, dict] = {}
+                by_post_key: dict[str, dict] = {}
+                for item in items:
+                    source_url = str(item.get("url") or "").strip()
+                    provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
+                    shortcode = (
+                        str(item.get("shortCode") or item.get("shortcode") or "").strip()
+                        or shortcode_from_media_id(provider_post_id)
+                        or shortcode_from_url(source_url)
+                    )
+                    if shortcode:
+                        by_short[shortcode.lower()] = item
+                    canonical = canonical_post_url(shortcode, source_url) or source_url
+                    item_post_key = _post_key_from_url(canonical)
+                    if item_post_key:
+                        by_post_key[item_post_key] = item
+
+                for chunk_post_key in post_key_chunk:
+                    row = rows_by_post_key[chunk_post_key]
+                    post_url = str(row.get("post_url") or "").strip()
+                    fallback_thumbnail_url = str(row.get("thumbnail_url") or "").strip() or None
+                    fallback_video_url = str(row.get("video_url") or "").strip() or None
+                    raw_carousel_urls = row.get("carousel_urls")
+                    if isinstance(raw_carousel_urls, list):
+                        fallback_carousel_urls = [str(value).strip() for value in raw_carousel_urls if str(value).strip()]
+                    else:
+                        fallback_carousel_urls = []
+                    short = shortcode_from_url(post_url).lower()
+                    item = by_post_key.get(chunk_post_key) or (by_short.get(short) if short else None)
+                    posted_at = _to_dt(row.get("posted_at"))
+                    if item:
+                        thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                        thumbnail_url = thumbnail_url or fallback_thumbnail_url
+                        video_url = video_url or fallback_video_url
+                        carousel_urls = carousel_urls or fallback_carousel_urls
+                    else:
+                        thumbnail_url = fallback_thumbnail_url
+                        video_url = fallback_video_url
+                        carousel_urls = fallback_carousel_urls
+                        if not thumbnail_url and not video_url and not carousel_urls:
+                            missing += 1
+                            continue
+
+                    self._refresh_post_media(chunk_post_key, thumbnail_url, video_url, carousel_urls)
+                    hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
+                    self._stage_post_media_assets(
+                        chunk_post_key,
+                        posted_at,
+                        thumbnail_url,
+                        video_url if allow_preview_capture else None,
+                        carousel_urls,
+                        preview_retention_days=hot_retention_days,
+                    )
+                    updated += 1
+
+        self.conn.commit()
+        if updated > 0:
+            self.process_post_media_assets(capture_limit=max(60, updated * 3), purge_limit=0)
+        return {"selected": len(rows), "updated": updated, "missing": missing}
+
+    def repair_post_visual_media(self, post_key: str) -> dict[str, Any]:
+        """Re-stage and capture thumbnail/preview assets for a single post using existing source URLs."""
+        normalized_post_key = str(post_key or "").strip().lower()
+        if not normalized_post_key:
+            return {"found": False, "staged": 0, "captured": 0, "failed": 0, "retired": 0, "assets": []}
+
+        row = self.conn.execute(
+            """
+            with latest_metric as (
+              select
+                pm.post_key,
+                max(pm.business_date_ist) as business_day,
+                bool_or(
+                  lower(coalesce(pm.checkpoint, '')) = 'd7'
+                  and pm.percentile_performance is not null
+                  and pm.percentile_performance <= %s
+                ) as hot_d7
+              from public.post_metrics pm
+              where pm.post_key = %s
+                and pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+              group by pm.post_key
+            )
+            select
+              p.post_key,
+              p.posted_at,
+              lower(coalesce(p.media_type, 'image')) as media_type,
+              p.post_url,
+              p.thumbnail_url,
+              p.video_url,
+              p.carousel_urls,
+              latest_metric.business_day,
+              coalesce(latest_metric.hot_d7, false) as hot_d7,
+              thumbnail_asset.source_url as staged_thumbnail_source,
+              preview_asset.source_url as staged_preview_source
+            from public.posts p
+            left join latest_metric
+              on latest_metric.post_key = p.post_key
+            left join lateral (
+              select assets.source_url
+              from public.post_media_assets assets
+              where assets.post_key = p.post_key
+                and assets.asset_role = 'thumbnail'
+                and coalesce(assets.source_url, '') <> ''
+              order by assets.updated_at desc nulls last, assets.id desc
+              limit 1
+            ) thumbnail_asset on true
+            left join lateral (
+              select assets.source_url
+              from public.post_media_assets assets
+              where assets.post_key = p.post_key
+                and assets.asset_role = 'preview_5s'
+                and coalesce(assets.source_url, '') <> ''
+              order by assets.updated_at desc nulls last, assets.id desc
+              limit 1
+            ) preview_asset on true
+            where p.post_key = %s
+            limit 1
+            """,
+            (_HOT_PERCENTILE_MAX, normalized_post_key, normalized_post_key),
+        ).fetchone()
+        self.conn.commit()
+
+        if not row:
+            return {"found": False, "staged": 0, "captured": 0, "failed": 0, "retired": 0, "assets": []}
+
+        posted_at = _to_dt(row.get("posted_at"))
+        business_day = row.get("business_day")
+        thumbnail_url = str(row.get("thumbnail_url") or row.get("staged_thumbnail_source") or "").strip() or None
+        video_url = str(row.get("video_url") or row.get("staged_preview_source") or "").strip() or None
+        raw_carousel_urls = row.get("carousel_urls")
+        carousel_urls = [str(value).strip() for value in raw_carousel_urls if str(value).strip()] if isinstance(raw_carousel_urls, list) else []
+        if not thumbnail_url and video_url:
+            thumbnail_url = video_url
+
+        allow_preview_capture = _preview_capture_allowed_for_business_day(business_day)
+        hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
+
+        if thumbnail_url or (allow_preview_capture and video_url):
+            self._refresh_post_media(normalized_post_key, thumbnail_url, video_url, carousel_urls)
+            self._stage_post_media_assets(
+                normalized_post_key,
+                posted_at,
+                thumbnail_url,
+                video_url if allow_preview_capture else None,
+                carousel_urls,
+                preview_retention_days=hot_retention_days,
+            )
+            self.conn.commit()
+
+        capture_result = self._capture_post_media_assets_for_post_keys([normalized_post_key])
+        retire_result = self._retire_legacy_post_media_rows([normalized_post_key], limit=25)
+        assets = self.conn.execute(
+            """
+            select asset_role, status, storage_provider, public_url, storage_path, purge_after, updated_at
+            from public.post_media_assets
+            where post_key = %s
+              and asset_role in ('thumbnail', 'preview_5s')
+            order by asset_role
+            """,
+            (normalized_post_key,),
+        ).fetchall()
+        self.conn.commit()
+        return {
+            "found": True,
+            "staged": 1,
+            "captured": capture_result.get("captured", 0),
+            "failed": capture_result.get("failed", 0),
+            "retired": retire_result.get("marked", 0),
+            "assets": assets,
+        }
+
+    def migrate_stored_supabase_visual_media_to_r2(self, limit: int = 500) -> dict[str, int]:
+        """Copy recoverable Supabase-stored thumbnails/previews into R2 before any source-url fallback work."""
+        active_provider = _active_media_storage_provider()
+        if active_provider != "r2":
+            raise RuntimeError("migrate_stored_supabase_visual_media_to_r2 requires MEDIA_STORAGE_PROVIDER=r2")
+
+        rows = self.conn.execute(
+            """
+            select
+              id,
+              post_key,
+              asset_role,
+              source_url,
+              storage_provider,
+              storage_bucket,
+              storage_path,
+              public_url,
+              mime_type,
+              status,
+              updated_at
+            from public.post_media_assets
+            where lower(coalesce(storage_provider, 'supabase')) = 'supabase'
+              and lower(coalesce(asset_role, '')) in ('thumbnail', 'preview_5s', 'display')
+              and status in ('active', 'purge_pending')
+              and coalesce(storage_path, '') <> ''
+            order by updated_at desc nulls last, id desc
+            limit %s
+            """,
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"selected": 0, "migrated": 0, "missing": 0, "failed": 0}
+
+        migrated = 0
+        missing = 0
+        failed = 0
+
+        for row in rows:
+            old_asset = dict(row)
+            try:
+                body = self._fetch_stored_post_media_asset_bytes(old_asset)
+                if not body:
+                    missing += 1
+                    continue
+
+                content_type = str(row.get("mime_type") or "").strip().lower()
+                if not content_type:
+                    guessed_type, _ = mimetypes.guess_type(str(row.get("storage_path") or row.get("source_url") or ""))
+                    if guessed_type:
+                        content_type = guessed_type
+                    elif str(row.get("asset_role") or "").strip().lower() == "preview_5s":
+                        content_type = "video/mp4"
+                    else:
+                        content_type = "image/jpeg"
+
+                target_asset = dict(old_asset)
+                target_asset["storage_provider"] = "r2"
+                target_asset["storage_bucket"] = _active_media_bucket()
+                storage_provider, storage_path, public_url = self._store_post_media_asset_body(target_asset, body, content_type)
+                self._set_post_media_asset_result(
+                    int(row["id"]),
+                    str(row.get("status") or "active"),
+                    attempt=0,
+                    next_run_at=None,
+                    storage_provider=storage_provider,
+                    storage_bucket=target_asset["storage_bucket"],
+                    storage_path=storage_path,
+                    public_url=public_url,
+                    mime_type=content_type,
+                    byte_size=len(body),
+                    captured_at=datetime.now(timezone.utc),
+                    deleted_at=None,
+                    error=None,
+                )
+                try:
+                    self._delete_post_media_object(old_asset)
+                except Exception:
+                    self.conn.rollback()
+                    self._set_post_media_asset_result(
+                        int(row["id"]),
+                        str(row.get("status") or "active"),
+                        error="migrated to r2 but failed to delete legacy supabase object",
+                    )
+                migrated += 1
+            except Exception as exc:
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                failed += 1
+                self._set_post_media_asset_result(
+                    int(row["id"]),
+                    str(row.get("status") or "capture_failed"),
+                    error=f"supabase-to-r2 copy failed: {str(exc)[:300]}",
+                )
+
+        return {"selected": len(rows), "migrated": migrated, "missing": missing, "failed": failed}
+
+    def restore_recent_thumbnails_from_post_pages(self, limit: int = 500, days: int = 90) -> dict[str, int]:
+        """Recover missing R2 thumbnails from Instagram page metadata without scraping media datasets."""
+        active_provider = _active_media_storage_provider()
+        if active_provider != "r2":
+            raise RuntimeError("restore_recent_thumbnails_from_post_pages requires MEDIA_STORAGE_PROVIDER=r2")
+
+        rows = self.conn.execute(
+            """
+            select
+              p.post_key,
+              p.post_url,
+              p.posted_at
+            from public.posts p
+            where coalesce(p.post_url, '') <> ''
+              and coalesce(p.posted_at, p.created_at, now()) >= now() - (%s::text || ' days')::interval
+              and not exists (
+                select 1
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role = 'thumbnail'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              )
+            order by coalesce(p.posted_at, p.created_at) desc, p.post_key desc
+            limit %s
+            """,
+            (max(1, days), max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"selected": 0, "staged": 0, "captured": 0, "failed": 0, "missing": 0}
+
+        staged_post_keys: list[str] = []
+        missing = 0
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            post_url = str(row.get("post_url") or "").strip()
+            if not post_key or not post_url:
+                missing += 1
+                continue
+            try:
+                thumbnail_url = self._fetch_instagram_post_page_thumbnail_url(post_url)
+            except Exception:
+                thumbnail_url = None
+            if not thumbnail_url:
+                missing += 1
+                continue
+
+            posted_at = _to_dt(row.get("posted_at"))
+            self._refresh_post_media(post_key, thumbnail_url, None, None)
+            self._stage_post_media_assets(post_key, posted_at, thumbnail_url, None, None)
+            staged_post_keys.append(post_key)
+
+        self.conn.commit()
+        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys, asset_roles=("thumbnail",))
+        return {
+            "selected": len(rows),
+            "staged": len(staged_post_keys),
+            "captured": capture_result.get("captured", 0),
+            "failed": capture_result.get("failed", 0),
+            "missing": missing,
+        }
+
+    def refresh_recent_visual_media_sources(
+        self,
+        limit: int = 500,
+        days: int = 90,
+        batch_size: int = 25,
+    ) -> dict[str, int]:
+        """Refresh recent posts missing R2 thumbnails or eligible previews using the current worker pipeline."""
+        active_provider = _active_media_storage_provider()
+        if active_provider != "r2":
+            raise RuntimeError("refresh_recent_visual_media_sources requires MEDIA_STORAGE_PROVIDER=r2")
+
+        rows = self.conn.execute(
+            """
+            with latest_metric as (
+              select
+                pm.post_key,
+                max(pm.business_date_ist)::text as business_day,
+                bool_or(
+                  lower(coalesce(pm.checkpoint, '')) = 'd7'
+                  and pm.percentile_performance is not null
+                  and pm.percentile_performance <= %s
+                ) as hot_d7
+              from public.post_metrics pm
+              where pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+              group by pm.post_key
+            )
+            select
+              p.post_key,
+              p.post_url,
+              p.posted_at,
+              lower(coalesce(p.media_type, 'image')) as media_type,
+              p.thumbnail_url,
+              p.video_url,
+              p.carousel_urls,
+              coalesce(
+                latest_metric.business_day,
+                ((coalesce(p.posted_at, p.created_at, now()) at time zone 'Asia/Kolkata')::date)::text
+              ) as business_day,
+              coalesce(latest_metric.hot_d7, false) as hot_d7,
+              exists (
+                select 1
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role = 'thumbnail'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              ) as has_r2_thumbnail,
+              exists (
+                select 1
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role = 'preview_5s'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              ) as has_r2_preview
+            from public.posts p
+            left join latest_metric
+              on latest_metric.post_key = p.post_key
+            where coalesce(p.post_url, '') <> ''
+              and coalesce(p.posted_at, p.created_at, now()) >= now() - (%s::text || ' days')::interval
+              and (
+                not exists (
+                  select 1
+                  from public.post_media_assets assets
+                  where assets.post_key = p.post_key
+                    and assets.asset_role = 'thumbnail'
+                    and assets.status in ('active', 'purge_pending')
+                    and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                    and coalesce(assets.storage_path, '') <> ''
+                    and coalesce(assets.public_url, '') <> ''
+                )
+                or (
+                  lower(coalesce(p.media_type, '')) = 'reel'
+                  and coalesce(
+                    latest_metric.business_day,
+                    ((coalesce(p.posted_at, p.created_at, now()) at time zone 'Asia/Kolkata')::date)::text
+                  ) >= %s
+                  and not exists (
+                    select 1
+                    from public.post_media_assets assets
+                    where assets.post_key = p.post_key
+                      and assets.asset_role = 'preview_5s'
+                      and assets.status in ('active', 'purge_pending')
+                      and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                      and coalesce(assets.storage_path, '') <> ''
+                      and coalesce(assets.public_url, '') <> ''
+                  )
+                )
+              )
+            order by coalesce(p.posted_at, p.created_at) desc, p.post_key desc
+            limit %s
+            """,
+            (_HOT_PERCENTILE_MAX, max(1, days), _PREVIEW_CAPTURE_START_DAY, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            retire_result = self._retire_legacy_post_media_rows(None, limit=max(500, limit * 4))
+            return {
+                "selected": 0,
+                "staged": 0,
+                "captured": 0,
+                "failed": 0,
+                "missing": 0,
+                "retired": retire_result.get("marked", 0),
+            }
+
+        rows_by_post_key: dict[str, dict] = {}
+        urls_by_post_key: dict[str, str] = {}
+        mode_by_post_key: dict[str, str] = {}
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            post_url = str(row.get("post_url") or "").strip()
+            if not post_key or not post_url:
+                continue
+            rows_by_post_key[post_key] = row
+            urls_by_post_key[post_key] = post_url
+            mode_by_post_key[post_key] = "reel" if _is_reel_media_type(row.get("media_type")) else "post"
+
+        if not rows_by_post_key:
+            return {"selected": len(rows), "staged": 0, "captured": 0, "failed": 0, "missing": len(rows), "retired": 0}
+
+        staged_post_keys: list[str] = []
+        missing = 0
+        ordered_post_keys = list(rows_by_post_key.keys())
+
+        for mode in ("post", "reel"):
+            scoped_post_keys = [post_key for post_key in ordered_post_keys if mode_by_post_key.get(post_key) == mode]
+            if not scoped_post_keys:
+                continue
+
+            for post_key_chunk in _chunk_list(scoped_post_keys, max(1, batch_size)):
+                chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
+                items = run_actor_post_urls("", chunk_urls, mode=mode)
+
+                by_short: dict[str, dict] = {}
+                by_post_key: dict[str, dict] = {}
+                for item in items:
+                    source_url = str(item.get("url") or "").strip()
+                    provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
+                    shortcode = (
+                        str(item.get("shortCode") or item.get("shortcode") or "").strip()
+                        or shortcode_from_media_id(provider_post_id)
+                        or shortcode_from_url(source_url)
+                    )
+                    if shortcode:
+                        by_short[shortcode.lower()] = item
+                    canonical = canonical_post_url(shortcode, source_url) or source_url
+                    item_post_key = _post_key_from_url(canonical)
+                    if item_post_key:
+                        by_post_key[item_post_key] = item
+
+                for chunk_post_key in post_key_chunk:
+                    row = rows_by_post_key[chunk_post_key]
+                    post_url = str(row.get("post_url") or "").strip()
+                    fallback_thumbnail_url = str(row.get("thumbnail_url") or "").strip() or None
+                    fallback_video_url = str(row.get("video_url") or "").strip() or None
+                    raw_carousel_urls = row.get("carousel_urls")
+                    if isinstance(raw_carousel_urls, list):
+                        fallback_carousel_urls = [str(value).strip() for value in raw_carousel_urls if str(value).strip()]
+                    else:
+                        fallback_carousel_urls = []
+
+                    short = shortcode_from_url(post_url).lower()
+                    item = by_post_key.get(chunk_post_key) or (by_short.get(short) if short else None)
+                    if item:
+                        thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                        thumbnail_url = thumbnail_url or fallback_thumbnail_url
+                        video_url = video_url or fallback_video_url
+                        carousel_urls = carousel_urls or fallback_carousel_urls
+                    else:
+                        thumbnail_url = fallback_thumbnail_url
+                        video_url = fallback_video_url
+                        carousel_urls = fallback_carousel_urls
+
+                    if not thumbnail_url and video_url:
+                        thumbnail_url = video_url
+
+                    allow_preview_capture = _preview_capture_allowed_for_business_day(row.get("business_day"))
+                    needs_thumbnail = not bool(row.get("has_r2_thumbnail"))
+                    needs_preview = (
+                        _is_reel_media_type(row.get("media_type"))
+                        and allow_preview_capture
+                        and not bool(row.get("has_r2_preview"))
+                    )
+
+                    if needs_thumbnail and not thumbnail_url:
+                        missing += 1
+                    if needs_preview and not video_url:
+                        missing += 1
+
+                    staged_thumbnail_url = thumbnail_url if needs_thumbnail else None
+                    staged_preview_url = video_url if needs_preview else None
+                    if not staged_thumbnail_url and not staged_preview_url:
+                        continue
+
+                    posted_at = _to_dt(row.get("posted_at"))
+                    hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
+                    self._refresh_post_media(chunk_post_key, thumbnail_url, video_url, carousel_urls)
+                    self._stage_post_media_assets(
+                        chunk_post_key,
+                        posted_at,
+                        staged_thumbnail_url,
+                        staged_preview_url,
+                        carousel_urls,
+                        preview_retention_days=hot_retention_days,
+                    )
+                    staged_post_keys.append(chunk_post_key)
+
+        self.conn.commit()
+        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys)
+        retire_result = (
+            self._retire_legacy_post_media_rows(staged_post_keys, limit=max(250, len(staged_post_keys) * 4))
+            if staged_post_keys
+            else {"marked": 0}
+        )
+        return {
+            "selected": len(rows),
+            "staged": len(staged_post_keys),
+            "captured": capture_result.get("captured", 0),
+            "failed": capture_result.get("failed", 0),
+            "missing": missing,
+            "retired": retire_result.get("marked", 0),
+        }
+
+    def migrate_visual_media_to_r2(self, limit: int = 500, days: int = 30) -> dict[str, int]:
+        """Migrate recent visual media to R2 using existing post/source URLs, then retire legacy Supabase assets."""
+        active_provider = _active_media_storage_provider()
+        if active_provider != "r2":
+            raise RuntimeError("migrate_visual_media_to_r2 requires MEDIA_STORAGE_PROVIDER=r2")
+
+        copied_result = self.migrate_stored_supabase_visual_media_to_r2(limit=max(100, limit))
+
+        rows = self.conn.execute(
+            """
+            with latest_metric as (
+              select
+                pm.post_key,
+                max(pm.business_date_ist) as business_day,
+                bool_or(
+                  lower(coalesce(pm.checkpoint, '')) = 'd7'
+                  and pm.percentile_performance is not null
+                  and pm.percentile_performance <= %s
+                ) as hot_d7
+              from public.post_metrics pm
+              where pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+              group by pm.post_key
+            )
+            select
+              p.post_key,
+              p.posted_at,
+              p.post_url,
+              lower(coalesce(p.media_type, 'image')) as media_type,
+              p.thumbnail_url,
+              p.video_url,
+              p.carousel_urls,
+              latest_metric.business_day,
+              coalesce(latest_metric.hot_d7, false) as hot_d7,
+              thumbnail_asset.source_url as staged_thumbnail_source,
+              preview_asset.source_url as staged_preview_source,
+              exists (
+                select 1
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role = 'thumbnail'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              ) as has_r2_thumbnail,
+              exists (
+                select 1
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role = 'preview_5s'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              ) as has_r2_preview,
+              exists (
+                select 1
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.status <> 'deleted'
+                  and (
+                    coalesce(assets.storage_provider, 'supabase') = 'supabase'
+                    or lower(coalesce(assets.asset_role, '')) = 'video'
+                    or lower(coalesce(assets.asset_role, '')) like 'carousel_%%'
+                  )
+              ) as has_legacy_media
+            from public.posts p
+            join latest_metric
+              on latest_metric.post_key = p.post_key
+            left join lateral (
+              select assets.source_url
+              from public.post_media_assets assets
+              where assets.post_key = p.post_key
+                and assets.asset_role = 'thumbnail'
+                and coalesce(assets.source_url, '') <> ''
+              order by assets.updated_at desc nulls last, assets.id desc
+              limit 1
+            ) thumbnail_asset on true
+            left join lateral (
+              select assets.source_url
+              from public.post_media_assets assets
+              where assets.post_key = p.post_key
+                and assets.asset_role = 'preview_5s'
+                and coalesce(assets.source_url, '') <> ''
+              order by assets.updated_at desc nulls last, assets.id desc
+              limit 1
+            ) preview_asset on true
+            where coalesce(p.post_url, '') <> ''
+              and coalesce(p.posted_at, p.created_at, now()) >= now() - (%s::text || ' days')::interval
+              and (
+                coalesce(p.thumbnail_url, '') <> ''
+                or coalesce(thumbnail_asset.source_url, '') <> ''
+                or coalesce(p.video_url, '') <> ''
+                or coalesce(preview_asset.source_url, '') <> ''
+              )
+              and (
+                not exists (
+                  select 1
+                  from public.post_media_assets assets
+                  where assets.post_key = p.post_key
+                    and assets.asset_role = 'thumbnail'
+                    and assets.status in ('active', 'purge_pending')
+                    and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                    and coalesce(assets.storage_path, '') <> ''
+                    and coalesce(assets.public_url, '') <> ''
+                )
+                or (
+                  lower(coalesce(p.media_type, '')) = 'reel'
+                  and latest_metric.business_day >= %s
+                  and not exists (
+                    select 1
+                    from public.post_media_assets assets
+                    where assets.post_key = p.post_key
+                      and assets.asset_role = 'preview_5s'
+                      and assets.status in ('active', 'purge_pending')
+                      and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                      and coalesce(assets.storage_path, '') <> ''
+                      and coalesce(assets.public_url, '') <> ''
+                  )
+                )
+                or exists (
+                  select 1
+                  from public.post_media_assets assets
+                  where assets.post_key = p.post_key
+                    and assets.status <> 'deleted'
+                    and (
+                      coalesce(assets.storage_provider, 'supabase') = 'supabase'
+                      or lower(coalesce(assets.asset_role, '')) = 'video'
+                      or lower(coalesce(assets.asset_role, '')) like 'carousel_%%'
+                    )
+                )
+              )
+            order by coalesce(latest_metric.business_day, (coalesce(p.posted_at, p.created_at) at time zone 'Asia/Kolkata')::date) desc,
+                     coalesce(p.posted_at, p.created_at) desc,
+                     p.post_key desc
+            limit %s
+            """,
+            (_HOT_PERCENTILE_MAX, max(1, days), _PREVIEW_CAPTURE_START_DAY, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            cleanup = self._retire_legacy_post_media_rows(None, limit=max(500, limit * 4))
+            return {
+                "selected": 0,
+                "copied": copied_result.get("migrated", 0),
+                "staged": 0,
+                "captured": 0,
+                "failed": 0,
+                "missing": copied_result.get("missing", 0),
+                "retired": cleanup.get("marked", 0),
+            }
+
+        staged_post_keys: list[str] = []
+        missing = 0
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            posted_at = _to_dt(row.get("posted_at"))
+            business_day = row.get("business_day")
+            thumbnail_url = str(row.get("thumbnail_url") or row.get("staged_thumbnail_source") or "").strip() or None
+            video_url = str(row.get("video_url") or row.get("staged_preview_source") or "").strip() or None
+            raw_carousel_urls = row.get("carousel_urls")
+            carousel_urls = [str(value).strip() for value in raw_carousel_urls if str(value).strip()] if isinstance(raw_carousel_urls, list) else []
+            if not thumbnail_url and video_url:
+                thumbnail_url = video_url
+
+            allow_preview_capture = _preview_capture_allowed_for_business_day(business_day)
+            hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
+
+            if not thumbnail_url and not (allow_preview_capture and video_url):
+                missing += 1
+                continue
+
+            self._refresh_post_media(post_key, thumbnail_url, video_url, carousel_urls)
+            self._stage_post_media_assets(
+                post_key,
+                posted_at,
+                thumbnail_url,
+                video_url if allow_preview_capture else None,
+                carousel_urls,
+                preview_retention_days=hot_retention_days,
+            )
+            staged_post_keys.append(post_key)
+
+        self.conn.commit()
+        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys)
+        retire_result = self._retire_legacy_post_media_rows(None, limit=max(500, limit * 4))
+        return {
+            "selected": len(rows),
+            "copied": copied_result.get("migrated", 0),
+            "staged": len(staged_post_keys),
+            "captured": capture_result.get("captured", 0),
+            "failed": capture_result.get("failed", 0) + copied_result.get("failed", 0),
+            "missing": missing + copied_result.get("missing", 0),
+            "retired": retire_result.get("marked", 0),
+        }
+
+    def purge_preview_assets_before_day(self, day: str | None = None, limit: int = 500) -> dict[str, int]:
+        """Delete preview clips for posts whose latest Fire business day is before the given day."""
+        try:
+            cutoff_day = (day or "").strip() or datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date().isoformat()
+        except Exception:
+            cutoff_day = (day or "").strip() or datetime.now(timezone.utc).date().isoformat()
+        rows = self.conn.execute(
+            """
+            with candidates as (
+              select
+                assets.id
+              from public.post_media_assets assets
+              left join lateral (
+                select max(pm.business_date_ist) as latest_business_day
+                from public.post_metrics pm
+                where pm.post_key = assets.post_key
+                  and pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+              ) latest on true
+              where assets.asset_role = 'preview_5s'
+                and assets.status = 'active'
+                and coalesce(latest.latest_business_day, '0001-01-01') < %s
+              order by assets.updated_at desc
+              limit %s
+            )
+            update public.post_media_assets assets
+            set status = 'purge_pending',
+                attempt = 0,
+                next_run_at = now(),
+                last_error = null,
+                updated_at = now()
+            from candidates
+            where assets.id = candidates.id
+            returning assets.id
+            """,
+            (cutoff_day, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        marked = len(rows)
+        if marked > 0:
+            self.process_post_media_assets(capture_limit=0, purge_limit=max(80, marked))
+        return {"marked": marked, "purged": marked}
+
+    def repair_overlong_preview_assets(self, limit: int = 250) -> dict[str, int]:
+        """Requeue active preview clips whose stored duration exceeds the 5s product cap."""
+        rows = self.conn.execute(
+            """
+            select
+              id,
+              post_key,
+              asset_role,
+              source_url,
+              storage_provider,
+              storage_bucket,
+              storage_path,
+              public_url,
+              mime_type,
+              status,
+              updated_at
+            from public.post_media_assets
+            where asset_role = 'preview_5s'
+              and status = 'active'
+              and coalesce(storage_path, '') <> ''
+            order by updated_at desc, id desc
+            limit %s
+            """,
+            (max(1, limit),),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"scanned": 0, "requeued": 0, "missing": 0, "valid": 0}
+
+        scanned = 0
+        requeued = 0
+        missing = 0
+        valid = 0
+        max_allowed_duration = _PREVIEW_MAX_DURATION_SECONDS + _PREVIEW_DURATION_TOLERANCE_SECONDS
+
+        for row in rows:
+            scanned += 1
+            try:
+                body = self._fetch_stored_post_media_asset_bytes(row)
+                if not body:
+                    missing += 1
+                    self._reset_post_media_asset_for_recapture(
+                        int(row["id"]),
+                        error="stored preview asset missing; requeued for recapture",
+                    )
+                    continue
+
+                duration_seconds = _probe_media_duration_seconds(body, suffix=".mp4")
+                if duration_seconds is None:
+                    self._delete_post_media_object(row)
+                    self._reset_post_media_asset_for_recapture(
+                        int(row["id"]),
+                        error="preview duration probe failed; requeued for recapture",
+                    )
+                    requeued += 1
+                    continue
+
+                if duration_seconds > max_allowed_duration:
+                    self._delete_post_media_object(row)
+                    self._reset_post_media_asset_for_recapture(
+                        int(row["id"]),
+                        error=(
+                            f"preview exceeded {max_allowed_duration:.2f}s cap "
+                            f"({duration_seconds:.3f}s); requeued for recapture"
+                        ),
+                    )
+                    requeued += 1
+                    continue
+
+                valid += 1
+            except Exception as exc:
+                self.conn.rollback()
+                self._reset_post_media_asset_for_recapture(
+                    int(row["id"]),
+                    error=f"preview repair reset after error: {str(exc)[:300]}",
+                )
+                requeued += 1
+
+        if requeued > 0 or missing > 0:
+            self.process_post_media_assets(capture_limit=max(40, requeued + missing), purge_limit=0)
+
+        return {
+            "scanned": scanned,
+            "requeued": requeued,
+            "missing": missing,
+            "valid": valid,
+        }
+
+    def refresh_fire_preview_sources_from_day(
+        self,
+        day: str | None = None,
+        limit: int = 250,
+        batch_size: int = 25,
+        stale_minutes: int = 30,
+    ) -> dict[str, int]:
+        """Refresh April-14+ reel preview source URLs and requeue failed/stale rows for the live worker."""
+        try:
+            business_day = (day or "").strip() or datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date().isoformat()
+        except Exception:
+            business_day = (day or "").strip() or datetime.now(timezone.utc).date().isoformat()
+
+        target_row = self.conn.execute(
+            """
+            select storage_provider, storage_bucket
+            from public.post_media_assets
+            where asset_role = 'preview_5s'
+              and status = 'active'
+              and coalesce(storage_path, '') <> ''
+            order by updated_at desc, id desc
+            limit 1
+            """
+        ).fetchone() or {}
+        inferred_provider = str(target_row.get("storage_provider") or _active_media_storage_provider() or "r2").strip().lower() or "r2"
+        inferred_bucket = str(target_row.get("storage_bucket") or _active_media_bucket() or R2_BUCKET or SUPABASE_MEDIA_BUCKET).strip()
+
+        rows = self.conn.execute(
+            """
+            select distinct on (p.post_key)
+              p.post_key,
+              p.post_url,
+              p.posted_at,
+              p.thumbnail_url,
+              p.video_url,
+              p.carousel_urls,
+              exists (
+                select 1
+                from public.post_metrics hot_pm
+                where hot_pm.post_key = p.post_key
+                  and lower(coalesce(hot_pm.checkpoint, '')) = 'd7'
+                  and hot_pm.percentile_performance is not null
+                  and hot_pm.percentile_performance <= %s
+              ) as hot_d7,
+              assets.id as asset_id,
+              assets.status as asset_status,
+              assets.source_url as asset_source_url,
+              assets.storage_provider,
+              assets.storage_bucket,
+              assets.updated_at as asset_updated_at
+            from public.posts p
+            join public.post_metrics pm
+              on pm.post_key = p.post_key
+             and pm.business_date_ist >= %s
+             and pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
+            left join public.post_media_assets assets
+              on assets.post_key = p.post_key
+             and assets.asset_role = 'preview_5s'
+            where lower(coalesce(p.media_type, '')) = 'reel'
+              and coalesce(p.post_url, '') <> ''
+              and (
+                assets.id is null
+                or assets.status = 'capture_failed'
+                or (
+                  assets.status = 'capturing'
+                  and coalesce(assets.updated_at, now() - interval '365 days') <= now() - (%s::text || ' minutes')::interval
+                )
+                or (
+                  assets.status <> 'active'
+                  and coalesce(assets.storage_path, '') = ''
+                )
+              )
+            order by p.post_key, pm.business_date_ist desc, pm.computed_at desc nulls last
+            limit %s
+            """,
+            (_HOT_PERCENTILE_MAX, business_day, max(1, stale_minutes), max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {"selected": 0, "updated": 0, "missing": 0}
+
+        rows_by_post_key: dict[str, dict] = {}
+        urls_by_post_key: dict[str, str] = {}
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            post_url = str(row.get("post_url") or "").strip()
+            if not post_key or not post_url:
+                continue
+            rows_by_post_key[post_key] = row
+            urls_by_post_key[post_key] = post_url
+
+        if not rows_by_post_key:
+            return {"selected": len(rows), "updated": 0, "missing": len(rows)}
+
+        updated = 0
+        missing = 0
+        ordered_post_keys = list(rows_by_post_key.keys())
+
+        for post_key_chunk in _chunk_list(ordered_post_keys, max(1, batch_size)):
+            chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
+            items = run_actor_post_urls("", chunk_urls, mode="reel")
+
+            by_short: dict[str, dict] = {}
+            by_post_key: dict[str, dict] = {}
+            for item in items:
+                source_url = str(item.get("url") or "").strip()
+                provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
+                shortcode = (
+                    str(item.get("shortCode") or item.get("shortcode") or "").strip()
+                    or shortcode_from_media_id(provider_post_id)
+                    or shortcode_from_url(source_url)
+                )
+                if shortcode:
+                    by_short[shortcode.lower()] = item
+                canonical = canonical_post_url(shortcode, source_url) or source_url
+                item_post_key = _post_key_from_url(canonical)
+                if item_post_key:
+                    by_post_key[item_post_key] = item
+
+            for chunk_post_key in post_key_chunk:
+                row = rows_by_post_key[chunk_post_key]
+                post_url = str(row.get("post_url") or "").strip()
+                short = shortcode_from_url(post_url).lower()
+                item = by_post_key.get(chunk_post_key) or (by_short.get(short) if short else None)
+
+                fallback_thumbnail_url = str(row.get("thumbnail_url") or "").strip() or None
+                fallback_video_url = str(row.get("video_url") or "").strip() or None
+                raw_carousel_urls = row.get("carousel_urls")
+                if isinstance(raw_carousel_urls, list):
+                    fallback_carousel_urls = [str(value).strip() for value in raw_carousel_urls if str(value).strip()]
+                else:
+                    fallback_carousel_urls = []
+
+                if item:
+                    thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                    thumbnail_url = thumbnail_url or fallback_thumbnail_url
+                    video_url = video_url or fallback_video_url
+                    carousel_urls = carousel_urls or fallback_carousel_urls
+                else:
+                    thumbnail_url = fallback_thumbnail_url
+                    video_url = fallback_video_url
+                    carousel_urls = fallback_carousel_urls
+
+                if not video_url:
+                    missing += 1
+                    continue
+
+                posted_at = _to_dt(row.get("posted_at"))
+                storage_provider = str(row.get("storage_provider") or inferred_provider).strip().lower() or inferred_provider
+                storage_bucket = str(row.get("storage_bucket") or inferred_bucket).strip() or inferred_bucket
+                purge_after = _post_media_rollover_deadline(
+                    posted_at,
+                    "preview_5s",
+                    _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None,
+                )
+
+                self._refresh_post_media(chunk_post_key, thumbnail_url, video_url, carousel_urls)
+                self.conn.execute(
+                    """
+                    insert into public.post_media_assets (
+                      post_key, asset_role, source_url, storage_provider, storage_bucket, status, attempt,
+                      next_run_at, purge_after, storage_path, public_url, mime_type, byte_size,
+                      captured_at, deleted_at, last_error, updated_at
+                    )
+                    values (
+                      %s,
+                      'preview_5s',
+                      %s,
+                      %s,
+                      %s,
+                      'pending_capture',
+                      0,
+                      now(),
+                      %s,
+                      null,
+                      null,
+                      null,
+                      null,
+                      null,
+                      null,
+                      null,
+                      now()
+                    )
+                    on conflict (post_key, asset_role) do update
+                    set source_url = excluded.source_url,
+                        storage_provider = coalesce(public.post_media_assets.storage_provider, excluded.storage_provider),
+                        storage_bucket = coalesce(public.post_media_assets.storage_bucket, excluded.storage_bucket),
+                        status = 'pending_capture',
+                        attempt = 0,
+                        next_run_at = now(),
+                        purge_after = excluded.purge_after,
+                        storage_path = null,
+                        public_url = null,
+                        mime_type = null,
+                        byte_size = null,
+                        captured_at = null,
+                        deleted_at = null,
+                        last_error = null,
+                        updated_at = now()
+                    """,
+                    (chunk_post_key, video_url, storage_provider, storage_bucket, purge_after),
+                )
+                updated += 1
 
         self.conn.commit()
         return {"selected": len(rows), "updated": updated, "missing": missing}
@@ -1889,7 +4451,7 @@ class PureEngine:
                         chunk_post_key,
                         posted_at,
                         thumbnail_url,
-                        video_url,
+                        None,
                         carousel_urls,
                     )
                     updated += 1

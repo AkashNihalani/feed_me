@@ -55,6 +55,7 @@ type InstagramProfileProbe = {
 type SupabaseAdminClient = ReturnType<typeof adminClient>;
 
 type MediaAssetCleanupRow = {
+  storage_provider: string | null;
   storage_bucket: string | null;
   storage_path: string | null;
 };
@@ -113,13 +114,14 @@ async function purgeStoredMediaForPostKeys(sb: SupabaseAdminClient, postKeys: st
     for (let from = 0; ; from += DB_FETCH_BATCH_SIZE) {
       const { data, error } = await sb
         .from('post_media_assets')
-        .select('storage_bucket,storage_path')
+        .select('storage_provider,storage_bucket,storage_path')
         .in('post_key', postKeyChunk)
         .range(from, from + DB_FETCH_BATCH_SIZE - 1);
 
       if (error) throw error;
       const rows = (data || []) as MediaAssetCleanupRow[];
       for (const row of rows) {
+        if ((row.storage_provider || 'supabase') !== 'supabase') continue;
         const bucket = (row.storage_bucket || '').trim();
         const path = (row.storage_path || '').trim();
         if (!bucket || !path) continue;

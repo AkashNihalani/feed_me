@@ -1,18 +1,28 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
-import { Lock } from 'lucide-react';
+import { Lock, Pause, Play } from 'lucide-react';
 import { FireItem } from './types';
 import { compact } from '@/components/fire/fireLogicHelpers';
+import {
+  metricLabel,
+  orderedSupportMetricsFromPayload,
+  resolveBestMetricFromPayload,
+} from '@/components/fire/fireMetricDisplay';
 import { useAppHaptics } from '@/lib/haptics';
+
+const PREVIEW_MAX_SECONDS = 5;
 
 export type FireCard3DProps = {
   item: FireItem;
   forcedOpen?: boolean;
   highlighted?: boolean;
   layoutMode?: 'mobile' | 'desktop';
+  mobileAutoplayEnabled?: boolean;
+  showMobileAutoplayToggle?: boolean;
   onOpenDetails?: () => void;
+  onToggleMobileAutoplay?: (next: boolean) => void;
   onBeforeOpenPost?: (itemId: string) => void;
 };
 
@@ -33,19 +43,76 @@ function text(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
+  const key = postKey.trim();
+  if (!key) return '';
+  const params = new URLSearchParams({ postKey: key, role });
+  return `/api/media?${params.toString()}`;
+}
+
+function withRetryBust(url: string, seed: string): string {
+  const value = url.trim();
+  if (!value) return '';
+  try {
+    const target = new URL(value, typeof window !== 'undefined' ? window.location.origin : 'https://feedmemore.vercel.app');
+    target.searchParams.set('_retry', seed);
+    const href = target.toString();
+    return href.startsWith('http') && value.startsWith('/') ? `${target.pathname}${target.search}` : href;
+  } catch {
+    const joiner = value.includes('?') ? '&' : '?';
+    return `${value}${joiner}_retry=${encodeURIComponent(seed)}`;
+  }
+}
+
+function clampPreviewProgress(currentTime: number, duration = PREVIEW_MAX_SECONDS): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  return Math.max(0, Math.min(1, currentTime / duration));
+}
+
+function previewCycleDuration(video: HTMLVideoElement): number {
+  const duration = Number.isFinite(video.duration) && video.duration > 0
+    ? Math.min(video.duration, PREVIEW_MAX_SECONDS)
+    : PREVIEW_MAX_SECONDS;
+  return duration > 0 ? duration : PREVIEW_MAX_SECONDS;
+}
+
+function previewProgressBackground(progress: number): string {
+  const degrees = `${Math.max(0, Math.min(360, progress * 360))}deg`;
+  return `conic-gradient(rgba(255,255,255,0.98) 0deg ${degrees}, rgba(255,255,255,0.18) ${degrees} 360deg)`;
+}
+
+type VideoFrameAwareElement = HTMLVideoElement & {
+  requestVideoFrameCallback?: (callback: () => void) => number;
+  cancelVideoFrameCallback?: (handle: number) => void;
+};
+
 export function FireCard3D({
   item,
   forcedOpen = false,
   highlighted = false,
   layoutMode = 'mobile',
+  mobileAutoplayEnabled = true,
+  showMobileAutoplayToggle = false,
   onOpenDetails,
+  onToggleMobileAutoplay,
   onBeforeOpenPost,
 }: FireCard3DProps) {
   const { play } = useAppHaptics();
   const [openLocal, setOpenLocal] = useState(false);
   const [imgDead, setImgDead] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [usePreviewFallback, setUsePreviewFallback] = useState(false);
+  const [previewRetrySeed, setPreviewRetrySeed] = useState(0);
   const [isPrimed, setIsPrimed] = useState(false);
-  const primedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState(text(item.thumbnailUrl));
+  const primedTimeoutRef = useRef<number | null>(null);
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const previewProgressRingRef = useRef<HTMLSpanElement | null>(null);
+  const previewProgressRef = useRef(0);
+  const previewSessionRef = useRef(0);
+  const previewRetryTimeoutRef = useRef<number | null>(null);
   const lockControls = useAnimationControls();
   const isDesktopCard = layoutMode === 'desktop';
   const isCardInteractive = highlighted || forcedOpen;
@@ -57,6 +124,7 @@ export function FireCard3D({
 
   useEffect(() => () => {
     if (primedTimeoutRef.current) clearTimeout(primedTimeoutRef.current);
+    if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
   }, []);
 
   useEffect(() => {
@@ -74,23 +142,25 @@ export function FireCard3D({
   const trajectory = asRec(payload.trajectory);
   const meta = asRec(payload.meta);
 
-  const bestMetric = (text(payload.best_metric) || item.metricKey || 'views').toUpperCase();
-  const bestMetricObj = asRec(metrics[bestMetric.toLowerCase()]);
+  const bestMetric = resolveBestMetricFromPayload(
+    metrics,
+    text(payload.best_metric) || item.metricKey || 'views',
+    item.surfaceMediaType || item.mediaType,
+  );
+  const bestMetricObj = asRec(metrics[bestMetric]);
 
   const value = num(bestMetricObj.value) ?? item.metricValue;
   const baseline = num(bestMetricObj.baseline);
   const multiple = num(bestMetricObj.multiple);
-  const supportMetrics = ['views', 'likes', 'comments']
-    .filter((metric) => metric !== bestMetric.toLowerCase())
-    .map((metric) => {
-      const metricObj = asRec(metrics[metric]);
-      const metricMultiple = num(metricObj.multiple);
-      return {
-        key: metric,
-        label: metric === 'views' ? 'View' : metric === 'likes' ? 'Like' : 'Comment',
-        value: metricMultiple == null ? 'x--' : `${metricMultiple.toFixed(2)}x`,
-      };
-    });
+  const supportMetrics = orderedSupportMetricsFromPayload(
+    metrics,
+    bestMetric,
+    item.surfaceMediaType || item.mediaType,
+  ).map((metric) => ({
+    key: metric.key,
+    label: metricLabel(metric.key, 'singular'),
+    value: metric.multiple == null ? 'x--' : `${metric.multiple.toFixed(2)}x`,
+  }));
 
   const bestInLastN = num(bestMetricObj.best_in_last_n);
 
@@ -128,6 +198,29 @@ export function FireCard3D({
   const signalContextLabel = item.signalContext.toUpperCase();
   const signalLabel = item.signalLabel || 'Signal';
   const signalHeadline = item.signalHeadline || item.title || signalLabel;
+  const previewUrl = text(item.previewUrl);
+  const thumbnailFallbackUrl = mediaProxyUrl(text(item.postKey));
+  const previewFallbackUrl = mediaProxyUrl(text(item.postKey), 'preview_5s');
+  const previewBaseUrl = usePreviewFallback
+    ? (previewFallbackUrl || previewUrl)
+    : (previewUrl || previewFallbackUrl);
+  const resolvedPreviewUrl = useMemo(() => {
+    if (!previewBaseUrl) return '';
+    return previewRetrySeed > 0
+      ? withRetryBust(previewBaseUrl, `${item.id}-preview-${previewRetrySeed}`)
+      : previewBaseUrl;
+  }, [item.id, previewBaseUrl, previewRetrySeed]);
+  const canSwitchToPreviewFallback = Boolean(
+    previewFallbackUrl
+    && previewUrl
+    && previewUrl !== previewFallbackUrl,
+  );
+  const canPreview = !isLocked && !previewFailed && lockedMediaType === 'REEL' && Boolean(resolvedPreviewUrl);
+  const canRenderInlinePreview = canPreview && !isDesktopCard;
+  const shouldPlayPreview = canRenderInlinePreview && mobileAutoplayEnabled && highlighted;
+  const showAutoplayToggle = !isDesktopCard && showMobileAutoplayToggle && lockedMediaType === 'REEL' && Boolean(previewUrl || previewFallbackUrl);
+  const shouldMountInlinePreview = canRenderInlinePreview && (shouldPlayPreview || previewPlaying);
+  const inlinePreviewPreload: 'auto' = 'auto';
   const heroMetricStamp = value == null ? '--' : compact(value);
   const hideSignalChrome = item.hideSignalChrome === true;
   const patternAlerts = Array.isArray(meta.pattern_alerts)
@@ -180,6 +273,162 @@ export function FireCard3D({
     setOpenLocal((v) => !v);
   };
 
+  const applyPreviewProgress = (progress: number) => {
+    const clamped = Math.max(0, Math.min(1, progress));
+    if (Math.abs(previewProgressRef.current - clamped) < 0.002) return;
+    previewProgressRef.current = clamped;
+    if (previewProgressRingRef.current) {
+      previewProgressRingRef.current.style.background = previewProgressBackground(clamped);
+    }
+  };
+
+  const resetPreviewProgress = () => {
+    previewProgressRef.current = 0;
+    if (previewProgressRingRef.current) {
+      previewProgressRingRef.current.style.background = previewProgressBackground(0);
+    }
+  };
+
+  useEffect(() => {
+    if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
+    setPreviewReady(false);
+    setPreviewFailed(false);
+    setPreviewPlaying(false);
+    setUsePreviewFallback(false);
+    setPreviewRetrySeed(0);
+    resetPreviewProgress();
+  }, [item.id, previewUrl, previewFallbackUrl]);
+
+  useEffect(() => {
+    previewSessionRef.current += 1;
+    if (previewRetryTimeoutRef.current) {
+      clearTimeout(previewRetryTimeoutRef.current);
+      previewRetryTimeoutRef.current = null;
+    }
+  }, [item.id, resolvedPreviewUrl]);
+
+  useEffect(() => {
+    setImgDead(false);
+    setThumbnailUrl(text(item.thumbnailUrl) || thumbnailFallbackUrl);
+  }, [item.id, item.thumbnailUrl, thumbnailFallbackUrl]);
+
+  useEffect(() => {
+    if (!highlighted || !imgDead || !thumbnailFallbackUrl) return;
+    const timeoutId = window.setTimeout(() => {
+      setImgDead(false);
+      setThumbnailUrl(withRetryBust(thumbnailFallbackUrl, `${item.id}-${Date.now()}`));
+    }, 450);
+    return () => window.clearTimeout(timeoutId);
+  }, [highlighted, imgDead, item.id, thumbnailFallbackUrl]);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!video || !resolvedPreviewUrl) return;
+    video.load();
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setPreviewReady(true);
+      setPreviewFailed(false);
+    }
+  }, [item.id, resolvedPreviewUrl]);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!video) return;
+    if (previewRetryTimeoutRef.current) {
+      clearTimeout(previewRetryTimeoutRef.current);
+      previewRetryTimeoutRef.current = null;
+    }
+    if (!shouldPlayPreview) {
+      setPreviewPlaying(false);
+      resetPreviewProgress();
+      video.pause();
+      try {
+        video.currentTime = 0;
+      } catch {
+        // ignore seek reset failures
+      }
+      return;
+    }
+    if (!previewReady || previewFailed || !resolvedPreviewUrl) {
+      return;
+    }
+    const session = previewSessionRef.current;
+    let cancelled = false;
+    let playRetried = false;
+
+    const attemptPlayback = () => {
+      if (cancelled || session !== previewSessionRef.current || previewRef.current !== video) return;
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((error) => {
+          if (cancelled || session !== previewSessionRef.current || previewRef.current !== video) return;
+          const errorName = error instanceof DOMException ? error.name : '';
+          if (errorName === 'AbortError') return;
+          if (!playRetried) {
+            playRetried = true;
+            previewRetryTimeoutRef.current = window.setTimeout(() => {
+              previewRetryTimeoutRef.current = null;
+              attemptPlayback();
+            }, 140);
+            return;
+          }
+          setPreviewPlaying(false);
+          setPreviewReady(false);
+          if (previewRetrySeed === 0 && resolvedPreviewUrl) {
+            setPreviewRetrySeed(1);
+            return;
+          }
+          if (!usePreviewFallback && canSwitchToPreviewFallback) {
+            setUsePreviewFallback(true);
+            setPreviewRetrySeed(0);
+            return;
+          }
+          setPreviewFailed(true);
+        });
+      }
+    };
+
+    attemptPlayback();
+
+    return () => {
+      cancelled = true;
+      if (previewRetryTimeoutRef.current) {
+        clearTimeout(previewRetryTimeoutRef.current);
+        previewRetryTimeoutRef.current = null;
+      }
+    };
+  }, [canSwitchToPreviewFallback, previewFailed, previewReady, previewRetrySeed, resolvedPreviewUrl, shouldPlayPreview, usePreviewFallback]);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!video || !shouldPlayPreview || !previewPlaying) return;
+
+    const frameVideo = video as VideoFrameAwareElement;
+    let frameId = 0;
+    const syncPreviewProgress = () => {
+      const cycleDuration = previewCycleDuration(video);
+      const cycleTime = cycleDuration > 0 ? video.currentTime % cycleDuration : 0;
+      applyPreviewProgress(clampPreviewProgress(cycleTime, cycleDuration));
+      if (frameVideo.requestVideoFrameCallback) {
+        frameId = frameVideo.requestVideoFrameCallback(syncPreviewProgress);
+        return;
+      }
+      frameId = window.requestAnimationFrame(syncPreviewProgress);
+    };
+
+    if (frameVideo.requestVideoFrameCallback) {
+      frameId = frameVideo.requestVideoFrameCallback(syncPreviewProgress);
+      return () => {
+        if (frameVideo.cancelVideoFrameCallback && frameId) {
+          frameVideo.cancelVideoFrameCallback(frameId);
+        }
+      };
+    }
+
+    frameId = window.requestAnimationFrame(syncPreviewProgress);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [previewPlaying, shouldPlayPreview, resolvedPreviewUrl]);
+
   return (
     <motion.div
       role="button"
@@ -210,15 +459,87 @@ export function FireCard3D({
       whileTap={{ scale: 0.994 }}
       transition={{ duration: 0.08, ease: [0.22, 1, 0.36, 1] }}
     >
-      {item.thumbnailUrl && !imgDead ? (
-        <motion.img
-          src={item.thumbnailUrl}
-          alt="cover"
+      {shouldMountInlinePreview ? (
+        <video
+          key={`${item.id}:${resolvedPreviewUrl}`}
+          ref={previewRef}
+          src={resolvedPreviewUrl}
+          poster={thumbnailUrl}
+          muted
+          playsInline
+          loop
+          preload={inlinePreviewPreload}
           className="absolute inset-0 h-full w-full object-cover"
-          loading="lazy"
-          onError={() => setImgDead(true)}
+          style={{
+            opacity: previewPlaying && shouldPlayPreview ? 1 : 0,
+            transition: 'opacity 160ms ease',
+            pointerEvents: 'none',
+          }}
+          onLoadedData={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewReady(true);
+            setPreviewFailed(false);
+          }}
+          onLoadedMetadata={() => undefined}
+          onCanPlay={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewReady(true);
+            setPreviewFailed(false);
+          }}
+          onPlaying={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewPlaying(true);
+            setPreviewFailed(false);
+          }}
+          onPause={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewPlaying(false);
+          }}
+          onWaiting={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewPlaying(false);
+          }}
+          onStalled={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewPlaying(false);
+          }}
+          onError={(event) => {
+            if (event.currentTarget !== previewRef.current) return;
+            setPreviewPlaying(false);
+            setPreviewReady(false);
+            resetPreviewProgress();
+            if (previewRetrySeed === 0 && resolvedPreviewUrl) {
+              setPreviewRetrySeed(1);
+              return;
+            }
+            if (!usePreviewFallback && canSwitchToPreviewFallback) {
+              setUsePreviewFallback(true);
+              setPreviewRetrySeed(0);
+              return;
+            }
+            setPreviewFailed(true);
+          }}
+        />
+      ) : null}
+
+      {thumbnailUrl && !imgDead ? (
+        <motion.img
+          src={thumbnailUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          loading={isDesktopCard ? 'lazy' : 'eager'}
+          fetchPriority={highlighted ? 'high' : 'auto'}
+          decoding="async"
+          onError={() => {
+            if (thumbnailFallbackUrl && thumbnailUrl !== thumbnailFallbackUrl) {
+              setThumbnailUrl(withRetryBust(thumbnailFallbackUrl, `${item.id}-${Date.now()}`));
+              return;
+            }
+            setImgDead(true);
+          }}
           animate={{
             scale: isOpen ? 1.022 : highlighted ? 1.01 : 1,
+            opacity: canRenderInlinePreview && previewPlaying && shouldPlayPreview ? 0 : 1,
           }}
           transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
           style={{ willChange: 'transform' }}
@@ -257,7 +578,7 @@ export function FireCard3D({
         </div>
       </motion.div>
 
-      {!hideSignalChrome && (
+      {(!hideSignalChrome || showAutoplayToggle) && (
         <motion.div
           className={isDesktopCard ? 'absolute right-4 top-4 z-10' : 'absolute right-4 top-8 z-10 md:top-4'}
           style={{ marginTop: 'var(--pwa-top-pad)' }}
@@ -267,8 +588,50 @@ export function FireCard3D({
           }}
           transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]">
-            {signalContextLabel}
+          <div className="flex flex-col items-end gap-1.5">
+            {!hideSignalChrome ? (
+              <div className="rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]">
+                {signalContextLabel}
+              </div>
+            ) : null}
+            {showAutoplayToggle ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (!mobileAutoplayEnabled) {
+                    setPreviewFailed(false);
+                    setPreviewReady(false);
+                    setPreviewPlaying(false);
+                    resetPreviewProgress();
+                    if (previewUrl || previewFallbackUrl) {
+                      setPreviewRetrySeed((current) => current + 1);
+                    }
+                  }
+                  onToggleMobileAutoplay?.(!mobileAutoplayEnabled);
+                }}
+                className="pointer-events-auto relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/28 bg-white/14 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.34)] backdrop-blur-[18px]"
+                aria-pressed={mobileAutoplayEnabled}
+                aria-label={mobileAutoplayEnabled ? 'Pause reel previews' : 'Play reel previews'}
+              >
+                <span
+                  ref={previewProgressRingRef}
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    background: previewProgressBackground(0),
+                    WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
+                    mask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
+                    opacity: mobileAutoplayEnabled ? 1 : 0.72,
+                  }}
+                />
+                <span className="absolute inset-[3px] rounded-full border border-white/18 bg-black/32 backdrop-blur-[18px]" aria-hidden="true" />
+                <span className="relative z-10 inline-flex items-center justify-center">
+                {mobileAutoplayEnabled ? <Pause size={14} strokeWidth={2.6} /> : <Play size={14} strokeWidth={2.6} fill="currentColor" />}
+              </span>
+            </button>
+            ) : null}
           </div>
         </motion.div>
       )}
@@ -305,7 +668,7 @@ export function FireCard3D({
                 ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
                 : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
               >
-                {heroMetricStamp} {bestMetric}
+                {heroMetricStamp} {bestMetric.toUpperCase()}
               </span>
               <span className={isDesktopCard
                 ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
@@ -531,7 +894,7 @@ export function FireCard3D({
               <div className="mb-2 sm:mb-3 rounded-[16px] bg-[#E11D48] p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] border border-[#E11D48]/10">
                 <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-white/72">Performance</div>
                 <div className="mt-0.5 text-[clamp(28px,8.2vw,46px)] font-black leading-[0.88] tracking-[-0.04em] text-white drop-shadow-sm">
-                  {compact(value)} {bestMetric}
+                  {compact(value)} {bestMetric.toUpperCase()}
                 </div>
                 <div className="mt-1 flex items-end gap-2 text-[clamp(11px,3.3vw,19px)] font-black leading-none">
                   <span className="text-white/72">{compact(baseline)} USUAL</span>
@@ -658,7 +1021,7 @@ export function FireCard3D({
                         event.preventDefault();
                         if (primedTimeoutRef.current) clearTimeout(primedTimeoutRef.current);
                         setIsPrimed(true);
-                        primedTimeoutRef.current = setTimeout(() => setIsPrimed(false), 3000);
+                        primedTimeoutRef.current = window.setTimeout(() => setIsPrimed(false), 3000);
                       }
                     }}
                     className="group relative cursor-pointer pointer-events-auto flex h-10 sm:h-13 w-full items-center justify-center rounded-[16px] overflow-hidden bg-black dark:bg-[#111] shadow-[0_16px_32px_rgba(0,0,0,0.4),inset_0_2px_4px_rgba(255,255,255,0.2)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_2px_rgba(255,255,255,0.08)] transition-transform active:scale-[0.96]"

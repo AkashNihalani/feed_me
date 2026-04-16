@@ -83,6 +83,9 @@ export default function BottomNav() {
             <Link key={item.label} href={item.href} prefetch className="group relative z-10"
               onClick={() => {
                 play(isActive ? 'navReselect' : 'navSwitch');
+                if (isActive && item.href === '/fire' && typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('feedme:fire-tab-reselect'));
+                }
                 try {
                   sessionStorage.setItem('feedme:intent', item.href);
                   sessionStorage.setItem('feedme:intent-ts', String(Date.now()));

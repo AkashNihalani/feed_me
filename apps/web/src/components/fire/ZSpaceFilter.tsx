@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppHaptics } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
-import { FireFeedOption, FireFilterState, FireFilterThreshold } from './types';
+import { FireFeedOption, FireFilterState, FireMediaFilter } from './types';
 
 interface ZSpaceFilterProps {
   isOpen: boolean;
@@ -16,11 +16,11 @@ interface ZSpaceFilterProps {
   onChange: (next: FireFilterState) => void;
 }
 
-const THRESHOLDS: { label: string; value: FireFilterThreshold }[] = [
-  { label: 'TOP 10', value: '10' },
-  { label: 'TOP 25', value: '25' },
-  { label: 'TOP 50', value: '50' },
-  { label: 'ALL SIGNALS', value: 'ALL' },
+const MEDIA_FILTER_OPTIONS: { label: string; value: FireMediaFilter }[] = [
+  { label: 'IMAGES', value: 'IMAGE' },
+  { label: 'CAROUSELS', value: 'CAROUSEL' },
+  { label: 'REELS', value: 'REEL' },
+  { label: 'ALL', value: 'ALL' },
 ];
 
 export default function ZSpaceFilter({
@@ -34,6 +34,7 @@ export default function ZSpaceFilter({
   const { play } = useAppHaptics();
   const [expandedFeeds, setExpandedFeeds] = useState<Record<string, boolean>>({});
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  const [backdropActive, setBackdropActive] = useState(false);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 1024px)');
@@ -41,6 +42,15 @@ export default function ZSpaceFilter({
     mql.addEventListener('change', handler as (event: MediaQueryListEvent) => void);
     return () => mql.removeEventListener('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setBackdropActive(false);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setBackdropActive(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen]);
 
   const selectedFeederCount = useMemo(
     () => Object.values(filters.selectedFeederIdsByFeed).reduce((sum, ids) => sum + ids.length, 0),
@@ -112,13 +122,24 @@ export default function ZSpaceFilter({
             onClose();
           }}
         >
-          <div className="absolute inset-0 bg-black/28 backdrop-blur-md dark:bg-black/48" />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+            className={cn(
+              'absolute inset-0 transition-[background-color,backdrop-filter] duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]',
+              backdropActive
+                ? 'bg-black/28 backdrop-blur-[18px] dark:bg-black/48'
+                : 'bg-black/0 backdrop-blur-0 dark:bg-black/0',
+            )}
+          />
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, translateY: '100%' }}
-            animate={{ opacity: 1, scale: 1, translateY: '0%' }}
-            exit={{ opacity: 0, scale: 0.95, translateY: '100%' }}
-            transition={{ type: 'spring', stiffness: 450, damping: 35, mass: 0.8 }}
+            initial={{ opacity: 0, scale: 0.975, y: 36 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.982, y: 22 }}
+            transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.92 }}
             className={cn(
               'relative mb-0 flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[36px] sm:mb-12 sm:rounded-[36px]',
               'border border-white/80 border-t-white/90 bg-white/70 backdrop-blur-[40px] backdrop-saturate-[180%]',
@@ -137,10 +158,10 @@ export default function ZSpaceFilter({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-black/50 dark:text-white/40">
-                    {isDesktop ? 'Feed Scope' : 'Fire Control'}
+                    Feed List
                   </div>
                   <div className="mt-2 text-[22px] font-black uppercase tracking-[0.08em] text-black dark:text-white">
-                    {isDesktop ? 'Select Feeds & Feeders' : 'Tune The Surface'}
+                    Feed Filter
                   </div>
                   <div className="mt-2 text-[11px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/30">
                     {filters.selectedFeedIds.length === 0 ? 'ALL FEEDS' : `${filters.selectedFeedIds.length} FEEDS`} · {selectedFeederCount} FEEDERS
@@ -162,20 +183,20 @@ export default function ZSpaceFilter({
               {!isDesktop && (
               <div className="flex flex-col gap-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-black/50 dark:text-white/40">
-                  L1: Signal Target
+                  Post Type
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  {THRESHOLDS.map((threshold) => {
-                    const isActive = filters.threshold === threshold.value;
+                  {MEDIA_FILTER_OPTIONS.map((option) => {
+                    const isActive = filters.mediaFilter === option.value;
                     return (
                       <motion.button
-                        key={threshold.value}
+                        key={option.value}
                         type="button"
                         whileTap={{ scale: 0.94 }}
                         onClick={() => {
                           if (!isActive) play('snapLock');
-                          onChange({ ...filters, threshold: threshold.value });
+                          onChange({ ...filters, mediaFilter: option.value });
                         }}
                         className={cn(
                           'relative flex items-center justify-center rounded-[18px] px-2 py-4 transition-colors duration-200',
@@ -184,7 +205,7 @@ export default function ZSpaceFilter({
                             : 'border border-black/5 bg-black/5 text-black/60 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/5 dark:bg-white/5 dark:text-white/50 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]',
                         )}
                       >
-                        <span className="text-[13px] font-black tracking-[0.08em]">{threshold.label}</span>
+                        <span className="text-[13px] font-black tracking-[0.08em]">{option.label}</span>
                       </motion.button>
                     );
                   })}
@@ -194,7 +215,7 @@ export default function ZSpaceFilter({
 
               <div className="flex flex-col gap-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-black/50 dark:text-white/40">
-                  {isDesktop ? 'Feed Scope' : 'L2: Feed Scope'}
+                  Feed List
                 </div>
 
                 <div
@@ -291,7 +312,7 @@ export default function ZSpaceFilter({
               {!isDesktop && (
               <div className="flex flex-col gap-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-black/50 dark:text-white/40">
-                  L3: Checkpoints
+                  Checkpoints
                 </div>
 
                 <div className="flex flex-wrap gap-2.5">

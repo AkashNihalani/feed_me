@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from psycopg.rows import dict_row
 
-from .config import APP_TIMEZONE
+from .config import APP_TIMEZONE, MEDIA_PUBLIC_BASE_URL
 from .post_intelligence import (
     current_model_version as pi_model_version,
     extract_tags as pi_extract_tags,
@@ -50,13 +50,57 @@ def extract_post_intelligence_for_checkpoint(
                       p.caption,
                       lower(coalesce(p.media_type, 'image')) as media_type,
                       p.posted_at,
-                      p.thumbnail_url,
-                      p.video_url,
+                      coalesce(thumbnail_asset.public_url, p.thumbnail_url) as thumbnail_url,
+                      coalesce(preview_asset.public_url, p.video_url) as video_url,
                       p.carousel_urls,
                       pi.tags as existing_tags
                FROM public.posts p
                JOIN public.post_metrics pm ON pm.post_key = p.post_key
                LEFT JOIN public.post_intelligence pi ON pi.post_key = p.post_key
+               LEFT JOIN LATERAL (
+                 SELECT coalesce(
+                          assets.public_url,
+                          case
+                            when coalesce(%s, '') <> ''
+                              then concat(
+                                %s,
+                                '/',
+                                regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
+                              )
+                            else null
+                          end
+                        ) as public_url
+                 FROM public.post_media_assets assets
+                 WHERE assets.post_key = p.post_key
+                   AND assets.asset_role = 'thumbnail'
+                   AND assets.status in ('active', 'purge_pending')
+                   AND coalesce(assets.storage_provider, 'supabase') = 'r2'
+                   AND coalesce(assets.storage_path, '') <> ''
+                 ORDER BY assets.updated_at desc nulls last, assets.id desc
+                 LIMIT 1
+               ) thumbnail_asset ON true
+               LEFT JOIN LATERAL (
+                 SELECT coalesce(
+                          assets.public_url,
+                          case
+                            when coalesce(%s, '') <> ''
+                              then concat(
+                                %s,
+                                '/',
+                                regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
+                              )
+                            else null
+                          end
+                        ) as public_url
+                 FROM public.post_media_assets assets
+                 WHERE assets.post_key = p.post_key
+                   AND assets.asset_role = 'preview_5s'
+                   AND assets.status in ('active', 'purge_pending')
+                   AND coalesce(assets.storage_provider, 'supabase') = 'r2'
+                   AND coalesce(assets.storage_path, '') <> ''
+                 ORDER BY assets.updated_at desc nulls last, assets.id desc
+                 LIMIT 1
+               ) preview_asset ON true
                WHERE p.feeder_id = %s
                  AND lower(pm.checkpoint) = %s
                  AND pm.business_date_ist = %s
@@ -80,7 +124,15 @@ def extract_post_intelligence_for_checkpoint(
                  )
                ORDER BY p.posted_at DESC NULLS LAST, p.post_key DESC
                LIMIT 75""",
-            (feeder_id, cp, business_date),
+            (
+                (MEDIA_PUBLIC_BASE_URL or "").rstrip("/"),
+                (MEDIA_PUBLIC_BASE_URL or "").rstrip("/"),
+                (MEDIA_PUBLIC_BASE_URL or "").rstrip("/"),
+                (MEDIA_PUBLIC_BASE_URL or "").rstrip("/"),
+                feeder_id,
+                cp,
+                business_date,
+            ),
         )
         posts = cur.fetchall()
 

@@ -8,11 +8,16 @@ import FluidDeck from '@/components/fire/FluidDeck';
 import FireIntelligenceDialog from '@/components/fire/FireIntelligenceDialog';
 import ZSpaceFilter from '@/components/fire/ZSpaceFilter';
 import {
+  metricMultipleFromPayload,
+  metricValueFromPayload,
+  resolveBestMetricFromPayload,
+} from '@/components/fire/fireMetricDisplay';
+import {
   AlertUrgency,
   FireAlertItem,
   FireFeedOption,
+  FireMediaFilter,
   FireFilterState,
-  FireFilterThreshold,
   FireSortMode,
   FireLayers,
   FireWarmupGate,
@@ -32,12 +37,21 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
   { label: 'RECENT', value: 'recent' },
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FIRE_META_CACHE_KEY = 'fire:meta:v2';
-const FIRE_STATE_CACHE_KEY = 'fire:state:v3';
-const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v4';
-const FIRE_CACHE_TTL = 2 * 60 * 1000;
+const FIRE_META_CACHE_KEY = 'fire:meta:v5';
+const FIRE_STATE_CACHE_KEY = 'fire:state:v7';
+const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v8';
+const FIRE_CACHE_TTL = 10 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_REQUIRED = 3;
+const FIRE_INITIAL_BATCH_SIZE = 20;
+const FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP = 6;
+const FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE = 2;
+const FIRE_MEDIA_FILTER_OPTIONS: { label: string; value: FireMediaFilter }[] = [
+  { label: 'IMAGES', value: 'IMAGE' },
+  { label: 'CAROUSELS', value: 'CAROUSEL' },
+  { label: 'REELS', value: 'REEL' },
+  { label: 'ALL', value: 'ALL' },
+];
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -62,34 +76,6 @@ function asNumber(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
-}
-
-function pickBestMetric(metrics: Record<string, unknown>, preferred: string): string {
-  const candidates = ['views', 'likes', 'comments'];
-  const normalized = preferred.trim().toLowerCase();
-  const order = normalized && candidates.includes(normalized)
-    ? [normalized, ...candidates.filter((metric) => metric !== normalized)]
-    : candidates;
-
-  for (const metric of order) {
-    const metricData = asRecord(metrics[metric]);
-    if (asNumber(metricData.value) != null) return metric;
-  }
-  for (const metric of order) {
-    const metricData = asRecord(metrics[metric]);
-    if (asNumber(metricData.percentile) != null) return metric;
-  }
-  return order[0] ?? 'views';
-}
-
-function toMediaProxyUrl(postKey: string, url: string, role = 'thumbnail'): string {
-  const src = url.trim();
-  const key = postKey.trim();
-  const params = new URLSearchParams();
-  if (key) params.set('postKey', key);
-  if (role) params.set('role', role);
-  if (src) params.set('url', src);
-  return params.toString() ? `/api/media?${params.toString()}` : '';
 }
 
 function timeAgoText(iso: string): string {
@@ -212,12 +198,35 @@ function sortCheckpointList(values: string[]): string[] {
   });
 }
 
+function normalizeFireMediaFilter(value: unknown): FireMediaFilter {
+  const normalized = String(value || 'ALL').trim().toUpperCase();
+  return normalized === 'IMAGE' || normalized === 'CAROUSEL' || normalized === 'REEL' ? normalized : 'ALL';
+}
+
+function mediaFilterLabel(value: FireMediaFilter): string {
+  if (value === 'IMAGE') return 'IMAGES';
+  if (value === 'CAROUSEL') return 'CAROUSELS';
+  if (value === 'REEL') return 'REELS';
+  return 'ALL';
+}
+
 function flattenSelectedFeederIds(filters: FireFilterState): number[] {
   return sortNumberList(
     Object.entries(filters.selectedFeederIdsByFeed)
       .filter(([feedId]) => filters.selectedFeedIds.includes(Number(feedId)))
       .flatMap(([, feederIds]) => feederIds),
   );
+}
+
+function createDefaultFireFilters(): FireFilterState {
+  return {
+    threshold: 'ALL',
+    mediaFilter: 'ALL',
+    sort: 'best',
+    selectedFeedIds: [],
+    selectedFeederIdsByFeed: {},
+    selectedCheckpoints: [],
+  };
 }
 
 function serializeFilters(filters: FireFilterState): string {
@@ -228,6 +237,7 @@ function serializeFilters(filters: FireFilterState): string {
 
   return JSON.stringify({
     threshold: filters.threshold,
+    mediaFilter: filters.mediaFilter,
     sort: filters.sort,
     selectedFeedIds: sortNumberList(filters.selectedFeedIds),
     selectedFeederIdsByFeed: normalizedFeederState,
@@ -257,18 +267,12 @@ function pruneFilters(filters: FireFilterState, feeds: FireFeedOption[]): FireFi
 
   return {
     threshold: filters.threshold,
+    mediaFilter: normalizeFireMediaFilter(filters.mediaFilter),
     sort: filters.sort,
     selectedFeedIds,
     selectedFeederIdsByFeed,
     selectedCheckpoints: sortCheckpointList(filters.selectedCheckpoints),
   };
-}
-
-function buildFeedSummaryLabel(filters: FireFilterState): string {
-  const feederCount = Object.values(filters.selectedFeederIdsByFeed).reduce((sum, feederIds) => sum + feederIds.length, 0);
-  if (filters.selectedFeedIds.length === 0) return 'ALL FEEDS';
-  if (feederCount === 0) return `${filters.selectedFeedIds.length} FEEDS`;
-  return `${filters.selectedFeedIds.length} FEEDS · ${feederCount} FEEDERS`;
 }
 
 function buildDesktopSelectionChips(filters: FireFilterState, feeds: FireFeedOption[]): { key: string; label: string }[] {
@@ -295,6 +299,50 @@ function buildDesktopSelectionChips(filters: FireFilterState, feeds: FireFeedOpt
   return chips;
 }
 
+function parseTimeValue(value: string | undefined): number {
+  return value ? Date.parse(value) || 0 : 0;
+}
+
+function sortFireAlertItems(items: FireAlertItem[], sortMode: FireSortMode): FireAlertItem[] {
+  return [...items].sort((a, b) => {
+    if (sortMode === 'recent') {
+      const aRecent = parseTimeValue(a.postedAt || a.createdAt);
+      const bRecent = parseTimeValue(b.postedAt || b.createdAt);
+      if (bRecent !== aRecent) return bRecent - aRecent;
+      return parseTimeValue(b.createdAt) - parseTimeValue(a.createdAt);
+    }
+
+    const aPercentile = a.surfacePercentileExact ?? a.surfacePercentile ?? Number.POSITIVE_INFINITY;
+    const bPercentile = b.surfacePercentileExact ?? b.surfacePercentile ?? Number.POSITIVE_INFINITY;
+    if (aPercentile !== bPercentile) return aPercentile - bPercentile;
+
+    const aMetrics = asRecord(a.payload.metrics);
+    const bMetrics = asRecord(b.payload.metrics);
+    const aBestMetric = resolveBestMetricFromPayload(aMetrics, a.metricKey || asString(a.payload.best_metric), a.surfaceMediaType || a.mediaType);
+    const bBestMetric = resolveBestMetricFromPayload(bMetrics, b.metricKey || asString(b.payload.best_metric), b.surfaceMediaType || b.mediaType);
+    const aMultiple = metricMultipleFromPayload(aMetrics, aBestMetric) ?? Number.NEGATIVE_INFINITY;
+    const bMultiple = metricMultipleFromPayload(bMetrics, bBestMetric) ?? Number.NEGATIVE_INFINITY;
+    if (aMultiple !== bMultiple) return bMultiple - aMultiple;
+
+    const aValue = metricValueFromPayload(aMetrics, aBestMetric) ?? a.metricValue ?? Number.NEGATIVE_INFINITY;
+    const bValue = metricValueFromPayload(bMetrics, bBestMetric) ?? b.metricValue ?? Number.NEGATIVE_INFINITY;
+    if (aValue !== bValue) return bValue - aValue;
+
+    const aPostedAt = parseTimeValue(a.postedAt || a.createdAt);
+    const bPostedAt = parseTimeValue(b.postedAt || b.createdAt);
+    if (bPostedAt !== aPostedAt) return bPostedAt - aPostedAt;
+
+    return parseTimeValue(b.createdAt) - parseTimeValue(a.createdAt);
+  });
+}
+
+function fireStateShellStyle(): CSSProperties {
+  return {
+    marginTop: 'calc(var(--fire-header-height, 168px) + 16px)',
+    minHeight: 'calc(var(--fire-app-height, 100dvh) - var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 88px) - 24px)',
+  };
+}
+
 function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   const payload = asRecord(row.payload);
   const layers = asRecord(payload.layers);
@@ -308,20 +356,29 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     asString(row.surface_media_type) || asString(row.surface_mediaType) || asString(meta.media_type),
   );
   const metrics = asRecord(payload.metrics);
-  const bestMetric = pickBestMetric(metrics, asString(payload.best_metric) || asString(row.metric_key) || 'views');
+  const bestMetric = resolveBestMetricFromPayload(
+    metrics,
+    asString(payload.best_metric) || asString(row.metric_key) || 'views',
+    surfaceMediaType,
+  );
   const bestMetricData = asRecord(metrics[bestMetric]);
   const position = asRecord(payload.position);
   const surfacePercentile =
-    asNumber(position.overall_percentile) ??
     asNumber(position.percentile) ??
     asNumber(row.surface_percentile) ??
     asNumber(bestMetricData.percentile);
+  const surfacePercentileExact =
+    asNumber(position.overall_percentile) ??
+    asNumber(row.surface_percentile_exact) ??
+    surfacePercentile;
   const metricValue = asNumber(bestMetricData.value) ?? asNumber(row.surface_metric_value) ?? asNumber(row.metric_value);
   const surfaceDelta = asNumber(row.surface_delta);
+  const createdAt = asString(row.created_at);
+  const postedAt = asString(row.posted_at) || asString(meta.posted_at) || createdAt;
   const businessDateKey =
     asString(row.business_date_ist) ||
     asString(meta.business_date_ist) ||
-    toIstDayKey(asString(row.created_at));
+    toIstDayKey(createdAt);
   const signalCode = asString(row.signal_code) || asString(meta.signal_code) || 'UNKNOWN_SIGNAL';
   const signalContext = normalizeSignalContext(asString(row.context) || asString(meta.signal_context));
   const signalMeta = getFireSignalMeta(signalCode);
@@ -337,6 +394,16 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     : [];
   const signalLabel = hideSignalChrome ? '' : signalMeta?.shortLabel ?? fallbackSignalLabel(signalCode);
   const signalHeadline = hideSignalChrome ? '' : patternLabel || signalMeta?.headline || signalLabel;
+  const resolvedThumbnailUrl =
+    asString(row.thumbnail_url)
+    || asString(row.resolved_thumbnail_url)
+    || asString(meta.resolved_thumbnail_url)
+    || asString(meta.thumbnail_url);
+  const resolvedPreviewUrl =
+    asString(row.preview_url)
+    || asString(row.resolved_preview_url)
+    || asString(meta.resolved_preview_url)
+    || asString(meta.preview_url);
   const title = hideSignalChrome
     ? `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`
     : `${signalHeadline} · @${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`;
@@ -349,31 +416,34 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     signalContext,
     signalLabel,
     signalHeadline,
-    urgency: inferUrgency(asString(row.alert_type), surfacePercentile),
+    urgency: inferUrgency(asString(row.alert_type), surfacePercentileExact),
     color: signalColor(signalContext),
     handle: `@${surfaceHandle || 'feed'}`,
     title,
     whyNow: hideSignalChrome ? '' : asString(row.body) || signalHeadline,
     action: '',
-    percentileTag: percentileToTag(surfacePercentile),
+    percentileTag: percentileToTag(surfacePercentileExact),
     mediaType: surfaceMediaType,
     stage: checkpoint.toUpperCase(),
     percentile: surfacePercentile == null ? undefined : String(Math.round(surfacePercentile)),
     delta: formatDelta(surfaceDelta, checkpoint),
     evidence: cueLabels,
-    timeAgo: timeAgoText(asString(row.created_at)),
-    createdAt: asString(row.created_at),
+    timeAgo: timeAgoText(createdAt),
+    createdAt,
     postUrl: asString(meta.post_url) || 'https://instagram.com',
-    thumbnailUrl: toMediaProxyUrl(asString(row.post_key), asString(meta.thumbnail_url)),
+    thumbnailUrl: resolvedThumbnailUrl,
+    previewUrl: resolvedPreviewUrl,
     businessDateKey,
     businessDateIst: businessDateKey,
     status,
     surfacePercentile,
+    surfacePercentileExact,
     surfaceDelta,
     trajectoryDeltaPercentile: surfaceDelta,
     surfaceHandle,
     surfaceMediaType,
     checkpoint: checkpoint.toUpperCase(),
+    postedAt,
     metricValue,
     metricKey: bestMetric,
     payload,
@@ -397,11 +467,79 @@ async function fetchMeta(): Promise<{ days: string[]; feeds: FireFeedOption[]; w
   return { days: data.days ?? [], feeds: data.feeds ?? [], warmupSummary: data.warmupSummary ?? {} };
 }
 
+function normalizePagePayload(data: {
+  rows?: AlertRow[];
+  hasMore?: boolean;
+  total?: number;
+  availableCheckpoints?: string[];
+  snapshotToken?: string | null;
+}): { items: FireAlertItem[]; hasMore: boolean; total: number; availableCheckpoints: string[]; snapshotToken: string | null } {
+  const items = ((data.rows || []) as AlertRow[])
+    .map(normalizeAlertRow)
+    .filter((row): row is FireAlertItem => row !== null);
+  return {
+    items,
+    hasMore: data.hasMore ?? false,
+    total: data.total ?? 0,
+    availableCheckpoints: sortCheckpointList((data.availableCheckpoints ?? []).map((value: string) => String(value).toUpperCase())),
+    snapshotToken: typeof data.snapshotToken === 'string' && data.snapshotToken.trim() ? data.snapshotToken : null,
+  };
+}
+
+type FirePagePayload = ReturnType<typeof normalizePagePayload>;
+
+async function fetchBootstrap(pageSize: number): Promise<{
+  days: string[];
+  feeds: FireFeedOption[];
+  warmupSummary: WarmupSummary;
+  initialDay: string;
+  initialPage: FirePagePayload;
+}> {
+  const res = await fetch(`/api/fire?mode=bootstrap&pageSize=${encodeURIComponent(String(pageSize))}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Bootstrap fetch failed: ${res.status}`);
+  const data = await res.json();
+  return {
+    days: data.days ?? [],
+    feeds: data.feeds ?? [],
+    warmupSummary: data.warmupSummary ?? {},
+    initialDay: typeof data.initialDay === 'string' ? data.initialDay : '',
+    initialPage: normalizePagePayload(data.initialPage ?? {}),
+  };
+}
+
+function prewarmThumbnails(payloads: FirePagePayload[], visibleCount: number) {
+  if (typeof window === 'undefined') return;
+
+  const urls = Array.from(
+    new Set(
+      payloads
+        .flatMap((payload) => payload.items.slice(0, visibleCount))
+        .map((item) => item.thumbnailUrl?.trim() || '')
+        .filter(Boolean),
+    ),
+  );
+
+  if (urls.length === 0) return;
+
+  const schedule = typeof window.requestIdleCallback === 'function'
+    ? (fn: () => void) => window.requestIdleCallback(fn, { timeout: 1500 })
+    : (fn: () => void) => window.setTimeout(fn, 120);
+
+  schedule(() => {
+    for (const url of urls) {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = url;
+    }
+  });
+}
+
 async function fetchPage(
   day: string,
   filters: FireFilterState,
   cursor: number,
   snapshotToken: string | null,
+  pageSize = FIRE_INITIAL_BATCH_SIZE,
 ): Promise<{ items: FireAlertItem[]; hasMore: boolean; total: number; availableCheckpoints: string[]; snapshotToken: string | null }> {
   const feedIds = sortNumberList(filters.selectedFeedIds);
   const feederIds = flattenSelectedFeederIds(filters);
@@ -414,8 +552,10 @@ async function fetchPage(
     body: JSON.stringify({
       day,
       threshold: filters.threshold,
+      mediaFilter: filters.mediaFilter,
       sort: filters.sort,
       cursor,
+      pageSize,
       feedIds,
       feederIds,
       checkpoints,
@@ -427,15 +567,7 @@ async function fetchPage(
     throw new Error(body.error || `HTTP ${res.status}`);
   }
 
-  const { rows, hasMore, total, availableCheckpoints, snapshotToken: nextSnapshotToken } = await res.json();
-  const items = (rows as AlertRow[]).map(normalizeAlertRow).filter((row): row is FireAlertItem => row !== null);
-  return {
-    items,
-    hasMore: hasMore ?? false,
-    total: total ?? 0,
-    availableCheckpoints: sortCheckpointList((availableCheckpoints ?? []).map((value: string) => String(value).toUpperCase())),
-    snapshotToken: typeof nextSnapshotToken === 'string' && nextSnapshotToken.trim() ? nextSnapshotToken : null,
-  };
+  return normalizePagePayload(await res.json());
 }
 
 export default function FirePage() {
@@ -444,6 +576,7 @@ export default function FirePage() {
   const cursorRef = useRef(0);
   const fetchKeyRef = useRef('');
   const snapshotTokenRef = useRef<string | null>(null);
+  const backgroundPrefetchKeyRef = useRef<string | null>(null);
 
   const [pickerDays, setPickerDays] = useState<string[]>([]);
   const [availableFeeds, setAvailableFeeds] = useState<FireFeedOption[]>([]);
@@ -457,34 +590,36 @@ export default function FirePage() {
   const [total, setTotal] = useState(0);
   const [selectedDay, setSelectedDay] = useState('');
   const [isZSpaceOpen, setIsZSpaceOpen] = useState(false);
-  const [filters, setFilters] = useState<FireFilterState>({
-    threshold: 'ALL',
-    sort: 'best',
-    selectedFeedIds: [],
-    selectedFeederIdsByFeed: {},
-    selectedCheckpoints: [],
-  });
+  const [filters, setFilters] = useState<FireFilterState>(() => createDefaultFireFilters());
   const [headerHeight, setHeaderHeight] = useState(168);
   const [desktopModalCard, setDesktopModalCard] = useState<FireAlertItem | null>(null);
   const [isStandaloneMode, setIsStandaloneMode] = useState(isStandaloneDisplayMode);
   const [isDesktopViewport, setIsDesktopViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  const [initialDataReady, setInitialDataReady] = useState(false);
   const useBrowserPageScroll = !isDesktopViewport;
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
 
-  const hasActiveFilters = filters.threshold !== 'ALL'
+  const hasActiveFilters = filters.mediaFilter !== 'ALL'
     || filters.selectedFeedIds.length > 0
     || Object.keys(filters.selectedFeederIdsByFeed).length > 0
     || filters.selectedCheckpoints.length > 0;
 
-  const feedSummaryLabel = useMemo(() => buildFeedSummaryLabel(filters), [filters]);
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
   const displayCards = useMemo(
-    () => cards.map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
-    [cards, warmupSummary],
+    () => sortFireAlertItems(
+      cards.map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
+      filters.sort,
+    ),
+    [cards, filters.sort, warmupSummary],
+  );
+  const desktopModalIndex = useMemo(
+    () => (desktopModalCard ? displayCards.findIndex((card) => card.id === desktopModalCard.id) : -1),
+    [desktopModalCard, displayCards],
   );
 
   useEffect(() => {
+    let mounted = true;
     const cachedState = getCache<{
       pickerDays: string[];
       availableFeeds: FireFeedOption[];
@@ -499,29 +634,155 @@ export default function FirePage() {
       snapshotToken: string | null;
     }>(FIRE_STATE_CACHE_KEY, FIRE_CACHE_TTL);
 
-    if (!cachedState) return;
+    if (cachedState) {
+      setPickerDays(cachedState.pickerDays || []);
+      setAvailableFeeds(cachedState.availableFeeds || []);
+      setSelectedDay(cachedState.selectedDay || '');
+      setFilters(pruneFilters(cachedState.filters || createDefaultFireFilters(), cachedState.availableFeeds || []));
+      setCards(cachedState.cards || []);
+      setAvailableCheckpoints(sortCheckpointList(cachedState.availableCheckpoints || []));
+      setWarmupSummary(cachedState.warmupSummary || {});
+      setHasMore(Boolean(cachedState.hasMore));
+      setTotal(cachedState.total || 0);
+      cursorRef.current = cachedState.cursor || (cachedState.cards || []).length;
+      snapshotTokenRef.current = typeof cachedState.snapshotToken === 'string' && cachedState.snapshotToken.trim()
+        ? cachedState.snapshotToken
+        : null;
+      setLoading(false);
+      setInitialDataReady(true);
+      return () => { mounted = false; };
+    }
 
-    setPickerDays(cachedState.pickerDays || []);
-    setAvailableFeeds(cachedState.availableFeeds || []);
-    setSelectedDay(cachedState.selectedDay || '');
-    setFilters(pruneFilters(cachedState.filters || {
-      threshold: 'ALL',
-      sort: 'best',
-      selectedFeedIds: [],
-      selectedFeederIdsByFeed: {},
-      selectedCheckpoints: [],
-    }, cachedState.availableFeeds || []));
-    setCards(cachedState.cards || []);
-    setAvailableCheckpoints(sortCheckpointList(cachedState.availableCheckpoints || []));
-    setWarmupSummary(cachedState.warmupSummary || {});
-    setHasMore(Boolean(cachedState.hasMore));
-    setTotal(cachedState.total || 0);
-    cursorRef.current = cachedState.cursor || (cachedState.cards || []).length;
-    snapshotTokenRef.current = typeof cachedState.snapshotToken === 'string' && cachedState.snapshotToken.trim()
-      ? cachedState.snapshotToken
-      : null;
-    setLoading(false);
+    (async () => {
+      try {
+        const bootstrap = await fetchBootstrap(FIRE_INITIAL_BATCH_SIZE);
+        if (!mounted) return;
+
+        const defaultFilters = createDefaultFireFilters();
+        const nextDays = bootstrap.days || [];
+        const nextFeeds = bootstrap.feeds || [];
+        const nextWarmupSummary = bootstrap.warmupSummary || {};
+        const initialDay = bootstrap.initialDay || nextDays[0] || '';
+        const initialPayload = bootstrap.initialPage || {
+          items: [],
+          hasMore: false,
+          total: 0,
+          availableCheckpoints: [],
+          snapshotToken: null,
+        };
+
+        setCache(FIRE_META_CACHE_KEY, { days: nextDays, feeds: nextFeeds, warmupSummary: nextWarmupSummary });
+        setCache(`${FIRE_PAGE_CACHE_PREFIX}:${initialDay}:${serializeFilters(defaultFilters)}`, {
+          items: initialPayload.items,
+          hasMore: initialPayload.hasMore,
+          total: initialPayload.total,
+          cursor: initialPayload.items.length,
+          availableCheckpoints: initialPayload.availableCheckpoints,
+          snapshotToken: initialPayload.snapshotToken,
+        });
+        prewarmThumbnails(
+          [initialPayload],
+          isDesktopViewport ? FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP : FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE,
+        );
+
+        setPickerDays(nextDays);
+        setAvailableFeeds(nextFeeds);
+        setWarmupSummary(nextWarmupSummary);
+        setSelectedDay(initialDay);
+        setFilters(defaultFilters);
+        setCards(initialPayload.items);
+        setAvailableCheckpoints(initialPayload.availableCheckpoints);
+        setHasMore(initialPayload.hasMore);
+        setTotal(initialPayload.total);
+        cursorRef.current = initialPayload.items.length;
+        snapshotTokenRef.current = initialPayload.snapshotToken;
+        setError(null);
+      } catch (err) {
+        if (!mounted) return;
+        console.error('[FirePage] Bootstrap fetch error:', err);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          setInitialDataReady(true);
+        }
+      }
+    })();
+
+    return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (!initialDataReady || pickerDays.length === 0) return;
+
+    const defaultFilters = createDefaultFireFilters();
+    const defaultFilterKey = serializeFilters(defaultFilters);
+    const prefetchKey = `${pickerDays.join(',')}:${selectedDay}:${isDesktopViewport ? 'desktop' : 'mobile'}`;
+    if (backgroundPrefetchKeyRef.current === prefetchKey) return;
+    backgroundPrefetchKeyRef.current = prefetchKey;
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    let idleId: number | null = null;
+
+    const schedule = (task: () => void) => {
+      if (typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(task, { timeout: 1200 });
+        return;
+      }
+      timeoutId = window.setTimeout(task, 180);
+    };
+
+    schedule(() => {
+      void (async () => {
+        const prewarmedPayloads: FirePagePayload[] = [];
+        for (const day of pickerDays) {
+          if (cancelled || day === selectedDay) continue;
+          const cacheKey = `${FIRE_PAGE_CACHE_PREFIX}:${day}:${defaultFilterKey}`;
+          const cached = getCache<{
+            items: FireAlertItem[];
+            hasMore: boolean;
+            total: number;
+            cursor: number;
+            availableCheckpoints: string[];
+            snapshotToken: string | null;
+          }>(cacheKey, FIRE_CACHE_TTL);
+          if (cached) continue;
+
+          try {
+            const result = await fetchPage(day, defaultFilters, 0, null, FIRE_INITIAL_BATCH_SIZE);
+            if (cancelled) return;
+            setCache(cacheKey, {
+              items: result.items,
+              hasMore: result.hasMore,
+              total: result.total,
+              cursor: result.items.length,
+              availableCheckpoints: result.availableCheckpoints,
+              snapshotToken: result.snapshotToken,
+            });
+            prewarmedPayloads.push(result);
+          } catch (prefetchError) {
+            if (cancelled) return;
+            console.error('[FirePage] Day prefetch error:', prefetchError);
+          }
+        }
+
+        if (!cancelled && prewarmedPayloads.length > 0) {
+          prewarmThumbnails(
+            prewarmedPayloads,
+            isDesktopViewport ? FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP : FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE,
+          );
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+      if (idleId != null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, [initialDataReady, isDesktopViewport, pickerDays, selectedDay]);
 
   useEffect(() => {
     const node = headerRef.current;
@@ -537,9 +798,10 @@ export default function FirePage() {
       observer?.disconnect();
       window.removeEventListener('resize', updateHeight);
     };
-  }, [pickerDays, availableCheckpoints.length, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
+  }, [pickerDays, availableCheckpoints.length, filters.mediaFilter, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
 
   useEffect(() => {
+    if (!initialDataReady) return;
     if (!selectedDay) return;
     setCache(FIRE_STATE_CACHE_KEY, {
       pickerDays,
@@ -739,6 +1001,7 @@ export default function FirePage() {
   }, []);
 
   useEffect(() => {
+    if (!initialDataReady) return;
     let mounted = true;
     const run = async () => {
       try {
@@ -764,7 +1027,7 @@ export default function FirePage() {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshMeta]);
+  }, [initialDataReady, refreshMeta]);
 
   useEffect(() => {
     setFilters((current) => {
@@ -833,7 +1096,7 @@ export default function FirePage() {
 
     (async () => {
       try {
-        const result = await fetchPage(selectedDay, normalizedFilters, 0, null);
+        const result = await fetchPage(selectedDay, normalizedFilters, 0, null, FIRE_INITIAL_BATCH_SIZE);
         if (!mounted || fetchKeyRef.current !== key) return;
         setCards(result.items);
         setHasMore(result.hasMore);
@@ -861,7 +1124,7 @@ export default function FirePage() {
     })();
 
     return () => { mounted = false; };
-  }, [selectedDay, filters, availableFeeds]);
+  }, [initialDataReady, selectedDay, filters, availableFeeds]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !selectedDay) return;
@@ -869,7 +1132,13 @@ export default function FirePage() {
     const key = fetchKeyRef.current;
     try {
       const normalizedFilters = pruneFilters(filters, availableFeeds);
-      const result = await fetchPage(selectedDay, normalizedFilters, cursorRef.current, snapshotTokenRef.current);
+      const result = await fetchPage(
+        selectedDay,
+        normalizedFilters,
+        cursorRef.current,
+        snapshotTokenRef.current,
+        FIRE_INITIAL_BATCH_SIZE,
+      );
       if (fetchKeyRef.current !== key) return;
       setCards((prev) => {
         const nextCards = [...prev, ...result.items];
@@ -894,6 +1163,24 @@ export default function FirePage() {
       setLoadingMore(false);
     }
   }, [availableFeeds, filters, hasMore, loadingMore, selectedDay]);
+
+  const openPreviousDesktopCard = useCallback(() => {
+    setDesktopModalCard((current) => {
+      if (!current) return current;
+      const currentIndex = displayCards.findIndex((card) => card.id === current.id);
+      if (currentIndex <= 0) return current;
+      return displayCards[currentIndex - 1] || current;
+    });
+  }, [displayCards]);
+
+  const openNextDesktopCard = useCallback(() => {
+    setDesktopModalCard((current) => {
+      if (!current) return current;
+      const currentIndex = displayCards.findIndex((card) => card.id === current.id);
+      if (currentIndex < 0 || currentIndex >= displayCards.length - 1) return current;
+      return displayCards[currentIndex + 1] || current;
+    });
+  }, [displayCards]);
 
   const rootStyle = {
     '--fire-header-height': `${headerHeight}px`,
@@ -993,16 +1280,16 @@ export default function FirePage() {
                       <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={setSelectedDay} compact />
                     </div>
                     <div className="flex items-center justify-end">
-                      <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                        <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
                         <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">
-                          Signals
+                          Post Type
                         </div>
                         <div className="mt-0.5 flex items-end justify-center gap-1">
                           <span className="text-[46px] font-black leading-[0.82] tracking-[-0.1em] text-black dark:text-white">
                             {total}
                           </span>
                           <span className="mb-1.5 rounded-full bg-[#E11D48] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.22)]">
-                            {filters.threshold === 'ALL' ? 'ALL' : `TOP ${filters.threshold}`}
+                            {mediaFilterLabel(filters.mediaFilter)}
                           </span>
                         </div>
                         <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
@@ -1014,14 +1301,14 @@ export default function FirePage() {
 
                   <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
                     <div className="flex items-center gap-1 rounded-[14px] border border-black/5 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                      {(['10', '25', '50', 'ALL'] as FireFilterThreshold[]).map((threshold) => {
-                        const isActive = filters.threshold === threshold;
+                      {FIRE_MEDIA_FILTER_OPTIONS.map((option) => {
+                        const isActive = filters.mediaFilter === option.value;
                         return (
                           <motion.button
-                            key={threshold}
+                            key={option.value}
                             type="button"
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => setFilters((current) => ({ ...current, threshold }))}
+                            onClick={() => setFilters((current) => ({ ...current, mediaFilter: option.value }))}
                             className={cn(
                               'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                               isActive
@@ -1029,7 +1316,7 @@ export default function FirePage() {
                                 : 'text-black/55 dark:text-white/45',
                             )}
                           >
-                            {threshold === 'ALL' ? 'ALL SIGNALS' : `TOP ${threshold}`}
+                            {option.label}
                           </motion.button>
                         );
                       })}
@@ -1041,7 +1328,7 @@ export default function FirePage() {
                       onClick={() => setIsZSpaceOpen(true)}
                       className="rounded-[14px] border border-black/6 bg-white/58 px-3.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-black shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]"
                     >
-                      {feedSummaryLabel}
+                      Feed Filter
                     </motion.button>
 
                     <div className="flex items-center gap-1 rounded-[14px] border border-black/6 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
@@ -1125,11 +1412,11 @@ export default function FirePage() {
 
         <div className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
           {loading ? (
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex w-full items-center justify-center" style={fireStateShellStyle()}>
               <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
             </div>
           ) : error ? (
-            <div className="flex h-full w-full items-center justify-center px-6 text-center">
+            <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
               <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-6 py-5 text-sm font-semibold tracking-wide text-red-600 dark:text-red-300">
                 FIRE DATA UNAVAILABLE: {error}
               </div>
@@ -1146,7 +1433,7 @@ export default function FirePage() {
                   className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}
                 >
                   {displayCards.length === 0 ? (
-                    <div className="flex h-full w-full items-center justify-center px-6 text-center">
+                    <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
                       <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
                         No alerts for this selection
                       </div>
@@ -1170,7 +1457,14 @@ export default function FirePage() {
         </div>
       </div>
 
-      <FireIntelligenceDialog item={desktopModalCard} onClose={() => setDesktopModalCard(null)} />
+      <FireIntelligenceDialog
+        item={desktopModalCard}
+        onClose={() => setDesktopModalCard(null)}
+        onPrevious={openPreviousDesktopCard}
+        onNext={openNextDesktopCard}
+        canPrevious={desktopModalIndex > 0}
+        canNext={desktopModalIndex >= 0 && desktopModalIndex < displayCards.length - 1}
+      />
 
       {process.env.NODE_ENV !== 'production' && (
         <div className="pointer-events-none absolute bottom-3 left-3 z-[140] rounded-lg border border-white/30 bg-black/55 px-2.5 py-2 text-[10px] font-mono leading-tight text-[#E11D48] dark:border-white/20">

@@ -29,6 +29,7 @@ const STANDALONE_RESTORE_STEPS_MS = [0, 120, 280, 520, 860] as const;
 const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
 const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
 const PWA_RENDER_RADIUS = 2;
+const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -84,6 +85,16 @@ function getSnapScrollTop(node: HTMLElement, root: HTMLDivElement | null, usePag
   return Math.max(0, currentScrollTop + (cardCenter - focusCenter));
 }
 
+function setScrollTop(root: HTMLDivElement | null, usePageScroll: boolean, next: number): void {
+  const scrollContainer = getScrollContainer(root, usePageScroll);
+  if (!scrollContainer) return;
+  if (usePageScroll) {
+    window.scrollTo(0, next);
+    return;
+  }
+  scrollContainer.scrollTop = next;
+}
+
 function buildStandaloneDeckStateKey(resetKey?: string): string {
   return `${STANDALONE_DECK_STATE_PREFIX}:${resetKey || 'default'}`;
 }
@@ -127,6 +138,7 @@ function VirtualSlot({
   index,
   isActive,
   isDesktop,
+  mobileAutoplayEnabled,
   onOpenDetails,
   onBeforeOpenPost,
 }: {
@@ -134,6 +146,7 @@ function VirtualSlot({
   index: number;
   isActive: boolean;
   isDesktop: boolean;
+  mobileAutoplayEnabled: boolean;
   onOpenDetails: () => void;
   onBeforeOpenPost?: (itemId: string) => void;
 }) {
@@ -184,6 +197,7 @@ function VirtualSlot({
               item={item}
               highlighted={isActive}
               layoutMode={isDesktop ? 'desktop' : 'mobile'}
+              mobileAutoplayEnabled={mobileAutoplayEnabled}
               onOpenDetails={onOpenDetails}
               onBeforeOpenPost={onBeforeOpenPost}
             />
@@ -204,12 +218,15 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
   const [isStandalone, setIsStandalone] = useState(isStandaloneDisplayMode);
   const [isIOS] = useState(() => typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
+  const [mobileAutoplayEnabled, setMobileAutoplayEnabled] = useState(false);
   const currentIndexRef = useRef(0);
   const usePwaSnap = isStandalone;
   const standaloneDeckStateKey = useMemo(() => buildStandaloneDeckStateKey(resetKey), [resetKey]);
   const restoredStandaloneKeyRef = useRef<string | null>(null);
   const restoreTimeoutIdsRef = useRef<number[]>([]);
   const restoreRafIdsRef = useRef<number[]>([]);
+  const scrollToTopRafRef = useRef<number | null>(null);
+  const pwaTopReturnTimeoutIdsRef = useRef<number[]>([]);
 
   // ── PWA-specific state ──────────────────────────────────────────────────────
   // Independent index tracked outside scroll — drives the transform-based stack
@@ -280,6 +297,46 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     restoreTimeoutIdsRef.current = [];
     restoreRafIdsRef.current.forEach((id) => window.cancelAnimationFrame(id));
     restoreRafIdsRef.current = [];
+  }, []);
+
+  const clearScrollToTopAnimation = useCallback(() => {
+    if (scrollToTopRafRef.current != null) {
+      window.cancelAnimationFrame(scrollToTopRafRef.current);
+      scrollToTopRafRef.current = null;
+    }
+  }, []);
+
+  const animateScrollToTop = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const root = containerRef.current;
+    const start = getCurrentScrollTop(root, usePageScroll);
+    if (start <= 1) {
+      setScrollTop(root, usePageScroll, 0);
+      return;
+    }
+    clearScrollToTopAnimation();
+    const duration = Math.max(360, Math.min(760, 420 + Math.min(start, 1200) * 0.14));
+    const startedAt = window.performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - startedAt;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      setScrollTop(root, usePageScroll, Math.max(0, start * (1 - eased)));
+      if (progress < 1) {
+        scrollToTopRafRef.current = window.requestAnimationFrame(tick);
+      } else {
+        scrollToTopRafRef.current = null;
+        setScrollTop(root, usePageScroll, 0);
+      }
+    };
+
+    scrollToTopRafRef.current = window.requestAnimationFrame(tick);
+  }, [clearScrollToTopAnimation, usePageScroll]);
+
+  const clearPwaTopReturn = useCallback(() => {
+    pwaTopReturnTimeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
+    pwaTopReturnTimeoutIdsRef.current = [];
   }, []);
 
   // ── PWA: restore index from session storage (no scroll needed) ─────────────
@@ -354,13 +411,42 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     });
   }, [cards, isDesktop, standaloneDeckStateKey, usePwaSnap]);
 
+  const triggerPwaReturnToTop = useCallback(() => {
+    if (!usePwaSnap || isDesktop) return;
+    clearPwaTopReturn();
+    const firstCardId = cards[0]?.id ?? null;
+    if (pwaIndex === 0) {
+      persistStandaloneDeckState(firstCardId ?? undefined);
+      return;
+    }
+
+    pwaLastNavRef.current = Date.now();
+    const distance = pwaIndex;
+    const stepMs = Math.max(28, Math.min(60, 520 / Math.max(distance, 1)));
+
+    for (let nextIndex = distance - 1; nextIndex >= 0; nextIndex -= 1) {
+      const delay = Math.round((distance - 1 - nextIndex) * stepMs);
+      pwaTopReturnTimeoutIdsRef.current.push(
+        window.setTimeout(() => {
+          currentIndexRef.current = nextIndex;
+          setPwaIndex(nextIndex);
+          if (nextIndex === 0) {
+            setActiveCardId(firstCardId);
+            persistStandaloneDeckState(firstCardId ?? undefined);
+          }
+        }, delay),
+      );
+    }
+  }, [cards, clearPwaTopReturn, isDesktop, persistStandaloneDeckState, pwaIndex, usePwaSnap]);
+
   // ── PWA: navigation ────────────────────────────────────────────────────────
   const navigatePwa = useCallback((dir: number) => {
     const now = Date.now();
     if (now - pwaLastNavRef.current < 320) return;
+    clearPwaTopReturn();
     pwaLastNavRef.current = now;
     setPwaIndex(prev => Math.max(0, Math.min(cards.length - 1, prev + dir)));
-  }, [cards.length]);
+  }, [cards.length, clearPwaTopReturn]);
 
   const handlePwaDragEnd = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (info.offset.y < -50) navigatePwa(1);       // swipe up → next card
@@ -383,6 +469,9 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     prevResetKeyRef.current = resetKey;
 
     if (usePwaSnap) {
+      clearPwaTopReturn();
+      currentIndexRef.current = 0;
+      setActiveCardId(cards[0]?.id ?? null);
       setPwaIndex(0);
       return;
     }
@@ -390,14 +479,10 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     const nextId = cards[0]?.id ?? null;
     const frame = window.requestAnimationFrame(() => setActiveCardId(nextId));
     const root = containerRef.current;
-    if (!root) return () => window.cancelAnimationFrame(frame);
-    if (usePageScroll) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      root.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (!usePageScroll && !root) return () => window.cancelAnimationFrame(frame);
+    animateScrollToTop();
     return () => window.cancelAnimationFrame(frame);
-  }, [resetKey, cards, usePageScroll, usePwaSnap]);
+  }, [animateScrollToTop, cards, clearPwaTopReturn, resetKey, usePageScroll, usePwaSnap]);
 
   // Scroll-based active card sync — non-PWA mobile only
   useEffect(() => {
@@ -464,9 +549,26 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     persistStandaloneDeckState();
   }, [pwaIndex, cards.length, isDesktop, persistStandaloneDeckState, usePwaSnap]);
 
+  useEffect(() => {
+    if (isDesktop) return;
+
+    const handleFireTabReselect = () => {
+      if (usePwaSnap) {
+        triggerPwaReturnToTop();
+        return;
+      }
+      animateScrollToTop();
+    };
+
+    window.addEventListener(FIRE_TAB_RESELECT_EVENT, handleFireTabReselect);
+    return () => window.removeEventListener(FIRE_TAB_RESELECT_EVENT, handleFireTabReselect);
+  }, [animateScrollToTop, isDesktop, triggerPwaReturnToTop, usePwaSnap]);
+
   useEffect(() => () => {
     clearScheduledStandaloneRestore();
-  }, [clearScheduledStandaloneRestore]);
+    clearPwaTopReturn();
+    clearScrollToTopAnimation();
+  }, [clearPwaTopReturn, clearScheduledStandaloneRestore, clearScrollToTopAnimation]);
 
   useEffect(() => {
     if (isDesktop || !usePwaSnap || typeof window === 'undefined' || !('scrollRestoration' in window.history)) return;
@@ -546,7 +648,10 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                       item={card}
                       highlighted={isCurrent}
                       layoutMode="mobile"
+                      mobileAutoplayEnabled={mobileAutoplayEnabled}
+                      showMobileAutoplayToggle={isCurrent}
                       onOpenDetails={() => undefined}
+                      onToggleMobileAutoplay={setMobileAutoplayEnabled}
                       onBeforeOpenPost={persistStandaloneDeckState}
                     />
                   </div>
@@ -571,7 +676,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                   type="button"
                   onClick={handleLoadMore}
                   disabled={loadingMore}
-                  className="inline-flex w-full items-center justify-center rounded-[16px] bg-black px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 dark:bg-[#E11D48] dark:text-white dark:shadow-[0_12px_26px_rgba(225,29,72,0.18)]"
+                  className="inline-flex w-full items-center justify-center rounded-[16px] border border-white/78 bg-white/88 px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] shadow-[0_10px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.86)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 dark:border-transparent dark:bg-[#E11D48] dark:text-white dark:shadow-[0_12px_26px_rgba(225,29,72,0.18)]"
                 >
                   {loadingMore ? (
                     <span className="inline-flex items-center gap-2">
@@ -633,6 +738,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                       index={index}
                       isActive={isActive}
                       isDesktop
+                      mobileAutoplayEnabled={mobileAutoplayEnabled}
                       onOpenDetails={() => onOpenCard?.(card)}
                       onBeforeOpenPost={persistStandaloneDeckState}
                     />
@@ -657,14 +763,15 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                     style={{ zIndex: isActive ? 40 : 10 }}
                   >
                     <div className="w-full max-w-[472px]">
-                      <VirtualSlot
-                        item={card}
-                        index={index}
-                        isActive={isActive}
-                        isDesktop={false}
-                        onOpenDetails={() => undefined}
-                        onBeforeOpenPost={persistStandaloneDeckState}
-                      />
+                    <VirtualSlot
+                      item={card}
+                      index={index}
+                      isActive={isActive}
+                      isDesktop={false}
+                      mobileAutoplayEnabled={mobileAutoplayEnabled}
+                      onOpenDetails={() => undefined}
+                      onBeforeOpenPost={persistStandaloneDeckState}
+                    />
                     </div>
                   </motion.div>
                 );
@@ -680,7 +787,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="inline-flex min-w-[220px] items-center justify-center rounded-[18px] border border-white/35 bg-white/55 px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-black shadow-[0_18px_40px_rgba(0,0,0,0.14),inset_0_1px_0_rgba(255,255,255,0.86)] transition hover:-translate-y-0.5 hover:bg-white/72 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:border-white/16 dark:bg-black/38 dark:text-[#E11D48] dark:shadow-[0_18px_36px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-black/52"
+                className="inline-flex min-w-[220px] items-center justify-center rounded-[18px] border border-white/35 bg-white/55 px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] shadow-[0_18px_40px_rgba(0,0,0,0.14),inset_0_1px_0_rgba(255,255,255,0.86)] transition hover:-translate-y-0.5 hover:bg-white/72 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:border-white/16 dark:bg-black/38 dark:text-[#E11D48] dark:shadow-[0_18px_36px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-black/52"
               >
                 {loadingMore ? (
                   <span className="inline-flex items-center gap-2">

@@ -30,10 +30,12 @@ export type FireFeedOption = {
 };
 
 export type FireFilterThreshold = '10' | '25' | '50' | 'ALL';
+export type FireMediaFilter = 'IMAGE' | 'CAROUSEL' | 'REEL' | 'ALL';
 export type FireSortMode = 'best' | 'recent';
 
 export type FireFilterState = {
   threshold: FireFilterThreshold;
+  mediaFilter: FireMediaFilter;
   sort: FireSortMode;
   selectedFeedIds: number[];
   selectedFeederIdsByFeed: Record<string, number[]>;
@@ -86,16 +88,19 @@ export type FireAlertItem = {
   createdAt: string;
   postUrl?: string;
   thumbnailUrl?: string;
+  previewUrl?: string;
   businessDateKey: string;
   businessDateIst?: string;
   status?: string;
 
   surfacePercentile: number | null;
+  surfacePercentileExact?: number | null;
   surfaceDelta: number | null;
   trajectoryDeltaPercentile: number | null;
   surfaceHandle: string;
   surfaceMediaType: string;
   checkpoint: string;
+  postedAt?: string;
   metricValue: number | null;
   metricKey: string;
 

@@ -24,6 +24,49 @@ function isAllowedHost(hostname: string): boolean {
   return ALLOWED_HOST_SUFFIXES.some((suffix) => h === suffix || h.endsWith(`.${suffix}`));
 }
 
+function isVideoRole(assetRole: string): boolean {
+  const role = (assetRole || '').trim().toLowerCase();
+  return role === 'preview_5s' || role === 'video';
+}
+
+async function probePublicMediaUrl(
+  publicUrl: string,
+  assetRole: string,
+  mimeType?: string | null,
+): Promise<'ok' | 'missing' | 'unknown'> {
+  const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  const expectedPrefix = role === 'thumbnail' ? 'image/' : role === 'preview_5s' || role === 'video' ? 'video/' : '';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+
+  try {
+    const response = await fetch(publicUrl, {
+      method: 'HEAD',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+
+    if (response.ok) {
+      const contentType = (response.headers.get('content-type') || mimeType || '').toLowerCase();
+      if (!expectedPrefix || !contentType || contentType.startsWith(expectedPrefix)) {
+        return 'ok';
+      }
+      return 'missing';
+    }
+
+    if ([403, 404, 410].includes(response.status)) {
+      return 'missing';
+    }
+
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchStoredAsset(postKey: string, assetRole: string): Promise<Response | null> {
   const sb = adminClient();
   const role = (assetRole || 'thumbnail').trim().toLowerCase();
@@ -31,150 +74,67 @@ async function fetchStoredAsset(postKey: string, assetRole: string): Promise<Res
     ? ['thumbnail', 'display', 'carousel_0']
     : [role];
   const needsImageResponse = role === 'thumbnail';
+  const needsVideoResponse = isVideoRole(role);
 
   for (const candidateRole of candidateRoles) {
     const { data, error } = await sb
       .from('post_media_assets')
-      .select('storage_bucket,storage_path,mime_type,status,purge_after,source_url')
+      .select('storage_provider,storage_bucket,storage_path,public_url,mime_type,status,purge_after,source_url,updated_at')
       .eq('post_key', postKey)
       .eq('asset_role', candidateRole)
-      .eq('status', 'active')
-      .maybeSingle();
+      .in('status', ['active', 'purge_pending'])
+      .order('updated_at', { ascending: false })
+      .limit(8);
 
-    if (error || !data) {
+    if (error || !data?.length) {
       continue;
     }
-    if (data.purge_after && new Date(data.purge_after).getTime() <= Date.now()) {
-      continue;
-    }
-    const sourceUrl = typeof data.source_url === 'string' ? data.source_url.trim() : '';
+    for (const row of data) {
+      if (row.purge_after && new Date(row.purge_after).getTime() <= Date.now()) {
+        continue;
+      }
+      const sourceUrl = typeof row.source_url === 'string' ? row.source_url.trim() : '';
+      const publicUrl = resolvePublicMediaUrl(row);
 
-    if (data.storage_bucket && data.storage_path) {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (!url || !serviceRole) return null;
-
-      const upstream = await fetch(
-        `${url.replace(/\/$/, '')}/storage/v1/object/authenticated/${encodeURIComponent(data.storage_bucket)}/${data.storage_path
-          .split('/')
-          .map((part: string) => encodeURIComponent(part))
-          .join('/')}`,
-        {
-          headers: {
-            apikey: serviceRole,
-            Authorization: `Bearer ${serviceRole}`,
-          },
-          cache: 'no-store',
-        },
-      );
-
-      if (upstream.ok) {
-        const contentType = upstream.headers.get('content-type') || data.mime_type || 'application/octet-stream';
-        if (!needsImageResponse || contentType.toLowerCase().startsWith('image/')) {
-          const body = await upstream.arrayBuffer();
-          return new Response(body, {
-            status: 200,
-            headers: {
-              'content-type': contentType,
-              'cache-control': 'public, max-age=3600, stale-while-revalidate=86400',
-            },
-          });
+      if (row.storage_provider === 'r2' && publicUrl) {
+        const contentType = typeof row.mime_type === 'string' ? row.mime_type.toLowerCase() : '';
+        if (
+          (!needsImageResponse || !contentType || contentType.startsWith('image/'))
+          && (!needsVideoResponse || !contentType || contentType.startsWith('video/'))
+        ) {
+          const probe = row.storage_provider === 'r2'
+            ? await probePublicMediaUrl(publicUrl, candidateRole, row.mime_type)
+            : 'ok';
+          if (probe !== 'missing') {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                location: publicUrl,
+                'cache-control': 'public, max-age=3600, stale-while-revalidate=86400',
+              },
+            });
+          }
         }
       }
     }
-
-    if (!sourceUrl) {
-      continue;
-    }
-
-    const fallback = await fetchRemoteAsset(sourceUrl);
-    if (!fallback.ok) {
-      continue;
-    }
-
-    const contentType = fallback.headers.get('content-type') || '';
-    if (needsImageResponse && !contentType.toLowerCase().startsWith('image/')) {
-      continue;
-    }
-
-    return fallback;
   }
 
   return null;
 }
 
-async function fetchFallbackSourceAsset(postKey: string, assetRole: string): Promise<Response | null> {
-  const sb = adminClient();
-  const role = (assetRole || 'thumbnail').trim().toLowerCase();
-  const candidateRoles = role === 'thumbnail'
-    ? ['thumbnail', 'display', 'carousel_0']
-    : [role];
-  const needsImageResponse = role === 'thumbnail';
+function resolvePublicMediaUrl(data: {
+  storage_provider?: string | null;
+  storage_path?: string | null;
+  public_url?: string | null;
+}): string | null {
+  const publicUrl = typeof data.public_url === 'string' ? data.public_url.trim() : '';
+  if (publicUrl) return publicUrl;
+  if (data.storage_provider !== 'r2') return null;
 
-  const { data, error } = await sb
-    .from('post_media_assets')
-    .select('source_url,asset_role,status,updated_at')
-    .eq('post_key', postKey)
-    .in('asset_role', candidateRoles)
-    .neq('status', 'deleted')
-    .order('updated_at', { ascending: false })
-    .limit(12);
-
-  if (error || !data?.length) {
-    return null;
-  }
-
-  for (const row of data) {
-    const sourceUrl = typeof row.source_url === 'string' ? row.source_url.trim() : '';
-    if (!sourceUrl) continue;
-    const response = await fetchRemoteAsset(sourceUrl);
-    if (!response.ok) continue;
-    const contentType = response.headers.get('content-type') || '';
-    if (needsImageResponse && !contentType.toLowerCase().startsWith('image/')) continue;
-    return response;
-  }
-
-  return null;
-}
-
-async function fetchPostMediaFallback(postKey: string, assetRole: string): Promise<Response | null> {
-  const sb = adminClient();
-  const role = (assetRole || 'thumbnail').trim().toLowerCase();
-  const { data, error } = await sb
-    .from('posts')
-    .select('thumbnail_url,carousel_urls,video_url')
-    .eq('post_key', postKey)
-    .maybeSingle();
-
-  if (error || !data) {
-    return null;
-  }
-
-  const candidateUrls: string[] = [];
-  if (role === 'thumbnail') {
-    const thumbnailUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : '';
-    if (thumbnailUrl) candidateUrls.push(thumbnailUrl);
-
-    if (Array.isArray(data.carousel_urls)) {
-      for (const entry of data.carousel_urls) {
-        const value = typeof entry === 'string' ? entry.trim() : '';
-        if (value) candidateUrls.push(value);
-      }
-    }
-  } else if (role === 'video') {
-    const videoUrl = typeof data.video_url === 'string' ? data.video_url.trim() : '';
-    if (videoUrl) candidateUrls.push(videoUrl);
-  }
-
-  for (const candidateUrl of candidateUrls) {
-    const response = await fetchRemoteAsset(candidateUrl);
-    if (!response.ok) continue;
-    const contentType = response.headers.get('content-type') || '';
-    if (role === 'thumbnail' && !contentType.toLowerCase().startsWith('image/')) continue;
-    return response;
-  }
-
-  return null;
+  const base = (process.env.MEDIA_PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  const path = typeof data.storage_path === 'string' ? data.storage_path.trim().replace(/^\/+/, '') : '';
+  if (!base || !path) return null;
+  return `${base}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 async function fetchRemoteAsset(raw: string): Promise<Response> {
@@ -193,7 +153,7 @@ async function fetchRemoteAsset(raw: string): Promise<Response> {
     const upstream = await fetch(target.toString(), {
       headers: {
         'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari',
-        'accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        'accept': '*/*',
         'referer': 'https://www.instagram.com/',
       },
       cache: 'no-store',
@@ -224,10 +184,18 @@ async function fetchRemoteAssetForRole(raw: string, assetRole: string): Promise<
     return response;
   }
 
-  if ((assetRole || 'thumbnail').trim().toLowerCase() === 'thumbnail') {
+  const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  if (role === 'thumbnail') {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.toLowerCase().startsWith('image/')) {
       return new Response('thumbnail source not image', { status: 502 });
+    }
+  }
+
+  if (isVideoRole(role)) {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().startsWith('video/')) {
+      return new Response('preview source not video', { status: 502 });
     }
   }
 
@@ -245,17 +213,14 @@ export async function GET(req: NextRequest) {
       if (stored) {
         return stored;
       }
-      const staged = await fetchFallbackSourceAsset(postKey, assetRole || 'thumbnail');
-      if (staged) {
-        return staged;
-      }
-      const postFallback = await fetchPostMediaFallback(postKey, assetRole || 'thumbnail');
-      if (postFallback) {
-        return postFallback;
-      }
     } catch {
-      // fall through to legacy proxy behavior
+      // fall through to unavailable response below
     }
+    return new Response('media unavailable', { status: 404 });
+  }
+
+  if (assetRole === 'preview_5s') {
+    return new Response('preview unavailable', { status: 404 });
   }
 
   if (!raw) {
