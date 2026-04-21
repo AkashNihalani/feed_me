@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import {
+  invalidateServerRouteCacheByPrefix,
+  withServerRouteCache,
+  writeServerRouteCache,
+} from '@/lib/serverRouteCache';
 
 type FeedRow = {
   id: number;
@@ -45,6 +50,32 @@ type TickerRow = {
   postsDelta: number;
 };
 
+type FeedBundlePayload = {
+  feeds: Array<{
+    id: string;
+    title: string;
+    feeders: Array<{
+      handle: string;
+      isAnchor: boolean;
+      profilePicUrl?: string | null;
+      followerCount?: number | null;
+      metrics: {
+        likes: string;
+        comments: string;
+        views: string;
+        postsTracked: string;
+      };
+    }>;
+    metrics: {
+      likes: string;
+      comments: string;
+      views: string;
+      postsTracked: string;
+    };
+  }>;
+  ticker: TickerRow[];
+};
+
 type InstagramProfileProbe = {
   ok: boolean;
   profilePicUrl: string | null;
@@ -62,6 +93,19 @@ type MediaAssetCleanupRow = {
 
 const STORAGE_DELETE_BATCH_SIZE = 100;
 const DB_FETCH_BATCH_SIZE = 1000;
+const FEED_BUNDLE_TTL_MS = 5 * 60 * 1000;
+
+function feedBundleCacheKey(userId: string) {
+  return `feed:bundle:${userId}`;
+}
+
+function invalidateUserDerivedCaches(userId: string) {
+  invalidateServerRouteCacheByPrefix(`feed:bundle:${userId}`);
+  invalidateServerRouteCacheByPrefix(`feed:dashboard:${userId}:`);
+  invalidateServerRouteCacheByPrefix(`fire:active:${userId}`);
+  invalidateServerRouteCacheByPrefix(`fire:meta:${userId}:`);
+  invalidateServerRouteCacheByPrefix(`fire:page:${userId}:`);
+}
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -176,6 +220,79 @@ function isBadInstagramImageUrl(url: string | null | undefined) {
 
 function toMetricString(value: number) {
   return String(Math.max(0, Math.floor(value)));
+}
+
+function toMetricNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
+  const root = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : {};
+  const feeds = Array.isArray(root.feeds) ? root.feeds : [];
+  const ticker = Array.isArray(root.ticker) ? root.ticker : [];
+
+  return {
+    feeds: feeds.map((feed) => {
+      const row = feed && typeof feed === 'object' && !Array.isArray(feed)
+        ? (feed as Record<string, unknown>)
+        : {};
+      const feeders = Array.isArray(row.feeders) ? row.feeders : [];
+      const metrics = row.metrics && typeof row.metrics === 'object' && !Array.isArray(row.metrics)
+        ? (row.metrics as Record<string, unknown>)
+        : {};
+
+      return {
+        id: String(row.id ?? ''),
+        title: String(row.title ?? '').toUpperCase(),
+        feeders: feeders.map((feeder) => {
+          const feederRow = feeder && typeof feeder === 'object' && !Array.isArray(feeder)
+            ? (feeder as Record<string, unknown>)
+            : {};
+          const feederMetrics = feederRow.metrics && typeof feederRow.metrics === 'object' && !Array.isArray(feederRow.metrics)
+            ? (feederRow.metrics as Record<string, unknown>)
+            : {};
+          const profilePicUrl = normalizeUrl(String(feederRow.profilePicUrl || ''));
+
+          return {
+            handle: String(feederRow.handle ?? ''),
+            isAnchor: feederRow.isAnchor === true,
+            profilePicUrl: profilePicUrl && !profilePicUrl.includes('unavatar.io/instagram')
+              ? buildProfileImageProxyUrl(profilePicUrl)
+              : null,
+            followerCount: feederRow.followerCount == null ? null : toMetricNumber(feederRow.followerCount),
+            metrics: {
+              likes: toMetricString(toMetricNumber(feederMetrics.likes)),
+              comments: toMetricString(toMetricNumber(feederMetrics.comments)),
+              views: toMetricString(toMetricNumber(feederMetrics.views)),
+              postsTracked: toMetricString(toMetricNumber(feederMetrics.postsTracked)),
+            },
+          };
+        }),
+        metrics: {
+          likes: toMetricString(toMetricNumber(metrics.likes)),
+          comments: toMetricString(toMetricNumber(metrics.comments)),
+          views: toMetricString(toMetricNumber(metrics.views)),
+          postsTracked: toMetricString(toMetricNumber(metrics.postsTracked)),
+        },
+      };
+    }),
+    ticker: ticker.map((item) => {
+      const row = item && typeof item === 'object' && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : {};
+      return {
+        id: String(row.id ?? ''),
+        handle: String(row.handle ?? ''),
+        likesDelta: toMetricNumber(row.likesDelta),
+        commentsDelta: toMetricNumber(row.commentsDelta),
+        viewsDelta: toMetricNumber(row.viewsDelta),
+        postsDelta: toMetricNumber(row.postsDelta),
+      };
+    }),
+  };
 }
 
 function decodeHtmlEntities(value: string) {
@@ -381,6 +498,28 @@ function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: Metri
 
 async function getFeedBundle(userId: string) {
   const sb = adminClient();
+  const { data, error } = await sb.rpc('fn_feed_bundle', {
+    p_user_id: userId,
+  });
+
+  if (!error) {
+    return normalizeFeedBundlePayload(data);
+  }
+
+  const message = error?.message || '';
+  const shouldFallbackToLegacy = message.toLowerCase().includes('fn_feed_bundle')
+    || message.toLowerCase().includes('function public.fn_feed_bundle')
+    || message.toLowerCase().includes('could not find')
+    || message.toLowerCase().includes('does not exist');
+  if (!shouldFallbackToLegacy) {
+    throw error;
+  }
+
+  return getLegacyFeedBundle(userId);
+}
+
+async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
+  const sb = adminClient();
 
   const { data: feedsData, error: feedsError } = await sb
     .from('feeds')
@@ -391,7 +530,7 @@ async function getFeedBundle(userId: string) {
   if (feedsError) throw feedsError;
 
   const feeds = (feedsData || []) as FeedRow[];
-  if (feeds.length === 0) return [];
+  if (feeds.length === 0) return { feeds: [], ticker: [] };
 
   const feedIds = feeds.map((f) => f.id);
 
@@ -549,7 +688,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const bundle = await getFeedBundle(user.id);
+    const bundle = await withServerRouteCache(
+      feedBundleCacheKey(user.id),
+      FEED_BUNDLE_TTL_MS,
+      () => getFeedBundle(user.id),
+    );
     return NextResponse.json(bundle);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load feeds';
@@ -586,7 +729,9 @@ export async function POST(request: NextRequest) {
       });
       if (error) throw error;
 
+      invalidateUserDerivedCaches(user.id);
       const bundle = await getFeedBundle(user.id);
+      writeServerRouteCache(feedBundleCacheKey(user.id), FEED_BUNDLE_TTL_MS, bundle);
       return NextResponse.json(bundle);
     }
 
@@ -691,7 +836,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      invalidateUserDerivedCaches(user.id);
       const bundle = await getFeedBundle(user.id);
+      writeServerRouteCache(feedBundleCacheKey(user.id), FEED_BUNDLE_TTL_MS, bundle);
       return NextResponse.json(bundle);
     }
 
@@ -725,7 +872,9 @@ export async function POST(request: NextRequest) {
         .eq('status', 'active');
       if (anchorErr) throw anchorErr;
 
+      invalidateUserDerivedCaches(user.id);
       const bundle = await getFeedBundle(user.id);
+      writeServerRouteCache(feedBundleCacheKey(user.id), FEED_BUNDLE_TTL_MS, bundle);
       return NextResponse.json(bundle);
     }
 
@@ -766,7 +915,9 @@ export async function POST(request: NextRequest) {
         .in('id', feederIds);
       if (error) throw error;
 
+      invalidateUserDerivedCaches(user.id);
       const bundle = await getFeedBundle(user.id);
+      writeServerRouteCache(feedBundleCacheKey(user.id), FEED_BUNDLE_TTL_MS, bundle);
       return NextResponse.json(bundle);
     }
 
@@ -804,7 +955,9 @@ export async function POST(request: NextRequest) {
         .eq('user_id', user.id);
       if (deleteErr) throw deleteErr;
 
+      invalidateUserDerivedCaches(user.id);
       const bundle = await getFeedBundle(user.id);
+      writeServerRouteCache(feedBundleCacheKey(user.id), FEED_BUNDLE_TTL_MS, bundle);
       return NextResponse.json(bundle);
     }
 

@@ -1,4 +1,5 @@
 export type AlertUrgency = 'watch' | 'today' | 'now';
+export type FireCardKind = 'tracking' | 'firewatch';
 
 export type FireLayerKey =
   | 'layer_1_position'
@@ -66,6 +67,7 @@ export type FireWarmupGate = {
 
 export type FireAlertItem = {
   id: string;
+  cardKind: FireCardKind;
   postKey?: string;
   feederId?: number;
   urgency: AlertUrgency;

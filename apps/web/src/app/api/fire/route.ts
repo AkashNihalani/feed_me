@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
+import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,10 @@ const PREVIEW_CAPTURE_START_DAY = (process.env.FIRE_PREVIEW_START_DAY || '2026-0
 const FIRE_BOOTSTRAP_DAY_COUNT = 7;
 const FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE = 20;
 const FIRE_POST_LOOKBACK_DAYS = 35;
+const FIRE_ACTIVE_STATE_TTL_MS = 2 * 60 * 1000;
+const FIRE_META_TTL_MS = 10 * 60 * 1000;
+const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
+const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
 
@@ -92,6 +97,14 @@ function parseCsvStrings(value: string | null): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function serializeNumberList(values: number[]): string {
+  return [...new Set(values)].sort((a, b) => a - b).join(',');
+}
+
+function serializeStringList(values: string[]): string {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b)).join(',');
 }
 
 function normalizeCheckpoint(value: unknown): string {
@@ -199,6 +212,23 @@ function buildFireCardKey(postKey: string, checkpoint: string, businessDay: stri
 
 function buildSyntheticAlertId(feedId: number, postKey: string, checkpoint: string, businessDay: string): string {
   return `tracking:${feedId}:${postKey}:${checkpoint.toLowerCase()}:${businessDay}`;
+}
+
+function alertDeduplicationKey(row: AlertSurfaceRow): string {
+  const postKey = nullableString(row.post_key);
+  if (postKey) return postKey;
+  return nullableString(row.dedupe_key) || String(row.id);
+}
+
+function dedupeSortedAlertRows(rows: AlertSurfaceRow[]): AlertSurfaceRow[] {
+  const deduped = new Map<string, AlertSurfaceRow>();
+  for (const row of rows) {
+    const key = alertDeduplicationKey(row);
+    if (!deduped.has(key)) {
+      deduped.set(key, row);
+    }
+  }
+  return Array.from(deduped.values());
 }
 
 function publicMediaUrlFromPath(path: string | null | undefined): string | null {
@@ -328,6 +358,19 @@ function isMissingColumnReferenceError(error: unknown, tableName: string, column
   return message.toLowerCase().includes(`column ${tableName}.${columnName}`.toLowerCase());
 }
 
+function shouldFallbackToLegacyFireDayLoad(error: unknown): boolean {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message?: unknown }).message || '')
+      : String(error || '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('relationship')
+    || normalized.includes('not embedded')
+    || normalized.includes('post.feeder_id')
+    || normalized.includes('post_metrics');
+}
+
 type ActiveFeedRow = { id: number; name: string | null };
 type ActiveFeederRow = { id: number; feed_id: number; handle: string | null; created_at: string | null };
 type FireMetricCheckpointRow = { post_key: string | null; checkpoint: string | null };
@@ -336,9 +379,10 @@ type AlertSurfaceRow = {
   dedupe_key: string | null;
   feed_id: number;
   feeder_id: number;
-  post_key: string;
+  post_key: string | null;
   checkpoint: string;
   business_date_ist: string;
+  card_kind?: 'tracking' | 'firewatch';
   signal_code: string | null;
   context: string | null;
   alert_type: string | null;
@@ -432,6 +476,17 @@ type FirePostMetricRow = {
   delta_from_d1: number | null;
 };
 
+type FireDayMetricJoinedRow = FirePostMetricRow & {
+  post?: {
+    feeder_id: number | string | null;
+    media_type: string | null;
+    posted_at: string | null;
+    post_url: string | null;
+    thumbnail_url: string | null;
+    video_url: string | null;
+  } | null;
+};
+
 type FireFeederBaselineRow = {
   feeder_id: number | string | null;
   media_type: string | null;
@@ -512,6 +567,8 @@ type FirePatternSummary = {
   pattern_name?: string | null;
   modifier_key?: string | null;
   modifier_value?: string | null;
+  media_type?: string | null;
+  pattern_key?: string | null;
   match_count?: number | null;
   feeders_count?: number | null;
   avg_hot_percentile?: number | null;
@@ -521,7 +578,9 @@ type FirePatternSummary = {
   anchor_avg_percentile?: number | null;
   anchor_gap?: number | null;
   cues?: Array<{ key: string; value: string; label: string }> | null;
+  required_cues?: Array<{ key: string; value: string; label: string }> | null;
   support_posts?: FirePatternSupportPreview[] | null;
+  anchor_support_posts?: FirePatternSupportPreview[] | null;
 };
 
 type FirePatternGroup = {
@@ -602,6 +661,7 @@ function buildMetricPayload(row: AlertSurfaceRow, metric: FireMetricKey, bestMet
 function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   const bestMetric = deriveBestMetric(row);
   const bestMetricValue = rowMetricValue(row, bestMetric);
+  const primaryPattern = row.pattern_alerts?.[0] ?? null;
   const payload = {
     best_metric: bestMetric,
     metrics: {
@@ -631,6 +691,8 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       delta: nullableNumber(row.surface_delta),
     },
     meta: {
+      card_kind: row.card_kind || 'tracking',
+      feed_name: nullableString(row.handle),
       handle: nullableString(row.handle),
       media_type: nullableString(row.media_type),
       checkpoint: nullableString(row.checkpoint),
@@ -646,6 +708,23 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       anchor_handle: nullableString(row.anchor_handle),
       pattern_alert_count: row.pattern_alerts?.length ?? 0,
       pattern_alerts: row.pattern_alerts ?? [],
+      firewatch: primaryPattern ? {
+        family_label: firewatchFamilyLabel(primaryPattern.context),
+        pattern_label: getPatternMechanicLabel(primaryPattern.pattern_name) || humanizeSignalCode(primaryPattern.signal_code),
+        media_type: primaryPattern.media_type ?? nullableString(row.media_type),
+        support_posts: primaryPattern.support_posts ?? [],
+        anchor_support_posts: primaryPattern.anchor_support_posts ?? [],
+        required_cues: primaryPattern.required_cues ?? [],
+        cues: primaryPattern.cues ?? [],
+        match_count: primaryPattern.match_count ?? null,
+        feeders_count: primaryPattern.feeders_count ?? null,
+        avg_hot_percentile: primaryPattern.avg_hot_percentile ?? null,
+        baseline_share: primaryPattern.baseline_share ?? null,
+        recent_lift: primaryPattern.recent_lift ?? null,
+        anchor_gap: primaryPattern.anchor_gap ?? null,
+        anchor_avg_percentile: primaryPattern.anchor_avg_percentile ?? null,
+        pattern_key: primaryPattern.pattern_key ?? null,
+      } : null,
       is_hot: Boolean(row.is_hot),
       has_intelligence: Boolean(row.has_intelligence),
       hide_signal_chrome: Boolean(row.hide_signal_chrome),
@@ -697,6 +776,69 @@ function sortPatternAlertRows(rows: FirePatternAlertRow[]): FirePatternAlertRow[
   });
 }
 
+function firewatchFamilyLabel(context: string | null | undefined): string {
+  const normalized = typeof context === 'string' ? context.trim().toLowerCase() : '';
+  if (normalized === 'cross') return 'Feed Pattern';
+  if (normalized === 'anchor') return 'Anchor Gap';
+  return 'Repeating Winner';
+}
+
+function summarizePatternAlertRow(
+  row: FirePatternAlertRow,
+  supportPreviewByKey: Map<string, FirePatternSupportPreview>,
+): FirePatternSummary {
+  const payload = recordValue(row.signal_payload);
+  const mapCueList = (value: unknown) => (
+    Array.isArray(value)
+      ? value
+        .map((cue) => recordValue(cue))
+        .map((cue) => {
+          const key = nullableString(cue.key);
+          const cueValue = nullableString(cue.value);
+          const label = getPatternCueLabel(key, cueValue);
+          if (!key || !cueValue || !label) return null;
+          return { key, value: cueValue, label };
+        })
+        .filter((cue): cue is { key: string; value: string; label: string } => cue !== null)
+      : []
+  );
+  const resolvePreviews = (value: unknown) => (
+    Array.isArray(value)
+      ? value
+        .map((entry) => nullableString(entry))
+        .filter((entry): entry is string => Boolean(entry))
+        .map((postKey) => supportPreviewByKey.get(postKey) || null)
+        .filter((preview): preview is FirePatternSupportPreview => preview !== null)
+      : []
+  );
+
+  return {
+    signal_code: nullableString(row.signal_code),
+    context: nullableString(row.context),
+    alert_type: nullableString(row.alert_type),
+    body: nullableString(row.body),
+    surface_percentile: nullableNumber(row.surface_percentile),
+    created_at: nullableString(row.created_at),
+    pattern_name: nullableString(payload.pattern_name),
+    modifier_key: nullableString(payload.modifier_key),
+    modifier_value: nullableString(payload.modifier_value),
+    media_type: nullableString(payload.media_type),
+    pattern_key: nullableString(payload.pattern_key),
+    match_count: nullableNumber(payload.match_count),
+    feeders_count: nullableNumber(payload.feeders_count),
+    avg_hot_percentile: nullableNumber(payload.avg_hot_percentile),
+    baseline_share: nullableNumber(payload.baseline_share),
+    recent_lift: nullableNumber(payload.recent_lift),
+    contrast_gap: nullableNumber(payload.contrast_gap),
+    anchor_avg_percentile: nullableNumber(payload.anchor_avg_percentile),
+    anchor_gap: nullableNumber(payload.anchor_gap),
+    cues: mapCueList(payload.cues),
+    required_cues: mapCueList(payload.required_cues),
+    support_posts: resolvePreviews(payload.support_post_keys),
+    anchor_support_posts: resolvePreviews(payload.anchor_support_post_keys),
+  } satisfies FirePatternSummary;
+}
+
 function buildPatternGroup(
   rows: FirePatternAlertRow[],
   supportPreviewByKey: Map<string, FirePatternSupportPreview>,
@@ -714,48 +856,7 @@ function buildPatternGroup(
   }
 
   const sorted = sortPatternAlertRows(Array.from(deduped.values()));
-  const summaries = sorted.map((row) => {
-    const payload = recordValue(row.signal_payload);
-    const cues = Array.isArray(payload.cues)
-      ? payload.cues
-        .map((cue) => recordValue(cue))
-        .map((cue) => {
-          const key = nullableString(cue.key);
-          const value = nullableString(cue.value);
-          const label = getPatternCueLabel(key, value);
-          if (!key || !value || !label) return null;
-          return { key, value, label };
-        })
-        .filter((cue): cue is { key: string; value: string; label: string } => cue !== null)
-      : [];
-    const supportPostKeys = Array.isArray(payload.support_post_keys)
-      ? payload.support_post_keys.map((value) => nullableString(value)).filter((value): value is string => Boolean(value))
-      : [];
-    const supportPosts = supportPostKeys
-      .map((postKey) => supportPreviewByKey.get(postKey) || null)
-      .filter((preview): preview is FirePatternSupportPreview => preview !== null);
-    return {
-      signal_code: nullableString(row.signal_code),
-      context: nullableString(row.context),
-      alert_type: nullableString(row.alert_type),
-      body: nullableString(row.body),
-      surface_percentile: nullableNumber(row.surface_percentile),
-      created_at: nullableString(row.created_at),
-      pattern_name: nullableString(payload.pattern_name),
-      modifier_key: nullableString(payload.modifier_key),
-      modifier_value: nullableString(payload.modifier_value),
-      match_count: nullableNumber(payload.match_count),
-      feeders_count: nullableNumber(payload.feeders_count),
-      avg_hot_percentile: nullableNumber(payload.avg_hot_percentile),
-      baseline_share: nullableNumber(payload.baseline_share),
-      recent_lift: nullableNumber(payload.recent_lift),
-      contrast_gap: nullableNumber(payload.contrast_gap),
-      anchor_avg_percentile: nullableNumber(payload.anchor_avg_percentile),
-      anchor_gap: nullableNumber(payload.anchor_gap),
-      cues,
-      support_posts: supportPosts,
-    } satisfies FirePatternSummary;
-  });
+  const summaries = sorted.map((row) => summarizePatternAlertRow(row, supportPreviewByKey));
   const primaryAlert = summaries[0] ?? null;
 
   if (!primaryAlert) {
@@ -905,6 +1006,165 @@ async function fetchTrackedPosts(
   }
 
   return rows;
+}
+
+async function fetchCurrentDayTrackingRows(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  feederIds: number[],
+  day: string,
+  checkpoints: string[],
+): Promise<{ posts: FireTrackedPostRow[]; metricRows: FirePostMetricRow[] }> {
+  if (feederIds.length === 0 || checkpoints.length === 0) {
+    return { posts: [], metricRows: [] };
+  }
+
+  const canonicalFields = [
+    'post_key',
+    'checkpoint',
+    'business_date_ist',
+    'computed_at',
+    'views',
+    'likes',
+    'comments',
+    'metric_value',
+    'percentile_performance',
+    'percentile_performance_exact',
+    'ranking_metric',
+    'ranking_multiple',
+    'views_percentile',
+    'likes_percentile',
+    'comments_percentile',
+    'views_baseline',
+    'likes_baseline',
+    'comments_baseline',
+    'views_multiple',
+    'likes_multiple',
+    'comments_multiple',
+    'hour_multiple',
+    'feed_percentile',
+    'delta_from_d1',
+    'post:posts!inner(feeder_id,media_type,posted_at,post_url,thumbnail_url,video_url)',
+  ].join(',');
+  const legacyFields = [
+    'post_key',
+    'checkpoint',
+    'business_date_ist',
+    'computed_at',
+    'views',
+    'likes',
+    'comments',
+    'metric_value',
+    'percentile_performance',
+    'views_percentile',
+    'likes_percentile',
+    'comments_percentile',
+    'feed_percentile',
+    'delta_from_d1',
+    'post:posts!inner(feeder_id,media_type,posted_at,post_url,thumbnail_url,video_url)',
+  ].join(',');
+
+  let data: FireDayMetricJoinedRow[] | null = null;
+  let error: unknown = null;
+  try {
+    const canonicalResult = await sb
+      .from('post_metrics')
+      .select(canonicalFields)
+      .eq('business_date_ist', day)
+      .in('checkpoint', checkpoints)
+      .in('post.feeder_id', feederIds);
+
+    data = (canonicalResult.data || []) as FireDayMetricJoinedRow[];
+    error = canonicalResult.error;
+
+    if (
+      error &&
+      (
+        isMissingColumnReferenceError(error, 'post_metrics', 'percentile_performance_exact') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'ranking_metric') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'views_baseline')
+      )
+    ) {
+      const legacyResult = await sb
+        .from('post_metrics')
+        .select(legacyFields)
+        .eq('business_date_ist', day)
+        .in('checkpoint', checkpoints)
+        .in('post.feeder_id', feederIds);
+      data = (legacyResult.data || []) as FireDayMetricJoinedRow[];
+      error = legacyResult.error;
+    }
+  } catch (caughtError) {
+    error = caughtError;
+  }
+
+  if (error) {
+    if (!shouldFallbackToLegacyFireDayLoad(error)) throw error;
+
+    const posts = await fetchTrackedPosts(sb, feederIds, {
+      postedAfter: firePostedAfterUtcIso(day),
+    });
+    const postKeys = Array.from(
+      new Set(
+        posts
+          .map((row) => (typeof row.post_key === 'string' ? row.post_key.trim() : ''))
+          .filter(Boolean),
+      ),
+    );
+    const metricRows = await fetchMetricRowsForPostKeys(sb, postKeys, {
+      businessDay: day,
+      checkpoints,
+    });
+    return { posts, metricRows };
+  }
+
+  const posts: FireTrackedPostRow[] = [];
+  const metricRows: FirePostMetricRow[] = [];
+  const seenPosts = new Set<string>();
+  for (const row of data || []) {
+    const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
+    if (!postKey) continue;
+
+    metricRows.push({
+      post_key: postKey,
+      checkpoint: row.checkpoint ?? null,
+      business_date_ist: row.business_date_ist ?? null,
+      computed_at: row.computed_at ?? null,
+      views: row.views ?? null,
+      likes: row.likes ?? null,
+      comments: row.comments ?? null,
+      metric_value: row.metric_value ?? null,
+      percentile_performance: row.percentile_performance ?? null,
+      percentile_performance_exact: row.percentile_performance_exact ?? null,
+      ranking_metric: row.ranking_metric ?? null,
+      ranking_multiple: row.ranking_multiple ?? null,
+      views_percentile: row.views_percentile ?? null,
+      likes_percentile: row.likes_percentile ?? null,
+      comments_percentile: row.comments_percentile ?? null,
+      views_baseline: row.views_baseline ?? null,
+      likes_baseline: row.likes_baseline ?? null,
+      comments_baseline: row.comments_baseline ?? null,
+      views_multiple: row.views_multiple ?? null,
+      likes_multiple: row.likes_multiple ?? null,
+      comments_multiple: row.comments_multiple ?? null,
+      hour_multiple: row.hour_multiple ?? null,
+      feed_percentile: row.feed_percentile ?? null,
+      delta_from_d1: row.delta_from_d1 ?? null,
+    });
+
+    if (seenPosts.has(postKey)) continue;
+    seenPosts.add(postKey);
+    posts.push({
+      post_key: postKey,
+      feeder_id: row.post?.feeder_id ?? null,
+      media_type: row.post?.media_type ?? null,
+      posted_at: row.post?.posted_at ?? null,
+      post_url: row.post?.post_url ?? null,
+      thumbnail_url: row.post?.thumbnail_url ?? null,
+      video_url: row.post?.video_url ?? null,
+    });
+  }
+
+  return { posts, metricRows };
 }
 
 function directMediaUrl(row: MediaAssetUrlRow): string | null {
@@ -1238,6 +1498,223 @@ async function fetchPatternSupportPreviews(
   return previews;
 }
 
+async function fetchFirewatchPatternRows(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  effectiveFeedIds: number[],
+  effectiveFeederIds: number[],
+  day: string,
+): Promise<FirePatternAlertRow[]> {
+  if (effectiveFeedIds.length === 0 || effectiveFeederIds.length === 0) return [];
+
+  const baseFields = [
+    'id',
+    'dedupe_key',
+    'feed_id',
+    'feeder_id',
+    'post_key',
+    'checkpoint',
+    'business_date_ist',
+    'signal_code',
+    'context',
+    'alert_type',
+    'status',
+    'metric_key',
+    'metric_value',
+    'surface_percentile',
+    'surface_delta',
+    'body',
+    'created_at',
+    'updated_at',
+  ];
+
+  let { data, error } = await sb
+    .from('fire_alerts')
+    .select([...baseFields, 'signal_payload'].join(','))
+    .in('feed_id', effectiveFeedIds)
+    .in('feeder_id', effectiveFeederIds)
+    .eq('business_date_ist', day)
+    .eq('checkpoint', 'd7')
+    .in('signal_code', ['OWN_PATTERN', 'CROSS_PATTERN', 'ANCHOR_PATTERN'])
+    .not('status', 'in', '("dropped","error","archived")');
+
+  if (error && isMissingColumnError(error, 'signal_payload')) {
+    const fallback = await sb
+      .from('fire_alerts')
+      .select([...baseFields, 'signal_payload:pattern_payload'].join(','))
+      .in('feed_id', effectiveFeedIds)
+      .in('feeder_id', effectiveFeederIds)
+      .eq('business_date_ist', day)
+      .eq('checkpoint', 'd7')
+      .in('signal_code', ['OWN_PATTERN', 'CROSS_PATTERN', 'ANCHOR_PATTERN'])
+      .not('status', 'in', '("dropped","error","archived")');
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error && isMissingColumnError(error, 'pattern_payload')) {
+    console.warn('[/api/fire] Firewatch payload column unavailable; continuing without Firewatch cards.');
+    return [];
+  }
+  if (error) throw error;
+
+  return (data || []) as FirePatternAlertRow[];
+}
+
+function buildFirewatchPatternGroupKey(row: FirePatternAlertRow): string {
+  const payload = recordValue(row.signal_payload);
+  const patternKey = nullableString(payload.pattern_key);
+  if (patternKey) {
+    return [
+      String(row.feed_id || ''),
+      nullableString(row.business_date_ist) || '',
+      nullableString(row.context) || 'own',
+      patternKey,
+    ].join(':');
+  }
+
+  const cues = Array.isArray(payload.required_cues) ? payload.required_cues : payload.cues;
+  const cueSignature = Array.isArray(cues)
+    ? cues
+      .map((cue) => recordValue(cue))
+      .map((cue) => `${nullableString(cue.key) || ''}:${nullableString(cue.value) || ''}`)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('|')
+    : '';
+
+  return [
+    String(row.feed_id || ''),
+    nullableString(row.business_date_ist) || '',
+    nullableString(row.context) || 'own',
+    nullableString(payload.pattern_name) || '',
+    nullableString(payload.media_type) || '',
+    cueSignature,
+  ].join(':');
+}
+
+function buildFirewatchRows(options: {
+  patternRows: FirePatternAlertRow[];
+  supportPreviewByKey: Map<string, FirePatternSupportPreview>;
+  feedNamesById: Map<number, string>;
+}): AlertSurfaceRow[] {
+  if (options.patternRows.length === 0) return [];
+
+  const grouped = new Map<string, FirePatternAlertRow[]>();
+  for (const row of options.patternRows) {
+    const key = buildFirewatchPatternGroupKey(row);
+    const bucket = grouped.get(key) || [];
+    bucket.push(row);
+    grouped.set(key, bucket);
+  }
+
+  const rows: AlertSurfaceRow[] = [];
+
+  for (const bucket of grouped.values()) {
+    const sortedRows = sortPatternAlertRows(bucket);
+    const primaryRow = sortedRows[0];
+    if (!primaryRow) continue;
+
+    const primarySummary = summarizePatternAlertRow(primaryRow, options.supportPreviewByKey);
+    const feedId = Number(primaryRow.feed_id);
+    const feederId = Number(primaryRow.feeder_id);
+    const feedName = options.feedNamesById.get(feedId) || 'UNTITLED FEED';
+    const heroPostKey = nullableString(primaryRow.post_key);
+    const heroPreview = heroPostKey ? options.supportPreviewByKey.get(heroPostKey) || null : null;
+    const supportPosts = new Map<string, FirePatternSupportPreview>();
+    const anchorSupportPosts = new Map<string, FirePatternSupportPreview>();
+
+    const collectPreview = (preview: FirePatternSupportPreview | null | undefined, bucketMap: Map<string, FirePatternSupportPreview>) => {
+      if (!preview?.post_key) return;
+      if (!bucketMap.has(preview.post_key)) bucketMap.set(preview.post_key, preview);
+    };
+
+    collectPreview(heroPreview, supportPosts);
+    for (const row of sortedRows) {
+      const summary = summarizePatternAlertRow(row, options.supportPreviewByKey);
+      if (row.post_key && typeof row.post_key === 'string') {
+        collectPreview(options.supportPreviewByKey.get(row.post_key), supportPosts);
+      }
+      for (const preview of summary.support_posts || []) collectPreview(preview, supportPosts);
+      for (const preview of summary.anchor_support_posts || []) collectPreview(preview, anchorSupportPosts);
+    }
+
+    const allSupportPosts = Array.from(supportPosts.values()).slice(0, 6);
+    const allAnchorSupportPosts = Array.from(anchorSupportPosts.values()).slice(0, 4);
+    const primaryPatternLabel = getPatternMechanicLabel(primarySummary.pattern_name) || humanizeSignalCode(primarySummary.signal_code);
+    const familyLabel = firewatchFamilyLabel(primarySummary.context);
+    const statBits = [
+      primarySummary.match_count != null ? `${Math.round(primarySummary.match_count)} hot` : null,
+      primarySummary.feeders_count != null && primarySummary.feeders_count > 1 ? `${Math.round(primarySummary.feeders_count)} feeders` : null,
+      primarySummary.anchor_gap != null ? `gap +${Math.round(primarySummary.anchor_gap)}` : null,
+      primarySummary.recent_lift != null ? `${primarySummary.recent_lift.toFixed(1)}x lift` : null,
+    ].filter(Boolean);
+
+    rows.push({
+      id: `firewatch:${feedId}:${buildFirewatchPatternGroupKey(primaryRow)}`,
+      dedupe_key: `firewatch:${feedId}:${buildFirewatchPatternGroupKey(primaryRow)}`,
+      feed_id: feedId,
+      feeder_id: Number.isFinite(feederId) ? feederId : 0,
+      post_key: null,
+      checkpoint: 'd7',
+      business_date_ist: nullableString(primaryRow.business_date_ist) || '',
+      card_kind: 'firewatch',
+      signal_code: nullableString(primarySummary.signal_code) || 'CROSS_PATTERN',
+      context: nullableString(primarySummary.context) || 'own',
+      alert_type: nullableString(primarySummary.alert_type) || 'watch',
+      status: 'new',
+      metric_key: null,
+      metric_value: primarySummary.match_count ?? null,
+      surface_percentile: primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null,
+      surface_percentile_exact: primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null,
+      surface_delta: null,
+      feed_rank: null,
+      feeder_rank: null,
+      anchor_handle: null,
+      anchor_best_pct: primarySummary.anchor_avg_percentile ?? null,
+      anchor_gap: primarySummary.anchor_gap ?? null,
+      body: [familyLabel, primaryPatternLabel, ...statBits].filter(Boolean).join(' · '),
+      created_at: nullableString(primarySummary.created_at) || nullableString(primaryRow.created_at) || new Date().toISOString(),
+      updated_at: nullableString(primaryRow.updated_at) || nullableString(primaryRow.created_at) || new Date().toISOString(),
+      handle: feedName,
+      media_type: nullableString(primarySummary.media_type) || heroPreview?.media_type || null,
+      posted_at: heroPreview?.posted_at || null,
+      post_url: heroPreview?.post_url || null,
+      thumbnail_url: heroPreview?.thumbnail_url || null,
+      preview_url: null,
+      resolved_thumbnail_url: heroPreview?.thumbnail_url || null,
+      resolved_preview_url: null,
+      views: null,
+      likes: null,
+      comments: null,
+      views_baseline: null,
+      likes_baseline: null,
+      comments_baseline: null,
+      views_multiple: null,
+      likes_multiple: null,
+      comments_multiple: null,
+      hour_ist: null,
+      hour_percentile: null,
+      hour_multiple: null,
+      best_in_last_n: null,
+      trajectory_d1: null,
+      trajectory_d3: null,
+      trajectory_d7: primarySummary.avg_hot_percentile ?? null,
+      trajectory_d21: null,
+      intelligence_skipped: false,
+      pattern_alerts: [{
+        ...primarySummary,
+        support_posts: allSupportPosts,
+        anchor_support_posts: allAnchorSupportPosts,
+      }],
+      is_hot: true,
+      has_intelligence: true,
+      hide_signal_chrome: false,
+    });
+  }
+
+  return rows;
+}
+
 async function fetchRecentTrackingMetricRows(
   sb: { from: ReturnType<typeof createClient>['from'] },
   postKeys: string[],
@@ -1297,8 +1774,6 @@ function buildSyntheticFireRows(options: {
   baselineRows: FireFeederBaselineRow[];
   hourBaselineRows: FireFeederHourBaselineRow[];
   intelligenceRows: FireIntelligenceRow[];
-  patternRows: FirePatternAlertRow[];
-  supportPreviewByKey: Map<string, FirePatternSupportPreview>;
 }): AlertSurfaceRow[] {
   const feederById = new Map<number, ActiveFeederRow>(
     options.feederRows.map((row) => [Number(row.id), row]),
@@ -1343,18 +1818,6 @@ function buildSyntheticFireRows(options: {
   for (const row of options.intelligenceRows) {
     const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
     if (postKey) intelligenceByPostKey.set(postKey, row);
-  }
-
-  const patternRowsByCard = new Map<string, FirePatternAlertRow[]>();
-  for (const row of options.patternRows) {
-    const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
-    const checkpoint = normalizeTrackingCheckpoint(row.checkpoint);
-    const businessDay = typeof row.business_date_ist === 'string' ? row.business_date_ist.trim() : '';
-    if (!postKey || checkpoint !== 'd7' || !businessDay) continue;
-    const key = buildFireCardKey(postKey, checkpoint, businessDay);
-    const bucket = patternRowsByCard.get(key) || [];
-    bucket.push(row);
-    patternRowsByCard.set(key, bucket);
   }
 
   const rows: AlertSurfaceRow[] = [];
@@ -1413,6 +1876,7 @@ function buildSyntheticFireRows(options: {
       post_key: postKey,
       checkpoint,
       business_date_ist: businessDay,
+      card_kind: 'tracking',
       signal_code: TRACKING_SIGNAL_CODE,
       context: 'own',
       alert_type: 'watch',
@@ -1464,28 +1928,8 @@ function buildSyntheticFireRows(options: {
     const bestValue = metricValueFromPostMetric(metricRow, bestMetric) ?? nullableNumber(metricRow.metric_value);
     const hourMultiple = nullableNumber(metricRow.hour_multiple)
       ?? computeMultiple(bestValue, hourBaselineValueFromRow(hourBaseline, bestMetric));
-    const patternGroup = checkpoint === 'd7'
-      ? buildPatternGroup(
-        patternRowsByCard.get(buildFireCardKey(postKey, checkpoint, businessDay)) || [],
-        options.supportPreviewByKey,
-      )
-      : { primaryAlert: null, summaries: [], summaryBody: null };
-    const primaryAlert = patternGroup.primaryAlert;
-    const hasPatternInsights = patternGroup.summaries.length > 0;
-    const showInsightChrome = checkpoint === 'd7' && isHot && hasPatternInsights;
-
-    rowSeed.signal_code = showInsightChrome
-      ? nullableString(primaryAlert?.signal_code) || TRACKING_SIGNAL_CODE
-      : TRACKING_SIGNAL_CODE;
-    rowSeed.context = showInsightChrome
-      ? nullableString(primaryAlert?.context) || 'own'
-      : 'own';
-    rowSeed.alert_type = nullableString(primaryAlert?.alert_type) || 'watch';
     rowSeed.metric_key = bestMetric;
     rowSeed.metric_value = bestValue;
-    rowSeed.anchor_handle = null;
-    rowSeed.anchor_best_pct = showInsightChrome ? nullableNumber(primaryAlert?.anchor_avg_percentile) : null;
-    rowSeed.anchor_gap = showInsightChrome ? nullableNumber(primaryAlert?.anchor_gap) : null;
     rowSeed.hour_multiple = hourMultiple;
     rowSeed.body = buildTrackingBody({
       checkpoint,
@@ -1495,14 +1939,8 @@ function buildSyntheticFireRows(options: {
       percentile: displayPercentile,
       multiple: rowMetricMultiple(rowSeed, bestMetric),
       deltaFromD1: nullableNumber(metricRow.delta_from_d1),
-      patternSummaryBody: patternGroup.summaryBody,
+      patternSummaryBody: null,
     });
-    rowSeed.pattern_alerts = showInsightChrome && hasPatternInsights ? patternGroup.summaries : null;
-    rowSeed.hide_signal_chrome = !showInsightChrome;
-
-    if (primaryAlert && showInsightChrome) {
-      rowSeed.created_at = nullableString(primaryAlert.created_at) || rowSeed.created_at;
-    }
 
     rows.push(rowSeed);
   }
@@ -1520,22 +1958,13 @@ async function loadTrackingFireRows(
     trackingCheckpoints: DefaultTrackingCheckpoint[];
   },
 ): Promise<AlertSurfaceRow[]> {
-  const posts = await fetchTrackedPosts(sb, options.effectiveFeederIds, {
-    postedAfter: firePostedAfterUtcIso(options.day),
-  });
-  const postKeys = Array.from(
-    new Set(
-      posts
-        .map((row) => (typeof row.post_key === 'string' ? row.post_key.trim() : ''))
-        .filter(Boolean),
-    ),
+  const { posts, metricRows } = await fetchCurrentDayTrackingRows(
+    sb,
+    options.effectiveFeederIds,
+    options.day,
+    [...options.trackingCheckpoints],
   );
-
-  const currentMetricRows = await fetchMetricRowsForPostKeys(sb, postKeys, {
-    businessDay: options.day,
-    checkpoints: [...options.trackingCheckpoints],
-  });
-  const dedupedDayMetricRows = dedupeMetricRows(currentMetricRows);
+  const dedupedDayMetricRows = dedupeMetricRows(metricRows);
   const dayPostKeys = Array.from(
     new Set(
       dedupedDayMetricRows
@@ -1547,7 +1976,7 @@ async function loadTrackingFireRows(
   if (dayPostKeys.length === 0) return [];
 
   const needsLegacyBaselineFallback = dedupedDayMetricRows.some(requiresLegacyBaselineFallback);
-  const [allMetricRows, intelligenceRows, baselineRows, hourBaselineRows, patternRows] = await Promise.all([
+  const [allMetricRows, intelligenceRows, baselineRows, hourBaselineRows] = await Promise.all([
     fetchMetricRowsForPostKeys(sb, dayPostKeys, { checkpoints: [...TRACKING_CHECKPOINTS] }),
     fetchIntelligenceRowsForPostKeys(sb, dayPostKeys),
     needsLegacyBaselineFallback
@@ -1556,31 +1985,16 @@ async function loadTrackingFireRows(
     needsLegacyBaselineFallback
       ? fetchFeederHourBaselineRows(sb, options.effectiveFeederIds, [...options.trackingCheckpoints])
       : Promise.resolve([] as FireFeederHourBaselineRow[]),
-    fetchPatternRowsForPostKeys(sb, options.effectiveFeedIds, options.effectiveFeederIds, options.day, dayPostKeys),
   ]);
-  const supportPostKeys = Array.from(
-    new Set(
-      patternRows.flatMap((row) => {
-        const payload = recordValue(row.signal_payload);
-        if (!Array.isArray(payload.support_post_keys)) return [];
-        return payload.support_post_keys
-          .map((value) => nullableString(value))
-          .filter((value): value is string => Boolean(value));
-      }),
-    ),
-  );
-  const supportPreviewByKey = await fetchPatternSupportPreviews(sb, supportPostKeys);
 
   return buildSyntheticFireRows({
-    posts: posts.filter((row) => dayPostKeys.includes(String(row.post_key || '').trim())),
+    posts,
     currentMetricRows: dedupedDayMetricRows,
     allMetricRows,
     feederRows: options.feederRows,
     baselineRows,
     hourBaselineRows,
     intelligenceRows,
-    patternRows,
-    supportPreviewByKey,
   });
 }
 
@@ -1740,6 +2154,62 @@ async function loadActiveFireState(
   };
 }
 
+async function loadCachedActiveFireState(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  userId: string,
+): Promise<FireActiveState> {
+  return withServerRouteCache(
+    `fire:active:${userId}`,
+    FIRE_ACTIVE_STATE_TTL_MS,
+    () => loadActiveFireState(sb, userId),
+  );
+}
+
+function fireMetaCacheKey(userId: string) {
+  return `fire:meta:${userId}:${FIRE_BOOTSTRAP_DAY_COUNT}`;
+}
+
+function firePageCacheKey(userId: string, requestState: FirePageRequestState) {
+  return [
+    `fire:page:${userId}`,
+    requestState.day,
+    requestState.threshold,
+    requestState.mediaFilter,
+    requestState.sort,
+    String(parseCursorValue(requestState.cursor)),
+    String(parsePageSizeValue(requestState.pageSize, PAGE_SIZE)),
+    serializeNumberList(requestState.requestedFeedIds),
+    serializeNumberList(requestState.requestedFeederIds),
+    serializeStringList(requestState.requestedCheckpoints),
+  ].join(':');
+}
+
+async function buildCachedTrackingFirePagePayload(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  userId: string,
+  activeState: FireActiveState,
+  requestState: FirePageRequestState,
+) {
+  return withServerRouteCache(
+    firePageCacheKey(userId, requestState),
+    FIRE_PAGE_TTL_MS,
+    () => buildTrackingFirePagePayload(sb, activeState, requestState),
+  );
+}
+
+async function buildCachedFireMetaPayload(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  userId: string,
+  activeState: FireActiveState,
+  recentKeys = buildRecentDayKeys(FIRE_BOOTSTRAP_DAY_COUNT),
+) {
+  return withServerRouteCache(
+    fireMetaCacheKey(userId),
+    FIRE_META_TTL_MS,
+    () => buildFireMetaPayload(sb, activeState, recentKeys),
+  );
+}
+
 async function buildTrackingFirePagePayload(
   sb: { from: ReturnType<typeof createClient>['from'] },
   activeState: FireActiveState,
@@ -1761,13 +2231,44 @@ async function buildTrackingFirePagePayload(
   }
 
   const selectedTrackingCheckpoints = resolveRequestedTrackingCheckpoints(requestState.requestedCheckpoints);
-  const rows = await loadTrackingFireRows(sb, {
-    day: requestState.day,
-    feederRows: activeState.normalizedFeeders,
-    effectiveFeedIds: scope.effectiveFeedIds,
-    effectiveFeederIds: scope.effectiveFeederIds,
-    trackingCheckpoints: selectedTrackingCheckpoints,
+  const [trackingRows, firewatchPatternRows] = await Promise.all([
+    loadTrackingFireRows(sb, {
+      day: requestState.day,
+      feederRows: activeState.normalizedFeeders,
+      effectiveFeedIds: scope.effectiveFeedIds,
+      effectiveFeederIds: scope.effectiveFeederIds,
+      trackingCheckpoints: selectedTrackingCheckpoints,
+    }),
+    fetchFirewatchPatternRows(
+      sb,
+      scope.effectiveFeedIds,
+      scope.effectiveFeederIds,
+      requestState.day,
+    ),
+  ]);
+  const firewatchSupportKeys = Array.from(
+    new Set(
+      firewatchPatternRows.flatMap((row) => {
+        const payload = recordValue(row.signal_payload);
+        const keys = [
+          nullableString(row.post_key),
+          ...(Array.isArray(payload.support_post_keys) ? payload.support_post_keys.map((value) => nullableString(value)) : []),
+          ...(Array.isArray(payload.anchor_support_post_keys) ? payload.anchor_support_post_keys.map((value) => nullableString(value)) : []),
+        ];
+        return keys.filter((value): value is string => Boolean(value));
+      }),
+    ),
+  );
+  const firewatchSupportPreviewByKey = await fetchPatternSupportPreviews(sb, firewatchSupportKeys);
+  const feedNamesById = new Map<number, string>(
+    activeState.normalizedFeeds.map((feed) => [Number(feed.id), String(feed.name || 'UNTITLED FEED').toUpperCase()]),
+  );
+  const firewatchRows = buildFirewatchRows({
+    patternRows: firewatchPatternRows,
+    supportPreviewByKey: firewatchSupportPreviewByKey,
+    feedNamesById,
   });
+  const rows = [...trackingRows, ...firewatchRows];
 
   const thresholdLimit = requestState.threshold === 'ALL' ? null : Number.parseInt(requestState.threshold, 10);
   const thresholdedRows = thresholdLimit == null
@@ -1829,8 +2330,11 @@ async function buildTrackingFirePagePayload(
   });
 
   const pageSize = parsePageSizeValue(requestState.pageSize, PAGE_SIZE);
-  const total = sortedRows.length;
-  const pagedRows = sortedRows.slice(requestState.cursor, requestState.cursor + pageSize);
+  // Collapse repeated checkpoint variants of the same post after sorting so
+  // Fire shows one winning card per post while keeping checkpoint filters intact.
+  const dedupedRows = dedupeSortedAlertRows(sortedRows);
+  const total = dedupedRows.length;
+  const pagedRows = dedupedRows.slice(requestState.cursor, requestState.cursor + pageSize);
   const hasMore = requestState.cursor + pagedRows.length < total;
   const { thumbnailUrls: storedThumbnailUrls, previewUrls: storedPreviewUrls } = await fetchStoredMediaUrls(
     sb,
@@ -1840,9 +2344,9 @@ async function buildTrackingFirePagePayload(
   return {
     rows: pagedRows.map((row) => serializeAlertRow({
       ...row,
-      resolved_thumbnail_url: storedThumbnailUrls.get(row.post_key) || null,
+      resolved_thumbnail_url: row.post_key ? storedThumbnailUrls.get(row.post_key) || null : null,
       resolved_preview_url: previewCaptureAllowedForBusinessDay(nullableString(row.business_date_ist))
-        ? storedPreviewUrls.get(row.post_key) || null
+        ? row.post_key ? storedPreviewUrls.get(row.post_key) || null : null
         : null,
     })),
     total,
@@ -1878,12 +2382,10 @@ async function buildFireMetaPayload(
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const trackedPosts = await fetchTrackedPosts(sb, activeState.activeFeederIds);
   const warmupSummary = await fetchWarmupSummary(
     sb,
     activeState.activeFeederIds,
     activeState.feederCreatedAtById,
-    trackedPosts,
   );
 
   return {
@@ -1916,7 +2418,7 @@ export async function GET(request: NextRequest) {
   const recentKeys = buildRecentDayKeys(FIRE_BOOTSTRAP_DAY_COUNT);
   let activeState: FireActiveState;
   try {
-    activeState = await loadActiveFireState(supabase, userId);
+    activeState = await loadCachedActiveFireState(supabase, userId);
   } catch (error) {
     console.error('[/api/fire] Active state query error:', error);
     const message = error instanceof Error ? error.message : 'Failed to load fire scope';
@@ -1942,7 +2444,7 @@ export async function GET(request: NextRequest) {
   // Returns available days plus nested feed / feeder options.
   if (mode === 'meta') {
     try {
-      return NextResponse.json(await buildFireMetaPayload(supabase, activeState, recentKeys));
+      return NextResponse.json(await buildCachedFireMetaPayload(supabase, userId, activeState, recentKeys));
     } catch (error) {
       console.error('[/api/fire?mode=meta] Error:', error);
       const message = error instanceof Error ? error.message : 'Failed to load fire meta';
@@ -1954,24 +2456,34 @@ export async function GET(request: NextRequest) {
     try {
       const pageSize = parsePageSizeValue(params.get('pageSize'), FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE);
       const initialDay = recentKeys[0] || todayIstDayKey();
-      const [meta, initialPage] = await Promise.all([
-        buildFireMetaPayload(supabase, activeState, recentKeys),
-        buildTrackingFirePagePayload(supabase, activeState, {
-          day: initialDay,
-          threshold: 'ALL',
-          mediaFilter: 'ALL',
-          sort: 'best',
-          cursor: 0,
-          pageSize,
-          requestedFeedIds: [],
-          requestedFeederIds: [],
-          requestedCheckpoints: [],
-        }),
+      const bootstrapDays = recentKeys.slice(0, FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT);
+      const [meta, prefetchedPages] = await Promise.all([
+        buildCachedFireMetaPayload(supabase, userId, activeState, recentKeys),
+        Promise.all(
+          bootstrapDays.map(async (day) => ({
+            day,
+            payload: await buildCachedTrackingFirePagePayload(supabase, userId, activeState, {
+              day,
+              threshold: 'ALL',
+              mediaFilter: 'ALL',
+              sort: 'best',
+              cursor: 0,
+              pageSize,
+              requestedFeedIds: [],
+              requestedFeederIds: [],
+              requestedCheckpoints: [],
+            }),
+          })),
+        ),
       ]);
+      const initialPage = prefetchedPages.find((entry) => entry.day === initialDay)?.payload
+        || prefetchedPages[0]?.payload
+        || emptyFirePagePayload(initialDay, 0);
       return NextResponse.json({
         ...meta,
         initialDay,
         initialPage,
+        prefetchedPages,
       });
     } catch (error) {
       console.error('[/api/fire?mode=bootstrap] Error:', error);
@@ -1981,7 +2493,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const payload = await buildTrackingFirePagePayload(supabase, activeState, {
+    const payload = await buildCachedTrackingFirePagePayload(supabase, userId, activeState, {
       day: params.get('day') || todayIstDayKey(),
       threshold: normalizeThresholdValue(params.get('threshold')),
       mediaFilter: normalizeMediaFilterValue(params.get('mediaFilter')),
@@ -2019,7 +2531,7 @@ export async function POST(request: NextRequest) {
   const day = typeof body?.day === 'string' && body.day.trim() ? body.day.trim() : todayIstDayKey();
   let activeState: FireActiveState;
   try {
-    activeState = await loadActiveFireState(supabase, authData.user.id);
+    activeState = await loadCachedActiveFireState(supabase, authData.user.id);
   } catch (error) {
     console.error('[/api/fire:POST] Active state query error:', error);
     const message = error instanceof Error ? error.message : 'Failed to load fire scope';
@@ -2031,7 +2543,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const payload = await buildTrackingFirePagePayload(supabase, activeState, {
+    const payload = await buildCachedTrackingFirePagePayload(supabase, authData.user.id, activeState, {
       day,
       threshold: normalizeThresholdValue(body?.threshold),
       mediaFilter: normalizeMediaFilterValue(body?.mediaFilter),

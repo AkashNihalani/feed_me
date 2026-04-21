@@ -1084,6 +1084,47 @@ class PureEngine:
                 (post_key, asset_role, source_url, storage_provider, storage_bucket, purge_after),
             )
 
+    def _best_effort_refresh_post_media(
+        self,
+        post_key: str,
+        thumbnail_url: str | None,
+        video_url: str | None,
+        carousel_urls: list[str] | None,
+        *,
+        context: str,
+    ):
+        try:
+            with self.conn.transaction():
+                self._refresh_post_media(post_key, thumbnail_url, video_url, carousel_urls)
+        except Exception as exc:
+            print(f"[media-refresh] skipped post_key={post_key} context={context}: {exc}")
+
+    def _best_effort_stage_post_media_assets(
+        self,
+        post_key: str,
+        posted_at: datetime | None,
+        thumbnail_url: str | None,
+        video_url: str | None,
+        carousel_urls: list[str] | None,
+        *,
+        thumbnail_retention_days: int | None = None,
+        preview_retention_days: int | None = None,
+        context: str,
+    ):
+        try:
+            with self.conn.transaction():
+                self._stage_post_media_assets(
+                    post_key,
+                    posted_at,
+                    thumbnail_url,
+                    video_url,
+                    carousel_urls,
+                    thumbnail_retention_days=thumbnail_retention_days,
+                    preview_retention_days=preview_retention_days,
+                )
+        except Exception as exc:
+            print(f"[media-stage] skipped post_key={post_key} context={context}: {exc}")
+
     def _capture_post_media_assets_for_post_keys(
         self,
         post_keys: list[str],
@@ -2506,12 +2547,13 @@ class PureEngine:
                                 )
                                 if not post_key:
                                     continue
-                                self._stage_post_media_assets(
+                                self._best_effort_stage_post_media_assets(
                                     post_key,
                                     posted_at,
                                     thumbnail_url,
                                     None,
                                     None,
+                                    context="run_job_ingest",
                                 )
                                 if is_new_post:
                                     self.conn.execute(
@@ -2743,19 +2785,21 @@ class PureEngine:
                                 continue
                             self._mark_post_availability(job_post_key, "active", None)
                             thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
-                            self._refresh_post_media(
+                            self._best_effort_refresh_post_media(
                                 str(j["post_key"]),
                                 thumbnail_url,
                                 video_url,
                                 carousel_urls,
+                                context=f"checkpoint_{cp}_refresh",
                             )
                             preview_video_url = video_url if _preview_capture_allowed_for_business_day(business_day) else None
-                            self._stage_post_media_assets(
+                            self._best_effort_stage_post_media_assets(
                                 str(j["post_key"]),
                                 job_posted_at,
                                 thumbnail_url,
                                 preview_video_url,
                                 None,
+                                context=f"checkpoint_{cp}_base",
                             )
                             # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
                             # update the same row while preserving the checkpoint business day stamp.
@@ -2792,13 +2836,14 @@ class PureEngine:
                                     )
                                 )
                             ):
-                                self._stage_post_media_assets(
+                                self._best_effort_stage_post_media_assets(
                                     str(j["post_key"]),
                                     job_posted_at,
                                     thumbnail_url,
                                     video_url if _preview_capture_allowed_for_business_day(business_day) else None,
                                     None,
                                     preview_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
+                                    context=f"checkpoint_{cp}_hot_extension",
                                 )
                             self.conn.commit()
                             self._set_checkpoint_result(jid, "done", att, None, None)

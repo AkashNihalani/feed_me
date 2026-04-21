@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Crown, Target, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +30,7 @@ interface FeedTileProps {
   onPreview?: () => void;
   onDelete?: () => void;
   index: number;
+  enableEntranceAnimation?: boolean;
 }
 
 function StatPill({ label, value }: { label: string; value: string }) {
@@ -86,7 +87,21 @@ function FeederAvatarStack({ feeders }: { feeders?: FeedTileProps['feeders'] }) 
   );
 }
 
-export default function FeedTile({ title, count, anchor, feeders, metrics, onClick, onPreview, onDelete, index }: FeedTileProps) {
+export default function FeedTile({
+  title,
+  count,
+  anchor,
+  feeders,
+  metrics,
+  onClick,
+  onPreview,
+  onDelete,
+  index,
+  enableEntranceAnimation = true,
+}: FeedTileProps) {
+  const prefersReducedMotion = useReducedMotion();
+  const shouldAnimateEntrance = enableEntranceAnimation && !prefersReducedMotion;
+
   return (
     <motion.div
       role="button"
@@ -101,9 +116,11 @@ export default function FeedTile({ title, count, anchor, feeders, metrics, onCli
         }
       }}
       className="fm-depth-glass group relative flex min-h-[220px] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-[28px] p-4 text-left shadow-[0_12px_30px_-10px_rgba(15,23,42,0.22),0_24px_54px_-18px_rgba(15,23,42,0.16)] sm:min-h-[240px] sm:p-5 lg:min-h-[200px] dark:shadow-[0_16px_36px_-14px_rgba(0,0,0,0.62),0_34px_70px_-22px_rgba(0,0,0,0.5)]"
-      initial={{ y: 20, scale: 0.97 }}
-      animate={{ y: 0, scale: 1 }}
-      transition={{ delay: index * 0.06, duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+      initial={shouldAnimateEntrance ? { y: 16, scale: 0.98, opacity: 0 } : false}
+      animate={{ y: 0, scale: 1, opacity: 1 }}
+      transition={shouldAnimateEntrance
+        ? { delay: index * 0.035, duration: 0.32, ease: [0.22, 1, 0.36, 1] }
+        : { duration: 0.01 }}
       whileTap={{ scale: 0.985 }}
     >
       <div className="relative z-10 flex h-full flex-col justify-between">

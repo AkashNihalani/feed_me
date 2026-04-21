@@ -2,9 +2,15 @@
 Post Intelligence — LLM-based semantic tag extraction for posts.
 
 Uses Gemini multimodal models, preferring OpenRouter when configured and
-falling back to Google direct Gemini when needed. For reels, sends the FULL
-video (up to 120s / 50MB) so the model watches every frame — no sampling,
-no guessing from thumbnails.
+falling back to Google direct Gemini when needed.
+
+Media contract:
+  - reels must be analyzed from the full source video (up to 120s / 50MB)
+  - carousels must be analyzed from the full slide set
+  - images must be analyzed from the original post image source
+
+If the required media source is unavailable, intelligence is skipped instead of
+silently degrading to thumbnail- or caption-only inference.
 """
 from __future__ import annotations
 
@@ -34,6 +40,7 @@ _OPENROUTER_CHAT_URL = "/chat/completions"
 
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+_PROMPT_VERSION = "pi_v2"
 
 # Max video duration to process (seconds). Anything longer gets skipped.
 _VIDEO_CAP_SECONDS = 120
@@ -50,13 +57,13 @@ Analyze the FULL visual content from start to finish. Focus on:
 - Mechanic: how the viewer receives value (reveal, process, reaction, story, comparison, showcase, etc.)
 - Opening move: what appears in the first 1-3 seconds / first frame
 - Proof mode: what makes the claim believable on-screen
-- Pacing: how quickly the edit moves
-- Audio mode: whether the reel uses direct speech, voiceover, natural live sound, music-led edit, ASMR, or almost no meaningful audio
-- Style: ugc, studio, cinematic, screen recording, montage, or text-led
+- Reel-only signals: pacing, audio mode, duration bucket
+- Image/carousel-only signals: density and depth
+- Shared visual signals for all media: style, face presence, text overlays
 - Face presence: none, one person, or multiple people
 - Text overlays: none, light support, or text-heavy frames
-- Density: clean/minimal vs balanced vs busy
-- Duration or depth: reel length bucket or carousel depth
+- Density: clean/minimal vs balanced vs busy for static media only
+- Duration or depth: reel length bucket OR image/carousel depth, not both
 
 Return ONLY a JSON object with these keys and exact enum values:
 
@@ -64,14 +71,14 @@ Return ONLY a JSON object with these keys and exact enum values:
   "mechanic": one of REVEAL, PROCESS, REACTION, SHOWCASE, STORY, COMPARE, LIST, CHALLENGE, CONVERSE, ACCESS, ANNOUNCE, COLLAB, SOCIAL_PROOF, AESTHETIC, EDUCATE,
   "opening_move": one of RESULT_FIRST, PERSON_FIRST, TEXT_FIRST, OBJECT_FIRST, ACTION_FIRST, SCENE_FIRST,
   "proof_mode": one of LIVE_DEMO, VISUAL_RESULT, EXPERT_TALK, SOCIAL_PROOF, DATA_PROOF, ACCESS_PROOF, PROOF_NONE,
-  "pacing": one of PACING_SLOW, PACING_MEDIUM, PACING_FAST,
+  "pacing": one of PACING_SLOW, PACING_MEDIUM, PACING_FAST, or null if the media is not a reel,
   "audio_mode": one of AUDIO_DIRECT_SPEECH, AUDIO_VOICEOVER, AUDIO_SOURCE_LIVE, AUDIO_MUSIC_LED, AUDIO_ASMR, AUDIO_MINIMAL, or null if the media is not a reel,
   "style": one of STYLE_UGC, STYLE_STUDIO, STYLE_TEXT_DRIVEN, STYLE_MONTAGE, STYLE_CINEMATIC, STYLE_SCREEN_RECORD,
   "cta": one of CTA_ENGAGEMENT, CTA_TRAFFIC, CTA_PURCHASE, CTA_COMMUNITY, or null if none detected,
   "face": one of FACE_SINGLE, FACE_NONE, FACE_MULTIPLE,
   "language": ISO 639-1 code of the primary language in the caption (e.g. "en", "hi", "fr"). Use "mixed_X_Y" for code-switched content (e.g. "mixed_en_hi"),
-  "depth": one of DEPTH_SINGLE, DEPTH_MINI, DEPTH_STANDARD, DEPTH_DEEP (carousel slide count context), or DEPTH_SINGLE for reels/images,
-  "density": one of DENSITY_MINIMAL, DENSITY_MEDIUM, DENSITY_BUSY,
+  "depth": one of DEPTH_SINGLE, DEPTH_MINI, DEPTH_STANDARD, DEPTH_DEEP for images/carousels, or null if the media is a reel,
+  "density": one of DENSITY_MINIMAL, DENSITY_MEDIUM, DENSITY_BUSY, or null if the media is a reel,
   "text_overlay": one of TEXT_NONE, TEXT_LIGHT, TEXT_HEAVY,
   "duration_bucket": one of DUR_SHORT (under 15s), DUR_MEDIUM (15-30s), DUR_LONG (30-60s), DUR_EXTENDED (60s+), or null if not a reel
 }
@@ -79,8 +86,21 @@ Return ONLY a JSON object with these keys and exact enum values:
 Rules:
 - Classify structure, not niche or topic.
 - Do not infer whether audio is trending or popular on Instagram.
-- Base style, face, density, text_overlay, pacing, opening_move, and proof_mode primarily on the visual media.
+- Use only tags that are meaningful for the given media type. If a field does not make sense for that media, return null instead of guessing.
+- Base style, face, text_overlay, opening_move, and proof_mode primarily on the visual media.
+- For reels, use pacing based on edit rhythm across the reel. Do not infer pacing for images or carousels.
+- For images and carousels, use density based on visual clutter in the frames. Do not use density for reels.
+- For reels, use duration_bucket and set depth to null.
+- For single images, set depth to DEPTH_SINGLE.
+- For carousels, use depth based on slide count/context.
 - For reels, audio_mode must come from the reel audio itself.
+- Audio precedence for reels:
+  - If understandable spoken dialogue or narration is meaningfully present, do NOT use AUDIO_MUSIC_LED.
+  - Use AUDIO_DIRECT_SPEECH when a visible speaker's synced speech is the main audio layer.
+  - Use AUDIO_VOICEOVER when off-camera narration or dubbed commentary is the main audio layer.
+  - Use AUDIO_SOURCE_LIVE when live captured sound or ambient source audio leads and speech is not the main driver.
+  - Use AUDIO_MUSIC_LED only when music is clearly the main driver and any speech is absent, incidental, background, or unintelligible.
+  - Background music under clear dialogue still counts as speech-led, not music-led.
 - Pick the single best match for each required field.
 - Return ONLY the JSON object, with no explanation."""
 
@@ -99,18 +119,29 @@ _VALID_TAGS: dict[str, set[str]] = {
     "duration_bucket": {"DUR_SHORT", "DUR_MEDIUM", "DUR_LONG", "DUR_EXTENDED"},
 }
 
-_REQUIRED_SIGNAL_TAGS = {
+_COMMON_REQUIRED_SIGNAL_TAGS = {
     "mechanic",
     "opening_move",
     "proof_mode",
-    "pacing",
     "style",
     "face",
     "language",
-    "depth",
-    "density",
     "text_overlay",
 }
+
+_MEDIA_REQUIRED_SIGNAL_TAGS = {
+    "reel": {"pacing", "audio_mode", "duration_bucket"},
+    "image": {"depth", "density"},
+    "sidecar": {"depth", "density"},
+}
+
+_MEDIA_FORCED_NULL_TAGS = {
+    "reel": {"density", "depth"},
+    "image": {"pacing", "audio_mode", "duration_bucket"},
+    "sidecar": {"pacing", "audio_mode", "duration_bucket"},
+}
+
+_ALWAYS_OPTIONAL_TAGS = {"cta"}
 
 
 def is_enabled() -> bool:
@@ -140,7 +171,26 @@ def _selected_model() -> str:
 def current_model_version(*, skipped: bool = False) -> str:
     if skipped:
         return "skipped"
-    return f"{_selected_provider()}:{_selected_model()}"
+    return f"{_selected_provider()}:{_selected_model()}:{_PROMPT_VERSION}"
+
+
+def _normalize_media_type(media_type: str | None) -> str:
+    media = (media_type or "image").strip().lower()
+    if media == "carousel":
+        media = "sidecar"
+    if media not in {"reel", "image", "sidecar"}:
+        return "image"
+    return media
+
+
+def _required_signal_keys_for_media(media_type: str | None) -> set[str]:
+    media = _normalize_media_type(media_type)
+    return _COMMON_REQUIRED_SIGNAL_TAGS | _MEDIA_REQUIRED_SIGNAL_TAGS.get(media, set())
+
+
+def _forced_null_tags_for_media(media_type: str | None) -> set[str]:
+    media = _normalize_media_type(media_type)
+    return _MEDIA_FORCED_NULL_TAGS.get(media, set())
 
 
 def _fetch_bytes(
@@ -328,13 +378,16 @@ def _build_carousel_parts(
     provider: str,
     fetch_headers: dict[str, str] | None = None,
     max_images: int = 20,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int, int]:
     """Fetch and encode carousel slide images for the configured provider."""
     parts: list[dict[str, Any]] = []
+    expected = len(carousel_urls[:max_images])
+    fetched = 0
     for url in carousel_urls[:max_images]:
         data = _fetch_bytes(url, timeout=8, headers=fetch_headers)
         if not data or not data[1].startswith("image/"):
             continue
+        fetched += 1
 
         if provider == "openrouter":
             parts.append(_build_openrouter_image_part(data[0], data[1]))
@@ -345,7 +398,27 @@ def _build_carousel_parts(
                     "data": base64.b64encode(data[0]).decode("ascii"),
                 }
             })
-    return parts
+    return parts, expected, fetched
+
+
+def _skip_result(
+    *,
+    reason: str,
+    media_type: str,
+    expected_source: str,
+    actual_source: str = "missing",
+    detail: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "_skipped": True,
+        "_skip_reason": reason,
+        "_media_type": media_type,
+        "_expected_source": expected_source,
+        "_visual_source": actual_source,
+    }
+    if detail:
+        payload["_skip_detail"] = detail
+    return payload
 
 
 def _extract_response_text(payload: dict[str, Any], *, provider: str) -> str:
@@ -398,10 +471,12 @@ def extract_tags(
     """
     Extract semantic tags from a post via Gemini multimodal models.
 
-    For reels: downloads the FULL video (up to 120s, 50MB cap).
-    For sidecars: sends all available slide images + caption.
-    For images: sends the current preview image + caption.
-    Falls back to thumbnail + caption if richer media fetch fails.
+    Strict source rules:
+      - reels require the full source video (up to 120s / 50MB)
+      - sidecars require the full carousel slide set
+      - images require the original image source
+
+    If those sources are unavailable, the extraction is skipped.
     """
     provider = _selected_provider()
     if provider == "openrouter" and not OPENROUTER_API_KEY:
@@ -409,9 +484,7 @@ def extract_tags(
     if provider == "google" and not GEMINI_API_KEY:
         return None
 
-    media = (media_type or "unknown").strip().lower()
-    if media == "carousel":
-        media = "sidecar"
+    media = _normalize_media_type(media_type)
 
     caption_trimmed = (caption or "").strip()[:2000]
     if not caption_trimmed:
@@ -422,63 +495,121 @@ def extract_tags(
     parts: list[dict[str, Any]] = []
     visual_source = "none"
 
-    if media == "reel" and video_url:
+    if media == "reel":
+        if not video_url:
+            return _skip_result(
+                reason="reel_missing_full_video",
+                media_type=media,
+                expected_source="full_video",
+            )
         video_data = _fetch_bytes(
             video_url,
             timeout=60,
             max_bytes=_VIDEO_UPLOAD_MAX_BYTES,
             headers=media_fetch_headers,
         )
-        if video_data:
-            video_bytes, video_ct = video_data
-            if not video_ct.startswith("video/"):
-                video_ct = "video/mp4"
+        if not video_data:
+            return _skip_result(
+                reason="reel_full_video_fetch_failed",
+                media_type=media,
+                expected_source="full_video",
+            )
 
-            duration = _probe_video_duration(video_bytes)
-            if duration is not None and duration > _VIDEO_CAP_SECONDS:
-                print(f"[post-intelligence] skipped: video {duration:.0f}s exceeds {_VIDEO_CAP_SECONDS}s cap")
-                return {
-                    "_skipped": True,
-                    "_skip_reason": "duration_exceeded",
-                    "_video_duration": round(duration),
-                    "_visual_source": "none",
-                }
+        video_bytes, video_ct = video_data
+        if not video_ct.startswith("video/"):
+            video_ct = "video/mp4"
 
-            if provider == "openrouter":
-                video_part = _build_openrouter_video_part(video_bytes, video_ct)
-                method = "data_url"
-            else:
-                video_part = _build_gemini_video_part(video_bytes, video_ct)
-                method = "inline" if len(video_bytes) <= _VIDEO_INLINE_MAX_BYTES else "file_api"
+        duration = _probe_video_duration(video_bytes)
+        if duration is not None and duration > _VIDEO_CAP_SECONDS:
+            print(f"[post-intelligence] skipped: video {duration:.0f}s exceeds {_VIDEO_CAP_SECONDS}s cap")
+            return _skip_result(
+                reason="duration_exceeded",
+                media_type=media,
+                expected_source="full_video",
+                actual_source="video_full",
+                detail=f"{round(duration)}s",
+            )
 
-            if video_part:
-                size_mb = len(video_bytes) / (1024 * 1024)
-                visual_source = f"video_full:{size_mb:.1f}mb:{method}"
-                parts.append(video_part)
+        if provider == "openrouter":
+            video_part = _build_openrouter_video_part(video_bytes, video_ct)
+            method = "data_url"
+        else:
+            video_part = _build_gemini_video_part(video_bytes, video_ct)
+            method = "inline" if len(video_bytes) <= _VIDEO_INLINE_MAX_BYTES else "file_api"
 
-    elif media == "sidecar" and carousel_urls:
-        slide_parts = _build_carousel_parts(
+        if not video_part:
+            return _skip_result(
+                reason="reel_full_video_unusable",
+                media_type=media,
+                expected_source="full_video",
+                actual_source="video_fetch_failed",
+            )
+
+        size_mb = len(video_bytes) / (1024 * 1024)
+        visual_source = f"video_full:{size_mb:.1f}mb:{method}"
+        parts.append(video_part)
+
+    elif media == "sidecar":
+        if not carousel_urls:
+            return _skip_result(
+                reason="carousel_missing_full_set",
+                media_type=media,
+                expected_source="carousel_full",
+            )
+        slide_parts, expected_slides, fetched_slides = _build_carousel_parts(
             carousel_urls,
             provider=provider,
             fetch_headers=media_fetch_headers,
+            max_images=max(20, len(carousel_urls)),
         )
-        if slide_parts:
-            visual_source = f"carousel:{len(slide_parts)}slides"
-            parts.extend(slide_parts)
+        if expected_slides == 0:
+            return _skip_result(
+                reason="carousel_missing_full_set",
+                media_type=media,
+                expected_source="carousel_full",
+            )
+        if fetched_slides != expected_slides:
+            return _skip_result(
+                reason="carousel_incomplete_source",
+                media_type=media,
+                expected_source="carousel_full",
+                actual_source=f"carousel_partial:{fetched_slides}/{expected_slides}",
+            )
+        visual_source = f"carousel:{fetched_slides}slides"
+        parts.extend(slide_parts)
 
-    if visual_source == "none" and thumbnail_url:
-        thumb_data = _fetch_bytes(thumbnail_url, timeout=8, headers=media_fetch_headers)
-        if thumb_data and thumb_data[1].startswith("image/"):
-            visual_source = "thumbnail"
-            if provider == "openrouter":
-                parts.append(_build_openrouter_image_part(thumb_data[0], thumb_data[1]))
-            else:
-                parts.append({
-                    "inline_data": {
-                        "mime_type": thumb_data[1],
-                        "data": base64.b64encode(thumb_data[0]).decode("ascii"),
-                    }
-                })
+    else:
+        if not thumbnail_url:
+            return _skip_result(
+                reason="image_missing_source",
+                media_type=media,
+                expected_source="image_full",
+            )
+        image_data = _fetch_bytes(thumbnail_url, timeout=8, headers=media_fetch_headers)
+        if not image_data or not image_data[1].startswith("image/"):
+            return _skip_result(
+                reason="image_source_fetch_failed",
+                media_type=media,
+                expected_source="image_full",
+            )
+        visual_source = "image_full"
+        if provider == "openrouter":
+            parts.append(_build_openrouter_image_part(image_data[0], image_data[1]))
+        else:
+            parts.append({
+                "inline_data": {
+                    "mime_type": image_data[1],
+                    "data": base64.b64encode(image_data[0]).decode("ascii"),
+                }
+            })
+
+    if not parts:
+        return _skip_result(
+            reason="no_usable_visual_source",
+            media_type=media,
+            expected_source="strict_media_source",
+            actual_source=visual_source,
+        )
 
     model = _selected_model()
     payload: dict[str, Any]
@@ -531,9 +662,9 @@ def extract_tags(
         if not isinstance(tags, dict):
             return None
 
-        validated = _validate_tags(tags)
+        validated = _validate_tags(tags, media)
         if validated:
-            if not _has_required_signal_tags(validated):
+            if not _has_required_signal_tags(validated, media):
                 return None
             validated["_visual_source"] = visual_source
         return validated if validated else None
@@ -542,14 +673,19 @@ def extract_tags(
         return None
 
 
-def _validate_tags(tags: dict[str, Any]) -> dict[str, Any]:
+def _validate_tags(tags: dict[str, Any], media_type: str | None = None) -> dict[str, Any]:
     """Validate extracted tags against known enums. Strip invalid values."""
     result: dict[str, Any] = {}
+    forced_null_keys = _forced_null_tags_for_media(media_type)
+    allowed_null_keys = forced_null_keys | _ALWAYS_OPTIONAL_TAGS
     for key, valid_set in _VALID_TAGS.items():
+        if key in forced_null_keys:
+            result[key] = None
+            continue
         val = tags.get(key)
         if isinstance(val, str) and val.upper() in valid_set:
             result[key] = val.upper()
-        elif val is None and key in ("audio_mode", "cta", "duration_bucket"):
+        elif val is None and key in allowed_null_keys:
             result[key] = None
 
     lang = tags.get("language")
@@ -559,9 +695,9 @@ def _validate_tags(tags: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _has_required_signal_tags(tags: dict[str, Any]) -> bool:
+def _has_required_signal_tags(tags: dict[str, Any], media_type: str | None = None) -> bool:
     """Only persist rows that can participate in the current pattern engine."""
-    for key in _REQUIRED_SIGNAL_TAGS:
+    for key in _required_signal_keys_for_media(media_type):
         value = tags.get(key)
         if not isinstance(value, str) or not value.strip():
             return False

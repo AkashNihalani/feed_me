@@ -33,10 +33,10 @@ type SlotUsage = {
 
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FEED_CACHE_KEY = 'feed:bundle:v5';
-const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v4';
-const FEED_CACHE_TTL = 2 * 60 * 1000;
-const DASHBOARD_CACHE_TTL = 2 * 60 * 1000;
+const FEED_CACHE_KEY = 'feed:bundle:v6';
+const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v5';
+const FEED_CACHE_TTL = 10 * 60 * 1000;
+const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
 const dashboardInflight = new Map<string, Promise<DashboardPayload | null>>();
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   '7D': '7D',
@@ -117,6 +117,17 @@ async function fetchDashboardSnapshot(feedId: string, timeframe: Timeframe, hand
   return request;
 }
 
+function readInitialFeedBundle() {
+  const cachedEntry = readCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY);
+  const cached = cachedEntry?.data ?? null;
+
+  return {
+    feeds: cached?.feeds ?? INITIAL_FEEDS,
+    tickerItems: cached?.ticker ?? [],
+    slotUsage: cached?.slots ?? { used: 0 },
+  };
+}
+
 function FeedPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -124,6 +135,8 @@ function FeedPageContent() {
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const headerRef = useRef<HTMLDivElement>(null);
   const urlSelectedFeedId = searchParams.get('id');
+  const [initialBundle] = useState(readInitialFeedBundle);
+  const shouldAnimateFeedTilesRef = useRef(initialBundle.feeds.length === 0);
   const mobileBottomClearance = useTranslucentBrowserChrome
     ? 'calc(18px + env(safe-area-inset-bottom))'
     : 'calc(120px + env(safe-area-inset-bottom))';
@@ -155,7 +168,7 @@ function FeedPageContent() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(urlSelectedFeedId);
   const view = selectedFeedId ? 'detail' : 'list';
 
-  const [feeds, setFeeds] = useState<Feed[]>(INITIAL_FEEDS);
+  const [feeds, setFeeds] = useState<Feed[]>(() => initialBundle.feeds);
   const [isAddingFeeder, setIsAddingFeeder] = useState(false);
   const [addingFeeder, setAddingFeeder] = useState<string | null>(null);
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
@@ -165,13 +178,15 @@ function FeedPageContent() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>('30D');
   const [selectedHandle, setSelectedHandle] = useState<string>('all');
-  const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(null);
-  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(
+    () => (urlSelectedFeedId ? readCache<DashboardPayload>(dashboardCacheKey(urlSelectedFeedId, '30D', 'all'))?.data ?? null : null),
+  );
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>(() => initialBundle.tickerItems);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
-  const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
+  const [slotUsage, setSlotUsage] = useState<SlotUsage>(() => initialBundle.slotUsage);
   const [exportFrom, setExportFrom] = useState<string>(() => defaultExportRange().from);
   const [exportTo, setExportTo] = useState<string>(() => defaultExportRange().to);
-  const [headerHeight, setHeaderHeight] = useState(204);
+  const [headerHeight, setHeaderHeight] = useState(() => (urlSelectedFeedId ? 204 : 176));
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
   const useFeedRootSnap = view === 'detail' && useBrowserPageScroll;
@@ -206,12 +221,27 @@ function FeedPageContent() {
 
   /* ── Data loading ── */
   const loadFeeds = useCallback(async () => {
-    const cached = getCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY, FEED_CACHE_TTL);
+    const cachedEntry = readCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY);
+    const cached = cachedEntry?.data ?? null;
+    const hasFreshCache = Boolean(cachedEntry && Date.now() - cachedEntry.ts <= FEED_CACHE_TTL);
+    const hasHydratedCache = Boolean(
+      cached
+      && (
+        (Array.isArray(cached.feeds) && cached.feeds.length > 0)
+        || (Array.isArray(cached.ticker) && cached.ticker.length > 0)
+      ),
+    );
+
     if (cached) {
-      setFeeds(cached.feeds);
-      setTickerItems(cached.ticker);
-      if (cached.slots) setSlotUsage(cached.slots);
+      setFeeds(cached.feeds ?? INITIAL_FEEDS);
+      setTickerItems(cached.ticker ?? []);
+      setSlotUsage(cached.slots ?? { used: 0 });
     }
+
+    if (hasFreshCache && hasHydratedCache) {
+      return;
+    }
+
     try {
       const res = await fetch('/api/feed');
       const json = await res.json();
@@ -283,11 +313,20 @@ function FeedPageContent() {
     if (!activeFeed) { setDashboardData(null); return; }
     let cancelled = false;
     const cacheKey = dashboardCacheKey(String(activeFeed.id), timeframe, selectedHandle);
-    const cached = readCache<DashboardPayload>(cacheKey);
-    const hadCache = Boolean(cached);
-    if (cached && Date.now() - cached.ts <= DASHBOARD_CACHE_TTL) {
-      setDashboardData(cached.data);
+    const cachedEntry = readCache<DashboardPayload>(cacheKey);
+    const hadCache = Boolean(cachedEntry?.data);
+    const hasFreshCache = Boolean(cachedEntry && Date.now() - cachedEntry.ts <= DASHBOARD_CACHE_TTL);
+
+    if (cachedEntry?.data) {
+      setDashboardData(cachedEntry.data);
     }
+
+    if (hasFreshCache) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     fetchDashboardSnapshot(String(activeFeed.id), timeframe, selectedHandle)
       .then((next) => {
         if (cancelled) return;
@@ -331,7 +370,7 @@ function FeedPageContent() {
     setSelectedHandle('all');
     setTimeframe('30D');
     setSelectedFeedId(id);
-    const cached = getCache<DashboardPayload>(dashboardCacheKey(id, '30D', 'all'), DASHBOARD_CACHE_TTL);
+    const cached = readCache<DashboardPayload>(dashboardCacheKey(id, '30D', 'all'))?.data ?? null;
     setDashboardData(cached);
     preloadDashboard(id, '30D', 'all');
     startTransition(() => {
@@ -757,13 +796,13 @@ function FeedPageContent() {
                       <motion.div
                         key={feed.id}
                         layout
-                        initial={{ opacity: 0, scale: 0.88 }}
+                        initial={shouldAnimateFeedTilesRef.current ? { opacity: 0, scale: 0.88 } : false}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.88 }}
                         transition={{ type: 'spring', stiffness: 300, damping: 26, mass: 0.8 }}
                       >
                         <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
-                          metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} />
+                          metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} enableEntranceAnimation={shouldAnimateFeedTilesRef.current} />
                       </motion.div>
                     ))}
                   </AnimatePresence>

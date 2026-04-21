@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { getPatternMechanicLabel } from '@/lib/fireSignals';
+import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
+const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -277,16 +279,14 @@ function buildMediaMix(posts: PostingPatternPost[]) {
 
 async function fetchPostingPattern(
   sb: ReturnType<typeof adminClient>,
-  feedId: number,
+  feeders: ScopedFeeder[],
   windowStartIst: string | null,
   windowEndIst: string | null,
-  handle: string | null,
 ) {
   const currentStartDate = parseIstDateKey(windowStartIst);
   const currentEndDate = parseIstDateKey(windowEndIst);
   if (!currentStartDate || !currentEndDate || currentStartDate.getTime() > currentEndDate.getTime()) return null;
 
-  const feeders = await fetchScopedFeeders(sb, feedId, handle);
   if (feeders.length === 0) return null;
 
   const currentWindowDays = Math.max(1, Math.round((currentEndDate.getTime() - currentStartDate.getTime()) / MS_PER_DAY) + 1);
@@ -572,10 +572,9 @@ type KillzoneMetricRow = {
 
 async function fetchKillzoneDays(
   sb: ReturnType<typeof adminClient>,
-  feedId: number,
+  feederIds: number[],
   windowStartIst: string | null,
   windowEndIst: string | null,
-  handle: string | null,
 ) {
   if (!windowStartIst || !windowEndIst) return [];
 
@@ -584,7 +583,6 @@ async function fetchKillzoneDays(
   const endExclusiveIso = endDate ? istDayStartUtcIso(formatIstDateKey(addUtcDays(endDate, 1))) : null;
   if (!startIso || !endExclusiveIso) return [];
 
-  const feederIds = (await fetchScopedFeeders(sb, feedId, handle)).map((row) => row.id);
   if (feederIds.length === 0) return [];
 
   const posts: KillzonePostRow[] = [];
@@ -676,13 +674,11 @@ async function fetchKillzoneDays(
 async function fetchPatternBoard(
   sb: ReturnType<typeof adminClient>,
   feedId: number,
+  feederIds: number[],
   windowStartIst: string | null,
   windowEndIst: string | null,
-  handle: string | null,
 ) {
   if (!windowStartIst || !windowEndIst) return [];
-
-  const feederIds = (await fetchScopedFeeders(sb, feedId, handle)).map((row) => row.id);
   if (feederIds.length === 0) return [];
 
   const { data, error } = await sb
@@ -820,74 +816,75 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'days must be one of 7,30,60,90' }, { status: 400 });
     }
 
-    const sb = adminClient();
-    const { data: feedRow, error: feedErr } = await sb
-      .from('feeds')
-      .select('id,user_id')
-      .eq('id', feedId)
-      .eq('user_id', user.id)
-      .single();
-    if (feedErr || !feedRow) {
-      return NextResponse.json({ error: 'Feed not found' }, { status: 404 });
-    }
+    const payload = await withServerRouteCache(
+      `feed:dashboard:${user.id}:${feedId}:${windowParam}:${handle || 'all'}`,
+      DASHBOARD_ROUTE_TTL_MS,
+      async () => {
+        const sb = adminClient();
+        const { data: feedRow, error: feedErr } = await sb
+          .from('feeds')
+          .select('id,user_id')
+          .eq('id', feedId)
+          .eq('user_id', user.id)
+          .single();
+        if (feedErr || !feedRow) {
+          throw new Error('Feed not found');
+        }
 
-    const { data, error } = await sb.rpc('fn_feed_dashboard', {
-      p_feed_id: feedId,
-      p_weeks: windowParam,
-      p_handle: handle,
-    });
-    if (error) throw error;
-    const dashboard = recordValue(data);
-    const summary = recordValue(dashboard.summary);
-    const windowStartIst = nullableString(summary.window_start_ist);
-    const windowEndIst = nullableString(summary.window_end_ist);
+        const { data, error } = await sb.rpc('fn_feed_dashboard', {
+          p_feed_id: feedId,
+          p_weeks: windowParam,
+          p_handle: handle,
+        });
+        if (error) throw error;
+        const dashboard = recordValue(data);
+        const summary = recordValue(dashboard.summary);
+        const windowStartIst = nullableString(summary.window_start_ist);
+        const windowEndIst = nullableString(summary.window_end_ist);
+        const scopedFeeders = await fetchScopedFeeders(sb, feedId, handle);
+        const scopedFeederIds = scopedFeeders.map((row) => row.id);
 
-    const [patternBoard, ascentSeries, heatmapDaily, killzoneDays, postingPattern] = await Promise.all([
-      fetchPatternBoard(
-        sb,
-        feedId,
-        windowStartIst,
-        windowEndIst,
-        handle,
-      ),
-      fetchAscentSeries(
-        sb,
-        feedId,
-        windowStartIst,
-        windowEndIst,
-        handle,
-      ),
-      windowParam === 90
-        ? Promise.resolve(arrayValue(dashboard.heatmap_daily))
-        : fetchRollingHeatmap(sb, feedId, handle),
-      fetchKillzoneDays(
-        sb,
-        feedId,
-        windowStartIst,
-        windowEndIst,
-        handle,
-      ),
-      fetchPostingPattern(
-        sb,
-        feedId,
-        windowStartIst,
-        windowEndIst,
-        handle,
-      ),
-    ]);
+        const [patternBoard, heatmapDaily, killzoneDays, postingPattern] = await Promise.all([
+          fetchPatternBoard(
+            sb,
+            feedId,
+            scopedFeederIds,
+            windowStartIst,
+            windowEndIst,
+          ),
+          windowParam === 90
+            ? Promise.resolve(arrayValue(dashboard.heatmap_daily))
+            : fetchRollingHeatmap(sb, feedId, handle),
+          fetchKillzoneDays(
+            sb,
+            scopedFeederIds,
+            windowStartIst,
+            windowEndIst,
+          ),
+          fetchPostingPattern(
+            sb,
+            scopedFeeders,
+            windowStartIst,
+            windowEndIst,
+          ),
+        ]);
 
-    return NextResponse.json({
-      dashboard: {
-        ...dashboard,
-        ascent_series: ascentSeries,
-        heatmap_daily: heatmapDaily,
-        killzone_days: killzoneDays,
-        pattern_board: patternBoard,
-        posting_pattern: postingPattern,
+        return {
+          dashboard: {
+            ...dashboard,
+            heatmap_daily: heatmapDaily,
+            killzone_days: killzoneDays,
+            pattern_board: patternBoard,
+            posting_pattern: postingPattern,
+          },
+        };
       },
-    });
+    );
+
+    return NextResponse.json(payload);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load dashboard';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message === 'Feed not found' ? 404 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

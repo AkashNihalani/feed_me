@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { animate, motion, useMotionValue, useSpring } from 'framer-motion';
 import { AscentPoint, Timeframe } from './dashboardTypes';
 
@@ -87,7 +87,7 @@ function TrendGlyph({ direction }: { direction: TrendDirection }) {
   );
 }
 
-export default function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: AscentPoint[] }) {
+function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: AscentPoint[] }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const gradientId = useId().replace(/[:]/g, '');
 
@@ -354,3 +354,8 @@ export default function FeedAscentChart({ timeframe, series }: { timeframe: Time
     </div>
   );
 }
+
+const MemoizedFeedAscentChart = memo(FeedAscentChart);
+MemoizedFeedAscentChart.displayName = 'FeedAscentChart';
+
+export default MemoizedFeedAscentChart;

@@ -25,6 +25,7 @@ import {
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
 import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
+import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 
@@ -38,12 +39,14 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v5';
-const FIRE_STATE_CACHE_KEY = 'fire:state:v7';
-const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v8';
+const FIRE_STATE_CACHE_KEY = 'fire:state:v8';
+const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v9';
 const FIRE_CACHE_TTL = 10 * 60 * 1000;
+const FIRE_META_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_REQUIRED = 3;
 const FIRE_INITIAL_BATCH_SIZE = 20;
+const FIRE_BACKGROUND_PREFETCH_DAY_COUNT = 2;
 const FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP = 6;
 const FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE = 2;
 const FIRE_MEDIA_FILTER_OPTIONS: { label: string; value: FireMediaFilter }[] = [
@@ -245,6 +248,40 @@ function serializeFilters(filters: FireFilterState): string {
   });
 }
 
+function pickBackgroundPrefetchDays(days: string[], selectedDay: string, count: number): string[] {
+  if (days.length === 0 || count <= 0) return [];
+
+  const selectedIndex = days.indexOf(selectedDay);
+  if (selectedIndex === -1) {
+    return days.slice(0, count);
+  }
+
+  const picks: string[] = [];
+  let offset = 1;
+  while (picks.length < count) {
+    const nextIndex = selectedIndex + offset;
+    const prevIndex = selectedIndex - offset;
+    let added = false;
+
+    if (nextIndex < days.length) {
+      picks.push(days[nextIndex]);
+      added = true;
+      if (picks.length >= count) break;
+    }
+
+    if (prevIndex >= 0) {
+      picks.push(days[prevIndex]);
+      added = true;
+      if (picks.length >= count) break;
+    }
+
+    if (!added) break;
+    offset += 1;
+  }
+
+  return picks;
+}
+
 function pruneFilters(filters: FireFilterState, feeds: FireFeedOption[]): FireFilterState {
   const validFeedIds = new Set(feeds.map((feed) => feed.id));
   const validFeederIdsByFeed = new Map<number, Set<number>>();
@@ -336,6 +373,23 @@ function sortFireAlertItems(items: FireAlertItem[], sortMode: FireSortMode): Fir
   });
 }
 
+function fireAlertDeduplicationKey(item: FireAlertItem): string {
+  const postKey = item.postKey?.trim();
+  if (postKey) return postKey;
+  return item.id;
+}
+
+function dedupeFireAlertItems(items: FireAlertItem[]): FireAlertItem[] {
+  const deduped = new Map<string, FireAlertItem>();
+  for (const item of items) {
+    const key = fireAlertDeduplicationKey(item);
+    if (!deduped.has(key)) {
+      deduped.set(key, item);
+    }
+  }
+  return Array.from(deduped.values());
+}
+
 function fireStateShellStyle(): CSSProperties {
   return {
     marginTop: 'calc(var(--fire-header-height, 168px) + 16px)',
@@ -350,6 +404,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   if (status && TERMINAL_STATUSES.has(status)) return null;
 
   const meta = asRecord(payload.meta);
+  const cardKind = asString(meta.card_kind) === 'firewatch' ? 'firewatch' : 'tracking';
   const checkpoint = asString(row.checkpoint) || asString(meta.checkpoint) || 'd1';
   const surfaceHandle = asString(row.surface_handle) || asString(meta.handle);
   const surfaceMediaType = normalizeMediaLabel(
@@ -392,8 +447,16 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
       .map((cue) => getPatternCueLabel(asString(cue.key), asString(cue.value)))
       .filter((value): value is string => Boolean(value))
     : [];
-  const signalLabel = hideSignalChrome ? '' : signalMeta?.shortLabel ?? fallbackSignalLabel(signalCode);
-  const signalHeadline = hideSignalChrome ? '' : patternLabel || signalMeta?.headline || signalLabel;
+  const signalLabel = cardKind === 'firewatch'
+    ? 'Firewatch'
+    : hideSignalChrome
+      ? ''
+      : signalMeta?.shortLabel ?? fallbackSignalLabel(signalCode);
+  const signalHeadline = cardKind === 'firewatch'
+    ? patternLabel || signalMeta?.headline || signalLabel
+    : hideSignalChrome
+      ? ''
+      : patternLabel || signalMeta?.headline || signalLabel;
   const resolvedThumbnailUrl =
     asString(row.thumbnail_url)
     || asString(row.resolved_thumbnail_url)
@@ -410,6 +473,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
 
   return {
     id: `alert-${asString(row.id) || asString(row.dedupe_key) || Math.random().toString(36).slice(2)}`,
+    cardKind,
     postKey: asString(row.post_key),
     feederId: asNumber(row.feeder_id) ?? undefined,
     signalCode,
@@ -474,9 +538,11 @@ function normalizePagePayload(data: {
   availableCheckpoints?: string[];
   snapshotToken?: string | null;
 }): { items: FireAlertItem[]; hasMore: boolean; total: number; availableCheckpoints: string[]; snapshotToken: string | null } {
-  const items = ((data.rows || []) as AlertRow[])
-    .map(normalizeAlertRow)
-    .filter((row): row is FireAlertItem => row !== null);
+  const items = dedupeFireAlertItems(
+    ((data.rows || []) as AlertRow[])
+      .map(normalizeAlertRow)
+      .filter((row): row is FireAlertItem => row !== null),
+  );
   return {
     items,
     hasMore: data.hasMore ?? false,
@@ -494,6 +560,7 @@ async function fetchBootstrap(pageSize: number): Promise<{
   warmupSummary: WarmupSummary;
   initialDay: string;
   initialPage: FirePagePayload;
+  prefetchedPages: Array<{ day: string; payload: FirePagePayload }>;
 }> {
   const res = await fetch(`/api/fire?mode=bootstrap&pageSize=${encodeURIComponent(String(pageSize))}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Bootstrap fetch failed: ${res.status}`);
@@ -504,6 +571,14 @@ async function fetchBootstrap(pageSize: number): Promise<{
     warmupSummary: data.warmupSummary ?? {},
     initialDay: typeof data.initialDay === 'string' ? data.initialDay : '',
     initialPage: normalizePagePayload(data.initialPage ?? {}),
+    prefetchedPages: Array.isArray(data.prefetchedPages)
+      ? data.prefetchedPages
+        .map((entry: Record<string, unknown>): { day: string; payload: FirePagePayload } => ({
+          day: typeof entry.day === 'string' ? entry.day : '',
+          payload: normalizePagePayload(entry.payload ?? {}),
+        }))
+        .filter((entry: { day: string; payload: FirePagePayload }) => Boolean(entry.day))
+      : [],
   };
 }
 
@@ -573,10 +648,12 @@ async function fetchPage(
 export default function FirePage() {
   const { play } = useAppHaptics();
   const headerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const fetchKeyRef = useRef('');
   const snapshotTokenRef = useRef<string | null>(null);
   const backgroundPrefetchKeyRef = useRef<string | null>(null);
+  const lastMetaRefreshAtRef = useRef(0);
 
   const [pickerDays, setPickerDays] = useState<string[]>([]);
   const [availableFeeds, setAvailableFeeds] = useState<FireFeedOption[]>([]);
@@ -598,6 +675,7 @@ export default function FirePage() {
   const [initialDataReady, setInitialDataReady] = useState(false);
   const useBrowserPageScroll = !isDesktopViewport;
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
+  const headerCompressed = useCompressedOnScroll(contentRef, useBrowserPageScroll && !isDesktopViewport, 24);
 
   const hasActiveFilters = filters.mediaFilter !== 'ALL'
     || filters.selectedFeedIds.length > 0
@@ -608,7 +686,7 @@ export default function FirePage() {
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
   const displayCards = useMemo(
     () => sortFireAlertItems(
-      cards.map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
+      dedupeFireAlertItems(cards).map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
       filters.sort,
     ),
     [cards, filters.sort, warmupSummary],
@@ -635,16 +713,17 @@ export default function FirePage() {
     }>(FIRE_STATE_CACHE_KEY, FIRE_CACHE_TTL);
 
     if (cachedState) {
+      const cachedCards = dedupeFireAlertItems(cachedState.cards || []);
       setPickerDays(cachedState.pickerDays || []);
       setAvailableFeeds(cachedState.availableFeeds || []);
       setSelectedDay(cachedState.selectedDay || '');
       setFilters(pruneFilters(cachedState.filters || createDefaultFireFilters(), cachedState.availableFeeds || []));
-      setCards(cachedState.cards || []);
+      setCards(cachedCards);
       setAvailableCheckpoints(sortCheckpointList(cachedState.availableCheckpoints || []));
       setWarmupSummary(cachedState.warmupSummary || {});
       setHasMore(Boolean(cachedState.hasMore));
       setTotal(cachedState.total || 0);
-      cursorRef.current = cachedState.cursor || (cachedState.cards || []).length;
+      cursorRef.current = cachedCards.length;
       snapshotTokenRef.current = typeof cachedState.snapshotToken === 'string' && cachedState.snapshotToken.trim()
         ? cachedState.snapshotToken
         : null;
@@ -670,8 +749,19 @@ export default function FirePage() {
           availableCheckpoints: [],
           snapshotToken: null,
         };
+        const prefetchedPages = bootstrap.prefetchedPages || [];
 
         setCache(FIRE_META_CACHE_KEY, { days: nextDays, feeds: nextFeeds, warmupSummary: nextWarmupSummary });
+        for (const entry of prefetchedPages) {
+          setCache(`${FIRE_PAGE_CACHE_PREFIX}:${entry.day}:${serializeFilters(defaultFilters)}`, {
+            items: entry.payload.items,
+            hasMore: entry.payload.hasMore,
+            total: entry.payload.total,
+            cursor: entry.payload.items.length,
+            availableCheckpoints: entry.payload.availableCheckpoints,
+            snapshotToken: entry.payload.snapshotToken,
+          });
+        }
         setCache(`${FIRE_PAGE_CACHE_PREFIX}:${initialDay}:${serializeFilters(defaultFilters)}`, {
           items: initialPayload.items,
           hasMore: initialPayload.hasMore,
@@ -681,7 +771,7 @@ export default function FirePage() {
           snapshotToken: initialPayload.snapshotToken,
         });
         prewarmThumbnails(
-          [initialPayload],
+          prefetchedPages.length > 0 ? prefetchedPages.map((entry) => entry.payload) : [initialPayload],
           isDesktopViewport ? FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP : FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE,
         );
 
@@ -735,7 +825,13 @@ export default function FirePage() {
     schedule(() => {
       void (async () => {
         const prewarmedPayloads: FirePagePayload[] = [];
-        for (const day of pickerDays) {
+        const daysToPrefetch = pickBackgroundPrefetchDays(
+          pickerDays,
+          selectedDay,
+          FIRE_BACKGROUND_PREFETCH_DAY_COUNT,
+        );
+
+        for (const day of daysToPrefetch) {
           if (cancelled || day === selectedDay) continue;
           const cacheKey = `${FIRE_PAGE_CACHE_PREFIX}:${day}:${defaultFilterKey}`;
           const cached = getCache<{
@@ -798,7 +894,7 @@ export default function FirePage() {
       observer?.disconnect();
       window.removeEventListener('resize', updateHeight);
     };
-  }, [pickerDays, availableCheckpoints.length, filters.mediaFilter, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
+  }, [headerCompressed, pickerDays, availableCheckpoints.length, filters.mediaFilter, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
 
   useEffect(() => {
     if (!initialDataReady) return;
@@ -966,6 +1062,8 @@ export default function FirePage() {
           return cached.days;
         });
       }
+
+      return;
     }
 
     let meta: Awaited<ReturnType<typeof fetchMeta>>;
@@ -1006,6 +1104,7 @@ export default function FirePage() {
     const run = async () => {
       try {
         await refreshMeta();
+        lastMetaRefreshAtRef.current = Date.now();
       } catch (err) {
         if (!mounted) return;
         console.error('[FirePage] Meta fetch error:', err);
@@ -1016,16 +1115,21 @@ export default function FirePage() {
 
     run();
 
-    const intervalId = window.setInterval(run, 60_000);
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') run();
+    const runIfStale = () => {
+      if (Date.now() - lastMetaRefreshAtRef.current < FIRE_META_REFRESH_INTERVAL_MS) return;
+      void run();
     };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') runIfStale();
+    };
+    const onFocus = () => runIfStale();
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
 
     return () => {
       mounted = false;
-      window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
     };
   }, [initialDataReady, refreshMeta]);
 
@@ -1071,14 +1175,15 @@ export default function FirePage() {
     }>(cacheKey, FIRE_CACHE_TTL);
 
     if (cached) {
-      setCards(cached.items);
+      const cachedItems = dedupeFireAlertItems(cached.items || []);
+      setCards(cachedItems);
       setHasMore(cached.hasMore);
       setTotal(cached.total);
       setAvailableCheckpoints((prev) => {
         const next = sortCheckpointList(cached.availableCheckpoints || []);
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
-      cursorRef.current = cached.cursor;
+      cursorRef.current = cachedItems.length;
       snapshotTokenRef.current = typeof cached.snapshotToken === 'string' && cached.snapshotToken.trim()
         ? cached.snapshotToken
         : null;
@@ -1140,8 +1245,10 @@ export default function FirePage() {
         FIRE_INITIAL_BATCH_SIZE,
       );
       if (fetchKeyRef.current !== key) return;
+      let nextCursor = cursorRef.current;
       setCards((prev) => {
-        const nextCards = [...prev, ...result.items];
+        const nextCards = dedupeFireAlertItems([...prev, ...result.items]);
+        nextCursor = nextCards.length;
         setCache(`${FIRE_PAGE_CACHE_PREFIX}:${key}`, {
           items: nextCards,
           hasMore: result.hasMore,
@@ -1156,7 +1263,7 @@ export default function FirePage() {
       setTotal(result.total);
       setAvailableCheckpoints(result.availableCheckpoints);
       snapshotTokenRef.current = result.snapshotToken;
-      cursorRef.current += result.items.length;
+      cursorRef.current = nextCursor;
     } catch (err) {
       console.error('[FirePage] Load more error:', err);
     } finally {
@@ -1219,27 +1326,32 @@ export default function FirePage() {
           )}
         >
           <div className="relative fm-tab-header-shell">
-            <div className={cn(
-              'relative w-full overflow-hidden rounded-[28px] border border-white/80 border-t-white/90 bg-white/65 backdrop-blur-[40px] backdrop-saturate-[180%]',
-              'shadow-[0_1px_0_rgba(255,255,255,0.95)_inset,0_-1px_0_rgba(0,0,0,0.03)_inset,0_4px_8px_rgba(0,0,0,0.03),0_12px_28px_-4px_rgba(0,0,0,0.08),0_32px_64px_-12px_rgba(0,0,0,0.1)]',
-              'dark:border-white/[0.07] dark:border-t-white/[0.12] dark:bg-[rgba(6,6,6,0.68)]',
-              'dark:shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_-1px_0_rgba(0,0,0,0.5)_inset,0_8px_16px_rgba(0,0,0,0.4),0_24px_48px_-8px_rgba(0,0,0,0.6)]',
-            )}>
+            <div className={cn('fm-liquid-header relative w-full overflow-hidden', headerCompressed && 'fm-liquid-header--compressed')}>
               <div
-                className="pointer-events-none absolute inset-0 z-0 rounded-[28px] transition-opacity dark:opacity-0"
+                className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] transition-opacity dark:opacity-0"
                 style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 30%, rgba(0,0,0,0.015) 100%)' }}
               />
               <div
-                className="pointer-events-none absolute inset-[1px] z-0 rounded-[27px] dark:hidden"
+                className="pointer-events-none absolute inset-[1px] z-0 rounded-[inherit] dark:hidden"
                 style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }}
               />
 
-              <div className="relative z-10 px-3.5 py-3 sm:px-4 sm:py-3.5 lg:px-5 lg:py-2.5">
-                <div className="flex flex-col gap-2.5 lg:hidden">
+              <div className="relative z-10 px-3.5 sm:px-4 lg:px-5">
+                <div className={cn(
+                  'flex flex-col transition-[gap] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] lg:hidden',
+                  headerCompressed ? 'gap-1.5' : 'gap-2.5',
+                )}>
                   <div className="flex items-center justify-between gap-3">
-                    <h1 className="shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">
+                    <motion.h1
+                      animate={{
+                        scale: headerCompressed ? 0.74 : 1,
+                        opacity: headerCompressed ? 0.9 : 1,
+                      }}
+                      transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+                      className="origin-left shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black will-change-transform sm:text-[38px] dark:text-white fm-depth-title"
+                    >
                       FIRE
-                    </h1>
+                    </motion.h1>
                     <div className="flex items-center gap-2">
                       <motion.button
                         whileTap={{ scale: 0.95 }}
@@ -1410,7 +1522,7 @@ export default function FirePage() {
           </div>
         </div>
 
-        <div className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
+        <div ref={contentRef} className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
           {loading ? (
             <div className="flex w-full items-center justify-center" style={fireStateShellStyle()}>
               <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />

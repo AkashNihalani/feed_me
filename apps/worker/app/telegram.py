@@ -11,6 +11,7 @@ If not set, alerting is silently disabled.
 
 from __future__ import annotations
 
+import html
 import os
 import traceback
 from datetime import datetime, timezone
@@ -103,6 +104,39 @@ def alert_daily_summary(
             f"Runs: ✅ {run_ok} | ❌ {run_fail} | ⏳ {pending_run}\n"
             f"Checkpoints: ✅ {checkpoint_ok} | ❌ {checkpoint_fail} | ⏳ {pending_checkpoint}"
         )
+
+
+def alert_post_intelligence_source_issue(
+    *,
+    handle: str | None,
+    post_key: str,
+    media_type: str,
+    reason: str,
+    expected_source: str | None = None,
+    actual_source: str | None = None,
+    detail: str | None = None,
+    post_url: str | None = None,
+) -> None:
+    """Alert when post intelligence cannot analyze a post from the required source."""
+    safe_handle = html.escape(f"@{handle}" if handle else "@unknown")
+    safe_post_key = html.escape(post_key)
+    safe_media_type = html.escape(media_type)
+    safe_reason = html.escape(reason)
+    lines = [
+        "🚨 <b>Post Intelligence Source Mismatch</b>",
+        f"{safe_handle} — {safe_media_type}",
+        f"Post: <code>{safe_post_key}</code>",
+        f"Reason: <code>{safe_reason}</code>",
+    ]
+    if expected_source:
+        lines.append(f"Expected: <code>{html.escape(expected_source)}</code>")
+    if actual_source:
+        lines.append(f"Actual: <code>{html.escape(actual_source)}</code>")
+    if detail:
+        lines.append(f"Detail: <code>{html.escape(detail[:300])}</code>")
+    if post_url:
+        lines.append(f"<a href=\"{html.escape(post_url, quote=True)}\">Open Instagram post</a>")
+    _send("\n".join(lines))
 
 
 def is_enabled() -> bool:

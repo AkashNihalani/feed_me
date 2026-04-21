@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HeatmapPoint } from './dashboardTypes';
@@ -105,7 +105,7 @@ function levelClassName(level: number) {
   return 'bg-[#E11D48] border-[#BE123C] dark:bg-[#E11D48] dark:border-[#FB7185]/75';
 }
 
-export default function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; weeks: number }) {
+function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; weeks: number }) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const mounted = typeof document !== 'undefined';
   const rootRef = useRef<HTMLDivElement>(null);
@@ -322,3 +322,8 @@ export default function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; 
     </div>
   );
 }
+
+const MemoizedPostingHeatmap = memo(PostingHeatmap);
+MemoizedPostingHeatmap.displayName = 'PostingHeatmap';
+
+export default MemoizedPostingHeatmap;

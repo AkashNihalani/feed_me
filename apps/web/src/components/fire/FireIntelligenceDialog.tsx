@@ -10,6 +10,7 @@ import {
   orderedSupportMetricsFromPayload,
   resolveBestMetricFromPayload,
 } from './fireMetricDisplay';
+import { parseFirewatchData } from './firewatchUtils';
 import { getFireSignalMeta, getPatternMechanicLabel } from '@/lib/fireSignals';
 
 type FireIntelligenceDialogProps = {
@@ -63,8 +64,20 @@ function compactOrDash(v: number | null): string {
   return v == null || !Number.isFinite(v) ? '--' : compact(v);
 }
 
+function percentText(v: number | null): string {
+  return v == null || !Number.isFinite(v) ? '--' : `${Math.round(v)}%`;
+}
+
 function multipleOrDash(v: number | null): string {
   return v == null || !Number.isFinite(v) ? '--' : `${v.toFixed(2)}x`;
+}
+
+function liftText(v: number | null): string {
+  return v == null || !Number.isFinite(v) ? '--' : `${v.toFixed(1)}x`;
+}
+
+function compactCount(v: number | null, suffix: string): string {
+  return v == null || !Number.isFinite(v) ? `-- ${suffix}` : `${Math.round(v)} ${suffix}`;
 }
 
 function topPercentOrDash(v: number | null): string {
@@ -354,6 +367,11 @@ export default function FireIntelligenceDialog({
     };
   }, [item]);
 
+  const firewatch = useMemo(
+    () => (item && item.cardKind === 'firewatch' ? parseFirewatchData(item) : null),
+    [item],
+  );
+
   const previewUrl = (item?.previewUrl || '').trim();
   const directThumbnailUrl = (item?.thumbnailUrl || '').trim();
   const thumbnailFallbackUrl = mediaProxyUrl(item?.postKey || '');
@@ -632,17 +650,29 @@ export default function FireIntelligenceDialog({
                 {/* Bottom content over thumbnail */}
                 <div className="absolute inset-x-0 bottom-0 z-10 p-5">
                   <div className="flex flex-wrap gap-1.5">
-                    {!stats.hideSignalChrome && <MetaBadge value={stats.signalLabel} />}
-                    {!stats.hideSignalChrome && <MetaBadge value={stats.signalContext} />}
-                    <MetaBadge value={stats.handle} />
-                    <MetaBadge value={stats.mediaType} />
-                    <MetaBadge value={stats.checkpoint} />
+                    {firewatch ? (
+                      <>
+                        <MetaBadge value="Firewatch" />
+                        <MetaBadge value={firewatch.familyLabel} />
+                        <MetaBadge value={firewatch.feedName} />
+                        <MetaBadge value={firewatch.mediaType} />
+                        <MetaBadge value="D7" />
+                      </>
+                    ) : (
+                      <>
+                        {!stats.hideSignalChrome && <MetaBadge value={stats.signalLabel} />}
+                        {!stats.hideSignalChrome && <MetaBadge value={stats.signalContext} />}
+                        <MetaBadge value={stats.handle} />
+                        <MetaBadge value={stats.mediaType} />
+                        <MetaBadge value={stats.checkpoint} />
+                      </>
+                    )}
                   </div>
                   <div className="mt-3 text-[36px] font-black leading-[0.9] tracking-[-0.04em] text-white">
-                    {compactOrDash(stats.value)}
+                    {firewatch ? percentText(firewatch.avgHotPercentile) : compactOrDash(stats.value)}
                   </div>
                   <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                    {stats.bestMetric}
+                    {firewatch ? 'Avg Top' : stats.bestMetric}
                   </div>
                 </div>
               </div>
@@ -665,197 +695,301 @@ export default function FireIntelligenceDialog({
                 </div>
 
                 <div className="relative flex flex-1 flex-col overflow-y-auto p-6">
-                  {/* Header */}
-                  <div>
-                    <SectionTag>{stats.hideSignalChrome ? 'Checkpoint Snapshot' : 'Intelligence Window'}</SectionTag>
-                    <div className="mt-2 text-[26px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
-                      {stats.hideSignalChrome ? `${stats.handle} · ${stats.checkpoint}` : stats.signalHeadline}
-                    </div>
-                    {!stats.hideSignalChrome && (
-                      <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
-                        {stats.whyNow || 'Signal vs baseline for this post'}
-                      </p>
-                    )}
-                  </div>
-
-                  {stats.patternAlerts.length > 0 && (
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <SectionTag>Pattern Alerts</SectionTag>
-                        <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
-                          {stats.patternAlerts.length} active
+                  {firewatch ? (
+                    <>
+                      <div>
+                        <SectionTag>Firewatch</SectionTag>
+                        <div className="mt-2 text-[26px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
+                          {firewatch.patternLabel}
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          <MetaBadge value={firewatch.familyLabel} />
+                          <MetaBadge value={firewatch.feedName} />
+                          <MetaBadge value={firewatch.mediaType} />
                         </div>
                       </div>
-                      <div className="mt-2.5 space-y-2">
-                        {stats.patternAlerts.map((patternAlert) => (
-                          <div
-                            key={`${patternAlert.signalCode}:${patternAlert.context}:${patternAlert.alertType}`}
-                            className="rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-[12px] font-black tracking-[-0.02em] text-neutral-800 dark:text-white/90">
-                                {patternAlert.patternLabel}
-                              </div>
-                              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
-                                {patternAlert.context} · {patternAlert.alertType}
-                              </div>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {patternAlert.matchCount != null && (
-                                <MetaBadge value={`${Math.round(patternAlert.matchCount)} Winners`} />
-                              )}
-                              {patternAlert.feedersCount != null && patternAlert.feedersCount > 1 && (
-                                <MetaBadge value={`${Math.round(patternAlert.feedersCount)} Feeders`} />
-                              )}
-                              {patternAlert.avgHotPercentile != null && (
-                                <MetaBadge value={`Avg Top ${Math.round(patternAlert.avgHotPercentile)}%`} />
-                              )}
-                              {patternAlert.anchorGap != null && (
-                                <MetaBadge value={`Gap +${Math.round(patternAlert.anchorGap)} pts`} />
-                              )}
-                              {patternAlert.recentLift != null && patternAlert.recentLift > 0 && (
-                                <MetaBadge value={`14d Lift ${patternAlert.recentLift.toFixed(1)}x`} />
-                              )}
-                              {patternAlert.baselineShare != null && (
-                                <MetaBadge value={`Baseline ${Math.round(patternAlert.baselineShare * 100)}%`} />
-                              )}
-                            </div>
-                            {(patternAlert.body || patternAlert.percentile != null) && (
-                              <div className="mt-1 text-[11px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
-                                {patternAlert.body || `Top ${Math.round(patternAlert.percentile || 0)}%`}
-                              </div>
-                            )}
-                            {patternAlert.cues.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {patternAlert.cues.map((cue) => (
-                                  <div
-                                    key={`${patternAlert.signalCode}:${cue}`}
-                                    className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
-                                  >
-                                    {cue}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {patternAlert.supportPosts.length > 0 && (
-                              <div className="mt-2.5">
-                                <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
-                                  Supporting Posts
-                                </div>
-                                <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
-                                  {patternAlert.supportPosts.map((post) => (
-                                    <a
-                                      key={`${patternAlert.signalCode}:${post.postKey || post.postUrl}`}
-                                      href={post.postUrl || '#'}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="shrink-0"
-                                    >
-                                      <div className="h-24 w-20 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                                        {post.thumbnailUrl ? (
-                                          <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                                        ) : null}
-                                      </div>
-                                      <div className="mt-1 max-w-20 truncate text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
-                                        @{(post.handle || 'feed').toUpperCase()}
-                                      </div>
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <CompactStat label="Avg Top" value={percentText(firewatch.avgHotPercentile)} accent />
+                        <CompactStat label="Winners" value={compactCount(firewatch.matchCount, 'hot')} />
+                        <CompactStat
+                          label={firewatch.feedersCount != null && firewatch.feedersCount > 1 ? 'Spread' : 'Format'}
+                          value={firewatch.feedersCount != null && firewatch.feedersCount > 1 ? compactCount(firewatch.feedersCount, 'feeders') : firewatch.mediaType}
+                        />
+                        <CompactStat
+                          label={firewatch.anchorGap != null ? 'Anchor Gap' : '14d Lift'}
+                          value={firewatch.anchorGap != null ? `+${Math.round(firewatch.anchorGap)}` : liftText(firewatch.recentLift)}
+                        />
                       </div>
-                    </div>
+
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <SectionTag>Shared Tags</SectionTag>
+                          {firewatch.baselineShare != null && (
+                            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
+                              Baseline {Math.round(firewatch.baselineShare * 100)}%
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[...(firewatch.requiredCues.length > 0 ? firewatch.requiredCues : firewatch.cues)].slice(0, 6).map((cue) => (
+                            <div
+                              key={`firewatch-cue-${cue}`}
+                              className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
+                            >
+                              {cue}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {firewatch.supportPosts.length > 0 && (
+                        <div className="mt-4">
+                          <SectionTag>Supporting Posts</SectionTag>
+                          <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
+                            {firewatch.supportPosts.map((post) => (
+                              <a
+                                key={`support-${post.postKey}`}
+                                href={post.postUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0"
+                              >
+                                <div className="h-24 w-20 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                                  <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                                </div>
+                                <div className="mt-1 max-w-20 truncate text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
+                                  @{(post.handle || 'feed').toUpperCase()}
+                                </div>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {firewatch.anchorSupportPosts.length > 0 && (
+                        <div className="mt-4">
+                          <SectionTag>Anchor Compare</SectionTag>
+                          <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
+                            {firewatch.anchorSupportPosts.map((post) => (
+                              <a
+                                key={`anchor-${post.postKey}`}
+                                href={post.postUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0"
+                              >
+                                <div className="h-24 w-20 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                                  <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                                </div>
+                                <div className="mt-1 max-w-20 truncate text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
+                                  @{(post.handle || 'feed').toUpperCase()}
+                                </div>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Header */}
+                      <div>
+                        <SectionTag>{stats.hideSignalChrome ? 'Checkpoint Snapshot' : 'Intelligence Window'}</SectionTag>
+                        <div className="mt-2 text-[26px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
+                          {stats.hideSignalChrome ? `${stats.handle} · ${stats.checkpoint}` : stats.signalHeadline}
+                        </div>
+                        {!stats.hideSignalChrome && (
+                          <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
+                            {stats.whyNow || 'Signal vs baseline for this post'}
+                          </p>
+                        )}
+                      </div>
+
+                      {stats.patternAlerts.length > 0 && (
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <SectionTag>Pattern Alerts</SectionTag>
+                            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
+                              {stats.patternAlerts.length} active
+                            </div>
+                          </div>
+                          <div className="mt-2.5 space-y-2">
+                            {stats.patternAlerts.map((patternAlert) => (
+                              <div
+                                key={`${patternAlert.signalCode}:${patternAlert.context}:${patternAlert.alertType}`}
+                                className="rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-[12px] font-black tracking-[-0.02em] text-neutral-800 dark:text-white/90">
+                                    {patternAlert.patternLabel}
+                                  </div>
+                                  <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
+                                    {patternAlert.context} · {patternAlert.alertType}
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {patternAlert.matchCount != null && (
+                                    <MetaBadge value={`${Math.round(patternAlert.matchCount)} Winners`} />
+                                  )}
+                                  {patternAlert.feedersCount != null && patternAlert.feedersCount > 1 && (
+                                    <MetaBadge value={`${Math.round(patternAlert.feedersCount)} Feeders`} />
+                                  )}
+                                  {patternAlert.avgHotPercentile != null && (
+                                    <MetaBadge value={`Avg Top ${Math.round(patternAlert.avgHotPercentile)}%`} />
+                                  )}
+                                  {patternAlert.anchorGap != null && (
+                                    <MetaBadge value={`Gap +${Math.round(patternAlert.anchorGap)} pts`} />
+                                  )}
+                                  {patternAlert.recentLift != null && patternAlert.recentLift > 0 && (
+                                    <MetaBadge value={`14d Lift ${patternAlert.recentLift.toFixed(1)}x`} />
+                                  )}
+                                  {patternAlert.baselineShare != null && (
+                                    <MetaBadge value={`Baseline ${Math.round(patternAlert.baselineShare * 100)}%`} />
+                                  )}
+                                </div>
+                                {(patternAlert.body || patternAlert.percentile != null) && (
+                                  <div className="mt-1 text-[11px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
+                                    {patternAlert.body || `Top ${Math.round(patternAlert.percentile || 0)}%`}
+                                  </div>
+                                )}
+                                {patternAlert.cues.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {patternAlert.cues.map((cue) => (
+                                      <div
+                                        key={`${patternAlert.signalCode}:${cue}`}
+                                        className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
+                                      >
+                                        {cue}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {patternAlert.supportPosts.length > 0 && (
+                                  <div className="mt-2.5">
+                                    <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
+                                      Supporting Posts
+                                    </div>
+                                    <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
+                                      {patternAlert.supportPosts.map((post) => (
+                                        <a
+                                          key={`${patternAlert.signalCode}:${post.postKey || post.postUrl}`}
+                                          href={post.postUrl || '#'}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="shrink-0"
+                                        >
+                                          <div className="h-24 w-20 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                                            {post.thumbnailUrl ? (
+                                              <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                                            ) : null}
+                                          </div>
+                                          <div className="mt-1 max-w-20 truncate text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
+                                            @{(post.handle || 'feed').toUpperCase()}
+                                          </div>
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {/* Hero Metric — accent base, white text */}
-                  <div className="mt-5 rounded-2xl bg-[#E11D48] px-5 py-4">
-                    <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/68">
-                      Hero Metric
-                    </div>
-                    <div className="mt-3 flex items-end justify-between gap-4">
-                      <div>
-                        <div className="text-[42px] font-black leading-none tracking-[-0.05em] text-white">
-                          {compactOrDash(stats.value)}
+                  {!firewatch && (
+                    <>
+                      {/* Hero Metric — accent base, white text */}
+                      <div className="mt-5 rounded-2xl bg-[#E11D48] px-5 py-4">
+                        <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/68">
+                          Hero Metric
                         </div>
-                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
-                          {stats.bestMetric}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[30px] font-black leading-none tracking-[-0.04em] text-white">
-                          {multipleOrDash(stats.multiple)}
-                        </div>
-                        <div className="mt-1 text-[11px] font-medium text-white/70">
-                          {compactOrDash(stats.baseline)} usual
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Supporting Metrics */}
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <SectionTag>Supporting Metrics</SectionTag>
-                      <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
-                        {stats.bestInLastN == null ? 'Best in -- posts' : `Best in ${Math.max(1, Math.round(stats.bestInLastN))} posts`}
-                      </div>
-                    </div>
-                    <div className="mt-2.5 space-y-2">
-                      {stats.supportMetrics.map((metric, index) => (
-                        <SupportMetricRow
-                          key={metric.key}
-                          label={metric.label}
-                          value={metric.value}
-                          multiple={metric.multiple}
-                          accent={index === 0}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="my-4 h-px w-full bg-neutral-200/80 dark:bg-white/[0.06]" />
-
-                  {/* Timing or Trajectory */}
-                  {stats.isD1 ? (
-                    <div>
-                      <SectionTag>Timing</SectionTag>
-                      <div className="mt-2.5 grid grid-cols-3 gap-2">
-                        <CompactStat label="Post Time" value={hourAmPm(stats.hour)} accent />
-                        <CompactStat label="Hour %" value={stats.hourPct == null ? '--' : `Top ${Math.round(stats.hourPct)}%`} />
-                        <CompactStat label="Hour Mult." value={multipleOrDash(stats.hourMult)} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-center justify-between gap-3">
-                        <SectionTag>Trajectory</SectionTag>
-                        <TrajectoryBadge delta={stats.delta} />
-                      </div>
-                      <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                        <div className="flex items-end justify-between gap-4">
+                        <div className="mt-3 flex items-end justify-between gap-4">
                           <div>
-                            <div className="text-[36px] font-black leading-none tracking-[-0.05em] text-neutral-900 dark:text-white">
-                              {signedShift(stats.delta)}
+                            <div className="text-[42px] font-black leading-none tracking-[-0.05em] text-white">
+                              {compactOrDash(stats.value)}
                             </div>
-                            <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
-                              Shift vs first checkpoint
+                            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
+                              {stats.bestMetric}
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-[17px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90">
-                              {topPercentOrDash(stats.currentTrajectory)}
+                            <div className="text-[30px] font-black leading-none tracking-[-0.04em] text-white">
+                              {multipleOrDash(stats.multiple)}
                             </div>
-                            <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
-                              {stats.firstTrajectory == null || stats.currentTrajectory == null ? 'Awaiting data' : 'Current position'}
+                            <div className="mt-1 text-[11px] font-medium text-white/70">
+                              {compactOrDash(stats.baseline)} usual
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+
+                      {/* Supporting Metrics */}
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <SectionTag>Supporting Metrics</SectionTag>
+                          <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
+                            {stats.bestInLastN == null ? 'Best in -- posts' : `Best in ${Math.max(1, Math.round(stats.bestInLastN))} posts`}
+                          </div>
+                        </div>
+                        <div className="mt-2.5 space-y-2">
+                          {stats.supportMetrics.map((metric, index) => (
+                            <SupportMetricRow
+                              key={metric.key}
+                              label={metric.label}
+                              value={metric.value}
+                              multiple={metric.multiple}
+                              accent={index === 0}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Divider */}
+                      <div className="my-4 h-px w-full bg-neutral-200/80 dark:bg-white/[0.06]" />
+
+                      {/* Timing or Trajectory */}
+                      {stats.isD1 ? (
+                        <div>
+                          <SectionTag>Timing</SectionTag>
+                          <div className="mt-2.5 grid grid-cols-3 gap-2">
+                            <CompactStat label="Post Time" value={hourAmPm(stats.hour)} accent />
+                            <CompactStat label="Hour %" value={stats.hourPct == null ? '--' : `Top ${Math.round(stats.hourPct)}%`} />
+                            <CompactStat label="Hour Mult." value={multipleOrDash(stats.hourMult)} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <SectionTag>Trajectory</SectionTag>
+                            <TrajectoryBadge delta={stats.delta} />
+                          </div>
+                          <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                            <div className="flex items-end justify-between gap-4">
+                              <div>
+                                <div className="text-[36px] font-black leading-none tracking-[-0.05em] text-neutral-900 dark:text-white">
+                                  {signedShift(stats.delta)}
+                                </div>
+                                <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
+                                  Shift vs first checkpoint
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[17px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90">
+                                  {topPercentOrDash(stats.currentTrajectory)}
+                                </div>
+                                <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
+                                  {stats.firstTrajectory == null || stats.currentTrajectory == null ? 'Awaiting data' : 'Current position'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* Open Post CTA */}
@@ -868,7 +1002,7 @@ export default function FireIntelligenceDialog({
                       }}
                       className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
                     >
-                      Open Post
+                      {firewatch ? 'Open Hero Post' : 'Open Post'}
                       <ExternalLink size={14} />
                     </button>
                   </div>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { CSSProperties, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
 import FeedApexArch from './FeedApexArch';
@@ -19,7 +19,7 @@ type ActiveFeed = {
 
 interface FeedDetailV2Props {
   activeFeed: ActiveFeed | null | undefined;
-  children: React.ReactNode;
+  children: ReactNode;
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
   usePageScroll?: boolean;
@@ -33,21 +33,41 @@ interface FeedDetailV2Props {
   onExport: () => void;
 }
 
-const staggerContainer = {
-  hidden: {},
-  visible: {
-    transition: { staggerChildren: 0.03, delayChildren: 0.03 },
-  },
+type MobileSectionItem = {
+  key: string;
+  node: ReactNode;
+  className: string;
+  style: CSSProperties;
 };
 
-const tileVariant = {
-  hidden: { y: 8, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number] },
-  },
+type MobileSection = {
+  id: string;
+  items: MobileSectionItem[];
 };
+
+function createStaggerContainer(reduceMotion: boolean) {
+  return {
+    hidden: {},
+    visible: {
+      transition: reduceMotion
+        ? { staggerChildren: 0, delayChildren: 0 }
+        : { staggerChildren: 0.012, delayChildren: 0.02 },
+    },
+  };
+}
+
+function createTileVariant(reduceMotion: boolean) {
+  return {
+    hidden: reduceMotion ? { y: 0, opacity: 1 } : { y: 8, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: reduceMotion
+        ? { duration: 0.01 }
+        : { duration: 0.25, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number] },
+    },
+  };
+}
 
 const MOBILE_TILE_HEIGHTS = {
   ascent: { minHeight: 'clamp(296px, calc(var(--fm-feed-mobile-section-height) - 14px), 540px)' },
@@ -57,6 +77,87 @@ const MOBILE_TILE_HEIGHTS = {
   pattern: { minHeight: 'clamp(276px, calc(var(--fm-feed-mobile-section-height) - 14px), 450px)' },
   heatmap: { minHeight: 'clamp(252px, calc(var(--fm-feed-mobile-section-height) - 14px), 430px)' },
 } as const;
+
+function DeferredMobileSection({
+  section,
+  sectionIndex,
+  scrollRootRef,
+  usePageScroll,
+  eager,
+  reduceMotion,
+}: {
+  section: MobileSection;
+  sectionIndex: number;
+  scrollRootRef: RefObject<HTMLDivElement | null>;
+  usePageScroll: boolean;
+  eager: boolean;
+  reduceMotion: boolean;
+}) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [isReady, setIsReady] = useState(eager);
+  const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
+
+  useEffect(() => {
+    if (eager || isReady || typeof window === 'undefined') return;
+
+    const node = sectionRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting && entry.intersectionRatio <= 0) return;
+        setIsReady(true);
+        observer.disconnect();
+      },
+      {
+        root: usePageScroll ? null : scrollRootRef.current,
+        rootMargin: '120% 0px 120% 0px',
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [eager, isReady, scrollRootRef, usePageScroll]);
+
+  return (
+    <section
+      ref={sectionRef}
+      className="snap-start snap-always flex min-h-[var(--fm-feed-mobile-section-height)] items-center px-2 py-2 sm:px-3"
+      style={{
+        scrollMarginTop: 'calc(var(--fm-mobile-detail-header-offset) + 10px)',
+        contentVisibility: 'auto',
+        containIntrinsicSize: '420px',
+      }}
+    >
+      <div className="fm-tab-canvas-shell mx-auto flex w-full">
+        <div className="mx-auto flex w-full max-w-[760px] flex-col justify-center gap-3">
+          {section.items.map((item, itemIndex) => (
+            isReady ? (
+              <motion.div
+                key={item.key}
+                variants={tileVariant}
+                initial="hidden"
+                animate="visible"
+                transition={reduceMotion || (sectionIndex === 0 && itemIndex === 0)
+                  ? undefined
+                  : { delay: itemIndex * 0.04 }}
+                className={`min-w-0 ${item.className}`}
+                style={item.style}
+              >
+                {item.node}
+              </motion.div>
+            ) : (
+              <div key={item.key} className={`min-w-0 ${item.className}`} style={item.style}>
+                <div className="fm-depth-glass h-full w-full rounded-[22px] border border-white/62 bg-white/48 dark:border-white/8 dark:bg-white/[0.03]" />
+              </div>
+            )
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function FeedDetailV2({
   activeFeed,
@@ -75,6 +176,10 @@ export default function FeedDetailV2({
 }: FeedDetailV2Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const heatmapWeeks = 13;
+  const prefersReducedMotion = useReducedMotion();
+  const reduceMotion = Boolean(prefersReducedMotion);
+  const staggerContainer = useMemo(() => createStaggerContainer(reduceMotion), [reduceMotion]);
+  const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
 
   if (!activeFeed) return null;
 
@@ -96,18 +201,7 @@ export default function FeedDetailV2({
     />
   );
 
-  const mobileSections = [
-    {
-      id: 'ascent',
-      items: [
-        {
-          key: 'ascent',
-          node: ascentTile,
-          className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
-          style: MOBILE_TILE_HEIGHTS.ascent,
-        },
-      ],
-    },
+  const mobileSections: MobileSection[] = [
     {
       id: 'performance',
       items: [
@@ -122,6 +216,17 @@ export default function FeedDetailV2({
           node: killZoneTile,
           className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
           style: MOBILE_TILE_HEIGHTS.standard,
+        },
+      ],
+    },
+    {
+      id: 'ascent',
+      items: [
+        {
+          key: 'ascent',
+          node: ascentTile,
+          className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
+          style: MOBILE_TILE_HEIGHTS.ascent,
         },
       ],
     },
@@ -196,32 +301,21 @@ export default function FeedDetailV2({
 
       <div className="lg:hidden" style={{ paddingBottom: bottomClearance }}>
         {mobileSections.map((section, sectionIndex) => (
-          <section
+          <DeferredMobileSection
             key={section.id}
-            className="snap-start snap-always flex min-h-[var(--fm-feed-mobile-section-height)] items-center px-2 py-2 sm:px-3"
-            style={{ scrollMarginTop: 'calc(var(--fm-mobile-detail-header-offset) + 10px)' }}
-          >
-            <div className="fm-tab-canvas-shell mx-auto flex w-full">
-              <div className="mx-auto flex w-full max-w-[760px] flex-col justify-center gap-3">
-                {section.items.map((item, itemIndex) => (
-                  <motion.div
-                    key={item.key}
-                    variants={tileVariant}
-                    initial="hidden"
-                    animate="visible"
-                    transition={sectionIndex === 0 && itemIndex === 0 ? undefined : { delay: itemIndex * 0.05 }}
-                    className={`min-w-0 ${item.className}`}
-                    style={item.style}
-                  >
-                    {item.node}
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </section>
+            section={section}
+            sectionIndex={sectionIndex}
+            scrollRootRef={scrollRef}
+            usePageScroll={usePageScroll}
+            eager={sectionIndex === 0}
+            reduceMotion={reduceMotion}
+          />
         ))}
 
-        <div className="mt-2 px-2 pb-1 sm:px-3">
+        <div
+          className="mt-2 px-2 pb-1 sm:px-3"
+          style={{ contentVisibility: 'auto', containIntrinsicSize: '860px' }}
+        >
           <div className="fm-tab-canvas-shell mx-auto">
             <div className="w-full pt-1 pb-4">
               <div className="mb-4">

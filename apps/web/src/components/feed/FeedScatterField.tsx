@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { memo, startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ScatterPoint } from './dashboardTypes';
 
@@ -32,7 +32,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-export default function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; windowDays: number }) {
+function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; windowDays: number }) {
   const [activeCount, setActiveCount] = useState<PostCount>(15);
   const [hoveredPoint, setHoveredPoint] = useState<Blip | null>(null);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
@@ -103,15 +103,18 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
     });
   }, [isCompactViewport, points, windowDays]);
 
-  const selectionMeta = useMemo(() => {
-    const ids = new Set<string>();
-    const order = new Map<string, number>();
-    for (let i = 0; i < Math.min(deferredActiveCount, allPoints.length); i++) {
-      ids.add(allPoints[i].id);
-      order.set(allPoints[i].id, i);
+  const visiblePoints = useMemo(
+    () => allPoints.slice(0, Math.min(deferredActiveCount, allPoints.length)),
+    [allPoints, deferredActiveCount],
+  );
+
+  useEffect(() => {
+    if (!hoveredPoint) return;
+    const stillVisible = visiblePoints.some((point) => point.id === hoveredPoint.id);
+    if (!stillVisible) {
+      setHoveredPoint(null);
     }
-    return { ids, order };
-  }, [allPoints, deferredActiveCount]);
+  }, [hoveredPoint, visiblePoints]);
 
   return (
     <motion.div
@@ -121,7 +124,7 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
         <div>
           <span className="fm-label fm-depth-title">Percentage Map</span>
           <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34">
-            {allPoints.length} tracked posts
+            Latest {visiblePoints.length} of {allPoints.length}
           </div>
         </div>
         <div className="hide-scrollbar flex shrink-0 items-center gap-0.5 rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
@@ -159,15 +162,14 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
         </div>
 
         <div className="absolute inset-x-1.5 inset-y-4 sm:inset-x-3 sm:inset-y-4 lg:inset-x-4">
-          {allPoints.map((blip) => {
-            const isInSelection = selectionMeta.ids.has(blip.id);
-            const selectionIndex = selectionMeta.order.get(blip.id) ?? 0;
+          {visiblePoints.map((blip, selectionIndex) => {
             const isTop = (blip.percentile ?? 100) <= TOP_ZONE_PERCENT;
             const dotSize = isCompactViewport
-              ? isInSelection ? (isTop ? 15 : 13) : (isTop ? 10.25 : 8.75)
-              : isInSelection ? (isTop ? 16.5 : 14) : (isTop ? 12 : 10);
+              ? (isTop ? 15 : 13)
+              : (isTop ? 16.5 : 14);
             const targetLeft = `${blip.x}%`;
             const targetBottom = `${blip.y}%`;
+            const shouldPulse = selectionIndex < Math.min(3, visiblePoints.length);
 
             return (
               <motion.button
@@ -176,42 +178,38 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
                 animate={{
                   left: targetLeft,
                   bottom: targetBottom,
-                  opacity: isInSelection ? 1 : isTop ? 0.9 : 0.76,
-                  scale: isInSelection ? 1.08 : 0.98,
-                  filter: isInSelection ? 'brightness(1)' : 'brightness(1)',
+                  opacity: isTop ? 1 : 0.92,
+                  scale: isTop ? 1.08 : 1,
+                  filter: 'brightness(1)',
                 }}
                 transition={{
-                  duration: 0.72,
+                  duration: 0.62,
                   ease: [0.22, 1, 0.36, 1],
-                  delay: isInSelection ? selectionIndex * 0.022 : 0,
+                  delay: selectionIndex * 0.018,
                 }}
                 onClick={() => setHoveredPoint(blip)}
                 onMouseEnter={() => setHoveredPoint(blip)}
                 onMouseLeave={() => setHoveredPoint(null)}
                 className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-500 hover:scale-125 hover:z-50 focus:outline-none"
                 style={{
-                  zIndex: isInSelection ? 40 : isTop ? 20 : 10,
+                  zIndex: isTop ? 30 : 20,
                 }}
               >
                 <motion.div
                   animate={{
                     height: dotSize,
                     width: dotSize,
-                    opacity: isInSelection ? 1 : isTop ? 0.96 : 0.9,
+                    opacity: isTop ? 1 : 0.92,
                   }}
                   transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
                   className={[
                     'rounded-full',
-                    isInSelection
-                      ? isTop
-                        ? 'bg-[#FB7185] shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_0_18px_rgba(225,29,72,0.22)] dark:bg-[#E11D48] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgba(225,29,72,0.45)]'
-                        : 'bg-[#FB7185]/88 shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_14px_rgba(225,29,72,0.14)] dark:bg-[#E11D48]/88 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgba(225,29,72,0.3)]'
-                      : isTop
-                        ? 'bg-black/48 shadow-[0_0_0_1px_rgba(255,255,255,0.34),0_3px_10px_rgba(15,23,42,0.08)] dark:bg-white/36 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_4px_12px_rgba(255,255,255,0.08)]'
-                        : 'bg-black/38 shadow-[0_0_0_1px_rgba(255,255,255,0.28),0_3px_10px_rgba(15,23,42,0.06)] dark:bg-white/28 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_4px_10px_rgba(255,255,255,0.05)]',
+                    isTop
+                      ? 'bg-[#FB7185] shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_0_18px_rgba(225,29,72,0.22)] dark:bg-[#E11D48] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgba(225,29,72,0.45)]'
+                      : 'bg-[#FB7185]/88 shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_14px_rgba(225,29,72,0.14)] dark:bg-[#E11D48]/88 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgba(225,29,72,0.3)]'
                   ].join(' ')}
                 />
-                {isInSelection && (
+                {shouldPulse && (
                   <motion.div
                     className="absolute inset-[-7px] rounded-full border border-[#FB7185]/34 dark:border-[#E11D48]/42"
                     animate={{ scale: [1, 1.4, 1], opacity: [0, 0.28, 0] }}
@@ -250,3 +248,8 @@ export default function FeedScatterField({ points, windowDays }: { points: Scatt
     </motion.div>
   );
 }
+
+const MemoizedFeedScatterField = memo(FeedScatterField);
+MemoizedFeedScatterField.displayName = 'FeedScatterField';
+
+export default MemoizedFeedScatterField;

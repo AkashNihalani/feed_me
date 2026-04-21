@@ -14,18 +14,6 @@ from .config import APP_TIMEZONE
 _PATTERN_LOOKBACK_DAYS = 90
 _PATTERN_RECENT_WINDOW_DAYS = 14
 _PATTERN_HOT_PERCENTILE_MAX = 35
-_PATTERN_MODIFIER_KEYS = (
-    "opening_move",
-    "proof_mode",
-    "pacing",
-    "audio_mode",
-    "style",
-    "text_overlay",
-    "density",
-    "face",
-    "duration_bucket",
-    "depth",
-)
 _PATTERN_CUE_KEYS = (
     "opening_move",
     "proof_mode",
@@ -84,6 +72,16 @@ def resolve_pattern_alerts_for_feed(
             return value.strip().upper()
         return None
 
+    def _normalize_media_type(value: Any) -> str:
+        normalized = str(value or '').strip().lower()
+        if normalized in {'reel', 'video'}:
+            return 'reel'
+        if normalized in {'sidecar', 'carousel'}:
+            return 'carousel'
+        if normalized in {'image', 'photo'}:
+            return 'image'
+        return normalized or 'unknown'
+
     def _is_hot(value: Any) -> bool:
         if isinstance(value, (int, float)):
             return float(value) <= _PATTERN_HOT_PERCENTILE_MAX
@@ -109,23 +107,12 @@ def resolve_pattern_alerts_for_feed(
         mechanic = _tag_text(tags.get('mechanic'))
         if not mechanic:
             return []
-        signatures: list[dict[str, Any]] = [{
+        return [{
             'mechanic': mechanic,
             'modifier_key': None,
             'modifier_value': None,
             'signature_key': mechanic,
         }]
-        for key in _PATTERN_MODIFIER_KEYS:
-            value = _tag_text(tags.get(key))
-            if not value:
-                continue
-            signatures.append({
-                'mechanic': mechanic,
-                'modifier_key': key,
-                'modifier_value': value,
-                'signature_key': f'{mechanic}|{key}:{value}',
-            })
-        return signatures
 
     def _matches_signature(row: dict[str, Any], signature: dict[str, Any]) -> bool:
         tags = _tags(row.get('tags'))
@@ -176,7 +163,7 @@ def resolve_pattern_alerts_for_feed(
             return None
         return round(other_avg - matched_avg, 2)
 
-    def _common_cues(rows: list[dict[str, Any]], signature: dict[str, Any]) -> list[dict[str, Any]]:
+    def _common_cues(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not rows:
             return []
         threshold = max(2, int(len(rows) * 0.6 + 0.999))
@@ -189,19 +176,6 @@ def resolve_pattern_alerts_for_feed(
                     counts[key][value] += 1
 
         cues: list[dict[str, Any]] = []
-        seen: set[tuple[str, str]] = set()
-
-        modifier_key = signature.get('modifier_key')
-        modifier_value = signature.get('modifier_value')
-        if modifier_key and modifier_value:
-            modifier_count = counts[str(modifier_key)].get(str(modifier_value), 0)
-            cues.append({
-                'key': modifier_key,
-                'value': modifier_value,
-                'count': modifier_count,
-            })
-            seen.add((str(modifier_key), str(modifier_value)))
-
         for key in _PATTERN_CUE_KEYS:
             ranked = sorted(counts[key].items(), key=lambda item: (-item[1], item[0]))
             if not ranked:
@@ -209,19 +183,20 @@ def resolve_pattern_alerts_for_feed(
             value, count = ranked[0]
             if count < threshold:
                 continue
-            cue_key = (key, value)
-            if cue_key in seen:
-                continue
             cues.append({
                 'key': key,
                 'value': value,
                 'count': count,
             })
-            seen.add(cue_key)
-            if len(cues) >= 4:
-                break
+        return sorted(cues, key=lambda item: (-int(item['count']), str(item['key']), str(item['value'])))[:4]
 
-        return cues[:4]
+    def _required_cues(cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return cues[:2]
+
+    def _pattern_key(signature: dict[str, Any], media_type: str, cues: list[dict[str, Any]]) -> str:
+        cue_bits = [f"{cue['key']}:{cue['value']}" for cue in _required_cues(cues)]
+        cue_suffix = '|'.join(cue_bits) if cue_bits else 'no-cues'
+        return f"{signature['mechanic']}|media:{media_type}|{cue_suffix}"
 
     def _support_post_keys(rows: list[dict[str, Any]], current_post_key: str) -> list[str]:
         sorted_rows = sorted(
@@ -381,7 +356,7 @@ def resolve_pattern_alerts_for_feed(
             'role': str(row.get('role') or 'standard'),
             'post_key': str(row.get('post_key') or ''),
             'posted_at': _to_dt(row.get('posted_at'), app_timezone=timezone_name),
-            'media_type': str(row.get('media_type') or 'unknown'),
+            'media_type': _normalize_media_type(row.get('media_type')),
             'business_day': row.get('business_date_ist'),
             'percentile': float(row['percentile_performance']) if isinstance(row.get('percentile_performance'), (int, float)) else None,
             'views': row.get('views'),
@@ -410,22 +385,34 @@ def resolve_pattern_alerts_for_feed(
         if not signatures:
             continue
 
-        feeder_rows = [row for row in feed_rows if row['feeder_id'] == current_row['feeder_id']]
-        feeder_hot_rows = [row for row in feed_hot_rows if row['feeder_id'] == current_row['feeder_id']]
-        anchor_rows = [row for row in feed_rows if anchor_feeder_id is not None and row['feeder_id'] == anchor_feeder_id]
+        current_media_type = current_row['media_type']
+        feeder_rows = [
+            row for row in feed_rows
+            if row['feeder_id'] == current_row['feeder_id'] and row['media_type'] == current_media_type
+        ]
+        feeder_hot_rows = [
+            row for row in feed_hot_rows
+            if row['feeder_id'] == current_row['feeder_id'] and row['media_type'] == current_media_type
+        ]
+        feed_media_rows = [row for row in feed_rows if row['media_type'] == current_media_type]
+        feed_media_hot_rows = [row for row in feed_hot_rows if row['media_type'] == current_media_type]
+        anchor_rows = [
+            row for row in feed_rows
+            if anchor_feeder_id is not None and row['feeder_id'] == anchor_feeder_id and row['media_type'] == current_media_type
+        ]
         family_best: dict[str, dict[str, Any]] = {}
 
         for signature in signatures:
-            is_modifier = signature.get('modifier_key') is not None
-            min_match_count = 3 if is_modifier else 3
-            avg_limit = 22 if is_modifier else 25
-            baseline_limit = 0.30 if is_modifier else 0.50
+            min_match_count = 3
+            avg_limit = _PATTERN_HOT_PERCENTILE_MAX
+            baseline_limit = 0.80
 
             own_hot_matches = [row for row in feeder_hot_rows if _matches_signature(row, signature)]
             own_avg = _avg_percentile(own_hot_matches)
             own_baseline = _baseline_share(feeder_rows, signature)
             own_lift = _recent_lift(own_hot_matches)
             own_contrast = _contrast_gap([row for row in feeder_rows if row.get('percentile') is not None], signature)
+            own_cues = _common_cues(own_hot_matches)
 
             if (
                 len(own_hot_matches) >= min_match_count
@@ -433,6 +420,7 @@ def resolve_pattern_alerts_for_feed(
                 and own_avg <= avg_limit
                 and own_baseline is not None
                 and own_baseline <= baseline_limit
+                and len(_required_cues(own_cues)) >= 2
             ):
                 score = _candidate_score('own', signature, len(own_hot_matches), own_avg, own_baseline, recent_lift=own_lift)
                 candidate = {
@@ -447,7 +435,10 @@ def resolve_pattern_alerts_for_feed(
                     'recent_lift': own_lift,
                     'contrast_gap': own_contrast,
                     'support_post_keys': _support_post_keys(own_hot_matches, current_row['post_key']),
-                    'cues': _common_cues(own_hot_matches, signature),
+                    'cues': own_cues,
+                    'required_cues': _required_cues(own_cues),
+                    'media_type': current_media_type,
+                    'pattern_key': _pattern_key(signature, current_media_type, own_cues),
                     'score': score,
                 }
                 family_best['own'] = max(
@@ -461,24 +452,26 @@ def resolve_pattern_alerts_for_feed(
                     ),
                 )
 
-            cross_hot_matches = [row for row in feed_hot_rows if _matches_signature(row, signature)]
+            cross_hot_matches = [row for row in feed_media_hot_rows if _matches_signature(row, signature)]
             cross_avg = _avg_percentile(cross_hot_matches)
-            cross_baseline = _baseline_share(feed_rows, signature)
+            cross_baseline = _baseline_share(feed_media_rows, signature)
             cross_lift = _recent_lift(cross_hot_matches)
             cross_feeder_counts: dict[int, int] = defaultdict(int)
             for row in cross_hot_matches:
                 cross_feeder_counts[row['feeder_id']] += 1
             cross_feeders = len(cross_feeder_counts)
             dominant_share = (max(cross_feeder_counts.values()) / len(cross_hot_matches)) if cross_hot_matches else 1.0
+            cross_cues = _common_cues(cross_hot_matches)
 
             if (
-                len(cross_hot_matches) >= (3 if is_modifier else 4)
+                len(cross_hot_matches) >= 2
                 and cross_feeders >= 2
                 and cross_avg is not None
                 and cross_avg <= avg_limit
                 and cross_baseline is not None
                 and cross_baseline <= baseline_limit
                 and dominant_share <= 0.60
+                and len(_required_cues(cross_cues)) >= 2
             ):
                 score = _candidate_score(
                     'cross',
@@ -501,7 +494,10 @@ def resolve_pattern_alerts_for_feed(
                     'recent_lift': cross_lift,
                     'contrast_gap': own_contrast,
                     'support_post_keys': _support_post_keys(cross_hot_matches, current_row['post_key']),
-                    'cues': _common_cues(cross_hot_matches, signature),
+                    'cues': cross_cues,
+                    'required_cues': _required_cues(cross_cues),
+                    'media_type': current_media_type,
+                    'pattern_key': _pattern_key(signature, current_media_type, cross_cues),
                     'score': score,
                 }
                 family_best['cross'] = max(
@@ -524,6 +520,8 @@ def resolve_pattern_alerts_for_feed(
             ]
             anchor_avg = _avg_percentile(anchor_signature_rows)
             anchor_gap = round(anchor_avg - own_avg, 2) if anchor_avg is not None and own_avg is not None else None
+            anchor_pattern_rows = own_hot_matches + anchor_signature_rows
+            anchor_cues = _common_cues(anchor_pattern_rows)
 
             if (
                 len(own_hot_matches) >= 2
@@ -534,6 +532,7 @@ def resolve_pattern_alerts_for_feed(
                 and own_baseline <= baseline_limit
                 and anchor_gap is not None
                 and anchor_gap >= 6
+                and len(_required_cues(anchor_cues)) >= 2
             ):
                 score = _candidate_score(
                     'anchor',
@@ -557,7 +556,11 @@ def resolve_pattern_alerts_for_feed(
                     'anchor_avg_percentile': anchor_avg,
                     'anchor_gap': anchor_gap,
                     'support_post_keys': _support_post_keys(own_hot_matches, current_row['post_key']),
-                    'cues': _common_cues(own_hot_matches, signature),
+                    'anchor_support_post_keys': _support_post_keys(anchor_signature_rows, ''),
+                    'cues': anchor_cues,
+                    'required_cues': _required_cues(anchor_cues),
+                    'media_type': current_media_type,
+                    'pattern_key': _pattern_key(signature, current_media_type, anchor_cues),
                     'score': score,
                 }
                 family_best['anchor'] = max(
@@ -596,6 +599,8 @@ def resolve_pattern_alerts_for_feed(
                 'mechanic': candidate['signature']['mechanic'],
                 'modifier_key': candidate['signature'].get('modifier_key'),
                 'modifier_value': candidate['signature'].get('modifier_value'),
+                'media_type': candidate.get('media_type'),
+                'pattern_key': candidate.get('pattern_key'),
                 'match_count': candidate['match_count'],
                 'feeders_count': candidate['feeders_count'],
                 'avg_hot_percentile': candidate['avg_percentile'],
@@ -605,7 +610,9 @@ def resolve_pattern_alerts_for_feed(
                 'anchor_avg_percentile': candidate.get('anchor_avg_percentile'),
                 'anchor_gap': candidate.get('anchor_gap'),
                 'cues': candidate.get('cues') or [],
+                'required_cues': candidate.get('required_cues') or [],
                 'support_post_keys': candidate.get('support_post_keys') or [],
+                'anchor_support_post_keys': candidate.get('anchor_support_post_keys') or [],
             }
             dedupe_key = ':'.join([
                 'pattern-v2',

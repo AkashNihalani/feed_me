@@ -5,6 +5,7 @@ import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
 import { FireCard3D } from './FireCard3D';
+import { FireWatchCard3D } from './FireWatchCard3D';
 
 interface FluidDeckProps {
   cards: FireItem[];
@@ -180,8 +181,8 @@ function VirtualSlot({
           transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
           className="relative w-full"
           style={{ zIndex: isActive ? 30 : 10 }}
-        >
-          <div
+          >
+            <div
             className={[
               'rounded-[22px] transition-shadow duration-250',
               isDesktop
@@ -192,15 +193,26 @@ function VirtualSlot({
                   ? 'shadow-[0_20px_38px_rgba(0,0,0,0.24)] dark:shadow-[0_24px_44px_rgba(0,0,0,0.6)]'
                   : 'shadow-[0_12px_24px_rgba(0,0,0,0.18)] dark:shadow-[0_14px_28px_rgba(0,0,0,0.46)]',
             ].join(' ')}
-          >
-            <FireCard3D
-              item={item}
-              highlighted={isActive}
-              layoutMode={isDesktop ? 'desktop' : 'mobile'}
-              mobileAutoplayEnabled={mobileAutoplayEnabled}
-              onOpenDetails={onOpenDetails}
-              onBeforeOpenPost={onBeforeOpenPost}
-            />
+            >
+            {item.cardKind === 'firewatch' ? (
+              <FireWatchCard3D
+                item={item}
+                highlighted={isActive}
+                layoutMode={isDesktop ? 'desktop' : 'mobile'}
+                mobileAutoplayEnabled={mobileAutoplayEnabled}
+                onOpenDetails={onOpenDetails}
+                onBeforeOpenPost={onBeforeOpenPost}
+              />
+            ) : (
+              <FireCard3D
+                item={item}
+                highlighted={isActive}
+                layoutMode={isDesktop ? 'desktop' : 'mobile'}
+                mobileAutoplayEnabled={mobileAutoplayEnabled}
+                onOpenDetails={onOpenDetails}
+                onBeforeOpenPost={onBeforeOpenPost}
+              />
+            )}
           </div>
         </motion.div>
       ) : (
@@ -644,16 +656,29 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                       ['--fire-card-aspect' as string]: '9 / 14',
                     }}
                   >
-                    <FireCard3D
-                      item={card}
-                      highlighted={isCurrent}
-                      layoutMode="mobile"
-                      mobileAutoplayEnabled={mobileAutoplayEnabled}
-                      showMobileAutoplayToggle={isCurrent}
-                      onOpenDetails={() => undefined}
-                      onToggleMobileAutoplay={setMobileAutoplayEnabled}
-                      onBeforeOpenPost={persistStandaloneDeckState}
-                    />
+                    {card.cardKind === 'firewatch' ? (
+                      <FireWatchCard3D
+                        item={card}
+                        highlighted={isCurrent}
+                        layoutMode="mobile"
+                        mobileAutoplayEnabled={mobileAutoplayEnabled}
+                        showMobileAutoplayToggle={isCurrent}
+                        onOpenDetails={() => undefined}
+                        onToggleMobileAutoplay={setMobileAutoplayEnabled}
+                        onBeforeOpenPost={persistStandaloneDeckState}
+                      />
+                    ) : (
+                      <FireCard3D
+                        item={card}
+                        highlighted={isCurrent}
+                        layoutMode="mobile"
+                        mobileAutoplayEnabled={mobileAutoplayEnabled}
+                        showMobileAutoplayToggle={isCurrent}
+                        onOpenDetails={() => undefined}
+                        onToggleMobileAutoplay={setMobileAutoplayEnabled}
+                        onBeforeOpenPost={persistStandaloneDeckState}
+                      />
+                    )}
                   </div>
                 </div>
               </motion.div>
