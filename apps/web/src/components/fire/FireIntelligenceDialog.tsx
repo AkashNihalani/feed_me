@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
@@ -58,6 +59,14 @@ function withRetryBust(url: string, seed: string): string {
     const joiner = value.includes('?') ? '&' : '?';
     return `${value}${joiner}_retry=${encodeURIComponent(seed)}`;
   }
+}
+
+function buildFeederArchiveHref(item: FireItem | null): string | null {
+  if (!item || item.cardKind === 'firewatch') return null;
+  const feedId = item.feedId;
+  const handle = String(item.surfaceHandle || item.handle || '').replace(/^@+/, '').trim().toLowerCase();
+  if (!Number.isFinite(feedId) || !handle) return null;
+  return `/feed/${feedId}/feeder/${encodeURIComponent(handle)}`;
 }
 
 function compactOrDash(v: number | null): string {
@@ -128,6 +137,38 @@ function MetaBadge({ value }: { value: string }) {
     <span className="rounded-full border border-white/[0.12] bg-black/40 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/80 backdrop-blur-sm dark:border-white/[0.12] dark:bg-black/40 dark:text-white/80">
       {value}
     </span>
+  );
+}
+
+function TrackingInfoBadge({ value }: { value: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-neutral-600 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/62">
+      {value}
+    </span>
+  );
+}
+
+function TrackingArchivePill({
+  href,
+  label,
+}: {
+  href: string | null;
+  label: string;
+}) {
+  const content = (
+    <span className="fm-dialog-handle-pill inline-flex max-w-full items-center rounded-full border border-white/[0.18] bg-black/46 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white shadow-[0_12px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-[20px] dark:border-white/[0.16] dark:bg-black/52">
+      <span className="relative z-10 block max-w-[180px] truncate sm:max-w-[220px]">
+        {label}
+      </span>
+    </span>
+  );
+
+  if (!href) return content;
+
+  return (
+    <Link href={href} className="shrink-0" onClick={(event) => event.stopPropagation()}>
+      {content}
+    </Link>
   );
 }
 
@@ -357,10 +398,6 @@ export default function FireIntelligenceDialog({
       checkpoint: item.checkpoint.toUpperCase(),
       handle: `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`,
       mediaType: (item.surfaceMediaType || 'POST').toUpperCase(),
-      signalLabel: item.signalLabel || 'Signal',
-      signalHeadline: item.signalHeadline || item.title || 'Live signal',
-      signalContext: item.signalContext.toUpperCase(),
-      whyNow: item.whyNow || '',
       isD1: item.checkpoint.toUpperCase() === 'D1',
       patternAlerts,
       hideSignalChrome: item.hideSignalChrome === true,
@@ -403,6 +440,7 @@ export default function FireIntelligenceDialog({
     && ((item.surfaceMediaType || item.mediaType || '').toUpperCase() === 'REEL'),
   );
   const shouldRenderPreview = canPreview && !previewFailed;
+  const trackingArchiveHref = useMemo(() => buildFeederArchiveHref(item), [item]);
 
   useEffect(() => {
     if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
@@ -644,37 +682,26 @@ export default function FireIntelligenceDialog({
                     }}
                   />
                 ) : null}
-                {/* Bottom gradient for legibility */}
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_30%,rgba(0,0,0,0.7)_70%,rgba(0,0,0,0.92)_100%)]" />
-
-                {/* Bottom content over thumbnail */}
-                <div className="absolute inset-x-0 bottom-0 z-10 p-5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {firewatch ? (
-                      <>
+                {firewatch ? (
+                  <>
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_30%,rgba(0,0,0,0.7)_70%,rgba(0,0,0,0.92)_100%)]" />
+                    <div className="absolute inset-x-0 bottom-0 z-10 p-5">
+                      <div className="flex flex-wrap gap-1.5">
                         <MetaBadge value="Firewatch" />
                         <MetaBadge value={firewatch.familyLabel} />
                         <MetaBadge value={firewatch.feedName} />
                         <MetaBadge value={firewatch.mediaType} />
                         <MetaBadge value="D7" />
-                      </>
-                    ) : (
-                      <>
-                        {!stats.hideSignalChrome && <MetaBadge value={stats.signalLabel} />}
-                        {!stats.hideSignalChrome && <MetaBadge value={stats.signalContext} />}
-                        <MetaBadge value={stats.handle} />
-                        <MetaBadge value={stats.mediaType} />
-                        <MetaBadge value={stats.checkpoint} />
-                      </>
-                    )}
-                  </div>
-                  <div className="mt-3 text-[36px] font-black leading-[0.9] tracking-[-0.04em] text-white">
-                    {firewatch ? percentText(firewatch.avgHotPercentile) : compactOrDash(stats.value)}
-                  </div>
-                  <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                    {firewatch ? 'Avg Top' : stats.bestMetric}
-                  </div>
-                </div>
+                      </div>
+                      <div className="mt-3 text-[36px] font-black leading-[0.9] tracking-[-0.04em] text-white">
+                        {percentText(firewatch.avgHotPercentile)}
+                      </div>
+                      <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                        Avg Top
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </div>
 
               {/* ── Right: Intelligence Panel — frosted glass over thumbnail bleed ── */}
@@ -793,21 +820,8 @@ export default function FireIntelligenceDialog({
                     </>
                   ) : (
                     <>
-                      {/* Header */}
-                      <div>
-                        <SectionTag>{stats.hideSignalChrome ? 'Checkpoint Snapshot' : 'Intelligence Window'}</SectionTag>
-                        <div className="mt-2 text-[26px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
-                          {stats.hideSignalChrome ? `${stats.handle} · ${stats.checkpoint}` : stats.signalHeadline}
-                        </div>
-                        {!stats.hideSignalChrome && (
-                          <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
-                            {stats.whyNow || 'Signal vs baseline for this post'}
-                          </p>
-                        )}
-                      </div>
-
                       {stats.patternAlerts.length > 0 && (
-                        <div className="mt-4">
+                        <div>
                           <div className="flex items-center justify-between gap-3">
                             <SectionTag>Pattern Alerts</SectionTag>
                             <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
@@ -902,14 +916,20 @@ export default function FireIntelligenceDialog({
 
                   {!firewatch && (
                     <>
+                      <div className={`${stats.patternAlerts.length > 0 ? 'mt-4 ' : ''}mb-3 flex min-w-0 flex-wrap items-center gap-2`}>
+                        <TrackingArchivePill href={trackingArchiveHref} label={stats.handle} />
+                        <TrackingInfoBadge value={stats.mediaType} />
+                        <TrackingInfoBadge value={stats.checkpoint} />
+                      </div>
+
                       {/* Hero Metric — accent base, white text */}
-                      <div className="mt-5 rounded-2xl bg-[#E11D48] px-5 py-4">
+                      <div className="rounded-2xl bg-[#E11D48] px-4 py-3.5">
                         <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/68">
                           Hero Metric
                         </div>
-                        <div className="mt-3 flex items-end justify-between gap-4">
+                        <div className="mt-2.5 flex items-end justify-between gap-4">
                           <div>
-                            <div className="text-[42px] font-black leading-none tracking-[-0.05em] text-white">
+                            <div className="text-[38px] font-black leading-none tracking-[-0.05em] text-white">
                               {compactOrDash(stats.value)}
                             </div>
                             <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
@@ -917,7 +937,7 @@ export default function FireIntelligenceDialog({
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-[30px] font-black leading-none tracking-[-0.04em] text-white">
+                            <div className="text-[28px] font-black leading-none tracking-[-0.04em] text-white">
                               {multipleOrDash(stats.multiple)}
                             </div>
                             <div className="mt-1 text-[11px] font-medium text-white/70">
@@ -928,14 +948,14 @@ export default function FireIntelligenceDialog({
                       </div>
 
                       {/* Supporting Metrics */}
-                      <div className="mt-4">
+                      <div className="mt-3.5">
                         <div className="flex items-center justify-between gap-3">
                           <SectionTag>Supporting Metrics</SectionTag>
                           <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
                             {stats.bestInLastN == null ? 'Best in -- posts' : `Best in ${Math.max(1, Math.round(stats.bestInLastN))} posts`}
                           </div>
                         </div>
-                        <div className="mt-2.5 space-y-2">
+                        <div className="mt-2 space-y-2">
                           {stats.supportMetrics.map((metric, index) => (
                             <SupportMetricRow
                               key={metric.key}
@@ -949,7 +969,7 @@ export default function FireIntelligenceDialog({
                       </div>
 
                       {/* Divider */}
-                      <div className="my-4 h-px w-full bg-neutral-200/80 dark:bg-white/[0.06]" />
+                      <div className="my-3.5 h-px w-full bg-neutral-200/80 dark:bg-white/[0.06]" />
 
                       {/* Timing or Trajectory */}
                       {stats.isD1 ? (

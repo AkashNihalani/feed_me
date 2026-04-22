@@ -1,24 +1,69 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+} from 'framer-motion';
 import { DashboardSummary } from './dashboardTypes';
 
-type MetricRow = { label: string; value: number | null };
-const SCALE_MAX = 3.5;
+type MetricKey = 'views' | 'likes' | 'comments';
 
-function percentileToRatio(value: number | null): number | null {
-  if (value === null) return null;
-  return Math.max(0.4, Math.min(SCALE_MAX, (101 - value) / 35));
+type MetricRow = {
+  key: MetricKey;
+  label: 'VIEWS' | 'LIKES' | 'COMMENTS';
+  current: number | null;
+  baseline: number | null;
+};
+
+type Tag =
+  | { kind: 'none' }
+  | { kind: 'base' }
+  | { kind: 'above'; delta: number }
+  | { kind: 'below'; delta: number };
+
+const SCALE_MAX = 3.5;
+const EQ_TOL = 0.05;
+const EASE = [0.25, 0.1, 0.25, 1] as const;
+const LAYOUT_SPRING = { type: 'spring', stiffness: 420, damping: 36, mass: 0.9 } as const;
+const BAR_SPRING = { type: 'spring', stiffness: 160, damping: 24, mass: 0.9 } as const;
+const MARKER_SPRING = { type: 'spring', stiffness: 220, damping: 28 } as const;
+
+function percentileToRatio(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0.4, Math.min(SCALE_MAX, (101 - n) / 35));
 }
 
-function AnimatedMultiplier({ value }: { value: number | null }) {
+function tagFor(current: number | null, baseline: number | null): Tag {
+  if (current == null || baseline == null) return { kind: 'none' };
+  const delta = current - baseline;
+  if (Math.abs(delta) <= EQ_TOL) return { kind: 'base' };
+  return delta > 0 ? { kind: 'above', delta } : { kind: 'below', delta: -delta };
+}
+
+function toPct(value: number | null, min = 0, max = 100) {
+  if (value == null) return 0;
+  const pct = (value / SCALE_MAX) * 100;
+  return Math.max(min, Math.min(max, pct));
+}
+
+function formatTopPercentile(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '--';
+  return `Top ${Math.round(value)}%`;
+}
+
+function AnimatedMultiplier({ value, suffix = 'x' }: { value: number | null; suffix?: string }) {
   const mv = useMotionValue(0);
   const spring = useSpring(mv, { stiffness: 320, damping: 28, mass: 0.9 });
-  const [renderValue, setRenderValue] = useState(value ?? 0);
+  const [rendered, setRendered] = useState(value ?? 0);
 
   useEffect(() => {
-    const unsub = spring.on('change', (v) => setRenderValue(v));
+    const unsub = spring.on('change', (v) => setRendered(v));
     return unsub;
   }, [spring]);
 
@@ -27,72 +72,290 @@ function AnimatedMultiplier({ value }: { value: number | null }) {
   }, [mv, value]);
 
   if (value === null) return <>--</>;
-  return <>{renderValue.toFixed(1)}x</>;
+  return <>{rendered.toFixed(1)}{suffix}</>;
 }
 
-export default function FeedVelocityBars({ summary }: { summary: DashboardSummary | null }) {
-  const metrics: MetricRow[] = [
-    { label: 'Views', value: percentileToRatio(summary?.avg_views_percentile ?? null) },
-    { label: 'Likes', value: percentileToRatio(summary?.avg_likes_percentile ?? null) },
-    { label: 'Comments', value: percentileToRatio(summary?.avg_comments_percentile ?? null) },
-  ];
-  const hasData = metrics.some((metric) => metric.value !== null);
-  const postsWithMetrics = Math.max(0, Number(summary?.posts_with_metrics) || 0);
+function AnimatedDelta({ delta }: { delta: number }) {
+  const mv = useMotionValue(delta);
+  const spring = useSpring(mv, { stiffness: 320, damping: 28, mass: 0.9 });
+  const [rendered, setRendered] = useState(delta);
+
+  useEffect(() => {
+    const unsub = spring.on('change', (v) => setRendered(v));
+    return unsub;
+  }, [spring]);
+
+  useEffect(() => {
+    mv.set(delta);
+  }, [mv, delta]);
+
+  return <>{rendered.toFixed(1)}</>;
+}
+
+function TagChip({ tag }: { tag: Tag }) {
+  if (tag.kind === 'none') return null;
+
+  const tagKey = tag.kind === 'base' ? 'base' : tag.kind;
+  const isPositive = tag.kind === 'above';
+  const isNegative = tag.kind === 'below';
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
-      <div className="relative z-10 flex flex-1 flex-col">
-        <div className="mb-2 flex items-center justify-between">
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.span
+        key={tagKey}
+        initial={{ opacity: 0, y: 4, scale: 0.92 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -4, scale: 0.92 }}
+        transition={{ duration: 0.22, ease: EASE }}
+        className={[
+          'fm-depth-chip inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1.5 leading-none sm:px-3.5 sm:py-1.5',
+          'text-[11px] font-black uppercase tracking-[0.12em] sm:text-[11.5px] sm:tracking-[0.14em] lg:text-[12px]',
+          isPositive
+            ? 'text-[#E11D48]'
+            : 'text-foreground/55 dark:text-white/55',
+        ].join(' ')}
+        style={
+          isPositive
+            ? {
+                background: 'rgba(225,29,72,0.1)',
+                boxShadow:
+                  '0 1px 0 rgba(255,255,255,0.66) inset, 0 -1px 0 rgba(225,29,72,0.08) inset, 0 0 0 1px rgba(225,29,72,0.18) inset, 0 5px 14px -6px rgba(225,29,72,0.24)',
+              }
+            : isNegative
+              ? {
+                  background: 'rgba(17,24,39,0.04)',
+                  boxShadow:
+                    '0 1px 0 rgba(255,255,255,0.66) inset, 0 0 0 1px rgba(17,24,39,0.06) inset, 0 4px 12px -8px rgba(17,24,39,0.12)',
+                }
+              : undefined
+        }
+      >
+        {tag.kind === 'base' && <span>BASE</span>}
+        {tag.kind === 'above' && (
+          <span>
+            +<AnimatedDelta delta={tag.delta} />
+          </span>
+        )}
+        {tag.kind === 'below' && (
+          <span>
+            -<AnimatedDelta delta={tag.delta} />
+          </span>
+        )}
+      </motion.span>
+    </AnimatePresence>
+  );
+}
+
+function FooterStat({
+  label,
+  value,
+  meta,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  meta: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="fm-depth-inner flex min-h-[72px] flex-col justify-between rounded-[14px] px-3 py-2.5 sm:min-h-[78px] sm:px-3.5">
+      <span className="fm-depth-title text-[8px] font-black uppercase tracking-[0.18em] text-foreground/40 dark:text-white/36 sm:text-[9px]">
+        {label}
+      </span>
+      <div className="flex flex-col gap-0.5">
+        <span
+          className={[
+            'fm-depth-title text-[clamp(18px,2.2vw,28px)] font-black leading-none tracking-[-0.04em]',
+            accent ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
+          ].join(' ')}
+        >
+          {value}
+        </span>
+        <span className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/32 sm:text-[10px]">
+          {meta}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PerformanceRow({
+  row,
+  reduceMotion,
+}: {
+  row: MetricRow;
+  reduceMotion: boolean;
+}) {
+  const tag = tagFor(row.current, row.baseline);
+  const fillPct = toPct(row.current, 4, 100);
+  const markerPct = row.baseline == null ? null : toPct(row.baseline, 2, 100);
+  const isAbove = tag.kind === 'above';
+  const isBelow = tag.kind === 'below';
+
+  return (
+    <motion.li
+      layout={reduceMotion ? false : 'position'}
+      transition={reduceMotion ? { duration: 0 } : { layout: LAYOUT_SPRING }}
+      className="fm-depth-inner relative flex min-h-[104px] w-full min-w-0 flex-1 flex-col justify-between gap-2.5 rounded-[16px] px-3 py-3 sm:min-h-[118px] sm:gap-3 sm:px-3.5 sm:py-3.5 lg:min-h-[124px]"
+    >
+      <div className="relative z-[1] flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2">
+          <span className="fm-depth-title shrink-0 text-[10px] font-black uppercase leading-none tracking-[0.18em] text-foreground/45 dark:text-white/40 sm:text-[11px] lg:text-[11.5px]">
+            {row.label}
+          </span>
+          <span
+            className={[
+              'fm-depth-title font-black leading-none tracking-[-0.04em]',
+              'text-[clamp(40px,11vw,54px)] sm:text-[clamp(40px,5.3vw,52px)] lg:text-[clamp(42px,3.25vw,58px)]',
+              isBelow ? 'text-foreground/55 dark:text-white/55' : 'text-foreground dark:text-white',
+            ].join(' ')}
+          >
+            <AnimatedMultiplier value={row.current} />
+          </span>
+        </div>
+        <TagChip tag={tag} />
+      </div>
+
+      <div className="relative h-[9px] w-full overflow-visible rounded-full sm:h-[11px] lg:h-[12px]">
+        <div
+          className="absolute inset-0 rounded-full border border-black/5 bg-[linear-gradient(180deg,rgba(0,0,0,0.05),rgba(0,0,0,0.02))] shadow-[inset_0_1px_2px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(255,255,255,0.6)] dark:border-white/5 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.55),inset_0_-1px_0_rgba(255,255,255,0.03)]"
+          aria-hidden
+        />
+
+        <motion.div
+          layout={false}
+          initial={reduceMotion ? false : { width: 0 }}
+          animate={{ width: `${fillPct}%` }}
+          transition={reduceMotion ? { duration: 0 } : BAR_SPRING}
+          className={[
+            'absolute bottom-0 left-0 top-0 overflow-hidden rounded-full',
+            isAbove ? 'shadow-[0_-2px_14px_rgba(225,29,72,0.32)]' : '',
+          ].join(' ')}
+          style={{
+            background: isBelow
+              ? 'linear-gradient(180deg, rgba(0,0,0,0.28), rgba(0,0,0,0.20))'
+              : isAbove
+                ? '#E11D48'
+                : 'linear-gradient(90deg, rgba(225,29,72,0.92), rgba(225,29,72,0.72))',
+          }}
+        >
+          <div
+            className={[
+              'absolute inset-x-0 top-0 h-[2px] rounded-t-full',
+              isBelow ? 'bg-white/15' : 'bg-white/55',
+            ].join(' ')}
+            aria-hidden
+          />
+        </motion.div>
+
+        {markerPct != null && (
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 z-[2] -translate-y-1/2"
+            style={{
+              left: `${markerPct}%`,
+              height: 'calc(100% + 10px)',
+            }}
+            initial={false}
+            animate={{ left: `${markerPct}%` }}
+            transition={reduceMotion ? { duration: 0 } : MARKER_SPRING}
+          >
+            <div className="relative -translate-x-1/2" style={{ height: '100%' }}>
+              <div
+                className="h-full w-[2px] border-l border-dashed border-foreground/45 dark:border-white/40"
+                style={{ borderLeftWidth: '1.5px' }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </motion.li>
+  );
+}
+
+export default function FeedVelocityBars({
+  summary,
+  baselineSummary,
+}: {
+  summary: DashboardSummary | null;
+  baselineSummary?: DashboardSummary | null;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const reduceMotion = Boolean(prefersReducedMotion);
+  const baselineSource = baselineSummary ?? summary;
+
+  const rows: MetricRow[] = useMemo(() => {
+    const make = (key: MetricKey, label: MetricRow['label'], field: keyof DashboardSummary) => ({
+      key,
+      label,
+      current: percentileToRatio((summary?.[field] as number | null | undefined) ?? null),
+      baseline: percentileToRatio((baselineSource?.[field] as number | null | undefined) ?? null),
+    });
+
+    return [
+      make('views', 'VIEWS', 'avg_views_percentile'),
+      make('likes', 'LIKES', 'avg_likes_percentile'),
+      make('comments', 'COMMENTS', 'avg_comments_percentile'),
+    ];
+  }, [summary, baselineSource]);
+
+  const orderedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const av = a.current ?? -Infinity;
+      const bv = b.current ?? -Infinity;
+      return bv - av;
+    });
+  }, [rows]);
+
+  const hasData = rows.some((row) => row.current !== null);
+  const postsWithMetrics = Math.max(0, Number(summary?.posts_with_metrics) || 0);
+  const totalPosts = Math.max(0, Number(summary?.post_count) || 0);
+  const leadRow = orderedRows.find((row) => row.current !== null) ?? null;
+  const windowDays = Math.max(0, Number(summary?.window_days) || 0);
+  const overallPace = formatTopPercentile(summary?.avg_percentile_performance ?? null);
+  const windowLabel = windowDays > 0 ? `${windowDays}D` : '--';
+  const coverageMeta =
+    totalPosts > 0 ? `${postsWithMetrics}/${totalPosts} measured` : `${postsWithMetrics} measured`;
+  const leadValue = leadRow?.label ?? '--';
+  const leadMeta = leadRow?.current == null ? 'Awaiting data' : `${leadRow.current.toFixed(1)}x strongest`;
+
+  return (
+    <div className="fm-depth-glass relative flex h-full max-h-full w-full min-h-0 flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <div className="mb-2 flex shrink-0 items-center justify-between sm:mb-2.5">
           <span className="fm-label fm-depth-title">Performance</span>
           <span className="fm-depth-chip rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/40">
             {hasData ? `${postsWithMetrics} posts` : 'Awaiting data'}
           </span>
         </div>
 
-        <div className="grid flex-1 grid-cols-3 gap-2 sm:gap-2.5">
-          {metrics.map((metric) => {
-            const fillPct =
-              metric.value == null ? 0 : Math.max(16, Math.min(100, (metric.value / SCALE_MAX) * 100));
-            const isAbove = metric.value != null && metric.value >= 1;
+        <motion.ul
+          layout={reduceMotion ? false : true}
+          transition={reduceMotion ? { duration: 0 } : { layout: LAYOUT_SPRING }}
+          className="relative flex min-h-0 flex-1 list-none flex-col gap-2 p-0 sm:gap-2.5 lg:gap-3"
+        >
+          {orderedRows.map((row) => (
+            <PerformanceRow key={row.key} row={row} reduceMotion={reduceMotion} />
+          ))}
+        </motion.ul>
 
-            return (
-              <div key={metric.label} className="flex min-h-[150px] sm:min-h-[175px] flex-col">
-                {/* Bar track — relative container with explicit flex-1 */}
-                <div className="relative flex-1 overflow-hidden rounded-[18px] border border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(235,235,235,0.94))] shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_5px_14px_rgba(0,0,0,0.05)] dark:border-white/6 dark:bg-[linear-gradient(180deg,rgba(28,28,28,0.98),rgba(10,10,10,0.98))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_12px_rgba(0,0,0,0.2)]">
-                  {/* Baseline mark */}
-                  <div className="absolute inset-x-0 z-20 border-t border-dashed border-black/12 dark:border-white/12"
-                    style={{ bottom: `${(1 / SCALE_MAX) * 100}%` }} />
-
-                  {/* Fill bar — anchored to bottom with absolute positioning */}
-                  <motion.div
-                    className={`absolute inset-x-0 bottom-0 rounded-t-[12px] ${
-                      isAbove
-                        ? 'bg-[#E11D48] shadow-[0_-6px_24px_rgba(225,29,72,0.3)] dark:bg-[#E11D48] dark:shadow-[0_-4px_24px_rgba(225,29,72,0.25)]'
-                        : 'bg-black/10 dark:bg-white/10'
-                    }`}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${fillPct}%` }}
-                    transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] as const, delay: 0.2 }}
-                  >
-                    {/* Top shine */}
-                    <div className={`h-[3px] w-full rounded-t-[12px] ${isAbove ? 'bg-white/58 dark:bg-white/20' : 'bg-white/20 dark:bg-white/5'}`} />
-                  </motion.div>
-                </div>
-
-                {/* Label */}
-                <div className="mt-2 text-center">
-                  <div className={`text-[clamp(18px,3.5vw,24px)] font-black leading-none tracking-[-0.03em] fm-depth-title ${
-                    isAbove ? 'text-foreground dark:text-white' : 'text-foreground/50 dark:text-white/40'
-                  }`}>
-                    <AnimatedMultiplier value={metric.value} />
-                  </div>
-                  <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/36 fm-depth-title">
-                    {metric.label}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="mt-3 grid shrink-0 grid-cols-3 gap-2 sm:mt-3.5 sm:gap-2.5">
+          <FooterStat
+            label="Avg Pace"
+            value={overallPace}
+            meta="Feed average"
+            accent={overallPace !== '--'}
+          />
+          <FooterStat
+            label="Lead"
+            value={leadValue}
+            meta={leadMeta}
+          />
+          <FooterStat
+            label="Window"
+            value={windowLabel}
+            meta={coverageMeta}
+          />
         </div>
       </div>
     </div>

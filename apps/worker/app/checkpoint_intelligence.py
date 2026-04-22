@@ -202,6 +202,11 @@ def extract_post_intelligence_for_checkpoint(
                     f"[post-intelligence] {cp.upper()} extracted tags for {post_key} "
                     f"({tags.get('_visual_source', 'unknown')})"
                 )
+            else:
+                print(
+                    f"[post-intelligence] {cp.upper()} no usable tags returned for {post_key} "
+                    f"(media_type={media_type})"
+                )
         except Exception as exc:
             try:
                 conn.rollback()

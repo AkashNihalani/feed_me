@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
@@ -31,6 +31,12 @@ const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
 const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
 const PWA_RENDER_RADIUS = 2;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
+const DESKTOP_CARD_SLOT_STYLE: CSSProperties = { contain: 'layout paint style' };
+const DESKTOP_CARD_FRAME_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '560px 720px',
+  contain: 'layout paint style',
+};
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -43,15 +49,6 @@ function readRootCssPx(name: string, fallback: number): number {
   const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name);
   const value = Number.parseFloat(raw);
   return Number.isFinite(value) ? value : fallback;
-}
-
-function getPageFocusCenterY(): number {
-  if (typeof window === 'undefined') return 0;
-  const headerHeight = readRootCssPx('--fire-header-height', 168);
-  const bottomClearance = readRootCssPx('--fire-bottom-clearance', 86);
-  const topBoundary = headerHeight + 24;
-  const bottomBoundary = Math.max(topBoundary + 1, window.innerHeight - (bottomClearance + 12));
-  return topBoundary + (bottomBoundary - topBoundary) * 0.5;
 }
 
 function getPwaViewportSlotHeight(): number {
@@ -69,21 +66,6 @@ function getCurrentScrollTop(root: HTMLDivElement | null, usePageScroll: boolean
   const scrollContainer = getScrollContainer(root, usePageScroll);
   if (!scrollContainer) return 0;
   return usePageScroll ? window.scrollY || scrollContainer.scrollTop : scrollContainer.scrollTop;
-}
-
-function getSnapViewportCenter(root: HTMLDivElement | null, usePageScroll: boolean): number {
-  if (usePageScroll) return getPageFocusCenterY();
-  if (!root) return typeof window === 'undefined' ? 0 : window.innerHeight * 0.5;
-  const rootRect = root.getBoundingClientRect();
-  return rootRect.top + rootRect.height * 0.5;
-}
-
-function getSnapScrollTop(node: HTMLElement, root: HTMLDivElement | null, usePageScroll: boolean): number {
-  const currentScrollTop = getCurrentScrollTop(root, usePageScroll);
-  const focusCenter = getSnapViewportCenter(root, usePageScroll);
-  const rect = node.getBoundingClientRect();
-  const cardCenter = rect.top + rect.height * 0.5;
-  return Math.max(0, currentScrollTop + (cardCenter - focusCenter));
 }
 
 function setScrollTop(root: HTMLDivElement | null, usePageScroll: boolean, next: number): void {
@@ -152,35 +134,42 @@ function VirtualSlot({
   onBeforeOpenPost?: (itemId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [isObservedVisible, setIsObservedVisible] = useState(false);
 
   useEffect(() => {
+    if (isDesktop) return;
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => setIsVisible(entry.isIntersecting),
+      ([entry]) => setIsObservedVisible(entry.isIntersecting),
       { rootMargin: '200% 0px' },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [isDesktop]);
+
+  const isVisible = isDesktop || isObservedVisible;
 
   return (
-    <div ref={ref} data-card-id={item.id} className="flex w-full items-center justify-center">
+    <div
+      ref={ref}
+      data-card-id={item.id}
+      className="flex w-full items-center justify-center"
+      style={isDesktop ? DESKTOP_CARD_SLOT_STYLE : undefined}
+    >
       {isVisible ? (
         <motion.div
-          initial={{ opacity: 0, y: 12, scale: 0.99 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={isDesktop
-            ? { opacity: 1, y: 0, scale: 1, filter: 'none' }
+            ? { opacity: 1, y: 0 }
             : {
                 opacity: isActive ? 1 : 0.72,
-                y: isActive ? -8 : 18,
-                scale: isActive ? 1.035 : 0.94,
-                filter: isActive ? 'blur(0px)' : 'blur(0.4px)',
+                y: isActive ? -6 : 14,
+                scale: isActive ? 1.02 : 0.965,
               }}
           transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
-          className="relative w-full"
-          style={{ zIndex: isActive ? 30 : 10 }}
+            className="relative w-full"
+            style={{ zIndex: isActive ? 30 : 10 }}
           >
             <div
             className={[
@@ -301,7 +290,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     const card = cards[pwaIndex];
     if (!card) return;
     currentIndexRef.current = pwaIndex;
-    setActiveCardId(id => (id === card.id ? id : card.id));
+    activeCardIdRef.current = card.id;
   }, [cards, isDesktop, pwaIndex, usePwaSnap]);
 
   const clearScheduledStandaloneRestore = useCallback(() => {
@@ -416,8 +405,9 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   const persistStandaloneDeckState = useCallback((preferredCardId?: string) => {
     if (isDesktop || !usePwaSnap) return;
     const preferredIndex = preferredCardId ? cards.findIndex((card) => card.id === preferredCardId) : -1;
+    const fallbackCardId = cards[currentIndexRef.current]?.id ?? activeCardIdRef.current;
     writeStandaloneDeckState(standaloneDeckStateKey, {
-      activeCardId: preferredCardId ?? activeCardIdRef.current,
+      activeCardId: preferredCardId ?? fallbackCardId,
       currentIndex: preferredIndex >= 0 ? preferredIndex : currentIndexRef.current,
       scrollTop: 0,
     });
@@ -483,9 +473,11 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     if (usePwaSnap) {
       clearPwaTopReturn();
       currentIndexRef.current = 0;
-      setActiveCardId(cards[0]?.id ?? null);
-      setPwaIndex(0);
-      return;
+      const frame = window.requestAnimationFrame(() => {
+        activeCardIdRef.current = cards[0]?.id ?? null;
+        setPwaIndex(0);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
 
     const nextId = cards[0]?.id ?? null;
@@ -528,7 +520,8 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     const alreadyRestored = restoredStandaloneKeyRef.current === standaloneDeckStateKey;
     if (!alreadyRestored) {
       restoredStandaloneKeyRef.current = standaloneDeckStateKey;
-      restorePwaIndex();
+      const frame = window.requestAnimationFrame(() => restorePwaIndex());
+      return () => window.cancelAnimationFrame(frame);
     }
   }, [cards, isDesktop, restorePwaIndex, standaloneDeckStateKey, usePwaSnap]);
 
@@ -602,9 +595,13 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   }
 
   const resolvedActive = isDesktop ? null : activeCardId;
-  const mobileStackClass = isIOS
-    ? '-mt-[10vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[12vh] md:min-h-[76dvh]'
-    : '-mt-[14vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[16vh] md:min-h-[76dvh]';
+  const mobileStackClass = usePageScroll
+    ? isIOS
+      ? '-mt-[18vh] flex w-full min-h-[58svh] items-center justify-center first:mt-0 md:-mt-[20vh] md:min-h-[60dvh]'
+      : '-mt-[22vh] flex w-full min-h-[58svh] items-center justify-center first:mt-0 md:-mt-[24vh] md:min-h-[60dvh]'
+    : isIOS
+      ? '-mt-[10vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[12vh] md:min-h-[76dvh]'
+      : '-mt-[14vh] flex w-full min-h-[74svh] items-center justify-center first:mt-0 md:-mt-[16vh] md:min-h-[76dvh]';
   const enableContainerSnap = usePwaSnap && !usePageScroll;
   const remainingCount = Math.max(0, (total || 0) - cards.length);
   // For load dock, use pwaIndex directly in PWA mode
@@ -745,32 +742,28 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
       <div className="mx-auto w-full lg:max-w-none lg:px-1 xl:px-2">
         {isDesktop ? (
           <div className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6">
-            <AnimatePresence mode="popLayout">
-              {cards.map((card, index) => {
-                const isActive = resolvedActive === card.id;
-                return (
-                  <motion.div
-                    key={card.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.88 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.88 }}
-                    transition={{ type: 'spring', damping: 24, stiffness: 300, mass: 0.75 }}
-                    whileHover={{ y: -4, scale: 1.008 }}
-                  >
-                    <VirtualSlot
-                      item={card}
-                      index={index}
-                      isActive={isActive}
-                      isDesktop
-                      mobileAutoplayEnabled={mobileAutoplayEnabled}
-                      onOpenDetails={() => onOpenCard?.(card)}
-                      onBeforeOpenPost={persistStandaloneDeckState}
-                    />
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
+            {cards.map((card, index) => {
+              const isActive = resolvedActive === card.id;
+              return (
+                <motion.div
+                  key={card.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18, delay: Math.min(index * 0.012, 0.08), ease: [0.22, 1, 0.36, 1] }}
+                  style={DESKTOP_CARD_FRAME_STYLE}
+                >
+                  <VirtualSlot
+                    item={card}
+                    index={index}
+                    isActive={isActive}
+                    isDesktop
+                    mobileAutoplayEnabled={mobileAutoplayEnabled}
+                    onOpenDetails={() => onOpenCard?.(card)}
+                    onBeforeOpenPost={persistStandaloneDeckState}
+                  />
+                </motion.div>
+              );
+            })}
           </div>
         ) : (
           <div className="flex flex-col">

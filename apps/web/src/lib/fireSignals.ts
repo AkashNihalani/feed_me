@@ -8,7 +8,7 @@ export type FireSignalDefinition = {
 };
 
 export const FIRE_SIGNAL_DEFINITIONS: FireSignalDefinition[] = [
-  { code: 'TRACKING_BASE', context: 'own', shortLabel: 'Tracking', headline: 'Live checkpoint tracking' },
+  { code: 'TRACKING_BASE', context: 'own', shortLabel: 'Tracking', headline: '' },
   { code: 'OWN_PATTERN', context: 'own', shortLabel: 'Own Pattern', headline: 'Pattern repeating for you' },
   { code: 'CROSS_PATTERN', context: 'cross', shortLabel: 'Cross Pattern', headline: 'Pattern spreading across the feed' },
   { code: 'ANCHOR_PATTERN', context: 'anchor', shortLabel: 'Anchor Pattern', headline: 'Pattern beating the anchor' },

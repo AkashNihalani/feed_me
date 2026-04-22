@@ -196,8 +196,6 @@ export function FireCard3D({
   const lockedHandle = `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`;
   const lockedMediaType = (item.surfaceMediaType || item.mediaType || 'POST').toUpperCase();
   const signalContextLabel = item.signalContext.toUpperCase();
-  const signalLabel = item.signalLabel || 'Signal';
-  const signalHeadline = item.signalHeadline || item.title || signalLabel;
   const previewUrl = text(item.previewUrl);
   const thumbnailFallbackUrl = mediaProxyUrl(text(item.postKey));
   const previewFallbackUrl = mediaProxyUrl(text(item.postKey), 'preview_5s');
@@ -220,7 +218,7 @@ export function FireCard3D({
   const shouldPlayPreview = canRenderInlinePreview && mobileAutoplayEnabled && highlighted;
   const showAutoplayToggle = !isDesktopCard && showMobileAutoplayToggle && lockedMediaType === 'REEL' && Boolean(previewUrl || previewFallbackUrl);
   const shouldMountInlinePreview = canRenderInlinePreview && (shouldPlayPreview || previewPlaying);
-  const inlinePreviewPreload: 'auto' = 'auto';
+  const inlinePreviewPreload = 'auto' as const;
   const heroMetricStamp = value == null ? '--' : compact(value);
   const hideSignalChrome = item.hideSignalChrome === true;
   const patternAlerts = Array.isArray(meta.pattern_alerts)
@@ -291,12 +289,15 @@ export function FireCard3D({
 
   useEffect(() => {
     if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
-    setPreviewReady(false);
-    setPreviewFailed(false);
-    setPreviewPlaying(false);
-    setUsePreviewFallback(false);
-    setPreviewRetrySeed(0);
-    resetPreviewProgress();
+    const frame = window.requestAnimationFrame(() => {
+      setPreviewReady(false);
+      setPreviewFailed(false);
+      setPreviewPlaying(false);
+      setUsePreviewFallback(false);
+      setPreviewRetrySeed(0);
+      resetPreviewProgress();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [item.id, previewUrl, previewFallbackUrl]);
 
   useEffect(() => {
@@ -308,8 +309,11 @@ export function FireCard3D({
   }, [item.id, resolvedPreviewUrl]);
 
   useEffect(() => {
-    setImgDead(false);
-    setThumbnailUrl(text(item.thumbnailUrl) || thumbnailFallbackUrl);
+    const frame = window.requestAnimationFrame(() => {
+      setImgDead(false);
+      setThumbnailUrl(text(item.thumbnailUrl) || thumbnailFallbackUrl);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [item.id, item.thumbnailUrl, thumbnailFallbackUrl]);
 
   useEffect(() => {
@@ -326,8 +330,12 @@ export function FireCard3D({
     if (!video || !resolvedPreviewUrl) return;
     video.load();
     if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      setPreviewReady(true);
-      setPreviewFailed(false);
+      const frame = window.requestAnimationFrame(() => {
+        if (previewRef.current !== video) return;
+        setPreviewReady(true);
+        setPreviewFailed(false);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
   }, [item.id, resolvedPreviewUrl]);
 
@@ -339,15 +347,18 @@ export function FireCard3D({
       previewRetryTimeoutRef.current = null;
     }
     if (!shouldPlayPreview) {
-      setPreviewPlaying(false);
-      resetPreviewProgress();
       video.pause();
       try {
         video.currentTime = 0;
       } catch {
         // ignore seek reset failures
       }
-      return;
+      const frame = window.requestAnimationFrame(() => {
+        if (previewRef.current !== video) return;
+        setPreviewPlaying(false);
+        resetPreviewProgress();
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
     if (!previewReady || previewFailed || !resolvedPreviewUrl) {
       return;
@@ -441,7 +452,7 @@ export function FireCard3D({
         }
       }}
       className={isDesktopCard
-        ? 'relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left fm-depth-glass'
+        ? 'fm-fire-card-shell relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left'
         : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:rounded-[32px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
@@ -454,7 +465,7 @@ export function FireCard3D({
           : highlighted
             ? '0 18px 38px rgba(0,0,0,0.24)'
             : '0 10px 22px rgba(0,0,0,0.16)',
-        willChange: 'transform',
+        willChange: isDesktopCard ? 'auto' : 'transform',
       }}
       whileTap={{ scale: 0.994 }}
       transition={{ duration: 0.08, ease: [0.22, 1, 0.36, 1] }}
@@ -590,7 +601,10 @@ export function FireCard3D({
         >
           <div className="flex flex-col items-end gap-1.5">
             {!hideSignalChrome ? (
-              <div className="rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]">
+              <div className={isDesktopCard
+                ? 'fm-fire-card-pill rounded-full px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88'
+                : 'rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]'}
+              >
                 {signalContextLabel}
               </div>
             ) : null}
@@ -647,7 +661,7 @@ export function FireCard3D({
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={isDesktopCard
-          ? 'rounded-[14px] border border-white/24 bg-black/42 px-3 py-2 text-white/92 shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-[18px]'
+          ? 'fm-fire-card-panel rounded-[14px] px-3 py-2 text-white/92'
           : 'rounded-[14px] border border-white/38 bg-white/14 px-3 py-2.5 text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
         >
           <div className="flex items-center justify-between gap-2">
@@ -789,25 +803,6 @@ export function FireCard3D({
               
               <div className="relative z-10 flex min-h-0 flex-1 flex-col">
               <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
-              {!hideSignalChrome && (
-                <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/56 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/42 dark:shadow-[0_14px_30px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.1)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/62">
-                      {signalLabel}
-                    </div>
-                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/44">
-                      {signalContextLabel}
-                    </div>
-                  </div>
-                  <div className="mt-1.5 text-[16px] sm:text-[18px] font-black leading-[0.94] tracking-[-0.025em] text-foreground/95">
-                    {signalHeadline}
-                  </div>
-                  <div className="mt-1.5 text-[10px] sm:text-[11px] font-semibold leading-[1.35] text-foreground/62">
-                    {item.whyNow}
-                  </div>
-                </div>
-              )}
-
               {primaryPattern && (
                 <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/50 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/38 dark:shadow-[0_14px_30px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.1)]">
                   <div className="flex items-center justify-between gap-2">
@@ -875,6 +870,7 @@ export function FireCard3D({
                           >
                             <div className="h-20 w-16 overflow-hidden rounded-[12px] border border-white/55 bg-black/12 shadow-[0_8px_18px_rgba(0,0,0,0.18)] dark:border-white/12 dark:bg-white/8">
                               {post.thumbnailUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element -- fire support thumbnails use dynamic media URLs with lightweight in-card rendering
                                 <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
                               ) : (
                                 <div className="h-full w-full bg-black/12 dark:bg-white/8" />

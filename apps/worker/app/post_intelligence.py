@@ -148,8 +148,8 @@ def is_enabled() -> bool:
     return POST_INTELLIGENCE_ENABLED
 
 
-def _selected_provider() -> str:
-    provider = (POST_INTELLIGENCE_PROVIDER or "auto").strip().lower()
+def _selected_provider(provider_override: str | None = None) -> str:
+    provider = (provider_override or POST_INTELLIGENCE_PROVIDER or "auto").strip().lower()
     if provider == "openrouter":
         return "openrouter"
     if provider == "google":
@@ -159,19 +159,30 @@ def _selected_provider() -> str:
     return "google"
 
 
-def _selected_model() -> str:
+def _selected_model(provider_override: str | None = None) -> str:
     explicit = (POST_INTELLIGENCE_MODEL or "").strip()
     if explicit:
         return explicit
-    if _selected_provider() == "openrouter":
+    if _selected_provider(provider_override) == "openrouter":
         return _DEFAULT_OPENROUTER_MODEL
     return _DEFAULT_GEMINI_MODEL
 
 
-def current_model_version(*, skipped: bool = False) -> str:
+def current_model_version(*, provider: str | None = None, skipped: bool = False) -> str:
     if skipped:
         return "skipped"
-    return f"{_selected_provider()}:{_selected_model()}:{_PROMPT_VERSION}"
+    selected_provider = _selected_provider(provider)
+    return f"{selected_provider}:{_selected_model(selected_provider)}:{_PROMPT_VERSION}"
+
+
+def _provider_chain() -> list[str]:
+    preferred = _selected_provider()
+    providers = [preferred]
+    if preferred != "google" and GEMINI_API_KEY:
+        providers.append("google")
+    if preferred != "openrouter" and OPENROUTER_API_KEY:
+        providers.append("openrouter")
+    return providers
 
 
 def _normalize_media_type(media_type: str | None) -> str:
@@ -468,6 +479,44 @@ def extract_tags(
     carousel_urls: list[str] | None = None,
     media_fetch_headers: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
+    providers = _provider_chain()
+    if not providers:
+        return None
+
+    for idx, provider in enumerate(providers):
+        result = _extract_tags_once(
+            caption,
+            media_type,
+            thumbnail_url=thumbnail_url,
+            video_url=video_url,
+            carousel_urls=carousel_urls,
+            media_fetch_headers=media_fetch_headers,
+            provider=provider,
+        )
+        if result and result.get("_skipped"):
+            return result
+        if result:
+            if idx > 0:
+                print(f"[post-intelligence] fallback provider {provider} succeeded")
+            return result
+        if idx < len(providers) - 1:
+            print(
+                f"[post-intelligence] provider {provider} returned no usable tags; "
+                f"trying {providers[idx + 1]}"
+            )
+    return None
+
+
+def _extract_tags_once(
+    caption: str,
+    media_type: str,
+    *,
+    thumbnail_url: str | None = None,
+    video_url: str | None = None,
+    carousel_urls: list[str] | None = None,
+    media_fetch_headers: dict[str, str] | None = None,
+    provider: str,
+) -> dict[str, Any] | None:
     """
     Extract semantic tags from a post via Gemini multimodal models.
 
@@ -478,7 +527,6 @@ def extract_tags(
 
     If those sources are unavailable, the extraction is skipped.
     """
-    provider = _selected_provider()
     if provider == "openrouter" and not OPENROUTER_API_KEY:
         return None
     if provider == "google" and not GEMINI_API_KEY:
@@ -611,7 +659,7 @@ def extract_tags(
             actual_source=visual_source,
         )
 
-    model = _selected_model()
+    model = _selected_model(provider)
     payload: dict[str, Any]
     request_kwargs: dict[str, Any]
 

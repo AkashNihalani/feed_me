@@ -26,6 +26,7 @@ def main():
             "purge_preview_assets_before_day",
             "repair_overlong_preview_assets",
             "restore_d7_fire_thumbnails",
+            "backfill_d7_post_intelligence",
             "recompute_fire_rankings",
         ],
         required=True,
@@ -191,6 +192,20 @@ def main():
             print(
                 f"restore_d7_fire_thumbnails selected={result.get('selected', 0)} "
                 f"updated={result.get('updated', 0)} missing={result.get('missing', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "backfill_d7_post_intelligence":
+        eng = PureEngine()
+        try:
+            result = eng.backfill_d7_post_intelligence(day=args.day, limit=args.limit)
+            print(
+                f"backfill_d7_post_intelligence day={args.day} "
+                f"selected_feeders={result.get('selected_feeders', 0)} "
+                f"selected_feeds={result.get('selected_feeds', 0)} "
+                f"hot_posts={result.get('hot_posts', 0)} "
+                f"processed_feeders={result.get('processed_feeders', 0)} "
+                f"resolved_feeds={result.get('resolved_feeds', 0)}"
             )
         finally:
             eng.close()

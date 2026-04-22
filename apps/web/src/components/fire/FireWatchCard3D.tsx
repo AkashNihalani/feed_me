@@ -28,11 +28,13 @@ function Mosaic({ posts }: { posts: ReturnType<typeof parseFirewatchData>['cover
       ) : (
         <div className="grid h-full grid-cols-[1.35fr_0.9fr] gap-[2px] bg-black">
           <div className="relative overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element -- firewatch mosaic uses dynamic feed thumbnails in a dense decorative layout */}
             <img src={primary?.thumbnailUrl || ''} alt="" className="h-full w-full object-cover" />
           </div>
           <div className="grid grid-rows-3 gap-[2px]">
             {secondary.map((post) => (
               <div key={post.postKey} className="relative overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element -- firewatch mosaic uses dynamic feed thumbnails in a dense decorative layout */}
                 <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
               </div>
             ))}
@@ -76,6 +78,7 @@ function SupportRail({
             className="shrink-0 text-left"
           >
             <div className="h-20 w-16 overflow-hidden rounded-[12px] border border-white/55 bg-black/12 shadow-[0_8px_18px_rgba(0,0,0,0.18)] dark:border-white/12 dark:bg-white/8">
+              {/* eslint-disable-next-line @next/next/no-img-element -- firewatch support thumbnails are dynamic feed assets without stable intrinsic metadata */}
               <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
             </div>
             <div className="mt-1 max-w-16 truncate text-[8px] font-black uppercase tracking-[0.13em] text-foreground/68 dark:text-white/70">
@@ -122,7 +125,7 @@ export function FireWatchCard3D({
         }
       }}
       className={isDesktopCard
-        ? 'relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left fm-depth-glass'
+        ? 'fm-fire-card-shell relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left'
         : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:rounded-[32px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
@@ -135,7 +138,7 @@ export function FireWatchCard3D({
           : highlighted
             ? '0 18px 38px rgba(0,0,0,0.24)'
             : '0 10px 22px rgba(0,0,0,0.16)',
-        willChange: 'transform',
+        willChange: isDesktopCard ? 'auto' : 'transform',
       }}
       whileTap={{ scale: 0.994 }}
       transition={{ duration: 0.08, ease: [0.22, 1, 0.36, 1] }}
@@ -144,16 +147,25 @@ export function FireWatchCard3D({
       <Mosaic posts={data.coverPosts} />
 
       <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between p-3">
-        <div className="rounded-full border border-white/18 bg-black/44 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/86 backdrop-blur-xl">
+        <div className={isDesktopCard
+          ? 'fm-fire-card-pill rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/86'
+          : 'rounded-full border border-white/18 bg-black/44 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/86 backdrop-blur-xl'}
+        >
           Firewatch
         </div>
-        <div className="rounded-full border border-white/14 bg-black/36 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/64 backdrop-blur-xl">
+        <div className={isDesktopCard
+          ? 'fm-fire-card-pill rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/64'
+          : 'rounded-full border border-white/14 bg-black/36 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/64 backdrop-blur-xl'}
+        >
           {data.familyLabel}
         </div>
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-10 p-3 sm:p-4">
-        <div className="rounded-[24px] border border-white/14 bg-[linear-gradient(180deg,rgba(14,14,14,0.22),rgba(10,10,10,0.82))] p-3 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur-[18px]">
+        <div className={isDesktopCard
+          ? 'fm-fire-card-panel rounded-[24px] p-3'
+          : 'rounded-[24px] border border-white/14 bg-[linear-gradient(180deg,rgba(14,14,14,0.22),rgba(10,10,10,0.82))] p-3 shadow-[0_22px_48px_rgba(0,0,0,0.42)] backdrop-blur-[18px]'}
+        >
           <div className="flex items-end justify-between gap-3">
             <div>
               <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/52">

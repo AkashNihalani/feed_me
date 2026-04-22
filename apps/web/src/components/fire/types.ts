@@ -69,6 +69,7 @@ export type FireAlertItem = {
   id: string;
   cardKind: FireCardKind;
   postKey?: string;
+  feedId?: number;
   feederId?: number;
   urgency: AlertUrgency;
   color: string;
@@ -78,7 +79,6 @@ export type FireAlertItem = {
   signalHeadline: string;
   handle: string;
   title: string;
-  whyNow: string;
   action: string;
   percentileTag?: string;
   mediaType: string;

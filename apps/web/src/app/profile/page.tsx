@@ -36,6 +36,7 @@ import {
   Unlock,
 } from 'lucide-react';
 import FeedPassCard from '@/components/profile/FeedPassCard';
+import { LiquidGlass } from '@/components/ui/liquid-glass';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
@@ -1010,31 +1011,17 @@ export default function FundPage() {
         useBrowserPageScroll ? 'fixed' : 'absolute',
       )}>
         <div className="relative fm-tab-header-shell">
-          <div
-            className={cn(
-              'w-full overflow-hidden rounded-[32px] relative transition-all duration-500 ease-[cubic-bezier(0.4,0,0.1,1)]',
-              'bg-white/65 backdrop-blur-[48px] backdrop-saturate-[200%]',
-              'border border-white/80 border-t-white/90',
-              'shadow-[0_1px_0_rgba(255,255,255,0.95)_inset,0_-1px_0_rgba(0,0,0,0.03)_inset,0_4px_8px_rgba(0,0,0,0.03),0_12px_28px_-4px_rgba(0,0,0,0.08),0_32px_64px_-12px_rgba(0,0,0,0.1),0_48px_96px_-16px_rgba(0,0,0,0.06)]',
-              'dark:bg-[rgba(6,6,6,0.65)] dark:border-white/[0.07] dark:border-t-white/[0.12]',
-              'dark:shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_-1px_0_rgba(0,0,0,0.5)_inset,0_8px_16px_rgba(0,0,0,0.4),0_24px_48px_-8px_rgba(0,0,0,0.6),0_48px_96px_-16px_rgba(0,0,0,0.5)]',
-            )}
+          <LiquidGlass
+            variant="header"
+            className="w-full"
           >
-            {/* Glass Highlights */}
-            <div className="pointer-events-none absolute inset-0 rounded-[32px] z-0 dark:opacity-0"
-              style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 30%, rgba(0,0,0,0.015) 100%)' }}
-            />
-            <div className="pointer-events-none absolute inset-[1px] rounded-[31px] z-0 dark:hidden"
-              style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }}
-            />
-
             <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h1 className="text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">FUND</h1>
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50">Slot Control Room</div>
               </div>
             </div>
-          </div>
+          </LiquidGlass>
         </div>
       </div>
 

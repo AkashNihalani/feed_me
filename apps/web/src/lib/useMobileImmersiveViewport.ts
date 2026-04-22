@@ -1,6 +1,7 @@
 'use client';
 
 import { CSSProperties, useEffect, useMemo, useState } from 'react';
+import { useHeaderSurfaceState } from '@/lib/useHeaderSurfaceState';
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -13,6 +14,8 @@ export function useMobileImmersiveViewport() {
   const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const useBrowserPageScroll = !isDesktopViewport;
   const useTranslucentBrowserChrome = useBrowserPageScroll && !isStandaloneMode;
+
+  useHeaderSurfaceState(useBrowserPageScroll);
 
   useEffect(() => {
     const standaloneMql = window.matchMedia('(display-mode: standalone)');

@@ -1,12 +1,13 @@
 'use client';
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, startTransition, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, Loader2, SlidersHorizontal } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import ChronoTabs from '@/components/fire/ChronoTabs';
 import FluidDeck from '@/components/fire/FluidDeck';
 import FireIntelligenceDialog from '@/components/fire/FireIntelligenceDialog';
 import ZSpaceFilter from '@/components/fire/ZSpaceFilter';
+import { LiquidGlass } from '@/components/ui/liquid-glass';
 import {
   metricMultipleFromPayload,
   metricValueFromPayload,
@@ -25,6 +26,7 @@ import {
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
 import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
+import { useHeaderSurfaceState } from '@/lib/useHeaderSurfaceState';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
@@ -38,6 +40,7 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
   { label: 'RECENT', value: 'recent' },
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
+const FIRE_CHROME_PILL_SPRING = { type: 'spring', stiffness: 420, damping: 32, mass: 0.82 } as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v5';
 const FIRE_STATE_CACHE_KEY = 'fire:state:v8';
 const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v9';
@@ -475,6 +478,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     id: `alert-${asString(row.id) || asString(row.dedupe_key) || Math.random().toString(36).slice(2)}`,
     cardKind,
     postKey: asString(row.post_key),
+    feedId: asNumber(row.feed_id) ?? undefined,
     feederId: asNumber(row.feeder_id) ?? undefined,
     signalCode,
     signalContext,
@@ -484,7 +488,6 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     color: signalColor(signalContext),
     handle: `@${surfaceHandle || 'feed'}`,
     title,
-    whyNow: hideSignalChrome ? '' : asString(row.body) || signalHeadline,
     action: '',
     percentileTag: percentileToTag(surfacePercentileExact),
     mediaType: surfaceMediaType,
@@ -654,6 +657,7 @@ export default function FirePage() {
   const snapshotTokenRef = useRef<string | null>(null);
   const backgroundPrefetchKeyRef = useRef<string | null>(null);
   const lastMetaRefreshAtRef = useRef(0);
+  const cardsRef = useRef<FireAlertItem[]>([]);
 
   const [pickerDays, setPickerDays] = useState<string[]>([]);
   const [availableFeeds, setAvailableFeeds] = useState<FireFeedOption[]>([]);
@@ -661,6 +665,7 @@ export default function FirePage() {
   const [warmupSummary, setWarmupSummary] = useState<WarmupSummary>({});
   const [cards, setCards] = useState<FireAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -677,10 +682,18 @@ export default function FirePage() {
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
   const headerCompressed = useCompressedOnScroll(contentRef, useBrowserPageScroll && !isDesktopViewport, 24);
 
+  useHeaderSurfaceState(useBrowserPageScroll);
+
   const hasActiveFilters = filters.mediaFilter !== 'ALL'
     || filters.selectedFeedIds.length > 0
     || Object.keys(filters.selectedFeederIdsByFeed).length > 0
     || filters.selectedCheckpoints.length > 0;
+
+  const updateFilters = useCallback((updater: SetStateAction<FireFilterState>) => {
+    startTransition(() => {
+      setFilters(updater);
+    });
+  }, []);
 
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
@@ -697,7 +710,12 @@ export default function FirePage() {
   );
 
   useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
+
+  useEffect(() => {
     let mounted = true;
+    const initialViewportIsDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
     const cachedState = getCache<{
       pickerDays: string[];
       availableFeeds: FireFeedOption[];
@@ -772,7 +790,7 @@ export default function FirePage() {
         });
         prewarmThumbnails(
           prefetchedPages.length > 0 ? prefetchedPages.map((entry) => entry.payload) : [initialPayload],
-          isDesktopViewport ? FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP : FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE,
+          initialViewportIsDesktop ? FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP : FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE,
         );
 
         setPickerDays(nextDays);
@@ -912,7 +930,7 @@ export default function FirePage() {
       cursor: cursorRef.current,
       snapshotToken: snapshotTokenRef.current,
     });
-  }, [pickerDays, availableFeeds, selectedDay, filters, cards, availableCheckpoints, warmupSummary, hasMore, total]);
+  }, [initialDataReady, pickerDays, availableFeeds, selectedDay, filters, cards, availableCheckpoints, warmupSummary, hasMore, total]);
 
   useEffect(() => {
     document.title = 'Fire';
@@ -1188,15 +1206,21 @@ export default function FirePage() {
         ? cached.snapshotToken
         : null;
       setLoading(false);
+      setIsRefreshing(false);
       setError(null);
       return () => { mounted = false; };
     }
 
     cursorRef.current = 0;
     snapshotTokenRef.current = null;
-    setLoading(true);
-    setCards([]);
-    setHasMore(false);
+    const preserveVisibleCards = cardsRef.current.length > 0;
+    if (preserveVisibleCards) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+      setCards([]);
+      setHasMore(false);
+    }
     setError(null);
 
     (async () => {
@@ -1222,9 +1246,16 @@ export default function FirePage() {
         });
       } catch (err) {
         if (!mounted || fetchKeyRef.current !== key) return;
-        setError(err instanceof Error ? err.message : 'Failed to load alerts');
+        if (!preserveVisibleCards) {
+          setError(err instanceof Error ? err.message : 'Failed to load alerts');
+        } else {
+          console.error('[FirePage] Refresh error:', err);
+        }
       } finally {
-        if (mounted && fetchKeyRef.current === key) setLoading(false);
+        if (mounted && fetchKeyRef.current === key) {
+          setLoading(false);
+          setIsRefreshing(false);
+        }
       }
     })();
 
@@ -1299,11 +1330,11 @@ export default function FirePage() {
   return (
     <motion.div
       data-fire-immersive="true"
-      initial={{ opacity: 0, y: 14, scale: 0.992 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.42, ease: APPLE_EASE }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.24, ease: APPLE_EASE }}
       className={cn(
-        'relative w-full bg-transparent text-foreground select-none',
+        'fm-fire-page-surface relative w-full text-foreground select-none',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
       style={rootStyle}
@@ -1326,16 +1357,7 @@ export default function FirePage() {
           )}
         >
           <div className="relative fm-tab-header-shell">
-            <div className={cn('fm-liquid-header relative w-full overflow-hidden', headerCompressed && 'fm-liquid-header--compressed')}>
-              <div
-                className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] transition-opacity dark:opacity-0"
-                style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 30%, rgba(0,0,0,0.015) 100%)' }}
-              />
-              <div
-                className="pointer-events-none absolute inset-[1px] z-0 rounded-[inherit] dark:hidden"
-                style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }}
-              />
-
+            <LiquidGlass variant="header" compressed={headerCompressed} className="fm-fire-chrome-surface w-full">
               <div className="relative z-10 px-3.5 sm:px-4 lg:px-5">
                 <div className={cn(
                   'flex flex-col transition-[gap] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] lg:hidden',
@@ -1356,7 +1378,7 @@ export default function FirePage() {
                       <motion.button
                         whileTap={{ scale: 0.95 }}
                         type="button"
-                        onClick={() => setFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
+                        onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
                         className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
                       >
                         <ArrowUpDown size={14} />
@@ -1420,15 +1442,22 @@ export default function FirePage() {
                             key={option.value}
                             type="button"
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => setFilters((current) => ({ ...current, mediaFilter: option.value }))}
+                            onClick={() => updateFilters((current) => ({ ...current, mediaFilter: option.value }))}
                             className={cn(
-                              'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                              'relative overflow-hidden rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                               isActive
-                                ? 'bg-[#E11D48] text-white shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                ? 'text-white'
                                 : 'text-black/55 dark:text-white/45',
                             )}
                           >
-                            {option.label}
+                            {isActive && (
+                              <motion.span
+                                layoutId="fire-media-filter-pill-bg"
+                                className="absolute inset-0 rounded-[11px] bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgba(225,29,72,0.22),0_10px_24px_rgba(0,0,0,0.26)]"
+                                transition={FIRE_CHROME_PILL_SPRING}
+                              />
+                            )}
+                            <span className="relative z-10">{option.label}</span>
                           </motion.button>
                         );
                       })}
@@ -1451,15 +1480,22 @@ export default function FirePage() {
                             key={option.value}
                             type="button"
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => setFilters((current) => ({ ...current, sort: option.value }))}
+                            onClick={() => updateFilters((current) => ({ ...current, sort: option.value }))}
                             className={cn(
-                              'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                              'relative overflow-hidden rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                               isActive
-                                ? 'bg-[#E11D48] text-white shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                ? 'text-white'
                                 : 'text-black/55 dark:text-white/45',
                             )}
                           >
-                            {option.label}
+                            {isActive && (
+                              <motion.span
+                                layoutId="fire-sort-pill-bg"
+                                className="absolute inset-0 rounded-[11px] bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgba(225,29,72,0.22),0_10px_24px_rgba(0,0,0,0.26)]"
+                                transition={FIRE_CHROME_PILL_SPRING}
+                              />
+                            )}
+                            <span className="relative z-10">{option.label}</span>
                           </motion.button>
                         );
                       })}
@@ -1478,7 +1514,7 @@ export default function FirePage() {
                       <motion.button
                         type="button"
                         whileTap={{ scale: 0.95 }}
-                        onClick={() => setFilters((current) => ({ ...current, selectedCheckpoints: [] }))}
+                        onClick={() => updateFilters((current) => ({ ...current, selectedCheckpoints: [] }))}
                         className={cn(
                           'rounded-[12px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
                           filters.selectedCheckpoints.length === 0
@@ -1496,7 +1532,7 @@ export default function FirePage() {
                             type="button"
                             whileTap={{ scale: 0.95 }}
                             onClick={() => {
-                              setFilters((current) => ({
+                              updateFilters((current) => ({
                                 ...current,
                                 selectedCheckpoints: current.selectedCheckpoints.includes(checkpoint)
                                   ? current.selectedCheckpoints.filter((value) => value !== checkpoint)
@@ -1518,7 +1554,7 @@ export default function FirePage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </LiquidGlass>
           </div>
         </div>
 
@@ -1535,35 +1571,30 @@ export default function FirePage() {
             </div>
           ) : (
             <div className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}>
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.div
-                  key={`${selectedDay}-${serializeFilters(filters)}`}
-                  initial={{ opacity: 0, y: 10, scale: 0.996 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.996 }}
-                  transition={{ duration: 0.3, ease: APPLE_EASE }}
-                  className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}
-                >
-                  {displayCards.length === 0 ? (
-                    <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
-                      <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
-                        No alerts for this selection
-                      </div>
+              <motion.div
+                animate={{ opacity: isRefreshing ? 0.9 : 1 }}
+                transition={{ duration: 0.22, ease: APPLE_EASE }}
+                className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}
+              >
+                {displayCards.length === 0 ? (
+                  <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
+                    <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
+                      No alerts for this selection
                     </div>
-                  ) : (
-                    <FluidDeck
-                      cards={displayCards}
-                      hasMore={hasMore}
-                      loadingMore={loadingMore}
-                      onLoadMore={handleLoadMore}
-                      onOpenCard={setDesktopModalCard}
-                      usePageScroll={useBrowserPageScroll}
-                      resetKey={deckResetKey}
-                      total={total}
-                    />
-                  )}
-                </motion.div>
-              </AnimatePresence>
+                  </div>
+                ) : (
+                  <FluidDeck
+                    cards={displayCards}
+                    hasMore={hasMore}
+                    loadingMore={loadingMore}
+                    onLoadMore={handleLoadMore}
+                    onOpenCard={setDesktopModalCard}
+                    usePageScroll={useBrowserPageScroll}
+                    resetKey={deckResetKey}
+                    total={total}
+                  />
+                )}
+              </motion.div>
             </div>
           )}
         </div>

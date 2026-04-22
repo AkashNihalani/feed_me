@@ -10,6 +10,7 @@ import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
+import { LiquidGlass } from '@/components/ui/liquid-glass';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
@@ -181,6 +182,9 @@ function FeedPageContent() {
   const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(
     () => (urlSelectedFeedId ? readCache<DashboardPayload>(dashboardCacheKey(urlSelectedFeedId, '30D', 'all'))?.data ?? null : null),
   );
+  const [baselineDashboardData, setBaselineDashboardData] = useState<DashboardPayload | null>(
+    () => (urlSelectedFeedId ? readCache<DashboardPayload>(dashboardCacheKey(urlSelectedFeedId, '30D', 'all'))?.data ?? null : null),
+  );
   const [tickerItems, setTickerItems] = useState<TickerItem[]>(() => initialBundle.tickerItems);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [slotUsage, setSlotUsage] = useState<SlotUsage>(() => initialBundle.slotUsage);
@@ -310,15 +314,37 @@ function FeedPageContent() {
   }, [headerHeight, isStandaloneMode, useFeedRootSnap]);
 
   useEffect(() => {
-    if (!activeFeed) { setDashboardData(null); return; }
+    if (!activeFeed) { setDashboardData(null); setBaselineDashboardData(null); return; }
     let cancelled = false;
-    const cacheKey = dashboardCacheKey(String(activeFeed.id), timeframe, selectedHandle);
+    const feedId = String(activeFeed.id);
+    const cacheKey = dashboardCacheKey(feedId, timeframe, selectedHandle);
+    const baselineCacheKey = dashboardCacheKey(feedId, timeframe, 'all');
+
     const cachedEntry = readCache<DashboardPayload>(cacheKey);
     const hadCache = Boolean(cachedEntry?.data);
     const hasFreshCache = Boolean(cachedEntry && Date.now() - cachedEntry.ts <= DASHBOARD_CACHE_TTL);
 
     if (cachedEntry?.data) {
       setDashboardData(cachedEntry.data);
+      if (selectedHandle === 'all') setBaselineDashboardData(cachedEntry.data);
+    }
+
+    if (selectedHandle !== 'all') {
+      const baselineCached = readCache<DashboardPayload>(baselineCacheKey);
+      if (baselineCached?.data) {
+        setBaselineDashboardData(baselineCached.data);
+      }
+      const baselineFresh = Boolean(
+        baselineCached && Date.now() - baselineCached.ts <= DASHBOARD_CACHE_TTL,
+      );
+      if (!baselineFresh) {
+        fetchDashboardSnapshot(feedId, timeframe, 'all')
+          .then((next) => {
+            if (cancelled) return;
+            if (next) setBaselineDashboardData(next);
+          })
+          .catch(() => {});
+      }
     }
 
     if (hasFreshCache) {
@@ -327,10 +353,11 @@ function FeedPageContent() {
       };
     }
 
-    fetchDashboardSnapshot(String(activeFeed.id), timeframe, selectedHandle)
+    fetchDashboardSnapshot(feedId, timeframe, selectedHandle)
       .then((next) => {
         if (cancelled) return;
         setDashboardData(next);
+        if (selectedHandle === 'all' && next) setBaselineDashboardData(next);
       })
       .catch((err: unknown) => {
         if (!cancelled && !hadCache) {
@@ -463,24 +490,10 @@ function FeedPageContent() {
         useBrowserPageScroll ? 'fixed' : 'absolute',
       )}>
         <div className="relative fm-tab-header-shell">
-          <div
-            className={cn(
-              'w-full overflow-hidden rounded-[32px] relative transition-all duration-500 ease-[cubic-bezier(0.4,0,0.1,1)]',
-              'bg-white/65 backdrop-blur-[48px] backdrop-saturate-[200%]',
-              'border border-white/80 border-t-white/90',
-              'shadow-[0_1px_0_rgba(255,255,255,0.95)_inset,0_-1px_0_rgba(0,0,0,0.03)_inset,0_4px_8px_rgba(0,0,0,0.03),0_12px_28px_-4px_rgba(0,0,0,0.08),0_32px_64px_-12px_rgba(0,0,0,0.1),0_48px_96px_-16px_rgba(0,0,0,0.06)]',
-              'dark:bg-[rgba(6,6,6,0.65)] dark:border-white/[0.07] dark:border-t-white/[0.12]',
-              'dark:shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_-1px_0_rgba(0,0,0,0.5)_inset,0_8px_16px_rgba(0,0,0,0.4),0_24px_48px_-8px_rgba(0,0,0,0.6),0_48px_96px_-16px_rgba(0,0,0,0.5)]',
-            )}
+          <LiquidGlass
+            variant="header"
+            className="w-full"
           >
-            {/* Inner bevel highlight */}
-            <div className="pointer-events-none absolute inset-0 rounded-[32px] z-0 dark:opacity-0 transition-opacity"
-              style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 30%, rgba(0,0,0,0.015) 100%)' }}
-            />
-            <div className="pointer-events-none absolute inset-[1px] rounded-[31px] z-0 dark:hidden"
-              style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }}
-            />
-
             <div className="relative z-10 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2">
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
               <div className="flex flex-col gap-1.5 sm:gap-2 lg:hidden">
@@ -763,7 +776,7 @@ function FeedPageContent() {
               </div>
             </div>
 
-          </div>
+          </LiquidGlass>
         </div>
       </div>
 
@@ -833,6 +846,7 @@ function FeedPageContent() {
               activeFeed={activeFeed}
               timeframe={timeframe}
               dashboardData={dashboardData}
+              baselineDashboardData={baselineDashboardData}
               usePageScroll={useBrowserPageScroll}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
               immersiveBrowserMode={useTranslucentBrowserChrome}

@@ -17,5 +17,8 @@ def run_actor_handle(handle: str, days_window: int = 2, recent_post_ids: list[st
 
 def run_actor_post_urls(handle: str, post_urls: list[str], mode: str = "post") -> list[dict]:
     if (mode or "").strip().lower() == "reel":
-        return brightdata_run_reel_post_urls(post_urls)
+        reel_items = brightdata_run_reel_post_urls(post_urls)
+        if reel_items and all(str(item.get("videoUrl") or item.get("video_url") or "").strip() for item in reel_items):
+            return reel_items
+        return brightdata_run_post_urls(post_urls)
     return brightdata_run_post_urls(post_urls)

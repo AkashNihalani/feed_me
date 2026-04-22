@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { LayoutGrid, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
+import { LiquidGlass } from '@/components/ui/liquid-glass';
 import { cn } from '@/lib/utils';
 
 type NavIconProps = {
@@ -36,6 +37,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { play } = useAppHaptics();
+  const isFireRoute = pathname === '/fire';
 
   useEffect(() => {
     try {
@@ -60,23 +62,13 @@ export default function BottomNav() {
 
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
-      <div className={cn(
-        'pointer-events-auto relative flex items-center overflow-hidden',
-        'gap-0.5 rounded-[28px] px-1 py-1 lg:rounded-[26px]',
-        /* Neumorphic frosted glass — matching header depth */
-        'bg-white/65 backdrop-blur-[48px] backdrop-saturate-[200%]',
-        'border border-white/80 border-t-white/90',
-        'shadow-[0_1px_0_rgba(255,255,255,0.92)_inset,0_-1px_0_rgba(0,0,0,0.03)_inset,0_4px_8px_rgba(0,0,0,0.04),0_12px_28px_-4px_rgba(0,0,0,0.1),0_28px_56px_-10px_rgba(0,0,0,0.08)]',
-        'dark:bg-[rgba(6,6,6,0.65)] dark:border-white/[0.07] dark:border-t-white/[0.12]',
-        'dark:shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_-1px_0_rgba(0,0,0,0.5)_inset,0_8px_16px_rgba(0,0,0,0.4),0_24px_48px_-8px_rgba(0,0,0,0.5)]',
-      )}>
-        {/* Inner bevel overlay for neumorphic depth */}
-        <div className="pointer-events-none absolute inset-0 rounded-[28px] z-0 dark:opacity-0 transition-opacity"
-          style={{
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 40%, rgba(0,0,0,0.01) 100%)',
-          }}
-        />
-
+      <LiquidGlass
+        variant="nav"
+        className={cn(
+          'pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[26px]',
+          isFireRoute && 'fm-fire-chrome-surface',
+        )}
+      >
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
@@ -110,7 +102,7 @@ export default function BottomNav() {
             </Link>
           );
         })}
-      </div>
+      </LiquidGlass>
     </div>
   );
 }

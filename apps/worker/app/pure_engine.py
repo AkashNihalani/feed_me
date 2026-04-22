@@ -54,6 +54,9 @@ from .checkpoint_intelligence import (
 from .pattern_alerts import (
     resolve_pattern_alerts_for_feed as run_pattern_alerts_for_feed,
 )
+from .post_intelligence import (
+    current_model_version as pi_model_version,
+)
 from .retry_policy import (
     hard_skip_error as _hard_skip_error,
     is_connection_error as _is_connection_error,
@@ -4506,6 +4509,114 @@ class PureEngine:
             self.process_post_media_assets(capture_limit=max(40, updated * 3), purge_limit=0)
 
         return {"selected": len(rows), "updated": updated, "missing": missing}
+
+    def backfill_d7_post_intelligence(self, day: str | None = None, limit: int = 200) -> dict[str, int]:
+        """Re-run D7 post intelligence and Firewatch resolution for hot posts missing current tags."""
+        try:
+            business_day = (day or "").strip() or datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date().isoformat()
+        except Exception:
+            business_day = (day or "").strip() or datetime.now(timezone.utc).date().isoformat()
+
+        current_intelligence_model = pi_model_version(skipped=False)
+        rows = self.conn.execute(
+            """
+            select
+              fd.feed_id,
+              p.feeder_id,
+              pm.business_date_ist,
+              count(*) as hot_posts
+            from public.posts p
+            join public.feeders fd
+              on fd.id = p.feeder_id
+            join public.post_metrics pm
+              on pm.post_key = p.post_key
+             and lower(pm.checkpoint) = 'd7'
+            left join public.post_intelligence pi
+              on pi.post_key = p.post_key
+            where pm.business_date_ist = %s
+              and pm.percentile_performance is not null
+              and pm.percentile_performance <= 35
+              and (
+                pi.post_key is null
+                or coalesce(pi.model_version, '') <> %s
+                or not coalesce(pi.tags, '{}'::jsonb) ?& array[
+                  'mechanic',
+                  'opening_move',
+                  'proof_mode',
+                  'pacing',
+                  'style',
+                  'face',
+                  'language',
+                  'depth',
+                  'density',
+                  'text_overlay'
+                ]
+                or coalesce(pi.tags, '{}'::jsonb) ?| array['hook', 'pillar', 'format', 'subject']
+                or (
+                  lower(coalesce(p.media_type, 'image')) = 'reel'
+                  and coalesce(pi.tags->>'_visual_source', '') not like 'video_full:%'
+                )
+                or (
+                  lower(coalesce(p.media_type, 'image')) in ('sidecar', 'carousel')
+                  and coalesce(pi.tags->>'_visual_source', '') not like 'carousel:%'
+                )
+                or (
+                  lower(coalesce(p.media_type, 'image')) not in ('reel', 'sidecar', 'carousel')
+                  and coalesce(pi.tags->>'_visual_source', '') <> 'image_full'
+                )
+              )
+            group by fd.feed_id, p.feeder_id, pm.business_date_ist
+            order by count(*) desc, p.feeder_id asc
+            limit %s
+            """,
+            (business_day, current_intelligence_model, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+
+        if not rows:
+            return {
+                "selected_feeders": 0,
+                "selected_feeds": 0,
+                "hot_posts": 0,
+                "processed_feeders": 0,
+                "resolved_feeds": 0,
+            }
+
+        total_hot_posts = 0
+        processed_feeders = 0
+        feed_resolvers: dict[int, int] = {}
+
+        for row in rows:
+            feeder_id = int(row.get("feeder_id") or 0)
+            feed_id = int(row.get("feed_id") or 0)
+            day_value = row.get("business_date_ist")
+            if not feeder_id or not day_value:
+                continue
+            total_hot_posts += int(row.get("hot_posts") or 0)
+            try:
+                self._extract_post_intelligence_for_checkpoint(feeder_id, "d7", day_value)
+                processed_feeders += 1
+                if feed_id and feed_id not in feed_resolvers:
+                    feed_resolvers[feed_id] = feeder_id
+            except Exception:
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+        resolved_feeds = 0
+        for feeder_id in feed_resolvers.values():
+            self._resolve_pattern_alerts_for_feed(feeder_id, date.fromisoformat(business_day))
+            resolved_feeds += 1
+
+        return {
+            "selected_feeders": len(rows),
+            "selected_feeds": len(feed_resolvers),
+            "hot_posts": total_hot_posts,
+            "processed_feeders": processed_feeders,
+            "resolved_feeds": resolved_feeds,
+        }
 
 
 

@@ -290,59 +290,8 @@ function humanizeSignalCode(code: string | null | undefined): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function signedDeltaLabel(value: number | null): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  const rounded = Math.round(value);
-  if (rounded > 0) return `+${rounded}`;
-  if (rounded < 0) return String(rounded);
-  return '0';
-}
-
-function percentileLabel(value: number | null): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return `top ${Math.round(value)}%`;
-}
-
 function isHotPercentile(value: number | null): boolean {
   return value != null && Number.isFinite(value) && value <= HOT_PERCENTILE_MAX;
-}
-
-function buildTrackingBody(options: {
-  checkpoint: string;
-  handle: string | null;
-  bestMetric: FireMetricKey;
-  bestValue: number | null;
-  percentile: number | null;
-  multiple: number | null;
-  deltaFromD1: number | null;
-  patternSummaryBody: string | null;
-}): string {
-  if (options.patternSummaryBody) return options.patternSummaryBody;
-
-  const handle = `@${(options.handle || 'feed').toUpperCase()}`;
-  const checkpoint = options.checkpoint.toUpperCase();
-  const metricLabel = options.bestMetric.toUpperCase();
-  const metricValue = options.bestValue == null ? '--' : compactNumber(options.bestValue);
-  const percentile = percentileLabel(options.percentile);
-  const multiple = options.multiple == null ? null : `${options.multiple.toFixed(2)}x`;
-  const delta = signedDeltaLabel(options.deltaFromD1);
-
-  if (options.checkpoint.toLowerCase() === 'd1') {
-    if (percentile && multiple) return `${handle} checked in at ${checkpoint} with ${metricValue} ${metricLabel}, ${percentile} and ${multiple} its usual ${metricLabel}.`;
-    if (percentile) return `${handle} checked in at ${checkpoint} with ${metricValue} ${metricLabel}, ${percentile}.`;
-    return `${handle} checked in at ${checkpoint} with ${metricValue} ${metricLabel}.`;
-  }
-
-  if (percentile && delta) return `${handle} checked in at ${checkpoint} with ${metricValue} ${metricLabel}, ${percentile} and ${delta} vs D1.`;
-  if (percentile) return `${handle} checked in at ${checkpoint} with ${metricValue} ${metricLabel}, ${percentile}.`;
-  return `${handle} checked in at ${checkpoint} with ${metricValue} ${metricLabel}.`;
-}
-
-function compactNumber(value: number): string {
-  if (!Number.isFinite(value)) return '--';
-  if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(value % 1000000 === 0 ? 0 : 1)}M`;
-  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}K`;
-  return Math.round(value).toString();
 }
 
 function isMissingColumnError(error: unknown, columnName: string): boolean {
@@ -1931,16 +1880,6 @@ function buildSyntheticFireRows(options: {
     rowSeed.metric_key = bestMetric;
     rowSeed.metric_value = bestValue;
     rowSeed.hour_multiple = hourMultiple;
-    rowSeed.body = buildTrackingBody({
-      checkpoint,
-      handle: feeder.handle,
-      bestMetric,
-      bestValue,
-      percentile: displayPercentile,
-      multiple: rowMetricMultiple(rowSeed, bestMetric),
-      deltaFromD1: nullableNumber(metricRow.delta_from_d1),
-      patternSummaryBody: null,
-    });
 
     rows.push(rowSeed);
   }

@@ -22,6 +22,7 @@ interface FeedDetailV2Props {
   children: ReactNode;
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
+  baselineDashboardData?: DashboardPayload | null;
   usePageScroll?: boolean;
   bottomClearance?: string;
   immersiveBrowserMode?: boolean;
@@ -164,6 +165,7 @@ export default function FeedDetailV2({
   children,
   timeframe,
   dashboardData,
+  baselineDashboardData = null,
   usePageScroll = false,
   bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
   immersiveBrowserMode = false,
@@ -184,7 +186,12 @@ export default function FeedDetailV2({
   if (!activeFeed) return null;
 
   const ascentTile = <FeedAscentChart timeframe={timeframe} series={dashboardData?.ascent_series ?? []} />;
-  const velocityTile = <FeedVelocityBars summary={dashboardData?.summary ?? null} />;
+  const velocityTile = (
+    <FeedVelocityBars
+      summary={dashboardData?.summary ?? null}
+      baselineSummary={baselineDashboardData?.summary ?? dashboardData?.summary ?? null}
+    />
+  );
   const killZoneTile = <FeedKillZone hours={dashboardData?.killzone_hours ?? []} days={dashboardData?.killzone_days ?? []} />;
   const apexTile = <FeedApexArch mix={dashboardData?.apex_mix ?? []} />;
   const scatterTile = <FeedScatterField points={dashboardData?.scatter_points ?? []} windowDays={TIMEFRAME_TO_DAYS[timeframe]} />;

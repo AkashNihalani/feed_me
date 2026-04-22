@@ -30,6 +30,7 @@ type PostRow = {
   post_key: string;
   feeder_id: number;
   posted_at: string | null;
+  media_type: string | null;
 };
 
 type MetricRow = {
@@ -38,7 +39,7 @@ type MetricRow = {
   likes: number | null;
   comments: number | null;
   views: number | null;
-  computed_at: string;
+  computed_at: string | null;
 };
 
 type TickerRow = {
@@ -341,6 +342,16 @@ function parseIsoTime(value: string | null | undefined) {
   return Date.parse(value);
 }
 
+function finiteMetricNumber(value: number | null | undefined) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isVideoMediaType(value: string | null | undefined) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized.includes('reel') || normalized.includes('video');
+}
+
 function isTrackedPost(post: PostRow, feeder: FeederRow, checkpointsByPost: Map<string, Set<string>>) {
   const checkpoints = checkpointsByPost.get(post.post_key);
   if (!checkpoints?.has('d1')) return false;
@@ -349,6 +360,30 @@ function isTrackedPost(post: PostRow, feeder: FeederRow, checkpointsByPost: Map<
   const trackingStartedAt = parseIsoTime(feeder.created_at);
   if (!Number.isFinite(postedAt) || !Number.isFinite(trackingStartedAt)) return false;
   return postedAt >= trackingStartedAt;
+}
+
+function buildTrackedPostState(posts: PostRow[], feeders: FeederRow[], metrics: MetricRow[]) {
+  const feederById = new Map<number, FeederRow>(feeders.map((feeder) => [feeder.id, feeder]));
+  const checkpointsByPost = new Map<string, Set<string>>();
+
+  for (const metric of metrics) {
+    const checkpoint = String(metric.checkpoint || '').toLowerCase();
+    if (!checkpoint) continue;
+    const checkpoints = checkpointsByPost.get(metric.post_key) || new Set<string>();
+    checkpoints.add(checkpoint);
+    checkpointsByPost.set(metric.post_key, checkpoints);
+  }
+
+  const trackedPostKeys = new Set<string>();
+  for (const post of posts) {
+    const feeder = feederById.get(post.feeder_id);
+    if (!feeder) continue;
+    if (isTrackedPost(post, feeder, checkpointsByPost)) {
+      trackedPostKeys.add(post.post_key);
+    }
+  }
+
+  return { feederById, checkpointsByPost, trackedPostKeys };
 }
 
 async function fetchInstagramWebProfile(handle: string): Promise<InstagramProfileProbe | null> {
@@ -442,58 +477,160 @@ async function probeInstagramHandleQuick(handle: string): Promise<InstagramProfi
 
 
 function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: MetricRow[], trackedPostKeys: Set<string>): TickerRow[] {
-  const feederById = new Map<number, FeederRow>(feeders.map((feeder) => [feeder.id, feeder]));
   const postByKey = new Map<string, PostRow>(posts.map((post) => [post.post_key, post]));
-  const metricsByPost = new Map<string, MetricRow[]>();
+  const postKeysByFeeder = new Map<number, string[]>();
+  const latestD1MetricByPost = new Map<string, MetricRow>();
+
+  for (const post of posts) {
+    const bucket = postKeysByFeeder.get(post.feeder_id) || [];
+    bucket.push(post.post_key);
+    postKeysByFeeder.set(post.feeder_id, bucket);
+  }
 
   for (const metric of metrics) {
-    const arr = metricsByPost.get(metric.post_key) || [];
-    arr.push(metric);
-    metricsByPost.set(metric.post_key, arr);
+    if (String(metric.checkpoint || '').toLowerCase() !== 'd1') continue;
+    const current = latestD1MetricByPost.get(metric.post_key);
+    if (!current || parseIsoTime(metric.computed_at) > parseIsoTime(current.computed_at)) {
+      latestD1MetricByPost.set(metric.post_key, metric);
+    }
   }
 
   const now = Date.now();
   const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-  const tickerByHandle = new Map<string, TickerRow>();
+  const windowSize = 5;
+  const minSamples = windowSize * 2;
 
-  for (const [postKey, postMetrics] of metricsByPost.entries()) {
-    if (!trackedPostKeys.has(postKey)) continue;
-    const post = postByKey.get(postKey);
-    const feeder = post ? feederById.get(post.feeder_id) : null;
-    if (!post || !feeder) continue;
+  type MetricSample = {
+    value: number;
+    postedAtMs: number;
+    computedAtMs: number;
+  };
 
-    const sorted = [...postMetrics].sort((a, b) => Date.parse(b.computed_at) - Date.parse(a.computed_at));
-    const latest = sorted[0];
-    const previous = sorted[1] || null;
+  const computeDelta = (samples: MetricSample[]) => {
+    if (samples.length < minSamples) return 0;
+    const ordered = [...samples].sort((a, b) => (
+      b.postedAtMs - a.postedAtMs
+      || b.computedAtMs - a.computedAtMs
+      || b.value - a.value
+    ));
+    const recentTotal = ordered.slice(0, windowSize)
+      .reduce((sum, sample) => sum + sample.value, 0);
+    const previousTotal = ordered.slice(windowSize, windowSize * 2)
+      .reduce((sum, sample) => sum + sample.value, 0);
+    return Math.round(recentTotal - previousTotal);
+  };
 
-    const row = tickerByHandle.get(feeder.handle) || {
-      id: String(feeder.id),
-      handle: `@${feeder.handle}`,
-      likesDelta: 0,
-      commentsDelta: 0,
-      viewsDelta: 0,
-      postsDelta: 0,
-    };
+  return feeders
+    .map((feeder) => {
+      const postKeys = postKeysByFeeder.get(feeder.id) || [];
+      const likesSamples: MetricSample[] = [];
+      const commentsSamples: MetricSample[] = [];
+      const viewsSamples: MetricSample[] = [];
+      let postsDelta = 0;
 
-    row.likesDelta += (latest?.likes || 0) - (previous?.likes || 0);
-    row.commentsDelta += (latest?.comments || 0) - (previous?.comments || 0);
-    row.viewsDelta += (latest?.views || 0) - (previous?.views || 0);
+      for (const postKey of postKeys) {
+        if (!trackedPostKeys.has(postKey)) continue;
+        const post = postByKey.get(postKey);
+        const metric = latestD1MetricByPost.get(postKey);
+        const postedAtMs = parseIsoTime(post?.posted_at);
+        if (!post || !metric || !Number.isFinite(postedAtMs)) continue;
 
-    const postedAt = post.posted_at ? Date.parse(post.posted_at) : NaN;
-    if (Number.isFinite(postedAt) && postedAt >= sevenDaysAgo) {
-      row.postsDelta += 1;
-    }
+        if (postedAtMs >= sevenDaysAgo) {
+          postsDelta += 1;
+        }
 
-    tickerByHandle.set(feeder.handle, row);
-  }
+        const computedAtMs = Number.isFinite(parseIsoTime(metric.computed_at)) ? parseIsoTime(metric.computed_at) : 0;
+        const likesValue = finiteMetricNumber(metric.likes);
+        const commentsValue = finiteMetricNumber(metric.comments);
+        const viewsValue = finiteMetricNumber(metric.views);
 
-  return [...tickerByHandle.values()]
-    .sort((a, b) => {
-      const scoreA = Math.abs(a.likesDelta) + Math.abs(a.commentsDelta) + Math.abs(a.viewsDelta) * 0.01 + Math.abs(a.postsDelta) * 25;
-      const scoreB = Math.abs(b.likesDelta) + Math.abs(b.commentsDelta) + Math.abs(b.viewsDelta) * 0.01 + Math.abs(b.postsDelta) * 25;
-      return scoreB - scoreA;
+        if (likesValue != null) {
+          likesSamples.push({ value: likesValue, postedAtMs, computedAtMs });
+        }
+
+        if (commentsValue != null) {
+          commentsSamples.push({ value: commentsValue, postedAtMs, computedAtMs });
+        }
+
+        if (viewsValue != null && isVideoMediaType(post.media_type)) {
+          viewsSamples.push({ value: viewsValue, postedAtMs, computedAtMs });
+        }
+      }
+
+      const likesDelta = computeDelta(likesSamples);
+      const commentsDelta = computeDelta(commentsSamples);
+      const viewsDelta = computeDelta(viewsSamples);
+      const liveMetricCount = [likesSamples, commentsSamples, viewsSamples]
+        .filter((samples) => samples.length >= minSamples)
+        .length;
+      const score = liveMetricCount * 10000
+        + Math.abs(likesDelta)
+        + Math.abs(commentsDelta)
+        + Math.abs(viewsDelta) * 0.01
+        + postsDelta;
+
+      return {
+        row: {
+          id: String(feeder.id),
+          handle: `@${feeder.handle}`,
+          likesDelta,
+          commentsDelta,
+          viewsDelta,
+          postsDelta,
+        },
+        score,
+      };
     })
-    .slice(0, 8);
+    .sort((a, b) => b.score - a.score || a.row.handle.localeCompare(b.row.handle))
+    .slice(0, 8)
+    .map((entry) => entry.row);
+}
+
+async function buildHealthTickerForUser(sb: SupabaseAdminClient, userId: string) {
+  const { data: feedsData, error: feedsError } = await sb
+    .from('feeds')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'active');
+  if (feedsError) throw feedsError;
+
+  const feedIds = ((feedsData || []) as Array<{ id: number | string | null }>)
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  if (feedIds.length === 0) return [];
+
+  const { data: feederData, error: feederError } = await sb
+    .from('feeders')
+    .select('id,feed_id,handle,role,status,created_at,profile_pic_url,follower_count')
+    .in('feed_id', feedIds)
+    .eq('status', 'active');
+  if (feederError) throw feederError;
+
+  const feeders = (feederData || []) as FeederRow[];
+  const feederIds = feeders.map((feeder) => feeder.id);
+  if (feederIds.length === 0) return [];
+
+  const { data: postsData, error: postsError } = await sb
+    .from('posts')
+    .select('post_key,feeder_id,posted_at,media_type')
+    .in('feeder_id', feederIds);
+  if (postsError) throw postsError;
+
+  const posts = (postsData || []) as PostRow[];
+  const postKeys = posts.map((post) => post.post_key);
+  if (postKeys.length === 0) return [];
+
+  const { data: metricsData, error: metricsError } = await sb
+    .from('post_metrics')
+    .select('post_key,checkpoint,likes,comments,views,computed_at')
+    .in('post_key', postKeys)
+    .eq('checkpoint', 'd1')
+    .order('computed_at', { ascending: false });
+  if (metricsError) throw metricsError;
+
+  const metrics = (metricsData || []) as MetricRow[];
+  const { trackedPostKeys } = buildTrackedPostState(posts, feeders, metrics);
+  return buildTickerItems(feeders, posts, metrics, trackedPostKeys);
 }
 
 async function getFeedBundle(userId: string) {
@@ -503,7 +640,11 @@ async function getFeedBundle(userId: string) {
   });
 
   if (!error) {
-    return normalizeFeedBundlePayload(data);
+    const normalized = normalizeFeedBundlePayload(data);
+    return {
+      ...normalized,
+      ticker: await buildHealthTickerForUser(sb, userId),
+    };
   }
 
   const message = error?.message || '';
@@ -550,7 +691,7 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
   if (feederIds.length > 0) {
     const { data: postsData, error: postsError } = await sb
       .from('posts')
-      .select('post_key,feeder_id,posted_at')
+      .select('post_key,feeder_id,posted_at,media_type')
       .in('feeder_id', feederIds);
     if (postsError) throw postsError;
     posts = (postsData || []) as PostRow[];
@@ -568,17 +709,13 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
   }
 
   const latestMetricByPost = new Map<string, MetricRow>();
-  const checkpointsByPost = new Map<string, Set<string>>();
-  for (const m of metrics) {
-    const checkpoints = checkpointsByPost.get(m.post_key) || new Set<string>();
-    checkpoints.add(String(m.checkpoint || '').toLowerCase());
-    checkpointsByPost.set(m.post_key, checkpoints);
-    if (!latestMetricByPost.has(m.post_key)) {
-      latestMetricByPost.set(m.post_key, m);
+  for (const metric of metrics) {
+    if (!latestMetricByPost.has(metric.post_key)) {
+      latestMetricByPost.set(metric.post_key, metric);
     }
   }
 
-  const feederById = new Map<number, FeederRow>(feeders.map((feeder) => [feeder.id, feeder]));
+  const { checkpointsByPost, trackedPostKeys } = buildTrackedPostState(posts, feeders, metrics);
   const postByKey = new Map<string, PostRow>(posts.map((post) => [post.post_key, post]));
 
   const postKeysByFeeder = new Map<number, string[]>();
@@ -594,16 +731,6 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
     arr.push(f);
     feedersByFeed.set(f.feed_id, arr);
   }
-
-  const trackedPostKeys = new Set<string>();
-  for (const post of posts) {
-    const feeder = feederById.get(post.feeder_id);
-    if (!feeder) continue;
-    if (isTrackedPost(post, feeder, checkpointsByPost)) {
-      trackedPostKeys.add(post.post_key);
-    }
-  }
-
   const feederMetrics = new Map<number, { likes: number; comments: number; views: number; postsTracked: number }>();
   for (const feeder of feeders) {
     const keys = postKeysByFeeder.get(feeder.id) || [];
