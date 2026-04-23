@@ -990,6 +990,8 @@ class PureEngine:
         *,
         thumbnail_retention_days: int | None = None,
         preview_retention_days: int | None = None,
+        full_video_retention_days: int | None = None,
+        carousel_retention_days: int | None = None,
     ):
         if not FIRE_MEDIA_RETENTION_ENABLED:
             return
@@ -999,6 +1001,14 @@ class PureEngine:
             payloads.append(("thumbnail", thumbnail_url, thumbnail_retention_days))
         if _preview_enabled_for_source(video_url):
             payloads.append(("preview_5s", str(video_url).strip(), preview_retention_days))
+        if full_video_retention_days is not None and _preview_enabled_for_source(video_url):
+            payloads.append(("video_full", str(video_url).strip(), full_video_retention_days))
+        if carousel_retention_days is not None and carousel_urls:
+            for idx, source_url in enumerate(carousel_urls, start=1):
+                normalized_source_url = str(source_url or "").strip()
+                if not normalized_source_url:
+                    continue
+                payloads.append((f"carousel_{idx:02d}", normalized_source_url, carousel_retention_days))
 
         storage_provider = _active_media_storage_provider()
         storage_bucket = _active_media_bucket()
@@ -1112,6 +1122,8 @@ class PureEngine:
         *,
         thumbnail_retention_days: int | None = None,
         preview_retention_days: int | None = None,
+        full_video_retention_days: int | None = None,
+        carousel_retention_days: int | None = None,
         context: str,
     ):
         try:
@@ -1124,6 +1136,8 @@ class PureEngine:
                     carousel_urls,
                     thumbnail_retention_days=thumbnail_retention_days,
                     preview_retention_days=preview_retention_days,
+                    full_video_retention_days=full_video_retention_days,
+                    carousel_retention_days=carousel_retention_days,
                 )
         except Exception as exc:
             print(f"[media-stage] skipped post_key={post_key} context={context}: {exc}")
@@ -1133,11 +1147,12 @@ class PureEngine:
         post_keys: list[str],
         *,
         asset_roles: tuple[str, ...] = ("thumbnail", "preview_5s"),
+        include_all_roles: bool = False,
         stale_minutes: int = 5,
     ) -> dict[str, int]:
         normalized_post_keys = [str(value).strip().lower() for value in post_keys if str(value).strip()]
         normalized_roles = [str(value).strip().lower() for value in asset_roles if str(value).strip()]
-        if not normalized_post_keys or not normalized_roles:
+        if not normalized_post_keys or (not normalized_roles and not include_all_roles):
             return {"selected": 0, "captured": 0, "failed": 0}
 
         rows = self.conn.execute(
@@ -1145,7 +1160,10 @@ class PureEngine:
             select *
             from public.post_media_assets
             where post_key = any(%s)
-              and asset_role = any(%s)
+              and (
+                %s
+                or asset_role = any(%s)
+              )
               and (
                 status in ('pending_capture', 'capture_failed')
                 or (
@@ -1157,13 +1175,15 @@ class PureEngine:
             order by
               case
                 when lower(coalesce(asset_role, '')) = 'thumbnail' then 0
-                when lower(coalesce(asset_role, '')) = 'preview_5s' then 1
+                when lower(coalesce(asset_role, '')) = 'video_full' then 1
+                when lower(coalesce(asset_role, '')) like 'carousel_%%' then 2
+                when lower(coalesce(asset_role, '')) = 'preview_5s' then 3
                 else 9
               end,
               updated_at asc,
               id asc
             """,
-            (normalized_post_keys, normalized_roles, max(1, stale_minutes)),
+            (normalized_post_keys, include_all_roles, normalized_roles, max(1, stale_minutes)),
         ).fetchall()
         self.conn.commit()
 
@@ -1572,8 +1592,10 @@ class PureEngine:
             select
               p.post_key,
               p.posted_at,
+              lower(coalesce(p.media_type, 'image')) as media_type,
               p.thumbnail_url,
               p.video_url,
+              p.carousel_urls,
               pm.business_date_ist
             from public.post_metrics pm
             join public.posts p on p.post_key = pm.post_key
@@ -1586,23 +1608,39 @@ class PureEngine:
             (feeder_id, cp, business_day, _HOT_PERCENTILE_MAX),
         ).fetchall()
 
+        staged_post_keys: list[str] = []
         for row in rows:
             post_key = str(row.get("post_key") or "").strip().lower()
             if not post_key:
                 continue
             posted_at = _to_dt(row.get("posted_at"))
+            media_type = str(row.get("media_type") or "image").strip().lower()
             thumbnail_url = str(row.get("thumbnail_url") or "").strip() or None
             preview_allowed = _preview_capture_allowed_for_business_day(str(row.get("business_date_ist") or "").strip())
             video_url = str(row.get("video_url") or "").strip() or None
+            raw_carousel_urls = row.get("carousel_urls")
+            carousel_urls = (
+                [str(value).strip() for value in raw_carousel_urls if str(value).strip()]
+                if isinstance(raw_carousel_urls, list)
+                else None
+            )
             self._stage_post_media_assets(
                 post_key,
                 posted_at,
                 thumbnail_url,
                 video_url if preview_allowed else None,
-                None,
+                carousel_urls,
                 preview_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
+                full_video_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS if media_type == "reel" and preview_allowed else None,
+                carousel_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS if media_type in {"sidecar", "carousel"} else None,
             )
+            staged_post_keys.append(post_key)
         self.conn.commit()
+        if staged_post_keys:
+            self._capture_post_media_assets_for_post_keys(
+                staged_post_keys,
+                include_all_roles=True,
+            )
 
     def _claim_post_media_assets_for_capture(self, limit: int) -> list[dict]:
         if not FIRE_MEDIA_RETENTION_ENABLED:
@@ -4594,6 +4632,7 @@ class PureEngine:
                 continue
             total_hot_posts += int(row.get("hot_posts") or 0)
             try:
+                self._extend_hot_visual_media_for_day(feeder_id, "d7", day_value)
                 self._extract_post_intelligence_for_checkpoint(feeder_id, "d7", day_value)
                 processed_feeders += 1
                 if feed_id and feed_id not in feed_resolvers:
