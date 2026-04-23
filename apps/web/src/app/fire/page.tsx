@@ -7,7 +7,6 @@ import ChronoTabs from '@/components/fire/ChronoTabs';
 import FluidDeck from '@/components/fire/FluidDeck';
 import FireIntelligenceDialog from '@/components/fire/FireIntelligenceDialog';
 import ZSpaceFilter from '@/components/fire/ZSpaceFilter';
-import { LiquidGlass } from '@/components/ui/liquid-glass';
 import {
   metricMultipleFromPayload,
   metricValueFromPayload,
@@ -26,7 +25,6 @@ import {
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
 import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
-import { useHeaderSurfaceState } from '@/lib/useHeaderSurfaceState';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
@@ -248,6 +246,38 @@ function serializeFilters(filters: FireFilterState): string {
     selectedFeedIds: sortNumberList(filters.selectedFeedIds),
     selectedFeederIdsByFeed: normalizedFeederState,
     selectedCheckpoints: sortCheckpointList(filters.selectedCheckpoints),
+  });
+}
+
+function filterFireAlertItems(items: FireAlertItem[], filters: FireFilterState): FireAlertItem[] {
+  const thresholdLimit = filters.threshold === 'ALL' ? null : Number.parseInt(filters.threshold, 10);
+  const selectedFeedIds = filters.selectedFeedIds.length > 0 ? new Set(sortNumberList(filters.selectedFeedIds)) : null;
+  const selectedFeederIdsList = flattenSelectedFeederIds(filters);
+  const selectedFeederIds = selectedFeederIdsList.length > 0 ? new Set(selectedFeederIdsList) : null;
+  const selectedCheckpoints = filters.selectedCheckpoints.length > 0
+    ? new Set(sortCheckpointList(filters.selectedCheckpoints).map((checkpoint) => checkpoint.toUpperCase()))
+    : null;
+
+  return items.filter((item) => {
+    if (thresholdLimit != null) {
+      const percentile = item.surfacePercentileExact ?? item.surfacePercentile;
+      if (percentile == null || percentile > thresholdLimit) return false;
+    }
+
+    if (filters.mediaFilter !== 'ALL') {
+      const mediaLabel = normalizeMediaLabel(item.surfaceMediaType || item.mediaType);
+      if (mediaLabel !== filters.mediaFilter) return false;
+    }
+
+    if (selectedFeedIds && (!item.feedId || !selectedFeedIds.has(item.feedId))) return false;
+    if (selectedFeederIds && (!item.feederId || !selectedFeederIds.has(item.feederId))) return false;
+
+    if (selectedCheckpoints) {
+      const checkpoint = String(item.checkpoint || '').trim().toUpperCase();
+      if (!checkpoint || !selectedCheckpoints.has(checkpoint)) return false;
+    }
+
+    return true;
   });
 }
 
@@ -682,8 +712,6 @@ export default function FirePage() {
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
   const headerCompressed = useCompressedOnScroll(contentRef, useBrowserPageScroll && !isDesktopViewport, 24);
 
-  useHeaderSurfaceState(useBrowserPageScroll);
-
   const hasActiveFilters = filters.mediaFilter !== 'ALL'
     || filters.selectedFeedIds.length > 0
     || Object.keys(filters.selectedFeederIdsByFeed).length > 0
@@ -697,12 +725,20 @@ export default function FirePage() {
 
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
+  const handleSelectedDayChange = useCallback((nextDay: string) => {
+    startTransition(() => {
+      setSelectedDay(nextDay);
+    });
+  }, []);
   const displayCards = useMemo(
     () => sortFireAlertItems(
-      dedupeFireAlertItems(cards).map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
+      filterFireAlertItems(
+        dedupeFireAlertItems(cards).map((card) => ({ ...card, warmupGate: buildWarmupGate(card, warmupSummary) })),
+        filters,
+      ),
       filters.sort,
     ),
-    [cards, filters.sort, warmupSummary],
+    [cards, filters, warmupSummary],
   );
   const desktopModalIndex = useMemo(
     () => (desktopModalCard ? displayCards.findIndex((card) => card.id === desktopModalCard.id) : -1),
@@ -1345,100 +1381,99 @@ export default function FirePage() {
         filters={filters}
         availableFeeds={availableFeeds}
         availableCheckpoints={availableCheckpoints}
-        onChange={setFilters}
+        onChange={updateFilters}
       />
 
-      <div className={cn(useBrowserPageScroll ? 'relative z-10 min-h-[100dvh]' : 'absolute inset-0 z-10')}>
-        <div
-          ref={headerRef}
-          className={cn(
-            'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
-            useBrowserPageScroll ? 'fixed' : 'absolute',
-          )}
-        >
-          <div className="relative fm-tab-header-shell">
-            <LiquidGlass variant="header" compressed={headerCompressed} className="fm-fire-chrome-surface w-full">
-              <div className="relative z-10 px-3.5 sm:px-4 lg:px-5">
-                <div className={cn(
-                  'flex flex-col transition-[gap] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] lg:hidden',
-                  headerCompressed ? 'gap-1.5' : 'gap-2.5',
-                )}>
-                  <div className="flex items-center justify-between gap-3">
-                    <motion.h1
-                      animate={{
-                        scale: headerCompressed ? 0.74 : 1,
-                        opacity: headerCompressed ? 0.9 : 1,
-                      }}
-                      transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-                      className="origin-left shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black will-change-transform sm:text-[38px] dark:text-white fm-depth-title"
+      <div
+        ref={headerRef}
+        className={cn(
+          'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+          useBrowserPageScroll ? 'fixed' : 'absolute',
+        )}
+      >
+        <div className="relative fm-tab-header-shell">
+          <div className={cn('fm-depth-chrome fm-depth-chrome--header w-full', headerCompressed && 'fm-depth-chrome--header-compressed')}>
+            <div className="relative z-10 px-3.5 sm:px-4 lg:px-5">
+              <div className={cn(
+                'flex flex-col transition-[gap] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] lg:hidden',
+                headerCompressed ? 'gap-1.5' : 'gap-2.5',
+              )}>
+                <div className="flex items-center justify-between gap-3">
+                  <motion.h1
+                    animate={{
+                      scale: headerCompressed ? 0.74 : 1,
+                      opacity: headerCompressed ? 0.9 : 1,
+                    }}
+                    transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+                    className="origin-left shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black will-change-transform sm:text-[38px] dark:text-white fm-depth-title"
+                  >
+                    FIRE
+                  </motion.h1>
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      type="button"
+                      onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
+                      className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
                     >
-                      FIRE
-                    </motion.h1>
-                    <div className="flex items-center gap-2">
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        type="button"
-                        onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
-                        className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
-                      >
-                        <ArrowUpDown size={14} />
-                        <span>{filters.sort === 'best' ? 'PCTL' : 'RECENT'}</span>
-                      </motion.button>
-                      <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        onClick={() => {
-                          play('snapLock');
-                          setIsZSpaceOpen(true);
-                        }}
-                        className={cn(
-                          'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
-                          'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
-                          hasActiveFilters ? 'text-[#E11D48]' : 'text-black/58 dark:text-white/45',
-                        )}
-                      >
-                        <SlidersHorizontal size={20} />
-                      </motion.button>
-                    </div>
-                  </div>
-                  <div className="min-w-0 pointer-events-auto">
-                    <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={setSelectedDay} />
+                      <ArrowUpDown size={14} />
+                      <span>{filters.sort === 'best' ? 'PCTL' : 'RECENT'}</span>
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.92 }}
+                      onClick={() => {
+                        play('snapLock');
+                        setIsZSpaceOpen(true);
+                      }}
+                      className={cn(
+                        'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
+                        'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
+                        hasActiveFilters ? 'text-[#E11D48]' : 'text-black/58 dark:text-white/45',
+                      )}
+                    >
+                      <SlidersHorizontal size={20} />
+                    </motion.button>
                   </div>
                 </div>
+                <div className="min-w-0 pointer-events-auto">
+                  <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} />
+                </div>
+              </div>
 
-                <div className="hidden flex-col gap-2 lg:flex">
-                  <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
-                    <div className="text-[28px] font-black uppercase tracking-[0.18em] text-black dark:text-white fm-depth-title">
-                      FIRE
-                    </div>
-                    <div className="flex justify-center px-0.5">
-                      <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={setSelectedDay} compact />
-                    </div>
-                    <div className="flex items-center justify-end">
-                        <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                        <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">
-                          Post Type
-                        </div>
-                        <div className="mt-0.5 flex items-end justify-center gap-1">
-                          <span className="text-[46px] font-black leading-[0.82] tracking-[-0.1em] text-black dark:text-white">
-                            {total}
-                          </span>
-                          <span className="mb-1.5 rounded-full bg-[#E11D48] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.22)]">
-                            {mediaFilterLabel(filters.mediaFilter)}
-                          </span>
-                        </div>
-                        <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
-                          {selectedDay || '--'}
-                        </div>
+              <div className="hidden flex-col gap-2 lg:flex">
+                <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
+                  <div className="text-[28px] font-black uppercase tracking-[0.18em] text-black dark:text-white fm-depth-title">
+                    FIRE
+                  </div>
+                  <div className="flex justify-center px-0.5">
+                    <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} compact />
+                  </div>
+                  <div className="flex items-center justify-end">
+                      <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">
+                        Post Type
+                      </div>
+                      <div className="mt-0.5 flex items-end justify-center gap-1">
+                        <span className="text-[46px] font-black leading-[0.82] tracking-[-0.1em] text-black dark:text-white">
+                          {total}
+                        </span>
+                        <span className="mb-1.5 rounded-full bg-[#E11D48] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.22)]">
+                          {mediaFilterLabel(filters.mediaFilter)}
+                        </span>
+                      </div>
+                      <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
+                        {selectedDay || '--'}
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
-                    <div className="flex items-center gap-1 rounded-[14px] border border-black/5 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                      {FIRE_MEDIA_FILTER_OPTIONS.map((option) => {
-                        const isActive = filters.mediaFilter === option.value;
-                        return (
-                          <motion.button
+                <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                  <div className="flex items-center gap-1 rounded-[14px] border border-black/5 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    {FIRE_MEDIA_FILTER_OPTIONS.map((option) => {
+                      const isActive = filters.mediaFilter === option.value;
+                      return (
+                        <motion.button
                             key={option.value}
                             type="button"
                             whileTap={{ scale: 0.95 }}
@@ -1554,50 +1589,45 @@ export default function FirePage() {
                   </div>
                 </div>
               </div>
-            </LiquidGlass>
           </div>
         </div>
+      </div>
 
-        <div ref={contentRef} className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
-          {loading ? (
-            <div className="flex w-full items-center justify-center" style={fireStateShellStyle()}>
-              <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
+      <div ref={contentRef} className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
+        {loading ? (
+          <div className="flex w-full items-center justify-center" style={fireStateShellStyle()}>
+            <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
+          </div>
+        ) : error ? (
+          <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
+            <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-6 py-5 text-sm font-semibold tracking-wide text-red-600 dark:text-red-300">
+              FIRE DATA UNAVAILABLE: {error}
             </div>
-          ) : error ? (
-            <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
-              <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-6 py-5 text-sm font-semibold tracking-wide text-red-600 dark:text-red-300">
-                FIRE DATA UNAVAILABLE: {error}
-              </div>
-            </div>
-          ) : (
-            <div className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}>
-              <motion.div
-                animate={{ opacity: isRefreshing ? 0.9 : 1 }}
-                transition={{ duration: 0.22, ease: APPLE_EASE }}
-                className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}
-              >
-                {displayCards.length === 0 ? (
-                  <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
-                    <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
-                      No alerts for this selection
-                    </div>
+          </div>
+        ) : (
+          <div className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}>
+            <div className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}>
+              {displayCards.length === 0 ? (
+                <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
+                  <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
+                    {isRefreshing ? 'Updating fire view' : 'No alerts for this selection'}
                   </div>
-                ) : (
-                  <FluidDeck
-                    cards={displayCards}
-                    hasMore={hasMore}
-                    loadingMore={loadingMore}
-                    onLoadMore={handleLoadMore}
-                    onOpenCard={setDesktopModalCard}
-                    usePageScroll={useBrowserPageScroll}
-                    resetKey={deckResetKey}
-                    total={total}
-                  />
-                )}
-              </motion.div>
+                </div>
+              ) : (
+                <FluidDeck
+                  cards={displayCards}
+                  hasMore={hasMore}
+                  loadingMore={loadingMore}
+                  onLoadMore={handleLoadMore}
+                  onOpenCard={setDesktopModalCard}
+                  usePageScroll={useBrowserPageScroll}
+                  resetKey={deckResetKey}
+                  total={total}
+                />
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <FireIntelligenceDialog

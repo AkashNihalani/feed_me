@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { LayoutGrid, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
-import { LiquidGlass } from '@/components/ui/liquid-glass';
 import { cn } from '@/lib/utils';
 
 type NavIconProps = {
@@ -37,7 +36,6 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { play } = useAppHaptics();
-  const isFireRoute = pathname === '/fire';
 
   useEffect(() => {
     try {
@@ -62,13 +60,7 @@ export default function BottomNav() {
 
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
-      <LiquidGlass
-        variant="nav"
-        className={cn(
-          'pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[26px]',
-          isFireRoute && 'fm-fire-chrome-surface',
-        )}
-      >
+      <div className="fm-depth-chrome fm-depth-chrome--nav pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[26px]">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
@@ -102,7 +94,7 @@ export default function BottomNav() {
             </Link>
           );
         })}
-      </LiquidGlass>
+      </div>
     </div>
   );
 }

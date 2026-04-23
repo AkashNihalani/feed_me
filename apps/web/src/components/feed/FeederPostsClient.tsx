@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowUpRight, Image as ImageIcon, LayoutGrid, PlaySquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 
@@ -33,6 +33,10 @@ type FeederPayload = {
 
 type SortMode = 'percentile' | 'newest' | 'oldest';
 type MediaFilter = 'all' | 'image' | 'carousel' | 'reel';
+
+const FEEDER_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 300, damping: 28, mass: 0.86 } as const;
+const FEEDER_PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34, mass: 0.78 } as const;
+const FEEDER_MOTION_EASE = [0.22, 1, 0.36, 1] as const;
 
 function formatCompact(value: number | null) {
   if (value == null || !Number.isFinite(value)) return '--';
@@ -104,6 +108,18 @@ export default function FeederPostsClient({
       ? 'calc(132px + env(safe-area-inset-bottom))'
       : 'calc(124px + env(safe-area-inset-bottom))';
 
+  const updateSortMode = useCallback((next: SortMode) => {
+    startTransition(() => {
+      setSortMode(next);
+    });
+  }, []);
+
+  const updateMediaFilter = useCallback((next: MediaFilter) => {
+    startTransition(() => {
+      setMediaFilter(next);
+    });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -172,6 +188,7 @@ export default function FeederPostsClient({
 
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white/78 bg-[linear-gradient(135deg,rgba(225,29,72,0.18),rgba(255,255,255,0.92))] text-[13px] font-black uppercase tracking-[0.06em] text-[#881337] shadow-[0_4px_12px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.84)] dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(225,29,72,0.6),rgba(24,24,27,0.96))] dark:text-white">
             {feeder?.profilePicUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={feeder.profilePicUrl} alt={`@${feeder.handle || normalizedHandle}`} className="h-full w-full object-cover" />
             ) : (
               <span>{feederInitial(feeder?.handle || normalizedHandle)}</span>
@@ -210,14 +227,18 @@ export default function FeederPostsClient({
               <button
                 key={value}
                 type="button"
-                onClick={() => setSortMode(value)}
+                onClick={() => updateSortMode(value)}
                 className={cn(
-                  'relative rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em]',
+                  'relative overflow-hidden rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition-colors duration-200',
                   sortMode === value ? 'text-white' : 'fm-depth-chip text-foreground/46 dark:text-white/40',
                 )}
               >
                 {sortMode === value && (
-                  <span className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]" />
+                  <motion.span
+                    layoutId="feeder-sort-pill-bg"
+                    transition={FEEDER_PILL_SPRING}
+                    className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]"
+                  />
                 )}
                 <span className="relative z-10">{label}</span>
               </button>
@@ -232,14 +253,18 @@ export default function FeederPostsClient({
               <button
                 key={value}
                 type="button"
-                onClick={() => setMediaFilter(value)}
+                onClick={() => updateMediaFilter(value)}
                 className={cn(
-                  'relative whitespace-nowrap rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em]',
+                  'relative overflow-hidden whitespace-nowrap rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition-colors duration-200',
                   mediaFilter === value ? 'text-white' : 'fm-depth-chip text-foreground/46 dark:text-white/40',
                 )}
               >
                 {mediaFilter === value && (
-                  <span className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]" />
+                  <motion.span
+                    layoutId="feeder-media-pill-bg"
+                    transition={FEEDER_PILL_SPRING}
+                    className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]"
+                  />
                 )}
                 <span className="relative z-10">{mediaLabel(value)}</span>
               </button>
@@ -273,11 +298,13 @@ export default function FeederPostsClient({
               <div className="mt-2 text-[14px] font-bold text-foreground/58">Try another sort or media filter.</div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {filteredPosts.map((post, index) => (
-                <FeederPostCard key={post.postKey} post={post} index={index} />
-              ))}
-            </div>
+            <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              <AnimatePresence initial={false} mode="popLayout">
+                {filteredPosts.map((post) => (
+                  <FeederPostCard key={post.postKey} post={post} />
+                ))}
+              </AnimatePresence>
+            </motion.div>
           )}
         </div>
       </div>
@@ -285,19 +312,27 @@ export default function FeederPostsClient({
   );
 }
 
-function FeederPostCard({ post, index }: { post: FeederPostItem; index: number }) {
+function FeederPostCard({ post }: { post: FeederPostItem }) {
   return (
     <motion.a
+      layout
       href={post.postUrl || undefined}
       target={post.postUrl ? '_blank' : undefined}
       rel={post.postUrl ? 'noreferrer' : undefined}
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: Math.min(index * 0.03, 0.18) }}
+      initial={{ opacity: 0, y: 18, scale: 0.975 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.97 }}
+      transition={{
+        layout: FEEDER_GRID_LAYOUT_SPRING,
+        opacity: { duration: 0.18, ease: FEEDER_MOTION_EASE },
+        y: { duration: 0.24, ease: FEEDER_MOTION_EASE },
+        scale: { duration: 0.24, ease: FEEDER_MOTION_EASE },
+      }}
       className="fm-depth-glass group relative flex aspect-[4/5] flex-col overflow-hidden rounded-[24px] p-3 md:aspect-[10/11] xl:aspect-[20/21]"
     >
       <div className="relative flex-1 overflow-hidden rounded-[18px]">
         {post.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={post.thumbnailUrl}
             alt=""

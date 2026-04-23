@@ -31,12 +31,19 @@ const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
 const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
 const PWA_RENDER_RADIUS = 2;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
-const DESKTOP_CARD_SLOT_STYLE: CSSProperties = { contain: 'layout paint style' };
-const DESKTOP_CARD_FRAME_STYLE: CSSProperties = {
-  contentVisibility: 'auto',
-  containIntrinsicSize: '560px 720px',
-  contain: 'layout paint style',
-};
+const DESKTOP_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 280, damping: 30, mass: 0.88 } as const;
+const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
+const GRID_ITEM_EASE = [0.22, 1, 0.36, 1] as const;
+// Note: previously these applied `contain: 'layout paint style'` (and
+// `content-visibility: auto`, which implies `paint` containment). Both create
+// a paint-containment boundary that prevents the sticky header's
+// `backdrop-filter` from sampling the card region on Chrome desktop —
+// producing a flat semi-transparent chrome with no frosted dispersion.
+// We drop the containment hints entirely; the trade-off is a very small
+// amount of unnecessary layout/paint work for off-screen cards, which is
+// negligible vs. the visual regression they caused.
+const DESKTOP_CARD_SLOT_STYLE: CSSProperties = {};
+const DESKTOP_CARD_FRAME_STYLE: CSSProperties = {};
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -481,12 +488,18 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     }
 
     const nextId = cards[0]?.id ?? null;
-    const frame = window.requestAnimationFrame(() => setActiveCardId(nextId));
+    const frame = window.requestAnimationFrame(() => {
+      currentIndexRef.current = 0;
+      activeCardIdRef.current = nextId;
+      setActiveCardId(nextId);
+    });
+    if (isDesktop) return () => window.cancelAnimationFrame(frame);
+
     const root = containerRef.current;
     if (!usePageScroll && !root) return () => window.cancelAnimationFrame(frame);
     animateScrollToTop();
     return () => window.cancelAnimationFrame(frame);
-  }, [animateScrollToTop, cards, clearPwaTopReturn, resetKey, usePageScroll, usePwaSnap]);
+  }, [animateScrollToTop, cards, clearPwaTopReturn, isDesktop, resetKey, usePageScroll, usePwaSnap]);
 
   // Scroll-based active card sync — non-PWA mobile only
   useEffect(() => {
@@ -729,7 +742,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
         : 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth hide-scrollbar',
     'px-2 sm:px-3 lg:px-4',
     'pt-[calc(var(--fire-header-height,168px)+40px)]',
-    isDesktop ? 'pb-8' : 'pb-[88px]',
+    isDesktop ? 'pb-[148px]' : 'pb-[88px]',
     'lg:snap-none',
   ].join(' ');
 
@@ -741,42 +754,56 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     <div ref={containerRef} className={containerClasses} style={containerStyle}>
       <div className="mx-auto w-full lg:max-w-none lg:px-1 xl:px-2">
         {isDesktop ? (
-          <div className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6">
-            {cards.map((card, index) => {
-              const isActive = resolvedActive === card.id;
-              return (
-                <motion.div
-                  key={card.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.18, delay: Math.min(index * 0.012, 0.08), ease: [0.22, 1, 0.36, 1] }}
-                  style={DESKTOP_CARD_FRAME_STYLE}
-                >
-                  <VirtualSlot
-                    item={card}
-                    index={index}
-                    isActive={isActive}
-                    isDesktop
-                    mobileAutoplayEnabled={mobileAutoplayEnabled}
-                    onOpenDetails={() => onOpenCard?.(card)}
-                    onBeforeOpenPost={persistStandaloneDeckState}
-                  />
-                </motion.div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col">
-            <AnimatePresence mode="sync">
+          <motion.div layout className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6">
+            <AnimatePresence initial={false} mode="popLayout">
               {cards.map((card, index) => {
                 const isActive = resolvedActive === card.id;
                 return (
                   <motion.div
                     key={card.id}
+                    layout
+                    initial={false}
+                    exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                    transition={{
+                      layout: DESKTOP_GRID_LAYOUT_SPRING,
+                      opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+                      scale: { duration: 0.22, ease: GRID_ITEM_EASE },
+                      y: { duration: 0.22, ease: GRID_ITEM_EASE },
+                    }}
+                    style={DESKTOP_CARD_FRAME_STYLE}
+                  >
+                    <VirtualSlot
+                      item={card}
+                      index={index}
+                      isActive={isActive}
+                      isDesktop
+                      mobileAutoplayEnabled={mobileAutoplayEnabled}
+                      onOpenDetails={() => onOpenCard?.(card)}
+                      onBeforeOpenPost={persistStandaloneDeckState}
+                    />
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
+        ) : (
+          <div className="flex flex-col">
+            <AnimatePresence initial={false} mode="popLayout">
+              {cards.map((card, index) => {
+                const isActive = resolvedActive === card.id;
+                return (
+                  <motion.div
+                    key={card.id}
+                    layout="position"
                     initial={{ opacity: 0, y: 10, scale: 0.985 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{
+                      layout: MOBILE_STACK_LAYOUT_SPRING,
+                      opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+                      scale: { duration: 0.22, ease: GRID_ITEM_EASE },
+                      y: { duration: 0.22, ease: GRID_ITEM_EASE },
+                    }}
                     className={mobileStackClass}
                     style={{ zIndex: isActive ? 40 : 10 }}
                   >

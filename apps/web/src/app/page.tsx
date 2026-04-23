@@ -10,7 +10,6 @@ import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
-import { LiquidGlass } from '@/components/ui/liquid-glass';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
@@ -78,11 +77,9 @@ function defaultExportRange() {
 
 /* ── Slide-up entrance ── */
 const pageVariants = {
-  hidden: { opacity: 0, y: 14, scale: 0.992 },
+  hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    y: 0,
-    scale: 1,
     transition: { duration: 0.42, ease: APPLE_EASE },
   },
 };
@@ -490,10 +487,7 @@ function FeedPageContent() {
         useBrowserPageScroll ? 'fixed' : 'absolute',
       )}>
         <div className="relative fm-tab-header-shell">
-          <LiquidGlass
-            variant="header"
-            className="w-full"
-          >
+          <div className="fm-depth-chrome fm-depth-chrome--header w-full">
             <div className="relative z-10 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2">
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
               <div className="flex flex-col gap-1.5 sm:gap-2 lg:hidden">
@@ -776,7 +770,7 @@ function FeedPageContent() {
               </div>
             </div>
 
-          </LiquidGlass>
+          </div>
         </div>
       </div>
 
@@ -789,8 +783,8 @@ function FeedPageContent() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              'z-10 will-change-[opacity] transform-gpu',
-              useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'absolute inset-0',
+              'z-10',
+              useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'relative h-full',
             )}>
             <div
               className={cn(
@@ -839,8 +833,8 @@ function FeedPageContent() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              'z-10 will-change-[opacity] transform-gpu',
-              useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'absolute inset-0',
+              'z-10',
+              useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'relative h-full',
             )}>
             <FeedDetailV2
               activeFeed={activeFeed}

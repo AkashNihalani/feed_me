@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSupabase, User } from '@/lib/supabase';
-import { cn, formatShortIST } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { useAppHaptics } from '@/lib/haptics';
 import {
@@ -36,7 +36,6 @@ import {
   Unlock,
 } from 'lucide-react';
 import FeedPassCard from '@/components/profile/FeedPassCard';
-import { LiquidGlass } from '@/components/ui/liquid-glass';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
@@ -151,8 +150,6 @@ const tileVariant = {
 };
 
 const ACTIVITY_CHECKPOINTS = ['D1', 'D3', 'D7', 'D21'] as const;
-const FIRE_RING_RADIUS = 70;
-const FIRE_RING_CIRCUMFERENCE = 2 * Math.PI * FIRE_RING_RADIUS;
 const FIRE_RING_WINDOW_MS = 60 * 60 * 1000;
 
 function formatCountdownDuration(ms: number | null) {
@@ -530,13 +527,8 @@ export default function FundPage() {
     })().catch(() => {});
   }, [router]);
 
-  const totalFeeds = feeds.length;
-  const totalFeeders = feeds.reduce((sum, feed) => sum + (feed.feeders?.length || 0), 0);
-  const slotsUsed = slots.used ?? 0;
   const slotPlanPrice = slots.plan?.price ?? 499;
   const slotPostsCap = slots.plan?.postsCap ?? 30;
-  const monthlySpend = slotsUsed * slotPlanPrice;
-  const lastScrape = engineStats.recentJobs[0]?.updatedAt || engineStats.recentJobs[0]?.createdAt || '';
   const billingSummary = useMemo(() => {
     const allFeeders = feeds.flatMap((feed) => feed.feeders || []);
     const feederCount = allFeeders.length;
@@ -791,8 +783,8 @@ export default function FundPage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14, scale: 0.992 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.42, ease: APPLE_EASE }}
       className={cn(
         'relative w-full text-foreground select-none',
@@ -1011,24 +1003,21 @@ export default function FundPage() {
         useBrowserPageScroll ? 'fixed' : 'absolute',
       )}>
         <div className="relative fm-tab-header-shell">
-          <LiquidGlass
-            variant="header"
-            className="w-full"
-          >
+          <div className="fm-depth-chrome fm-depth-chrome--header w-full">
             <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h1 className="text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">FUND</h1>
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50">Slot Control Room</div>
               </div>
             </div>
-          </LiquidGlass>
+          </div>
         </div>
       </div>
 
       {/* ═══ CONTENT STAGGER GRID ═══ */}
       <div className={cn(
         'z-10 pointer-events-none',
-        useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'absolute inset-0',
+        useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'relative h-full',
       )}>
         <div
           className={cn(

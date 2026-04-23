@@ -48,6 +48,7 @@ def extract_post_intelligence_for_checkpoint(
             tz = timezone.utc
         business_date = datetime.now(tz).date()
     current_intelligence_model = pi_model_version(skipped=False)
+    media_base_url = (MEDIA_PUBLIC_BASE_URL or "").rstrip("/")
 
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -57,8 +58,8 @@ def extract_post_intelligence_for_checkpoint(
                       lower(coalesce(p.media_type, 'image')) as media_type,
                       p.posted_at,
                       coalesce(thumbnail_asset.public_url, p.thumbnail_url) as thumbnail_url,
-                      nullif(btrim(p.video_url), '') as video_url,
-                      p.carousel_urls,
+                      coalesce(video_asset.public_url, nullif(btrim(p.video_url), '')) as video_url,
+                      coalesce(carousel_asset.public_urls, p.carousel_urls) as carousel_urls,
                       f.handle,
                       pi.tags as existing_tags
                FROM public.posts p
@@ -87,6 +88,51 @@ def extract_post_intelligence_for_checkpoint(
                  ORDER BY assets.updated_at desc nulls last, assets.id desc
                  LIMIT 1
                ) thumbnail_asset ON true
+               LEFT JOIN LATERAL (
+                 SELECT coalesce(
+                          assets.public_url,
+                          case
+                            when coalesce(%s, '') <> ''
+                              then concat(
+                                %s,
+                                '/',
+                                regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
+                              )
+                            else null
+                          end
+                        ) as public_url
+                 FROM public.post_media_assets assets
+                 WHERE assets.post_key = p.post_key
+                   AND assets.asset_role = 'video_full'
+                   AND assets.status in ('active', 'purge_pending')
+                   AND coalesce(assets.storage_provider, 'supabase') = 'r2'
+                   AND coalesce(assets.storage_path, '') <> ''
+                 ORDER BY assets.updated_at desc nulls last, assets.id desc
+                 LIMIT 1
+               ) video_asset ON true
+               LEFT JOIN LATERAL (
+                 SELECT jsonb_agg(
+                          coalesce(
+                            assets.public_url,
+                            case
+                              when coalesce(%s, '') <> ''
+                                then concat(
+                                  %s,
+                                  '/',
+                                  regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
+                                )
+                              else null
+                            end
+                          )
+                          ORDER BY assets.asset_role
+                        ) as public_urls
+                 FROM public.post_media_assets assets
+                 WHERE assets.post_key = p.post_key
+                   AND assets.asset_role LIKE 'carousel_%%'
+                   AND assets.status in ('active', 'purge_pending')
+                   AND coalesce(assets.storage_provider, 'supabase') = 'r2'
+                   AND coalesce(assets.storage_path, '') <> ''
+               ) carousel_asset ON true
                WHERE p.feeder_id = %s
                  AND lower(pm.checkpoint) = %s
                  AND pm.business_date_ist = %s
@@ -124,8 +170,12 @@ def extract_post_intelligence_for_checkpoint(
                ORDER BY p.posted_at DESC NULLS LAST, p.post_key DESC
                LIMIT 75""",
             (
-                (MEDIA_PUBLIC_BASE_URL or "").rstrip("/"),
-                (MEDIA_PUBLIC_BASE_URL or "").rstrip("/"),
+                media_base_url,
+                media_base_url,
+                media_base_url,
+                media_base_url,
+                media_base_url,
+                media_base_url,
                 feeder_id,
                 cp,
                 business_date,
