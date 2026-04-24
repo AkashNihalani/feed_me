@@ -462,7 +462,7 @@ function FeedPageContent() {
   return (
     <motion.div
       variants={pageVariants}
-      initial="hidden"
+      initial={false}
       animate="visible"
       className={cn(
         'fm-dashboard-mesh relative w-full text-foreground select-none',

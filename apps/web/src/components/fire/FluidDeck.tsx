@@ -32,8 +32,8 @@ const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
 const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
 const PWA_RENDER_RADIUS = 2;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
-const DESKTOP_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 280, damping: 30, mass: 0.88 } as const;
-const DESKTOP_GRID_APPEAR_SPRING = { type: 'spring', stiffness: 320, damping: 32, mass: 0.82 } as const;
+const DESKTOP_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 185, damping: 27, mass: 0.98 } as const;
+const DESKTOP_GRID_APPEAR_SPRING = { type: 'spring', stiffness: 215, damping: 29, mass: 0.96 } as const;
 const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
 const MOBILE_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
 const GRID_ITEM_EASE = [0.22, 1, 0.36, 1] as const;
@@ -169,7 +169,7 @@ function VirtualSlot({
     >
       {isVisible ? (
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={isDesktop ? false : { opacity: 0, y: 12 }}
           animate={isDesktop
             ? { opacity: 1, y: 0 }
             : {
@@ -177,7 +177,9 @@ function VirtualSlot({
                 y: isActive ? -6 : 14,
                 scale: isActive ? 1.02 : 0.965,
               }}
-          transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
+          transition={isDesktop
+            ? { duration: 0 }
+            : { duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
             className="relative w-full"
             style={{ zIndex: isActive ? 30 : 10 }}
           >
@@ -783,17 +785,17 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
             <AnimatePresence initial={false} mode="popLayout">
               {cards.map((card, index) => {
                 const isActive = resolvedActive === card.id;
-                const enterDelay = Math.min(index * 0.014, 0.12);
+                const enterDelay = Math.min(index * 0.026, 0.2);
                 return (
                   <motion.div
                     key={card.id}
                     layout
-                    initial={{ opacity: 0, scale: 0.965, y: 18 }}
+                    initial={{ opacity: 0, scale: 0.972, y: 26 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.96, y: 14 }}
+                    exit={{ opacity: 0, scale: 0.974, y: 18 }}
                     transition={{
                       layout: DESKTOP_GRID_LAYOUT_SPRING,
-                      opacity: { duration: 0.18, delay: enterDelay, ease: GRID_ITEM_EASE },
+                      opacity: { duration: 0.28, delay: enterDelay, ease: GRID_ITEM_EASE },
                       scale: { ...DESKTOP_GRID_APPEAR_SPRING, delay: enterDelay },
                       y: { ...DESKTOP_GRID_APPEAR_SPRING, delay: enterDelay },
                     }}

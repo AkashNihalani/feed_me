@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { StatusBar } from "@/components/StatusBar";
-import AppRouteTransition from "@/components/AppRouteTransition";
 import BottomNav from "@/components/BottomNav";
 import PwaNotificationsBridge from "@/components/PwaNotificationsBridge";
 import { getSiteUrl } from "@/lib/site-url";
@@ -92,9 +91,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className="h-full min-h-[100dvh] w-full overflow-x-hidden bg-background">
       <body className="antialiased bg-background h-full min-h-[100dvh] w-full overflow-hidden transition-colors duration-300">
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
-        <main className="h-full min-h-[100dvh] w-full overflow-hidden">
-          <AppRouteTransition>{children}</AppRouteTransition>
-        </main>
+        <main className="h-full min-h-[100dvh] w-full overflow-hidden">{children}</main>
         <PwaNotificationsBridge />
         <BottomNav />
         <StatusBar />
