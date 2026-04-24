@@ -76,10 +76,11 @@ export async function POST(request: NextRequest) {
       paymentLinkUrl: paymentLink.short_url,
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[PAYMENT] Error creating payment link:', error);
+    const message = error instanceof Error ? error.message : 'Failed to create payment link';
     return NextResponse.json(
-      { error: error.message || 'Failed to create payment link' },
+      { error: message },
       { status: 500 }
     );
   }

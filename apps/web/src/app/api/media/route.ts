@@ -122,6 +122,40 @@ async function fetchStoredAsset(postKey: string, assetRole: string): Promise<Res
   return null;
 }
 
+type PostSourceRow = {
+  thumbnail_url: string | null;
+  video_url: string | null;
+  carousel_urls: string[] | null;
+};
+
+async function fetchPostSourceUrl(postKey: string, assetRole: string): Promise<string | null> {
+  const sb = adminClient();
+  const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  const { data, error } = await sb
+    .from('posts')
+    .select('thumbnail_url,video_url,carousel_urls')
+    .eq('post_key', postKey)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const row = data as PostSourceRow;
+  if (isVideoRole(role)) {
+    return typeof row.video_url === 'string' && row.video_url.trim() ? row.video_url.trim() : null;
+  }
+
+  if (typeof row.thumbnail_url === 'string' && row.thumbnail_url.trim()) {
+    return row.thumbnail_url.trim();
+  }
+
+  if (Array.isArray(row.carousel_urls)) {
+    const firstSlide = row.carousel_urls.find((value) => typeof value === 'string' && value.trim());
+    return firstSlide?.trim() || null;
+  }
+
+  return null;
+}
+
 function resolvePublicMediaUrl(data: {
   storage_provider?: string | null;
   storage_path?: string | null;
@@ -212,6 +246,10 @@ export async function GET(req: NextRequest) {
       const stored = await fetchStoredAsset(postKey, assetRole || 'thumbnail');
       if (stored) {
         return stored;
+      }
+      const sourceUrl = await fetchPostSourceUrl(postKey, assetRole || 'thumbnail');
+      if (sourceUrl) {
+        return fetchRemoteAssetForRole(sourceUrl, assetRole || 'thumbnail');
       }
     } catch {
       // fall through to unavailable response below

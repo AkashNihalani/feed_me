@@ -28,6 +28,7 @@ import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
+import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 
 type AlertRow = Record<string, unknown>;
 type WarmupSummary = Record<string, number>;
@@ -47,7 +48,10 @@ const FIRE_META_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_REQUIRED = 3;
 const FIRE_INITIAL_BATCH_SIZE = 20;
-const FIRE_BACKGROUND_PREFETCH_DAY_COUNT = 2;
+const FIRE_BACKGROUND_PREFETCH_DAY_COUNT_DESKTOP = 2;
+const FIRE_BACKGROUND_PREFETCH_DAY_COUNT_MOBILE = 0;
+const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT_DESKTOP = 3;
+const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT_MOBILE = 1;
 const FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP = 6;
 const FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE = 2;
 const FIRE_MEDIA_FILTER_OPTIONS: { label: string; value: FireMediaFilter }[] = [
@@ -558,7 +562,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
 }
 
 async function fetchMeta(): Promise<{ days: string[]; feeds: FireFeedOption[]; warmupSummary: WarmupSummary }> {
-  const res = await fetch('/api/fire?mode=meta', { cache: 'no-store' });
+  const res = await fetch('/api/fire?mode=meta');
   if (!res.ok) throw new Error(`Meta fetch failed: ${res.status}`);
   const data = await res.json();
   return { days: data.days ?? [], feeds: data.feeds ?? [], warmupSummary: data.warmupSummary ?? {} };
@@ -587,7 +591,7 @@ function normalizePagePayload(data: {
 
 type FirePagePayload = ReturnType<typeof normalizePagePayload>;
 
-async function fetchBootstrap(pageSize: number): Promise<{
+async function fetchBootstrap(pageSize: number, prefetchDays: number): Promise<{
   days: string[];
   feeds: FireFeedOption[];
   warmupSummary: WarmupSummary;
@@ -595,7 +599,12 @@ async function fetchBootstrap(pageSize: number): Promise<{
   initialPage: FirePagePayload;
   prefetchedPages: Array<{ day: string; payload: FirePagePayload }>;
 }> {
-  const res = await fetch(`/api/fire?mode=bootstrap&pageSize=${encodeURIComponent(String(pageSize))}`, { cache: 'no-store' });
+  const params = new URLSearchParams({
+    mode: 'bootstrap',
+    pageSize: String(pageSize),
+    prefetchDays: String(prefetchDays),
+  });
+  const res = await fetch(`/api/fire?${params.toString()}`);
   if (!res.ok) throw new Error(`Bootstrap fetch failed: ${res.status}`);
   const data = await res.json();
   return {
@@ -705,8 +714,8 @@ export default function FirePage() {
   const [filters, setFilters] = useState<FireFilterState>(() => createDefaultFireFilters());
   const [headerHeight, setHeaderHeight] = useState(168);
   const [desktopModalCard, setDesktopModalCard] = useState<FireAlertItem | null>(null);
-  const [isStandaloneMode, setIsStandaloneMode] = useState(isStandaloneDisplayMode);
-  const [isDesktopViewport, setIsDesktopViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  const [isStandaloneMode, setIsStandaloneMode] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const [initialDataReady, setInitialDataReady] = useState(false);
   const useBrowserPageScroll = !isDesktopViewport;
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
@@ -788,7 +797,12 @@ export default function FirePage() {
 
     (async () => {
       try {
-        const bootstrap = await fetchBootstrap(FIRE_INITIAL_BATCH_SIZE);
+        const bootstrap = await fetchBootstrap(
+          FIRE_INITIAL_BATCH_SIZE,
+          initialViewportIsDesktop
+            ? FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT_DESKTOP
+            : FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT_MOBILE,
+        );
         if (!mounted) return;
 
         const defaultFilters = createDefaultFireFilters();
@@ -882,7 +896,9 @@ export default function FirePage() {
         const daysToPrefetch = pickBackgroundPrefetchDays(
           pickerDays,
           selectedDay,
-          FIRE_BACKGROUND_PREFETCH_DAY_COUNT,
+          isDesktopViewport
+            ? FIRE_BACKGROUND_PREFETCH_DAY_COUNT_DESKTOP
+            : FIRE_BACKGROUND_PREFETCH_DAY_COUNT_MOBILE,
         );
 
         for (const day of daysToPrefetch) {
@@ -1061,13 +1077,14 @@ export default function FirePage() {
         : visualHeight || innerHeight || clientHeight;
       document.documentElement.style.setProperty('--fire-app-height', `${nextHeight}px`);
     };
+    const viewport = getVisualViewportEventTarget();
     syncViewportHeight();
-    window.visualViewport?.addEventListener('resize', syncViewportHeight);
-    window.visualViewport?.addEventListener('scroll', syncViewportHeight);
+    viewport?.addEventListener('resize', syncViewportHeight);
+    viewport?.addEventListener('scroll', syncViewportHeight);
     window.addEventListener('resize', syncViewportHeight);
     return () => {
-      window.visualViewport?.removeEventListener('resize', syncViewportHeight);
-      window.visualViewport?.removeEventListener('scroll', syncViewportHeight);
+      viewport?.removeEventListener('resize', syncViewportHeight);
+      viewport?.removeEventListener('scroll', syncViewportHeight);
       window.removeEventListener('resize', syncViewportHeight);
     };
   }, []);

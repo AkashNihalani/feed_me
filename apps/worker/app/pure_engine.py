@@ -4592,11 +4592,11 @@ class PureEngine:
                 or coalesce(pi.tags, '{}'::jsonb) ?| array['hook', 'pillar', 'format', 'subject']
                 or (
                   lower(coalesce(p.media_type, 'image')) = 'reel'
-                  and coalesce(pi.tags->>'_visual_source', '') not like 'video_full:%'
+                  and coalesce(pi.tags->>'_visual_source', '') not like 'video_full:%%'
                 )
                 or (
                   lower(coalesce(p.media_type, 'image')) in ('sidecar', 'carousel')
-                  and coalesce(pi.tags->>'_visual_source', '') not like 'carousel:%'
+                  and coalesce(pi.tags->>'_visual_source', '') not like 'carousel:%%'
                 )
                 or (
                   lower(coalesce(p.media_type, 'image')) not in ('reel', 'sidecar', 'carousel')

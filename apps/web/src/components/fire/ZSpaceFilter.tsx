@@ -34,7 +34,6 @@ export default function ZSpaceFilter({
   const { play } = useAppHaptics();
   const [expandedFeeds, setExpandedFeeds] = useState<Record<string, boolean>>({});
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
-  const [backdropActive, setBackdropActive] = useState(false);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 1024px)');
@@ -42,15 +41,6 @@ export default function ZSpaceFilter({
     mql.addEventListener('change', handler as (event: MediaQueryListEvent) => void);
     return () => mql.removeEventListener('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setBackdropActive(false);
-      return;
-    }
-    const frame = window.requestAnimationFrame(() => setBackdropActive(true));
-    return () => window.cancelAnimationFrame(frame);
-  }, [isOpen]);
 
   const selectedFeederCount = useMemo(
     () => Object.values(filters.selectedFeederIdsByFeed).reduce((sum, ids) => sum + ids.length, 0),
@@ -128,10 +118,7 @@ export default function ZSpaceFilter({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              'absolute inset-0 transition-[background-color,backdrop-filter] duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]',
-              backdropActive
-                ? 'bg-black/28 backdrop-blur-[18px] dark:bg-black/48'
-                : 'bg-black/0 backdrop-blur-0 dark:bg-black/0',
+              'absolute inset-0 bg-black/28 backdrop-blur-[18px] dark:bg-black/48',
             )}
           />
 

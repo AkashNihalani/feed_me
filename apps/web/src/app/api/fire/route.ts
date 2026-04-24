@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
+import { privateJsonResponse } from '@/lib/privateJsonResponse';
 import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ const FIRE_ACTIVE_STATE_TTL_MS = 2 * 60 * 1000;
 const FIRE_META_TTL_MS = 10 * 60 * 1000;
 const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
+const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
 
@@ -1434,14 +1436,14 @@ async function fetchPatternSupportPreviews(
       handle: feederHandleById.get(feederId) || null,
       media_type: nullableString(row.media_type),
       post_url: nullableString(row.post_url),
-      thumbnail_url: null,
+      thumbnail_url: nullableString(row.thumbnail_url),
       posted_at: nullableString(row.posted_at),
     });
   }
 
   const { thumbnailUrls } = await fetchStoredMediaUrls(sb, rows.map((row) => nullableString(row.post_key)).filter((value): value is string => Boolean(value)));
   for (const [postKey, preview] of previews) {
-    preview.thumbnail_url = thumbnailUrls.get(postKey) || null;
+    preview.thumbnail_url = thumbnailUrls.get(postKey) || preview.thumbnail_url || null;
   }
 
   return previews;
@@ -1989,6 +1991,12 @@ function parsePageSizeValue(value: unknown, fallback = PAGE_SIZE): number {
   return Math.max(1, Math.min(parsed, PAGE_SIZE));
 }
 
+function parseBootstrapPrefetchDayCount(value: unknown): number {
+  const parsed = Number.parseInt(String(value ?? FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT), 10);
+  if (!Number.isFinite(parsed)) return FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT;
+  return Math.max(1, Math.min(parsed, FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT));
+}
+
 function normalizeThresholdValue(value: unknown): '10' | '25' | '50' | 'ALL' {
   const normalized = String(value || 'ALL').trim().toUpperCase();
   return normalized === '10' || normalized === '25' || normalized === '50' ? normalized : 'ALL';
@@ -2283,9 +2291,13 @@ async function buildTrackingFirePagePayload(
   return {
     rows: pagedRows.map((row) => serializeAlertRow({
       ...row,
-      resolved_thumbnail_url: row.post_key ? storedThumbnailUrls.get(row.post_key) || null : null,
+      resolved_thumbnail_url: row.post_key
+        ? storedThumbnailUrls.get(row.post_key) || nullableString(row.thumbnail_url) || null
+        : nullableString(row.thumbnail_url) || null,
       resolved_preview_url: previewCaptureAllowedForBusinessDay(nullableString(row.business_date_ist))
-        ? row.post_key ? storedPreviewUrls.get(row.post_key) || null : null
+        ? row.post_key
+          ? storedPreviewUrls.get(row.post_key) || nullableString(row.preview_url) || null
+          : nullableString(row.preview_url) || null
         : null,
     })),
     total,
@@ -2366,7 +2378,7 @@ export async function GET(request: NextRequest) {
 
   if (activeState.activeFeedIds.length === 0 || activeState.activeFeederIds.length === 0) {
     if (mode === 'meta' || mode === 'bootstrap') {
-      return NextResponse.json({
+      return privateJsonResponse(request, {
         days: recentKeys,
         scopes: [],
         feeds: [],
@@ -2374,16 +2386,33 @@ export async function GET(request: NextRequest) {
         warmupSummary: {},
         initialDay: recentKeys[0] || todayIstDayKey(),
         initialPage: emptyFirePagePayload(recentKeys[0] || todayIstDayKey(), 0),
+      }, {
+        maxAgeSeconds: 60,
+        staleWhileRevalidateSeconds: 600,
       });
     }
-    return NextResponse.json(emptyFirePagePayload(params.get('day') || todayIstDayKey(), 0));
+    return privateJsonResponse(
+      request,
+      emptyFirePagePayload(params.get('day') || todayIstDayKey(), 0),
+      {
+        maxAgeSeconds: 60,
+        staleWhileRevalidateSeconds: 600,
+      },
+    );
   }
 
   // ─── META MODE ─────────────────────────────────────────────
   // Returns available days plus nested feed / feeder options.
   if (mode === 'meta') {
     try {
-      return NextResponse.json(await buildCachedFireMetaPayload(supabase, userId, activeState, recentKeys));
+      return privateJsonResponse(
+        request,
+        await buildCachedFireMetaPayload(supabase, userId, activeState, recentKeys),
+        {
+          maxAgeSeconds: 60,
+          staleWhileRevalidateSeconds: 600,
+        },
+      );
     } catch (error) {
       console.error('[/api/fire?mode=meta] Error:', error);
       const message = error instanceof Error ? error.message : 'Failed to load fire meta';
@@ -2394,8 +2423,9 @@ export async function GET(request: NextRequest) {
   if (mode === 'bootstrap') {
     try {
       const pageSize = parsePageSizeValue(params.get('pageSize'), FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE);
+      const prefetchDayCount = parseBootstrapPrefetchDayCount(params.get('prefetchDays'));
       const initialDay = recentKeys[0] || todayIstDayKey();
-      const bootstrapDays = recentKeys.slice(0, FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT);
+      const bootstrapDays = recentKeys.slice(0, prefetchDayCount);
       const [meta, prefetchedPages] = await Promise.all([
         buildCachedFireMetaPayload(supabase, userId, activeState, recentKeys),
         Promise.all(
@@ -2418,11 +2448,14 @@ export async function GET(request: NextRequest) {
       const initialPage = prefetchedPages.find((entry) => entry.day === initialDay)?.payload
         || prefetchedPages[0]?.payload
         || emptyFirePagePayload(initialDay, 0);
-      return NextResponse.json({
+      return privateJsonResponse(request, {
         ...meta,
         initialDay,
         initialPage,
         prefetchedPages,
+      }, {
+        maxAgeSeconds: 60,
+        staleWhileRevalidateSeconds: 600,
       });
     } catch (error) {
       console.error('[/api/fire?mode=bootstrap] Error:', error);
@@ -2443,7 +2476,10 @@ export async function GET(request: NextRequest) {
       requestedFeederIds: parseCsvNumbers(params.get('feeder_ids')),
       requestedCheckpoints: parseCsvStrings(params.get('checkpoints')),
     });
-    return NextResponse.json(payload);
+    return privateJsonResponse(request, payload, {
+      maxAgeSeconds: 60,
+      staleWhileRevalidateSeconds: 600,
+    });
   } catch (error) {
     console.error('[/api/fire] Error:', error);
     const message = error instanceof Error ? error.message : 'Failed to load fire alerts';

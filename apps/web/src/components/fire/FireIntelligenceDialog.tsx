@@ -444,13 +444,20 @@ export default function FireIntelligenceDialog({
 
   useEffect(() => {
     if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
-    setPreviewReady(false);
-    setPreviewFailed(false);
-    setPreviewPlaying(false);
-    setUseThumbnailFallback(false);
-    setThumbnailRetrySeed(0);
-    setUsePreviewFallback(false);
-    setPreviewRetrySeed(0);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setPreviewReady(false);
+      setPreviewFailed(false);
+      setPreviewPlaying(false);
+      setUseThumbnailFallback(false);
+      setThumbnailRetrySeed(0);
+      setUsePreviewFallback(false);
+      setPreviewRetrySeed(0);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [item?.id, previewUrl, directThumbnailUrl]);
 
   useEffect(() => {
@@ -467,12 +474,16 @@ export default function FireIntelligenceDialog({
 
   useEffect(() => {
     const video = previewRef.current;
-    if (!item || !video || !canPreview || !resolvedPreviewUrl) return;
+    if (!item || !video || !canPreview || !resolvedPreviewUrl) return undefined;
     video.load();
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      setPreviewReady(true);
-      setPreviewFailed(false);
-    }
+    const frame = window.requestAnimationFrame(() => {
+      if (previewRef.current !== video) return;
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        setPreviewReady(true);
+        setPreviewFailed(false);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [item, canPreview, resolvedPreviewUrl]);
 
   useEffect(() => {

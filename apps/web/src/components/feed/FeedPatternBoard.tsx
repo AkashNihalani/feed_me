@@ -6,6 +6,11 @@ type FeedPatternBoardProps = {
   patterns: PatternBoardItem[];
 };
 
+function toFiniteNumber(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function familyLabel(context: PatternBoardItem['context']): string {
   if (context === 'cross') return 'Cross';
   if (context === 'anchor') return 'Anchor';
@@ -57,8 +62,8 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
                 {pattern.trigger_count} triggers
               </span>
               {pattern.avg_hot_percentile != null && (
-                <span className="rounded-full bg-black/6 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/66 dark:bg-white/8 dark:text-white/60">
-                  Avg top {Math.round(pattern.avg_hot_percentile)}%
+              <span className="rounded-full bg-black/6 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/66 dark:bg-white/8 dark:text-white/60">
+                  Avg top {Math.round(toFiniteNumber(pattern.avg_hot_percentile) ?? 0)}%
                 </span>
               )}
               {pattern.feeders_count != null && pattern.feeders_count > 1 && (
@@ -68,12 +73,12 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
               )}
               {pattern.anchor_gap != null && (
                 <span className="rounded-full bg-black/6 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/66 dark:bg-white/8 dark:text-white/60">
-                  Gap +{Math.round(pattern.anchor_gap)} pts
+                  Gap +{Math.round(toFiniteNumber(pattern.anchor_gap) ?? 0)} pts
                 </span>
               )}
-              {pattern.recent_lift != null && pattern.recent_lift > 0 && (
+              {(toFiniteNumber(pattern.recent_lift) ?? 0) > 0 && (
                 <span className="rounded-full bg-black/6 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/66 dark:bg-white/8 dark:text-white/60">
-                  14d lift {pattern.recent_lift.toFixed(1)}x
+                  14d lift {(toFiniteNumber(pattern.recent_lift) ?? 0).toFixed(1)}x
                 </span>
               )}
             </div>

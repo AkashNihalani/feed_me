@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { getPatternMechanicLabel } from '@/lib/fireSignals';
+import { privateJsonResponse } from '@/lib/privateJsonResponse';
 import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
@@ -881,7 +882,10 @@ export async function GET(request: NextRequest) {
       },
     );
 
-    return NextResponse.json(payload);
+    return privateJsonResponse(request, payload, {
+      maxAgeSeconds: 60,
+      staleWhileRevalidateSeconds: 600,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load dashboard';
     const status = message === 'Feed not found' ? 404 : 500;

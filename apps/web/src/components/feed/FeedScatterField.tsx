@@ -108,12 +108,9 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
     [allPoints, deferredActiveCount],
   );
 
-  useEffect(() => {
-    if (!hoveredPoint) return;
-    const stillVisible = visiblePoints.some((point) => point.id === hoveredPoint.id);
-    if (!stillVisible) {
-      setHoveredPoint(null);
-    }
+  const activeHoveredPoint = useMemo(() => {
+    if (!hoveredPoint) return null;
+    return visiblePoints.some((point) => point.id === hoveredPoint.id) ? hoveredPoint : null;
   }, [hoveredPoint, visiblePoints]);
 
   return (
@@ -228,7 +225,7 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
         
         {/* Tooltip */}
         <AnimatePresence>
-          {hoveredPoint && (
+          {activeHoveredPoint && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -236,11 +233,11 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
               className="pointer-events-none absolute left-1/2 top-3 z-50 min-w-[168px] -translate-x-1/2 rounded-[11px] border border-black/10 bg-white/90 px-3.5 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0A0A0A]/93 dark:shadow-[0_12px_30px_rgba(0,0,0,0.72)]"
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-[0.1em] text-black/50 dark:text-white/40">{hoveredPoint.date}</span>
-                <span className="text-[12px] font-black text-black/62 dark:text-white/72">{hoveredPoint.percentile === null ? '--' : `${Math.round(hoveredPoint.percentile)}%`}</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.1em] text-black/50 dark:text-white/40">{activeHoveredPoint.date}</span>
+                <span className="text-[12px] font-black text-black/62 dark:text-white/72">{activeHoveredPoint.percentile === null ? '--' : `${Math.round(activeHoveredPoint.percentile)}%`}</span>
               </div>
-              <div className="text-[16px] font-black tracking-[-0.02em] text-black dark:text-white">@{hoveredPoint.handle}</div>
-              <div className="mt-1 text-[11px] font-bold text-black/60 dark:text-white/60">{(hoveredPoint.views / 1000).toFixed(1)}k Views</div>
+              <div className="text-[16px] font-black tracking-[-0.02em] text-black dark:text-white">@{activeHoveredPoint.handle}</div>
+              <div className="mt-1 text-[11px] font-bold text-black/60 dark:text-white/60">{(activeHoveredPoint.views / 1000).toFixed(1)}k Views</div>
             </motion.div>
           )}
         </AnimatePresence>

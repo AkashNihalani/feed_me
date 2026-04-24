@@ -109,11 +109,27 @@ type EngineRun = {
   kind: string;
   label: string;
   checkpoint?: string;
+  businessDay?: string;
   mediaType?: string;
   handle?: string;
   status: string;
   scheduledAt: string;
   completedAt?: string;
+};
+
+type FundFireRow = {
+  id: string | number;
+  checkpoint?: string | null;
+  surface_percentile?: number | null;
+  surface_percentile_exact?: number | null;
+  feed_id?: number | string | null;
+  payload?: Record<string, unknown> | null;
+};
+
+type FundFireSnapshot = {
+  day: string;
+  total: number;
+  rows: FundFireRow[];
 };
 
 const emptyStats: EngineStats = {
@@ -125,6 +141,12 @@ const emptyStats: EngineStats = {
   completedBatches: [],
   queuedRuns: [],
   completedRuns: [],
+};
+
+const emptyFireSnapshot: FundFireSnapshot = {
+  day: '',
+  total: 0,
+  rows: [],
 };
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
@@ -149,8 +171,8 @@ const tileVariant = {
   },
 };
 
-const ACTIVITY_CHECKPOINTS = ['D1', 'D3', 'D7', 'D21'] as const;
 const FIRE_RING_WINDOW_MS = 60 * 60 * 1000;
+const TRACKING_CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'] as const;
 
 function formatCountdownDuration(ms: number | null) {
   if (ms == null) return '--';
@@ -174,11 +196,29 @@ function formatIstDayKey(value: Date | string) {
   }).format(date);
 }
 
-function buildCheckpointCounts(types: EngineRunBatchBreakdown[] = []) {
-  return ACTIVITY_CHECKPOINTS.map((checkpoint) => ({
-    checkpoint,
-    count: types.find((item) => item.label.toUpperCase() === checkpoint)?.count || 0,
-  }));
+function parseTimestampMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const stamp = new Date(value).getTime();
+  return Number.isFinite(stamp) ? stamp : null;
+}
+
+function summarizeBatchTypes(types: EngineRunBatchBreakdown[] | undefined, limit = 4) {
+  if (!types?.length) return '';
+
+  const counts = new Map<string, number>();
+  for (const entry of types) {
+    const label = String(entry.label || '').toUpperCase();
+    const count = Number(entry.count || 0);
+    if (!label || count <= 0) continue;
+    counts.set(label, (counts.get(label) || 0) + count);
+  }
+
+  return TRACKING_CHECKPOINT_ORDER
+    .map((label) => ({ label, count: counts.get(label) || 0 }))
+    .filter((entry) => entry.count > 0)
+    .slice(0, limit)
+    .map((entry) => `${entry.count} ${entry.label}`)
+    .join(' · ');
 }
 
 function parseMetric(value: string | number | undefined) {
@@ -187,6 +227,63 @@ function parseMetric(value: string | number | undefined) {
   const raw = String(value).replace(/,/g, '');
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function firePercentile(row: FundFireRow): number | null {
+  return nullableNumber(row.surface_percentile_exact) ?? nullableNumber(row.surface_percentile);
+}
+
+async function fetchFundFireSnapshot(day: string): Promise<FundFireSnapshot> {
+  const rows: FundFireRow[] = [];
+  let total = 0;
+  let cursor = 0;
+
+  for (let page = 0; page < 12; page += 1) {
+    const params = new URLSearchParams({
+      mode: 'page',
+      day,
+      threshold: 'ALL',
+      sort: 'best',
+      cursor: String(cursor),
+      pageSize: '30',
+    });
+    const response = await fetch(`/api/fire?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error(`Fire snapshot fetch failed: ${response.status}`);
+    }
+
+    const data = await response.json() as {
+      rows?: FundFireRow[];
+      hasMore?: boolean;
+      total?: number;
+    };
+
+    const batch = Array.isArray(data.rows) ? data.rows : [];
+    rows.push(...batch);
+    total = Number.isFinite(Number(data.total)) ? Number(data.total) : total;
+
+    if (!data.hasMore || batch.length === 0) break;
+    cursor += batch.length;
+  }
+
+  return {
+    day,
+    total: total || rows.length,
+    rows,
+  };
 }
 
 type BrowserNotificationPermission = NotificationPermission | 'unsupported';
@@ -266,6 +363,8 @@ export default function FundPage() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [slots, setSlots] = useState<SlotUsage>({ used: 0 });
   const [engineStats, setEngineStats] = useState<EngineStats>(emptyStats);
+  const [fireSnapshot, setFireSnapshot] = useState<FundFireSnapshot>(emptyFireSnapshot);
+  const [fireSignalsLoading, setFireSignalsLoading] = useState(true);
   const [activityNow, setActivityNow] = useState(() => Date.now());
   const [pwaNotificationsEnabled, setPwaNotificationsEnabled] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -389,15 +488,107 @@ export default function FundPage() {
   }, [alertThreshold, notificationPrefsReady, readApiError]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setActivityNow(Date.now()), 30 * 1000);
+    const timer = window.setInterval(() => setActivityNow(Date.now()), 15 * 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const currentFireDay = useMemo(() => formatIstDayKey(new Date(activityNow)), [activityNow]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFireSnapshot = async (quiet = false) => {
+      if (!quiet) setFireSignalsLoading(true);
+      try {
+        const snapshot = await fetchFundFireSnapshot(currentFireDay);
+        if (!cancelled) {
+          setFireSnapshot(snapshot);
+        }
+      } catch (error) {
+        console.error('[fund] Failed to fetch fire snapshot', error);
+      } finally {
+        if (!cancelled) {
+          setFireSignalsLoading(false);
+        }
+      }
+    };
+
+    loadFireSnapshot().catch(() => {});
+    const refreshSnapshot = () => {
+      loadFireSnapshot(true).catch(() => {});
+    };
+    const handleFocus = () => refreshSnapshot();
+    const handleVisibility = () => {
+      if (!document.hidden) refreshSnapshot();
+    };
+
+    const refreshTimer = window.setInterval(refreshSnapshot, 60 * 1000);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentFireDay]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEngineStats = async () => {
+      try {
+        const res = await fetch('/api/profile/engine', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json() as EngineStats;
+        if (cancelled) return;
+        setEngineStats(data);
+
+        const cached = getCache<{
+          feeds: Feed[];
+          slots: SlotUsage;
+          engineStats: EngineStats;
+          user: Partial<User> | null;
+        }>(FUND_CACHE_KEY, FUND_CACHE_TTL);
+
+        setCache(FUND_CACHE_KEY, {
+          feeds: cached?.feeds || feeds,
+          slots: cached?.slots || slots,
+          engineStats: data,
+          user: cached?.user || null,
+        });
+      } catch (error) {
+        console.error('[fund] Failed to refresh engine stats', error);
+      }
+    };
+
+    const refreshEngineStats = () => {
+      loadEngineStats().catch(() => {});
+    };
+    const handleFocus = () => refreshEngineStats();
+    const handleVisibility = () => {
+      if (!document.hidden) refreshEngineStats();
+    };
+
+    refreshEngineStats();
+    const refreshTimer = window.setInterval(refreshEngineStats, 60 * 1000);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [feeds, slots]);
 
   useEffect(() => {
     async function fetchData() {
       const { data: { user: authUser }, error: authError } = await getSupabase().auth.getUser();
       if (authError || !authUser) {
-        window.location.href = '/login';
+        router.replace('/login');
         return;
       }
 
@@ -508,7 +699,7 @@ export default function FundPage() {
       document.documentElement.classList.add('light');
       document.documentElement.style.colorScheme = 'light';
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     let payment: string | null = null;
@@ -544,23 +735,47 @@ export default function FundPage() {
     const overageCost = overages.reduce((sum, item) => sum + item.cost, 0);
     return { feederCount, baseCost, overages, overageCost, total: baseCost + overageCost };
   }, [feeds, slotPlanPrice, slotPostsCap]);
-  const upcomingRuns = useMemo(
+  const sortedQueuedBatches = useMemo(
     () =>
       [...engineStats.queuedBatches]
         .sort((a, b) => new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime())
-        .slice(0, 5),
+        .slice(0, 8),
     [engineStats.queuedBatches],
   );
-  const nextFireBatch = upcomingRuns[0] || null;
-  const nextFireAtMs = useMemo(() => {
-    if (!nextFireBatch?.windowStart) return null;
-    const stamp = new Date(nextFireBatch.windowStart).getTime();
-    return Number.isFinite(stamp) ? stamp : null;
-  }, [nextFireBatch]);
+  const liveQueuedBatches = useMemo(
+    () => sortedQueuedBatches.filter((batch) => {
+      const startMs = parseTimestampMs(batch.windowStart);
+      return startMs != null && startMs <= activityNow;
+    }),
+    [activityNow, sortedQueuedBatches],
+  );
+  const nextFireBatch = useMemo(
+    () => sortedQueuedBatches.find((batch) => {
+      const startMs = parseTimestampMs(batch.windowStart);
+      return startMs != null && startMs > activityNow;
+    }) || null,
+    [activityNow, sortedQueuedBatches],
+  );
+  const nextFireAtMs = useMemo(
+    () => parseTimestampMs(nextFireBatch?.windowStart),
+    [nextFireBatch],
+  );
   const nextFireCountdownMs = nextFireAtMs == null ? null : Math.max(0, nextFireAtMs - activityNow);
   const nextFireCountdown = formatCountdownDuration(nextFireCountdownMs);
+  const liveNowCount = useMemo(
+    () => liveQueuedBatches.reduce((sum, batch) => sum + Math.max(0, Number(batch.totalRuns || 0)), 0),
+    [liveQueuedBatches],
+  );
+  const liveNowMix = useMemo(
+    () => summarizeBatchTypes(liveQueuedBatches.flatMap((batch) => batch.types || [])),
+    [liveQueuedBatches],
+  );
+  const nextFireMix = useMemo(
+    () => summarizeBatchTypes(nextFireBatch?.types),
+    [nextFireBatch],
+  );
   const nextFireProgress = nextFireAtMs == null
-    ? 0
+    ? liveNowCount > 0 ? 1 : 0
     : Math.min(
         1,
         Math.max(
@@ -568,19 +783,97 @@ export default function FundPage() {
           1 - Math.min(nextFireCountdownMs ?? FIRE_RING_WINDOW_MS, FIRE_RING_WINDOW_MS) / FIRE_RING_WINDOW_MS,
         ),
       );
-  const nextCheckpointCounts = useMemo(
-    () => buildCheckpointCounts(nextFireBatch?.types || []),
-    [nextFireBatch],
-  );
-  const nextFireTotalRuns = nextFireBatch?.totalRuns || nextCheckpointCounts.reduce((sum, item) => sum + item.count, 0);
-  const remainingRuns = engineStats.queuedRuns.length;
-  const completedToday = useMemo(() => {
-    const today = formatIstDayKey(new Date(activityNow));
-    return engineStats.completedRuns.filter((run) => {
-      const stamp = run.completedAt || run.scheduledAt;
-      return Boolean(stamp) && formatIstDayKey(stamp) === today;
-    }).length;
-  }, [activityNow, engineStats.completedRuns]);
+  const nextScanCreators = nextFireBatch?.creatorCount || 0;
+  const queuePulse = useMemo(() => {
+    const stageCounts = { D1: 0, D3: 0, D7: 0, D21: 0 };
+    const creators = new Set<string>();
+    let totalChecks = 0;
+
+    for (const run of engineStats.queuedRuns) {
+      const runDay = run.businessDay || formatIstDayKey(run.scheduledAt);
+      if (runDay !== currentFireDay) continue;
+
+      totalChecks += 1;
+      if (run.handle) creators.add(run.handle);
+
+      const checkpoint = String(run.checkpoint || run.label || '').toUpperCase();
+      if (checkpoint === 'D1' || checkpoint === 'D3' || checkpoint === 'D7' || checkpoint === 'D21') {
+        stageCounts[checkpoint] += 1;
+      }
+    }
+
+    return {
+      totalChecks,
+      creatorsDue: creators.size,
+      stageCounts,
+    };
+  }, [currentFireDay, engineStats.queuedRuns]);
+  const firePulse = useMemo(() => {
+    const stageCounts = { D1: 0, D3: 0, D7: 0 };
+    const feedIds = new Set<number>();
+    let bestPercentile: number | null = null;
+    let lineSignals = 0;
+
+    const rows = fireSnapshot.day === currentFireDay ? fireSnapshot.rows : [];
+    for (const row of rows) {
+      const checkpoint = String(row.checkpoint || '').toUpperCase();
+      if (checkpoint === 'D1' || checkpoint === 'D3' || checkpoint === 'D7') {
+        stageCounts[checkpoint] += 1;
+      }
+
+      const feedId = Number(row.feed_id);
+      if (Number.isFinite(feedId)) {
+        feedIds.add(feedId);
+      }
+
+      const percentile = firePercentile(row);
+      if (percentile != null) {
+        if (bestPercentile == null || percentile < bestPercentile) {
+          bestPercentile = percentile;
+        }
+        if (percentile <= alertThreshold) {
+          lineSignals += 1;
+        }
+      }
+    }
+
+    return {
+      totalSignals: fireSnapshot.day === currentFireDay ? fireSnapshot.total : 0,
+      lineSignals,
+      bestPercentile,
+      feedsLit: feedIds.size,
+      stageCounts,
+    };
+  }, [alertThreshold, currentFireDay, fireSnapshot]);
+  const todayFlowTotal = firePulse.totalSignals + queuePulse.totalChecks;
+  const pulsePillText = fireSignalsLoading
+    ? 'Syncing'
+    : liveNowCount > 0
+      ? 'Live now'
+      : nextFireBatch
+        ? 'Next drop'
+        : todayFlowTotal > 0
+          ? 'Today live'
+          : 'Armed';
+  const pulseHeadline = nextFireBatch
+    ? nextFireCountdown
+    : liveNowCount > 0
+      ? 'live'
+      : '--';
+  const pulseLabel = nextFireBatch
+    ? liveNowCount > 0
+      ? 'Then'
+      : 'Next drop'
+    : liveNowCount > 0
+      ? 'Current drop'
+      : 'Awaiting queue';
+  const pulseSupportingText = nextFireBatch
+    ? `${nextScanCreators} creator${nextScanCreators === 1 ? '' : 's'} · ${nextFireMix || `${nextFireBatch.totalRuns} due`}`
+    : liveNowCount > 0
+      ? `${liveNowCount} processing now${liveNowMix ? ` · ${liveNowMix}` : ''}`
+      : queuePulse.totalChecks > 0
+        ? `${queuePulse.totalChecks} still queued today`
+        : 'No more drops queued today';
   const alertsArmed = pwaNotificationsEnabled;
   const pwaStatusText = notificationBusy
     ? 'Requesting browser permission...'
@@ -1123,56 +1416,122 @@ export default function FundPage() {
 
                   {/* Inner content */}
                   <div className={cn(
-                    'relative z-0 flex items-center justify-between gap-4 rounded-[21px] px-5 py-4 sm:px-6 sm:py-5',
+                    'relative z-0 rounded-[21px] px-5 py-4 sm:px-6 sm:py-5',
                     'bg-gradient-to-b from-white/80 to-white/50',
                     'dark:from-white/[0.04] dark:to-white/[0.015]',
                   )}>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">Next fire</div>
-                      <motion.div key={nextFireCountdown} initial={{ y: 4, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.24, ease: APPLE_EASE }} className="mt-1 text-[32px] font-black tracking-[-0.06em] leading-none text-foreground dark:text-white sm:text-[36px]">
-                        {nextFireCountdown}
-                      </motion.div>
-                      <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.11em] text-foreground/36 dark:text-white/30">
-                        {nextFireTotalRuns > 0 ? `${nextFireTotalRuns} check${nextFireTotalRuns === 1 ? '' : 's'} queued` : 'No batch queued'}
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">Today&apos;s Fire flow</div>
+                        <div className="mt-1 flex items-end gap-3">
+                          <motion.div
+                            key={`fire-pulse-${currentFireDay}-${todayFlowTotal}-${fireSignalsLoading ? 'loading' : 'ready'}`}
+                            initial={{ y: 4, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ duration: 0.24, ease: APPLE_EASE }}
+                            className="text-[40px] font-black leading-none tracking-[-0.07em] text-foreground dark:text-white sm:text-[46px]"
+                          >
+                            {fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : todayFlowTotal}
+                          </motion.div>
+                          <div className="pb-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 dark:text-white/36">
+                            {todayFlowTotal === 1 ? 'signal in play today' : 'signals in play today'}
+                          </div>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          <div className="text-[8px] font-black uppercase tracking-[0.11em] text-foreground/36 dark:text-white/30">
+                            {fireSignalsLoading && fireSnapshot.day !== currentFireDay
+                              ? 'Refreshing today\'s Fire board'
+                              : `${firePulse.totalSignals} already in Fire · ${queuePulse.totalChecks} left today`}
+                          </div>
+                          <div className="text-[8px] font-black uppercase tracking-[0.11em] text-[#BE123C] dark:text-[#FB7185]/90">
+                            {liveNowCount > 0
+                              ? `${liveNowCount} processing now${liveNowMix ? ` · ${liveNowMix}` : ''}`
+                              : nextFireBatch
+                                ? `${nextFireBatch.totalRuns} in next drop${nextFireMix ? ` · ${nextFireMix}` : ''}`
+                                : queuePulse.totalChecks > 0
+                                  ? `${queuePulse.totalChecks} still queued today`
+                                  : 'No more drops queued today'}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12 dark:text-[#FB7185] shrink-0">
-                      Live
+
+                      <div className="shrink-0 text-right">
+                        <div className="inline-flex min-w-[86px] items-center justify-center rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-3.5 py-1.5 text-[9px] font-black uppercase leading-none tracking-[0.16em] text-[#BE123C] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12 dark:text-[#FB7185]">
+                          {pulsePillText}
+                        </div>
+                        <motion.div
+                          key={`${pulseHeadline}-${nextFireCountdownMs}`}
+                          initial={{ y: 4, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          transition={{ duration: 0.24, ease: APPLE_EASE }}
+                          className="mt-4 text-[22px] font-black leading-none tracking-[-0.06em] text-foreground dark:text-white sm:text-[26px]"
+                        >
+                          {pulseHeadline}
+                        </motion.div>
+                        <div className="mt-1 text-[7px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/30">
+                          {pulseLabel}
+                        </div>
+                        <div className="mt-1 text-[8px] font-black uppercase tracking-[0.11em] text-foreground/34 dark:text-white/28">
+                          {pulseSupportingText}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* ── Queue Stats Grid ── */}
-                <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-2.5">
-                  {/* Done / Left — hero stats */}
+                {/* ── Fire Signal Stats Grid ── */}
+                <div className="mt-4 grid grid-cols-4 gap-2 sm:gap-2.5 xl:grid-cols-8">
                   {[
-                    { label: 'Done', value: completedToday, highlight: true },
-                    { label: 'Queued', value: remainingRuns, highlight: true },
+                    {
+                      label: 'Today',
+                      value: fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : String(todayFlowTotal),
+                      highlight: todayFlowTotal > 0,
+                    },
+                    {
+                      label: 'In Fire',
+                      value: fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : String(firePulse.totalSignals),
+                      highlight: firePulse.totalSignals > 0,
+                    },
+                    {
+                      label: 'Left',
+                      value: String(queuePulse.totalChecks),
+                      highlight: queuePulse.totalChecks > 0,
+                    },
+                    {
+                      label: 'Now',
+                      value: String(liveNowCount),
+                      highlight: liveNowCount > 0,
+                    },
+                    { label: 'D1', value: String(queuePulse.stageCounts.D1), highlight: queuePulse.stageCounts.D1 > 0 },
+                    { label: 'D3', value: String(queuePulse.stageCounts.D3), highlight: queuePulse.stageCounts.D3 > 0 },
+                    { label: 'D7', value: String(queuePulse.stageCounts.D7), highlight: queuePulse.stageCounts.D7 > 0 },
+                    { label: 'D21', value: String(queuePulse.stageCounts.D21), highlight: queuePulse.stageCounts.D21 > 0 },
                   ].map((stat) => (
                     <div key={stat.label} className={cn(
-                      'rounded-[14px] px-3 py-2.5 text-center sm:col-span-1',
-                      'bg-gradient-to-b from-white/80 to-white/50 border border-white/80',
+                      'rounded-[14px] px-3 py-2.5 text-center',
+                      'bg-gradient-to-b from-white/70 to-white/40 border border-white/75',
                       'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_12px_rgba(15,23,42,0.04)]',
                       'dark:from-white/[0.05] dark:to-white/[0.02] dark:border-white/[0.06]',
                       'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_6px_16px_rgba(0,0,0,0.3)]',
                     )}>
                       <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/34">{stat.label}</div>
-                      <div className="mt-0.5 text-[16px] font-black tracking-[-0.04em] text-[#E11D48]">{stat.value}</div>
+                      <div className={cn(
+                        'mt-0.5 text-[16px] font-black tracking-[-0.04em]',
+                        stat.highlight ? 'text-[#E11D48]' : 'text-foreground/30 dark:text-white/22',
+                      )}>
+                        {stat.value}
+                      </div>
                     </div>
                   ))}
-                  {/* Checkpoint slots */}
-                  {nextCheckpointCounts.map((item) => (
-                    <div key={item.checkpoint} className={cn(
-                      'rounded-[14px] px-2 py-2.5 text-center',
-                      'bg-gradient-to-b from-white/60 to-white/30 border border-white/60',
-                      'shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_2px_8px_rgba(15,23,42,0.03)]',
-                      'dark:from-white/[0.035] dark:to-white/[0.01] dark:border-white/[0.05]',
-                      'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_4px_12px_rgba(0,0,0,0.25)]',
-                    )}>
-                      <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/35 dark:text-white/30">{item.checkpoint}</div>
-                      <div className={cn('mt-0.5 text-[15px] font-black tracking-[-0.04em]', item.count > 0 ? 'text-[#E11D48]' : 'text-foreground/28 dark:text-white/22')}>{item.count}</div>
-                    </div>
-                  ))}
+                </div>
+                <div className="mt-3 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:text-white/28">
+                  {fireSignalsLoading && fireSnapshot.day !== currentFireDay
+                    ? 'Syncing live Fire signals'
+                    : queuePulse.totalChecks > 0
+                      ? `${queuePulse.creatorsDue} creator${queuePulse.creatorsDue === 1 ? '' : 's'} still scheduled today · ${firePulse.lineSignals} on your ${alertThreshold}% line`
+                      : firePulse.totalSignals > 0
+                        ? `${firePulse.feedsLit} feed${firePulse.feedsLit === 1 ? '' : 's'} lit today · ${firePulse.lineSignals} on your ${alertThreshold}% line`
+                        : 'Snapshot matches today\'s Fire board'}
                 </div>
 
                 {/* Divider between activity and settings */}
@@ -1547,11 +1906,11 @@ export default function FundPage() {
                     <div 
                       key={feed.id} 
                       className="block group cursor-pointer"
-                      onClick={(e) => {
-                        // If it's already primed, let the navigation happen (we'll implement programmatic push or just use a Link wrapper around the content)
-                        if (isPrimed) {
-                          window.location.href = `/?id=${feed.id}`;
-                        } else {
+	                      onClick={(e) => {
+	                        // If it's already primed, let the navigation happen (we'll implement programmatic push or just use a Link wrapper around the content)
+	                        if (isPrimed) {
+	                          router.push(`/?id=${feed.id}`);
+	                        } else {
                           // Prime it on first tap
                           e.preventDefault();
                           setPrimedBundleId(feed.id);

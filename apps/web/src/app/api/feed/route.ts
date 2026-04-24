@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { privateJsonResponse } from '@/lib/privateJsonResponse';
 import {
   invalidateServerRouteCacheByPrefix,
   withServerRouteCache,
@@ -586,53 +587,6 @@ function buildTickerItems(feeders: FeederRow[], posts: PostRow[], metrics: Metri
     .map((entry) => entry.row);
 }
 
-async function buildHealthTickerForUser(sb: SupabaseAdminClient, userId: string) {
-  const { data: feedsData, error: feedsError } = await sb
-    .from('feeds')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('status', 'active');
-  if (feedsError) throw feedsError;
-
-  const feedIds = ((feedsData || []) as Array<{ id: number | string | null }>)
-    .map((row) => Number(row.id))
-    .filter((id) => Number.isFinite(id) && id > 0);
-  if (feedIds.length === 0) return [];
-
-  const { data: feederData, error: feederError } = await sb
-    .from('feeders')
-    .select('id,feed_id,handle,role,status,created_at,profile_pic_url,follower_count')
-    .in('feed_id', feedIds)
-    .eq('status', 'active');
-  if (feederError) throw feederError;
-
-  const feeders = (feederData || []) as FeederRow[];
-  const feederIds = feeders.map((feeder) => feeder.id);
-  if (feederIds.length === 0) return [];
-
-  const { data: postsData, error: postsError } = await sb
-    .from('posts')
-    .select('post_key,feeder_id,posted_at,media_type')
-    .in('feeder_id', feederIds);
-  if (postsError) throw postsError;
-
-  const posts = (postsData || []) as PostRow[];
-  const postKeys = posts.map((post) => post.post_key);
-  if (postKeys.length === 0) return [];
-
-  const { data: metricsData, error: metricsError } = await sb
-    .from('post_metrics')
-    .select('post_key,checkpoint,likes,comments,views,computed_at')
-    .in('post_key', postKeys)
-    .eq('checkpoint', 'd1')
-    .order('computed_at', { ascending: false });
-  if (metricsError) throw metricsError;
-
-  const metrics = (metricsData || []) as MetricRow[];
-  const { trackedPostKeys } = buildTrackedPostState(posts, feeders, metrics);
-  return buildTickerItems(feeders, posts, metrics, trackedPostKeys);
-}
-
 async function getFeedBundle(userId: string) {
   const sb = adminClient();
   const { data, error } = await sb.rpc('fn_feed_bundle', {
@@ -640,11 +594,7 @@ async function getFeedBundle(userId: string) {
   });
 
   if (!error) {
-    const normalized = normalizeFeedBundlePayload(data);
-    return {
-      ...normalized,
-      ticker: await buildHealthTickerForUser(sb, userId),
-    };
+    return normalizeFeedBundlePayload(data);
   }
 
   const message = error?.message || '';
@@ -803,7 +753,7 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const {
@@ -820,7 +770,10 @@ export async function GET() {
       FEED_BUNDLE_TTL_MS,
       () => getFeedBundle(user.id),
     );
-    return NextResponse.json(bundle);
+    return privateJsonResponse(request, bundle, {
+      maxAgeSeconds: 30,
+      staleWhileRevalidateSeconds: 300,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load feeds';
     return NextResponse.json({ error: message }, { status: 500 });

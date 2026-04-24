@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
 import { FireCard3D } from './FireCard3D';
 import { FireWatchCard3D } from './FireWatchCard3D';
+import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 
 interface FluidDeckProps {
   cards: FireItem[];
@@ -33,6 +34,7 @@ const PWA_RENDER_RADIUS = 2;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
 const DESKTOP_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 280, damping: 30, mass: 0.88 } as const;
 const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
+const MOBILE_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
 const GRID_ITEM_EASE = [0.22, 1, 0.36, 1] as const;
 // Note: previously these applied `contain: 'layout paint style'` (and
 // `content-visibility: auto`, which implies `paint` containment). Both create
@@ -280,14 +282,15 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     const update = () => {
       setPwaSlotH(getPwaViewportSlotHeight());
     };
+    const viewport = getVisualViewportEventTarget();
     update();
     window.addEventListener('resize', update);
-    window.visualViewport?.addEventListener('resize', update);
-    window.visualViewport?.addEventListener('scroll', update);
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
     return () => {
       window.removeEventListener('resize', update);
-      window.visualViewport?.removeEventListener('resize', update);
-      window.visualViewport?.removeEventListener('scroll', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
     };
   }, [isDesktop, usePwaSnap]);
 
@@ -599,6 +602,14 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     if (hasMore && !loadingMore && onLoadMore) onLoadMore();
   }, [hasMore, loadingMore, onLoadMore]);
 
+  const mobileDeckTransitionKey = useMemo(() => {
+    const signature = cards
+      .slice(0, 3)
+      .map((card) => card.id)
+      .join('|');
+    return signature || 'empty';
+  }, [cards]);
+
   if (!cards || cards.length === 0) {
     return (
       <div className="mt-16 flex h-64 items-center justify-center font-mono text-sm tracking-widest text-neutral-500">
@@ -627,74 +638,83 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     return (
       <>
         {/* Full-canvas PWA deck so cards pass under floating chrome. */}
-        <div className="fixed inset-0 z-10 overflow-hidden">
-          {cards.map((card, index) => {
-            const diff = index - pwaIndex;
-            // Keep one offscreen buffer so neighbours glide out instead of popping away.
-            if (Math.abs(diff) > PWA_RENDER_RADIUS) return null;
-            const style = getPwaCardStyle(index);
-            const isCurrent = index === pwaIndex;
-            const isOffscreenBuffer = Math.abs(diff) === PWA_RENDER_RADIUS;
+        <AnimatePresence initial={false} mode="sync">
+          <motion.div
+            key={mobileDeckTransitionKey}
+            initial={{ opacity: 0, y: 24, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.992 }}
+            transition={MOBILE_DECK_SWAP_SPRING}
+            className="fixed inset-0 z-10 overflow-hidden"
+          >
+            {cards.map((card, index) => {
+              const diff = index - pwaIndex;
+              // Keep one offscreen buffer so neighbours glide out instead of popping away.
+              if (Math.abs(diff) > PWA_RENDER_RADIUS) return null;
+              const style = getPwaCardStyle(index);
+              const isCurrent = index === pwaIndex;
+              const isOffscreenBuffer = Math.abs(diff) === PWA_RENDER_RADIUS;
 
-            return (
-              <motion.div
-                key={card.id}
-                className="absolute inset-0 flex items-center justify-center px-2"
-                animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
-                transition={{
-                  type: 'spring',
-                  stiffness: isOffscreenBuffer ? 250 : 300,
-                  damping: isOffscreenBuffer ? 34 : 30,
-                  mass: isOffscreenBuffer ? 1 : 0.9,
-                }}
-                drag={isCurrent ? 'y' : false}
-                dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={0.08}
-                onDragEnd={handlePwaDragEnd}
-                style={{
-                  zIndex: style.zIndex,
-                  pointerEvents: isCurrent ? 'auto' : 'none',
-                  willChange: 'transform',
-                  backfaceVisibility: 'hidden',
-                }}
-              >
-                <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset }}>
-                  <div
-                    className="w-full max-w-[472px]"
-                    style={{
-                      ['--fire-card-max-height' as string]: pwaCardMaxHExpr,
-                      ['--fire-card-aspect' as string]: '9 / 14',
-                    }}
-                  >
-                    {card.cardKind === 'firewatch' ? (
-                      <FireWatchCard3D
-                        item={card}
-                        highlighted={isCurrent}
-                        layoutMode="mobile"
-                        mobileAutoplayEnabled={mobileAutoplayEnabled}
-                        showMobileAutoplayToggle={isCurrent}
-                        onOpenDetails={() => undefined}
-                        onToggleMobileAutoplay={setMobileAutoplayEnabled}
-                        onBeforeOpenPost={persistStandaloneDeckState}
-                      />
-                    ) : (
-                      <FireCard3D
-                        item={card}
-                        highlighted={isCurrent}
-                        layoutMode="mobile"
-                        mobileAutoplayEnabled={mobileAutoplayEnabled}
-                        showMobileAutoplayToggle={isCurrent}
-                        onOpenDetails={() => undefined}
-                        onToggleMobileAutoplay={setMobileAutoplayEnabled}
-                        onBeforeOpenPost={persistStandaloneDeckState}
-                      />
-                    )}
+              return (
+                <motion.div
+                  key={card.id}
+                  className="absolute inset-0 flex items-center justify-center px-2"
+                  animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: isOffscreenBuffer ? 250 : 300,
+                    damping: isOffscreenBuffer ? 34 : 30,
+                    mass: isOffscreenBuffer ? 1 : 0.9,
+                  }}
+                  drag={isCurrent ? 'y' : false}
+                  dragConstraints={{ top: 0, bottom: 0 }}
+                  dragElastic={0.08}
+                  onDragEnd={handlePwaDragEnd}
+                  style={{
+                    zIndex: style.zIndex,
+                    pointerEvents: isCurrent ? 'auto' : 'none',
+                    willChange: 'transform',
+                    backfaceVisibility: 'hidden',
+                  }}
+                >
+                  <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset }}>
+                    <div
+                      className="w-full max-w-[472px]"
+                      style={{
+                        ['--fire-card-max-height' as string]: pwaCardMaxHExpr,
+                        ['--fire-card-aspect' as string]: '9 / 14',
+                      }}
+                    >
+                      {card.cardKind === 'firewatch' ? (
+                        <FireWatchCard3D
+                          item={card}
+                          highlighted={isCurrent}
+                          layoutMode="mobile"
+                          mobileAutoplayEnabled={mobileAutoplayEnabled}
+                          showMobileAutoplayToggle={isCurrent}
+                          onOpenDetails={() => undefined}
+                          onToggleMobileAutoplay={setMobileAutoplayEnabled}
+                          onBeforeOpenPost={persistStandaloneDeckState}
+                        />
+                      ) : (
+                        <FireCard3D
+                          item={card}
+                          highlighted={isCurrent}
+                          layoutMode="mobile"
+                          mobileAutoplayEnabled={mobileAutoplayEnabled}
+                          showMobileAutoplayToggle={isCurrent}
+                          onOpenDetails={() => undefined}
+                          onToggleMobileAutoplay={setMobileAutoplayEnabled}
+                          onBeforeOpenPost={persistStandaloneDeckState}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Spacer so the page has height (needed for fixed positioning context) */}
         <div style={{ height: '100dvh' }} />
@@ -788,39 +808,50 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
           </motion.div>
         ) : (
           <div className="flex flex-col">
-            <AnimatePresence initial={false} mode="popLayout">
-              {cards.map((card, index) => {
-                const isActive = resolvedActive === card.id;
-                return (
-                  <motion.div
-                    key={card.id}
-                    layout="position"
-                    initial={{ opacity: 0, y: 10, scale: 0.985 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                    transition={{
-                      layout: MOBILE_STACK_LAYOUT_SPRING,
-                      opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
-                      scale: { duration: 0.22, ease: GRID_ITEM_EASE },
-                      y: { duration: 0.22, ease: GRID_ITEM_EASE },
-                    }}
-                    className={mobileStackClass}
-                    style={{ zIndex: isActive ? 40 : 10 }}
-                  >
-                    <div className="w-full max-w-[472px]">
-                    <VirtualSlot
-                      item={card}
-                      index={index}
-                      isActive={isActive}
-                      isDesktop={false}
-                      mobileAutoplayEnabled={mobileAutoplayEnabled}
-                      onOpenDetails={() => undefined}
-                      onBeforeOpenPost={persistStandaloneDeckState}
-                    />
-                    </div>
-                  </motion.div>
-                );
-              })}
+            <AnimatePresence initial={false} mode="sync">
+              <motion.div
+                key={mobileDeckTransitionKey}
+                initial={{ opacity: 0, y: 22, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -14, scale: 0.992 }}
+                transition={MOBILE_DECK_SWAP_SPRING}
+                className="flex flex-col"
+              >
+                <AnimatePresence initial={false} mode="popLayout">
+                  {cards.map((card, index) => {
+                    const isActive = resolvedActive === card.id;
+                    return (
+                      <motion.div
+                        key={card.id}
+                        layout="position"
+                        initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                        transition={{
+                          layout: MOBILE_STACK_LAYOUT_SPRING,
+                          opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+                          scale: { duration: 0.22, ease: GRID_ITEM_EASE },
+                          y: { duration: 0.22, ease: GRID_ITEM_EASE },
+                        }}
+                        className={mobileStackClass}
+                        style={{ zIndex: isActive ? 40 : 10 }}
+                      >
+                        <div className="w-full max-w-[472px]">
+                        <VirtualSlot
+                          item={card}
+                          index={index}
+                          isActive={isActive}
+                          isDesktop={false}
+                          mobileAutoplayEnabled={mobileAutoplayEnabled}
+                          onOpenDetails={() => undefined}
+                          onBeforeOpenPost={persistStandaloneDeckState}
+                        />
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </motion.div>
             </AnimatePresence>
           </div>
         )}

@@ -95,7 +95,9 @@ function DeferredMobileSection({
   reduceMotion: boolean;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
-  const [isReady, setIsReady] = useState(eager);
+  const [isReady, setIsReady] = useState(() => (
+    eager || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function')
+  ));
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
 
   useEffect(() => {

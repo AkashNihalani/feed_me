@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
+import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 
 /* ── Types ── */
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
@@ -33,8 +34,8 @@ type SlotUsage = {
 
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FEED_CACHE_KEY = 'feed:bundle:v6';
-const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v5';
+const FEED_CACHE_KEY = 'feed:bundle:v7';
+const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v6';
 const FEED_CACHE_TTL = 10 * 60 * 1000;
 const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
 const dashboardInflight = new Map<string, Promise<DashboardPayload | null>>();
@@ -99,7 +100,7 @@ async function fetchDashboardSnapshot(feedId: string, timeframe: Timeframe, hand
   const params = new URLSearchParams({ feedId, days: String(TIMEFRAME_TO_DAYS[timeframe]) });
   if (handle !== 'all') params.set('handle', handle);
 
-  const request = fetch(`/api/feed/dashboard?${params}`, { cache: 'no-store' })
+  const request = fetch(`/api/feed/dashboard?${params}`)
     .then(async (res) => {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed');
@@ -270,18 +271,19 @@ function FeedPageContent() {
       setHeaderHeight(Math.ceil(node.getBoundingClientRect().height));
     };
 
+    const viewport = getVisualViewportEventTarget();
     updateHeight();
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateHeight) : null;
     observer?.observe(node);
     window.addEventListener('resize', updateHeight);
-    window.visualViewport?.addEventListener('resize', updateHeight);
-    window.visualViewport?.addEventListener('scroll', updateHeight);
+    viewport?.addEventListener('resize', updateHeight);
+    viewport?.addEventListener('scroll', updateHeight);
 
     return () => {
       observer?.disconnect();
       window.removeEventListener('resize', updateHeight);
-      window.visualViewport?.removeEventListener('resize', updateHeight);
-      window.visualViewport?.removeEventListener('scroll', updateHeight);
+      viewport?.removeEventListener('resize', updateHeight);
+      viewport?.removeEventListener('scroll', updateHeight);
     };
   }, [view, timeframe, selectedHandle, useBrowserPageScroll]);
 

@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase';
 
@@ -309,6 +311,7 @@ function AmbientParticles() {
       left: `${5 + Math.random() * 90}%`,
       top: `${5 + Math.random() * 90}%`,
       size: 1.5 + Math.random() * 2,
+      opacity: 0.05 + Math.random() * 0.05,
       duration: 8 + Math.random() * 10,
       delay: Math.random() * 6,
     }))
@@ -325,7 +328,7 @@ function AmbientParticles() {
             top: p.top,
             width: p.size,
             height: p.size,
-            opacity: 0.05 + Math.random() * 0.05,
+            opacity: p.opacity,
             animation: `loginFloat ${p.duration}s ease-in-out ${p.delay}s infinite`,
           }}
         />
@@ -338,6 +341,7 @@ function AmbientParticles() {
    MAIN LOGIN PAGE
    ───────────────────────────────────────────── */
 export default function LoginPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -377,7 +381,8 @@ export default function LoginPage() {
         setIsSuccess(true);
         setTimeout(() => {
           const nextPath = new URLSearchParams(window.location.search).get('next') || '/';
-          window.location.href = nextPath;
+          router.replace(nextPath);
+          router.refresh();
         }, 1000);
       } else if (mode === 'signup') {
         const { error: signUpError } = await getClient().auth.signUp({
@@ -487,7 +492,7 @@ export default function LoginPage() {
         <span className="text-white/5">&middot;</span>
         <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-white/25">Terms</a>
         <span className="text-white/5">&middot;</span>
-        <a href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-[#E11D48]/35">Home &rarr;</a>
+        <Link href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-[#E11D48]/35">Home &rarr;</Link>
       </div>
     </div>
   );
@@ -522,13 +527,13 @@ export default function LoginPage() {
 
       {/* ── Top nav ── */}
       <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
-        <a
+        <Link
           href="/"
           className="group flex items-center gap-1.5 rounded-full border border-white/[0.05] bg-white/[0.02] px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/25 backdrop-blur-sm transition-all hover:border-[#E11D48]/15 hover:text-[#E11D48]/50"
         >
           feedme.app
           <ExternalLink size={10} strokeWidth={3} className="opacity-40 transition-transform group-hover:translate-x-0.5" />
-        </a>
+        </Link>
       </div>
 
       {/* ════════════════════════════════════════════

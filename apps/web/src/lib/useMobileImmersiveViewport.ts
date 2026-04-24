@@ -1,6 +1,7 @@
 'use client';
 
 import { CSSProperties, useEffect, useMemo, useState } from 'react';
+import { getVisualViewportEventTarget } from './visualViewport';
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -95,16 +96,17 @@ export function useMobileImmersiveViewport() {
     };
 
     const standaloneMql = window.matchMedia('(display-mode: standalone)');
+    const viewport = getVisualViewportEventTarget();
     syncViewportMetrics();
     standaloneMql.addEventListener?.('change', syncViewportMetrics);
-    window.visualViewport?.addEventListener('resize', syncViewportMetrics);
-    window.visualViewport?.addEventListener('scroll', syncViewportMetrics);
+    viewport?.addEventListener('resize', syncViewportMetrics);
+    viewport?.addEventListener('scroll', syncViewportMetrics);
     window.addEventListener('resize', syncViewportMetrics);
 
     return () => {
       standaloneMql.removeEventListener?.('change', syncViewportMetrics);
-      window.visualViewport?.removeEventListener('resize', syncViewportMetrics);
-      window.visualViewport?.removeEventListener('scroll', syncViewportMetrics);
+      viewport?.removeEventListener('resize', syncViewportMetrics);
+      viewport?.removeEventListener('scroll', syncViewportMetrics);
       window.removeEventListener('resize', syncViewportMetrics);
       document.documentElement.style.removeProperty('--fm-app-height');
       document.documentElement.style.removeProperty('--pwa-top-pad');

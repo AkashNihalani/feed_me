@@ -75,13 +75,9 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
     return () => clearInterval(id);
   }, [next, items.length]);
 
-  useEffect(() => {
-    if (items.length > 0 && index >= items.length) setIndex(0);
-  }, [items.length, index]);
-
   if (items.length === 0) return null;
 
-  const item = items[index];
+  const item = items[index % items.length];
 
   return (
     <div
@@ -213,13 +209,9 @@ function MobileTicker({ items, className }: FlipTickerProps) {
     return clearTimer;
   }, [phase, index, items.length, clearTimer]);
 
-  useEffect(() => {
-    if (items.length > 0 && index >= items.length) { setIndex(0); setPhase(0); }
-  }, [items.length, index]);
-
   if (items.length === 0) return null;
 
-  const item = items[index];
+  const item = items[index % items.length];
 
   return (
     <div
