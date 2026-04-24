@@ -1625,11 +1625,18 @@ export default function FirePage() {
           <div className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}>
             <div className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}>
               {displayCards.length === 0 ? (
-                <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
+                <motion.div
+                  key={`empty-${deckResetKey}`}
+                  initial={{ opacity: 0, y: 16, scale: 0.986 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 34, mass: 0.86 }}
+                  className="flex w-full items-center justify-center px-6 text-center"
+                  style={fireStateShellStyle()}
+                >
                   <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
                     {isRefreshing ? 'Updating fire view' : 'No alerts for this selection'}
                   </div>
-                </div>
+                </motion.div>
               ) : (
                 <FluidDeck
                   cards={displayCards}

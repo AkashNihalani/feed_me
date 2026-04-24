@@ -33,6 +33,7 @@ const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
 const PWA_RENDER_RADIUS = 2;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
 const DESKTOP_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 280, damping: 30, mass: 0.88 } as const;
+const DESKTOP_GRID_APPEAR_SPRING = { type: 'spring', stiffness: 320, damping: 32, mass: 0.82 } as const;
 const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
 const MOBILE_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
 const GRID_ITEM_EASE = [0.22, 1, 0.36, 1] as const;
@@ -774,21 +775,27 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     <div ref={containerRef} className={containerClasses} style={containerStyle}>
       <div className="mx-auto w-full lg:max-w-none lg:px-1 xl:px-2">
         {isDesktop ? (
-          <motion.div layout className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6">
+          <motion.div
+            layout
+            transition={{ layout: DESKTOP_GRID_LAYOUT_SPRING }}
+            className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6"
+          >
             <AnimatePresence initial={false} mode="popLayout">
               {cards.map((card, index) => {
                 const isActive = resolvedActive === card.id;
+                const enterDelay = Math.min(index * 0.014, 0.12);
                 return (
                   <motion.div
                     key={card.id}
                     layout
-                    initial={false}
-                    exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                    initial={{ opacity: 0, scale: 0.965, y: 18 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 14 }}
                     transition={{
                       layout: DESKTOP_GRID_LAYOUT_SPRING,
-                      opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
-                      scale: { duration: 0.22, ease: GRID_ITEM_EASE },
-                      y: { duration: 0.22, ease: GRID_ITEM_EASE },
+                      opacity: { duration: 0.18, delay: enterDelay, ease: GRID_ITEM_EASE },
+                      scale: { ...DESKTOP_GRID_APPEAR_SPRING, delay: enterDelay },
+                      y: { ...DESKTOP_GRID_APPEAR_SPRING, delay: enterDelay },
                     }}
                     style={DESKTOP_CARD_FRAME_STYLE}
                   >
