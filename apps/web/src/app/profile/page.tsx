@@ -1091,7 +1091,7 @@ export default function FundPage() {
           'pointer-events-none fixed inset-0 z-0',
           useTranslucentBrowserChrome
             ? 'bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98)_0%,_rgba(244,247,249,0.94)_46%,_rgba(232,237,243,0.9)_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(28,28,28,0.96)_0%,_rgba(8,8,8,0.92)_42%,_rgba(0,0,0,0.84)_100%)]'
-            : 'bg-[#f4f7f9] dark:bg-[#030303]',
+            : 'bg-[#fafbfc] dark:bg-[#030303]',
         )}
       />
 

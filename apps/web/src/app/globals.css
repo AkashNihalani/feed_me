@@ -494,17 +494,11 @@ html.fm-feed-root-scroll body {
 }
 
 .fm-fire-page-surface {
-  background:
-    radial-gradient(1200px 540px at 16% -8%, rgba(var(--fm-accent-rgb), 0.08), transparent 58%),
-    radial-gradient(980px 420px at 86% 0%, rgba(255, 255, 255, 0.5), transparent 60%),
-    linear-gradient(180deg, #f8f5f1 0%, #f1ede7 48%, #ece7df 100%);
+  background: #fafbfc;
 }
 
 .dark .fm-fire-page-surface {
-  background:
-    radial-gradient(1100px 520px at 18% -10%, rgba(var(--fm-accent-rgb), 0.12), transparent 60%),
-    radial-gradient(900px 420px at 84% 0%, rgba(255, 255, 255, 0.035), transparent 62%),
-    linear-gradient(180deg, #070708 0%, #0a0a0c 46%, #0d0d10 100%);
+  background: #030303;
 }
 
 @media (min-width: 1024px) {
