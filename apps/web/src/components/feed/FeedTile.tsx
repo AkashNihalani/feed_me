@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from 'framer-motion';
 import { Crown, Target, Trash2 } from 'lucide-react';
+import { GRID_ITEM_EASE } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 function formatCompact(val: string): string {
@@ -101,6 +102,7 @@ export default function FeedTile({
 }: FeedTileProps) {
   const prefersReducedMotion = useReducedMotion();
   const shouldAnimateEntrance = enableEntranceAnimation && !prefersReducedMotion;
+  const enterDelay = Math.min(index * 0.055, 0.28);
 
   return (
     <motion.div
@@ -116,10 +118,14 @@ export default function FeedTile({
         }
       }}
       className="fm-depth-glass group relative flex min-h-[220px] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-[28px] p-4 text-left shadow-[0_12px_30px_-10px_rgba(15,23,42,0.22),0_24px_54px_-18px_rgba(15,23,42,0.16)] sm:min-h-[240px] sm:p-5 lg:min-h-[200px] dark:shadow-[0_16px_36px_-14px_rgba(0,0,0,0.62),0_34px_70px_-22px_rgba(0,0,0,0.5)]"
-      initial={shouldAnimateEntrance ? { y: 16, scale: 0.98, opacity: 0 } : false}
+      initial={shouldAnimateEntrance ? { y: 22, scale: 0.985, opacity: 0 } : false}
       animate={{ y: 0, scale: 1, opacity: 1 }}
       transition={shouldAnimateEntrance
-        ? { delay: index * 0.035, duration: 0.32, ease: [0.22, 1, 0.36, 1] }
+        ? {
+            opacity: { duration: 0.22, delay: 0.06 + enterDelay, ease: GRID_ITEM_EASE },
+            y: { type: 'spring', stiffness: 270, damping: 30, mass: 0.9, delay: 0.06 + enterDelay },
+            scale: { duration: 0.34, delay: 0.06 + enterDelay, ease: GRID_ITEM_EASE },
+          }
         : { duration: 0.01 }}
       whileTap={{ scale: 0.985 }}
     >

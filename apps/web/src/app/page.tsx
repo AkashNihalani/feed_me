@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useCallback, useEffect, useState, useMemo, Suspense, useRef } from 'react';
+import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Target, X } from 'lucide-react';
@@ -12,7 +12,7 @@ import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
-import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
+import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
@@ -40,6 +40,11 @@ const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v6';
 const FEED_CACHE_TTL = 10 * 60 * 1000;
 const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
 const dashboardInflight = new Map<string, Promise<DashboardPayload | null>>();
+const FEED_TILE_ENTRY_BASE_DELAY = 0.08;
+const FEED_TILE_ENTRY_STAGGER = 0.055;
+const FEED_TILE_ENTRY_MAX_STAGGER = 0.28;
+const FEED_INTENT_GRACE_MS = 3000;
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   '7D': '7D',
   '30D': '30D',
@@ -123,6 +128,7 @@ function FeedPageContent() {
   const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const headerRef = useRef<HTMLDivElement>(null);
+  const hydratedFeedCacheRef = useRef(false);
   const urlSelectedFeedId = searchParams.get('id');
   const shouldAnimateFeedTilesRef = useRef(true);
   const mobileBottomClearance = useTranslucentBrowserChrome
@@ -135,7 +141,16 @@ function FeedPageContent() {
   useEffect(() => {
     try {
       const intent = sessionStorage.getItem('feedme:intent');
-      if (intent === '/') { sessionStorage.removeItem('feedme:intent'); return; }
+      const now = Date.now();
+      if (intent === '/') {
+        sessionStorage.removeItem('feedme:intent');
+        sessionStorage.setItem('feedme:feed-intent-ok-ts', String(now));
+        sessionStorage.setItem('feedme:last-tab', '/');
+        sessionStorage.setItem('feedme:last-tab-ts', String(now));
+        return;
+      }
+      const feedIntentOkTs = Number(sessionStorage.getItem('feedme:feed-intent-ok-ts') || 0);
+      if (now - feedIntentOkTs < FEED_INTENT_GRACE_MS) return;
       const lastTab = sessionStorage.getItem('feedme:last-tab');
       const lastTs = Number(sessionStorage.getItem('feedme:last-tab-ts') || 0);
       const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
@@ -147,7 +162,7 @@ function FeedPageContent() {
         }
       })();
       if (initialDocumentPath !== '/') return;
-      const recent = lastTab === '/fire' && Date.now() - lastTs < 120000;
+      const recent = lastTab === '/fire' && now - lastTs < 120000;
       const cameFromFire = (document.referrer || '').includes('/fire');
       if (recent && (nav?.type === 'reload' || cameFromFire)) router.replace('/fire');
     } catch {}
@@ -206,6 +221,20 @@ function FeedPageContent() {
   const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
   const topAveragePosts = Math.max(0, Number(dashboardData?.summary?.posts_with_metrics) || 0);
   const exportScopeLabel = selectedHandle === 'all' ? 'FULL FEED' : `@${selectedHandle.toUpperCase()}`;
+
+  useIsomorphicLayoutEffect(() => {
+    if (hydratedFeedCacheRef.current) return;
+    hydratedFeedCacheRef.current = true;
+
+    const cachedEntry = readCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY);
+    const cached = cachedEntry?.data ?? null;
+    if (!cached) return;
+
+    setFeeds(cached.feeds ?? INITIAL_FEEDS);
+    setTickerItems(cached.ticker ?? []);
+    setSlotUsage(cached.slots ?? { used: 0 });
+    setFeedDataReady(true);
+  }, []);
 
   useEffect(() => {
     setSelectedFeedId(urlSelectedFeedId);
@@ -798,13 +827,33 @@ function FeedPageContent() {
                       <motion.div
                         key={feed.id}
                         layout
-                        initial={false}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ layout: { type: 'spring', stiffness: 300, damping: 26, mass: 0.8 }, opacity: { duration: 0.16, ease: [0.22, 1, 0.36, 1] } }}
+                        initial={shouldAnimateFeedTilesRef.current ? { opacity: 0, y: 22, scale: 0.985 } : false}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.985 }}
+                        transition={{
+                          layout: GRID_LAYOUT_SPRING,
+                          opacity: {
+                            duration: 0.22,
+                            delay: FEED_TILE_ENTRY_BASE_DELAY + Math.min(i * FEED_TILE_ENTRY_STAGGER, FEED_TILE_ENTRY_MAX_STAGGER),
+                            ease: GRID_ITEM_EASE,
+                          },
+                          y: {
+                            type: 'spring',
+                            stiffness: 270,
+                            damping: 30,
+                            mass: 0.9,
+                            delay: FEED_TILE_ENTRY_BASE_DELAY + Math.min(i * FEED_TILE_ENTRY_STAGGER, FEED_TILE_ENTRY_MAX_STAGGER),
+                          },
+                          scale: {
+                            duration: 0.34,
+                            delay: FEED_TILE_ENTRY_BASE_DELAY + Math.min(i * FEED_TILE_ENTRY_STAGGER, FEED_TILE_ENTRY_MAX_STAGGER),
+                            ease: GRID_ITEM_EASE,
+                          },
+                        }}
+                        style={{ willChange: 'transform, opacity' }}
                       >
                         <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
-                          metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} enableEntranceAnimation={shouldAnimateFeedTilesRef.current} />
+                          metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} enableEntranceAnimation={false} />
                       </motion.div>
                     ))}
                   </AnimatePresence>

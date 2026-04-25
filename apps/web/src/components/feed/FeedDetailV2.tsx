@@ -12,6 +12,7 @@ import FeedPostingPattern from './FeedPostingPattern';
 import FeedPatternBoard from './FeedPatternBoard';
 import PostingHeatmap from './PostingHeatmap';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from './dashboardTypes';
+import { GRID_ITEM_EASE } from '@/lib/motion';
 
 type ActiveFeed = {
   id: string;
@@ -46,26 +47,38 @@ type MobileSection = {
   items: MobileSectionItem[];
 };
 
+const DASHBOARD_TILE_BASE_DELAY = 0.08;
+const DASHBOARD_TILE_STAGGER = 0.055;
+
+function createDashboardTileTransition(delay = 0) {
+  return {
+    opacity: { duration: 0.22, delay, ease: GRID_ITEM_EASE },
+    y: { type: 'spring', stiffness: 270, damping: 30, mass: 0.9, delay },
+    scale: { duration: 0.34, delay, ease: GRID_ITEM_EASE },
+  } as const;
+}
+
 function createStaggerContainer(reduceMotion: boolean) {
   return {
     hidden: {},
     visible: {
       transition: reduceMotion
         ? { staggerChildren: 0, delayChildren: 0 }
-        : { staggerChildren: 0.012, delayChildren: 0.02 },
+        : { staggerChildren: DASHBOARD_TILE_STAGGER, delayChildren: DASHBOARD_TILE_BASE_DELAY },
     },
   };
 }
 
 function createTileVariant(reduceMotion: boolean) {
   return {
-    hidden: reduceMotion ? { y: 0, opacity: 1 } : { y: 8, opacity: 0 },
+    hidden: reduceMotion ? { y: 0, opacity: 1, scale: 1 } : { y: 18, opacity: 0, scale: 0.985 },
     visible: {
       y: 0,
       opacity: 1,
+      scale: 1,
       transition: reduceMotion
         ? { duration: 0.01 }
-        : { duration: 0.25, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number] },
+        : createDashboardTileTransition(),
     },
   };
 }
@@ -144,7 +157,7 @@ function DeferredMobileSection({
                 animate="visible"
                 transition={reduceMotion || (sectionIndex === 0 && itemIndex === 0)
                   ? undefined
-                  : { delay: itemIndex * 0.04 }}
+                  : createDashboardTileTransition(DASHBOARD_TILE_BASE_DELAY + itemIndex * DASHBOARD_TILE_STAGGER)}
                 className={`min-w-0 ${item.className}`}
                 style={item.style}
               >
