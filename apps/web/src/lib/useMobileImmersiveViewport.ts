@@ -2,6 +2,7 @@
 
 import { CSSProperties, useEffect, useMemo, useState } from 'react';
 import { getVisualViewportEventTarget } from './visualViewport';
+import { acquireDocumentClass, acquireRootPageScroll } from './rootScrollMode';
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -36,46 +37,13 @@ export function useMobileImmersiveViewport() {
   }, []);
 
   useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const main = document.querySelector('main');
-
-    const prevHtmlOverflow = html.style.overflow;
-    const prevHtmlHeight = html.style.height;
-    const prevBodyOverflow = body.style.overflow;
-    const prevBodyHeight = body.style.height;
-    const prevMainOverflow = main instanceof HTMLElement ? main.style.overflow : '';
-    const prevMainHeight = main instanceof HTMLElement ? main.style.height : '';
-
-    if (useBrowserPageScroll) {
-      html.style.overflow = 'auto';
-      html.style.height = 'auto';
-      body.style.overflow = 'auto';
-      body.style.height = 'auto';
-      if (main instanceof HTMLElement) {
-        main.style.overflow = 'visible';
-        main.style.height = 'auto';
-      }
-    }
-
-    return () => {
-      html.style.overflow = prevHtmlOverflow;
-      html.style.height = prevHtmlHeight;
-      body.style.overflow = prevBodyOverflow;
-      body.style.height = prevBodyHeight;
-      if (main instanceof HTMLElement) {
-        main.style.overflow = prevMainOverflow;
-        main.style.height = prevMainHeight;
-      }
-    };
+    if (!useBrowserPageScroll) return undefined;
+    return acquireRootPageScroll();
   }, [useBrowserPageScroll]);
 
   useEffect(() => {
-    const html = document.documentElement;
-    html.classList.toggle('fm-mobile-browser-immersive', useTranslucentBrowserChrome);
-    return () => {
-      html.classList.remove('fm-mobile-browser-immersive');
-    };
+    if (!useTranslucentBrowserChrome) return undefined;
+    return acquireDocumentClass('fm-mobile-browser-immersive');
   }, [useTranslucentBrowserChrome]);
 
   useEffect(() => {
@@ -108,9 +76,6 @@ export function useMobileImmersiveViewport() {
       viewport?.removeEventListener('resize', syncViewportMetrics);
       viewport?.removeEventListener('scroll', syncViewportMetrics);
       window.removeEventListener('resize', syncViewportMetrics);
-      document.documentElement.style.removeProperty('--fm-app-height');
-      document.documentElement.style.removeProperty('--pwa-top-pad');
-      document.documentElement.style.removeProperty('--pwa-top-fix');
     };
   }, []);
 

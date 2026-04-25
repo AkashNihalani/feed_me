@@ -30,6 +30,7 @@ import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
+import { acquireDocumentClass, acquireRootPageScroll } from '@/lib/rootScrollMode';
 
 type AlertRow = Record<string, unknown>;
 type WarmupSummary = Record<string, number>;
@@ -1008,11 +1009,7 @@ export default function FirePage() {
   }, []);
 
   useEffect(() => {
-    const html = document.documentElement;
-    html.classList.add('fm-fire-immersive');
-    return () => {
-      html.classList.remove('fm-fire-immersive');
-    };
+    return acquireDocumentClass('fm-fire-immersive');
   }, []);
 
   useEffect(() => {
@@ -1034,37 +1031,8 @@ export default function FirePage() {
   }, [headerHeight, isStandaloneMode]);
 
   useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const main = document.querySelector('main');
-    const prevHtmlOverflow = html.style.overflow;
-    const prevHtmlHeight = html.style.height;
-    const prevBodyOverflow = body.style.overflow;
-    const prevBodyHeight = body.style.height;
-    const prevMainOverflow = main instanceof HTMLElement ? main.style.overflow : '';
-    const prevMainHeight = main instanceof HTMLElement ? main.style.height : '';
-
-    if (useBrowserPageScroll) {
-      html.style.overflow = 'auto';
-      html.style.height = 'auto';
-      body.style.overflow = 'auto';
-      body.style.height = 'auto';
-      if (main instanceof HTMLElement) {
-        main.style.overflow = 'visible';
-        main.style.height = 'auto';
-      }
-    }
-
-    return () => {
-      html.style.overflow = prevHtmlOverflow;
-      html.style.height = prevHtmlHeight;
-      body.style.overflow = prevBodyOverflow;
-      body.style.height = prevBodyHeight;
-      if (main instanceof HTMLElement) {
-        main.style.overflow = prevMainOverflow;
-        main.style.height = prevMainHeight;
-      }
-    };
+    if (!useBrowserPageScroll) return undefined;
+    return acquireRootPageScroll();
   }, [useBrowserPageScroll]);
 
   useEffect(() => {

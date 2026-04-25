@@ -117,17 +117,6 @@ async function fetchDashboardSnapshot(feedId: string, timeframe: Timeframe, hand
   return request;
 }
 
-function readInitialFeedBundle() {
-  const cachedEntry = readCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY);
-  const cached = cachedEntry?.data ?? null;
-
-  return {
-    feeds: cached?.feeds ?? INITIAL_FEEDS,
-    tickerItems: cached?.ticker ?? [],
-    slotUsage: cached?.slots ?? { used: 0 },
-  };
-}
-
 function FeedPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -135,8 +124,7 @@ function FeedPageContent() {
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const headerRef = useRef<HTMLDivElement>(null);
   const urlSelectedFeedId = searchParams.get('id');
-  const [initialBundle] = useState(readInitialFeedBundle);
-  const shouldAnimateFeedTilesRef = useRef(initialBundle.feeds.length === 0);
+  const shouldAnimateFeedTilesRef = useRef(true);
   const mobileBottomClearance = useTranslucentBrowserChrome
     ? 'calc(18px + env(safe-area-inset-bottom))'
     : 'calc(120px + env(safe-area-inset-bottom))';
@@ -168,7 +156,8 @@ function FeedPageContent() {
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(urlSelectedFeedId);
   const view = selectedFeedId ? 'detail' : 'list';
 
-  const [feeds, setFeeds] = useState<Feed[]>(() => initialBundle.feeds);
+  const [feeds, setFeeds] = useState<Feed[]>(INITIAL_FEEDS);
+  const [feedDataReady, setFeedDataReady] = useState(false);
   const [isAddingFeeder, setIsAddingFeeder] = useState(false);
   const [addingFeeder, setAddingFeeder] = useState<string | null>(null);
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
@@ -184,9 +173,9 @@ function FeedPageContent() {
   const [baselineDashboardData, setBaselineDashboardData] = useState<DashboardPayload | null>(
     () => (urlSelectedFeedId ? readCache<DashboardPayload>(dashboardCacheKey(urlSelectedFeedId, '30D', 'all'))?.data ?? null : null),
   );
-  const [tickerItems, setTickerItems] = useState<TickerItem[]>(() => initialBundle.tickerItems);
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
-  const [slotUsage, setSlotUsage] = useState<SlotUsage>(() => initialBundle.slotUsage);
+  const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
   const [exportFrom, setExportFrom] = useState<string>(() => defaultExportRange().from);
   const [exportTo, setExportTo] = useState<string>(() => defaultExportRange().to);
   const [headerHeight, setHeaderHeight] = useState(() => (urlSelectedFeedId ? 204 : 176));
@@ -239,6 +228,7 @@ function FeedPageContent() {
       setFeeds(cached.feeds ?? INITIAL_FEEDS);
       setTickerItems(cached.ticker ?? []);
       setSlotUsage(cached.slots ?? { used: 0 });
+      setFeedDataReady(true);
     }
 
     if (hasFreshCache && hasHydratedCache) {
@@ -256,7 +246,9 @@ function FeedPageContent() {
       setTickerItems(nextTicker);
       if (nextSlots) setSlotUsage(nextSlots);
       setCache(FEED_CACHE_KEY, { feeds: nextFeeds, ticker: nextTicker, slots: nextSlots || undefined });
+      setFeedDataReady(true);
     } catch (err) {
+      setFeedDataReady(true);
       throw err;
     }
   }, []);
@@ -467,19 +459,14 @@ function FeedPageContent() {
       animate="visible"
       className={cn(
         'fm-dashboard-mesh relative w-full text-foreground select-none',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-background',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#030303]',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
       style={appShellStyle}
     >
       {/* Ambient bg */}
       <div
-        className={cn(
-          'pointer-events-none fixed inset-0 z-0',
-          useTranslucentBrowserChrome
-            ? 'bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98)_0%,_rgba(244,247,249,0.94)_46%,_rgba(232,237,243,0.9)_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(28,28,28,0.96)_0%,_rgba(8,8,8,0.92)_42%,_rgba(0,0,0,0.84)_100%)]'
-            : 'bg-[#fafbfc] dark:bg-[#030303]',
-        )}
+        className="pointer-events-none fixed inset-0 z-0 bg-[#030303]"
       />
 
       {/* ═══ LOCKED HEADER ═══ */}
@@ -811,17 +798,17 @@ function FeedPageContent() {
                       <motion.div
                         key={feed.id}
                         layout
-                        initial={shouldAnimateFeedTilesRef.current ? { opacity: 0, scale: 0.88 } : false}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.88 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 26, mass: 0.8 }}
+                        initial={false}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ layout: { type: 'spring', stiffness: 300, damping: 26, mass: 0.8 }, opacity: { duration: 0.16, ease: [0.22, 1, 0.36, 1] } }}
                       >
                         <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
                           metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} enableEntranceAnimation={shouldAnimateFeedTilesRef.current} />
                       </motion.div>
                     ))}
                   </AnimatePresence>
-                  {feeds.length === 0 && (
+                  {feedDataReady && feeds.length === 0 && (
                     <div className="col-span-full fm-depth-glass rounded-[28px] px-6 py-10 text-center">
                       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] fm-depth-chip">
                         <Target size={26} className="text-foreground/48 dark:text-white/42" />

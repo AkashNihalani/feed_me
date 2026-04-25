@@ -620,7 +620,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     return (
       <>
         {/* Full-canvas PWA deck so cards pass under floating chrome. */}
-        <AnimatePresence initial={false} mode="sync">
+        <AnimatePresence mode="sync">
           <motion.div
             key={mobileDeckTransitionKey}
             initial={{ opacity: 0, y: 24, scale: 0.985 }}
@@ -761,7 +761,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
             transition={{ layout: GRID_LAYOUT_SPRING }}
             className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6"
           >
-            <AnimatePresence initial={false} mode="popLayout">
+            <AnimatePresence mode="popLayout">
               {cards.map((card, index) => {
                 const isActive = resolvedActive === card.id;
                 const enterDelay = Math.min(index * 0.026, 0.2);
@@ -817,7 +817,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
           </motion.div>
         ) : (
           <div className="flex flex-col">
-            <AnimatePresence initial={false} mode="sync">
+            <AnimatePresence mode="sync">
               <motion.div
                 key={mobileDeckTransitionKey}
                 initial={{ opacity: 0, y: 22, scale: 0.985 }}
@@ -826,7 +826,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 transition={MOBILE_DECK_SWAP_SPRING}
                 className="flex flex-col"
               >
-                <AnimatePresence initial={false} mode="popLayout">
+                <AnimatePresence mode="popLayout">
                   {cards.map((card, index) => {
                     const isActive = resolvedActive === card.id;
                     return (
