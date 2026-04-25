@@ -31,6 +31,9 @@ from .config import (
     CHECKPOINT_SCRAPE_CHUNK_SIZE,
     CHECKPOINT_JOB_CLAIM_LIMIT,
     STALE_JOB_MINUTES,
+    D7_INTELLIGENCE_REPAIR_INTERVAL_SECONDS,
+    D7_INTELLIGENCE_REPAIR_LIMIT,
+    D7_INTELLIGENCE_REPAIR_DAYS,
     CHECKPOINT_BATCH_HOUR_24,
     CHECKPOINT_BATCH_MINUTE,
     CHECKPOINT_BUCKET_MINUTES,
@@ -992,6 +995,7 @@ class PureEngine:
         preview_retention_days: int | None = None,
         full_video_retention_days: int | None = None,
         carousel_retention_days: int | None = None,
+        stage_preview: bool = True,
     ):
         if not FIRE_MEDIA_RETENTION_ENABLED:
             return
@@ -999,7 +1003,7 @@ class PureEngine:
         payloads: list[tuple[str, str, int | None]] = []
         if thumbnail_url:
             payloads.append(("thumbnail", thumbnail_url, thumbnail_retention_days))
-        if _preview_enabled_for_source(video_url):
+        if stage_preview and _preview_enabled_for_source(video_url):
             payloads.append(("preview_5s", str(video_url).strip(), preview_retention_days))
         if full_video_retention_days is not None and _preview_enabled_for_source(video_url):
             payloads.append(("video_full", str(video_url).strip(), full_video_retention_days))
@@ -1125,6 +1129,7 @@ class PureEngine:
         full_video_retention_days: int | None = None,
         carousel_retention_days: int | None = None,
         context: str,
+        stage_preview: bool = True,
     ):
         try:
             with self.conn.transaction():
@@ -1138,6 +1143,7 @@ class PureEngine:
                     preview_retention_days=preview_retention_days,
                     full_video_retention_days=full_video_retention_days,
                     carousel_retention_days=carousel_retention_days,
+                    stage_preview=stage_preview,
                 )
         except Exception as exc:
             print(f"[media-stage] skipped post_key={post_key} context={context}: {exc}")
@@ -1628,11 +1634,12 @@ class PureEngine:
                 post_key,
                 posted_at,
                 thumbnail_url,
-                video_url if preview_allowed else None,
+                video_url,
                 carousel_urls,
                 preview_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
-                full_video_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS if media_type == "reel" and preview_allowed else None,
+                full_video_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS if media_type == "reel" else None,
                 carousel_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS if media_type in {"sidecar", "carousel"} else None,
+                stage_preview=preview_allowed,
             )
             staged_post_keys.append(post_key)
         self.conn.commit()
@@ -2826,6 +2833,7 @@ class PureEngine:
                                 continue
                             self._mark_post_availability(job_post_key, "active", None)
                             thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                            resolved_media_type = _media_type(item) or str(j.get("media_type") or "").strip().lower()
                             self._best_effort_refresh_post_media(
                                 str(j["post_key"]),
                                 thumbnail_url,
@@ -2881,9 +2889,21 @@ class PureEngine:
                                     str(j["post_key"]),
                                     job_posted_at,
                                     thumbnail_url,
-                                    video_url if _preview_capture_allowed_for_business_day(business_day) else None,
-                                    None,
+                                    video_url,
+                                    carousel_urls if resolved_media_type in {"sidecar", "carousel"} else None,
                                     preview_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
+                                    full_video_retention_days=(
+                                        _HOT_VISUAL_ASSET_RETENTION_DAYS
+                                        if resolved_media_type == "reel"
+                                        and _preview_enabled_for_source(video_url)
+                                        else None
+                                    ),
+                                    carousel_retention_days=(
+                                        _HOT_VISUAL_ASSET_RETENTION_DAYS
+                                        if resolved_media_type in {"sidecar", "carousel"}
+                                        else None
+                                    ),
+                                    stage_preview=_preview_capture_allowed_for_business_day(business_day),
                                     context=f"checkpoint_{cp}_hot_extension",
                                 )
                             self.conn.commit()
@@ -4548,12 +4568,28 @@ class PureEngine:
 
         return {"selected": len(rows), "updated": updated, "missing": missing}
 
-    def backfill_d7_post_intelligence(self, day: str | None = None, limit: int = 200) -> dict[str, int]:
-        """Re-run D7 post intelligence and Firewatch resolution for hot posts missing current tags."""
+    def backfill_d7_post_intelligence(
+        self,
+        day: str | None = None,
+        limit: int = 200,
+        days: int = 14,
+    ) -> dict[str, int]:
+        """Repair hot D7 post intelligence from stored media sources, without re-scraping Bright Data."""
         try:
-            business_day = (day or "").strip() or datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date().isoformat()
+            tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
         except Exception:
-            business_day = (day or "").strip() or datetime.now(timezone.utc).date().isoformat()
+            tz = timezone.utc
+
+        requested_day = (day or "").strip()
+        if requested_day:
+            try:
+                window_start_day = date.fromisoformat(requested_day)
+            except ValueError:
+                window_start_day = datetime.now(tz).date()
+            window_end_day = window_start_day
+        else:
+            window_end_day = datetime.now(tz).date()
+            window_start_day = window_end_day - timedelta(days=max(1, int(days)) - 1)
 
         current_intelligence_model = pi_model_version(skipped=False)
         rows = self.conn.execute(
@@ -4571,7 +4607,7 @@ class PureEngine:
              and lower(pm.checkpoint) = 'd7'
             left join public.post_intelligence pi
               on pi.post_key = p.post_key
-            where pm.business_date_ist = %s
+            where pm.business_date_ist between %s and %s
               and pm.percentile_performance is not null
               and pm.percentile_performance <= 35
               and (
@@ -4582,12 +4618,15 @@ class PureEngine:
                   'opening_move',
                   'proof_mode',
                   'pacing',
+                  'audio_mode',
                   'style',
                   'face',
                   'language',
                   'depth',
                   'density',
-                  'text_overlay'
+                  'text_overlay',
+                  'duration_bucket',
+                  '_visual_source'
                 ]
                 or coalesce(pi.tags, '{}'::jsonb) ?| array['hook', 'pillar', 'format', 'subject']
                 or (
@@ -4604,10 +4643,10 @@ class PureEngine:
                 )
               )
             group by fd.feed_id, p.feeder_id, pm.business_date_ist
-            order by count(*) desc, p.feeder_id asc
+            order by pm.business_date_ist desc, count(*) desc, p.feeder_id asc
             limit %s
             """,
-            (business_day, current_intelligence_model, max(1, limit)),
+            (window_start_day, window_end_day, current_intelligence_model, max(1, limit)),
         ).fetchall()
         self.conn.commit()
 
@@ -4622,7 +4661,7 @@ class PureEngine:
 
         total_hot_posts = 0
         processed_feeders = 0
-        feed_resolvers: dict[int, int] = {}
+        feed_resolvers: dict[tuple[int, date], int] = {}
 
         for row in rows:
             feeder_id = int(row.get("feeder_id") or 0)
@@ -4630,23 +4669,32 @@ class PureEngine:
             day_value = row.get("business_date_ist")
             if not feeder_id or not day_value:
                 continue
+            day_date = day_value if isinstance(day_value, date) else date.fromisoformat(str(day_value))
             total_hot_posts += int(row.get("hot_posts") or 0)
-            try:
-                self._extend_hot_visual_media_for_day(feeder_id, "d7", day_value)
-                self._extract_post_intelligence_for_checkpoint(feeder_id, "d7", day_value)
-                processed_feeders += 1
-                if feed_id and feed_id not in feed_resolvers:
-                    feed_resolvers[feed_id] = feeder_id
-            except Exception:
+            for attempt in range(2):
                 try:
-                    self.conn.rollback()
-                except Exception:
-                    pass
-                raise
+                    self.ensure_connection("before D7 media repair", verify=True)
+                    self._extend_hot_visual_media_for_day(feeder_id, "d7", day_date)
+                    self.ensure_connection("before D7 intelligence extraction", verify=True)
+                    self._extract_post_intelligence_for_checkpoint(feeder_id, "d7", day_date)
+                    processed_feeders += 1
+                    if feed_id and (feed_id, day_date) not in feed_resolvers:
+                        feed_resolvers[(feed_id, day_date)] = feeder_id
+                    break
+                except Exception as exc:
+                    try:
+                        self.conn.rollback()
+                    except Exception:
+                        pass
+                    if attempt == 0 and _is_connection_error(exc):
+                        self._reconnect(f"D7 intelligence repair feeder retry: {exc}")
+                        continue
+                    raise
 
         resolved_feeds = 0
-        for feeder_id in feed_resolvers.values():
-            self._resolve_pattern_alerts_for_feed(feeder_id, date.fromisoformat(business_day))
+        for (_feed_id, day_date), feeder_id in feed_resolvers.items():
+            self.ensure_connection("before D7 Firewatch resolution", verify=True)
+            self._resolve_pattern_alerts_for_feed(feeder_id, day_date)
             resolved_feeds += 1
 
         return {
@@ -4671,6 +4719,11 @@ def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
         eng.process_checkpoint_jobs(effective_checkpoint_limit)
         eng.ensure_connection("before media assets", verify=True)
         eng.process_post_media_assets()
+        eng.ensure_connection("before D7 intelligence repair", verify=True)
+        eng.backfill_d7_post_intelligence(
+            limit=D7_INTELLIGENCE_REPAIR_LIMIT,
+            days=D7_INTELLIGENCE_REPAIR_DAYS,
+        )
         eng.ensure_connection("before web push jobs", verify=True)
         eng.process_web_push_jobs()
         eng.ensure_connection("before retention cleanup", verify=True)
@@ -4689,6 +4742,7 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
     last_watchdog = 0.0
     last_dead_check = 0.0
     last_retention_cleanup = 0.0
+    last_d7_intelligence_repair = 0.0
     last_summary_date = ""
     effective_checkpoint_limit = max(1, int(checkpoint_limit or CHECKPOINT_JOB_CLAIM_LIMIT))
 
@@ -4866,6 +4920,34 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
                             print(f"[db] retention-cleanup reconnect failed: {reconnect_exc}")
                     print(f"[retention-cleanup] {e}")
                 last_retention_cleanup = now_ts
+
+            if now_ts - last_d7_intelligence_repair >= max(60, D7_INTELLIGENCE_REPAIR_INTERVAL_SECONDS):
+                try:
+                    eng.ensure_connection("D7 intelligence repair", verify=True)
+                    result = eng.backfill_d7_post_intelligence(
+                        limit=D7_INTELLIGENCE_REPAIR_LIMIT,
+                        days=D7_INTELLIGENCE_REPAIR_DAYS,
+                    )
+                    if int(result.get("hot_posts", 0) or 0) > 0:
+                        print(
+                            "[d7-intelligence-repair] "
+                            f"hot_posts={result.get('hot_posts', 0)} "
+                            f"processed_feeders={result.get('processed_feeders', 0)} "
+                            f"resolved_feeds={result.get('resolved_feeds', 0)}"
+                        )
+                except Exception as e:
+                    try:
+                        eng.conn.rollback()
+                    except Exception:
+                        pass
+                    if _is_connection_error(e):
+                        try:
+                            eng._reconnect(f"D7 intelligence repair: {e}")
+                        except Exception as reconnect_exc:
+                            print(f"[db] D7 intelligence repair reconnect failed: {reconnect_exc}")
+                    print(f"[d7-intelligence-repair] {e}")
+                    alert_worker_error(e)
+                last_d7_intelligence_repair = now_ts
 
             # Process jobs
             try:

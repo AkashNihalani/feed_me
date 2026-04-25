@@ -198,9 +198,10 @@ def main():
     elif args.mode == "backfill_d7_post_intelligence":
         eng = PureEngine()
         try:
-            result = eng.backfill_d7_post_intelligence(day=args.day, limit=args.limit)
+            result = eng.backfill_d7_post_intelligence(day=args.day, limit=args.limit, days=args.days)
             print(
                 f"backfill_d7_post_intelligence day={args.day} "
+                f"days={args.days} "
                 f"selected_feeders={result.get('selected_feeders', 0)} "
                 f"selected_feeds={result.get('selected_feeds', 0)} "
                 f"hot_posts={result.get('hot_posts', 0)} "

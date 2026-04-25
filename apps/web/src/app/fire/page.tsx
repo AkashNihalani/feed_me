@@ -502,9 +502,9 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     || asString(meta.resolved_thumbnail_url)
     || asString(meta.thumbnail_url);
   const resolvedPreviewUrl =
-    asString(row.preview_url)
-    || asString(row.resolved_preview_url)
+    asString(row.resolved_preview_url)
     || asString(meta.resolved_preview_url)
+    || asString(row.preview_url)
     || asString(meta.preview_url);
   const title = hideSignalChrome
     ? `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`

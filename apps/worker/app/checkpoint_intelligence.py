@@ -70,9 +70,9 @@ def extract_post_intelligence_for_checkpoint(
                  SELECT coalesce(
                           assets.public_url,
                           case
-                            when coalesce(%s, '') <> ''
+                            when coalesce(%s::text, '') <> ''
                               then concat(
-                                %s,
+                                %s::text,
                                 '/',
                                 regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
                               )
@@ -92,9 +92,9 @@ def extract_post_intelligence_for_checkpoint(
                  SELECT coalesce(
                           assets.public_url,
                           case
-                            when coalesce(%s, '') <> ''
+                            when coalesce(%s::text, '') <> ''
                               then concat(
-                                %s,
+                                %s::text,
                                 '/',
                                 regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
                               )
@@ -115,9 +115,9 @@ def extract_post_intelligence_for_checkpoint(
                           coalesce(
                             assets.public_url,
                             case
-                              when coalesce(%s, '') <> ''
+                              when coalesce(%s::text, '') <> ''
                                 then concat(
-                                  %s,
+                                  %s::text,
                                   '/',
                                   regexp_replace(coalesce(assets.storage_path, ''), '^/+', '')
                                 )
@@ -146,21 +146,24 @@ def extract_post_intelligence_for_checkpoint(
                      'opening_move',
                      'proof_mode',
                      'pacing',
+                     'audio_mode',
                      'style',
                      'face',
                      'language',
                      'depth',
                      'density',
-                     'text_overlay'
+                     'text_overlay',
+                     'duration_bucket',
+                     '_visual_source'
                    ]
                    OR coalesce(pi.tags, '{}'::jsonb) ?| array['hook', 'pillar', 'format', 'subject']
                    OR (
                      lower(coalesce(p.media_type, 'image')) = 'reel'
-                     AND coalesce(pi.tags->>'_visual_source', '') NOT LIKE 'video_full:%'
+                     AND coalesce(pi.tags->>'_visual_source', '') NOT LIKE 'video_full:%%'
                    )
                    OR (
                      lower(coalesce(p.media_type, 'image')) in ('sidecar', 'carousel')
-                     AND coalesce(pi.tags->>'_visual_source', '') NOT LIKE 'carousel:%'
+                     AND coalesce(pi.tags->>'_visual_source', '') NOT LIKE 'carousel:%%'
                    )
                    OR (
                      lower(coalesce(p.media_type, 'image')) NOT IN ('reel', 'sidecar', 'carousel')

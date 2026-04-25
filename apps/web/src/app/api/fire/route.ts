@@ -2296,8 +2296,8 @@ async function buildTrackingFirePagePayload(
         : nullableString(row.thumbnail_url) || null,
       resolved_preview_url: previewCaptureAllowedForBusinessDay(nullableString(row.business_date_ist))
         ? row.post_key
-          ? storedPreviewUrls.get(row.post_key) || nullableString(row.preview_url) || null
-          : nullableString(row.preview_url) || null
+          ? storedPreviewUrls.get(row.post_key) || null
+          : null
         : null,
     })),
     total,
