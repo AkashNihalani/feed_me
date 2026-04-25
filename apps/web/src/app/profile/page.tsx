@@ -1082,13 +1082,13 @@ export default function FundPage() {
       transition={{ duration: 0.42, ease: APPLE_EASE }}
       className={cn(
         'relative w-full text-foreground select-none',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#030303]',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#f4f7f9] dark:bg-[#030303]',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
       style={appShellStyle}
     >
       <div
-        className="pointer-events-none fixed inset-0 z-0 bg-[#030303]"
+        className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
       />
 
       <AnimatePresence>

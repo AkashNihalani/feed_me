@@ -488,14 +488,14 @@ function FeedPageContent() {
       animate="visible"
       className={cn(
         'fm-dashboard-mesh relative w-full text-foreground select-none',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#030303]',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#f4f7f9] dark:bg-[#030303]',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
       style={appShellStyle}
     >
       {/* Ambient bg */}
       <div
-        className="pointer-events-none fixed inset-0 z-0 bg-[#030303]"
+        className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
       />
 
       {/* ═══ LOCKED HEADER ═══ */}
