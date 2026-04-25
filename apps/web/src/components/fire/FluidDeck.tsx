@@ -1,12 +1,13 @@
 'use client';
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
 import { FireCard3D } from './FireCard3D';
 import { FireWatchCard3D } from './FireWatchCard3D';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
+import { GRID_LAYOUT_SPRING, GRID_ITEM_EASE } from '@/lib/motion';
 
 interface FluidDeckProps {
   cards: FireItem[];
@@ -32,21 +33,13 @@ const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
 const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
 const PWA_RENDER_RADIUS = 2;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
-const DESKTOP_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 185, damping: 27, mass: 0.98 } as const;
-const DESKTOP_GRID_APPEAR_SPRING = { type: 'spring', stiffness: 215, damping: 29, mass: 0.96 } as const;
 const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
 const MOBILE_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
-const GRID_ITEM_EASE = [0.22, 1, 0.36, 1] as const;
-// Note: previously these applied `contain: 'layout paint style'` (and
-// `content-visibility: auto`, which implies `paint` containment). Both create
-// a paint-containment boundary that prevents the sticky header's
-// `backdrop-filter` from sampling the card region on Chrome desktop —
-// producing a flat semi-transparent chrome with no frosted dispersion.
-// We drop the containment hints entirely; the trade-off is a very small
-// amount of unnecessary layout/paint work for off-screen cards, which is
-// negligible vs. the visual regression they caused.
-const DESKTOP_CARD_SLOT_STYLE: CSSProperties = {};
-const DESKTOP_CARD_FRAME_STYLE: CSSProperties = {};
+// Do not add `contain: layout paint style` or `content-visibility: auto` to
+// the desktop card slots — both create a paint-containment boundary that
+// breaks the sticky header's `backdrop-filter` (flat chrome, no frosted
+// dispersion) on Chrome desktop. The cost of skipping containment is a tiny
+// amount of off-screen layout work and is worth it.
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -125,12 +118,11 @@ function writeStandaloneDeckState(
   }
 }
 
-// ─── VirtualSlot: used by desktop + non-PWA mobile only ──────────────────────
+// ─── VirtualSlot: used by non-PWA mobile only (desktop renders inline) ───────
 function VirtualSlot({
   item,
   index,
   isActive,
-  isDesktop,
   mobileAutoplayEnabled,
   onOpenDetails,
   onBeforeOpenPost,
@@ -138,7 +130,6 @@ function VirtualSlot({
   item: FireItem;
   index: number;
   isActive: boolean;
-  isDesktop: boolean;
   mobileAutoplayEnabled: boolean;
   onOpenDetails: () => void;
   onBeforeOpenPost?: (itemId: string) => void;
@@ -147,7 +138,6 @@ function VirtualSlot({
   const [isObservedVisible, setIsObservedVisible] = useState(false);
 
   useEffect(() => {
-    if (isDesktop) return;
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -156,50 +146,39 @@ function VirtualSlot({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [isDesktop]);
-
-  const isVisible = isDesktop || isObservedVisible;
+  }, []);
 
   return (
     <div
       ref={ref}
       data-card-id={item.id}
       className="flex w-full items-center justify-center"
-      style={isDesktop ? DESKTOP_CARD_SLOT_STYLE : undefined}
     >
-      {isVisible ? (
+      {isObservedVisible ? (
         <motion.div
-          initial={isDesktop ? false : { opacity: 0, y: 12 }}
-          animate={isDesktop
-            ? { opacity: 1, y: 0 }
-            : {
-                opacity: isActive ? 1 : 0.72,
-                y: isActive ? -6 : 14,
-                scale: isActive ? 1.02 : 0.965,
-              }}
-          transition={isDesktop
-            ? { duration: 0 }
-            : { duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
-            className="relative w-full"
-            style={{ zIndex: isActive ? 30 : 10 }}
-          >
-            <div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{
+            opacity: isActive ? 1 : 0.72,
+            y: isActive ? -6 : 14,
+            scale: isActive ? 1.02 : 0.965,
+          }}
+          transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
+          className="relative w-full"
+          style={{ zIndex: isActive ? 30 : 10 }}
+        >
+          <div
             className={[
               'rounded-[22px] transition-shadow duration-250',
-              isDesktop
-                ? isActive
-                  ? 'shadow-[0_22px_42px_rgba(0,0,0,0.34)] dark:shadow-[0_24px_48px_rgba(0,0,0,0.62)]'
-                  : 'shadow-[0_14px_26px_rgba(0,0,0,0.22)] dark:shadow-[0_16px_30px_rgba(0,0,0,0.48)]'
-                : isActive
-                  ? 'shadow-[0_20px_38px_rgba(0,0,0,0.24)] dark:shadow-[0_24px_44px_rgba(0,0,0,0.6)]'
-                  : 'shadow-[0_12px_24px_rgba(0,0,0,0.18)] dark:shadow-[0_14px_28px_rgba(0,0,0,0.46)]',
+              isActive
+                ? 'shadow-[0_20px_38px_rgba(0,0,0,0.24)] dark:shadow-[0_24px_44px_rgba(0,0,0,0.6)]'
+                : 'shadow-[0_12px_24px_rgba(0,0,0,0.18)] dark:shadow-[0_14px_28px_rgba(0,0,0,0.46)]',
             ].join(' ')}
-            >
+          >
             {item.cardKind === 'firewatch' ? (
               <FireWatchCard3D
                 item={item}
                 highlighted={isActive}
-                layoutMode={isDesktop ? 'desktop' : 'mobile'}
+                layoutMode="mobile"
                 mobileAutoplayEnabled={mobileAutoplayEnabled}
                 onOpenDetails={onOpenDetails}
                 onBeforeOpenPost={onBeforeOpenPost}
@@ -208,7 +187,7 @@ function VirtualSlot({
               <FireCard3D
                 item={item}
                 highlighted={isActive}
-                layoutMode={isDesktop ? 'desktop' : 'mobile'}
+                layoutMode="mobile"
                 mobileAutoplayEnabled={mobileAutoplayEnabled}
                 onOpenDetails={onOpenDetails}
                 onBeforeOpenPost={onBeforeOpenPost}
@@ -779,7 +758,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
         {isDesktop ? (
           <motion.div
             layout
-            transition={{ layout: DESKTOP_GRID_LAYOUT_SPRING }}
+            transition={{ layout: GRID_LAYOUT_SPRING }}
             className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6"
           >
             <AnimatePresence initial={false} mode="popLayout">
@@ -790,26 +769,47 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                   <motion.div
                     key={card.id}
                     layout
-                    initial={{ opacity: 0, scale: 0.972, y: 26 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.974, y: 18 }}
+                    data-card-id={card.id}
+                    initial={{ opacity: 0, y: 18, scale: 0.975 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.97 }}
                     transition={{
-                      layout: DESKTOP_GRID_LAYOUT_SPRING,
-                      opacity: { duration: 0.28, delay: enterDelay, ease: GRID_ITEM_EASE },
-                      scale: { ...DESKTOP_GRID_APPEAR_SPRING, delay: enterDelay },
-                      y: { ...DESKTOP_GRID_APPEAR_SPRING, delay: enterDelay },
+                      layout: GRID_LAYOUT_SPRING,
+                      opacity: { duration: 0.18, delay: enterDelay, ease: GRID_ITEM_EASE },
+                      y: { duration: 0.24, delay: enterDelay, ease: GRID_ITEM_EASE },
+                      scale: { duration: 0.24, delay: enterDelay, ease: GRID_ITEM_EASE },
                     }}
-                    style={DESKTOP_CARD_FRAME_STYLE}
+                    className="flex w-full items-center justify-center"
+                    style={{ zIndex: isActive ? 30 : 10 }}
                   >
-                    <VirtualSlot
-                      item={card}
-                      index={index}
-                      isActive={isActive}
-                      isDesktop
-                      mobileAutoplayEnabled={mobileAutoplayEnabled}
-                      onOpenDetails={() => onOpenCard?.(card)}
-                      onBeforeOpenPost={persistStandaloneDeckState}
-                    />
+                    <div
+                      className={[
+                        'relative w-full rounded-[22px] transition-shadow duration-250',
+                        isActive
+                          ? 'shadow-[0_22px_42px_rgba(0,0,0,0.34)] dark:shadow-[0_24px_48px_rgba(0,0,0,0.62)]'
+                          : 'shadow-[0_14px_26px_rgba(0,0,0,0.22)] dark:shadow-[0_16px_30px_rgba(0,0,0,0.48)]',
+                      ].join(' ')}
+                    >
+                      {card.cardKind === 'firewatch' ? (
+                        <FireWatchCard3D
+                          item={card}
+                          highlighted={isActive}
+                          layoutMode="desktop"
+                          mobileAutoplayEnabled={mobileAutoplayEnabled}
+                          onOpenDetails={() => onOpenCard?.(card)}
+                          onBeforeOpenPost={persistStandaloneDeckState}
+                        />
+                      ) : (
+                        <FireCard3D
+                          item={card}
+                          highlighted={isActive}
+                          layoutMode="desktop"
+                          mobileAutoplayEnabled={mobileAutoplayEnabled}
+                          onOpenDetails={() => onOpenCard?.(card)}
+                          onBeforeOpenPost={persistStandaloneDeckState}
+                        />
+                      )}
+                    </div>
                   </motion.div>
                 );
               })}
@@ -850,7 +850,6 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                           item={card}
                           index={index}
                           isActive={isActive}
-                          isDesktop={false}
                           mobileAutoplayEnabled={mobileAutoplayEnabled}
                           onOpenDetails={() => undefined}
                           onBeforeOpenPost={persistStandaloneDeckState}

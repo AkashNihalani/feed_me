@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
+import { GRID_LAYOUT_SPRING, GRID_ITEM_EASE, PILL_SPRING } from '@/lib/motion';
 
 type FeederPostItem = {
   postKey: string;
@@ -34,9 +35,6 @@ type FeederPayload = {
 type SortMode = 'percentile' | 'newest' | 'oldest';
 type MediaFilter = 'all' | 'image' | 'carousel' | 'reel';
 
-const FEEDER_GRID_LAYOUT_SPRING = { type: 'spring', stiffness: 300, damping: 28, mass: 0.86 } as const;
-const FEEDER_PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34, mass: 0.78 } as const;
-const FEEDER_MOTION_EASE = [0.22, 1, 0.36, 1] as const;
 
 function formatCompact(value: number | null) {
   if (value == null || !Number.isFinite(value)) return '--';
@@ -236,7 +234,7 @@ export default function FeederPostsClient({
                 {sortMode === value && (
                   <motion.span
                     layoutId="feeder-sort-pill-bg"
-                    transition={FEEDER_PILL_SPRING}
+                    transition={PILL_SPRING}
                     className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]"
                   />
                 )}
@@ -262,7 +260,7 @@ export default function FeederPostsClient({
                 {mediaFilter === value && (
                   <motion.span
                     layoutId="feeder-media-pill-bg"
-                    transition={FEEDER_PILL_SPRING}
+                    transition={PILL_SPRING}
                     className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]"
                   />
                 )}
@@ -323,10 +321,10 @@ function FeederPostCard({ post }: { post: FeederPostItem }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 10, scale: 0.97 }}
       transition={{
-        layout: FEEDER_GRID_LAYOUT_SPRING,
-        opacity: { duration: 0.18, ease: FEEDER_MOTION_EASE },
-        y: { duration: 0.24, ease: FEEDER_MOTION_EASE },
-        scale: { duration: 0.24, ease: FEEDER_MOTION_EASE },
+        layout: GRID_LAYOUT_SPRING,
+        opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+        y: { duration: 0.24, ease: GRID_ITEM_EASE },
+        scale: { duration: 0.24, ease: GRID_ITEM_EASE },
       }}
       className="fm-depth-glass group relative flex aspect-[4/5] flex-col overflow-hidden rounded-[24px] p-3 md:aspect-[10/11] xl:aspect-[20/21]"
     >
