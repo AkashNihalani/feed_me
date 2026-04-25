@@ -177,13 +177,58 @@ const TRACKING_CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'] as const;
 
 function formatCountdownDuration(ms: number | null) {
   if (ms == null) return '--';
-  const totalMinutes = Math.ceil(Math.max(0, ms) / 60000);
-  if (totalMinutes <= 0) return 'now';
+  if (ms <= 0) return 'now';
+  if (ms < 60_000) {
+    const seconds = Math.max(0, Math.min(59, Math.ceil(ms / 1000)));
+    return `0:${String(seconds).padStart(2, '0')}`;
+  }
+  const totalMinutes = Math.ceil(ms / 60000);
   if (totalMinutes < 60) return `${totalMinutes}m`;
 
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function istHourOf(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const hourStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    hour12: false,
+  }).format(date);
+  const hour = parseInt(hourStr, 10);
+  return Number.isFinite(hour) ? hour % 24 : null;
+}
+
+function istDayProgress(now: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(now));
+  let h = 0;
+  let m = 0;
+  let s = 0;
+  for (const part of parts) {
+    if (part.type === 'hour') h = parseInt(part.value, 10) % 24;
+    else if (part.type === 'minute') m = parseInt(part.value, 10);
+    else if (part.type === 'second') s = parseInt(part.value, 10);
+  }
+  return Math.min(1, Math.max(0, (h * 3600 + m * 60 + s) / 86400));
+}
+
+function istClockLabel(now: number): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(now));
 }
 
 function formatIstDayKey(value: Date | string) {
@@ -494,6 +539,8 @@ export default function FundPage() {
   }, []);
 
   const currentFireDay = useMemo(() => formatIstDayKey(new Date(activityNow)), [activityNow]);
+  const dayProgress = useMemo(() => istDayProgress(activityNow), [activityNow]);
+  const nowClockLabel = useMemo(() => istClockLabel(activityNow), [activityNow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -847,6 +894,96 @@ export default function FundPage() {
     };
   }, [alertThreshold, currentFireDay, fireSnapshot]);
   const todayFlowTotal = firePulse.totalSignals + queuePulse.totalChecks;
+  const inFinalMinute = nextFireCountdownMs != null && nextFireCountdownMs > 0 && nextFireCountdownMs <= 90_000;
+  useEffect(() => {
+    if (!inFinalMinute) return;
+    const fastTimer = window.setInterval(() => setActivityNow(Date.now()), 1000);
+    return () => window.clearInterval(fastTimer);
+  }, [inFinalMinute]);
+
+  const dayShape = useMemo(() => {
+    type Bin = {
+      scheduled: number;
+      completed: number;
+      types: { D1: number; D3: number; D7: number; D21: number; OTHER: number };
+    };
+    const bins: Bin[] = Array.from({ length: 24 }, () => ({
+      scheduled: 0,
+      completed: 0,
+      types: { D1: 0, D3: 0, D7: 0, D21: 0, OTHER: 0 },
+    }));
+    const tagType = (run: EngineRun): keyof Bin['types'] => {
+      const cp = String(run.checkpoint || run.label || '').toUpperCase();
+      if (cp === 'D1' || cp === 'D3' || cp === 'D7' || cp === 'D21') return cp;
+      return 'OTHER';
+    };
+    for (const run of engineStats.queuedRuns) {
+      const day = run.businessDay || formatIstDayKey(run.scheduledAt);
+      if (day !== currentFireDay) continue;
+      const hour = istHourOf(run.scheduledAt);
+      if (hour == null) continue;
+      bins[hour].scheduled += 1;
+      bins[hour].types[tagType(run)] += 1;
+    }
+    for (const run of engineStats.completedRuns) {
+      const stamp = run.completedAt || run.scheduledAt;
+      const day = run.businessDay || formatIstDayKey(stamp);
+      if (day !== currentFireDay) continue;
+      const hour = istHourOf(stamp);
+      if (hour == null) continue;
+      bins[hour].completed += 1;
+      bins[hour].types[tagType(run)] += 1;
+    }
+    let peak = 0;
+    for (const bin of bins) peak = Math.max(peak, bin.scheduled + bin.completed);
+    return { bins, peak };
+  }, [currentFireDay, engineStats.queuedRuns, engineStats.completedRuns]);
+
+  const checkpointStacks = useMemo(() => {
+    const stages: Array<keyof typeof queuePulse.stageCounts> = ['D1', 'D3', 'D7', 'D21'];
+    const done: Record<string, number> = { D1: 0, D3: 0, D7: 0, D21: 0 };
+    for (const run of engineStats.completedRuns) {
+      const stamp = run.completedAt || run.scheduledAt;
+      const day = run.businessDay || formatIstDayKey(stamp);
+      if (day !== currentFireDay) continue;
+      const cp = String(run.checkpoint || '').toUpperCase();
+      if (cp === 'D1' || cp === 'D3' || cp === 'D7' || cp === 'D21') done[cp] += 1;
+    }
+    return stages.map((label) => {
+      const pending = queuePulse.stageCounts[label];
+      const finished = done[label];
+      return {
+        label,
+        done: finished,
+        pending,
+        total: finished + pending,
+      };
+    });
+  }, [currentFireDay, engineStats.completedRuns, queuePulse]);
+
+  const totalRunsToday = useMemo(
+    () => checkpointStacks.reduce((sum, stage) => sum + stage.total, 0),
+    [checkpointStacks],
+  );
+  const completedRunsToday = useMemo(
+    () => checkpointStacks.reduce((sum, stage) => sum + stage.done, 0),
+    [checkpointStacks],
+  );
+  const dayCompleteRatio = totalRunsToday > 0 ? completedRunsToday / totalRunsToday : 0;
+  const upcomingDropMarkers = useMemo(
+    () =>
+      sortedQueuedBatches
+        .map((batch) => {
+          const startMs = parseTimestampMs(batch.windowStart);
+          if (startMs == null) return null;
+          const offsetMs = startMs - activityNow;
+          if (offsetMs <= 0 || offsetMs > FIRE_RING_WINDOW_MS) return null;
+          return { id: batch.id, progress: 1 - offsetMs / FIRE_RING_WINDOW_MS };
+        })
+        .filter((m): m is { id: string; progress: number } => m != null)
+        .slice(0, 4),
+    [activityNow, sortedQueuedBatches],
+  );
   const pulsePillText = fireSignalsLoading
     ? 'Syncing'
     : liveNowCount > 0
@@ -1398,6 +1535,22 @@ export default function FundPage() {
                       strokeWidth="1.5"
                       className="text-foreground/[0.06] dark:text-white/[0.06]"
                     />
+                    {upcomingDropMarkers.slice(1).map((marker) => (
+                      <rect
+                        key={`drop-${marker.id}`}
+                        x="1" y="1"
+                        width="99%" height="99%"
+                        rx="21" ry="21"
+                        fill="none"
+                        stroke="#E11D48"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        pathLength={1}
+                        strokeDasharray="0.012 0.988"
+                        strokeDashoffset={-marker.progress}
+                        style={{ opacity: 0.32 }}
+                      />
+                    ))}
                     <motion.rect
                       x="1" y="1"
                       width="99%" height="99%"
@@ -1409,8 +1562,16 @@ export default function FundPage() {
                       pathLength={1}
                       strokeDasharray="1"
                       initial={false}
-                      animate={{ strokeDashoffset: 1 - nextFireProgress }}
-                      transition={{ duration: 0.7, ease: APPLE_EASE }}
+                      animate={{
+                        strokeDashoffset: 1 - nextFireProgress,
+                        opacity: inFinalMinute ? [1, 0.55, 1] : 1,
+                      }}
+                      transition={{
+                        strokeDashoffset: { duration: 0.7, ease: APPLE_EASE },
+                        opacity: inFinalMinute
+                          ? { duration: 1.4, repeat: Infinity, ease: 'easeInOut' }
+                          : { duration: 0.3 },
+                      }}
                       style={{ filter: 'drop-shadow(0 0 6px rgba(225,29,72,0.35))' }}
                     />
                   </svg>
@@ -1423,36 +1584,46 @@ export default function FundPage() {
                   )}>
                     <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
-                        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">Today&apos;s Fire flow</div>
-                        <div className="mt-1 flex items-end gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">Today&apos;s Fire flow</div>
+                          <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/30 dark:text-white/22 tabular-nums">{nowClockLabel} IST</div>
+                        </div>
+                        <div className="mt-1 flex items-end gap-2">
                           <motion.div
-                            key={`fire-pulse-${currentFireDay}-${todayFlowTotal}-${fireSignalsLoading ? 'loading' : 'ready'}`}
+                            key={`done-${currentFireDay}-${completedRunsToday}-${fireSignalsLoading ? 'loading' : 'ready'}`}
                             initial={{ y: 4, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ duration: 0.24, ease: APPLE_EASE }}
-                            className="text-[40px] font-black leading-none tracking-[-0.07em] text-foreground dark:text-white sm:text-[46px]"
+                            className="text-[40px] font-black leading-none tracking-[-0.07em] text-foreground dark:text-white sm:text-[46px] tabular-nums"
                           >
-                            {fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : todayFlowTotal}
+                            {fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : completedRunsToday}
                           </motion.div>
-                          <div className="pb-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 dark:text-white/36">
-                            {todayFlowTotal === 1 ? 'signal in play today' : 'signals in play today'}
+                          <div className="pb-1 text-[18px] font-black leading-none tracking-[-0.04em] text-foreground/35 dark:text-white/26 sm:text-[20px] tabular-nums">
+                            / {totalRunsToday || todayFlowTotal}
+                          </div>
+                          <div className="ml-1 pb-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 dark:text-white/36">
+                            {completedRunsToday === 1 ? 'check done today' : 'checks done today'}
                           </div>
                         </div>
-                        <div className="mt-2 space-y-1">
-                          <div className="text-[8px] font-black uppercase tracking-[0.11em] text-foreground/36 dark:text-white/30">
-                            {fireSignalsLoading && fireSnapshot.day !== currentFireDay
-                              ? 'Refreshing today\'s Fire board'
-                              : `${firePulse.totalSignals} already in Fire · ${queuePulse.totalChecks} left today`}
-                          </div>
-                          <div className="text-[8px] font-black uppercase tracking-[0.11em] text-[#BE123C] dark:text-[#FB7185]/90">
-                            {liveNowCount > 0
-                              ? `${liveNowCount} processing now${liveNowMix ? ` · ${liveNowMix}` : ''}`
-                              : nextFireBatch
-                                ? `${nextFireBatch.totalRuns} in next drop${nextFireMix ? ` · ${nextFireMix}` : ''}`
-                                : queuePulse.totalChecks > 0
-                                  ? `${queuePulse.totalChecks} still queued today`
+                        {/* Day progress bar */}
+                        <div className="mt-2.5 h-[3px] w-full overflow-hidden rounded-full bg-foreground/[0.05] dark:bg-white/[0.05]">
+                          <motion.div
+                            className="h-full rounded-full bg-[#E11D48]"
+                            animate={{ width: `${Math.max(0, Math.min(1, dayCompleteRatio)) * 100}%` }}
+                            transition={{ duration: 0.6, ease: APPLE_EASE }}
+                            style={{ filter: 'drop-shadow(0 0 4px rgba(225,29,72,0.35))' }}
+                          />
+                        </div>
+                        <div className="mt-2 text-[8px] font-black uppercase tracking-[0.11em] text-[#BE123C] dark:text-[#FB7185]/90">
+                          {liveNowCount > 0
+                            ? `${liveNowCount} processing now${liveNowMix ? ` · ${liveNowMix}` : ''}`
+                            : nextFireBatch
+                              ? `${nextFireBatch.totalRuns} in next drop${nextFireMix ? ` · ${nextFireMix}` : ''}`
+                              : queuePulse.totalChecks > 0
+                                ? `${queuePulse.totalChecks} still queued today`
+                                : firePulse.totalSignals > 0
+                                  ? `${firePulse.totalSignals} fired · ${firePulse.lineSignals} on your ${alertThreshold}% line`
                                   : 'No more drops queued today'}
-                          </div>
                         </div>
                       </div>
 
@@ -1461,11 +1632,14 @@ export default function FundPage() {
                           {pulsePillText}
                         </div>
                         <motion.div
-                          key={`${pulseHeadline}-${nextFireCountdownMs}`}
+                          key={`${pulseHeadline}-${Math.floor((nextFireCountdownMs ?? 0) / 1000)}`}
                           initial={{ y: 4, opacity: 0 }}
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ duration: 0.24, ease: APPLE_EASE }}
-                          className="mt-4 text-[22px] font-black leading-none tracking-[-0.06em] text-foreground dark:text-white sm:text-[26px]"
+                          className={cn(
+                            'mt-4 font-black leading-none tracking-[-0.06em] tabular-nums',
+                            inFinalMinute ? 'text-[#E11D48] text-[28px] sm:text-[32px]' : 'text-foreground dark:text-white text-[22px] sm:text-[26px]',
+                          )}
                         >
                           {pulseHeadline}
                         </motion.div>
@@ -1477,54 +1651,119 @@ export default function FundPage() {
                         </div>
                       </div>
                     </div>
+
+                    {/* ── 24h day-shape timeline ── */}
+                    <div className="mt-5">
+                      <div className="mb-1.5 flex items-center justify-between text-[7px] font-black uppercase tracking-[0.16em] text-foreground/30 dark:text-white/22 tabular-nums">
+                        <span>00</span>
+                        <span>06</span>
+                        <span>12</span>
+                        <span>18</span>
+                        <span>24 IST</span>
+                      </div>
+                      <div className="relative h-[30px]">
+                        <div
+                          className="absolute inset-0 grid items-end"
+                          style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '2px' }}
+                        >
+                          {dayShape.bins.map((bin, hour) => {
+                            const total = bin.scheduled + bin.completed;
+                            const peak = dayShape.peak || 1;
+                            const heightPct = total > 0 ? Math.max(18, (total / peak) * 100) : 0;
+                            const completedPct = total > 0 ? (bin.completed / total) * 100 : 0;
+                            const isPast = hour < Math.floor(dayProgress * 24);
+                            const isCurrent = hour === Math.floor(dayProgress * 24);
+                            return (
+                              <div key={hour} className="relative h-full">
+                                {total === 0 ? (
+                                  <div
+                                    className={cn(
+                                      'absolute bottom-0 left-0 right-0 rounded-[2px]',
+                                      isCurrent
+                                        ? 'h-[6px] bg-foreground/[0.12] dark:bg-white/[0.10]'
+                                        : 'h-[3px] bg-foreground/[0.05] dark:bg-white/[0.04]',
+                                    )}
+                                  />
+                                ) : (
+                                  <motion.div
+                                    initial={false}
+                                    animate={{ height: `${heightPct}%` }}
+                                    transition={{ duration: 0.5, ease: APPLE_EASE }}
+                                    className={cn(
+                                      'absolute bottom-0 left-0 right-0 flex flex-col-reverse overflow-hidden rounded-[3px]',
+                                      isCurrent
+                                        ? 'shadow-[0_0_8px_rgba(225,29,72,0.45)]'
+                                        : '',
+                                    )}
+                                  >
+                                    <div
+                                      className={cn(
+                                        'w-full',
+                                        isPast || isCurrent ? 'bg-[#E11D48]' : 'bg-[#E11D48]/55',
+                                      )}
+                                      style={{ height: `${completedPct}%` }}
+                                    />
+                                    <div
+                                      className={cn(
+                                        'w-full',
+                                        isCurrent
+                                          ? 'bg-[#E11D48]/30'
+                                          : isPast
+                                            ? 'bg-foreground/[0.12] dark:bg-white/[0.10]'
+                                            : 'bg-foreground/[0.16] dark:bg-white/[0.14]',
+                                      )}
+                                      style={{ height: `${100 - completedPct}%` }}
+                                    />
+                                  </motion.div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <motion.div
+                          className="pointer-events-none absolute top-0 bottom-0 w-px bg-[#FB7185]"
+                          animate={{ left: `${dayProgress * 100}%` }}
+                          transition={{ duration: 0.6, ease: APPLE_EASE }}
+                          style={{ filter: 'drop-shadow(0 0 4px rgba(251,113,133,0.7))' }}
+                        >
+                          <div className="absolute -top-[3px] left-1/2 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[#FB7185] shadow-[0_0_6px_rgba(251,113,133,0.8)]" />
+                        </motion.div>
+                      </div>
+                    </div>
+
+                    {/* ── Per-checkpoint stacked bars (done vs pending) ── */}
+                    {totalRunsToday > 0 && (
+                      <div className="mt-4 space-y-1.5">
+                        {checkpointStacks.map((stack) => {
+                          if (stack.total === 0) return null;
+                          const ratio = stack.total > 0 ? stack.done / stack.total : 0;
+                          return (
+                            <div key={stack.label} className="flex items-center gap-2.5">
+                              <div className="w-[26px] text-[8px] font-black uppercase tracking-[0.16em] text-foreground/55 dark:text-white/45 tabular-nums">{stack.label}</div>
+                              <div className="relative flex h-[6px] flex-1 overflow-hidden rounded-full bg-foreground/[0.05] dark:bg-white/[0.05]">
+                                <motion.div
+                                  initial={false}
+                                  animate={{ width: `${ratio * 100}%` }}
+                                  transition={{ duration: 0.5, ease: APPLE_EASE }}
+                                  className="h-full bg-[#E11D48]"
+                                  style={{ filter: 'drop-shadow(0 0 4px rgba(225,29,72,0.3))' }}
+                                />
+                                <div
+                                  className="h-full bg-foreground/[0.12] dark:bg-white/[0.10]"
+                                  style={{ width: `${(1 - ratio) * 100}%` }}
+                                />
+                              </div>
+                              <div className="w-[52px] text-right text-[9px] font-black tabular-nums tracking-[-0.02em] text-foreground/65 dark:text-white/55">
+                                {stack.done}<span className="text-foreground/30 dark:text-white/25"> / {stack.total}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* ── Fire Signal Stats Grid ── */}
-                <div className="mt-4 grid grid-cols-4 gap-2 sm:gap-2.5 xl:grid-cols-8">
-                  {[
-                    {
-                      label: 'Today',
-                      value: fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : String(todayFlowTotal),
-                      highlight: todayFlowTotal > 0,
-                    },
-                    {
-                      label: 'In Fire',
-                      value: fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : String(firePulse.totalSignals),
-                      highlight: firePulse.totalSignals > 0,
-                    },
-                    {
-                      label: 'Left',
-                      value: String(queuePulse.totalChecks),
-                      highlight: queuePulse.totalChecks > 0,
-                    },
-                    {
-                      label: 'Now',
-                      value: String(liveNowCount),
-                      highlight: liveNowCount > 0,
-                    },
-                    { label: 'D1', value: String(queuePulse.stageCounts.D1), highlight: queuePulse.stageCounts.D1 > 0 },
-                    { label: 'D3', value: String(queuePulse.stageCounts.D3), highlight: queuePulse.stageCounts.D3 > 0 },
-                    { label: 'D7', value: String(queuePulse.stageCounts.D7), highlight: queuePulse.stageCounts.D7 > 0 },
-                    { label: 'D21', value: String(queuePulse.stageCounts.D21), highlight: queuePulse.stageCounts.D21 > 0 },
-                  ].map((stat) => (
-                    <div key={stat.label} className={cn(
-                      'rounded-[14px] px-3 py-2.5 text-center',
-                      'bg-gradient-to-b from-white/70 to-white/40 border border-white/75',
-                      'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_12px_rgba(15,23,42,0.04)]',
-                      'dark:from-white/[0.05] dark:to-white/[0.02] dark:border-white/[0.06]',
-                      'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_6px_16px_rgba(0,0,0,0.3)]',
-                    )}>
-                      <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/34">{stat.label}</div>
-                      <div className={cn(
-                        'mt-0.5 text-[16px] font-black tracking-[-0.04em]',
-                        stat.highlight ? 'text-[#E11D48]' : 'text-foreground/30 dark:text-white/22',
-                      )}>
-                        {stat.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
                 <div className="mt-3 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:text-white/28">
                   {fireSignalsLoading && fireSnapshot.day !== currentFireDay
                     ? 'Syncing live Fire signals'
