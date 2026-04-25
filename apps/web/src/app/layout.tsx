@@ -3,6 +3,7 @@ import "./globals.css";
 import { StatusBar } from "@/components/StatusBar";
 import BottomNav from "@/components/BottomNav";
 import PwaNotificationsBridge from "@/components/PwaNotificationsBridge";
+import RouteFade from "@/components/RouteFade";
 import { getSiteUrl } from "@/lib/site-url";
 
 const metadataBase = new URL(getSiteUrl());
@@ -91,7 +92,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className="h-full min-h-[100dvh] w-full overflow-x-hidden bg-background">
       <body className="antialiased bg-background h-full min-h-[100dvh] w-full overflow-hidden transition-colors duration-300">
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
-        <main className="h-full min-h-[100dvh] w-full overflow-hidden">{children}</main>
+        <main className="h-full min-h-[100dvh] w-full overflow-hidden">
+          <RouteFade>{children}</RouteFade>
+        </main>
         <PwaNotificationsBridge />
         <BottomNav />
         <StatusBar />

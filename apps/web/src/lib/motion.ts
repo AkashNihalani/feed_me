@@ -23,3 +23,22 @@ export const GRID_ITEM_TRANSITION = {
   y: { duration: 0.24, ease: GRID_ITEM_EASE },
   scale: { duration: 0.24, ease: GRID_ITEM_EASE },
 } as const;
+
+// Header micro-cascade — opacity only, no positional motion. Used by every
+// tab's header so the rows settle in with the same timing on route change.
+// Wrap the header container with HEADER_STAGGER_CONTAINER, and each row with
+// HEADER_ROW. Total budget ~220ms for a 3-row header.
+export const HEADER_STAGGER_CONTAINER = {
+  initial: {},
+  animate: {
+    transition: { staggerChildren: 0.05, delayChildren: 0.02 },
+  },
+} as const;
+
+export const HEADER_ROW = {
+  initial: { opacity: 0 },
+  animate: {
+    opacity: 1,
+    transition: { duration: 0.22, ease: GRID_ITEM_EASE },
+  },
+} as const;

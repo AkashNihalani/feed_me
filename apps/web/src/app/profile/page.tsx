@@ -6,6 +6,7 @@ import { getSupabase, User } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { useAppHaptics } from '@/lib/haptics';
+import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
 import {
   FUND_ALERT_THRESHOLD_KEY,
   PWA_NOTIFICATION_ENABLED_KEY,
@@ -1291,21 +1292,26 @@ export default function FundPage() {
       )}
 
       {/* ═══ MINIMAL LOCKED HEADER ═══ */}
-      <div className={cn(
-        'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
-        useBrowserPageScroll ? 'fixed' : 'absolute',
-      )}>
+      <motion.div
+        variants={HEADER_STAGGER_CONTAINER}
+        initial="initial"
+        animate="animate"
+        className={cn(
+          'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+          useBrowserPageScroll ? 'fixed' : 'absolute',
+        )}
+      >
         <div className="relative fm-tab-header-shell">
           <div className="fm-depth-chrome fm-depth-chrome--header w-full">
             <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5">
-              <div className="flex items-center justify-between gap-3">
+              <motion.div variants={HEADER_ROW} className="flex items-center justify-between gap-3">
                 <h1 className="text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">FUND</h1>
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50">Slot Control Room</div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ═══ CONTENT STAGGER GRID ═══ */}
       <div className={cn(

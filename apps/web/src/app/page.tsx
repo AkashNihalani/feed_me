@@ -12,6 +12,7 @@ import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
+import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
@@ -482,8 +483,11 @@ function FeedPageContent() {
       />
 
       {/* ═══ LOCKED HEADER ═══ */}
-      <div
+      <motion.div
         ref={headerRef}
+        variants={HEADER_STAGGER_CONTAINER}
+        initial="initial"
+        animate="animate"
         className={cn(
         'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(18px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
         useBrowserPageScroll ? 'fixed' : 'absolute',
@@ -494,7 +498,7 @@ function FeedPageContent() {
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
               <div className="flex flex-col gap-1.5 sm:gap-2 lg:hidden">
                 {/* Row 1: Title + actions */}
-                <div className="flex items-center justify-between gap-3">
+                <motion.div variants={HEADER_ROW} className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <AnimatePresence mode="popLayout">
                       {view === 'detail' && (
@@ -568,9 +572,10 @@ function FeedPageContent() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </div>
+                </motion.div>
 
                 {/* Row 2 */}
+                <motion.div variants={HEADER_ROW}>
                 <AnimatePresence mode="popLayout" initial={false}>
                   {view === 'detail' ? (
                     <motion.div key="detail-filters" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: [0.4, 0, 0.1, 1] }} className="flex flex-col gap-1.5">
@@ -633,12 +638,13 @@ function FeedPageContent() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </motion.div>
 
                 {apiError && <div className="text-[10px] font-black uppercase tracking-[0.14em] text-red-600 dark:text-red-400">{apiError}</div>}
               </div>
 
               {/* ═══ DESKTOP HEADER (≥ lg) — Mirrors Fire tab ═══ */}
-              <div className="hidden flex-col gap-1.5 lg:flex">
+              <motion.div variants={HEADER_ROW} className="hidden flex-col gap-1.5 lg:flex">
                 <AnimatePresence mode="popLayout" initial={false}>
                   {view === 'detail' ? (
                     <motion.div key="desktop-detail-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-1.5">
@@ -769,12 +775,12 @@ function FeedPageContent() {
                 </AnimatePresence>
 
                 {apiError && <div className="text-[10px] font-black uppercase tracking-[0.14em] text-red-600 dark:text-red-400">{apiError}</div>}
-              </div>
+              </motion.div>
             </div>
 
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ═══ CONTENT ═══ */}
       <AnimatePresence mode="wait" initial={false}>

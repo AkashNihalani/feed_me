@@ -24,6 +24,7 @@ import {
   WarmupMediaBucket,
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
+import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
 import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
@@ -1401,8 +1402,11 @@ export default function FirePage() {
         onChange={updateFilters}
       />
 
-      <div
+      <motion.div
         ref={headerRef}
+        variants={HEADER_STAGGER_CONTAINER}
+        initial="initial"
+        animate="animate"
         className={cn(
           'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
           useBrowserPageScroll ? 'fixed' : 'absolute',
@@ -1415,7 +1419,7 @@ export default function FirePage() {
                 'flex flex-col transition-[gap] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] lg:hidden',
                 headerCompressed ? 'gap-1.5' : 'gap-2.5',
               )}>
-                <div className="flex items-center justify-between gap-3">
+                <motion.div variants={HEADER_ROW} className="flex items-center justify-between gap-3">
                   <motion.h1
                     animate={{
                       scale: headerCompressed ? 0.74 : 1,
@@ -1451,10 +1455,10 @@ export default function FirePage() {
                       <SlidersHorizontal size={20} />
                     </motion.button>
                   </div>
-                </div>
-                <div className="min-w-0 pointer-events-auto">
+                </motion.div>
+                <motion.div variants={HEADER_ROW} className="min-w-0 pointer-events-auto">
                   <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} />
-                </div>
+                </motion.div>
               </div>
 
               <div className="hidden flex-col gap-2 lg:flex">
@@ -1608,7 +1612,7 @@ export default function FirePage() {
               </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div ref={contentRef} className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
         {loading ? (
