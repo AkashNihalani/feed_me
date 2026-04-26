@@ -571,6 +571,13 @@ export function FireCard3D({
         <div className="absolute inset-0 bg-black/40 dark:bg-black/54" />
       )}
 
+      {primaryPattern && (
+        <span
+          aria-hidden="true"
+          className="fm-fire-card-cover-streak z-[4]"
+        />
+      )}
+
       <motion.div
         className={isDesktopCard ? 'absolute left-4 top-4 z-10' : 'absolute left-4 top-8 z-10 md:top-4'}
         style={{ marginTop: 'var(--pwa-top-pad)' }}

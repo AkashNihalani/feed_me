@@ -36,7 +36,7 @@ type SlotUsage = {
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FEED_CACHE_KEY = 'feed:bundle:v7';
-const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v6';
+const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v8';
 const FEED_CACHE_TTL = 10 * 60 * 1000;
 const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
 const dashboardInflight = new Map<string, Promise<DashboardPayload | null>>();
@@ -132,10 +132,10 @@ function FeedPageContent() {
   const urlSelectedFeedId = searchParams.get('id');
   const shouldAnimateFeedTilesRef = useRef(true);
   const mobileBottomClearance = useTranslucentBrowserChrome
-    ? 'calc(18px + env(safe-area-inset-bottom))'
+    ? 'calc(96px + env(safe-area-inset-bottom))'
     : 'calc(120px + env(safe-area-inset-bottom))';
   const mobileListBottomClearance = useTranslucentBrowserChrome
-    ? 'calc(18px + env(safe-area-inset-bottom))'
+    ? 'calc(150px + env(safe-area-inset-bottom))'
     : 'calc(190px + env(safe-area-inset-bottom))';
 
   useEffect(() => {
@@ -196,7 +196,7 @@ function FeedPageContent() {
   const [headerHeight, setHeaderHeight] = useState(() => (urlSelectedFeedId ? 204 : 176));
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
-  const useFeedRootSnap = view === 'detail' && useBrowserPageScroll;
+  const useFeedRootSnap = view === 'detail' && useBrowserPageScroll && isStandaloneMode;
   const sortedFeeds = useMemo(() => {
     const list = [...feeds];
     if (sortMode === 'name') return list.sort((a, b) => a.title.localeCompare(b.title));
@@ -891,6 +891,7 @@ function FeedPageContent() {
               dashboardData={dashboardData}
               baselineDashboardData={baselineDashboardData}
               usePageScroll={useBrowserPageScroll}
+              mobileSnapSections={isStandaloneMode}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
               immersiveBrowserMode={useTranslucentBrowserChrome}
               exportScopeLabel={exportScopeLabel}

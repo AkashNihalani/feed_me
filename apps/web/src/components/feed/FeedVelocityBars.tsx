@@ -108,8 +108,8 @@ function TagChip({ tag }: { tag: Tag }) {
         exit={{ opacity: 0, y: -4, scale: 0.92 }}
         transition={{ duration: 0.22, ease: EASE }}
         className={[
-          'fm-depth-chip inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1.5 leading-none sm:px-3.5 sm:py-1.5',
-          'text-[11px] font-black uppercase tracking-[0.12em] sm:text-[11.5px] sm:tracking-[0.14em] lg:text-[12px]',
+          'fm-depth-chip inline-flex min-h-[32px] min-w-[70px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 py-2 leading-none sm:min-h-[36px] sm:min-w-[78px] sm:px-[18px] sm:py-[9px] lg:min-h-[40px] lg:min-w-[86px] lg:px-5 lg:py-2.5',
+          'text-[13px] font-black uppercase tracking-[0.13em] sm:text-[14px] sm:tracking-[0.14em] lg:text-[15px]',
           isPositive
             ? 'text-[#E11D48]'
             : 'text-foreground/55 dark:text-white/55',
@@ -157,21 +157,26 @@ function FooterStat({
   meta: string;
   accent?: boolean;
 }) {
+  const longValue = value.length >= 7 && !value.includes(' ');
+
   return (
-    <div className="fm-depth-inner flex min-h-[72px] flex-col justify-between rounded-[14px] px-3 py-2.5 sm:min-h-[78px] sm:px-3.5">
-      <span className="fm-depth-title text-[8px] font-black uppercase tracking-[0.18em] text-foreground/40 dark:text-white/36 sm:text-[9px]">
+    <div className="fm-depth-inner flex min-h-[78px] min-w-0 flex-col justify-center gap-2 overflow-hidden rounded-[13px] px-2.5 py-2.5 sm:min-h-[82px] sm:px-3 lg:min-h-[86px]">
+      <span className="fm-depth-title block max-w-full truncate text-[8px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/36 sm:text-[9px]">
         {label}
       </span>
-      <div className="flex flex-col gap-0.5">
+      <div className="flex min-w-0 flex-col gap-1">
         <span
           className={[
-            'fm-depth-title text-[clamp(18px,2.2vw,28px)] font-black leading-none tracking-[-0.04em]',
+            'fm-depth-title block max-w-full font-black leading-[0.92]',
+            longValue
+              ? 'text-[17px] tracking-[-0.07em] min-[390px]:text-[18px] sm:text-[22px] sm:tracking-[-0.06em] lg:text-[28px] lg:tracking-[-0.04em]'
+              : 'text-[24px] tracking-[-0.05em] sm:text-[25px] lg:text-[28px] lg:tracking-[-0.04em]',
             accent ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
           ].join(' ')}
         >
           {value}
         </span>
-        <span className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/32 sm:text-[10px]">
+        <span className="block max-w-full text-[8px] font-black uppercase leading-tight tracking-[0.13em] text-foreground/36 dark:text-white/32 sm:text-[9px] lg:text-[10px]">
           {meta}
         </span>
       </div>
@@ -200,13 +205,13 @@ function PerformanceRow({
     >
       <div className="relative z-[1] flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2">
-          <span className="fm-depth-title shrink-0 text-[10px] font-black uppercase leading-none tracking-[0.18em] text-foreground/45 dark:text-white/40 sm:text-[11px] lg:text-[11.5px]">
+          <span className="fm-depth-title shrink-0 text-[10px] font-black uppercase leading-none tracking-[0.18em] text-foreground/45 dark:text-white/40 sm:text-[11px] lg:text-[12px]">
             {row.label}
           </span>
           <span
             className={[
               'fm-depth-title font-black leading-none tracking-[-0.04em]',
-              'text-[clamp(40px,11vw,54px)] sm:text-[clamp(40px,5.3vw,52px)] lg:text-[clamp(42px,3.25vw,58px)]',
+              'text-[52px] sm:text-[60px] lg:text-[70px]',
               isBelow ? 'text-foreground/55 dark:text-white/55' : 'text-foreground dark:text-white',
             ].join(' ')}
           >
@@ -339,7 +344,7 @@ export default function FeedVelocityBars({
           ))}
         </motion.ul>
 
-        <div className="mt-3 grid shrink-0 grid-cols-3 gap-2 sm:mt-3.5 sm:gap-2.5">
+        <div className="mt-2.5 grid shrink-0 grid-cols-[0.95fr_1.1fr_0.95fr] gap-1.5 sm:mt-3 sm:gap-2.5">
           <FooterStat
             label="Avg Pace"
             value={overallPace}

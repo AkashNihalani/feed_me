@@ -355,6 +355,9 @@ export default function FireIntelligenceDialog({
               }))
               .filter((post) => post.postKey || post.postUrl)
             : [];
+          const modifierKey = text(entry.modifier_key);
+          const modifierValue = text(entry.modifier_value);
+          const firewatchId = `${signalCode || 'OWN_PATTERN'}:${patternName || 'unknown'}:${modifierKey}:${modifierValue}`;
           return {
             signalCode,
             signalLabel: signalMeta?.shortLabel || signalCode || 'Pattern Alert',
@@ -373,6 +376,7 @@ export default function FireIntelligenceDialog({
             anchorGap: num(entry.anchor_gap),
             cues,
             supportPosts,
+            firewatchId,
           };
         })
         .filter((entry) => entry.signalCode || entry.body || entry.patternLabel)
@@ -915,6 +919,17 @@ export default function FireIntelligenceDialog({
                                         </a>
                                       ))}
                                     </div>
+                                  </div>
+                                )}
+                                {item?.feedId && patternAlert.firewatchId && (
+                                  <div className="mt-2.5">
+                                    <Link
+                                      href={`/?id=${item.feedId}&firewatch=${encodeURIComponent(patternAlert.firewatchId)}`}
+                                      onClick={onClose}
+                                      className="inline-flex items-center gap-1 text-[11px] font-bold tracking-[0.02em] text-neutral-500 underline-offset-4 hover:underline dark:text-white/52"
+                                    >
+                                      view in firewatch <span aria-hidden>→</span>
+                                    </Link>
                                   </div>
                                 )}
                               </div>

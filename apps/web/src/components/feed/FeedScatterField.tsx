@@ -1,7 +1,8 @@
 'use client';
 
-import { memo, startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { memo, startTransition, useDeferredValue, useEffect, useId, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Film, Grid2X2, Image as ImageIcon, Layers } from 'lucide-react';
 import { ScatterPoint } from './dashboardTypes';
 
 type Blip = {
@@ -13,6 +14,7 @@ type Blip = {
   handle: string;
   date: string;
   views: number;
+  mediaType: PointMediaType;
   daysAgo: number;
   postIndex: number; // 0 = most recent
 };
@@ -26,17 +28,52 @@ function formatPointDate(value: string | null): string {
 
 const POST_COUNTS = [5, 15, 25] as const;
 type PostCount = typeof POST_COUNTS[number];
+type MediaFilter = 'all' | 'reel' | 'image' | 'carousel';
+type PointMediaType = Exclude<MediaFilter, 'all'> | 'unknown';
 const TOP_ZONE_PERCENT = 35;
+
+const MEDIA_FILTERS = [
+  { key: 'all', label: 'All', Icon: Grid2X2 },
+  { key: 'reel', label: 'Reels', Icon: Film },
+  { key: 'image', label: 'Images', Icon: ImageIcon },
+  { key: 'carousel', label: 'Carousels', Icon: Layers },
+] satisfies Array<{ key: MediaFilter; label: string; Icon: typeof Grid2X2 }>;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; windowDays: number }) {
+function normalizePointMediaType(value: string | null | undefined): PointMediaType {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return 'unknown';
+  if (normalized.includes('sidecar') || normalized.includes('carousel')) return 'carousel';
+  if (normalized.includes('reel') || normalized.includes('video')) return 'reel';
+  if (normalized.includes('image') || normalized.includes('photo')) return 'image';
+  return 'unknown';
+}
+
+function mediaLabel(value: PointMediaType): string {
+  if (value === 'reel') return 'Reel';
+  if (value === 'image') return 'Image';
+  if (value === 'carousel') return 'Carousel';
+  return 'Post';
+}
+
+function layoutPointX(index: number, count: number, compact: boolean) {
+  const edgePadding = compact ? 7.5 : 6;
+  if (count <= 1) return 100 - edgePadding;
+  const latestToOlderRatio = 1 - index / Math.max(1, count - 1);
+  return edgePadding + latestToOlderRatio * (100 - edgePadding * 2);
+}
+
+function FeedScatterField({ points }: { points: ScatterPoint[] }) {
+  const instanceId = useId().replace(/[:]/g, '');
   const [activeCount, setActiveCount] = useState<PostCount>(15);
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
   const [hoveredPoint, setHoveredPoint] = useState<Blip | null>(null);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const deferredActiveCount = useDeferredValue(activeCount);
+  const deferredMediaFilter = useDeferredValue(mediaFilter);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -62,50 +99,45 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
       return (b.posted_at_ist || '').localeCompare(a.posted_at_ist || '');
     });
 
-    const days = sorted.map((p) => Math.max(0, Number(p.days_ago) || 0));
-    const groupSizes = new Map<number, number>();
-    for (const day of days) {
-      groupSizes.set(day, (groupSizes.get(day) ?? 0) + 1);
-    }
-    const groupOffsets = new Map<number, number>();
-    const windowMaxDays = Math.max(1, windowDays - 1);
-    const edgePadding = isCompactViewport ? 6.5 : 5.25;
-    const usableWidth = 100 - edgePadding * 2;
-
     return sorted.map((p, index) => {
       const percentile = typeof p.percentile_performance === 'number' ? p.percentile_performance : null;
       const daysAgo = Math.max(0, Number(p.days_ago) || 0);
-      const groupSize = groupSizes.get(daysAgo) ?? 1;
-      const orderWithinDay = groupOffsets.get(daysAgo) ?? 0;
-      groupOffsets.set(daysAgo, orderWithinDay + 1);
-
-      const latestRatio = 1 - clamp(daysAgo / windowMaxDays, 0, 1);
-      const baseX = edgePadding + latestRatio * usableWidth;
-      const spread = groupSize > 1
-        ? Math.min(isCompactViewport ? 7.25 : 6.25, 2.2 + groupSize * (isCompactViewport ? 0.42 : 0.34))
-        : 0;
-      const centeredOffset = groupSize > 1
-        ? ((orderWithinDay / Math.max(1, groupSize - 1)) - 0.5) * spread
-        : 0;
 
       return {
         id: p.post_key || `${p.handle}-${p.days_ago}`,
-        x: clamp(baseX + centeredOffset, edgePadding, 100 - edgePadding),
+        x: 50,
         y: percentile === null ? 48 : clamp(100 - percentile, 6, 96),
         isCompetitor: false,
         percentile,
         handle: p.handle || 'unknown',
         date: formatPointDate(p.posted_at_ist),
         views: Math.max(0, Number(p.views) || 0),
+        mediaType: normalizePointMediaType(p.media_type),
         daysAgo,
         postIndex: index,
       };
     });
-  }, [isCompactViewport, points, windowDays]);
+  }, [points]);
+
+  const filteredPoints = useMemo(
+    () => (
+      deferredMediaFilter === 'all'
+        ? allPoints
+        : allPoints.filter((point) => point.mediaType === deferredMediaFilter)
+    ),
+    [allPoints, deferredMediaFilter],
+  );
 
   const visiblePoints = useMemo(
-    () => allPoints.slice(0, Math.min(deferredActiveCount, allPoints.length)),
-    [allPoints, deferredActiveCount],
+    () => (
+      filteredPoints
+        .slice(0, Math.min(deferredActiveCount, filteredPoints.length))
+        .map((point, index, selectedPoints) => ({
+          ...point,
+          x: layoutPointX(index, selectedPoints.length, isCompactViewport),
+        }))
+    ),
+    [deferredActiveCount, filteredPoints, isCompactViewport],
   );
 
   const activeHoveredPoint = useMemo(() => {
@@ -117,31 +149,60 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
     <motion.div
       className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4"
     >
-      <div className="relative z-10 mb-2 flex items-start justify-between gap-2">
-        <div>
-          <span className="fm-label fm-depth-title">Percentage Map</span>
-          <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34">
-            Latest {visiblePoints.length} of {allPoints.length}
+      <div className="relative z-10 mb-2 flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <span className="fm-label fm-depth-title">Percentage Map</span>
+            <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34">
+              Latest {visiblePoints.length} of {filteredPoints.length} {mediaFilter === 'all' ? 'posts' : MEDIA_FILTERS.find((item) => item.key === mediaFilter)?.label}
+            </div>
+          </div>
+          <div className="hide-scrollbar flex shrink-0 items-center gap-0.5 overflow-x-auto rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
+            {POST_COUNTS.map(count => (
+              <motion.button
+                key={count}
+                type="button"
+                onClick={() => {
+                  startTransition(() => setActiveCount(count));
+                }}
+                whileTap={{ scale: 0.95 }}
+                className={`relative rounded-full px-3 py-1.25 text-[10px] font-black uppercase tracking-[0.12em] sm:px-3.5 sm:py-1.5 ${activeCount === count ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
+              >
+                {activeCount === count && (
+                  <motion.span
+                    layoutId={`scatter-count-pill-bg-${instanceId}`}
+                    className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
+                    transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
+                  />
+                )}
+                <span className="relative z-10">{count}</span>
+              </motion.button>
+            ))}
           </div>
         </div>
-        <div className="hide-scrollbar flex shrink-0 items-center gap-0.5 rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
-          {POST_COUNTS.map(count => (
+
+        <div className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
+          {MEDIA_FILTERS.map(({ key, label, Icon }) => (
             <motion.button
-              key={count}
+              key={key}
+              type="button"
+              title={label}
+              aria-label={`Show ${label.toLowerCase()} in percentage map`}
               onClick={() => {
-                startTransition(() => setActiveCount(count));
+                startTransition(() => setMediaFilter(key));
               }}
-              whileTap={{ scale: 0.95 }}
-              className={`relative rounded-full px-3 py-1.25 text-[10px] font-black uppercase tracking-[0.12em] sm:px-3.5 sm:py-1.5 ${activeCount === count ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
+              whileTap={{ scale: 0.96 }}
+              className={`relative inline-flex min-w-fit items-center gap-1.5 rounded-full px-2.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em] sm:px-3 sm:py-1.5 ${mediaFilter === key ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
             >
-              {activeCount === count && (
+              {mediaFilter === key && (
                 <motion.span
-                  layoutId="scatter-pill-bg"
+                  layoutId={`scatter-media-pill-bg-${instanceId}`}
                   className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                 />
               )}
-              <span className="relative z-10">{count}</span>
+              <Icon className="relative z-10 h-3 w-3" strokeWidth={2.6} />
+              <span className="relative z-10">{label}</span>
             </motion.button>
           ))}
         </div>
@@ -159,6 +220,11 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
         </div>
 
         <div className="absolute inset-x-1.5 inset-y-4 sm:inset-x-3 sm:inset-y-4 lg:inset-x-4">
+          {visiblePoints.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center px-5 text-center text-[10px] font-black uppercase tracking-[0.14em] text-foreground/32 dark:text-white/28">
+              No posts in this filter
+            </div>
+          )}
           {visiblePoints.map((blip, selectionIndex) => {
             const isTop = (blip.percentile ?? 100) <= TOP_ZONE_PERCENT;
             const dotSize = isCompactViewport
@@ -236,8 +302,10 @@ function FeedScatterField({ points, windowDays }: { points: ScatterPoint[]; wind
                 <span className="text-[10px] font-black uppercase tracking-[0.1em] text-black/50 dark:text-white/40">{activeHoveredPoint.date}</span>
                 <span className="text-[12px] font-black text-black/62 dark:text-white/72">{activeHoveredPoint.percentile === null ? '--' : `${Math.round(activeHoveredPoint.percentile)}%`}</span>
               </div>
-              <div className="text-[16px] font-black tracking-[-0.02em] text-black dark:text-white">@{activeHoveredPoint.handle}</div>
-              <div className="mt-1 text-[11px] font-bold text-black/60 dark:text-white/60">{(activeHoveredPoint.views / 1000).toFixed(1)}k Views</div>
+              <div className="text-[16px] font-black tracking-normal text-black dark:text-white">@{activeHoveredPoint.handle}</div>
+              <div className="mt-1 text-[11px] font-bold text-black/60 dark:text-white/60">
+                {mediaLabel(activeHoveredPoint.mediaType)} · {(activeHoveredPoint.views / 1000).toFixed(1)}k Views
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

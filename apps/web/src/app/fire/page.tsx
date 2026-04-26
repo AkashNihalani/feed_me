@@ -28,7 +28,7 @@ import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
 import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
-import { getCache, setCache } from '@/lib/pageCache';
+import { getCache, readCache, setCache } from '@/lib/pageCache';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 import { acquireDocumentClass, acquireRootPageScroll } from '@/lib/rootScrollMode';
 
@@ -46,6 +46,7 @@ const FIRE_META_CACHE_KEY = 'fire:meta:v5';
 const FIRE_STATE_CACHE_KEY = 'fire:state:v8';
 const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v9';
 const FIRE_CACHE_TTL = 10 * 60 * 1000;
+const FIRE_LIVE_CACHE_TTL = 15 * 1000;
 const FIRE_META_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_REQUIRED = 3;
@@ -156,6 +157,10 @@ function toIstDayKey(d: string | Date): string {
     day: '2-digit',
   }).format(dt);
   return Number.isNaN(date.getTime()) ? formatter(new Date()) : formatter(date);
+}
+
+function firePageCacheTtl(day: string) {
+  return day === toIstDayKey(new Date()) ? FIRE_LIVE_CACHE_TTL : FIRE_CACHE_TTL;
 }
 
 function inferUrgency(alertType: string, p: number | null): AlertUrgency {
@@ -564,7 +569,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
 }
 
 async function fetchMeta(): Promise<{ days: string[]; feeds: FireFeedOption[]; warmupSummary: WarmupSummary }> {
-  const res = await fetch('/api/fire?mode=meta');
+  const res = await fetch('/api/fire?mode=meta', { cache: 'no-store' });
   if (!res.ok) throw new Error(`Meta fetch failed: ${res.status}`);
   const data = await res.json();
   return { days: data.days ?? [], feeds: data.feeds ?? [], warmupSummary: data.warmupSummary ?? {} };
@@ -606,7 +611,7 @@ async function fetchBootstrap(pageSize: number, prefetchDays: number): Promise<{
     pageSize: String(pageSize),
     prefetchDays: String(prefetchDays),
   });
-  const res = await fetch(`/api/fire?${params.toString()}`);
+  const res = await fetch(`/api/fire?${params.toString()}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Bootstrap fetch failed: ${res.status}`);
   const data = await res.json();
   return {
@@ -763,7 +768,7 @@ export default function FirePage() {
   useEffect(() => {
     let mounted = true;
     const initialViewportIsDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
-    const cachedState = getCache<{
+    type FireCachedState = {
       pickerDays: string[];
       availableFeeds: FireFeedOption[];
       selectedDay: string;
@@ -775,7 +780,12 @@ export default function FirePage() {
       total: number;
       cursor: number;
       snapshotToken: string | null;
-    }>(FIRE_STATE_CACHE_KEY, FIRE_CACHE_TTL);
+    };
+    const cachedStateEntry = readCache<FireCachedState>(FIRE_STATE_CACHE_KEY);
+    const cachedState = cachedStateEntry
+      && Date.now() - cachedStateEntry.ts <= firePageCacheTtl(cachedStateEntry.data.selectedDay || '')
+      ? cachedStateEntry.data
+      : null;
 
     if (cachedState) {
       const cachedCards = dedupeFireAlertItems(cachedState.cards || []);
@@ -913,7 +923,7 @@ export default function FirePage() {
             cursor: number;
             availableCheckpoints: string[];
             snapshotToken: string | null;
-          }>(cacheKey, FIRE_CACHE_TTL);
+          }>(cacheKey, firePageCacheTtl(day));
           if (cached) continue;
 
           try {
@@ -1212,7 +1222,7 @@ export default function FirePage() {
       cursor: number;
       availableCheckpoints: string[];
       snapshotToken: string | null;
-    }>(cacheKey, FIRE_CACHE_TTL);
+    }>(cacheKey, firePageCacheTtl(selectedDay));
 
     if (cached) {
       const cachedItems = dedupeFireAlertItems(cached.items || []);

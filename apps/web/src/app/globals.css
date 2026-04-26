@@ -83,6 +83,69 @@ html.dark {
   100% { --shimmer-angle: 360deg; }
 }
 
+/* Fire card cover streak. This borrows the login input sweep, but keeps it
+   subtle and cover-bound so Firewatch feels marked without adding chrome. */
+.fm-fire-card-cover-streak {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--shimmer-angle, 180deg),
+    transparent 0deg,
+    transparent 220deg,
+    rgba(225, 29, 72, 0.06) 250deg,
+    rgba(225, 29, 72, 0.34) 285deg,
+    rgba(225, 29, 72, 0.12) 320deg,
+    transparent 350deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: fire-insight-shimmer 6s linear infinite;
+  opacity: 0.72;
+  mix-blend-mode: screen;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-fire-card-cover-streak {
+    animation: none;
+    background: linear-gradient(
+      135deg,
+      rgba(225, 29, 72, 0) 0%,
+      rgba(225, 29, 72, 0.2) 50%,
+      rgba(225, 29, 72, 0) 100%
+    );
+    opacity: 0.48;
+  }
+}
+
+/* Firewatch hero pulse — single 600ms ring flash when the user lands via deep-link.
+   Adds a one-shot ring without changing the card's resting boxShadow. */
+@keyframes fm-firewatch-hero-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0), 0 0 0 0 rgba(15, 23, 42, 0.0); }
+  35%  { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.55), 0 0 0 1px rgba(15, 23, 42, 0.12); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0), 0 0 0 0 rgba(15, 23, 42, 0.0); }
+}
+.fm-firewatch-hero-pulse {
+  animation: fm-firewatch-hero-pulse 700ms cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+.dark .fm-firewatch-hero-pulse {
+  animation: fm-firewatch-hero-pulse-dark 700ms cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+@keyframes fm-firewatch-hero-pulse-dark {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0); }
+  35%  { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.32); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0); }
+}
+
 body {
   margin: 0;
   background: var(--background);
@@ -735,6 +798,21 @@ html.fm-feed-root-scroll body {
   display: none;
 }
 
+.fm-ascent-line-clip {
+  animation: fm-ascent-line-clip 1.34s cubic-bezier(0.35, 0, 0.12, 1) both;
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+@keyframes fm-ascent-line-clip {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
 /* ── Bento grid: 1-col phone → 2-col tablet → 4-col desktop ── */
 .bento-feed-grid {
   grid-template-columns: 1fr;
@@ -744,6 +822,7 @@ html.fm-feed-root-scroll body {
     "kill"
     "apex"
     "scatter"
+    "engagement"
     "pattern"
     "heatmap"
     "export"
@@ -758,6 +837,7 @@ html.fm-feed-root-scroll body {
       "pulse  kill"
       "apex   export"
       "scatter scatter"
+      "engagement engagement"
       "pattern pattern"
       "heatmap heatmap"
       "targets targets";
@@ -769,8 +849,8 @@ html.fm-feed-root-scroll body {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     grid-template-areas:
       "ascent ascent ascent pulse  pulse  pulse"
+      "scatter scatter scatter engagement engagement engagement"
       "kill   kill   apex   apex   export export"
-      "scatter scatter scatter scatter scatter scatter"
       "pattern pattern pattern heatmap heatmap heatmap"
       "targets targets targets targets targets targets";
   }
@@ -781,8 +861,8 @@ html.fm-feed-root-scroll body {
     grid-template-columns: repeat(12, minmax(0, 1fr));
     grid-template-areas:
       "ascent  ascent  ascent  ascent  ascent  ascent  ascent  pulse   pulse   pulse   pulse   pulse"
+      "scatter scatter scatter scatter scatter scatter engagement engagement engagement engagement engagement engagement"
       "kill    kill    kill    kill    apex    apex    apex    apex    export  export  export  export"
-      "scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter scatter"
       "pattern pattern pattern pattern pattern pattern heatmap heatmap heatmap heatmap heatmap heatmap"
       "targets targets targets targets targets targets targets targets targets targets targets targets";
   }

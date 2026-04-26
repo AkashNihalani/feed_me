@@ -153,6 +153,8 @@ const emptyFireSnapshot: FundFireSnapshot = {
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FUND_CACHE_KEY = 'fund:bundle:v1';
 const FUND_CACHE_TTL = 2 * 60 * 1000;
+const FIRE_DROP_WATCH_WINDOW_MS = 4 * 60 * 1000;
+const FIRE_DROP_WATCH_REFRESH_MS = 5 * 1000;
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -297,21 +299,66 @@ function firePercentile(row: FundFireRow): number | null {
   return nullableNumber(row.surface_percentile_exact) ?? nullableNumber(row.surface_percentile);
 }
 
+function SmoothCountdownNumber({
+  value,
+  minDigits = 1,
+  className,
+  glow = false,
+}: {
+  value: number;
+  minDigits?: number;
+  className?: string;
+  glow?: boolean;
+}) {
+  const displayValue = String(Math.max(0, value)).padStart(minDigits, '0');
+  const reserveValue = '8'.repeat(Math.max(minDigits, displayValue.length));
+
+  return (
+    <span
+      className={cn(
+        'relative inline-flex h-[1em] items-baseline justify-end overflow-hidden align-baseline tabular-nums',
+        className,
+      )}
+      style={{
+        minWidth: `${reserveValue.length}ch`,
+        filter: glow ? 'drop-shadow(0 0 14px rgba(225,29,72,0.35))' : undefined,
+      }}
+    >
+      <span className="invisible leading-none">{reserveValue}</span>
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.span
+          key={displayValue}
+          className="absolute inset-0 flex items-baseline justify-end leading-none"
+          initial={{ y: '-58%', opacity: 0, filter: 'blur(3px)' }}
+          animate={{ y: '0%', opacity: 1, filter: 'blur(0px)' }}
+          exit={{ y: '58%', opacity: 0, filter: 'blur(3px)' }}
+          transition={{ type: 'spring', stiffness: 260, damping: 30, mass: 0.82 }}
+        >
+          {displayValue}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
 async function fetchFundFireSnapshot(day: string): Promise<FundFireSnapshot> {
   const rows: FundFireRow[] = [];
   let total = 0;
   let cursor = 0;
 
   for (let page = 0; page < 12; page += 1) {
-    const params = new URLSearchParams({
-      mode: 'page',
-      day,
-      threshold: 'ALL',
-      sort: 'best',
-      cursor: String(cursor),
-      pageSize: '30',
+    const response = await fetch('/api/fire', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        day,
+        threshold: 'ALL',
+        sort: 'best',
+        cursor,
+        pageSize: 30,
+      }),
     });
-    const response = await fetch(`/api/fire?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Fire snapshot fetch failed: ${response.status}`);
     }
@@ -416,6 +463,8 @@ export default function FundPage() {
   const [engineStats, setEngineStats] = useState<EngineStats>(emptyStats);
   const [fireSnapshot, setFireSnapshot] = useState<FundFireSnapshot>(emptyFireSnapshot);
   const [fireSignalsLoading, setFireSignalsLoading] = useState(true);
+  const refreshFireSnapshotRef = useRef<((quiet?: boolean) => void) | null>(null);
+  const refreshEngineStatsRef = useRef<(() => void) | null>(null);
   const [activityNow, setActivityNow] = useState(() => Date.now());
   const [pwaNotificationsEnabled, setPwaNotificationsEnabled] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -592,6 +641,7 @@ export default function FundPage() {
     const refreshSnapshot = () => {
       loadFireSnapshot(true).catch(() => {});
     };
+    refreshFireSnapshotRef.current = refreshSnapshot;
     const handleFocus = () => refreshSnapshot();
     const handleVisibility = () => {
       if (!document.hidden) refreshSnapshot();
@@ -603,6 +653,9 @@ export default function FundPage() {
 
     return () => {
       cancelled = true;
+      if (refreshFireSnapshotRef.current === refreshSnapshot) {
+        refreshFireSnapshotRef.current = null;
+      }
       window.clearInterval(refreshTimer);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -641,6 +694,7 @@ export default function FundPage() {
     const refreshEngineStats = () => {
       loadEngineStats().catch(() => {});
     };
+    refreshEngineStatsRef.current = refreshEngineStats;
     const handleFocus = () => refreshEngineStats();
     const handleVisibility = () => {
       if (!document.hidden) refreshEngineStats();
@@ -653,6 +707,9 @@ export default function FundPage() {
 
     return () => {
       cancelled = true;
+      if (refreshEngineStatsRef.current === refreshEngineStats) {
+        refreshEngineStatsRef.current = null;
+      }
       window.clearInterval(refreshTimer);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -724,7 +781,7 @@ export default function FundPage() {
       }
 
       try {
-        const res = await fetch('/api/profile/engine');
+        const res = await fetch('/api/profile/engine', { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           nextStats = data;
@@ -1029,6 +1086,21 @@ export default function FundPage() {
       : notificationPermission === 'unsupported'
         ? 'na'
         : 'ready';
+  const fireDropWatchActive = liveNowCount > 0
+    || (nextFireCountdownMs != null && nextFireCountdownMs <= FIRE_DROP_WATCH_WINDOW_MS);
+
+  useEffect(() => {
+    if (!fireDropWatchActive) return;
+
+    const refreshLiveFireState = () => {
+      refreshEngineStatsRef.current?.();
+      refreshFireSnapshotRef.current?.(true);
+    };
+
+    refreshLiveFireState();
+    const refreshTimer = window.setInterval(refreshLiveFireState, FIRE_DROP_WATCH_REFRESH_MS);
+    return () => window.clearInterval(refreshTimer);
+  }, [currentFireDay, fireDropWatchActive, liveNowCount, nextFireBatch?.id]);
 
   // Group active feeders feed-wise
   const feedWiseUsage = useMemo(() => {
@@ -1685,52 +1757,39 @@ export default function FundPage() {
                           >
                             {countdownParts.h > 0 && (
                               <>
-                                <motion.span
-                                  key={`h-${countdownParts.h}`}
-                                  initial={{ y: -6, opacity: 0 }}
-                                  animate={{ y: 0, opacity: 1 }}
-                                  transition={{ duration: 0.22, ease: APPLE_EASE }}
+                                <SmoothCountdownNumber
+                                  value={countdownParts.h}
                                   className={cn(
-                                    'text-[34px] tracking-[-0.07em] sm:text-[40px]',
+                                    'text-[34px] tracking-normal sm:text-[40px]',
                                     inFinalMinute ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
                                   )}
-                                  style={{ filter: 'drop-shadow(0 0 14px rgba(225,29,72,0.35))' }}
-                                >
-                                  {countdownParts.h}
-                                </motion.span>
+                                  glow
+                                />
                                 <span className="ml-[1px] mr-[3px] text-[14px] tracking-[0.04em] text-foreground/35 dark:text-white/26">h</span>
                               </>
                             )}
                             {(countdownParts.h > 0 || countdownParts.m > 0) && (
                               <>
-                                <motion.span
-                                  key={`m-${countdownParts.h}-${countdownParts.m}`}
-                                  initial={{ y: -6, opacity: 0 }}
-                                  animate={{ y: 0, opacity: 1 }}
-                                  transition={{ duration: 0.22, ease: APPLE_EASE }}
+                                <SmoothCountdownNumber
+                                  value={countdownParts.m}
+                                  minDigits={countdownParts.h > 0 ? 2 : 1}
                                   className={cn(
-                                    'text-[34px] tracking-[-0.07em] sm:text-[40px]',
+                                    'text-[34px] tracking-normal sm:text-[40px]',
                                     inFinalMinute ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
                                   )}
-                                  style={{ filter: 'drop-shadow(0 0 14px rgba(225,29,72,0.35))' }}
-                                >
-                                  {countdownParts.h > 0 ? String(countdownParts.m).padStart(2, '0') : countdownParts.m}
-                                </motion.span>
+                                  glow
+                                />
                                 <span className="ml-[1px] mr-[3px] text-[14px] tracking-[0.04em] text-foreground/35 dark:text-white/26">m</span>
                               </>
                             )}
-                            <motion.span
-                              key={`s-${countdownParts.s}`}
-                              initial={{ y: -4, opacity: 0 }}
-                              animate={{ y: 0, opacity: 1 }}
-                              transition={{ duration: 0.18, ease: APPLE_EASE }}
+                            <SmoothCountdownNumber
+                              value={countdownParts.s}
+                              minDigits={2}
                               className={cn(
-                                'text-[20px] tracking-[-0.04em] sm:text-[22px]',
+                                'text-[20px] tracking-normal sm:text-[22px]',
                                 inFinalMinute ? 'text-[#E11D48]' : 'text-foreground/55 dark:text-white/45',
                               )}
-                            >
-                              {String(countdownParts.s).padStart(2, '0')}
-                            </motion.span>
+                            />
                             <span className="ml-[1px] text-[11px] tracking-[0.04em] text-foreground/30 dark:text-white/22">s</span>
                           </motion.div>
                         ) : (
@@ -1779,17 +1838,20 @@ export default function FundPage() {
                             const peak = dayShape.peak || 1;
                             const heightPct = total > 0 ? Math.max(20, (total / peak) * 100) : 0;
                             const completedPct = total > 0 ? (bin.completed / total) * 100 : 0;
-                            const isPast = hour < Math.floor(dayProgress * 24);
-                            const isCurrent = hour === Math.floor(dayProgress * 24);
+                            const currentHour = Math.min(23, Math.floor(dayProgress * 24));
+                            const isPast = hour < currentHour;
+                            const isCurrent = hour === currentHour;
                             return (
                               <div key={hour} className="relative h-full">
                                 {total === 0 ? (
                                   <div
                                     className={cn(
-                                      'absolute bottom-0 left-0 right-0 rounded-[2px]',
+                                      'absolute bottom-0 left-0 right-0 rounded-[2px] transition-colors duration-500',
                                       isCurrent
-                                        ? 'h-[6px] bg-foreground/[0.14] dark:bg-white/[0.10]'
-                                        : 'h-[3px] bg-foreground/[0.05] dark:bg-white/[0.04]',
+                                        ? 'h-[6px] bg-[#E11D48]/45 shadow-[0_0_7px_rgba(225,29,72,0.28)]'
+                                        : isPast
+                                          ? 'h-[3px] bg-foreground/[0.07] dark:bg-white/[0.06]'
+                                          : 'h-[4px] bg-[#E11D48]/28 dark:bg-[#FB7185]/24',
                                     )}
                                   />
                                 ) : (
@@ -1798,25 +1860,33 @@ export default function FundPage() {
                                     animate={{ height: `${heightPct}%` }}
                                     transition={{ duration: 0.5, ease: APPLE_EASE }}
                                     className={cn(
-                                      'absolute bottom-0 left-0 right-0 flex flex-col-reverse overflow-hidden rounded-[3px]',
-                                      isCurrent ? 'shadow-[0_0_10px_rgba(225,29,72,0.5)]' : '',
+                                      'absolute bottom-0 left-0 right-0 flex flex-col-reverse overflow-hidden rounded-[3px] transition-[filter,opacity] duration-500',
+                                      isCurrent
+                                        ? 'shadow-[0_0_10px_rgba(225,29,72,0.36)]'
+                                        : isPast
+                                          ? 'opacity-60'
+                                          : 'shadow-[0_0_7px_rgba(225,29,72,0.24)]',
                                     )}
                                   >
                                     <div
                                       className={cn(
-                                        'w-full',
-                                        isPast || isCurrent ? 'bg-[#E11D48]' : 'bg-[#E11D48]/55',
+                                        'w-full transition-colors duration-500',
+                                        isPast
+                                          ? 'bg-foreground/[0.15] dark:bg-white/[0.12]'
+                                          : isCurrent
+                                            ? 'bg-[#E11D48]/72'
+                                            : 'bg-[#E11D48]/66',
                                       )}
                                       style={{ height: `${completedPct}%` }}
                                     />
                                     <div
                                       className={cn(
-                                        'w-full',
+                                        'w-full transition-colors duration-500',
                                         isCurrent
-                                          ? 'bg-[#E11D48]/30'
+                                          ? 'bg-[#E11D48]/34'
                                           : isPast
-                                            ? 'bg-foreground/[0.12] dark:bg-white/[0.10]'
-                                            : 'bg-foreground/[0.16] dark:bg-white/[0.14]',
+                                            ? 'bg-foreground/[0.09] dark:bg-white/[0.08]'
+                                            : 'bg-[#E11D48]/42 dark:bg-[#FB7185]/34',
                                       )}
                                       style={{ height: `${100 - completedPct}%` }}
                                     />

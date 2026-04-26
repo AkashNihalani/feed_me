@@ -24,6 +24,7 @@ const FIRE_POST_LOOKBACK_DAYS = 35;
 const FIRE_ACTIVE_STATE_TTL_MS = 2 * 60 * 1000;
 const FIRE_META_TTL_MS = 10 * 60 * 1000;
 const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
+const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
@@ -2131,6 +2132,16 @@ function firePageCacheKey(userId: string, requestState: FirePageRequestState) {
   ].join(':');
 }
 
+function firePageCacheTtlMs(requestState: FirePageRequestState) {
+  return requestState.day === todayIstDayKey() ? FIRE_LIVE_PAGE_TTL_MS : FIRE_PAGE_TTL_MS;
+}
+
+function fireResponseCacheOptions(day: string) {
+  return day === todayIstDayKey()
+    ? { maxAgeSeconds: 5, staleWhileRevalidateSeconds: 15 }
+    : { maxAgeSeconds: 60, staleWhileRevalidateSeconds: 600 };
+}
+
 async function buildCachedTrackingFirePagePayload(
   sb: { from: ReturnType<typeof createClient>['from'] },
   userId: string,
@@ -2139,7 +2150,7 @@ async function buildCachedTrackingFirePagePayload(
 ) {
   return withServerRouteCache(
     firePageCacheKey(userId, requestState),
-    FIRE_PAGE_TTL_MS,
+    firePageCacheTtlMs(requestState),
     () => buildTrackingFirePagePayload(sb, activeState, requestState),
   );
 }
@@ -2453,10 +2464,7 @@ export async function GET(request: NextRequest) {
         initialDay,
         initialPage,
         prefetchedPages,
-      }, {
-        maxAgeSeconds: 60,
-        staleWhileRevalidateSeconds: 600,
-      });
+      }, fireResponseCacheOptions(initialDay));
     } catch (error) {
       console.error('[/api/fire?mode=bootstrap] Error:', error);
       const message = error instanceof Error ? error.message : 'Failed to bootstrap fire';
@@ -2465,7 +2473,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const payload = await buildCachedTrackingFirePagePayload(supabase, userId, activeState, {
+    const requestState = {
       day: params.get('day') || todayIstDayKey(),
       threshold: normalizeThresholdValue(params.get('threshold')),
       mediaFilter: normalizeMediaFilterValue(params.get('mediaFilter')),
@@ -2475,11 +2483,9 @@ export async function GET(request: NextRequest) {
       requestedFeedIds: parseCsvNumbers(params.get('feed_ids')),
       requestedFeederIds: parseCsvNumbers(params.get('feeder_ids')),
       requestedCheckpoints: parseCsvStrings(params.get('checkpoints')),
-    });
-    return privateJsonResponse(request, payload, {
-      maxAgeSeconds: 60,
-      staleWhileRevalidateSeconds: 600,
-    });
+    };
+    const payload = await buildCachedTrackingFirePagePayload(supabase, userId, activeState, requestState);
+    return privateJsonResponse(request, payload, fireResponseCacheOptions(requestState.day));
   } catch (error) {
     console.error('[/api/fire] Error:', error);
     const message = error instanceof Error ? error.message : 'Failed to load fire alerts';

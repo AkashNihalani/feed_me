@@ -11,7 +11,8 @@ import FeedScatterField from './FeedScatterField';
 import FeedPostingPattern from './FeedPostingPattern';
 import FeedPatternBoard from './FeedPatternBoard';
 import PostingHeatmap from './PostingHeatmap';
-import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from './dashboardTypes';
+import FeedEngagementAverages from './FeedEngagementAverages';
+import { DashboardPayload, Timeframe } from './dashboardTypes';
 import { GRID_ITEM_EASE } from '@/lib/motion';
 
 type ActiveFeed = {
@@ -25,6 +26,7 @@ interface FeedDetailV2Props {
   dashboardData: DashboardPayload | null;
   baselineDashboardData?: DashboardPayload | null;
   usePageScroll?: boolean;
+  mobileSnapSections?: boolean;
   bottomClearance?: string;
   immersiveBrowserMode?: boolean;
   exportScopeLabel: string;
@@ -88,6 +90,8 @@ const MOBILE_TILE_HEIGHTS = {
   standard: { minHeight: 'clamp(184px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) / 2), 248px)' },
   compact: { minHeight: 'clamp(164px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) / 2), 208px)' },
   scatter: { minHeight: 'clamp(248px, calc(var(--fm-feed-mobile-section-height) - 14px), 420px)' },
+  scatterPair: { minHeight: 'clamp(226px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) * 0.56), 340px)' },
+  engagement: { minHeight: 'clamp(192px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) * 0.44), 258px)' },
   pattern: { minHeight: 'clamp(276px, calc(var(--fm-feed-mobile-section-height) - 14px), 450px)' },
   heatmap: { minHeight: 'clamp(252px, calc(var(--fm-feed-mobile-section-height) - 14px), 430px)' },
 } as const;
@@ -97,6 +101,7 @@ function DeferredMobileSection({
   sectionIndex,
   scrollRootRef,
   usePageScroll,
+  mobileSnapSections,
   eager,
   reduceMotion,
 }: {
@@ -104,6 +109,7 @@ function DeferredMobileSection({
   sectionIndex: number;
   scrollRootRef: RefObject<HTMLDivElement | null>;
   usePageScroll: boolean;
+  mobileSnapSections: boolean;
   eager: boolean;
   reduceMotion: boolean;
 }) {
@@ -139,15 +145,19 @@ function DeferredMobileSection({
   return (
     <section
       ref={sectionRef}
-      className="snap-start snap-always flex min-h-[var(--fm-feed-mobile-section-height)] items-center px-2 py-2 sm:px-3"
+      className={
+        mobileSnapSections
+          ? 'snap-start snap-always flex min-h-[var(--fm-feed-mobile-section-height)] items-center px-2 py-2 sm:px-3'
+          : 'px-2 py-2 sm:px-3'
+      }
       style={{
-        scrollMarginTop: 'calc(var(--fm-mobile-detail-header-offset) + 10px)',
+        scrollMarginTop: mobileSnapSections ? 'calc(var(--fm-mobile-detail-header-offset) + 10px)' : undefined,
         contentVisibility: 'auto',
         containIntrinsicSize: '420px',
       }}
     >
       <div className="fm-tab-canvas-shell mx-auto flex w-full">
-        <div className="mx-auto flex w-full max-w-[760px] flex-col justify-center gap-3">
+        <div className={`mx-auto flex w-full max-w-[760px] flex-col gap-3 ${mobileSnapSections ? 'justify-center' : ''}`}>
           {section.items.map((item, itemIndex) => (
             isReady ? (
               <motion.div
@@ -182,6 +192,7 @@ export default function FeedDetailV2({
   dashboardData,
   baselineDashboardData = null,
   usePageScroll = false,
+  mobileSnapSections = false,
   bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
   immersiveBrowserMode = false,
   exportScopeLabel,
@@ -209,7 +220,8 @@ export default function FeedDetailV2({
   );
   const killZoneTile = <FeedKillZone hours={dashboardData?.killzone_hours ?? []} days={dashboardData?.killzone_days ?? []} />;
   const apexTile = <FeedApexArch mix={dashboardData?.apex_mix ?? []} />;
-  const scatterTile = <FeedScatterField points={dashboardData?.scatter_points ?? []} windowDays={TIMEFRAME_TO_DAYS[timeframe]} />;
+  const scatterTile = <FeedScatterField points={dashboardData?.scatter_points ?? []} />;
+  const engagementTile = <FeedEngagementAverages rows={dashboardData?.engagement_averages ?? []} />;
   const postingPatternTile = <FeedPostingPattern pattern={dashboardData?.posting_pattern ?? null} timeframe={timeframe} />;
   const heatmapTile = <PostingHeatmap days={dashboardData?.heatmap_daily ?? []} weeks={heatmapWeeks} />;
   const exportTile = (
@@ -276,7 +288,13 @@ export default function FeedDetailV2({
           key: 'scatter',
           node: scatterTile,
           className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
-          style: MOBILE_TILE_HEIGHTS.scatter,
+          style: MOBILE_TILE_HEIGHTS.scatterPair,
+        },
+        {
+          key: 'engagement',
+          node: engagementTile,
+          className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
+          style: MOBILE_TILE_HEIGHTS.engagement,
         },
       ],
     },
@@ -329,6 +347,7 @@ export default function FeedDetailV2({
             sectionIndex={sectionIndex}
             scrollRootRef={scrollRef}
             usePageScroll={usePageScroll}
+            mobileSnapSections={mobileSnapSections}
             eager={sectionIndex === 0}
             reduceMotion={reduceMotion}
           />
@@ -384,6 +403,10 @@ export default function FeedDetailV2({
 
           <motion.div data-lock-id="scatter" variants={tileVariant} style={{ gridArea: 'scatter' }} className="fm-feed-mobile-panel min-w-0 min-h-[232px] xl:min-h-[240px]">
             {scatterTile}
+          </motion.div>
+
+          <motion.div data-lock-id="engagement" variants={tileVariant} style={{ gridArea: 'engagement' }} className="fm-feed-mobile-panel min-w-0 min-h-[232px] xl:min-h-[240px]">
+            {engagementTile}
           </motion.div>
 
           <motion.div data-lock-id="pattern" variants={tileVariant} style={{ gridArea: 'pattern' }} className="fm-feed-mobile-panel min-w-0 min-h-[252px] xl:min-h-[264px]">

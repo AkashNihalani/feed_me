@@ -50,8 +50,20 @@ export type ScatterPoint = {
   days_ago: number;
   percentile_performance: number | null;
   views: number | null;
+  media_type?: string | null;
   handle: string;
   posted_at_ist: string | null;
+};
+
+export type EngagementAverageMediaType = 'all' | 'reel' | 'image' | 'carousel';
+
+export type EngagementAverageRow = {
+  media_type: EngagementAverageMediaType;
+  post_count: number;
+  metric_count: number;
+  avg_likes: number | null;
+  avg_comments: number | null;
+  avg_views: number | null;
 };
 
 export type DashboardSummary = {
@@ -66,7 +78,16 @@ export type DashboardSummary = {
   avg_comments_percentile: number | null;
 };
 
+export type PatternBoardSupportPost = {
+  post_key: string;
+  handle: string | null;
+  post_url: string | null;
+  thumbnail_url: string | null;
+  media_type: string | null;
+};
+
 export type PatternBoardItem = {
+  firewatch_id: string;
   signal_code: string;
   context: 'own' | 'cross' | 'anchor';
   pattern_name: string | null;
@@ -77,7 +98,10 @@ export type PatternBoardItem = {
   baseline_share: number | null;
   recent_lift: number | null;
   anchor_gap: number | null;
+  match_count: number | null;
   latest_business_day: string | null;
+  cues: string[];
+  support_posts: PatternBoardSupportPost[];
 };
 
 export type PostingPatternStatus = 'accelerating' | 'steady' | 'slowing' | 'dormant' | 'insufficient_data';
@@ -135,6 +159,7 @@ export type DashboardPayload = {
   killzone_days?: KillzoneDayPoint[];
   apex_mix: ApexMixPoint[];
   scatter_points: ScatterPoint[];
+  engagement_averages?: EngagementAverageRow[];
   summary: DashboardSummary;
   pattern_board?: PatternBoardItem[];
   posting_pattern?: PostingPatternPayload;

@@ -15,8 +15,12 @@ type ChartPoint = {
   previousLabel: string | null;
 };
 
+type ChartSelection = {
+  signature: string;
+  index: number;
+};
+
 const ASCENT_ACCENT = '#E11D48';
-const ASCENT_ACCENT_RGB = '225 29 72';
 const TREND_PATHS = {
   flat: 'M 13 32 L 51 32 M 51 32 L 51 32 M 51 32 L 51 32',
   rise: 'M 32 53 L 32 12 M 32 12 L 21 23 M 32 12 L 43 23',
@@ -51,6 +55,21 @@ function shouldShowAxisLabel(index: number, total: number): boolean {
   const targetLabels = total <= 7 ? total : total <= 30 ? 5 : 6;
   const step = Math.max(1, Math.ceil((total - 1) / Math.max(1, targetLabels - 1)));
   return index % step === 0;
+}
+
+function buildChartLine(points: ChartPoint[]): string {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M 0 ${points[0]!.y} L 100 ${points[0]!.y}`;
+
+  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+}
+
+function hashText(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) % 2_147_483_647;
+  }
+  return hash.toString(36);
 }
 
 function TrendGlyph({ direction }: { direction: TrendDirection }) {
@@ -91,8 +110,8 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const gradientId = useId().replace(/[:]/g, '');
 
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [hoverSelection, setHoverSelection] = useState<ChartSelection | null>(null);
+  const [selectedSelection, setSelectedSelection] = useState<ChartSelection | null>(null);
   const [touchScrubbing, setTouchScrubbing] = useState(false);
   const [animatedDeltaCount, setAnimatedDeltaCount] = useState(0);
   const [animatedDeltaPercent, setAnimatedDeltaPercent] = useState(0);
@@ -127,7 +146,7 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
         label: toLabel(point.snapshot_date_ist),
         fullLabel: point.snapshot_date_ist,
         followers,
-        x: (index / Math.max(1, data.length - 1)) * 100,
+        x: data.length <= 1 ? 50 : (index / Math.max(1, data.length - 1)) * 100,
         y: 34 - ((followers - min) / range) * 26,
         deltaFromPrevious,
         deltaPercentFromPrevious,
@@ -135,8 +154,10 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
       };
     });
 
-    const line = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
-    const area = `${line} L 100 38 L 0 38 Z`;
+    const line = buildChartLine(points);
+    const areaStartX = points.length <= 1 ? 0 : points[0]?.x ?? 0;
+    const areaEndX = points.length <= 1 ? 100 : points[points.length - 1]?.x ?? 100;
+    const area = `${line} L ${areaEndX} 38 L ${areaStartX} 38 Z`;
     const firstFollowers = points[0]?.followers ?? 0;
     const lastFollowers = points[points.length - 1]?.followers ?? 0;
     const overallDeltaCount = lastFollowers - firstFollowers;
@@ -146,12 +167,15 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
       points,
       line,
       area,
+      signature: `${timeframe}-${hashText(points.map((point) => `${point.fullLabel}:${point.followers}`).join('|'))}`,
       latestFollowers: lastFollowers,
       overallDeltaCount,
       overallDeltaPercent,
     };
-  }, [data]);
+  }, [data, timeframe]);
 
+  const hoverIndex = hoverSelection?.signature === chart.signature ? hoverSelection.index : null;
+  const selectedIndex = selectedSelection?.signature === chart.signature ? selectedSelection.index : null;
   const displayIndex = hoverIndex ?? selectedIndex;
   const displayPoint = displayIndex == null ? null : chart.points[displayIndex] ?? null;
   const displayDeltaCount = displayPoint ? displayPoint.deltaFromPrevious : chart.overallDeltaCount;
@@ -163,6 +187,7 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
       ? `${displayPoint.label} vs ${displayPoint.previousLabel}`
       : `${displayPoint.label} starting point`
     : `Net over ${timeframe}`;
+  const lineRevealId = `ascentLineReveal-${gradientId}-${chart.signature}`;
 
   useEffect(() => {
     const stopCount = deltaCountSpring.on('change', (value) => setAnimatedDeltaCount(value));
@@ -240,105 +265,127 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
           onMouseMove={(event) => {
             const nextIndex = resolveIndex(event.clientX);
             if (nextIndex == null) return;
-            setHoverIndex(nextIndex);
+            setHoverSelection({ signature: chart.signature, index: nextIndex });
           }}
-          onMouseLeave={() => setHoverIndex(null)}
+          onMouseLeave={() => setHoverSelection(null)}
           onClick={(event) => {
             const nextIndex = resolveIndex(event.clientX);
             if (nextIndex == null) return;
-            setSelectedIndex((current) => (current === nextIndex ? null : nextIndex));
+            setSelectedSelection((current) => (
+              current?.signature === chart.signature && current.index === nextIndex
+                ? null
+                : { signature: chart.signature, index: nextIndex }
+            ));
           }}
           onPointerDown={(event) => {
             if (event.pointerType === 'mouse') return;
             const nextIndex = resolveIndex(event.clientX);
             if (nextIndex == null) return;
             setTouchScrubbing(true);
-            setSelectedIndex(nextIndex);
-            setHoverIndex(nextIndex);
+            setSelectedSelection({ signature: chart.signature, index: nextIndex });
+            setHoverSelection({ signature: chart.signature, index: nextIndex });
           }}
           onPointerMove={(event) => {
             if (event.pointerType === 'mouse' || !touchScrubbing) return;
             const nextIndex = resolveIndex(event.clientX);
             if (nextIndex == null) return;
-            setSelectedIndex(nextIndex);
-            setHoverIndex(nextIndex);
+            setSelectedSelection({ signature: chart.signature, index: nextIndex });
+            setHoverSelection({ signature: chart.signature, index: nextIndex });
           }}
           onPointerUp={(event) => {
             if (event.pointerType === 'mouse') return;
             setTouchScrubbing(false);
-            setHoverIndex(null);
+            setHoverSelection(null);
           }}
           onPointerCancel={() => {
             setTouchScrubbing(false);
-            setHoverIndex(null);
+            setHoverSelection(null);
           }}
         >
           <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 40">
             <defs>
               <linearGradient id={`ascentFill-${gradientId}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor={ASCENT_ACCENT} stopOpacity="0.24" />
-                <stop offset="100%" stopColor={ASCENT_ACCENT} stopOpacity="0.08" />
+                <stop offset="0%" stopColor={ASCENT_ACCENT} stopOpacity="0.12" />
+                <stop offset="100%" stopColor={ASCENT_ACCENT} stopOpacity="0.02" />
               </linearGradient>
+              <linearGradient id={`ascentStroke-${gradientId}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#FB7185" stopOpacity="0.72" />
+                <stop offset="46%" stopColor={ASCENT_ACCENT} stopOpacity="0.96" />
+                <stop offset="100%" stopColor="#BE123C" stopOpacity="0.94" />
+              </linearGradient>
+              <clipPath id={lineRevealId} key={lineRevealId}>
+                <rect
+                  className="fm-ascent-line-clip"
+                  x="-1"
+                  y="0"
+                  width="102"
+                  height="40"
+                />
+              </clipPath>
             </defs>
 
             <line x1="0" y1="10" x2="100" y2="10" stroke="currentColor" strokeWidth="0.45" className="text-black/16 dark:text-white/10" />
             <line x1="0" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="0.45" className="text-black/16 dark:text-white/10" />
             <line x1="0" y1="30" x2="100" y2="30" stroke="currentColor" strokeWidth="0.45" className="text-black/16 dark:text-white/10" />
 
-            <motion.path
-              d={chart.area}
-              fill={`url(#ascentFill-${gradientId})`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.35 }}
-            />
-            <motion.path
-              d={chart.line}
-              fill="none"
-              stroke={ASCENT_ACCENT}
-              strokeWidth="1.55"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.72, ease: 'easeOut' }}
-            />
+            <g key={chart.signature} clipPath={`url(#${lineRevealId})`}>
+              <path
+                d={chart.area}
+                fill={`url(#ascentFill-${gradientId})`}
+              />
+              <g>
+                <path
+                  d={chart.line}
+                  fill="none"
+                  stroke={ASCENT_ACCENT}
+                  strokeOpacity="0.2"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <path
+                  d={chart.line}
+                  fill="none"
+                  stroke={`url(#ascentStroke-${gradientId})`}
+                  strokeWidth="1.24"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            </g>
 
             {displayPoint ? (
               <>
-                <rect
-                  x={displayPoint.x - 1.15}
-                  y="4"
-                  width="2.3"
-                  height="34"
-                  rx="1.15"
-                  fill={`rgb(${ASCENT_ACCENT_RGB} / 0.14)`}
-                />
                 <line
                   x1={displayPoint.x}
                   y1="5"
                   x2={displayPoint.x}
                   y2="37"
                   stroke={ASCENT_ACCENT}
-                  strokeOpacity="0.72"
-                  strokeWidth="0.7"
+                  strokeOpacity="0.5"
+                  strokeWidth="0.52"
                   strokeLinecap="round"
-                />
-                <circle
-                  cx={displayPoint.x}
-                  cy={displayPoint.y}
-                  r="2.75"
-                  fill="var(--background)"
-                />
-                <circle
-                  cx={displayPoint.x}
-                  cy={displayPoint.y}
-                  r="1.85"
-                  fill={ASCENT_ACCENT}
+                  vectorEffect="non-scaling-stroke"
                 />
               </>
             ) : null}
           </svg>
+
+          {displayPoint ? (
+            <div className="pointer-events-none absolute bottom-5 left-3 right-3 top-3 z-[4]">
+              <div
+                className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#E11D48]/18 shadow-[0_0_0_1px_rgba(225,29,72,0.2),0_8px_20px_rgba(225,29,72,0.22)] dark:bg-[#E11D48]/24 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_9px_22px_rgba(225,29,72,0.32)]"
+                style={{
+                  left: `${displayPoint.x}%`,
+                  top: `${(displayPoint.y / 40) * 100}%`,
+                }}
+              >
+                <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--background)] bg-[#E11D48] shadow-[0_0_0_1px_rgba(225,29,72,0.42)] dark:border-[#050505]" />
+              </div>
+            </div>
+          ) : null}
 
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 px-[2px] text-[8px] font-black uppercase tracking-[0.1em] text-foreground/34">
             {chart.points.map((point, index) => (

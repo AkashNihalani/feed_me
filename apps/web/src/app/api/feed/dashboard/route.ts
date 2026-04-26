@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
-import { getPatternMechanicLabel } from '@/lib/fireSignals';
+import { getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
 import { privateJsonResponse } from '@/lib/privateJsonResponse';
 import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v2';
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -462,89 +463,6 @@ async function fetchPostingPattern(
   };
 }
 
-async function fetchAscentSeries(
-  sb: ReturnType<typeof adminClient>,
-  feedId: number,
-  windowStartIst: string | null,
-  windowEndIst: string | null,
-  handle: string | null,
-) {
-  const startDate = parseIstDateKey(windowStartIst);
-  const endDate = parseIstDateKey(windowEndIst);
-  if (!startDate || !endDate || startDate.getTime() > endDate.getTime()) return [];
-
-  const feeders = await fetchScopedFeeders(sb, feedId, handle);
-  if (feeders.length === 0) return [];
-
-  const feederIds = feeders.map((feeder) => feeder.id);
-  const { data, error } = await sb
-    .from('feeder_follower_snapshots')
-    .select('feeder_id,snapshot_date_ist,follower_count')
-    .in('feeder_id', feederIds)
-    .lte('snapshot_date_ist', windowEndIst!);
-  if (error) throw error;
-
-  const snapshotsByFeeder = new Map<number, Array<{ snapshot_date_ist: string; follower_count: number }>>();
-  for (const feeder of feeders) {
-    snapshotsByFeeder.set(feeder.id, []);
-  }
-
-  for (const row of (data || []) as Array<Record<string, unknown>>) {
-    const feederId = Number(row.feeder_id);
-    const snapshotDate = nullableString(row.snapshot_date_ist);
-    const followerCount = Math.max(0, Number(row.follower_count) || 0);
-    if (!Number.isFinite(feederId) || !snapshotDate) continue;
-    const bucket = snapshotsByFeeder.get(feederId);
-    if (!bucket) continue;
-    bucket.push({ snapshot_date_ist: snapshotDate, follower_count: followerCount });
-  }
-
-  for (const bucket of snapshotsByFeeder.values()) {
-    bucket.sort((a, b) => a.snapshot_date_ist.localeCompare(b.snapshot_date_ist));
-  }
-
-  const currentTotal = feeders.reduce((sum, feeder) => sum + Math.max(0, feeder.follower_count || 0), 0);
-  const baselineByFeeder = new Map<number, number>();
-  for (const feeder of feeders) {
-    const bucket = snapshotsByFeeder.get(feeder.id) || [];
-    const firstKnownCount = bucket[0]?.follower_count;
-    baselineByFeeder.set(
-      feeder.id,
-      Math.max(0, firstKnownCount ?? feeder.follower_count ?? 0),
-    );
-  }
-  const series: Array<{ snapshot_date_ist: string; follower_count: number }> = [];
-
-  for (let cursor = new Date(startDate); cursor.getTime() <= endDate.getTime(); cursor = addUtcDays(cursor, 1)) {
-    const dayKey = formatIstDateKey(cursor);
-    let total = 0;
-
-    for (const feeder of feeders) {
-      const bucket = snapshotsByFeeder.get(feeder.id) || [];
-      let lastKnown = baselineByFeeder.get(feeder.id) ?? 0;
-      for (const snapshot of bucket) {
-        if (snapshot.snapshot_date_ist > dayKey) break;
-        lastKnown = snapshot.follower_count;
-      }
-      total += Math.max(0, lastKnown);
-    }
-
-    series.push({
-      snapshot_date_ist: dayKey,
-      follower_count: total,
-    });
-  }
-
-  if (series.length > 0 && currentTotal > 0) {
-    series[series.length - 1] = {
-      ...series[series.length - 1],
-      follower_count: currentTotal,
-    };
-  }
-
-  return series;
-}
-
 async function fetchRollingHeatmap(
   sb: ReturnType<typeof adminClient>,
   feedId: number,
@@ -570,6 +488,207 @@ type KillzoneMetricRow = {
   computed_at: string | null;
   percentile_performance: number | string | null;
 };
+
+type DashboardMediaType = 'all' | 'reel' | 'image' | 'carousel' | 'unknown';
+
+type EngagementPostRow = {
+  post_key: string | null;
+  media_type: string | null;
+};
+
+type EngagementMetricRow = {
+  post_key: string | null;
+  checkpoint: string | null;
+  computed_at: string | null;
+  views: number | string | null;
+  likes: number | string | null;
+  comments: number | string | null;
+};
+
+type EngagementLatestMetric = {
+  rank: number;
+  computedAt: number;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+};
+
+type EngagementBucket = {
+  media_type: DashboardMediaType;
+  post_count: number;
+  metric_count: number;
+  likes_total: number;
+  likes_count: number;
+  comments_total: number;
+  comments_count: number;
+  views_total: number;
+  views_count: number;
+};
+
+const ENGAGEMENT_MEDIA_ORDER = ['all', 'reel', 'image', 'carousel'] as const;
+
+function normalizeDashboardMediaType(value: string | null): Exclude<DashboardMediaType, 'all'> {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return 'unknown';
+  if (normalized.includes('sidecar') || normalized.includes('carousel')) return 'carousel';
+  if (normalized.includes('reel') || normalized.includes('video')) return 'reel';
+  if (normalized.includes('image') || normalized.includes('photo')) return 'image';
+  return 'unknown';
+}
+
+function createEngagementBucket(mediaType: DashboardMediaType): EngagementBucket {
+  return {
+    media_type: mediaType,
+    post_count: 0,
+    metric_count: 0,
+    likes_total: 0,
+    likes_count: 0,
+    comments_total: 0,
+    comments_count: 0,
+    views_total: 0,
+    views_count: 0,
+  };
+}
+
+function pushEngagementMetric(bucket: EngagementBucket, metric: EngagementLatestMetric | null, includeViews = true) {
+  if (!metric) return;
+  const hasAnyMetric = metric.likes != null || metric.comments != null || (includeViews && metric.views != null);
+  if (hasAnyMetric) bucket.metric_count += 1;
+  if (metric.likes != null) {
+    bucket.likes_total += metric.likes;
+    bucket.likes_count += 1;
+  }
+  if (metric.comments != null) {
+    bucket.comments_total += metric.comments;
+    bucket.comments_count += 1;
+  }
+  if (includeViews && metric.views != null) {
+    bucket.views_total += metric.views;
+    bucket.views_count += 1;
+  }
+}
+
+function roundedAverage(total: number, count: number): number | null {
+  if (count <= 0) return null;
+  return Math.round(total / count);
+}
+
+function serializeEngagementBucket(bucket: EngagementBucket) {
+  return {
+    media_type: bucket.media_type,
+    post_count: bucket.post_count,
+    metric_count: bucket.metric_count,
+    avg_likes: roundedAverage(bucket.likes_total, bucket.likes_count),
+    avg_comments: roundedAverage(bucket.comments_total, bucket.comments_count),
+    avg_views: roundedAverage(bucket.views_total, bucket.views_count),
+  };
+}
+
+async function fetchEngagementBreakdown(
+  sb: ReturnType<typeof adminClient>,
+  feederIds: number[],
+  windowStartIst: string | null,
+  windowEndIst: string | null,
+) {
+  const emptyBuckets = ENGAGEMENT_MEDIA_ORDER.map((type) => serializeEngagementBucket(createEngagementBucket(type)));
+  const mediaTypeByPostKey = new Map<string, Exclude<DashboardMediaType, 'all'>>();
+
+  if (!windowStartIst || !windowEndIst || feederIds.length === 0) {
+    return { averages: emptyBuckets, mediaTypeByPostKey };
+  }
+
+  const startIso = istDayStartUtcIso(windowStartIst);
+  const endDate = parseIstDateKey(windowEndIst);
+  const endExclusiveIso = endDate ? istDayStartUtcIso(formatIstDateKey(addUtcDays(endDate, 1))) : null;
+  if (!startIso || !endExclusiveIso) {
+    return { averages: emptyBuckets, mediaTypeByPostKey };
+  }
+
+  const posts: EngagementPostRow[] = [];
+  for (let start = 0; ; start += 1000) {
+    const { data, error } = await sb
+      .from('posts')
+      .select('post_key,media_type')
+      .in('feeder_id', feederIds)
+      .gte('posted_at', startIso)
+      .lt('posted_at', endExclusiveIso)
+      .order('posted_at', { ascending: false })
+      .range(start, start + 999);
+
+    if (error) throw error;
+    const batch = (data || []) as EngagementPostRow[];
+    posts.push(...batch);
+    if (batch.length < 1000) break;
+  }
+
+  const postKeys = Array.from(
+    new Set(
+      posts
+        .map((row) => nullableString(row.post_key))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const checkpointRank: Record<string, number> = { d1: 1, d3: 2, d7: 3, d21: 4 };
+  const latestMetricByPost = new Map<string, EngagementLatestMetric>();
+
+  for (let start = 0; start < postKeys.length; start += 250) {
+    const { data, error } = await sb
+      .from('post_metrics')
+      .select('post_key,checkpoint,computed_at,views,likes,comments')
+      .in('post_key', postKeys.slice(start, start + 250))
+      .in('checkpoint', ['d1', 'd3', 'd7', 'd21']);
+
+    if (error) throw error;
+
+    for (const row of (data || []) as EngagementMetricRow[]) {
+      const postKey = nullableString(row.post_key);
+      const checkpoint = nullableString(row.checkpoint)?.toLowerCase() || '';
+      if (!postKey || !checkpointRank[checkpoint]) continue;
+
+      const rank = checkpointRank[checkpoint];
+      const computedAt = Date.parse(row.computed_at || '') || 0;
+      const current = latestMetricByPost.get(postKey);
+      if (!current || rank > current.rank || (rank === current.rank && computedAt > current.computedAt)) {
+        latestMetricByPost.set(postKey, {
+          rank,
+          computedAt,
+          views: nullableNumber(row.views),
+          likes: nullableNumber(row.likes),
+          comments: nullableNumber(row.comments),
+        });
+      }
+    }
+  }
+
+  const buckets = new Map<DashboardMediaType, EngagementBucket>();
+  for (const type of ENGAGEMENT_MEDIA_ORDER) buckets.set(type, createEngagementBucket(type));
+
+  for (const post of posts) {
+    const postKey = nullableString(post.post_key);
+    const mediaType = normalizeDashboardMediaType(post.media_type);
+    if (postKey) mediaTypeByPostKey.set(postKey, mediaType);
+
+    const metric = postKey ? latestMetricByPost.get(postKey) ?? null : null;
+    const includeViews = mediaType === 'reel';
+    const allBucket = buckets.get('all');
+    if (allBucket) {
+      allBucket.post_count += 1;
+      pushEngagementMetric(allBucket, metric, includeViews);
+    }
+
+    if (mediaType === 'unknown') continue;
+    const bucket = buckets.get(mediaType);
+    if (!bucket) continue;
+    bucket.post_count += 1;
+    pushEngagementMetric(bucket, metric, includeViews);
+  }
+
+  return {
+    averages: ENGAGEMENT_MEDIA_ORDER.map((type) => serializeEngagementBucket(buckets.get(type) || createEngagementBucket(type))),
+    mediaTypeByPostKey,
+  };
+}
 
 async function fetchKillzoneDays(
   sb: ReturnType<typeof adminClient>,
@@ -672,6 +791,78 @@ async function fetchKillzoneDays(
   }));
 }
 
+type PatternBoardCue = string;
+type PatternBoardSupport = {
+  post_key: string;
+  handle: string | null;
+  post_url: string | null;
+  thumbnail_url: string | null;
+  media_type: string | null;
+};
+
+const PATTERN_BOARD_LIMIT = 10;
+const PATTERN_BOARD_CUE_MAX = 4;
+const PATTERN_BOARD_SUPPORT_MAX = 6;
+
+async function hydratePatternSupportPreviews(
+  sb: ReturnType<typeof adminClient>,
+  postKeys: string[],
+): Promise<Map<string, PatternBoardSupport>> {
+  const previews = new Map<string, PatternBoardSupport>();
+  if (postKeys.length === 0) return previews;
+
+  const unique = Array.from(new Set(postKeys.filter(Boolean)));
+  if (unique.length === 0) return previews;
+
+  const { data, error } = await sb
+    .from('posts')
+    .select('post_key,feeder_id,media_type,post_url,thumbnail_url')
+    .in('post_key', unique);
+  if (error) throw error;
+
+  const rows = (data || []) as Array<{
+    post_key: string | null;
+    feeder_id: number | string | null;
+    media_type: string | null;
+    post_url: string | null;
+    thumbnail_url: string | null;
+  }>;
+
+  const feederIds = new Set<number>();
+  for (const row of rows) {
+    const fid = Number(row.feeder_id);
+    if (Number.isFinite(fid)) feederIds.add(fid);
+  }
+
+  const handleByFeederId = new Map<number, string | null>();
+  if (feederIds.size > 0) {
+    const { data: feederRows, error: feederErr } = await sb
+      .from('feeders')
+      .select('id,handle')
+      .in('id', Array.from(feederIds));
+    if (feederErr) throw feederErr;
+    for (const row of (feederRows || []) as Array<{ id: number | string | null; handle: string | null }>) {
+      const fid = Number(row.id);
+      if (Number.isFinite(fid)) handleByFeederId.set(fid, nullableString(row.handle));
+    }
+  }
+
+  for (const row of rows) {
+    const postKey = nullableString(row.post_key);
+    if (!postKey) continue;
+    const fid = Number(row.feeder_id);
+    previews.set(postKey, {
+      post_key: postKey,
+      handle: Number.isFinite(fid) ? handleByFeederId.get(fid) || null : null,
+      post_url: nullableString(row.post_url),
+      thumbnail_url: nullableString(row.thumbnail_url),
+      media_type: nullableString(row.media_type),
+    });
+  }
+
+  return previews;
+}
+
 async function fetchPatternBoard(
   sb: ReturnType<typeof adminClient>,
   feedId: number,
@@ -696,6 +887,7 @@ async function fetchPatternBoard(
   if (error) throw error;
 
   const aggregate = new Map<string, {
+    firewatch_id: string;
     signal_code: string;
     context: 'own' | 'cross' | 'anchor';
     pattern_name: string | null;
@@ -707,7 +899,9 @@ async function fetchPatternBoard(
     baseline_share: number | null;
     recent_lift: number | null;
     anchor_gap: number | null;
+    match_count: number | null;
     latest_business_day: string | null;
+    latest_payload: Record<string, unknown> | null;
   }>();
 
   for (const row of (data || []) as Array<Record<string, unknown>>) {
@@ -719,6 +913,7 @@ async function fetchPatternBoard(
     const modifierValue = nullableString(payload.modifier_value);
     const key = `${signalCode}:${patternName || 'unknown'}:${modifierKey || ''}:${modifierValue || ''}`;
     const current = aggregate.get(key) || {
+      firewatch_id: key,
       signal_code: signalCode,
       context,
       pattern_name: patternName,
@@ -730,7 +925,9 @@ async function fetchPatternBoard(
       baseline_share: null,
       recent_lift: null,
       anchor_gap: null,
+      match_count: null,
       latest_business_day: null,
+      latest_payload: null,
     };
 
     current.trigger_count += 1;
@@ -757,16 +954,69 @@ async function fetchPatternBoard(
       current.anchor_gap = current.anchor_gap == null ? anchorGap : Math.max(current.anchor_gap, anchorGap);
     }
 
+    const matchCount = nullableNumber(payload.match_count);
+    if (matchCount != null) {
+      current.match_count = current.match_count == null ? matchCount : Math.max(current.match_count, matchCount);
+    }
+
     const businessDay = nullableString(row.business_date_ist);
     if (businessDay && (!current.latest_business_day || businessDay > current.latest_business_day)) {
       current.latest_business_day = businessDay;
+      current.latest_payload = payload;
     }
+    if (!current.latest_payload) current.latest_payload = payload;
 
     aggregate.set(key, current);
   }
 
-  return Array.from(aggregate.values())
-    .map((entry) => ({
+  const ranked = Array.from(aggregate.values())
+    .sort((a, b) => {
+      const dayDiff = (b.latest_business_day || '').localeCompare(a.latest_business_day || '');
+      if (dayDiff !== 0) return dayDiff;
+      const triggerDiff = b.trigger_count - a.trigger_count;
+      if (triggerDiff !== 0) return triggerDiff;
+      return (a.avg_count > 0 ? a.avg_total / a.avg_count : 999) - (b.avg_count > 0 ? b.avg_total / b.avg_count : 999);
+    })
+    .slice(0, PATTERN_BOARD_LIMIT);
+
+  // Collect support post keys across all top entries (use required_cues priority)
+  const supportKeysByEntry = new Map<string, string[]>();
+  const allKeys: string[] = [];
+  for (const entry of ranked) {
+    const payload = entry.latest_payload || {};
+    const supportKeys = arrayValue<unknown>(payload.support_post_keys)
+      .map((value) => nullableString(value))
+      .filter((value): value is string => Boolean(value))
+      .slice(0, PATTERN_BOARD_SUPPORT_MAX);
+    supportKeysByEntry.set(entry.firewatch_id, supportKeys);
+    for (const key of supportKeys) allKeys.push(key);
+  }
+
+  const supportPreviewByKey = await hydratePatternSupportPreviews(sb, allKeys);
+
+  return ranked.map((entry) => {
+    const payload = entry.latest_payload || {};
+    const cuesRaw = arrayValue<Record<string, unknown>>(payload.required_cues).length > 0
+      ? arrayValue<Record<string, unknown>>(payload.required_cues)
+      : arrayValue<Record<string, unknown>>(payload.cues);
+    const cues: PatternBoardCue[] = cuesRaw
+      .map((cue) => {
+        const cueRecord = recordValue(cue);
+        const k = nullableString(cueRecord.key);
+        const v = nullableString(cueRecord.value);
+        const label = getPatternCueLabel(k, v);
+        return label;
+      })
+      .filter((label): label is string => Boolean(label))
+      .slice(0, PATTERN_BOARD_CUE_MAX);
+
+    const supportKeys = supportKeysByEntry.get(entry.firewatch_id) || [];
+    const support_posts: PatternBoardSupport[] = supportKeys
+      .map((key) => supportPreviewByKey.get(key))
+      .filter((preview): preview is PatternBoardSupport => Boolean(preview));
+
+    return {
+      firewatch_id: entry.firewatch_id,
       signal_code: entry.signal_code,
       context: entry.context,
       pattern_name: entry.pattern_name,
@@ -777,16 +1027,12 @@ async function fetchPatternBoard(
       baseline_share: entry.baseline_share,
       recent_lift: entry.recent_lift,
       anchor_gap: entry.anchor_gap,
+      match_count: entry.match_count,
       latest_business_day: entry.latest_business_day,
-    }))
-    .sort((a, b) => {
-      const dayDiff = (b.latest_business_day || '').localeCompare(a.latest_business_day || '');
-      if (dayDiff !== 0) return dayDiff;
-      const triggerDiff = b.trigger_count - a.trigger_count;
-      if (triggerDiff !== 0) return triggerDiff;
-      return (a.avg_hot_percentile ?? 999) - (b.avg_hot_percentile ?? 999);
-    })
-    .slice(0, 6);
+      cues,
+      support_posts,
+    };
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -818,7 +1064,7 @@ export async function GET(request: NextRequest) {
     }
 
     const payload = await withServerRouteCache(
-      `feed:dashboard:${user.id}:${feedId}:${windowParam}:${handle || 'all'}`,
+      `feed:dashboard:${DASHBOARD_ROUTE_CACHE_VERSION}:${user.id}:${feedId}:${windowParam}:${handle || 'all'}`,
       DASHBOARD_ROUTE_TTL_MS,
       async () => {
         const sb = adminClient();
@@ -845,7 +1091,7 @@ export async function GET(request: NextRequest) {
         const scopedFeeders = await fetchScopedFeeders(sb, feedId, handle);
         const scopedFeederIds = scopedFeeders.map((row) => row.id);
 
-        const [patternBoard, heatmapDaily, killzoneDays, postingPattern] = await Promise.all([
+        const [patternBoard, heatmapDaily, killzoneDays, postingPattern, engagementBreakdown] = await Promise.all([
           fetchPatternBoard(
             sb,
             feedId,
@@ -868,7 +1114,25 @@ export async function GET(request: NextRequest) {
             windowStartIst,
             windowEndIst,
           ),
+          fetchEngagementBreakdown(
+            sb,
+            scopedFeederIds,
+            windowStartIst,
+            windowEndIst,
+          ),
         ]);
+
+        const scatterPoints = arrayValue(dashboard.scatter_points).map((value) => {
+          const row = recordValue(value);
+          const postKey = nullableString(row.post_key);
+          const mediaType = postKey
+            ? engagementBreakdown.mediaTypeByPostKey.get(postKey) ?? normalizeDashboardMediaType(nullableString(row.media_type))
+            : normalizeDashboardMediaType(nullableString(row.media_type));
+          return {
+            ...row,
+            media_type: mediaType,
+          };
+        });
 
         return {
           dashboard: {
@@ -877,6 +1141,8 @@ export async function GET(request: NextRequest) {
             killzone_days: killzoneDays,
             pattern_board: patternBoard,
             posting_pattern: postingPattern,
+            scatter_points: scatterPoints,
+            engagement_averages: engagementBreakdown.averages,
           },
         };
       },

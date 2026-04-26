@@ -55,6 +55,9 @@ type RecentJob = {
   lastError: string | null;
 };
 
+const FIRE_DROP_READY_BUFFER_MS = 3 * 60 * 1000;
+const FIRE_DROP_LIVE_HOLD_MS = 6 * 60 * 1000;
+
 function toIstDayKey(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
@@ -343,15 +346,14 @@ export async function GET() {
         });
     }
 
-    function nextFireSlotIso(value: string): string | null {
-      const bucketStart = istHourBucketStartIso(value);
-      if (!bucketStart) return null;
-      return new Date(new Date(bucketStart).getTime() + 60 * 60 * 1000).toISOString();
+    function fireReadyAtIso(value: string): string | null {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      return new Date(date.getTime() + FIRE_DROP_READY_BUFFER_MS).toISOString();
     }
 
-    function currentFireSlotFloor(now = new Date()): number {
-      const currentHourStart = istHourBucketStartIso(now.toISOString());
-      return currentHourStart ? new Date(currentHourStart).getTime() : now.getTime();
+    function fireDisplayFloor(now = new Date()): number {
+      return now.getTime() - FIRE_DROP_LIVE_HOLD_MS;
     }
 
     function isDisplayableQueuedRun(run: UnifiedRun, floorTs: number): boolean {
@@ -373,7 +375,7 @@ export async function GET() {
 
     if (feederIds.length > 0) {
       const RUN_LIMIT = 250; // keep enough rows to summarize Fire-facing timing accurately
-      const queueFloorTs = currentFireSlotFloor();
+      const queueFloorTs = fireDisplayFloor();
       const currentFireDay = todayIstDayKey();
 
       // Get all post_keys for this user's feeders to scope checkpoint queries
@@ -409,7 +411,7 @@ export async function GET() {
 
       const normalizeQueuedCpJob = (j: CheckpointJobRow): UnifiedRun => {
         const post = postMap.get(j.post_key);
-        const fireSlot = nextFireSlotIso(j.next_run_at || j.updated_at) || j.next_run_at || j.updated_at;
+        const fireReadyAt = fireReadyAtIso(j.next_run_at || j.updated_at) || j.next_run_at || j.updated_at;
         return {
           id: `cp-${j.id}`,
           kind: 'CHECKPOINT',
@@ -419,7 +421,7 @@ export async function GET() {
           mediaType: post?.media_type || undefined,
           handle: post ? (feederMap.get(post.feeder_id) || undefined) : undefined,
           status: j.status,
-          scheduledAt: fireSlot,
+          scheduledAt: fireReadyAt,
         };
       };
 
