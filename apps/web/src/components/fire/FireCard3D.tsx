@@ -441,7 +441,7 @@ export function FireCard3D({
         }
       }}
       className={isDesktopCard
-        ? 'fm-fire-card-shell relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left'
+        ? 'fm-fire-card-shell relative block w-full aspect-[5/6] 2xl:aspect-[11/14] overflow-hidden rounded-[20px] 2xl:rounded-[24px] text-left'
         : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:rounded-[32px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
@@ -568,7 +568,7 @@ export function FireCard3D({
       )}
 
       <motion.div
-        className={isDesktopCard ? 'absolute left-4 top-4 z-10' : 'absolute left-4 top-8 z-10 md:top-4'}
+        className={isDesktopCard ? 'absolute left-3 top-3 z-10 2xl:left-4 2xl:top-4' : 'absolute left-4 top-8 z-10 md:top-4'}
         style={{ marginTop: 'var(--pwa-top-pad)' }}
         animate={{
           opacity: isLocked ? 0.24 : !isDesktopCard && isOpen ? 0.08 : 1,
@@ -578,7 +578,7 @@ export function FireCard3D({
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={isDesktopCard
-          ? 'text-[clamp(50px,4.6vw,82px)] font-black leading-[0.82] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'
+          ? 'text-[clamp(46px,5vw,92px)] font-black leading-[0.82] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'
           : 'text-[clamp(108px,30vw,210px)] font-black leading-[0.76] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'}>
           {item.surfacePercentile == null ? '--' : Math.round(item.surfacePercentile)}
           <span className="ml-1 align-top text-[0.42em]">%</span>
@@ -587,7 +587,7 @@ export function FireCard3D({
 
       {(!hideSignalChrome || showAutoplayToggle) && (
         <motion.div
-          className={isDesktopCard ? 'absolute right-4 top-4 z-10' : 'absolute right-4 top-8 z-10 md:top-4'}
+          className={isDesktopCard ? 'absolute right-3 top-3 z-10 2xl:right-4 2xl:top-4' : 'absolute right-4 top-8 z-10 md:top-4'}
           style={{ marginTop: 'var(--pwa-top-pad)' }}
           animate={{
             opacity: isLocked ? 0.4 : !isDesktopCard && isOpen ? 0.24 : 1,
@@ -598,7 +598,7 @@ export function FireCard3D({
           <div className="flex flex-col items-end gap-1.5">
             {!hideSignalChrome ? (
               <div className={isDesktopCard
-                ? 'fm-fire-card-pill rounded-full px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88'
+                ? 'fm-fire-card-pill rounded-full px-2.5 py-1 text-[7.5px] font-black uppercase tracking-[0.14em] text-white/88 2xl:px-3 2xl:py-1.5 2xl:text-[8px] 2xl:tracking-[0.16em]'
                 : 'rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]'}
               >
                 {signalContextLabel}
@@ -648,7 +648,7 @@ export function FireCard3D({
 
       <motion.div
         className={isDesktopCard
-          ? 'absolute inset-x-3 bottom-3.5 z-10'
+          ? 'absolute inset-x-2.5 bottom-2.5 z-10 2xl:inset-x-3 2xl:bottom-3.5'
           : 'absolute inset-x-3 bottom-8 z-10 md:bottom-6'}
         animate={{
           opacity: isLocked ? 0.14 : !isDesktopCard && isOpen ? 0.1 : 1,
@@ -657,31 +657,37 @@ export function FireCard3D({
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={isDesktopCard
-          ? 'fm-fire-card-panel rounded-[14px] px-3 py-2 text-white/92'
+          ? 'fm-fire-card-panel rounded-[12px] px-2.5 py-1.5 text-white/92 2xl:rounded-[14px] 2xl:px-3 2xl:py-2'
           : 'rounded-[14px] border border-white/38 bg-white/14 px-3 py-2.5 text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className={isDesktopCard
+            ? 'flex items-center justify-between gap-1.5 2xl:gap-2'
+            : 'flex items-center justify-between gap-2'}
+          >
             <span className={isDesktopCard
-              ? 'truncate text-[9px] font-black uppercase tracking-[0.1em] text-white/90'
+              ? 'truncate text-[8.5px] font-black uppercase tracking-[0.08em] text-white/90 2xl:text-[9px] 2xl:tracking-[0.1em]'
               : 'truncate text-[10px] font-black uppercase tracking-[0.1em] text-white/92'}
             >
               {lockedHandle}
             </span>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className={isDesktopCard
+              ? 'flex shrink-0 items-center gap-1 2xl:gap-2'
+              : 'flex shrink-0 items-center gap-2'}
+            >
               <span className={isDesktopCard
-                ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
+                ? 'rounded-[5px] bg-white/10 px-1 py-0.5 text-[7.5px] font-black uppercase tracking-[0.08em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.1em] 2xl:text-[8px]'
                 : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
               >
                 {lockedMediaType}
               </span>
               <span className={isDesktopCard
-                ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
+                ? 'rounded-[5px] bg-white/10 px-1 py-0.5 text-[7.5px] font-black uppercase tracking-[0.08em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.1em] 2xl:text-[8px]'
                 : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
               >
                 {heroMetricStamp} {bestMetric.toUpperCase()}
               </span>
               <span className={isDesktopCard
-                ? 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/72'
+                ? 'rounded-[5px] bg-white/10 px-1 py-0.5 text-[7.5px] font-black uppercase tracking-[0.08em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.1em] 2xl:text-[8px]'
                 : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
               >
                 {cp}

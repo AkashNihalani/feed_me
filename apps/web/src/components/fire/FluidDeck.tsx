@@ -759,7 +759,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
           <motion.div
             layout
             transition={{ layout: GRID_LAYOUT_SPRING }}
-            className="grid grid-cols-5 gap-[14px] xl:gap-4 2xl:grid-cols-6"
+            className="grid grid-cols-5 gap-3 xl:gap-[14px] 2xl:grid-cols-6 2xl:gap-5"
           >
             <AnimatePresence mode="popLayout">
               {cards.map((card, index) => {
