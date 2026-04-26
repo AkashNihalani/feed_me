@@ -13,7 +13,9 @@ interface Segment {
 
 function formatMediaLabel(value: string | null | undefined): string {
   const normalized = (value || '').trim().toLowerCase();
-  if (normalized === 'sidecar' || normalized === 'sidcar') return 'Carousel';
+  if (normalized === 'sidecar' || normalized === 'sidcar' || normalized === 'sidecar/carousel') return 'Carousel';
+  if (normalized === 'reel' || normalized === 'video') return 'Reel';
+  if (normalized === 'photo') return 'Image';
   if (!normalized) return 'Unknown';
   return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -167,14 +169,14 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     className="flex flex-col items-center"
                   >
                     <span className="max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.11em] text-black/40 dark:text-white/35">
-                      {hasData ? 'Posts Tracked' : 'Awaiting Checkpoints'}
+                      {hasData ? 'Posts' : 'Awaiting Posts'}
                     </span>
                     <span className="text-[32px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
                       {totalPostCount}
                     </span>
                     {!hasData ? (
                       <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/35 dark:text-white/30">
-                        mix appears after first checkpoint lands
+                        mix appears after posts land
                       </span>
                     ) : null}
                   </motion.div>
@@ -223,7 +225,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
               );
             }) : (
               <div className="rounded-[16px] border border-black/6 bg-black/[0.025] px-3 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-black/42 dark:border-white/8 dark:bg-white/[0.03] dark:text-white/38">
-                No tracked media mix yet. The first checkpoint batch will populate this panel.
+                No media mix yet. Posts in this window will populate this panel.
               </div>
             )}
           </div>

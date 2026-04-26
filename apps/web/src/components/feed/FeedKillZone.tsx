@@ -22,6 +22,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function dayPerformanceScore(row: Pick<KillzoneDayPoint, 'avg_percentile_performance'>): number {
+  const percentile = row.avg_percentile_performance;
+  if (percentile == null || !Number.isFinite(percentile)) return Number.NEGATIVE_INFINITY;
+  return 101 - clamp(percentile, 1, 100);
+}
+
 export default function FeedKillZone({
   hours,
   days,
@@ -81,9 +87,8 @@ export default function FeedKillZone({
   const bestDay = [...dayRows]
     .filter((row) => row.avg_percentile_performance != null || row.post_count > 0)
     .sort((a, b) => {
-      const aPercentile = a.avg_percentile_performance ?? 999;
-      const bPercentile = b.avg_percentile_performance ?? 999;
-      if (aPercentile !== bPercentile) return aPercentile - bPercentile;
+      const qualityDiff = dayPerformanceScore(b) - dayPerformanceScore(a);
+      if (qualityDiff !== 0) return qualityDiff;
       return b.post_count - a.post_count;
     })[0];
   const dayTopPercentile = bestDay?.avg_percentile_performance ?? null;
@@ -188,7 +193,7 @@ export default function FeedKillZone({
           <div className="ml-auto flex items-center gap-1.5">
             <div className="fm-depth-chip rounded-[8px] px-2 py-1 text-right">
               <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:text-white/30">
-                {dayMode ? 'Avg' : 'Share'}
+                {dayMode ? 'Best' : 'Share'}
               </div>
               <div className="text-[14px] font-black leading-none text-[#E11D48] fm-depth-title dark:text-[#FB7185]">
                 {dayMode ? topLabel(dayTopPercentile) : arcShare == null ? '--' : `${arcShare}%`}

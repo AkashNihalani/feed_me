@@ -535,12 +535,6 @@ type FirePatternSummary = {
   anchor_support_posts?: FirePatternSupportPreview[] | null;
 };
 
-type FirePatternGroup = {
-  primaryAlert: FirePatternSummary | null;
-  summaries: FirePatternSummary[];
-  summaryBody: string | null;
-};
-
 type FireMetricKey = 'views' | 'likes' | 'comments';
 
 function metricPreferenceOrder(mediaType: string | null): FireMetricKey[] {
@@ -789,59 +783,6 @@ function summarizePatternAlertRow(
     support_posts: resolvePreviews(payload.support_post_keys),
     anchor_support_posts: resolvePreviews(payload.anchor_support_post_keys),
   } satisfies FirePatternSummary;
-}
-
-function buildPatternGroup(
-  rows: FirePatternAlertRow[],
-  supportPreviewByKey: Map<string, FirePatternSupportPreview>,
-): FirePatternGroup {
-  if (rows.length === 0) {
-    return { primaryAlert: null, summaries: [], summaryBody: null };
-  }
-
-  const deduped = new Map<string, FirePatternAlertRow>();
-  for (const row of sortPatternAlertRows(rows)) {
-    const payload = recordValue(row.signal_payload);
-    const signatureKey = `${nullableString(payload.mechanic)}:${nullableString(payload.modifier_key)}:${nullableString(payload.modifier_value)}`;
-    const key = `${nullableString(row.signal_code) || 'UNKNOWN'}:${nullableString(row.context) || 'own'}:${signatureKey}`;
-    if (!deduped.has(key)) deduped.set(key, row);
-  }
-
-  const sorted = sortPatternAlertRows(Array.from(deduped.values()));
-  const summaries = sorted.map((row) => summarizePatternAlertRow(row, supportPreviewByKey));
-  const primaryAlert = summaries[0] ?? null;
-
-  if (!primaryAlert) {
-    return { primaryAlert: null, summaries, summaryBody: null };
-  }
-
-  const primaryPatternLabel = getPatternMechanicLabel(primaryAlert.pattern_name) || humanizeSignalCode(primaryAlert.signal_code);
-  const statBits = [
-    primaryAlert.match_count != null ? `${Math.round(primaryAlert.match_count)} hot posts` : null,
-    primaryAlert.feeders_count != null && primaryAlert.feeders_count > 1 ? `${Math.round(primaryAlert.feeders_count)} feeders` : null,
-    primaryAlert.avg_hot_percentile != null ? `avg top ${Math.round(primaryAlert.avg_hot_percentile)}%` : null,
-    primaryAlert.anchor_gap != null ? `gap +${Math.round(primaryAlert.anchor_gap)} pts` : null,
-  ].filter(Boolean);
-
-  if (summaries.length === 1) {
-    return {
-      primaryAlert,
-      summaries,
-      summaryBody: [primaryPatternLabel, ...statBits].filter(Boolean).join(' · '),
-    };
-  }
-
-  const preview = summaries
-    .map((summary) => getPatternMechanicLabel(summary.pattern_name) || humanizeSignalCode(summary.signal_code))
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(' · ');
-
-  return {
-    primaryAlert,
-    summaries,
-    summaryBody: `${summaries.length} patterns active · ${preview}`,
-  };
 }
 
 async function fetchWarmupSummary(
@@ -1327,69 +1268,6 @@ async function fetchFeederHourBaselineRows(
   return (data || []) as FireFeederHourBaselineRow[];
 }
 
-async function fetchPatternRowsForPostKeys(
-  sb: { from: ReturnType<typeof createClient>['from'] },
-  effectiveFeedIds: number[],
-  effectiveFeederIds: number[],
-  day: string,
-  postKeys: string[],
-): Promise<FirePatternAlertRow[]> {
-  if (effectiveFeedIds.length === 0 || effectiveFeederIds.length === 0 || postKeys.length === 0) return [];
-
-  const rows: FirePatternAlertRow[] = [];
-  const baseFields = [
-    'id',
-    'dedupe_key',
-    'feed_id',
-    'feeder_id',
-    'post_key',
-    'checkpoint',
-    'business_date_ist',
-    'signal_code',
-    'context',
-    'alert_type',
-    'status',
-    'metric_key',
-    'metric_value',
-    'surface_percentile',
-    'surface_delta',
-    'body',
-    'created_at',
-    'updated_at',
-  ];
-
-  const fetchChunk = async (chunk: string[], payloadField: string) => sb
-    .from('fire_alerts')
-    .select([...baseFields, payloadField].join(','))
-    .in('feed_id', effectiveFeedIds)
-    .in('feeder_id', effectiveFeederIds)
-    .eq('business_date_ist', day)
-    .in('post_key', chunk)
-    .in('signal_code', ['OWN_PATTERN', 'CROSS_PATTERN', 'ANCHOR_PATTERN'])
-    .not('status', 'in', '("dropped","error","archived")');
-
-  for (let start = 0; start < postKeys.length; start += POST_KEY_CHUNK_SIZE) {
-    const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
-    let { data, error } = await fetchChunk(chunk, 'signal_payload');
-
-    if (error && isMissingColumnError(error, 'signal_payload')) {
-      const fallback = await fetchChunk(chunk, 'signal_payload:pattern_payload');
-      data = fallback.data;
-      error = fallback.error;
-    }
-
-    if (error && isMissingColumnError(error, 'pattern_payload')) {
-      console.warn('[/api/fire] Pattern payload column unavailable; continuing without pattern alerts.');
-      continue;
-    }
-
-    if (error) throw error;
-    rows.push(...((data || []) as FirePatternAlertRow[]));
-  }
-
-  return rows;
-}
-
 async function fetchPatternSupportPreviews(
   sb: { from: ReturnType<typeof createClient>['from'] },
   postKeys: string[],
@@ -1662,30 +1540,6 @@ function buildFirewatchRows(options: {
       has_intelligence: true,
       hide_signal_chrome: false,
     });
-  }
-
-  return rows;
-}
-
-async function fetchRecentTrackingMetricRows(
-  sb: { from: ReturnType<typeof createClient>['from'] },
-  postKeys: string[],
-  startIstDayKey: string,
-): Promise<FirePostMetricRow[]> {
-  if (postKeys.length === 0) return [];
-
-  const rows: FirePostMetricRow[] = [];
-  for (let start = 0; start < postKeys.length; start += POST_KEY_CHUNK_SIZE) {
-    const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
-    const { data, error } = await sb
-      .from('post_metrics')
-      .select('post_key,checkpoint,business_date_ist,percentile_performance')
-      .in('post_key', chunk)
-      .in('checkpoint', [...DEFAULT_TRACKING_CHECKPOINTS])
-      .gte('business_date_ist', startIstDayKey);
-
-    if (error) throw error;
-    rows.push(...((data || []) as FirePostMetricRow[]));
   }
 
   return rows;

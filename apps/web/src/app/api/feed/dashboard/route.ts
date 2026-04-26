@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v2';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v3';
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -461,6 +461,17 @@ async function fetchPostingPattern(
     rhythm_days: buildRhythmDays(currentRows, currentStartDate, currentEndDate),
     feeder_rows: feederRows,
   };
+}
+
+function buildApexMixFromPostingPattern(pattern: Awaited<ReturnType<typeof fetchPostingPattern>>) {
+  if (!pattern?.media_mix?.length) return null;
+  const total = pattern.media_mix.reduce((sum, row) => sum + Math.max(0, Number(row.count) || 0), 0);
+  if (total <= 0) return null;
+  return pattern.media_mix.map((row) => ({
+    media_type: row.type,
+    post_count: row.count,
+    share: Number((Math.max(0, Number(row.count) || 0) / total).toFixed(4)),
+  }));
 }
 
 async function fetchRollingHeatmap(
@@ -1133,10 +1144,12 @@ export async function GET(request: NextRequest) {
             media_type: mediaType,
           };
         });
+        const apexMix = buildApexMixFromPostingPattern(postingPattern) ?? arrayValue(dashboard.apex_mix);
 
         return {
           dashboard: {
             ...dashboard,
+            apex_mix: apexMix,
             heatmap_daily: heatmapDaily,
             killzone_days: killzoneDays,
             pattern_board: patternBoard,

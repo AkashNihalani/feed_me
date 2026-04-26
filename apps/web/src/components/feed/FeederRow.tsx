@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- Feeder avatars use direct dynamic profile URLs. */
+
 import { motion } from 'framer-motion';
 import { Crown, ExternalLink, Target, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';

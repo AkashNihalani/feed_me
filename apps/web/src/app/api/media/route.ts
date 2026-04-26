@@ -93,7 +93,6 @@ async function fetchStoredAsset(postKey: string, assetRole: string): Promise<Res
       if (row.purge_after && new Date(row.purge_after).getTime() <= Date.now()) {
         continue;
       }
-      const sourceUrl = typeof row.source_url === 'string' ? row.source_url.trim() : '';
       const publicUrl = resolvePublicMediaUrl(row);
 
       if (row.storage_provider === 'r2' && publicUrl) {

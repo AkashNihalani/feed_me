@@ -139,7 +139,6 @@ export function FireCard3D({
   const payload = asRec(item.payload);
   const metrics = asRec(payload.metrics);
   const timing = asRec(payload.timing);
-  const trajectory = asRec(payload.trajectory);
   const meta = asRec(payload.meta);
 
   const bestMetric = resolveBestMetricFromPayload(
@@ -168,26 +167,16 @@ export function FireCard3D({
   const hourPct = num(timing.hour_percentile);
   const hourMult = num(timing.hour_multiple);
 
-  const d1 = num(trajectory.d1);
-  const d3 = num(trajectory.d3);
-  const d7 = num(trajectory.d7);
-  const rawDelta = num(trajectory.delta) ?? item.trajectoryDeltaPercentile;
-  const trajectorySeries = [d1, d3, d7];
-  const firstTraj = trajectorySeries.find((v) => v != null) ?? null;
-  const lastTraj = [...trajectorySeries].reverse().find((v) => v != null) ?? null;
-  const computedDelta =
-    firstTraj != null && lastTraj != null && trajectorySeries.filter((v) => v != null).length > 1
-      ? lastTraj - firstTraj
-      : null;
-  const delta = computedDelta ?? rawDelta;
+  const delta = item.trajectoryDeltaPercentile;
+  const currentTrajectory = item.surfacePercentile;
 
-  // Lower percentile is better. Negative delta means improvement.
-  const isPositiveShift = delta != null && delta < 0;
+  // Lower Top % is better; the API delta is first checkpoint minus current checkpoint.
+  const isPositiveShift = delta != null && delta > 0;
   const displayDeltaStr = delta == null
     ? '--'
     : delta === 0
       ? '0'
-      : delta < 0
+      : delta > 0
         ? `+${Math.abs(Math.round(delta))}`
         : `-${Math.abs(Math.round(delta))}`;
 
@@ -978,11 +967,11 @@ export function FireCard3D({
                         <div className="flex items-center justify-between">
                           <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Trajectory</div>
                           <div className={`text-[8px] sm:text-[9px] font-bold uppercase tracking-[0.12em] ${
-                            delta != null && delta < 0 ? 'text-emerald-600 dark:text-[#E11D48]'
-                            : delta != null && delta > 0 ? 'text-orange-500 dark:text-[#ff8a65]'
+                            delta != null && delta > 0 ? 'text-emerald-600 dark:text-[#E11D48]'
+                            : delta != null && delta < 0 ? 'text-orange-500 dark:text-[#ff8a65]'
                             : 'text-foreground/40'
                           }`}>
-                            {delta == null || Math.round(delta) === 0 ? 'Flat' : delta < 0 ? 'Improving' : 'Cooling'}
+                            {delta == null || Math.round(delta) === 0 ? 'Flat' : delta > 0 ? 'Improving' : 'Cooling'}
                           </div>
                         </div>
                         <div className="mt-1.5 flex items-end justify-between gap-3">
@@ -998,7 +987,7 @@ export function FireCard3D({
                           </div>
                           <div className="text-right">
                             <div className="text-[16px] sm:text-[18px] font-black leading-none tracking-[-0.03em] text-foreground/90">
-                              {lastTraj == null ? '--' : `Top ${Math.round(lastTraj)}%`}
+                              {currentTrajectory == null ? '--' : `Top ${Math.round(currentTrajectory)}%`}
                             </div>
                             <div className="mt-0.5 text-[8px] sm:text-[9px] font-medium text-foreground/40">
                               Current position

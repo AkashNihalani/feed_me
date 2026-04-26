@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- Fire media previews use direct dynamic Instagram/R2 URLs. */
+
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -112,15 +114,6 @@ function signedShift(delta: number | null): string {
 function shiftTone(delta: number | null): { label: string } {
   if (delta == null || !Number.isFinite(delta) || Math.round(delta) === 0) return { label: 'Flat' };
   return delta > 0 ? { label: 'Improving' } : { label: 'Cooling' };
-}
-
-function latestTrajectoryPoint(points: Array<number | null>): number | null {
-  for (let index = points.length - 1; index >= 0; index -= 1) {
-    if (points[index] != null && Number.isFinite(points[index] as number)) {
-      return points[index];
-    }
-  }
-  return null;
 }
 
 function firstTrajectoryPoint(points: Array<number | null>): number | null {
@@ -295,6 +288,7 @@ export default function FireIntelligenceDialog({
     if (!item) return null;
     const payload = asRecord(item.payload);
     const metrics = asRecord(payload.metrics);
+    const position = asRecord(payload.position);
     const timing = asRecord(payload.timing);
     const trajectory = asRecord(payload.trajectory);
     const meta = asRecord(payload.meta);
@@ -317,7 +311,10 @@ export default function FireIntelligenceDialog({
     const d21 = num(trajectory.d21);
     const delta = num(trajectory.delta) ?? item.trajectoryDeltaPercentile;
     const trajectoryPoints = [d1, d3, d7, d21];
-    const currentTrajectory = latestTrajectoryPoint(trajectoryPoints) ?? item.surfacePercentile;
+    const currentTrajectory =
+      item.surfacePercentile ??
+      num(position.overall_percentile) ??
+      num(position.percentile);
     const firstTrajectory = firstTrajectoryPoint(trajectoryPoints);
     const supportMetrics = orderedSupportMetricsFromPayload(
       metrics,
