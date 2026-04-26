@@ -390,25 +390,38 @@ def _build_carousel_parts(
     fetch_headers: dict[str, str] | None = None,
     max_images: int = 20,
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """Fetch and encode carousel slide images for the configured provider."""
+    """Fetch and encode every carousel slide for the configured provider."""
     parts: list[dict[str, Any]] = []
     expected = len(carousel_urls[:max_images])
     fetched = 0
     for url in carousel_urls[:max_images]:
         data = _fetch_bytes(url, timeout=8, headers=fetch_headers)
-        if not data or not data[1].startswith("image/"):
+        if not data:
             continue
-        fetched += 1
+        payload, mime_type = data
 
-        if provider == "openrouter":
-            parts.append(_build_openrouter_image_part(data[0], data[1]))
-        else:
-            parts.append({
-                "inline_data": {
-                    "mime_type": data[1],
-                    "data": base64.b64encode(data[0]).decode("ascii"),
+        part: dict[str, Any] | None = None
+        if mime_type.startswith("image/"):
+            if provider == "openrouter":
+                part = _build_openrouter_image_part(payload, mime_type)
+            else:
+                part = {
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": base64.b64encode(payload).decode("ascii"),
+                    }
                 }
-            })
+        elif mime_type.startswith("video/"):
+            if provider == "openrouter":
+                part = _build_openrouter_video_part(payload, mime_type)
+            else:
+                part = _build_gemini_video_part(payload, mime_type)
+
+        if not part:
+            continue
+
+        fetched += 1
+        parts.append(part)
     return parts, expected, fetched
 
 
