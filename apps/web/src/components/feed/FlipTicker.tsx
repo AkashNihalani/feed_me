@@ -21,12 +21,14 @@ interface FlipTickerProps {
 
 /* ── Timing ── */
 const DESKTOP_CYCLE_MS = 10_000;
-const MOBILE_PHASE_MS = 3_000;   // 3s handle + 3s metrics = 6s cycle
-const STAGGER_S = 0.22;          // seconds between each cascading value
+const MOBILE_PHASE_MS = 4_500;   // 4.5s handle + 4.5s metrics = 9s cycle (slower, readable)
+const STAGGER_S = 0.22;          // seconds between each cascading value (desktop)
+const MOBILE_STAGGER_S = 0.18;   // mobile cascade between chips
 
 /* ── Easing — heavy, deliberate, luxury ── */
 const LUXURY_EASE = [0.16, 0.85, 0.1, 1] as const;
 const FLIP_DURATION = 1.4;
+const MOBILE_FLIP_DURATION = 1.0; // tighter arc for the smaller mobile box
 
 function compactSigned(value: number) {
   const abs = Math.abs(value);
@@ -230,11 +232,11 @@ function MobileTicker({ items, className }: FlipTickerProps) {
           <motion.div
             key={`mh-${item.id}-${index}`}
             className="flex w-full items-center justify-center px-4"
-            initial={{ rotateX: 80, opacity: 0, filter: 'blur(2px)' }}
-            animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
-            exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
-            transition={{ duration: FLIP_DURATION, ease: LUXURY_EASE }}
-            style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
+            initial={{ rotateX: 60, opacity: 0 }}
+            animate={{ rotateX: 0, opacity: 1 }}
+            exit={{ rotateX: -60, opacity: 0 }}
+            transition={{ duration: MOBILE_FLIP_DURATION, ease: LUXURY_EASE }}
+            style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden', willChange: 'transform, opacity' }}
           >
             <span className="text-[14px] font-black uppercase tracking-[0.16em] text-black/60 dark:text-white/55 sm:text-[15px]">
               {item.handle}
@@ -244,24 +246,33 @@ function MobileTicker({ items, className }: FlipTickerProps) {
           <motion.div
             key={`mm-${item.id}-${index}`}
             className="flex w-full items-center justify-evenly px-3"
-            initial={{ rotateX: 80, opacity: 0, filter: 'blur(2px)' }}
-            animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
-            exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
-            transition={{ duration: FLIP_DURATION, ease: LUXURY_EASE }}
-            style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.32, ease: LUXURY_EASE }}
+            style={{ perspective: 800 }}
           >
-            <div className="flex items-center gap-1.5">
-              <Heart size={14} strokeWidth={2.5} className="text-black/35 dark:text-white/30" />
-              <span className="text-[13px]"><ValueBadge value={item.likesDelta} /></span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <MessageCircle size={14} strokeWidth={2.5} className="text-black/35 dark:text-white/30" />
-              <span className="text-[13px]"><ValueBadge value={item.commentsDelta} /></span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Eye size={14} strokeWidth={2.5} className="text-black/35 dark:text-white/30" />
-              <span className="text-[13px]"><ValueBadge value={item.viewsDelta} /></span>
-            </div>
+            {[
+              { icon: Heart, value: item.likesDelta },
+              { icon: MessageCircle, value: item.commentsDelta },
+              { icon: Eye, value: item.viewsDelta },
+            ].map(({ icon: Icon, value }, i) => (
+              <motion.div
+                key={`chip-${i}`}
+                className="flex items-center gap-1.5"
+                initial={{ rotateX: 60, opacity: 0 }}
+                animate={{ rotateX: 0, opacity: 1 }}
+                transition={{
+                  duration: MOBILE_FLIP_DURATION,
+                  ease: LUXURY_EASE,
+                  delay: i * MOBILE_STAGGER_S,
+                }}
+                style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden', willChange: 'transform, opacity' }}
+              >
+                <Icon size={14} strokeWidth={2.5} className="text-black/35 dark:text-white/30" />
+                <span className="text-[13px]"><ValueBadge value={value} /></span>
+              </motion.div>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>

@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Target, X } from 'lucide-react';
+import { Clock, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
@@ -532,12 +532,12 @@ function FeedPageContent() {
                         </motion.button>
                       )}
                     </AnimatePresence>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <h1 className={cn(
                         'font-black leading-none text-black dark:text-white fm-depth-title transition-[font-size,letter-spacing] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
                         view === 'list'
                           ? 'text-[30px] tracking-[0.14em] sm:text-[38px]'
-                          : 'truncate text-[28px] tracking-[-0.04em] sm:text-[34px]'
+                          : 'truncate text-[26px] tracking-[-0.04em] sm:text-[32px]'
                       )}>
                         {view === 'list' ? 'FEED' : shortTitle}
                       </h1>
@@ -551,28 +551,29 @@ function FeedPageContent() {
                         <motion.button
                           type="button"
                           whileTap={{ scale: 0.94 }}
+                          aria-label={`Sort by ${sortMode}`}
                           onClick={() => { play('snapLock'); setSortMode((current) => current === 'recent' ? 'name' : current === 'name' ? 'feeders' : 'recent'); }}
-                          className="relative flex items-center gap-1.5 overflow-hidden rounded-[14px] px-3 py-2 bg-white/60 border border-white/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:bg-white/[0.06] dark:border-white/10 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                          className="relative flex h-[36px] w-[36px] items-center justify-center overflow-hidden rounded-[14px] bg-white/60 border border-white/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:bg-white/[0.06] dark:border-white/10 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset] text-black/55 dark:text-white/50"
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-black/50 dark:text-white/50">
-                            <line x1="4" x2="20" y1="8" y2="8" /><line x1="4" x2="16" y1="14" y2="14" /><line x1="4" x2="12" y1="20" y2="20" />
-                          </svg>
-                          <AnimatePresence mode="popLayout" initial={false}>
-                            <motion.span
-                              key={sortMode}
-                              initial={{ y: 10, opacity: 0 }}
-                              animate={{ y: 0, opacity: 1 }}
-                              exit={{ y: -10, opacity: 0 }}
-                              transition={{ duration: 0.2, ease: [0.4, 0, 0.1, 1] }}
-                              className="text-[9px] font-black uppercase tracking-[0.1em] text-foreground/70 dark:text-white/60 sm:text-[10px]"
-                            >
-                              Sort {sortMode}
-                            </motion.span>
-                          </AnimatePresence>
+                          <motion.span
+                            key={sortMode}
+                            initial={{ y: 8, opacity: 0, scale: 0.9 }}
+                            animate={{ y: 0, opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.26, ease: [0.4, 0, 0.1, 1] }}
+                            className="flex items-center justify-center"
+                          >
+                            {sortMode === 'recent' ? (
+                              <Clock size={16} strokeWidth={2.4} />
+                            ) : sortMode === 'name' ? (
+                              <span className="text-[12px] font-black leading-none tracking-[-0.02em]">Aa</span>
+                            ) : (
+                              <Users size={16} strokeWidth={2.4} />
+                            )}
+                          </motion.span>
                         </motion.button>
-                        <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
-                          className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[11px]">
-                          <Plus size={15} strokeWidth={3} /> Add Feed
+                        <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)} aria-label="Add feed"
+                          className="flex h-[36px] items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[11px]">
+                          <Plus size={16} strokeWidth={3} /> <span className="hidden sm:inline">Add Feed</span>
                         </motion.button>
                       </motion.div>
                     ) : (
@@ -580,9 +581,13 @@ function FeedPageContent() {
                         className="flex shrink-0 items-center">
                         <div className="rounded-[12px] border border-white/82 bg-white/74 px-2.5 py-1.5 text-right text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_3px_8px_rgba(15,23,42,0.05)] dark:bg-white/[0.05] dark:border-white/10 dark:shadow-[0_3px_10px_rgba(0,0,0,0.35),0_1px_0_rgba(255,255,255,0.06)_inset]">
                           <div className="text-[7px] font-black uppercase tracking-[0.14em] text-black/38 dark:text-white/32">Avg perf</div>
-                          <div className="text-[20px] font-black leading-none tracking-[-0.04em] text-black dark:text-white sm:text-[22px]">{topAverageLabel}</div>
-                          <div className="text-[7px] font-black uppercase tracking-[0.1em] text-black/34 dark:text-white/28">
-                            {topAveragePosts > 0 ? `${topAveragePosts}p` : ''}
+                          <div className="flex items-baseline justify-end gap-1">
+                            <span className="text-[20px] font-black leading-none tracking-[-0.04em] text-black dark:text-white sm:text-[22px]">{topAverageLabel}</span>
+                            {topAveragePosts > 0 && (
+                              <span className="text-[8px] font-black uppercase tracking-[0.1em] text-black/34 dark:text-white/28">
+                                {topAveragePosts}p
+                              </span>
+                            )}
                           </div>
                         </div>
                       </motion.div>
