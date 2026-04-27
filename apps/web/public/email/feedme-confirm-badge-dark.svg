@@ -1,23 +1,48 @@
 <svg width="132" height="132" viewBox="0 0 132 132" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="outerDark" cx="50%" cy="35%" r="75%">
-      <stop offset="0%" stop-color="#1A1A1A"/>
-      <stop offset="55%" stop-color="#101010"/>
-      <stop offset="100%" stop-color="#050505"/>
+    <radialGradient id="outerDark" cx="38%" cy="24%" r="78%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="46%" stop-color="#F3F1E9"/>
+      <stop offset="78%" stop-color="#DCD9CF"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
     </radialGradient>
-    <radialGradient id="innerWellDark" cx="50%" cy="55%" r="70%">
-      <stop offset="0%" stop-color="#1F1F1F"/>
-      <stop offset="60%" stop-color="#141414"/>
-      <stop offset="100%" stop-color="#060606"/>
+    <radialGradient id="wellDark" cx="42%" cy="28%" r="84%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="42%" stop-color="#F0EEE6"/>
+      <stop offset="76%" stop-color="#D9D6CC"/>
+      <stop offset="100%" stop-color="#F8F7F2"/>
     </radialGradient>
-    <filter id="badgeShadowDark" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.45"/>
+    <linearGradient id="stickerRedDark" x1="49" y1="48" x2="83" y2="85" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB7185"/>
+      <stop offset="42%" stop-color="#E11D48"/>
+      <stop offset="100%" stop-color="#BE123C"/>
+    </linearGradient>
+    <filter id="discShadowDark" x="-12%" y="-10%" width="124%" height="130%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <filter id="wellInsetDark" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="-4" stdDeviation="5" flood-color="#FFFFFF" flood-opacity="0.72"/>
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+    <filter id="stickerGlowDark" x="-24%" y="-24%" width="148%" height="148%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <filter id="tickRecessDark" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="1.4" stdDeviation="0.9" flood-color="#7F1D1D" flood-opacity="0.34"/>
+      <feDropShadow dx="0" dy="-1" stdDeviation="0.8" flood-color="#FFFFFF" flood-opacity="0.58"/>
     </filter>
   </defs>
-  <g filter="url(#badgeShadowDark)">
-    <circle cx="66" cy="66" r="46" fill="url(#outerDark)"/>
-    <circle cx="66" cy="66" r="30" fill="url(#innerWellDark)"/>
-    <path d="M66 45L71.7 48.2L78 46.2L80.1 52.6L86.5 54.7L83.7 60.7L87.6 66L83.7 71.3L86.5 77.3L80.1 79.4L78 85.8L71.7 83.8L66 87L60.3 83.8L54 85.8L51.9 79.4L45.5 77.3L48.3 71.3L44.4 66L48.3 60.7L45.5 54.7L51.9 52.6L54 46.2L60.3 48.2L66 45Z" fill="#E11D48"/>
-    <path d="M61.6 72.7L54.8 65.9L58.1 62.6L61.6 66.1L72 55.7L75.3 59L61.6 72.7Z" fill="#050505"/>
+  <g filter="url(#discShadowDark)">
+    <ellipse cx="66" cy="104" rx="38" ry="7" fill="#000000" opacity="0.16"/>
+    <circle cx="66" cy="66" r="50" fill="url(#outerDark)"/>
+    <circle cx="66" cy="66" r="42" fill="none" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="2"/>
+    <circle cx="66" cy="66" r="34" fill="url(#wellDark)" filter="url(#wellInsetDark)"/>
+    <circle cx="66" cy="66" r="30" fill="none" stroke="#FFFFFF" stroke-opacity="0.42" stroke-width="1"/>
+    <path d="M66 39L73.3 43.7L81.4 41.6L84 49.1L92.2 51.5L88.7 59.2L93.6 66L88.7 72.8L92.2 80.5L84 82.9L81.4 90.4L73.3 88.3L66 93L58.7 88.3L50.6 90.4L48 82.9L39.8 80.5L43.3 72.8L38.4 66L43.3 59.2L39.8 51.5L48 49.1L50.6 41.6L58.7 43.7L66 39Z" fill="#E11D48" opacity="0.16" filter="url(#stickerGlowDark)"/>
+    <path d="M66 39L73.3 43.7L81.4 41.6L84 49.1L92.2 51.5L88.7 59.2L93.6 66L88.7 72.8L92.2 80.5L84 82.9L81.4 90.4L73.3 88.3L66 93L58.7 88.3L50.6 90.4L48 82.9L39.8 80.5L43.3 72.8L38.4 66L43.3 59.2L39.8 51.5L48 49.1L50.6 41.6L58.7 43.7L66 39Z" fill="#7F1D1D" opacity="0.15" transform="translate(0 2.4)"/>
+    <path d="M66 39L73.3 43.7L81.4 41.6L84 49.1L92.2 51.5L88.7 59.2L93.6 66L88.7 72.8L92.2 80.5L84 82.9L81.4 90.4L73.3 88.3L66 93L58.7 88.3L50.6 90.4L48 82.9L39.8 80.5L43.3 72.8L38.4 66L43.3 59.2L39.8 51.5L48 49.1L50.6 41.6L58.7 43.7L66 39Z" fill="url(#stickerRedDark)"/>
+    <path d="M66 43.8L72.3 47.8L79.2 45.9L81.5 52.4L88.5 54.5L85.5 61.3L89.7 66L85.5 70.7L88.5 77.5L81.5 79.6L79.2 86.1L72.3 84.2L66 88.2L59.7 84.2L52.8 86.1L50.5 79.6L43.5 77.5L46.5 70.7L42.3 66L46.5 61.3L43.5 54.5L50.5 52.4L52.8 45.9L59.7 47.8L66 43.8Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="1"/>
+    <path d="M62.3 70.7L56.6 65L59.1 62.5L62.3 65.7L71.1 56.9L73.6 59.4L62.3 70.7Z" fill="#FFFFFF" filter="url(#tickRecessDark)"/>
+    <path d="M62.3 68.1L59 64.8L59.5 64.3L62.3 67.1L70.9 58.5L71.4 59L62.3 68.1Z" fill="#FFFFFF" opacity="0.34"/>
   </g>
 </svg>

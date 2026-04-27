@@ -79,12 +79,10 @@ export function buildSlides(item: FireItem): LayerSlide[] {
 
   if (cp === 'D1') {
     const th = typeof timing.hour === 'number' ? timing.hour : null;
-    const hp = typeof timing.hour_percentile === 'number' ? timing.hour_percentile : null;
     const hm = typeof timing.hour_multiple === 'number' ? timing.hour_multiple : null;
 
     l3Rows.push(`HOUR ${hourLabel(th)}`);
-    l3Rows.push(`P${hp == null ? '--' : Math.round(hp)}`);
-    l3Rows.push(`X${hm == null ? '--' : hm.toFixed(2)}`);
+    if (hm != null) l3Rows.push(`TIME LIFT ${hm.toFixed(2)}X`);
   } else {
     const d1 = typeof trajectory.d1 === 'number' ? trajectory.d1 : null;
     const d3 = typeof trajectory.d3 === 'number' ? trajectory.d3 : null;

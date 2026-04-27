@@ -30,7 +30,7 @@ function isReelLikeMediaType(mediaType: string | null | undefined): boolean {
 function metricPreferenceOrder(mediaType: string | null | undefined): FireMetricKey[] {
   return isReelLikeMediaType(mediaType)
     ? ['views', 'likes', 'comments']
-    : ['likes', 'comments', 'views'];
+    : ['likes', 'comments'];
 }
 
 function metricPayload(metrics: MetricPayloadMap, metric: FireMetricKey): Record<string, unknown> {
@@ -124,11 +124,13 @@ export function orderedSupportMetricsFromPayload(
 ): MetricPayloadValue[] {
   return (['views', 'likes', 'comments'] as FireMetricKey[])
     .filter((metric) => metric !== bestMetric)
+    .filter((metric) => metric !== 'views' || isReelLikeMediaType(mediaType))
     .map((metric) => ({
       key: metric,
       value: metricValueFromPayload(metrics, metric),
       multiple: metricMultipleFromPayload(metrics, metric),
       baseline: metricBaselineFromPayload(metrics, metric),
     }))
+    .filter((metric) => metric.value != null)
     .sort((a, b) => compareMetricPayloadValues(a, b, mediaType));
 }

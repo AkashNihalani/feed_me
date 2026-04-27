@@ -27,9 +27,9 @@
     <filter id="stickerGlow" x="-24%" y="-24%" width="148%" height="148%" color-interpolation-filters="sRGB">
       <feGaussianBlur stdDeviation="2"/>
     </filter>
-    <filter id="tickRecess" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="1.4" stdDeviation="0.9" flood-color="#7F1D1D" flood-opacity="0.32"/>
-      <feDropShadow dx="0" dy="-1" stdDeviation="0.8" flood-color="#FFFFFF" flood-opacity="0.55"/>
+    <filter id="lockRecess" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="1.4" stdDeviation="0.9" flood-color="#7F1D1D" flood-opacity="0.36"/>
+      <feDropShadow dx="0" dy="-1" stdDeviation="0.8" flood-color="#FFFFFF" flood-opacity="0.5"/>
     </filter>
   </defs>
   <g filter="url(#discShadow)">
@@ -42,7 +42,11 @@
     <path d="M66 39L73.3 43.7L81.4 41.6L84 49.1L92.2 51.5L88.7 59.2L93.6 66L88.7 72.8L92.2 80.5L84 82.9L81.4 90.4L73.3 88.3L66 93L58.7 88.3L50.6 90.4L48 82.9L39.8 80.5L43.3 72.8L38.4 66L43.3 59.2L39.8 51.5L48 49.1L50.6 41.6L58.7 43.7L66 39Z" fill="#7F1D1D" opacity="0.13" transform="translate(0 2.4)"/>
     <path d="M66 39L73.3 43.7L81.4 41.6L84 49.1L92.2 51.5L88.7 59.2L93.6 66L88.7 72.8L92.2 80.5L84 82.9L81.4 90.4L73.3 88.3L66 93L58.7 88.3L50.6 90.4L48 82.9L39.8 80.5L43.3 72.8L38.4 66L43.3 59.2L39.8 51.5L48 49.1L50.6 41.6L58.7 43.7L66 39Z" fill="url(#stickerRed)"/>
     <path d="M66 43.8L72.3 47.8L79.2 45.9L81.5 52.4L88.5 54.5L85.5 61.3L89.7 66L85.5 70.7L88.5 77.5L81.5 79.6L79.2 86.1L72.3 84.2L66 88.2L59.7 84.2L52.8 86.1L50.5 79.6L43.5 77.5L46.5 70.7L42.3 66L46.5 61.3L43.5 54.5L50.5 52.4L52.8 45.9L59.7 47.8L66 43.8Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="1"/>
-    <path d="M62.3 70.7L56.6 65L59.1 62.5L62.3 65.7L71.1 56.9L73.6 59.4L62.3 70.7Z" fill="#FFFFFF" filter="url(#tickRecess)"/>
-    <path d="M62.3 68.1L59 64.8L59.5 64.3L62.3 67.1L70.9 58.5L71.4 59L62.3 68.1Z" fill="#FFFFFF" opacity="0.34"/>
+    <g filter="url(#lockRecess)">
+      <path d="M59.2 63.8V59.4C59.2 55.2 62 52.2 66 52.2C70 52.2 72.8 55.2 72.8 59.4V63.8" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
+      <rect x="56" y="62.5" width="20" height="15.5" rx="3.6" fill="#FFFFFF"/>
+      <path d="M66 67.1C64.9 67.1 64 68 64 69.1C64 69.8 64.4 70.4 65 70.8L64.5 74H67.5L67 70.8C67.6 70.4 68 69.8 68 69.1C68 68 67.1 67.1 66 67.1Z" fill="#BE123C" opacity="0.82"/>
+    </g>
+    <path d="M59.2 59.4C59.2 55.2 62 52.2 66 52.2C70 52.2 72.8 55.2 72.8 59.4" stroke="#FFFFFF" stroke-opacity="0.34" stroke-width="1.2" stroke-linecap="round"/>
   </g>
 </svg>

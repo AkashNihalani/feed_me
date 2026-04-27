@@ -12,9 +12,22 @@
       .fm-copy { color: #767676 !important; }
       .fm-micro { color: #aaaaaa !important; }
       .fm-link { color: #5f5f5f !important; }
-      .fm-button { background: #ccff00 !important; color: #050505 !important; }
+      .fm-button { background: #e11d48 !important; color: #ffffff !important; }
       .fm-badge-light { display: block !important; }
       .fm-badge-dark { display: none; max-height: 0; overflow: hidden; mso-hide: all; }
+      .fm-card-cell { padding: 76px 64px 40px 64px !important; }
+      .fm-badge-frame { width: 174px !important; height: 174px !important; }
+      .fm-badge-light, .fm-badge-dark { width: 174px !important; height: 174px !important; }
+      .fm-headline { font-size: 58px !important; line-height: 0.9 !important; }
+      .fm-copy { max-width: 560px !important; }
+      .fm-micro { max-width: 520px !important; }
+      @media screen and (max-width: 520px) {
+        .fm-card-cell { padding: 42px 24px 24px 24px !important; }
+        .fm-headline { font-size: 36px !important; }
+        .fm-badge-frame { width:132px !important;height:132px !important; }
+        .fm-badge-light, .fm-badge-dark { width:132px !important;height:132px !important; }
+        .fm-copy { max-width: 380px !important; }
+      }
       @media (prefers-color-scheme: dark) {
         .fm-bg { background: #050505 !important; }
         .fm-card { background: #0b0b0a !important; border-color: #1a1a1a !important; }
@@ -24,29 +37,29 @@
         .fm-copy { color: #b7b7b1 !important; }
         .fm-micro { color: #7f7f79 !important; }
         .fm-link { color: #e0e0da !important; }
-        .fm-button { background: #0b0b0a !important; color: #ccff00 !important; box-shadow: 0 12px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12) !important; }
+        .fm-button { background: #e11d48 !important; color: #ffffff !important; box-shadow: 0 12px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12) !important; }
         .fm-badge-light { display: none !important; max-height: 0 !important; overflow: hidden !important; }
         .fm-badge-dark { display: block !important; max-height: none !important; overflow: visible !important; }
       }
     </style>
   </head>
   <body style="margin:0;padding:0;background:#f5f5f3;color:#111111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="fm-bg" style="background:#f5f5f3;padding:28px 12px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="fm-bg" style="background:#f5f5f3;padding:0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:none;">
             <tr>
-              <td style="padding:0 8px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="fm-card" style="background:#ffffff;border-radius:40px;border:1px solid #efefea;box-shadow:0 18px 40px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04);">
+              <td style="padding:0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="fm-card" style="background:#ffffff;border-radius:0;border:0;box-shadow:none;">
                   <tr>
-                    <td align="center" style="padding:56px 40px 28px 40px;">
+                    <td align="center" class="fm-card-cell" style="padding:76px 64px 40px 64px;">
                       <div class="fm-rule" style="width:46px;height:6px;border-radius:999px;background:#e8e7e1;margin:0 auto 28px auto;"></div>
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto 28px auto;">
                         <tr>
-                          <td align="center" valign="middle" width="132" height="132" style="width:132px;height:132px;">
+                          <td align="center" valign="middle" width="174" height="174" class="fm-badge-frame" style="width:174px;height:174px;">
                             <img
                               class="fm-badge-light"
-                              src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge.png"
+                              src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide.png"
                               alt="FeedMe confirmation badge"
                               width="132"
                               height="132"
@@ -54,7 +67,7 @@
                             />
                             <img
                               class="fm-badge-dark"
-                              src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-dark.png"
+                              src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide-dark.png"
                               alt="FeedMe confirmation badge"
                               width="132"
                               height="132"
@@ -66,18 +79,18 @@
                       <div class="fm-brand" style="font-size:11px;line-height:1;letter-spacing:0.28em;font-weight:700;color:#8a8a8a;text-transform:uppercase;">
                         FeedMe
                       </div>
-                      <div class="fm-headline" style="margin-top:18px;font-size:42px;line-height:0.95;letter-spacing:-0.06em;font-weight:900;color:#0b0b0a;text-transform:uppercase;">
+                      <div class="fm-headline" style="margin-top:18px;font-size:58px;line-height:0.9;letter-spacing:0;font-weight:900;color:#0b0b0a;text-transform:uppercase;">
                         Account<br />
                         Activated
                       </div>
-                      <p class="fm-copy" style="margin:24px auto 0 auto;max-width:360px;font-size:17px;line-height:1.6;color:#7a7a7a;font-weight:500;">
+                      <p class="fm-copy" style="margin:24px auto 0 auto;max-width:560px;font-size:17px;line-height:1.6;color:#7a7a7a;font-weight:500;">
                         Your feed is ready.<br />
                         Assign your first feeder and start tracking.
                       </p>
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:30px auto 0 auto;">
                         <tr>
-                          <td align="center" class="fm-button" style="border-radius:999px;background:#ccff00;box-shadow:0 12px 24px rgba(204,255,0,0.28), inset 0 1px 0 rgba(255,255,255,0.7);">
-                            <a href="{{ .ConfirmationURL }}" class="fm-button" style="display:inline-block;padding:18px 34px;font-size:15px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;text-decoration:none;color:#050505;border-radius:999px;">
+                          <td align="center" class="fm-button" style="border-radius:999px;background:#e11d48;box-shadow:0 12px 24px rgba(225,29,72,0.26), inset 0 1px 0 rgba(255,255,255,0.25);">
+                            <a href="{{ .ConfirmationURL }}" class="fm-button" style="display:inline-block;padding:18px 34px;font-size:15px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;text-decoration:none;color:#ffffff;border-radius:999px;">
                               Begin Feeding
                             </a>
                           </td>
@@ -89,10 +102,10 @@
                       <p class="fm-copy" style="margin:34px 0 0 0;font-size:12px;line-height:1.7;color:#8a8a8a;">
                         If the button does not open, use this secure link:
                       </p>
-                      <p style="margin:10px auto 0 auto;max-width:420px;font-size:12px;line-height:1.7;word-break:break-all;">
+                      <p style="margin:10px auto 0 auto;max-width:560px;font-size:12px;line-height:1.7;word-break:break-all;">
                         <a href="{{ .ConfirmationURL }}" class="fm-link" style="color:#5f5f5f;text-decoration:underline;">{{ .ConfirmationURL }}</a>
                       </p>
-                      <p class="fm-copy" style="margin:28px auto 0 auto;max-width:420px;font-size:12px;line-height:1.7;color:#8a8a8a;">
+                      <p class="fm-copy" style="margin:28px auto 0 auto;max-width:560px;font-size:12px;line-height:1.7;color:#8a8a8a;">
                         This message was sent to {{ .Email }} because a FeedMe account was created using this address. If this was not you, you can safely ignore it.
                       </p>
                     </td>

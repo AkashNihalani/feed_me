@@ -13,6 +13,7 @@
       .fm-micro { color: #aaaaaa !important; }
       .fm-link { color: #5f5f5f !important; }
       .fm-button { background: #e11d48 !important; color: #ffffff !important; }
+      .fm-stat { border-color: #efefea !important; background: #fafafa !important; }
       .fm-badge-light { display: block !important; }
       .fm-badge-dark { display: none; max-height: 0; overflow: hidden; mso-hide: all; }
       .fm-card-cell { padding: 76px 64px 40px 64px !important; }
@@ -38,6 +39,7 @@
         .fm-micro { color: #7f7f79 !important; }
         .fm-link { color: #e0e0da !important; }
         .fm-button { background: #e11d48 !important; color: #ffffff !important; box-shadow: 0 12px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12) !important; }
+        .fm-stat { border-color: #1f1f1f !important; background: #101010 !important; }
         .fm-badge-light { display: none !important; max-height: 0 !important; overflow: hidden !important; }
         .fm-badge-dark { display: block !important; max-height: none !important; overflow: visible !important; }
       }
@@ -57,39 +59,46 @@
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto 28px auto;">
                         <tr>
                           <td align="center" valign="middle" width="174" height="174" class="fm-badge-frame" style="width:174px;height:174px;">
-                            <img class="fm-badge-light" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide.png" alt="FeedMe email change badge" width="132" height="132" style="display:block;margin:0 auto;border:0;" />
-                            <img class="fm-badge-dark" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide-dark.png" alt="FeedMe email change badge" width="132" height="132" style="display:none;max-height:0;overflow:hidden;mso-hide:all;margin:0 auto;border:0;" />
+                            <img class="fm-badge-light" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide.png" alt="FeedMe purchase badge" width="132" height="132" style="display:block;margin:0 auto;border:0;" />
+                            <img class="fm-badge-dark" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide-dark.png" alt="FeedMe purchase badge" width="132" height="132" style="display:none;max-height:0;overflow:hidden;mso-hide:all;margin:0 auto;border:0;" />
                           </td>
                         </tr>
                       </table>
                       <div class="fm-brand" style="font-size:11px;line-height:1;letter-spacing:0.28em;font-weight:700;color:#8a8a8a;text-transform:uppercase;">FeedMe</div>
                       <div class="fm-headline" style="margin-top:18px;font-size:58px;line-height:0.9;letter-spacing:0;font-weight:900;color:#0b0b0a;text-transform:uppercase;">
-                        Confirm<br />
-                        Email
+                        Feed Pass<br />
+                        Added
                       </div>
-                      <p class="fm-copy" style="margin:24px auto 0 auto;max-width:560px;font-size:17px;line-height:1.6;color:#7a7a7a;font-weight:500;">
-                        Confirm this address to keep your FeedMe account access clean and current.
+                      <p class="fm-copy" style="margin:24px auto 0 auto;max-width:390px;font-size:17px;line-height:1.6;color:#7a7a7a;font-weight:500;">
+                        Thanks {{ customer_name }}. Your Feed Pass purchase is confirmed and your account access has been updated.
                       </p>
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:30px auto 0 auto;max-width:420px;">
+                        <tr>
+                          <td class="fm-stat" style="border:1px solid #efefea;background:#fafafa;border-radius:22px;padding:18px 16px;text-align:left;">
+                            <div class="fm-micro" style="font-size:10px;line-height:1.4;color:#aaaaaa;letter-spacing:0.22em;text-transform:uppercase;">Feed passes</div>
+                            <div class="fm-headline" style="margin-top:8px;font-size:28px;line-height:1;font-weight:900;color:#0b0b0a;">{{ feed_pass_count }}</div>
+                          </td>
+                          <td width="12"></td>
+                          <td class="fm-stat" style="border:1px solid #efefea;background:#fafafa;border-radius:22px;padding:18px 16px;text-align:left;">
+                            <div class="fm-micro" style="font-size:10px;line-height:1.4;color:#aaaaaa;letter-spacing:0.22em;text-transform:uppercase;">Amount</div>
+                            <div class="fm-headline" style="margin-top:8px;font-size:28px;line-height:1;font-weight:900;color:#0b0b0a;">INR {{ amount }}</div>
+                          </td>
+                        </tr>
+                      </table>
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:30px auto 0 auto;">
                         <tr>
                           <td align="center" class="fm-button" style="border-radius:999px;background:#e11d48;box-shadow:0 12px 24px rgba(225,29,72,0.26), inset 0 1px 0 rgba(255,255,255,0.25);">
-                            <a href="{{ .ConfirmationURL }}" class="fm-button" style="display:inline-block;padding:18px 34px;font-size:15px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;text-decoration:none;color:#ffffff;border-radius:999px;">
-                              Confirm Email
+                            <a href="{{ receipt_url }}" class="fm-button" style="display:inline-block;padding:18px 34px;font-size:15px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;text-decoration:none;color:#ffffff;border-radius:999px;">
+                              View Receipt
                             </a>
                           </td>
                         </tr>
                       </table>
-                      <p class="fm-micro" style="margin:26px auto 0 auto;max-width:360px;font-size:11px;line-height:1.7;color:#a3a3a3;letter-spacing:0.26em;text-transform:uppercase;">
-                        Account identity update
+                      <p class="fm-micro" style="margin:26px auto 0 auto;max-width:380px;font-size:11px;line-height:1.7;color:#a3a3a3;letter-spacing:0.22em;text-transform:uppercase;">
+                        Transaction {{ transaction_id }}
                       </p>
-                      <p class="fm-copy" style="margin:34px 0 0 0;font-size:12px;line-height:1.7;color:#8a8a8a;">
-                        If the button does not open, use this secure link:
-                      </p>
-                      <p style="margin:10px auto 0 auto;max-width:560px;font-size:12px;line-height:1.7;word-break:break-all;">
-                        <a href="{{ .ConfirmationURL }}" class="fm-link" style="color:#5f5f5f;text-decoration:underline;">{{ .ConfirmationURL }}</a>
-                      </p>
-                      <p class="fm-copy" style="margin:28px auto 0 auto;max-width:560px;font-size:12px;line-height:1.7;color:#8a8a8a;">
-                        This message was sent to {{ .Email }} because a FeedMe email change was requested. If this was not you, please keep your current email and secure your account.
+                      <p class="fm-copy" style="margin:30px auto 0 auto;max-width:560px;font-size:12px;line-height:1.7;color:#8a8a8a;">
+                        This message was sent to {{ customer_email }} as a purchase acknowledgement. For payment help, contact <a href="mailto:{{ support_email }}" class="fm-link" style="color:#5f5f5f;text-decoration:underline;">{{ support_email }}</a>.
                       </p>
                     </td>
                   </tr>

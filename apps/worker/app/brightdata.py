@@ -282,8 +282,8 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
             or item.get("comment_count")
             or item.get("commentsCount")
         ),
-        "videoViewCount": item.get("video_view_count") or item.get("videoViewCount"),
-        "videoPlayCount": item.get("video_play_count") or item.get("videoPlayCount") or item.get("plays"),
+        "videoViewCount": (item.get("video_view_count") or item.get("videoViewCount")) if media_type == "reel" else None,
+        "videoPlayCount": (item.get("video_play_count") or item.get("videoPlayCount") or item.get("plays")) if media_type == "reel" else None,
         "displayUrl": media_display_url,
         "thumbnailUrl": media_thumbnail_url,
         "videoUrl": media_video_url,
@@ -337,6 +337,7 @@ def _trim_recent_posts(
 
 def _normalize_reel_item(item: dict[str, Any]) -> dict[str, Any]:
     normalized = _normalize_item(item)
+    normalized["type"] = "reel"
     video_play_count = (
         item.get("video_play_count")
         or item.get("videoPlayCount")

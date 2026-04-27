@@ -210,10 +210,12 @@ function SupportMetricRow({
 function CompactStat({
   label,
   value,
+  detail,
   accent = false,
 }: {
   label: string;
   value: string;
+  detail?: string | null;
   accent?: boolean;
 }) {
   return (
@@ -224,11 +226,16 @@ function CompactStat({
       <div
         className={
           accent
-            ? 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-black dark:text-[#E11D48]'
-            : 'mt-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90'
+            ? 'mt-1.5 flex min-w-0 items-baseline gap-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-black dark:text-[#E11D48]'
+            : 'mt-1.5 flex min-w-0 items-baseline gap-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90'
         }
       >
-        {value}
+        <span>{value}</span>
+        {detail ? (
+          <span className="min-w-0 truncate text-[9px] font-medium tracking-normal text-neutral-400 dark:text-white/36">
+            {detail}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -303,7 +310,6 @@ export default function FireIntelligenceDialog({
     const multiple = num(bestMetricObj.multiple);
     const bestInLastN = num(bestMetricObj.best_in_last_n);
     const hour = num(timing.hour);
-    const hourPct = num(timing.hour_percentile);
     const hourMult = num(timing.hour_multiple);
     const d1 = num(trajectory.d1);
     const d3 = num(trajectory.d3);
@@ -386,7 +392,6 @@ export default function FireIntelligenceDialog({
       multiple,
       bestInLastN,
       hour,
-      hourPct,
       hourMult,
       d1,
       d3,
@@ -998,10 +1003,15 @@ export default function FireIntelligenceDialog({
                       {stats.isD1 ? (
                         <div>
                           <SectionTag>Timing</SectionTag>
-                          <div className="mt-2.5 grid grid-cols-3 gap-2">
+                          <div className={`mt-2.5 grid gap-2 ${stats.hourMult == null ? 'grid-cols-1' : 'grid-cols-2'}`}>
                             <CompactStat label="Post Time" value={hourAmPm(stats.hour)} accent />
-                            <CompactStat label="Hour %" value={stats.hourPct == null ? '--' : `Top ${Math.round(stats.hourPct)}%`} />
-                            <CompactStat label="Hour Mult." value={multipleOrDash(stats.hourMult)} />
+                            {stats.hourMult == null ? null : (
+                              <CompactStat
+                                label="Time Lift"
+                                value={multipleOrDash(stats.hourMult)}
+                                detail={`vs usual ${stats.hour == null ? 'same-hour' : hourAmPm(stats.hour)} posts`}
+                              />
+                            )}
                           </div>
                         </div>
                       ) : (

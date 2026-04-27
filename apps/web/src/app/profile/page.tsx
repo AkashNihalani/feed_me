@@ -30,6 +30,7 @@ import {
   FileText,
   LifeBuoy,
   Lock,
+  LogOut,
   X,
   Moon,
   Sun,
@@ -1178,6 +1179,11 @@ export default function FundPage() {
     window.location.href = href;
   }, []);
 
+  const handleLogout = useCallback(async () => {
+    await getSupabase().auth.signOut();
+    router.push('/login');
+  }, [router]);
+
   const handlePwaNotificationToggle = useCallback(async () => {
     if (notificationBusy || typeof window === 'undefined') return;
     if (!('Notification' in window) || !('serviceWorker' in navigator)) {
@@ -2259,6 +2265,59 @@ export default function FundPage() {
                           : `Turn on Fire Alerts to use the ${alertThreshold}% fire line`
                         : isDraggingSlider ? 'Adjusting…' : 'Locking in…'}
                     </div>
+                  </div>
+
+                  {/* ── System Eject (Sign Out) ── */}
+                  <div className={cn(
+                    'w-full flex items-center justify-between rounded-[20px] px-5 py-[18px] mt-4',
+                    // Base Glass Shell
+                    'bg-gradient-to-b from-white/90 to-white/60 dark:from-white/[0.06] dark:to-white/[0.015]',
+                    'border border-white/90 border-t-white dark:border-white/[0.06] dark:border-t-white/[0.1]',
+                    'shadow-[inset_0_2px_4px_rgba(255,255,255,1),inset_0_-1px_2px_rgba(0,0,0,0.04),0_6px_16px_-4px_rgba(15,23,42,0.08),0_2px_4px_rgba(0,0,0,0.03)]',
+                    'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.5),0_8px_20px_-4px_rgba(0,0,0,0.5)]'
+                  )}>
+                    <div className="flex items-center gap-4">
+                      {/* Hardware Icon Block */}
+                      <div className={cn(
+                        'flex items-center justify-center w-10 h-10 rounded-[12px]',
+                        'bg-white/70 border border-white/90 shadow-[inset_0_1px_2px_rgba(255,255,255,1),0_2px_6px_rgba(0,0,0,0.06)]',
+                        'dark:bg-black/50 dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5),0_1px_0_rgba(255,255,255,0.04)]',
+                      )}>
+                        <LogOut size={16} strokeWidth={2.5} className="text-[#E11D48] drop-shadow-[0_2px_4px_rgba(225,29,72,0.2)] dark:drop-shadow-[0_2px_4px_rgba(225,29,72,0.4)]" />
+                      </div>
+
+                      <div className="text-left">
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-foreground/80 dark:text-white/80">
+                          End Session
+                        </div>
+                        <div className="mt-1 text-[8px] font-bold uppercase tracking-[0.14em] text-foreground/40 dark:text-white/30">
+                          Disconnect device securely
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bold Vibrant Action Button */}
+                    <motion.button
+                      type="button"
+                      onClick={handleLogout}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.92 }}
+                      className={cn(
+                        'relative flex items-center justify-center px-5 h-[34px] rounded-full overflow-hidden outline-none',
+                        'bg-[#E11D48]',
+                        // Light mode premium red shadows
+                        'shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.45),0_4px_12px_rgba(225,29,72,0.25)]',
+                        // Dark mode premium red shadows
+                        'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.2),0_0_16px_rgba(225,29,72,0.4),0_6px_16px_rgba(0,0,0,0.4)]',
+                        'transition-shadow duration-300',
+                        'hover:shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.6),0_6px_20px_rgba(225,29,72,0.4)]',
+                        'dark:hover:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.3),0_0_24px_rgba(225,29,72,0.6),0_8px_20px_rgba(0,0,0,0.5)]'
+                      )}
+                    >
+                      <span className="relative z-10 text-[10px] font-black uppercase tracking-[0.2em] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                        Sign Out
+                      </span>
+                    </motion.button>
                   </div>
 
                 </div>

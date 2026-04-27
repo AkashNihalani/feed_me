@@ -16,9 +16,17 @@ npm run dev
 
 Supabase remains the auth provider, but branded auth email assets live in:
 
-- [`infra/supabase/auth-email/README.md`](/Users/Akash/feed_me/infra/supabase/auth-email/README.md)
-- [`infra/supabase/auth-email/confirm-signup.html`](/Users/Akash/feed_me/infra/supabase/auth-email/confirm-signup.html)
-- [`infra/supabase/auth-email/reset-password.html`](/Users/Akash/feed_me/infra/supabase/auth-email/reset-password.html)
+- `infra/supabase/auth-email/README.md`
+- `infra/supabase/auth-email/confirm-signup.html`
+- `infra/supabase/auth-email/reset-password.html`
+- `infra/supabase/auth-email/invite-user.html`
+- `infra/supabase/auth-email/change-email.html`
+- `infra/supabase/auth-email/magic-link.html`
+- `infra/supabase/auth-email/reauthentication.html`
+
+Non-auth transactional templates live in:
+
+- `infra/email/transactional/`
 
 The web app currently relies on:
 

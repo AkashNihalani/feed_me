@@ -57,30 +57,30 @@
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto 28px auto;">
                         <tr>
                           <td align="center" valign="middle" width="174" height="174" class="fm-badge-frame" style="width:174px;height:174px;">
-                            <img class="fm-badge-light" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide.png" alt="FeedMe email change badge" width="132" height="132" style="display:block;margin:0 auto;border:0;" />
-                            <img class="fm-badge-dark" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide-dark.png" alt="FeedMe email change badge" width="132" height="132" style="display:none;max-height:0;overflow:hidden;mso-hide:all;margin:0 auto;border:0;" />
+                            <img class="fm-badge-light" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide.png" alt="FeedMe login badge" width="132" height="132" style="display:block;margin:0 auto;border:0;" />
+                            <img class="fm-badge-dark" src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide-dark.png" alt="FeedMe login badge" width="132" height="132" style="display:none;max-height:0;overflow:hidden;mso-hide:all;margin:0 auto;border:0;" />
                           </td>
                         </tr>
                       </table>
                       <div class="fm-brand" style="font-size:11px;line-height:1;letter-spacing:0.28em;font-weight:700;color:#8a8a8a;text-transform:uppercase;">FeedMe</div>
                       <div class="fm-headline" style="margin-top:18px;font-size:58px;line-height:0.9;letter-spacing:0;font-weight:900;color:#0b0b0a;text-transform:uppercase;">
-                        Confirm<br />
-                        Email
+                        Magic<br />
+                        Link
                       </div>
                       <p class="fm-copy" style="margin:24px auto 0 auto;max-width:560px;font-size:17px;line-height:1.6;color:#7a7a7a;font-weight:500;">
-                        Confirm this address to keep your FeedMe account access clean and current.
+                        Open this secure link to sign in to your FeedMe workspace.
                       </p>
                       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:30px auto 0 auto;">
                         <tr>
                           <td align="center" class="fm-button" style="border-radius:999px;background:#e11d48;box-shadow:0 12px 24px rgba(225,29,72,0.26), inset 0 1px 0 rgba(255,255,255,0.25);">
                             <a href="{{ .ConfirmationURL }}" class="fm-button" style="display:inline-block;padding:18px 34px;font-size:15px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;text-decoration:none;color:#ffffff;border-radius:999px;">
-                              Confirm Email
+                              Sign In
                             </a>
                           </td>
                         </tr>
                       </table>
                       <p class="fm-micro" style="margin:26px auto 0 auto;max-width:360px;font-size:11px;line-height:1.7;color:#a3a3a3;letter-spacing:0.26em;text-transform:uppercase;">
-                        Account identity update
+                        Secure one-time access
                       </p>
                       <p class="fm-copy" style="margin:34px 0 0 0;font-size:12px;line-height:1.7;color:#8a8a8a;">
                         If the button does not open, use this secure link:
@@ -89,7 +89,7 @@
                         <a href="{{ .ConfirmationURL }}" class="fm-link" style="color:#5f5f5f;text-decoration:underline;">{{ .ConfirmationURL }}</a>
                       </p>
                       <p class="fm-copy" style="margin:28px auto 0 auto;max-width:560px;font-size:12px;line-height:1.7;color:#8a8a8a;">
-                        This message was sent to {{ .Email }} because a FeedMe email change was requested. If this was not you, please keep your current email and secure your account.
+                        This message was sent to {{ .Email }} because a FeedMe sign-in link was requested. If this was not you, you can safely ignore it.
                       </p>
                     </td>
                   </tr>

@@ -164,8 +164,8 @@ export function FireCard3D({
   const bestInLastN = num(bestMetricObj.best_in_last_n);
 
   const hour = num(timing.hour);
-  const hourPct = num(timing.hour_percentile);
   const hourMult = num(timing.hour_multiple);
+  const hourDisplay = hour == null ? '--' : (() => { const h = ((Math.round(hour) % 24) + 24) % 24; const suffix = h >= 12 ? 'PM' : 'AM'; const twelve = h % 12 === 0 ? 12 : h % 12; return `${twelve} ${suffix}`; })();
 
   const delta = item.trajectoryDeltaPercentile;
   const currentTrajectory = item.surfacePercentile;
@@ -943,25 +943,24 @@ export function FireCard3D({
                     <div className="col-span-12">
                       <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
                         <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Timing</div>
-                        <div className="mt-1.5 grid grid-cols-3 gap-1">
+                        <div className={`mt-1.5 grid gap-1 ${hourMult == null ? 'grid-cols-1' : 'grid-cols-2'}`}>
                           <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
                             <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Post Time</div>
                             <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
-                              {hour == null ? '--' : (() => { const h = ((Math.round(hour) % 24) + 24) % 24; const suffix = h >= 12 ? 'PM' : 'AM'; const twelve = h % 12 === 0 ? 12 : h % 12; return `${twelve} ${suffix}`; })()}
+                              {hourDisplay}
                             </div>
                           </div>
-                          <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
-                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Hour %</div>
-                            <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
-                              {hourPct == null ? '--' : `Top ${Math.round(hourPct)}%`}
+                          {hourMult == null ? null : (
+                            <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
+                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Time Lift</div>
+                              <div className="mt-0.5 flex min-w-0 items-baseline gap-1 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
+                                <span>{`${hourMult.toFixed(2)}x`}</span>
+                                <span className="min-w-0 truncate text-[7px] sm:text-[8px] font-medium text-foreground/40">
+                                  vs usual {hour === null ? 'same-hour' : hourDisplay} posts
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                          <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
-                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Hour Mult.</div>
-                            <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
-                              {hourMult == null ? '--' : `${hourMult.toFixed(2)}x`}
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>

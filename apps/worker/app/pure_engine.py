@@ -400,13 +400,16 @@ def _clean_profile_pic_url(url: Any) -> str | None:
     return u
 
 def _extract_metrics(item: dict) -> tuple[int | None, int | None, int | None]:
-    views = _to_int(
-        item.get("videoViewCount")
-        or item.get("videoPlayCount")
-        or item.get("views")
-        or item.get("viewCount")
-        or item.get("plays")
-    )
+    media_type = _media_type(item)
+    views = None
+    if _is_reel_media_type(media_type):
+        views = _to_int(
+            item.get("videoViewCount")
+            or item.get("videoPlayCount")
+            or item.get("views")
+            or item.get("viewCount")
+            or item.get("plays")
+        )
     likes = _to_int(item.get("likesCount") or item.get("likes") or item.get("likeCount"))
     comments = _to_int(
         item.get("commentsCount")

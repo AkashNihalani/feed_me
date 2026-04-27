@@ -247,10 +247,23 @@ function previewCaptureAllowedForBusinessDay(businessDay: string | null | undefi
   return day >= PREVIEW_CAPTURE_START_DAY;
 }
 
-function metricValueFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey): number | null {
+function isViewsMetricSupported(mediaType: string | null | undefined): boolean {
+  const normalized = String(mediaType || '').trim().toLowerCase();
+  return normalized === 'reel' || normalized === 'video';
+}
+
+function metricValueFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey, mediaType?: string | null): number | null {
+  if (metric === 'views' && !isViewsMetricSupported(mediaType)) return null;
   if (metric === 'views') return nullableNumber(row.views);
   if (metric === 'likes') return nullableNumber(row.likes);
   return nullableNumber(row.comments);
+}
+
+function metricPercentileFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey, mediaType?: string | null): number | null {
+  if (metric === 'views' && !isViewsMetricSupported(mediaType)) return null;
+  if (metric === 'views') return nullableNumber(row.views_percentile);
+  if (metric === 'likes') return nullableNumber(row.likes_percentile);
+  return nullableNumber(row.comments_percentile);
 }
 
 function baselineValueFromRow(row: FireFeederBaselineRow | null | undefined, metric: FireMetricKey): number | null {
@@ -538,16 +551,17 @@ type FirePatternSummary = {
 type FireMetricKey = 'views' | 'likes' | 'comments';
 
 function metricPreferenceOrder(mediaType: string | null): FireMetricKey[] {
-  const normalized = (mediaType || '').trim().toLowerCase();
-  if (normalized === 'reel' || normalized === 'video') return ['views', 'likes', 'comments'];
-  return ['likes', 'comments', 'views'];
+  if (isViewsMetricSupported(mediaType)) return ['views', 'likes', 'comments'];
+  return ['likes', 'comments'];
 }
 
 function rowMetricValue(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
+  if (metric === 'views' && !isViewsMetricSupported(row.media_type)) return null;
   return metric === 'views' ? nullableNumber(row.views) : metric === 'likes' ? nullableNumber(row.likes) : nullableNumber(row.comments);
 }
 
 function rowMetricBaseline(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
+  if (metric === 'views' && !isViewsMetricSupported(row.media_type)) return null;
   return metric === 'views'
     ? nullableNumber(row.views_baseline)
     : metric === 'likes'
@@ -556,6 +570,7 @@ function rowMetricBaseline(row: AlertSurfaceRow, metric: FireMetricKey): number 
 }
 
 function rowMetricMultiple(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
+  if (metric === 'views' && !isViewsMetricSupported(row.media_type)) return null;
   return metric === 'views'
     ? nullableNumber(row.views_multiple)
     : metric === 'likes'
@@ -607,6 +622,7 @@ function buildMetricPayload(row: AlertSurfaceRow, metric: FireMetricKey, bestMet
 function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   const bestMetric = deriveBestMetric(row);
   const bestMetricValue = rowMetricValue(row, bestMetric);
+  const storedMetricMatchesBest = nullableString(row.metric_key)?.toLowerCase() === bestMetric;
   const primaryPattern = row.pattern_alerts?.[0] ?? null;
   const payload = {
     best_metric: bestMetric,
@@ -693,7 +709,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
     surface_percentile_exact: nullableNumber(row.surface_percentile_exact),
     surface_delta: nullableNumber(row.surface_delta),
     metric_key: bestMetric,
-    metric_value: bestMetricValue ?? nullableNumber(row.metric_value),
+    metric_value: bestMetricValue ?? (storedMetricMatchesBest ? nullableNumber(row.metric_value) : null),
     body: row.body ?? '',
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -1731,11 +1747,18 @@ function buildSyntheticFireRows(options: {
     } as AlertSurfaceRow;
 
     const bestMetric = deriveBestMetric(rowSeed);
-    const bestValue = metricValueFromPostMetric(metricRow, bestMetric) ?? nullableNumber(metricRow.metric_value);
-    const hourMultiple = nullableNumber(metricRow.hour_multiple)
+    const storedMetricMatchesBest = nullableString(metricRow.ranking_metric)?.toLowerCase() === bestMetric;
+    const bestValue = metricValueFromPostMetric(metricRow, bestMetric, mediaType)
+      ?? (storedMetricMatchesBest ? nullableNumber(metricRow.metric_value) : null);
+    const bestPercentile = storedMetricMatchesBest
+      ? displayPercentile
+      : metricPercentileFromPostMetric(metricRow, bestMetric, mediaType);
+    const hourMultiple = (storedMetricMatchesBest ? nullableNumber(metricRow.hour_multiple) : null)
       ?? computeMultiple(bestValue, hourBaselineValueFromRow(hourBaseline, bestMetric));
     rowSeed.metric_key = bestMetric;
     rowSeed.metric_value = bestValue;
+    rowSeed.surface_percentile = bestPercentile;
+    rowSeed.surface_percentile_exact = bestPercentile;
     rowSeed.hour_multiple = hourMultiple;
 
     rows.push(rowSeed);
