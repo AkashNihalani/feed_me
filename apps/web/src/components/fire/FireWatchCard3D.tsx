@@ -125,7 +125,7 @@ export function FireWatchCard3D({
         }
       }}
       className={isDesktopCard
-        ? 'fm-fire-card-shell relative block w-full aspect-[11/14] overflow-hidden rounded-[24px] text-left'
+        ? 'fm-fire-card-shell relative block w-full aspect-[5/6] 2xl:aspect-[11/14] overflow-hidden rounded-[24px] text-left'
         : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:rounded-[32px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
