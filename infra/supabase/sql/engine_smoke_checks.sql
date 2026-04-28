@@ -4,9 +4,20 @@ select (select count(*) from public.feeds) as feeds,
        (select count(*) from public.post_metrics) as post_metrics,
        (select count(*) from public.run_jobs) as run_jobs,
        (select count(*) from public.checkpoint_jobs) as checkpoint_jobs,
-       (select count(*) from public.fire_alerts) as fire_alerts,
+       (select count(*) from public.signals) as signals,
+       (select count(*) from public.post_fingerprints) as post_fingerprints,
        (select count(*) from public.post_media_assets) as post_media_assets,
        (select count(*) from public.web_push_jobs) as web_push_jobs;
+
+select case
+         when p.proname is null then 'OK_MISSING'
+         when p.prosrc ilike '%insert into public.fire_alerts%' then 'LEGACY_WRITE_RISK'
+         else 'OK_NO_LEGACY_WRITE'
+       end as fn_process_checkpoint_status
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'fn_process_checkpoint';
 
 select status, count(*) from public.run_jobs group by status order by status;
 select job_type, status, count(*) from public.run_jobs group by job_type, status order by job_type, status;

@@ -14,6 +14,8 @@ type FeedRow = {
   name: string;
   status: string;
   created_at: string;
+  context_brief?: Record<string, unknown> | null;
+  context_bible?: string | null;
 };
 
 type FeederRow = {
@@ -74,6 +76,8 @@ type FeedBundlePayload = {
       views: string;
       postsTracked: string;
     };
+    contextBrief?: Record<string, unknown>;
+    contextBible?: string;
   }>;
   ticker: TickerRow[];
 };
@@ -212,6 +216,62 @@ function buildProfileImageProxyUrl(url: string | null | undefined) {
   return `/api/media?${search.toString()}`;
 }
 
+function compactStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 12)
+    : [];
+}
+
+function formatBriefList(items: string[], fallback = 'metric-moving signals') {
+  const clean = items.map((item) => item.trim()).filter(Boolean);
+  if (clean.length === 0) return fallback;
+  if (clean.length === 1) return clean[0];
+  if (clean.length === 2) return `${clean[0]} and ${clean[1]}`;
+  return `${clean.slice(0, -1).join(', ')}, and ${clean[clean.length - 1]}`;
+}
+
+function briefRelationshipPhrase(value: string) {
+  switch (value) {
+    case 'Watching competitors':
+      return 'competitive awareness';
+    case 'Tracking inspiration':
+      return 'craft inspiration';
+    case 'Monitoring our own brand':
+      return 'own-brand monitoring';
+    case 'Category research':
+      return 'category research';
+    default:
+      return value ? value.toLowerCase() : 'social tracking';
+  }
+}
+
+function buildContextBibleFromBrief(brief: Record<string, unknown>, fallbackTitle: string) {
+  const location = brief.location && typeof brief.location === 'object' && !Array.isArray(brief.location)
+    ? brief.location as Record<string, unknown>
+    : null;
+  const locationText = typeof brief.location === 'string' ? brief.location : location?.value;
+  const relationship = String(brief.relationship || brief.trackingMode || brief.trackingType || brief.tracking_type || brief.tracking_mode || '').trim();
+  const accountTypes = compactStringArray(brief.accountTypes || brief.account_types);
+  const legacyAccountType = String(brief.accountType || brief.accountTypeLabel || brief.account_type || '').trim();
+  const category = String(brief.category || brief.market || locationText || '').trim();
+  const geography = String(brief.geography || '').trim();
+  const audience = String(brief.audience || '').trim();
+  const priorities = compactStringArray(brief.priorities || brief.outcomes || brief.outcomesPriority || brief.outcomes_priority || brief.focus).slice(0, 3);
+  const note = String(brief.note || brief.freeNote || brief.free_note || brief.customNote || brief.custom_note || '').trim();
+  const scopePhrase = geography
+    ? geography.toLowerCase() === 'global'
+      ? 'globally'
+      : `in ${geography}`
+    : 'wherever the audience lives';
+  const parts = [
+    `This feed tracks ${category || fallbackTitle || 'social activity'} ${formatBriefList(accountTypes.length > 0 ? accountTypes : legacyAccountType ? [legacyAccountType] : [], 'accounts')} ${scopePhrase} for ${briefRelationshipPhrase(relationship)}.`,
+    audience ? `The audience that matters: ${audience}.` : '',
+    `Feed Me will surface ${formatBriefList(priorities)} first, while still flagging follower movement, fades, and gaps when they're real.`,
+    note ? `Local context: ${note}` : '',
+  ].filter(Boolean);
+  return parts.join(' ').trim() || `This feed tracks ${fallbackTitle}. Feed Me should explain metric-moving account activity.`;
+}
+
 function isBadInstagramImageUrl(url: string | null | undefined) {
   if (!url) return true;
   const u = String(url).toLowerCase();
@@ -249,6 +309,10 @@ function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
       return {
         id: String(row.id ?? ''),
         title: String(row.title ?? '').toUpperCase(),
+        contextBrief: row.contextBrief && typeof row.contextBrief === 'object' && !Array.isArray(row.contextBrief)
+          ? row.contextBrief as Record<string, unknown>
+          : {},
+        contextBible: String(row.contextBible || ''),
         feeders: feeders.map((feeder) => {
           const feederRow = feeder && typeof feeder === 'object' && !Array.isArray(feeder)
             ? (feeder as Record<string, unknown>)
@@ -292,6 +356,38 @@ function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
         commentsDelta: toMetricNumber(row.commentsDelta),
         viewsDelta: toMetricNumber(row.viewsDelta),
         postsDelta: toMetricNumber(row.postsDelta),
+      };
+    }),
+  };
+}
+
+async function attachFeedContexts(sb: SupabaseAdminClient, userId: string, bundle: FeedBundlePayload): Promise<FeedBundlePayload> {
+  const feedIds = bundle.feeds.map((feed) => Number(feed.id)).filter((id) => Number.isFinite(id) && id > 0);
+  if (feedIds.length === 0) return bundle;
+
+  const { data, error } = await sb
+    .from('feeds')
+    .select('id,context_brief,context_bible')
+    .eq('user_id', userId)
+    .in('id', feedIds);
+  if (error) return bundle;
+
+  const contextById = new Map<number, { context_brief?: Record<string, unknown> | null; context_bible?: string | null }>();
+  for (const row of data || []) {
+    contextById.set(Number(row.id), row as { context_brief?: Record<string, unknown> | null; context_bible?: string | null });
+  }
+
+  return {
+    ...bundle,
+    feeds: bundle.feeds.map((feed) => {
+      const context = contextById.get(Number(feed.id));
+      if (!context) return feed;
+      return {
+        ...feed,
+        contextBrief: context.context_brief && typeof context.context_brief === 'object' && !Array.isArray(context.context_brief)
+          ? context.context_brief
+          : {},
+        contextBible: String(context.context_bible || ''),
       };
     }),
   };
@@ -594,7 +690,7 @@ async function getFeedBundle(userId: string) {
   });
 
   if (!error) {
-    return normalizeFeedBundlePayload(data);
+    return attachFeedContexts(sb, userId, normalizeFeedBundlePayload(data));
   }
 
   const message = error?.message || '';
@@ -614,7 +710,7 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
 
   const { data: feedsData, error: feedsError } = await sb
     .from('feeds')
-    .select('id,user_id,name,status,created_at')
+    .select('id,user_id,name,status,created_at,context_brief,context_bible')
     .eq('user_id', userId)
     .eq('status', 'active')
     .order('created_at', { ascending: false });
@@ -737,6 +833,10 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
     return {
       id: String(feed.id),
       title: feed.name.toUpperCase(),
+      contextBrief: feed.context_brief && typeof feed.context_brief === 'object' && !Array.isArray(feed.context_brief)
+        ? feed.context_brief
+        : {},
+      contextBible: String(feed.context_bible || ''),
       feeders: mappedFeeders,
       metrics: {
         likes: toMetricString(totalLikes),
@@ -801,12 +901,40 @@ export async function POST(request: NextRequest) {
       if (!title) {
         return NextResponse.json({ error: 'Feed name is required' }, { status: 400 });
       }
+      const contextBrief = body?.contextBrief && typeof body.contextBrief === 'object' && !Array.isArray(body.contextBrief)
+        ? (body.contextBrief as Record<string, unknown>)
+        : {};
+      const contextBible = String(body?.contextBible || '').trim() || buildContextBibleFromBrief(contextBrief, title);
 
       const { error } = await sb.from('feeds').insert({
         user_id: user.id,
         name: title,
         status: 'active',
+        context_brief: contextBrief,
+        context_bible: contextBible,
       });
+      if (error) throw error;
+
+      invalidateUserDerivedCaches(user.id);
+      const bundle = await getFeedBundle(user.id);
+      writeServerRouteCache(feedBundleCacheKey(user.id), FEED_BUNDLE_TTL_MS, bundle);
+      return NextResponse.json(bundle);
+    }
+
+    if (action === 'update_feed_context') {
+      const feedId = Number(body?.feedId);
+      if (!feedId) {
+        return NextResponse.json({ error: 'feedId is required' }, { status: 400 });
+      }
+      const contextBrief = body?.contextBrief && typeof body.contextBrief === 'object' && !Array.isArray(body.contextBrief)
+        ? (body.contextBrief as Record<string, unknown>)
+        : {};
+      const contextBible = String(body?.contextBible || '').trim() || buildContextBibleFromBrief(contextBrief, String(body?.title || 'this feed'));
+      const { error } = await sb
+        .from('feeds')
+        .update({ context_brief: contextBrief, context_bible: contextBible, updated_at: new Date().toISOString() })
+        .eq('id', feedId)
+        .eq('user_id', user.id);
       if (error) throw error;
 
       invalidateUserDerivedCaches(user.id);
@@ -850,6 +978,8 @@ export async function POST(request: NextRequest) {
         handle,
         role: 'standard',
         status: 'active',
+        context_role: String(body?.contextRole || 'standard').trim() || 'standard',
+        context_note: String(body?.contextNote || '').trim(),
       };
 
       if (probe.ok) {

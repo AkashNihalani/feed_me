@@ -41,6 +41,13 @@ function arrayValue<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function humanizeSignalLabel(value: string): string {
+  return String(value || 'Signal')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function parseIstDateKey(value: string | null): Date | null {
   if (!value) return null;
   const [year, month, day] = value.split('-').map(Number);
@@ -885,17 +892,55 @@ async function fetchPatternBoard(
   if (feederIds.length === 0) return [];
 
   const { data, error } = await sb
-    .from('fire_alerts')
-    .select('signal_code,context,business_date_ist,feeder_id,signal_payload')
+    .from('signals')
+    .select('id,signal_type,scope,business_date_ist,feeder_id,metric_snapshot')
     .eq('feed_id', feedId)
-    .in('feeder_id', feederIds)
-    .in('signal_code', ['OWN_PATTERN', 'CROSS_PATTERN', 'ANCHOR_PATTERN'])
+    .in('status', ['pending', 'fresh', 'stale'])
     .gte('business_date_ist', windowStartIst)
     .lte('business_date_ist', windowEndIst)
     .order('business_date_ist', { ascending: false })
     .limit(300);
 
   if (error) throw error;
+  const signalRows = ((data || []) as Array<Record<string, unknown>>)
+    .filter((row) => {
+      const feederId = nullableNumber(row.feeder_id);
+      return feederId == null || feederIds.includes(feederId);
+    });
+  const signalIds = signalRows
+    .map((row) => nullableNumber(row.id))
+    .filter((value): value is number => value != null);
+  const supportBySignal = new Map<number, string[]>();
+  if (signalIds.length > 0) {
+    const { data: postRows, error: postError } = await sb
+      .from('signal_posts')
+      .select('signal_id,post_key,cohort,rank')
+      .in('signal_id', signalIds)
+      .order('rank', { ascending: true });
+    if (postError) throw postError;
+    for (const row of (postRows || []) as Array<Record<string, unknown>>) {
+      const signalId = nullableNumber(row.signal_id);
+      const postKey = nullableString(row.post_key);
+      if (signalId == null || !postKey) continue;
+      const bucket = supportBySignal.get(signalId) || [];
+      bucket.push(postKey);
+      supportBySignal.set(signalId, bucket);
+    }
+  }
+  const cardBySignal = new Map<number, Record<string, unknown>>();
+  if (signalIds.length > 0) {
+    const { data: cardRows, error: cardError } = await sb
+      .from('signal_intelligence')
+      .select('signal_id,card')
+      .in('signal_id', signalIds);
+    if (cardError) throw cardError;
+    for (const row of (cardRows || []) as Array<Record<string, unknown>>) {
+      const signalId = nullableNumber(row.signal_id);
+      const card = recordValue(row.card);
+      if (signalId == null || Object.keys(card).length === 0) continue;
+      cardBySignal.set(signalId, card);
+    }
+  }
 
   const aggregate = new Map<string, {
     firewatch_id: string;
@@ -915,20 +960,38 @@ async function fetchPatternBoard(
     latest_payload: Record<string, unknown> | null;
   }>();
 
-  for (const row of (data || []) as Array<Record<string, unknown>>) {
-    const payload = recordValue(row.signal_payload);
-    const signalCode = nullableString(row.signal_code) || 'OWN_PATTERN';
-    const context = (nullableString(row.context) || 'own') as 'own' | 'cross' | 'anchor';
+  for (const row of signalRows) {
+    const signalId = nullableNumber(row.id) || 0;
+    const snapshot = recordValue(row.metric_snapshot);
+    const card = cardBySignal.get(signalId) || {};
+    const commonPattern = arrayValue<unknown>(card.common_pattern)
+      .map((value) => nullableString(value))
+      .filter((value): value is string => Boolean(value))
+      .slice(0, PATTERN_BOARD_CUE_MAX);
+    const payload = {
+      pattern_name: nullableString(row.signal_type),
+      pattern_label: nullableString(card.title),
+      avg_hot_percentile: nullableNumber(snapshot.avg_percentile) ?? nullableNumber(snapshot.best_percentile),
+      feeders_count: nullableNumber(snapshot.contributing_feeders) ?? nullableNumber(snapshot.affected_feeders),
+      baseline_share: null,
+      recent_lift: null,
+      anchor_gap: nullableNumber(snapshot.gap),
+      match_count: nullableNumber(snapshot.post_count) ?? (supportBySignal.get(signalId) || []).length,
+      support_post_keys: supportBySignal.get(signalId) || [],
+      required_cues: [],
+      cues: commonPattern.map((label) => ({ key: 'common_pattern', value: label, label })),
+      card,
+    };
+    const signalCode = nullableString(row.signal_type) || 'SIGNAL';
+    const context = (nullableString(row.scope) || 'own') as 'own' | 'cross' | 'anchor';
     const patternName = nullableString(payload.pattern_name);
-    const modifierKey = nullableString(payload.modifier_key);
-    const modifierValue = nullableString(payload.modifier_value);
-    const key = `${signalCode}:${patternName || 'unknown'}:${modifierKey || ''}:${modifierValue || ''}`;
+    const key = `${signalCode}:${patternName || 'unknown'}`;
     const current = aggregate.get(key) || {
       firewatch_id: key,
       signal_code: signalCode,
       context,
       pattern_name: patternName,
-      pattern_label: getPatternMechanicLabel(patternName) || 'Pattern',
+      pattern_label: nullableString(payload.pattern_label) || getPatternMechanicLabel(patternName) || humanizeSignalLabel(patternName || signalCode),
       trigger_count: 0,
       avg_total: 0,
       avg_count: 0,
@@ -1015,7 +1078,7 @@ async function fetchPatternBoard(
         const cueRecord = recordValue(cue);
         const k = nullableString(cueRecord.key);
         const v = nullableString(cueRecord.value);
-        const label = getPatternCueLabel(k, v);
+        const label = nullableString(cueRecord.label) || getPatternCueLabel(k, v);
         return label;
       })
       .filter((label): label is string => Boolean(label))

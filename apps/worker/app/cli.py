@@ -26,7 +26,7 @@ def main():
             "purge_preview_assets_before_day",
             "repair_overlong_preview_assets",
             "restore_d7_fire_thumbnails",
-            "backfill_d7_post_intelligence",
+            "resolve_signal_intelligence",
             "recompute_fire_rankings",
         ],
         required=True,
@@ -36,6 +36,7 @@ def main():
     p.add_argument("--batch-size", type=int, default=50)
     p.add_argument("--day", type=str, default=None)
     p.add_argument("--post-key", type=str, default=None)
+    p.add_argument("--signal-id", type=int, default=None)
     args = p.parse_args()
 
     if args.mode == "enqueue_daily":
@@ -195,21 +196,6 @@ def main():
             )
         finally:
             eng.close()
-    elif args.mode == "backfill_d7_post_intelligence":
-        eng = PureEngine()
-        try:
-            result = eng.backfill_d7_post_intelligence(day=args.day, limit=args.limit, days=args.days)
-            print(
-                f"backfill_d7_post_intelligence day={args.day} "
-                f"days={args.days} "
-                f"selected_feeders={result.get('selected_feeders', 0)} "
-                f"selected_feeds={result.get('selected_feeds', 0)} "
-                f"hot_posts={result.get('hot_posts', 0)} "
-                f"processed_feeders={result.get('processed_feeders', 0)} "
-                f"resolved_feeds={result.get('resolved_feeds', 0)}"
-            )
-        finally:
-            eng.close()
     elif args.mode == "recompute_fire_rankings":
         eng = PureEngine()
         try:
@@ -218,6 +204,16 @@ def main():
                 f"recompute_fire_rankings selected={result.get('selected', 0)} "
                 f"processed={result.get('processed', 0)} updated_rows={result.get('updated_rows', 0)} "
                 f"lanes={result.get('lanes', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "resolve_signal_intelligence":
+        eng = PureEngine()
+        try:
+            result = eng.resolve_signal_intelligence(signal_id=args.signal_id, limit=args.limit)
+            print(
+                f"resolve_signal_intelligence selected={result.get('selected', 0)} "
+                f"resolved={result.get('resolved', 0)} failed={result.get('failed', 0)}"
             )
         finally:
             eng.close()

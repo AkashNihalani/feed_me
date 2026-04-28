@@ -31,9 +31,6 @@ from .config import (
     CHECKPOINT_SCRAPE_CHUNK_SIZE,
     CHECKPOINT_JOB_CLAIM_LIMIT,
     STALE_JOB_MINUTES,
-    D7_INTELLIGENCE_REPAIR_INTERVAL_SECONDS,
-    D7_INTELLIGENCE_REPAIR_LIMIT,
-    D7_INTELLIGENCE_REPAIR_DAYS,
     CHECKPOINT_BATCH_HOUR_24,
     CHECKPOINT_BATCH_MINUTE,
     CHECKPOINT_BUCKET_MINUTES,
@@ -51,14 +48,12 @@ from .config import (
     FIRE_MEDIA_RETENTION_ENABLED,
 )
 from .web_push import is_enabled as web_push_enabled, send as send_web_push
-from .checkpoint_intelligence import (
-    extract_post_intelligence_for_checkpoint as run_checkpoint_intelligence,
+from .signal_detection import (
+    resolve_audience_signals_for_feed as run_audience_signals_for_feed,
+    resolve_signals_for_feed as run_signals_for_feed,
 )
-from .pattern_alerts import (
-    resolve_pattern_alerts_for_feed as run_pattern_alerts_for_feed,
-)
-from .post_intelligence import (
-    current_model_version as pi_model_version,
+from .signal_intelligence import (
+    resolve_signal_intelligence as run_signal_intelligence,
 )
 from .retry_policy import (
     hard_skip_error as _hard_skip_error,
@@ -2028,14 +2023,28 @@ class PureEngine:
             return None, False
 
         post_key = _scoped_post_key(feeder_id, post_url)
+        normalized_media = _media_type({"type": media_type})
+        carousel_count = len(carousel_urls or []) if normalized_media in {"sidecar", "carousel"} else None
+        depth_bucket = None
+        if carousel_count is not None:
+            if 2 <= carousel_count <= 3:
+                depth_bucket = "DEPTH_MINI"
+            elif 4 <= carousel_count <= 7:
+                depth_bucket = "DEPTH_STANDARD"
+            elif carousel_count >= 8:
+                depth_bucket = "DEPTH_DEEP"
+            else:
+                depth_bucket = "DEPTH_UNKNOWN"
+        duration_bucket = "DUR_UNKNOWN" if normalized_media == "reel" else None
         row = self.conn.execute(
             """
             insert into public.posts (
               post_key, feeder_id, post_url, media_type, posted_at, caption,
               provider_post_id, thumbnail_url, video_url, carousel_urls,
+              carousel_slide_count, depth_bucket, duration_bucket,
               created_at, updated_at
             )
-            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,now(),now())
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,now(),now())
             on conflict (feeder_id, post_url)
             do update set
               post_url=excluded.post_url,
@@ -2049,6 +2058,9 @@ class PureEngine:
                 when excluded.carousel_urls is null then public.posts.carousel_urls
                 else excluded.carousel_urls
               end,
+              carousel_slide_count=coalesce(excluded.carousel_slide_count, public.posts.carousel_slide_count),
+              depth_bucket=coalesce(excluded.depth_bucket, public.posts.depth_bucket),
+              duration_bucket=coalesce(excluded.duration_bucket, public.posts.duration_bucket),
               updated_at=now()
             returning post_key, (xmax = 0) as inserted
             """,
@@ -2063,6 +2075,9 @@ class PureEngine:
                 thumbnail_url,
                 video_url,
                 json.dumps(carousel_urls or []),
+                carousel_count,
+                depth_bucket,
+                duration_bucket,
             ),
         ).fetchone()
         if not row:
@@ -2386,21 +2401,36 @@ class PureEngine:
 
     def _resolve_for_feeder(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
         # Checkpoint cards now come from post_metrics directly in the Fire API.
-        # Pattern alerts are resolved at the feed level on D7 only.
         return
 
     def _try_resolve_feed(self, feeder_id: int, checkpoint: str, business_date_ist: date | None = None):
         cp = (checkpoint or '').lower()
-        if cp != 'd7' or business_date_ist is None:
+        if cp not in ('d3', 'd7', 'd21') or business_date_ist is None:
             return
-        self._resolve_pattern_alerts_for_feed(feeder_id, business_date_ist)
+        self._resolve_signals_for_feed(feeder_id, cp, business_date_ist)
 
-    def _resolve_pattern_alerts_for_feed(self, feeder_id: int, business_date_ist: date):
-        run_pattern_alerts_for_feed(
+    def _resolve_signals_for_feed(self, feeder_id: int, checkpoint: str, business_date_ist: date):
+        return run_signals_for_feed(
+            self.conn,
+            feeder_id,
+            checkpoint,
+            business_date_ist,
+            app_timezone=APP_TIMEZONE,
+        )
+
+    def _resolve_audience_signals_for_feed(self, feeder_id: int, business_date_ist: date):
+        return run_audience_signals_for_feed(
             self.conn,
             feeder_id,
             business_date_ist,
             app_timezone=APP_TIMEZONE,
+        )
+
+    def resolve_signal_intelligence(self, signal_id: int | None = None, limit: int = 1):
+        return run_signal_intelligence(
+            self.conn,
+            signal_id=signal_id,
+            limit=limit,
         )
 
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
@@ -2454,15 +2484,6 @@ class PureEngine:
             path = row["storage_path"]
             urls.append(_storage_authenticated_object_url(str(bucket), str(path)))
         return urls
-
-    def _extract_post_intelligence_for_checkpoint(self, feeder_id: int, checkpoint: str, business_date: date | None):
-        run_checkpoint_intelligence(
-            self.conn,
-            feeder_id,
-            checkpoint,
-            business_date,
-            app_timezone=APP_TIMEZONE,
-        )
 
     def process_run_jobs(self, limit: int = 120):
         if limit <= 0:
@@ -2560,6 +2581,13 @@ class PureEngine:
                             if profile_pic_url is None and profile_followers is None:
                                 raise RuntimeError("follower scrape returned no profile data")
                             self.conn.commit()
+                            business_day = job.get("business_date_ist")
+                            if not isinstance(business_day, date):
+                                try:
+                                    business_day = date.fromisoformat(str(business_day))
+                                except Exception:
+                                    business_day = datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date()
+                            self._resolve_audience_signals_for_feed(feeder_id, business_day)
                             self._set_run_result(jid, "done", att, None, None)
                             continue
 
@@ -2910,6 +2938,13 @@ class PureEngine:
                                     context=f"checkpoint_{cp}_hot_extension",
                                 )
                             self.conn.commit()
+
+                            if cp == "d7" and percentile is not None and percentile <= _HOT_PERCENTILE_MAX:
+                                self._capture_post_media_assets_for_post_keys(
+                                    [str(j["post_key"])],
+                                    include_all_roles=True,
+                                )
+
                             self._set_checkpoint_result(jid, "done", att, None, None)
 
                             if feeder_id and cp in ("d1", "d3", "d7", "d21"):
@@ -2925,7 +2960,6 @@ class PureEngine:
                         self._recompute_feeder_checkpoint_rankings(feeder_id, cp)
                         recomputed_pairs.add(recompute_key)
                     self._extend_hot_visual_media_for_day(feeder_id, cp, business_day)
-                    self._extract_post_intelligence_for_checkpoint(feeder_id, cp, business_day)
                     self._resolve_for_feeder(feeder_id, cp, business_day)
                     self._try_resolve_feed(feeder_id, cp, business_day)
                 except Exception as resolve_exc:
@@ -4571,145 +4605,6 @@ class PureEngine:
 
         return {"selected": len(rows), "updated": updated, "missing": missing}
 
-    def backfill_d7_post_intelligence(
-        self,
-        day: str | None = None,
-        limit: int = 200,
-        days: int = 14,
-    ) -> dict[str, int]:
-        """Repair hot D7 post intelligence from stored media sources, without re-scraping Bright Data."""
-        try:
-            tz = ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")
-        except Exception:
-            tz = timezone.utc
-
-        requested_day = (day or "").strip()
-        if requested_day:
-            try:
-                window_start_day = date.fromisoformat(requested_day)
-            except ValueError:
-                window_start_day = datetime.now(tz).date()
-            window_end_day = window_start_day
-        else:
-            window_end_day = datetime.now(tz).date()
-            window_start_day = window_end_day - timedelta(days=max(1, int(days)) - 1)
-
-        current_intelligence_model = pi_model_version(skipped=False)
-        rows = self.conn.execute(
-            """
-            select
-              fd.feed_id,
-              p.feeder_id,
-              pm.business_date_ist,
-              count(*) as hot_posts
-            from public.posts p
-            join public.feeders fd
-              on fd.id = p.feeder_id
-            join public.post_metrics pm
-              on pm.post_key = p.post_key
-             and lower(pm.checkpoint) = 'd7'
-            left join public.post_intelligence pi
-              on pi.post_key = p.post_key
-            where pm.business_date_ist between %s and %s
-              and pm.percentile_performance is not null
-              and pm.percentile_performance <= 35
-              and (
-                pi.post_key is null
-                or coalesce(pi.model_version, '') <> %s
-                or not coalesce(pi.tags, '{}'::jsonb) ?& array[
-                  'mechanic',
-                  'opening_move',
-                  'proof_mode',
-                  'pacing',
-                  'audio_mode',
-                  'style',
-                  'face',
-                  'language',
-                  'depth',
-                  'density',
-                  'text_overlay',
-                  'duration_bucket',
-                  '_visual_source'
-                ]
-                or coalesce(pi.tags, '{}'::jsonb) ?| array['hook', 'pillar', 'format', 'subject']
-                or (
-                  lower(coalesce(p.media_type, 'image')) = 'reel'
-                  and coalesce(pi.tags->>'_visual_source', '') not like 'video_full:%%'
-                )
-                or (
-                  lower(coalesce(p.media_type, 'image')) in ('sidecar', 'carousel')
-                  and coalesce(pi.tags->>'_visual_source', '') not like 'carousel:%%'
-                )
-                or (
-                  lower(coalesce(p.media_type, 'image')) not in ('reel', 'sidecar', 'carousel')
-                  and coalesce(pi.tags->>'_visual_source', '') <> 'image_full'
-                )
-              )
-            group by fd.feed_id, p.feeder_id, pm.business_date_ist
-            order by pm.business_date_ist desc, count(*) desc, p.feeder_id asc
-            limit %s
-            """,
-            (window_start_day, window_end_day, current_intelligence_model, max(1, limit)),
-        ).fetchall()
-        self.conn.commit()
-
-        if not rows:
-            return {
-                "selected_feeders": 0,
-                "selected_feeds": 0,
-                "hot_posts": 0,
-                "processed_feeders": 0,
-                "resolved_feeds": 0,
-            }
-
-        total_hot_posts = 0
-        processed_feeders = 0
-        feed_resolvers: dict[tuple[int, date], int] = {}
-
-        for row in rows:
-            feeder_id = int(row.get("feeder_id") or 0)
-            feed_id = int(row.get("feed_id") or 0)
-            day_value = row.get("business_date_ist")
-            if not feeder_id or not day_value:
-                continue
-            day_date = day_value if isinstance(day_value, date) else date.fromisoformat(str(day_value))
-            total_hot_posts += int(row.get("hot_posts") or 0)
-            for attempt in range(2):
-                try:
-                    self.ensure_connection("before D7 media repair", verify=True)
-                    self._extend_hot_visual_media_for_day(feeder_id, "d7", day_date)
-                    self.ensure_connection("before D7 intelligence extraction", verify=True)
-                    self._extract_post_intelligence_for_checkpoint(feeder_id, "d7", day_date)
-                    processed_feeders += 1
-                    if feed_id and (feed_id, day_date) not in feed_resolvers:
-                        feed_resolvers[(feed_id, day_date)] = feeder_id
-                    break
-                except Exception as exc:
-                    try:
-                        self.conn.rollback()
-                    except Exception:
-                        pass
-                    if attempt == 0 and _is_connection_error(exc):
-                        self._reconnect(f"D7 intelligence repair feeder retry: {exc}")
-                        continue
-                    raise
-
-        resolved_feeds = 0
-        for (_feed_id, day_date), feeder_id in feed_resolvers.items():
-            self.ensure_connection("before D7 Firewatch resolution", verify=True)
-            self._resolve_pattern_alerts_for_feed(feeder_id, day_date)
-            resolved_feeds += 1
-
-        return {
-            "selected_feeders": len(rows),
-            "selected_feeds": len(feed_resolvers),
-            "hot_posts": total_hot_posts,
-            "processed_feeders": processed_feeders,
-            "resolved_feeds": resolved_feeds,
-        }
-
-
-
 def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
     eng = PureEngine()
     try:
@@ -4722,11 +4617,6 @@ def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
         eng.process_checkpoint_jobs(effective_checkpoint_limit)
         eng.ensure_connection("before media assets", verify=True)
         eng.process_post_media_assets()
-        eng.ensure_connection("before D7 intelligence repair", verify=True)
-        eng.backfill_d7_post_intelligence(
-            limit=D7_INTELLIGENCE_REPAIR_LIMIT,
-            days=D7_INTELLIGENCE_REPAIR_DAYS,
-        )
         eng.ensure_connection("before web push jobs", verify=True)
         eng.process_web_push_jobs()
         eng.ensure_connection("before retention cleanup", verify=True)
@@ -4745,7 +4635,6 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
     last_watchdog = 0.0
     last_dead_check = 0.0
     last_retention_cleanup = 0.0
-    last_d7_intelligence_repair = 0.0
     last_summary_date = ""
     effective_checkpoint_limit = max(1, int(checkpoint_limit or CHECKPOINT_JOB_CLAIM_LIMIT))
 
@@ -4923,34 +4812,6 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
                             print(f"[db] retention-cleanup reconnect failed: {reconnect_exc}")
                     print(f"[retention-cleanup] {e}")
                 last_retention_cleanup = now_ts
-
-            if now_ts - last_d7_intelligence_repair >= max(60, D7_INTELLIGENCE_REPAIR_INTERVAL_SECONDS):
-                try:
-                    eng.ensure_connection("D7 intelligence repair", verify=True)
-                    result = eng.backfill_d7_post_intelligence(
-                        limit=D7_INTELLIGENCE_REPAIR_LIMIT,
-                        days=D7_INTELLIGENCE_REPAIR_DAYS,
-                    )
-                    if int(result.get("hot_posts", 0) or 0) > 0:
-                        print(
-                            "[d7-intelligence-repair] "
-                            f"hot_posts={result.get('hot_posts', 0)} "
-                            f"processed_feeders={result.get('processed_feeders', 0)} "
-                            f"resolved_feeds={result.get('resolved_feeds', 0)}"
-                        )
-                except Exception as e:
-                    try:
-                        eng.conn.rollback()
-                    except Exception:
-                        pass
-                    if _is_connection_error(e):
-                        try:
-                            eng._reconnect(f"D7 intelligence repair: {e}")
-                        except Exception as reconnect_exc:
-                            print(f"[db] D7 intelligence repair reconnect failed: {reconnect_exc}")
-                    print(f"[d7-intelligence-repair] {e}")
-                    alert_worker_error(e)
-                last_d7_intelligence_repair = now_ts
 
             # Process jobs
             try:

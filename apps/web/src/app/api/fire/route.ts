@@ -310,10 +310,6 @@ function isHotPercentile(value: number | null): boolean {
   return value != null && Number.isFinite(value) && value <= HOT_PERCENTILE_MAX;
 }
 
-function isMissingColumnError(error: unknown, columnName: string): boolean {
-  return isMissingColumnReferenceError(error, 'fire_alerts', columnName);
-}
-
 function isMissingColumnReferenceError(error: unknown, tableName: string, columnName: string): boolean {
   const message = error instanceof Error
     ? error.message
@@ -518,8 +514,39 @@ type FirePatternAlertRow = {
   surface_delta: number | null;
   body: string | null;
   signal_payload: Record<string, unknown> | null;
+  signal_card?: Record<string, unknown> | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+type FireSignalRow = {
+  id: number | string | null;
+  feed_id: number;
+  feeder_id: number | null;
+  scope: string | null;
+  signal_type: string | null;
+  media_type: string | null;
+  sub_bucket: string | null;
+  checkpoint: string | null;
+  business_date_ist: string | null;
+  metric_snapshot: Record<string, unknown> | null;
+  status: string | null;
+  body: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type FireSignalPostRow = {
+  signal_id: number | string | null;
+  post_key: string | null;
+  cohort: string | null;
+  rank: number | null;
+  role: string | null;
+};
+
+type FireSignalIntelligenceRow = {
+  signal_id: number | string | null;
+  card: Record<string, unknown> | null;
 };
 
 type FirePatternSummary = {
@@ -546,6 +573,7 @@ type FirePatternSummary = {
   required_cues?: Array<{ key: string; value: string; label: string }> | null;
   support_posts?: FirePatternSupportPreview[] | null;
   anchor_support_posts?: FirePatternSupportPreview[] | null;
+  card?: Record<string, unknown> | null;
 };
 
 type FireMetricKey = 'views' | 'likes' | 'comments';
@@ -624,6 +652,8 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   const bestMetricValue = rowMetricValue(row, bestMetric);
   const storedMetricMatchesBest = nullableString(row.metric_key)?.toLowerCase() === bestMetric;
   const primaryPattern = row.pattern_alerts?.[0] ?? null;
+  const primaryPatternCard = recordValue(primaryPattern?.card);
+  const primaryPatternTitle = nullableString(primaryPatternCard.title);
   const payload = {
     best_metric: bestMetric,
     metrics: {
@@ -672,7 +702,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       pattern_alerts: row.pattern_alerts ?? [],
       firewatch: primaryPattern ? {
         family_label: firewatchFamilyLabel(primaryPattern.context),
-        pattern_label: getPatternMechanicLabel(primaryPattern.pattern_name) || humanizeSignalCode(primaryPattern.signal_code),
+        pattern_label: primaryPatternTitle || getPatternMechanicLabel(primaryPattern.pattern_name) || humanizeSignalCode(primaryPattern.signal_code),
         media_type: primaryPattern.media_type ?? nullableString(row.media_type),
         support_posts: primaryPattern.support_posts ?? [],
         anchor_support_posts: primaryPattern.anchor_support_posts ?? [],
@@ -686,6 +716,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
         anchor_gap: primaryPattern.anchor_gap ?? null,
         anchor_avg_percentile: primaryPattern.anchor_avg_percentile ?? null,
         pattern_key: primaryPattern.pattern_key ?? null,
+        card: primaryPattern.card ?? null,
       } : null,
       is_hot: Boolean(row.is_hot),
       has_intelligence: Boolean(row.has_intelligence),
@@ -740,9 +771,9 @@ function sortPatternAlertRows(rows: FirePatternAlertRow[]): FirePatternAlertRow[
 
 function firewatchFamilyLabel(context: string | null | undefined): string {
   const normalized = typeof context === 'string' ? context.trim().toLowerCase() : '';
-  if (normalized === 'cross') return 'Feed Pattern';
+  if (normalized === 'cross') return 'Feed Signal';
   if (normalized === 'anchor') return 'Anchor Gap';
-  return 'Repeating Winner';
+  return 'Own Signal';
 }
 
 function summarizePatternAlertRow(
@@ -773,6 +804,7 @@ function summarizePatternAlertRow(
         .filter((preview): preview is FirePatternSupportPreview => preview !== null)
       : []
   );
+  const card = recordValue(payload.card || row.signal_card);
 
   return {
     signal_code: nullableString(row.signal_code),
@@ -798,6 +830,7 @@ function summarizePatternAlertRow(
     required_cues: mapCueList(payload.required_cues),
     support_posts: resolvePreviews(payload.support_post_keys),
     anchor_support_posts: resolvePreviews(payload.anchor_support_post_keys),
+    card: Object.keys(card).length > 0 ? card : null,
   } satisfies FirePatternSummary;
 }
 
@@ -1241,7 +1274,7 @@ async function fetchIntelligenceRowsForPostKeys(
   for (let start = 0; start < postKeys.length; start += POST_KEY_CHUNK_SIZE) {
     const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
     const { data, error } = await sb
-      .from('post_intelligence')
+      .from('post_fingerprints')
       .select('post_key,model_version')
       .in('post_key', chunk);
 
@@ -1350,60 +1383,122 @@ async function fetchFirewatchPatternRows(
   effectiveFeederIds: number[],
   day: string,
 ): Promise<FirePatternAlertRow[]> {
-  if (effectiveFeedIds.length === 0 || effectiveFeederIds.length === 0) return [];
+  if (effectiveFeedIds.length === 0) return [];
 
-  const baseFields = [
-    'id',
-    'dedupe_key',
-    'feed_id',
-    'feeder_id',
-    'post_key',
-    'checkpoint',
-    'business_date_ist',
-    'signal_code',
-    'context',
-    'alert_type',
-    'status',
-    'metric_key',
-    'metric_value',
-    'surface_percentile',
-    'surface_delta',
-    'body',
-    'created_at',
-    'updated_at',
-  ];
-
-  let { data, error } = await sb
-    .from('fire_alerts')
-    .select([...baseFields, 'signal_payload'].join(','))
+  const { data, error } = await sb
+    .from('signals')
+    .select('id,feed_id,feeder_id,scope,signal_type,media_type,sub_bucket,checkpoint,business_date_ist,metric_snapshot,status,body,created_at,updated_at')
     .in('feed_id', effectiveFeedIds)
-    .in('feeder_id', effectiveFeederIds)
     .eq('business_date_ist', day)
-    .eq('checkpoint', 'd7')
-    .in('signal_code', ['OWN_PATTERN', 'CROSS_PATTERN', 'ANCHOR_PATTERN'])
-    .not('status', 'in', '("dropped","error","archived")');
+    .in('status', ['pending', 'fresh', 'stale']);
 
-  if (error && isMissingColumnError(error, 'signal_payload')) {
-    const fallback = await sb
-      .from('fire_alerts')
-      .select([...baseFields, 'signal_payload:pattern_payload'].join(','))
-      .in('feed_id', effectiveFeedIds)
-      .in('feeder_id', effectiveFeederIds)
-      .eq('business_date_ist', day)
-      .eq('checkpoint', 'd7')
-      .in('signal_code', ['OWN_PATTERN', 'CROSS_PATTERN', 'ANCHOR_PATTERN'])
-      .not('status', 'in', '("dropped","error","archived")');
-    data = fallback.data;
-    error = fallback.error;
-  }
-
-  if (error && isMissingColumnError(error, 'pattern_payload')) {
-    console.warn('[/api/fire] Firewatch payload column unavailable; continuing without Firewatch cards.');
-    return [];
-  }
   if (error) throw error;
 
-  return (data || []) as FirePatternAlertRow[];
+  const signalRows = ((data || []) as FireSignalRow[])
+    .filter((row) => {
+      const feederId = nullableNumber(row.feeder_id);
+      return feederId == null || effectiveFeederIds.includes(feederId);
+    });
+  if (signalRows.length === 0) return [];
+
+  const signalIds = signalRows
+    .map((row) => nullableNumber(row.id))
+    .filter((value): value is number => value != null);
+  const postsBySignal = new Map<number, FireSignalPostRow[]>();
+  for (let start = 0; start < signalIds.length; start += POST_KEY_CHUNK_SIZE) {
+    const chunk = signalIds.slice(start, start + POST_KEY_CHUNK_SIZE);
+    const { data: postData, error: postError } = await sb
+      .from('signal_posts')
+      .select('signal_id,post_key,cohort,rank,role')
+      .in('signal_id', chunk)
+      .order('rank', { ascending: true });
+    if (postError) throw postError;
+    for (const row of (postData || []) as FireSignalPostRow[]) {
+      const signalId = nullableNumber(row.signal_id);
+      if (signalId == null) continue;
+      const bucket = postsBySignal.get(signalId) || [];
+      bucket.push(row);
+      postsBySignal.set(signalId, bucket);
+    }
+  }
+
+  const cardBySignal = new Map<number, Record<string, unknown>>();
+  for (let start = 0; start < signalIds.length; start += POST_KEY_CHUNK_SIZE) {
+    const chunk = signalIds.slice(start, start + POST_KEY_CHUNK_SIZE);
+    const { data: cardData, error: cardError } = await sb
+      .from('signal_intelligence')
+      .select('signal_id,card')
+      .in('signal_id', chunk);
+    if (cardError) throw cardError;
+    for (const row of (cardData || []) as FireSignalIntelligenceRow[]) {
+      const signalId = nullableNumber(row.signal_id);
+      if (signalId == null || !row.card) continue;
+      cardBySignal.set(signalId, row.card);
+    }
+  }
+
+  return signalRows.map((row) => {
+    const signalId = nullableNumber(row.id) || 0;
+    const posts = postsBySignal.get(signalId) || [];
+    const cohortA = posts
+      .filter((post) => nullableString(post.cohort)?.toLowerCase() !== 'b')
+      .sort((a, b) => (nullableNumber(a.rank) || 0) - (nullableNumber(b.rank) || 0));
+    const cohortB = posts
+      .filter((post) => nullableString(post.cohort)?.toLowerCase() === 'b')
+      .sort((a, b) => (nullableNumber(a.rank) || 0) - (nullableNumber(b.rank) || 0));
+    const heroPostKey = nullableString(cohortA[0]?.post_key) || nullableString(cohortB[0]?.post_key);
+    const snapshot = recordValue(row.metric_snapshot);
+    const avgPercentile = nullableNumber(snapshot.avg_percentile);
+    const bestPercentile = nullableNumber(snapshot.best_percentile);
+    const supportPostKeys = [...cohortA, ...cohortB]
+      .map((post) => nullableString(post.post_key))
+      .filter((value): value is string => Boolean(value));
+    const payload = {
+      version: 3,
+      pattern_name: nullableString(row.signal_type),
+      mechanic: nullableString(row.signal_type),
+      media_type: nullableString(row.media_type),
+      sub_bucket: nullableString(row.sub_bucket),
+      pattern_key: `signal:${signalId}`,
+      match_count: cohortA.length,
+      feeders_count: null,
+      avg_hot_percentile: avgPercentile ?? bestPercentile,
+      baseline_share: null,
+      recent_lift: null,
+      contrast_gap: null,
+      anchor_avg_percentile: nullableNumber(snapshot.anchor_median),
+      anchor_gap: nullableNumber(snapshot.gap),
+      cues: [],
+      required_cues: [],
+      support_post_keys: supportPostKeys,
+      anchor_support_post_keys: cohortB.map((post) => nullableString(post.post_key)).filter((value): value is string => Boolean(value)),
+      metric_snapshot: snapshot,
+      card: cardBySignal.get(signalId) || null,
+    };
+
+    return {
+      id: signalId,
+      dedupe_key: `signal:${signalId}`,
+      feed_id: row.feed_id,
+      feeder_id: row.feeder_id,
+      post_key: heroPostKey,
+      checkpoint: row.checkpoint,
+      business_date_ist: row.business_date_ist,
+      signal_code: row.signal_type,
+      context: row.scope,
+      alert_type: 'watch',
+      status: row.status,
+      metric_key: null,
+      metric_value: cohortA.length,
+      surface_percentile: avgPercentile ?? bestPercentile,
+      surface_delta: null,
+      body: row.body,
+      signal_payload: payload,
+      signal_card: cardBySignal.get(signalId) || null,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    } as FirePatternAlertRow;
+  });
 }
 
 function buildFirewatchPatternGroupKey(row: FirePatternAlertRow): string {
@@ -1486,7 +1581,8 @@ function buildFirewatchRows(options: {
 
     const allSupportPosts = Array.from(supportPosts.values()).slice(0, 6);
     const allAnchorSupportPosts = Array.from(anchorSupportPosts.values()).slice(0, 4);
-    const primaryPatternLabel = getPatternMechanicLabel(primarySummary.pattern_name) || humanizeSignalCode(primarySummary.signal_code);
+    const primaryCard = recordValue(primarySummary.card);
+    const primaryPatternLabel = nullableString(primaryCard.title) || getPatternMechanicLabel(primarySummary.pattern_name) || humanizeSignalCode(primarySummary.signal_code);
     const familyLabel = firewatchFamilyLabel(primarySummary.context);
     const statBits = [
       primarySummary.match_count != null ? `${Math.round(primarySummary.match_count)} hot` : null,
@@ -1504,7 +1600,7 @@ function buildFirewatchRows(options: {
       checkpoint: 'd7',
       business_date_ist: nullableString(primaryRow.business_date_ist) || '',
       card_kind: 'firewatch',
-      signal_code: nullableString(primarySummary.signal_code) || 'CROSS_PATTERN',
+      signal_code: nullableString(primarySummary.signal_code) || 'CROSS_MOMENTUM',
       context: nullableString(primarySummary.context) || 'own',
       alert_type: nullableString(primarySummary.alert_type) || 'watch',
       status: 'new',

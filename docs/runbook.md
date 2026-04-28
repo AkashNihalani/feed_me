@@ -12,6 +12,9 @@ Run in Supabase SQL Editor:
 - `/Users/Akash/Documents/Feed Me/infra/supabase/sql/minimal_engine_audit.sql`
 - `/Users/Akash/Documents/Feed Me/infra/supabase/sql/engine_smoke_checks.sql`
 
+Signal alert rules, caps, prompt context, and legacy guardrails:
+- `/Users/Akash/Documents/Feed Me/docs/signal-alert-rulebook.md`
+
 ## 3) Worker setup
 ```bash
 cd "/Users/Akash/Documents/Feed Me"
@@ -37,9 +40,14 @@ python3 -m apps.worker.app.cli --mode worker
 ## 6) Job behavior
 - Discovery runs every 12 hours through Bright Data Instagram Posts API pulls with a 2-day overlap.
 - D1/D3/D7: scheduled from actual post age and bucketed into 60-minute windows.
-- D21: only if D7 tag is `✅` or `🔥` or `🚀`
+- D21: queued from hot D7 performance, but no LLM tag readiness gate
 - Stale `running` jobs auto-requeued every minute
 
 - Official checkpoints stay: D1, D3, D7, D21.
 - Historical D2 rows remain in the database, but new discovery no longer writes fresh D2 buffer metrics.
 - Use RUN_JOB_CONCURRENCY to fan out feeder discovery jobs in parallel.
+- Signal intelligence source of truth:
+  - deterministic detection writes `signals` + `signal_posts`
+  - LLM fingerprints write `post_fingerprints`
+  - signal cards write `signal_intelligence`
+  - legacy `post_intelligence` / pattern-alert extraction is retired

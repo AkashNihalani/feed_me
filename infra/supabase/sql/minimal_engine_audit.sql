@@ -10,9 +10,11 @@ with required_tables(name) as (
     ('feeder_baselines'),
     ('feeder_hour_baselines'),
     ('feeder_follower_snapshots'),
-    ('post_intelligence'),
+    ('signals'),
+    ('signal_posts'),
+    ('post_fingerprints'),
+    ('signal_intelligence'),
     ('post_media_assets'),
-    ('fire_alerts'),
     ('web_push_subscriptions'),
     ('web_push_jobs')
 )
@@ -47,9 +49,6 @@ with required_functions(name) as (
     ('finalize_daily_jobs_for_day'),
     ('enqueue_repair_jobs_from_previous_day'),
     ('skip_unqualified_d21_jobs'),
-    ('fn_process_checkpoint'),
-    ('fn_fire_alert_urgency'),
-    ('fn_upsert_fire_signal'),
     ('fn_feed_dashboard')
 )
 select rf.name as function_name,
@@ -58,3 +57,17 @@ from required_functions rf
 left join pg_proc p on p.proname = rf.name
 left join pg_namespace n on n.oid = p.pronamespace and n.nspname='public'
 order by rf.name;
+
+with legacy_write_functions(name) as (
+  values ('fn_process_checkpoint')
+)
+select lwf.name as function_name,
+       case
+         when p.proname is null then 'OK_MISSING'
+         when p.prosrc ilike '%insert into public.fire_alerts%' then 'LEGACY_WRITE_RISK'
+         else 'OK_NO_LEGACY_WRITE'
+       end as status
+from legacy_write_functions lwf
+left join pg_proc p on p.proname = lwf.name
+left join pg_namespace n on n.oid = p.pronamespace and n.nspname='public'
+order by lwf.name;

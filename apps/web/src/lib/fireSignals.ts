@@ -9,9 +9,29 @@ export type FireSignalDefinition = {
 
 export const FIRE_SIGNAL_DEFINITIONS: FireSignalDefinition[] = [
   { code: 'TRACKING_BASE', context: 'own', shortLabel: 'Tracking', headline: '' },
-  { code: 'OWN_PATTERN', context: 'own', shortLabel: 'Own Pattern', headline: 'Pattern repeating for you' },
-  { code: 'CROSS_PATTERN', context: 'cross', shortLabel: 'Cross Pattern', headline: 'Pattern spreading across the feed' },
-  { code: 'ANCHOR_PATTERN', context: 'anchor', shortLabel: 'Anchor Pattern', headline: 'Pattern beating the anchor' },
+  { code: 'OWN_BREAKOUT_EARLY', context: 'own', shortLabel: 'Early Breakout', headline: 'Early posts are breaking above history' },
+  { code: 'OWN_BREAKOUT', context: 'own', shortLabel: 'Breakout', headline: 'Recent posts are beating history' },
+  { code: 'OWN_SUSTAIN', context: 'own', shortLabel: 'Sustain', headline: 'Strong posts are repeating' },
+  { code: 'OWN_SUSTAIN_LONG', context: 'own', shortLabel: 'Evergreen', headline: 'Posts are holding after three weeks' },
+  { code: 'OWN_FADE', context: 'own', shortLabel: 'Fade', headline: 'Recent posts are losing strength' },
+  { code: 'OWN_COMMENT_SPIKE', context: 'own', shortLabel: 'Comment Spike', headline: 'Comments are outrunning reach' },
+  { code: 'OWN_LIKE_HEAVY', context: 'own', shortLabel: 'Like Heavy', headline: 'Likes are outrunning discussion' },
+  { code: 'OWN_VIRAL_PASSIVE', context: 'own', shortLabel: 'Passive Reach', headline: 'Reach is outrunning response' },
+  { code: 'OWN_LATE_JUMP', context: 'own', shortLabel: 'Late Jump', headline: 'Posts are picking up late' },
+  { code: 'OWN_FOLLOWER_SPIKE', context: 'own', shortLabel: 'Follower Spike', headline: 'Audience growth jumped' },
+  { code: 'OWN_FOLLOWER_DROP', context: 'own', shortLabel: 'Follower Drop', headline: 'Audience loss jumped' },
+  { code: 'CROSS_MOMENTUM', context: 'cross', shortLabel: 'Feed Momentum', headline: 'Momentum is spreading across the feed' },
+  { code: 'CROSS_FORMAT_SHIFT', context: 'cross', shortLabel: 'Format Productivity', headline: 'One format is working harder' },
+  { code: 'CROSS_FOLLOWER_WAVE', context: 'cross', shortLabel: 'Follower Wave', headline: 'Audience movement is spreading' },
+  { code: 'CROSS_MICRO_BREAKOUT', context: 'cross', shortLabel: 'Breakout Wave', headline: 'Breakouts are repeating across feeders' },
+  { code: 'CROSS_MICRO_COMMENT_SPIKE', context: 'cross', shortLabel: 'Comment Wave', headline: 'Comment behavior is repeating' },
+  { code: 'CROSS_MICRO_LIKE_HEAVY', context: 'cross', shortLabel: 'Like Wave', headline: 'Like-heavy behavior is repeating' },
+  { code: 'CROSS_MICRO_VIRAL_PASSIVE', context: 'cross', shortLabel: 'Passive Reach Wave', headline: 'Passive reach is repeating' },
+  { code: 'CROSS_MICRO_FADE', context: 'cross', shortLabel: 'Fade Wave', headline: 'Weakness is repeating across feeders' },
+  { code: 'ANCHOR_GAP_WIDENING', context: 'anchor', shortLabel: 'Anchor Pulling Away', headline: 'The anchor is widening the gap' },
+  { code: 'ANCHOR_GAP_CLOSING', context: 'anchor', shortLabel: 'Gap Closing', headline: 'Competitors are catching the anchor' },
+  { code: 'ANCHOR_CHALLENGER_SURGE', context: 'anchor', shortLabel: 'Challenger Surge', headline: 'A competitor is beating the anchor' },
+  { code: 'ANCHOR_FOLLOWER_GAP', context: 'anchor', shortLabel: 'Follower Gap', headline: 'Follower growth gap moved' },
 ];
 
 const MECHANIC_LABELS: Record<string, string> = {

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import os
-from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -13,24 +12,6 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[3]
 WEB_ENV = ROOT / "apps" / "web" / ".env.local"
-
-REQUIRED_TAG_KEYS = {
-    "mechanic",
-    "opening_move",
-    "proof_mode",
-    "pacing",
-    "style",
-    "face",
-    "language",
-    "depth",
-    "density",
-    "text_overlay",
-}
-OPTIONAL_TAG_KEYS = {"audio_mode", "duration_bucket", "cta"}
-INTERNAL_TAG_KEYS = {"_visual_source"}
-LEGACY_TAG_KEYS = {"hook", "pillar", "format", "subject"}
-ALLOWED_TAG_KEYS = REQUIRED_TAG_KEYS | OPTIONAL_TAG_KEYS | INTERNAL_TAG_KEYS
-
 
 def load_env(path: Path) -> None:
     if not path.exists():
@@ -144,28 +125,6 @@ def delete_storage_assets(assets: list[dict[str, Any]]) -> None:
             response.raise_for_status()
 
 
-def clean_intelligence_rows(*, apply: bool) -> tuple[int, Counter[str]]:
-    rows = fetch_all(
-        "post_intelligence",
-        {"select": "post_key,tags,model_version,extracted_at"},
-    )
-    bad_post_keys: list[str] = []
-    key_counts: Counter[str] = Counter()
-    for row in rows:
-        tags = row.get("tags") if isinstance(row.get("tags"), dict) else {}
-        keys = set(tags.keys())
-        key_counts.update(keys)
-        if (keys & LEGACY_TAG_KEYS) or not REQUIRED_TAG_KEYS.issubset(keys) or bool(keys - ALLOWED_TAG_KEYS):
-            post_key = str(row.get("post_key") or "").strip()
-            if post_key:
-                bad_post_keys.append(post_key)
-
-    if apply:
-        for post_key in bad_post_keys:
-            rest_request("DELETE", "post_intelligence", params={"post_key": f"eq.{post_key}"})
-    return len(bad_post_keys), key_counts
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Clean retired FeedMe data over Supabase HTTPS APIs.")
     parser.add_argument("--apply", action="store_true", help="Actually delete retired rows/assets and invalid intelligence rows.")
@@ -188,14 +147,11 @@ def main() -> None:
         ),
     }
     media_assets = fetch_retired_media_assets()
-    invalid_intelligence_count, key_counts = clean_intelligence_rows(apply=args.apply)
 
     print("mode:", "apply" if args.apply else "dry-run")
     for key, value in counts.items():
         print(f"{key}: {value}")
     print("storage_objects_to_delete:", len(media_assets))
-    print("invalid_or_legacy_intelligence_rows:", invalid_intelligence_count)
-    print("intelligence_keys:", dict(sorted(key_counts.items())))
 
     if not args.apply:
         print("no changes made")
