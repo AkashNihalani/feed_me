@@ -36,10 +36,13 @@ Retired intelligence path:
 4. Detection writes `signals` and `signal_posts`.
 5. UI can show pending signal shells immediately.
 6. The intelligence worker runs `resolve_signal_intelligence`.
-7. `resolve_signal_intelligence` fingerprints missing posts with feeder Focus, stores `post_focus_reads`, generates the card with feed Focus, and writes `signal_intelligence`.
-8. The intelligence worker runs weekly Focus compiles: feeder Focus first, then feed Focus. Full rebuilds are due every 45 days.
+7. `resolve_signal_intelligence` fingerprints missing posts neutrally, then separately compares that fingerprint with feeder Focus and stores `post_focus_reads`.
+8. Stage B generates the card with feed Focus. Escalation to Pro is deterministic: tier-1 metric magnitude, stable-focus deviation, or schema failure.
+9. The intelligence worker runs weekly Focus compiles: feeder Focus first, then feed Focus. Flash compresses evidence into media/date buckets of at most 10 posts before Pro updates Focus. Full rebuilds are due every 45 days.
 
 Important cost boundary: detection remains zero LLM cost. LLM spend lives in the separate `intelligence_worker`, not the scraping/checkpoint worker.
+
+Pattern decay is opportunity-based, not just time-based. A pattern weakens after enough later posts of the same media type fail to repeat it; the 75-day rule only archives patterns near the end of the 90-day window.
 
 ## Inputs We Have
 
@@ -270,11 +273,12 @@ Card JSON:
   "do_next": "",
   "watchout": "",
   "per_post_notes": [],
+  "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear",
   "confidence": "high|medium|low"
 }
 ```
 
-Low confidence cards are written to `signal_intelligence`, but the signal status becomes `suppressed_confidence`. The normal Fire UI fetches only `pending`, `fresh`, and `stale`, so low-confidence cards are hidden unless a separate considered tray is built.
+Low confidence is display metadata only. It must not be used as the escalation trigger or as the only reason to suppress a card. Escalation is deterministic: tier-1 metric magnitude, stable-focus deviation, or card schema failure.
 
 ## Context Form Contract
 

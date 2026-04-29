@@ -92,9 +92,9 @@ Rules:
 - Never mention private algorithm behavior, saves, shares, or unsupported facts."""
 
 _FEEDER_COMPILER_SYSTEM = """You update a 90-day feeder/account rulebook for social media intelligence.
-You receive the previous rulebook, all available 90-day evidence rows, this week's evidence, Stage B memory candidates, and metric windows.
+You receive the previous rulebook, Flash-compressed evidence_buckets, Stage B memory candidates, server stats, and metric windows.
 Lower percentile is better: p10 beats p40, and p80 is weak.
-server_pattern_stats is authoritative for last_seen_days, evidence counts, and trigger support. Use it instead of doing calendar math yourself.
+server_pattern_stats is authoritative for last_seen_days, opportunities_since_seen, evidence counts, and trigger support. Use it instead of doing calendar math yourself.
 Return JSON only:
 {
   "structured_patterns": {
@@ -109,6 +109,8 @@ Return JSON only:
         "evidence_count_30d": 0,
         "evidence_count_7d": 0,
         "last_seen_days": 0,
+        "opportunities_since_seen": 0,
+        "media_post_count_30d": 0,
         "trigger_support": {
           "breakout": 0,
           "comment_spike": 0,
@@ -135,7 +137,7 @@ Rules:
 - Hard caps after merging: max 5 stable, 5 strengthening/emerging, 5 watchlist, 5 avoid/weakening/decaying active patterns.
 - 90-day repeated evidence is the rulebook; last 7 days is an update/watchlist unless repeated or numerically strong.
 - Only claim current direction when metric_windows supports it. Cite numbers inline in the MD.
-- Pattern decay is strict: unseen 25d=weakening, 50d=decaying, 75d=archived.
+- Pattern decay is opportunity-based: 10 later posts of the same format=weakening, 18=decaying, 25=archived. Time only supports decay when the account has enough posting volume; 75d is always archived near rolling-window expiry.
 - Full rebuild mode must clean aggressively: dedupe near-identical patterns, archive stale patterns, and remove repetitive prose.
 - Keep each MD section compact enough to inject into another model: common <= 80 words; each format <= 90 words.
 - Every action must name observable behaviors from evidence, not generic advice. Use concrete examples from fingerprints."""
@@ -169,6 +171,24 @@ Rules:
 - If an anchor exists, include anchor-vs-feed gaps in anchor_lens and capsule_anchor.
 - Capsules are small runtime snippets for a cheaper alert model. common <= 60 words, format/scope capsules <= 70 words each.
 - Every "do next" idea must name observable behavior and concrete examples from fingerprints."""
+
+_EVIDENCE_BUCKET_SYSTEM = """You compress a small bucket of social post fingerprints for a weekly memory compiler.
+You receive no more than 10 posts from the same media type and nearby dates.
+Do not invent. Preserve nuance, especially caption tone, visual style, human presence, proof, and emotional trigger.
+Return JSON only:
+{
+  "bucket_summary": "",
+  "strong_patterns": [],
+  "weak_patterns": [],
+  "caption_tone_notes": [],
+  "visual_style_notes": [],
+  "metric_notes": [],
+  "proof_post_keys": []
+}
+Rules:
+- Mention exact observable behaviors, not generic strategy labels.
+- Separate strong from weak based only on supplied percentile values; lower percentile is better.
+- Keep the entire response compact."""
 
 
 def _sha(value: Any) -> str:
@@ -567,6 +587,97 @@ def _metric_windows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+def _compact_evidence_post(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "post_key": row.get("post_key"),
+        "posted_at": row.get("posted_at"),
+        "media_type": _media_key(row.get("media_type")),
+        "percentile": row.get("percentile"),
+        "views": row.get("views"),
+        "likes": row.get("likes"),
+        "comments": row.get("comments"),
+        "signal_types": row.get("signal_types") or [],
+        "fingerprint": row.get("fingerprint") or {},
+        "focus_read": row.get("focus_read") or {},
+    }
+
+
+def _week_key(value: Any) -> str:
+    parsed = _parse_dt(value)
+    if not parsed:
+        return "unknown"
+    year, week, _ = parsed.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def _date_range(rows: list[dict[str, Any]]) -> dict[str, str]:
+    dates = sorted(
+        parsed.date().isoformat()
+        for row in rows
+        for parsed in [_parse_dt(row.get("posted_at"))]
+        if parsed is not None
+    )
+    if not dates:
+        return {"from": "", "to": ""}
+    return {"from": dates[0], "to": dates[-1]}
+
+
+def _fallback_bucket_summary(bucket: list[dict[str, Any]]) -> dict[str, Any]:
+    ordered = sorted(bucket, key=lambda row: row.get("percentile") or 999)
+    return {
+        "bucket_summary": "Backend fallback summary from compact evidence; model bucket summary unavailable.",
+        "strong_patterns": [
+            str((row.get("fingerprint") or {}).get("content_summary") or (row.get("fingerprint") or {}).get("topic") or row.get("post_key"))
+            for row in ordered[:3]
+        ],
+        "weak_patterns": [
+            str((row.get("fingerprint") or {}).get("content_summary") or (row.get("fingerprint") or {}).get("topic") or row.get("post_key"))
+            for row in ordered[-3:]
+        ],
+        "caption_tone_notes": [],
+        "visual_style_notes": [],
+        "metric_notes": [
+            f"{row.get('post_key')}: p{row.get('percentile')}"
+            for row in ordered[:5]
+        ],
+        "proof_post_keys": [str(row.get("post_key") or "") for row in ordered[:8] if row.get("post_key")],
+    }
+
+
+def _bucket_evidence_for_compiler(evidence_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in evidence_rows:
+        key = (_media_key(row.get("media_type")), _week_key(row.get("posted_at")))
+        grouped.setdefault(key, []).append(row)
+
+    summaries: list[dict[str, Any]] = []
+    for (media, week), rows in sorted(grouped.items(), key=lambda item: (item[0][0], item[0][1])):
+        ordered = sorted(rows, key=lambda row: _parse_dt(row.get("posted_at")) or datetime.min.replace(tzinfo=timezone.utc))
+        for idx in range(0, len(ordered), 10):
+            bucket = ordered[idx: idx + 10]
+            compact_posts = [_compact_evidence_post(row) for row in bucket]
+            result = _call_text_model(
+                _EVIDENCE_BUCKET_SYSTEM,
+                {
+                    "media_type": media,
+                    "week": week,
+                    "date_range": _date_range(bucket),
+                    "posts": compact_posts,
+                },
+                model=_runtime_model(),
+                max_tokens=700,
+            ) or _fallback_bucket_summary(bucket)
+            summaries.append({
+                "bucket_key": f"{media}:{week}:{idx // 10 + 1}",
+                "media_type": media,
+                "week": week,
+                "date_range": _date_range(bucket),
+                "post_count": len(bucket),
+                **result,
+            })
+    return summaries
+
+
 def _row_pattern_text(row: dict[str, Any]) -> str:
     bits: list[str] = [
         str(row.get("caption") or ""),
@@ -596,7 +707,17 @@ def _pattern_stat_rows(structured_patterns: Any, evidence_rows: list[dict[str, A
             str(item.get("summary") or ""),
             " ".join(str(value) for value in (item.get("canonical_terms") or []) if value),
         ])))
-        matched = [row for row, terms_for_row in row_terms if _pattern_match(terms, terms_for_row)]
+        item_format = str(item.get("format") or "common").lower()
+        relevant_rows = [
+            row for row in evidence_rows
+            if item_format == "common" or _media_key(row.get("media_type")) == _media_key(item_format)
+        ]
+        relevant_post_keys = {str(row.get("post_key") or "") for row in relevant_rows}
+        media_post_count_30d = sum(1 for row in relevant_rows if _age_days(row.get("posted_at"), now) <= 30)
+        matched = [
+            row for row, terms_for_row in row_terms
+            if str(row.get("post_key") or "") in relevant_post_keys and _pattern_match(terms, terms_for_row)
+        ]
         if not matched:
             stats.append({
                 "pattern_id": item.get("pattern_id") or _pattern_id(item.get("format") or "common", item.get("summary")),
@@ -608,10 +729,22 @@ def _pattern_stat_rows(structured_patterns: Any, evidence_rows: list[dict[str, A
                 "server_last_seen_days": int(item.get("last_seen_days") or 999),
                 "server_trigger_support": {},
                 "server_format_support": {},
+                "server_opportunities_since_seen": len(relevant_rows),
+                "server_media_post_count_30d": media_post_count_30d,
                 "server_proof_post_keys": [],
             })
             continue
         ages = [_age_days(row.get("posted_at"), now) for row in matched]
+        matched_dates = [parsed for row in matched for parsed in [_parse_dt(row.get("posted_at"))] if parsed is not None]
+        latest_match = max(matched_dates) if matched_dates else None
+        opportunities_since_seen = 0
+        if latest_match is not None:
+            opportunities_since_seen = sum(
+                1
+                for row in relevant_rows
+                for parsed in [_parse_dt(row.get("posted_at"))]
+                if parsed is not None and parsed > latest_match
+            )
         trigger_support: dict[str, int] = {}
         format_support: dict[str, int] = {}
         proof_posts: list[str] = []
@@ -634,6 +767,8 @@ def _pattern_stat_rows(structured_patterns: Any, evidence_rows: list[dict[str, A
             "server_last_seen_days": min(ages) if ages else 999,
             "server_trigger_support": trigger_support,
             "server_format_support": format_support,
+            "server_opportunities_since_seen": opportunities_since_seen,
+            "server_media_post_count_30d": media_post_count_30d,
             "server_proof_post_keys": proof_posts[:12],
         })
     return stats
@@ -657,15 +792,19 @@ def _apply_server_pattern_stats(structured_patterns: Any, evidence_rows: list[di
             row["last_seen_days"] = int(stat.get("server_last_seen_days") or 999)
             row["trigger_support"] = stat.get("server_trigger_support") or {}
             row["format_support"] = stat.get("server_format_support") or {}
+            row["opportunities_since_seen"] = int(stat.get("server_opportunities_since_seen") or 0)
+            row["media_post_count_30d"] = int(stat.get("server_media_post_count_30d") or 0)
             if stat.get("server_proof_post_keys"):
                 row["proof_post_keys"] = stat.get("server_proof_post_keys")
         seen = int(row.get("last_seen_days") or 999)
+        opportunities = int(row.get("opportunities_since_seen") or 0)
+        media_post_count_30d = int(row.get("media_post_count_30d") or 0)
         status = str(row.get("status") or "watchlist").lower()
-        if seen >= 75:
+        if opportunities >= 25 or seen >= 75:
             status = "archived"
-        elif seen >= 50:
+        elif opportunities >= 18 or (seen >= 50 and media_post_count_30d >= 4):
             status = "decaying"
-        elif seen >= 25 and status not in {"decaying", "archived"}:
+        elif (opportunities >= 10 or (seen >= 25 and media_post_count_30d >= 4)) and status not in {"decaying", "archived"}:
             status = "weakening"
         row["status"] = status
         if status == "archived":
@@ -1128,7 +1267,26 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             rebuild_now = bool(full_rebuild or _full_rebuild_due(current))
             model = FOCUS_REBUILD_MODEL if rebuild_now else FOCUS_COMPILER_MODEL
             previous_patterns = current.get("structured_patterns") or {}
-            payload = {
+            metric_windows = _metric_windows(all_evidence)
+            server_pattern_stats = _pattern_stat_rows(previous_patterns, all_evidence)
+            memory_candidates = _aggregate_memory_candidates(_fetch_stage_b_candidates(
+                conn,
+                feed_id=int(feeder.get("feed_id") or 0),
+                feeder_id=fid,
+            ))
+            evidence_signature = [
+                {
+                    "post_key": row.get("post_key"),
+                    "posted_at": row.get("posted_at"),
+                    "media_type": row.get("media_type"),
+                    "percentile": row.get("percentile"),
+                    "fingerprint_hash": _sha(row.get("fingerprint") or {}),
+                    "focus_read_hash": _sha(row.get("focus_read") or {}),
+                    "signal_types": row.get("signal_types") or [],
+                }
+                for row in all_evidence
+            ]
+            source_payload = {
                 "mode": "full_rebuild" if rebuild_now else "weekly_update",
                 "feeder": feeder,
                 "previous_focus": {
@@ -1138,20 +1296,16 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                     "focus_md_image": current.get("focus_md_image") or "",
                     "focus_md_carousel": current.get("focus_md_carousel") or "",
                 },
-                "metric_windows": _metric_windows(all_evidence),
-                "server_pattern_stats": _pattern_stat_rows(previous_patterns, all_evidence),
+                "metric_windows": metric_windows,
+                "server_pattern_stats": server_pattern_stats,
                 "evidence_population": {
                     "fingerprinted_90d": len(all_evidence),
                     "sampled_for_llm": len(evidence),
                 },
-                "evidence_posts": evidence,
-                "stage_b_memory_candidates": _aggregate_memory_candidates(_fetch_stage_b_candidates(
-                    conn,
-                    feed_id=int(feeder.get("feed_id") or 0),
-                    feeder_id=fid,
-                )),
+                "evidence_signature": evidence_signature,
+                "stage_b_memory_candidates": memory_candidates,
             }
-            source_hash = _sha(payload)
+            source_hash = _sha(source_payload)
             if not rebuild_now and current.get("source_hash") == source_hash:
                 skipped += 1
                 _mark_focus_compile_lock(conn, "feeder", fid, success=True)
@@ -1163,6 +1317,11 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                     full_evidence_count=len(all_evidence),
                 )
                 continue
+            evidence_buckets = _bucket_evidence_for_compiler(evidence)
+            payload = {
+                **source_payload,
+                "evidence_buckets": evidence_buckets,
+            }
             patterns_before = len((previous_patterns.get("patterns") if isinstance(previous_patterns, dict) else []) or [])
             result = _call_text_model(_FEEDER_COMPILER_SYSTEM, payload, model=model, max_tokens=2600)
             if not result:
@@ -1231,6 +1390,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                 model=model,
                 evidence_count=len(evidence),
                 full_evidence_count=len(all_evidence),
+                bucket_count=len(evidence_buckets),
                 patterns_before=patterns_before,
                 patterns_after=patterns_after,
                 word_counts=_capsule_word_counts(result, ["focus_md_common", "focus_md_reel", "focus_md_image", "focus_md_carousel"]),

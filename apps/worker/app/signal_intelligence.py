@@ -17,6 +17,7 @@ from .config import (
     MEDIA_PUBLIC_BASE_URL,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
+    SIGNAL_INTELLIGENCE_ESCALATION_MODEL,
     SIGNAL_INTELLIGENCE_ENABLED,
     SIGNAL_INTELLIGENCE_MODEL,
     SIGNAL_INTELLIGENCE_PROVIDER,
@@ -24,8 +25,6 @@ from .config import (
 from .focus_brain import (
     ensure_post_focus_read,
     feed_focus_context,
-    feeder_focus_slice,
-    store_post_focus_read,
 )
 
 _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -34,73 +33,57 @@ _GEMINI_FILE_URL = "https://generativelanguage.googleapis.com/v1beta/files/{name
 _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
-_FP_PROMPT_VERSION = "fingerprint_v3_focus_read"
-_CARD_PROMPT_VERSION = "signal_card_v4_focus_context"
+_FP_PROMPT_VERSION = "fingerprint_v4_neutral"
+_CARD_PROMPT_VERSION = "signal_card_v5_deterministic_escalation"
 _SAMPLING_POLICY_VERSION = "media_sample_v1"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
 _IMAGE_MAX_BYTES = 12 * 1024 * 1024
 _VIDEO_SAMPLE_SECONDS = 90
 
-_FINGERPRINT_SYSTEM = """Describe what this post actually contains and produce a narrow alignment read.
+_FINGERPRINT_SYSTEM = """Describe what this post actually contains.
 Use visual evidence first. Caption is supporting context only. If media evidence is partial, say so.
 Use only what you can see or read. Do not invent niche, brand, or campaign details.
 Do not explain performance. Do not say if the post is good, bad, risky, emerging, or strategic.
+Do not compare this post to the account's history. You are making a neutral fingerprint only.
 
 Return only JSON:
 {
-  "fingerprint": {
-    "content_summary": "",
-    "topic": "",
-    "audience_addressed": "",
-    "hook": "",
-    "opener": "",
-    "payoff": "",
-    "visual_sequence": "",
-    "caption_role": "",
-    "audio_or_text_driver": "",
-    "emotional_trigger": "",
-    "discussion_prompt": "",
-    "craft_moves": [],
-    "campaign_or_context_clues": [],
-    "visual_read": {
-      "opening_frame": "",
-      "subject_focus": "",
-      "setting": "",
-      "camera_language": "",
-      "production_style": "",
-      "human_presence": "",
-      "proof_shown": [],
-      "pacing": "",
-      "on_screen_text_style": ""
-    },
-    "caption_read": {
-      "tone": "",
-      "voice": "",
-      "language_style": "",
-      "specificity": "",
-      "cta_style": "",
-      "emotional_register": "",
-      "caption_confidence": "high|medium|low"
-    },
-    "media_confidence": "high|medium|low"
+  "content_summary": "",
+  "topic": "",
+  "audience_addressed": "",
+  "hook": "",
+  "opener": "",
+  "payoff": "",
+  "visual_sequence": "",
+  "caption_role": "",
+  "audio_or_text_driver": "",
+  "emotional_trigger": "",
+  "discussion_prompt": "",
+  "craft_moves": [],
+  "campaign_or_context_clues": [],
+  "visual_read": {
+    "opening_frame": "",
+    "subject_focus": "",
+    "setting": "",
+    "camera_language": "",
+    "production_style": "",
+    "human_presence": "",
+    "proof_shown": [],
+    "pacing": "",
+    "on_screen_text_style": ""
   },
-  "focus_read": {
-    "relation_to_feeder_md": {
-      "matches": [],
-      "deviates": [],
-      "unclear": []
-    },
-    "notes": []
-  }
-}
-
-Focus read rules:
-- Compare only to the supplied feeder focus.
-- matches = traits visible in the post that already exist in feeder focus.
-- deviates = visible traits present in this post but not in feeder focus.
-- unclear = things the media/caption cannot prove.
-- If no feeder focus is supplied, keep matches/deviates empty and say no compiled feeder focus is available."""
+  "caption_read": {
+    "tone": "",
+    "voice": "",
+    "language_style": "",
+    "specificity": "",
+    "cta_style": "",
+    "emotional_register": "",
+    "caption_confidence": "high|medium|low"
+  },
+  "media_confidence": "high|medium|low"
+}"""
 
 _CARD_SYSTEM = """You analyze metric-triggered social signals for a social media tracking product.
 Use the feed bible, feed focus capsule, focus reads, feeder context, metric snapshot, cohort policy, and post fingerprints only.
@@ -245,25 +228,31 @@ def _provider() -> str | None:
     return None
 
 
-def _model(provider: str) -> str:
-    explicit = (SIGNAL_INTELLIGENCE_MODEL or "").strip()
+def _model(provider: str, model_override: str | None = None) -> str:
+    explicit = (model_override or SIGNAL_INTELLIGENCE_MODEL or "").strip()
     if explicit:
+        if provider == "google" and explicit.startswith("google/"):
+            return explicit.split("/", 1)[1]
         return explicit
     return _DEFAULT_OPENROUTER_MODEL if provider == "openrouter" else _DEFAULT_GEMINI_MODEL
 
 
-def current_model_version(*, kind: str) -> str:
+def current_model_version(*, kind: str, model_override: str | None = None) -> str:
     provider = _provider() or "disabled"
     prompt = _FP_PROMPT_VERSION if kind == "fingerprint" else _CARD_PROMPT_VERSION
-    return f"{provider}:{_model(provider) if provider != 'disabled' else 'none'}:{prompt}"
+    return f"{provider}:{_model(provider, model_override) if provider != 'disabled' else 'none'}:{prompt}"
 
 
-def _sha(value: str | bytes | None) -> str:
+def _sha(value: Any) -> str:
     if value is None:
         value = ""
-    if isinstance(value, str):
-        value = value.encode("utf-8", errors="ignore")
-    return hashlib.sha256(value).hexdigest()
+    if isinstance(value, bytes):
+        payload = value
+    elif isinstance(value, str):
+        payload = value.encode("utf-8", errors="ignore")
+    else:
+        payload = json.dumps(value, sort_keys=True, default=str).encode("utf-8", errors="ignore")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _data_url(mime_type: str, payload: bytes) -> str:
@@ -435,11 +424,18 @@ def _json_from_text(text: str) -> dict[str, Any] | None:
         return None
 
 
-def _call_model(system: str, user_text: str, media_parts: list[dict[str, Any]] | None = None, *, max_tokens: int = 700) -> dict[str, Any] | None:
+def _call_model(
+    system: str,
+    user_text: str,
+    media_parts: list[dict[str, Any]] | None = None,
+    *,
+    max_tokens: int = 700,
+    model_override: str | None = None,
+) -> dict[str, Any] | None:
     provider = _provider()
     if not provider:
         return None
-    model = _model(provider)
+    model = _model(provider, model_override)
     media_parts = media_parts or []
     try:
         if provider == "openrouter":
@@ -633,20 +629,16 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         if existing and isinstance(existing.get("fingerprint"), dict):
             return existing["fingerprint"]
 
-    focus = feeder_focus_slice(conn, int(post.get("feeder_id") or 0), post.get("media_type"))
     user_text = "\n".join([
         f"FEED CONTEXT: {post.get('context_bible') or '(not provided)'}",
         f"FEEDER: @{post.get('handle') or ''} · role={post.get('context_role') or 'standard'} · note={post.get('context_note') or ''}",
-        f"FEEDER FOCUS FOR ALIGNMENT ONLY: {focus.get('text') or '(not available)'}",
         f"BIO: {post.get('bio') or '(not provided)'}",
         f"MEDIA: {post.get('media_type') or 'unknown'} · duration_bucket={post.get('duration_bucket') or ''} · depth_bucket={post.get('depth_bucket') or ''}",
         f"CAPTION: {caption[:2000] or '(no caption)'}",
     ])
-    model_response = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=1100)
-    if not model_response:
+    fingerprint = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=900)
+    if not fingerprint:
         return None
-    focus_read = model_response.get("focus_read") if isinstance(model_response.get("focus_read"), dict) else None
-    fingerprint = model_response.get("fingerprint") if isinstance(model_response.get("fingerprint"), dict) else model_response
     media_confidence = str(fingerprint.get("media_confidence") or confidence).lower()
     if media_confidence not in {"high", "medium", "low"}:
         media_confidence = confidence
@@ -671,19 +663,8 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
             """,
             (post_key, json.dumps(fingerprint), media_hash, caption_hash, _SAMPLING_POLICY_VERSION, model_version, media_confidence),
         )
-    if focus_read:
-        store_post_focus_read(
-            conn,
-            post_key=post_key,
-            feeder_id=int(post.get("feeder_id") or 0),
-            feed_id=int(post.get("feed_id") or 0),
-            media_type=post.get("media_type"),
-            fingerprint=fingerprint,
-            focus_read=focus_read,
-            feeder_focus_version=int(focus.get("version") or 0),
-            model_version=model_version,
-        )
     conn.commit()
+    ensure_post_focus_read(conn, post_key, fingerprint)
     return fingerprint
 
 
@@ -712,7 +693,8 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
                    pf.fingerprint,
                    pfr.focus_read,
                    pfr.feeder_focus_version,
-                   coalesce(ff.focus_version, 0) as current_feeder_focus_version
+                   coalesce(ff.focus_version, 0) as current_feeder_focus_version,
+                   ff.structured_patterns as feeder_structured_patterns
             from public.signal_posts sp
             join public.posts p on p.post_key = sp.post_key
             join public.feeders fd on fd.id = p.feeder_id
@@ -745,6 +727,102 @@ def _sample_hash(posts: list[dict[str, Any]], focus_context: dict[str, Any] | No
         )
     focus_bits = json.dumps(focus_context or {}, sort_keys=True, default=str)
     return _sha("|".join(bits) + "|" + focus_bits)
+
+
+def _numeric_percentiles(value: Any) -> list[float]:
+    found: list[float] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key or "").lower()
+            if "percentile" in key_text or key_text in {"pctl", "avg_hot_percentile", "best_percentile"}:
+                try:
+                    if child is not None:
+                        found.append(float(child))
+                except (TypeError, ValueError):
+                    pass
+            found.extend(_numeric_percentiles(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.extend(_numeric_percentiles(child))
+    return [item for item in found if 0 <= item <= 100]
+
+
+def _tier1_metric_reason(signal: dict[str, Any]) -> str | None:
+    values = _numeric_percentiles(signal.get("metric_snapshot") or {})
+    for key in ("surface_percentile", "avg_hot_percentile", "best_percentile"):
+        try:
+            if signal.get(key) is not None:
+                values.append(float(signal.get(key)))
+        except (TypeError, ValueError):
+            pass
+    best = min(values) if values else None
+    if best is not None and best <= 20:
+        return f"tier1_metric_percentile_p{round(best, 2)}"
+    return None
+
+
+def _stable_patterns(value: Any) -> list[dict[str, Any]]:
+    data = value if isinstance(value, dict) else {}
+    rows = data.get("patterns") if isinstance(data.get("patterns"), list) else []
+    return [
+        row for row in rows
+        if isinstance(row, dict) and str(row.get("status") or "").lower() in {"stable", "core", "strengthening"}
+    ]
+
+
+def _focus_deviations(value: Any) -> list[str]:
+    focus_read = value if isinstance(value, dict) else {}
+    relation = focus_read.get("relation_to_feeder_md") if isinstance(focus_read.get("relation_to_feeder_md"), dict) else {}
+    deviations = relation.get("deviates")
+    if not isinstance(deviations, list):
+        return []
+    return [str(item).strip() for item in deviations if str(item or "").strip()]
+
+
+def _alignment_deviation_reason(posts: list[dict[str, Any]]) -> str | None:
+    for row in posts:
+        deviations = _focus_deviations(row.get("focus_read"))
+        if not deviations:
+            continue
+        stable = _stable_patterns(row.get("feeder_structured_patterns"))
+        if not stable:
+            continue
+        return f"alignment_deviation_with_stable_focus:{row.get('post_key')}"
+    return None
+
+
+def _card_schema_errors(card: Any) -> list[str]:
+    if not isinstance(card, dict):
+        return ["card_not_object"]
+    errors: list[str] = []
+    for key in ("title", "what_happened", "why_it_may_have_happened", "do_next", "watchout", "confidence", "pattern_type"):
+        if key not in card:
+            errors.append(f"missing_{key}")
+        elif not isinstance(card.get(key), str):
+            errors.append(f"{key}_not_string")
+    for key in ("common_pattern", "per_post_notes"):
+        if key not in card:
+            errors.append(f"missing_{key}")
+        elif not isinstance(card.get(key), list):
+            errors.append(f"{key}_not_list")
+    if str(card.get("pattern_type") or "") not in {"account_aligned", "feed_aligned", "account_outlier", "conflict_signal", "unclear"}:
+        errors.append("invalid_pattern_type")
+    if str(card.get("confidence") or "").lower() not in {"high", "medium", "low"}:
+        errors.append("invalid_confidence")
+    if card.get("focus_memory_candidate") is not None and not isinstance(card.get("focus_memory_candidate"), dict):
+        errors.append("focus_memory_candidate_not_object")
+    return errors
+
+
+def _deterministic_escalation_reasons(signal: dict[str, Any], posts: list[dict[str, Any]]) -> list[str]:
+    reasons: list[str] = []
+    tier1 = _tier1_metric_reason(signal)
+    if tier1:
+        reasons.append(tier1)
+    alignment = _alignment_deviation_reason(posts)
+    if alignment:
+        reasons.append(alignment)
+    return reasons
 
 
 def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limit: int = 1) -> dict[str, int]:
@@ -794,6 +872,8 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         signal = payload["signal"]
         posts = payload["posts"]
         focus_context = feed_focus_context(conn, signal, posts)
+        escalation_reasons = _deterministic_escalation_reasons(signal, posts)
+        card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL if escalation_reasons else None
         fingerprints = []
         for row in posts:
             fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
@@ -815,7 +895,7 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 "current_feeder_focus_version": row.get("current_feeder_focus_version"),
             })
         sample_hash = _sample_hash(posts, focus_context)
-        card_model = current_model_version(kind="card")
+        card_model = current_model_version(kind="card", model_override=card_model_override)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
@@ -842,18 +922,46 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             "sub_bucket": signal.get("sub_bucket"),
             "metric_snapshot": signal.get("metric_snapshot") or {},
             "cohort_policy": _cohort_policy(signal),
+            "model_route": {
+                "escalated_to_pro": bool(card_model_override),
+                "deterministic_reasons": escalation_reasons,
+            },
             "cohort_posts": fingerprints,
         }, default=str)
-        card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=1200)
-        if not card:
+        card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=1200, model_override=card_model_override)
+        schema_errors = _card_schema_errors(card)
+        if schema_errors and not card_model_override:
+            escalation_reasons = [*escalation_reasons, f"schema_validation_failed:{','.join(schema_errors[:5])}"]
+            card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL
+            card_model = current_model_version(kind="card", model_override=card_model_override)
+            user_text = json.dumps({
+                "signal": signal.get("signal_type"),
+                "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
+                "feed_bible": signal.get("context_bible") or "(not provided)",
+                "feed_focus_context": focus_context,
+                "media_type": signal.get("media_type"),
+                "sub_bucket": signal.get("sub_bucket"),
+                "metric_snapshot": signal.get("metric_snapshot") or {},
+                "cohort_policy": _cohort_policy(signal),
+                "model_route": {
+                    "escalated_to_pro": True,
+                    "deterministic_reasons": escalation_reasons,
+                },
+                "cohort_posts": fingerprints,
+            }, default=str)
+            print(f"[signal-intelligence] escalating signal_id={sid} reasons={escalation_reasons}")
+            card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=1400, model_override=card_model_override)
+            schema_errors = _card_schema_errors(card)
+        if not card or schema_errors:
             with conn.cursor() as cur:
                 cur.execute("update public.signals set status = 'error', updated_at = now() where id = %s", (sid,))
             conn.commit()
+            if schema_errors:
+                print(f"[signal-intelligence] card schema failed signal_id={sid} errors={schema_errors}")
             failed += 1
             continue
         focus_memory_candidate = card.pop("focus_memory_candidate", {}) if isinstance(card.get("focus_memory_candidate"), dict) else {}
-        confidence = str(card.get("confidence") or "").lower()
-        signal_status = "fresh" if confidence != "low" else "suppressed_confidence"
+        signal_status = "fresh"
         with conn.cursor() as cur:
             cur.execute(
                 """
