@@ -19,3 +19,25 @@ services:
       resources:
         limits:
           memory: 512M
+
+  feedme-intelligence-worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: feedme-intelligence-worker
+    restart: always
+    network_mode: host
+    env_file:
+      - ./apps/worker/.env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    command: ["python", "-m", "app.cli", "--mode", "intelligence_worker"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M

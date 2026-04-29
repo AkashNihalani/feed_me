@@ -482,15 +482,22 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   const signalContext = normalizeSignalContext(asString(row.context) || asString(meta.signal_context));
   const signalMeta = getFireSignalMeta(signalCode);
   const hideSignalChrome = meta.hide_signal_chrome === true;
-  const patternAlerts = Array.isArray(meta.pattern_alerts) ? meta.pattern_alerts.map((entry) => asRecord(entry)) : [];
+  const patternAlerts = Array.isArray(meta.signal_alerts) ? meta.signal_alerts.map((entry) => asRecord(entry)) : [];
   const primaryPattern = patternAlerts.length > 0 ? patternAlerts[0] : null;
-  const patternLabel = primaryPattern ? getPatternMechanicLabel(asString(primaryPattern.pattern_name)) : null;
-  const cueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
+  const primaryPatternCard = asRecord(primaryPattern?.card);
+  const patternLabel = primaryPattern ? asString(primaryPatternCard.title) || getPatternMechanicLabel(asString(primaryPattern.pattern_name)) : null;
+  const commonPatternLabels = Array.isArray(primaryPatternCard.common_pattern)
+    ? primaryPatternCard.common_pattern
+      .map((value) => asString(value).trim())
+      .filter(Boolean)
+    : [];
+  const legacyCueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
     ? primaryPattern.cues
       .map((cue) => asRecord(cue))
       .map((cue) => getPatternCueLabel(asString(cue.key), asString(cue.value)))
       .filter((value): value is string => Boolean(value))
     : [];
+  const cueLabels = commonPatternLabels.length > 0 ? commonPatternLabels : legacyCueLabels;
   const signalLabel = cardKind === 'firewatch'
     ? 'Firewatch'
     : hideSignalChrome

@@ -167,6 +167,20 @@ def _top(post: Post, checkpoint: str, threshold: float) -> bool:
     return pct is not None and pct <= threshold
 
 
+def _bottom(post: Post, checkpoint: str, threshold: float) -> bool:
+    pct = _pct(post, checkpoint)
+    return pct is not None and pct >= threshold
+
+
+def _dominant_multiple(lead: float | None, others: list[float | None], *, minimum: float = 2.0, gap: float = 2.0) -> bool:
+    if lead is None or lead < minimum:
+        return False
+    comparable = [value for value in others if value is not None]
+    if not comparable:
+        return False
+    return all(lead >= value * gap for value in comparable)
+
+
 def _sorted_recent(posts: list[Post]) -> list[Post]:
     return sorted(posts, key=lambda post: (post.posted_at or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
 
@@ -500,12 +514,11 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                 metric = _metric(post, "d7")
                 if not metric:
                     continue
-                views_ok = media_type != "reel" or metric.views_x is None or metric.views_x <= 1.3
-                if metric.comments_x is not None and metric.comments_x >= 2.0 and views_ok and (metric.comments or 0.0) >= comment_floor:
+                if _dominant_multiple(metric.comments_x, [metric.likes_x, metric.views_x]) and (metric.comments or 0.0) >= comment_floor:
                     comment_spikes.append(post)
-                if metric.likes_x is not None and metric.likes_x >= 2.0 and (metric.comments_x is None or metric.comments_x <= 0.8) and views_ok:
+                if _dominant_multiple(metric.likes_x, [metric.comments_x, metric.views_x]):
                     like_heavy.append(post)
-                if media_type == "reel" and metric.views_x is not None and metric.views_x >= 2.5 and (metric.likes_x is None or metric.likes_x <= 1.2) and (metric.comments_x is None or metric.comments_x <= 1.0):
+                if media_type == "reel" and _dominant_multiple(metric.views_x, [metric.likes_x, metric.comments_x]):
                     viral_passive.append(post)
 
             if len(recent10_d7) >= 10 and len(comment_spikes) >= 4:
@@ -513,7 +526,7 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                 candidates.append(SignalCandidate(
                     "own", "OWN_COMMENT_SPIKE", feed_id, feeder_id, "d7", business_date_ist,
                     media_type, sub_bucket, ws, we,
-                    _snapshot(comment_spikes, "d7", {"comment_floor": comment_floor, "trigger": "4_of_last_10_comments_x_2"}),
+                    _snapshot(comment_spikes, "d7", {"comment_floor": comment_floor, "trigger": "4_of_last_10_comments_x_2_gap_2x"}),
                     _sample_top(comment_spikes, "d7", 4), [],
                     _body("OWN_COMMENT_SPIKE", len(comment_spikes), "d7", "comments"),
                 ))
@@ -523,7 +536,7 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                 candidates.append(SignalCandidate(
                     "own", "OWN_LIKE_HEAVY", feed_id, feeder_id, "d7", business_date_ist,
                     media_type, sub_bucket, ws, we,
-                    _snapshot(like_heavy, "d7", {"trigger": "4_of_last_10_likes_x_2"}),
+                    _snapshot(like_heavy, "d7", {"trigger": "4_of_last_10_likes_x_2_gap_2x"}),
                     _sample_top(like_heavy, "d7", 4), [],
                     _body("OWN_LIKE_HEAVY", len(like_heavy), "d7", "likes"),
                 ))
@@ -533,7 +546,7 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                 candidates.append(SignalCandidate(
                     "own", "OWN_VIRAL_PASSIVE", feed_id, feeder_id, "d7", business_date_ist,
                     media_type, sub_bucket, ws, we,
-                    _snapshot(viral_passive, "d7", {"trigger": "3_of_last_10_views_x_2_5_passive"}),
+                    _snapshot(viral_passive, "d7", {"trigger": "3_of_last_10_views_x_2_gap_2x"}),
                     _sample_top(viral_passive, "d7", 3), [],
                     _body("OWN_VIRAL_PASSIVE", len(viral_passive), "d7", "views"),
                 ))

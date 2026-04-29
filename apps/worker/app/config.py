@@ -10,6 +10,13 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
     return value or ""
 
 
+def _get_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
 POSTGRES_DSN = _get_env("POSTGRES_DSN", required=True)
 SCRAPER_PROVIDER = "brightdata"
 BRIGHTDATA_API_KEY = _get_env("BRIGHTDATA_API_KEY", required=True)
@@ -71,3 +78,13 @@ OPENROUTER_BASE_URL = _get_env("OPENROUTER_BASE_URL", "https://openrouter.ai/api
 GEMINI_API_KEY = _get_env("GEMINI_API_KEY")
 SIGNAL_INTELLIGENCE_ENABLED = bool(OPENROUTER_API_KEY or GEMINI_API_KEY)
 SIGNAL_INTELLIGENCE_MODEL = _get_env("SIGNAL_INTELLIGENCE_MODEL", _get_env("POST_INTELLIGENCE_MODEL"))
+SIGNAL_INTELLIGENCE_AUTO_RESOLVE_ENABLED = _get_bool_env("SIGNAL_INTELLIGENCE_AUTO_RESOLVE_ENABLED", True)
+SIGNAL_INTELLIGENCE_AUTO_LIMIT = int(_get_env("SIGNAL_INTELLIGENCE_AUTO_LIMIT", "5"))
+SIGNAL_INTELLIGENCE_AUTO_INTERVAL_SECONDS = int(_get_env("SIGNAL_INTELLIGENCE_AUTO_INTERVAL_SECONDS", "120"))
+FOCUS_COMPILER_MODEL = _get_env("FOCUS_COMPILER_MODEL", "google/gemini-3.1-pro-preview")
+FOCUS_REBUILD_MODEL = _get_env("FOCUS_REBUILD_MODEL", FOCUS_COMPILER_MODEL)
+FOCUS_BRAIN_AUTO_COMPILE_ENABLED = _get_bool_env("FOCUS_BRAIN_AUTO_COMPILE_ENABLED", True)
+FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS = int(_get_env("FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS", str(7 * 24 * 60 * 60)))
+FOCUS_BRAIN_FEEDER_COMPILE_LIMIT = int(_get_env("FOCUS_BRAIN_FEEDER_COMPILE_LIMIT", "100"))
+FOCUS_BRAIN_FEED_COMPILE_LIMIT = int(_get_env("FOCUS_BRAIN_FEED_COMPILE_LIMIT", "50"))
+FOCUS_REBUILD_INTERVAL_DAYS = int(_get_env("FOCUS_REBUILD_INTERVAL_DAYS", "45"))

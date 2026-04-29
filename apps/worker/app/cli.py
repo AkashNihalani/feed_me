@@ -1,6 +1,6 @@
 import argparse
 
-from .pure_engine import PureEngine, run_once, run_worker
+from .pure_engine import PureEngine, run_intelligence_once, run_intelligence_worker, run_once, run_worker
 
 
 def main():
@@ -14,6 +14,8 @@ def main():
             "enqueue_weekly_followers",
             "once",
             "worker",
+            "intelligence_once",
+            "intelligence_worker",
             "backfill_d1_media",
             "backfill_fire_day_media",
             "repair_post_visual_media",
@@ -27,6 +29,8 @@ def main():
             "repair_overlong_preview_assets",
             "restore_d7_fire_thumbnails",
             "resolve_signal_intelligence",
+            "compile_feeder_focus",
+            "compile_feed_focus",
             "recompute_fire_rankings",
         ],
         required=True,
@@ -37,6 +41,10 @@ def main():
     p.add_argument("--day", type=str, default=None)
     p.add_argument("--post-key", type=str, default=None)
     p.add_argument("--signal-id", type=int, default=None)
+    p.add_argument("--feeder-id", type=int, default=None)
+    p.add_argument("--feed-id", type=int, default=None)
+    p.add_argument("--full-rebuild", action="store_true")
+    p.add_argument("--skip-focus-compile", action="store_true")
     args = p.parse_args()
 
     if args.mode == "enqueue_daily":
@@ -67,6 +75,16 @@ def main():
         run_once()
     elif args.mode == "worker":
         run_worker()
+    elif args.mode == "intelligence_once":
+        result = run_intelligence_once(
+            signal_limit=args.limit,
+            feeder_limit=args.limit,
+            feed_limit=args.limit,
+            compile_focus=not args.skip_focus_compile,
+        )
+        print(f"intelligence_once={result}")
+    elif args.mode == "intelligence_worker":
+        run_intelligence_worker()
     elif args.mode == "backfill_d1_media":
         eng = PureEngine()
         try:
@@ -214,6 +232,28 @@ def main():
             print(
                 f"resolve_signal_intelligence selected={result.get('selected', 0)} "
                 f"resolved={result.get('resolved', 0)} failed={result.get('failed', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "compile_feeder_focus":
+        eng = PureEngine()
+        try:
+            result = eng.compile_feeder_focus(feeder_id=args.feeder_id, limit=args.limit, full_rebuild=args.full_rebuild)
+            print(
+                f"compile_feeder_focus selected={result.get('selected', 0)} "
+                f"compiled={result.get('compiled', 0)} skipped={result.get('skipped', 0)} "
+                f"failed={result.get('failed', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "compile_feed_focus":
+        eng = PureEngine()
+        try:
+            result = eng.compile_feed_focus(feed_id=args.feed_id, limit=args.limit, full_rebuild=args.full_rebuild)
+            print(
+                f"compile_feed_focus selected={result.get('selected', 0)} "
+                f"compiled={result.get('compiled', 0)} skipped={result.get('skipped', 0)} "
+                f"failed={result.get('failed', 0)}"
             )
         finally:
             eng.close()

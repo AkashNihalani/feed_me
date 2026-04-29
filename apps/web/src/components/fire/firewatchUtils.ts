@@ -60,12 +60,20 @@ export type FirewatchData = {
   supportPosts: FirewatchPostPreview[];
   anchorSupportPosts: FirewatchPostPreview[];
   coverPosts: FirewatchPostPreview[];
+  cardTitle: string;
+  whatHappened: string;
+  whyItMayHaveHappened: string;
+  commonPattern: string[];
+  doNext: string;
+  watchout: string;
+  confidence: string;
 };
 
 export function parseFirewatchData(item: FireItem): FirewatchData {
   const payload = asRecord(item.payload);
   const meta = asRecord(payload.meta);
   const firewatch = asRecord(meta.firewatch);
+  const card = asRecord(firewatch.card);
 
   const mapPosts = (value: unknown): FirewatchPostPreview[] => (
     Array.isArray(value)
@@ -90,9 +98,17 @@ export function parseFirewatchData(item: FireItem): FirewatchData {
         .filter(Boolean)
       : []
   );
+  const mapStringList = (value: unknown): string[] => (
+    Array.isArray(value)
+      ? value.map((entry) => asString(entry).trim()).filter(Boolean)
+      : []
+  );
 
   const supportPosts = mapPosts(firewatch.support_posts);
   const anchorSupportPosts = mapPosts(firewatch.anchor_support_posts);
+  const commonPattern = mapStringList(card.common_pattern).slice(0, 5);
+  const legacyCues = mapCueLabels(firewatch.cues);
+  const legacyRequiredCues = mapCueLabels(firewatch.required_cues);
   const matchingSupportHero = supportPosts.find(
     (post) => post.thumbnailUrl === item.thumbnailUrl && post.postUrl === item.postUrl,
   );
@@ -110,7 +126,8 @@ export function parseFirewatchData(item: FireItem): FirewatchData {
   return {
     feedName: asString(meta.feed_name) || item.handle || '@FEED',
     familyLabel: asString(firewatch.family_label) || 'Firewatch',
-    patternLabel: asString(firewatch.pattern_label)
+    patternLabel: asString(card.title)
+      || asString(firewatch.pattern_label)
       || getPatternMechanicLabel(asString(firewatch.pattern_name))
       || item.signalHeadline
       || 'Pattern alert',
@@ -122,10 +139,17 @@ export function parseFirewatchData(item: FireItem): FirewatchData {
     recentLift: asNumber(firewatch.recent_lift),
     anchorGap: asNumber(firewatch.anchor_gap),
     anchorAvgPercentile: asNumber(firewatch.anchor_avg_percentile),
-    cues: mapCueLabels(firewatch.cues),
-    requiredCues: mapCueLabels(firewatch.required_cues),
+    cues: commonPattern.length > 0 ? commonPattern : legacyCues,
+    requiredCues: commonPattern.length > 0 ? [] : legacyRequiredCues,
     supportPosts,
     anchorSupportPosts,
     coverPosts,
+    cardTitle: asString(card.title),
+    whatHappened: asString(card.what_happened),
+    whyItMayHaveHappened: asString(card.why_it_may_have_happened),
+    commonPattern,
+    doNext: asString(card.do_next),
+    watchout: asString(card.watchout),
+    confidence: asString(card.confidence),
   };
 }

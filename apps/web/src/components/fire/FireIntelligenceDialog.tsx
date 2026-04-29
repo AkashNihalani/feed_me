@@ -332,20 +332,25 @@ export default function FireIntelligenceDialog({
       multiple: multipleOrDash(metric.multiple),
       value: compactOrDash(metric.value),
     }));
-    const patternAlerts = Array.isArray(meta.pattern_alerts)
-      ? meta.pattern_alerts
+    const patternAlerts = Array.isArray(meta.signal_alerts)
+      ? meta.signal_alerts
         .map((entry) => asRecord(entry))
         .map((entry) => {
           const signalCode = text(entry.signal_code);
           const signalMeta = getFireSignalMeta(signalCode);
           const patternName = text(entry.pattern_name);
-          const cues = Array.isArray(entry.cues)
+          const card = asRecord(entry.card);
+          const commonPattern = Array.isArray(card.common_pattern)
+            ? card.common_pattern.map((value) => text(value).trim()).filter(Boolean).slice(0, 5)
+            : [];
+          const legacyCues = Array.isArray(entry.cues)
             ? entry.cues
               .map((cue) => asRecord(cue))
               .map((cue) => text(cue.label))
               .filter(Boolean)
               .slice(0, 4)
             : [];
+          const cues = commonPattern.length > 0 ? commonPattern : legacyCues;
           const supportPosts = Array.isArray(entry.support_posts)
             ? entry.support_posts
               .map((post) => asRecord(post))
@@ -360,14 +365,19 @@ export default function FireIntelligenceDialog({
             : [];
           const modifierKey = text(entry.modifier_key);
           const modifierValue = text(entry.modifier_value);
-          const firewatchId = `${signalCode || 'OWN_PATTERN'}:${patternName || 'unknown'}:${modifierKey}:${modifierValue}`;
+          const firewatchId = `${signalCode || 'OWN_BREAKOUT'}:${patternName || 'unknown'}:${modifierKey}:${modifierValue}`;
           return {
             signalCode,
             signalLabel: signalMeta?.shortLabel || signalCode || 'Pattern Alert',
-            patternLabel: getPatternMechanicLabel(patternName) || signalMeta?.headline || signalCode || 'Pattern Alert',
+            patternLabel: text(card.title) || getPatternMechanicLabel(patternName) || signalMeta?.headline || signalCode || 'Pattern Alert',
             context: text(entry.context).toUpperCase() || 'OWN',
             alertType: text(entry.alert_type).toUpperCase() || 'WATCH',
             body: text(entry.body),
+            whatHappened: text(card.what_happened),
+            whyItMayHaveHappened: text(card.why_it_may_have_happened),
+            doNext: text(card.do_next),
+            watchout: text(card.watchout),
+            confidence: text(card.confidence),
             percentile: num(entry.surface_percentile),
             matchCount: num(entry.match_count),
             feedersCount: num(entry.feeders_count),
@@ -701,22 +711,8 @@ export default function FireIntelligenceDialog({
                 ) : null}
                 {firewatch ? (
                   <>
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_30%,rgba(0,0,0,0.7)_70%,rgba(0,0,0,0.92)_100%)]" />
-                    <div className="absolute inset-x-0 bottom-0 z-10 p-5">
-                      <div className="flex flex-wrap gap-1.5">
-                        <MetaBadge value="Firewatch" />
-                        <MetaBadge value={firewatch.familyLabel} />
-                        <MetaBadge value={firewatch.feedName} />
-                        <MetaBadge value={firewatch.mediaType} />
-                        <MetaBadge value="D7" />
-                      </div>
-                      <div className="mt-3 text-[36px] font-black leading-[0.9] tracking-[-0.04em] text-white">
-                        {percentText(firewatch.avgHotPercentile)}
-                      </div>
-                      <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                        Avg Top
-                      </div>
-                    </div>
+                    {/* Clean gradient for contrast only — no badges or text overlaid */}
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_50%,rgba(0,0,0,0.3)_80%,rgba(0,0,0,0.5)_100%)]" />
                   </>
                 ) : null}
               </div>
@@ -741,21 +737,79 @@ export default function FireIntelligenceDialog({
                 <div className="relative flex flex-1 flex-col overflow-y-auto p-6">
                   {firewatch ? (
                     <>
+                      {/* ── Hero: Mechanic + Intelligence Tags ── */}
                       <div>
                         <SectionTag>Firewatch</SectionTag>
-                        <div className="mt-2 text-[26px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
+                        <div className="mt-2 text-[28px] font-black leading-[0.94] tracking-[-0.04em] text-neutral-900 dark:text-white">
                           {firewatch.patternLabel}
                         </div>
-                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {[...(firewatch.requiredCues.length > 0 ? firewatch.requiredCues : firewatch.cues)].slice(0, 6).map((cue) => (
+                            <div
+                              key={`firewatch-cue-${cue}`}
+                              className="rounded-full border border-neutral-200/80 bg-white/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-neutral-700 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/72"
+                            >
+                              {cue}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
                           <MetaBadge value={firewatch.familyLabel} />
                           <MetaBadge value={firewatch.feedName} />
                           <MetaBadge value={firewatch.mediaType} />
+                          {firewatch.baselineShare != null && (
+                            <MetaBadge value={`Baseline ${Math.round(firewatch.baselineShare * 100)}%`} />
+                          )}
+                          {firewatch.confidence && (
+                            <MetaBadge value={`${firewatch.confidence} confidence`} />
+                          )}
                         </div>
                       </div>
 
+                      {(firewatch.whatHappened || firewatch.whyItMayHaveHappened || firewatch.doNext) && (
+                        <div className="mt-4 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                          {firewatch.whatHappened && (
+                            <div>
+                              <SectionTag>What Moved</SectionTag>
+                              <p className="mt-1 text-[13px] font-semibold leading-relaxed text-neutral-700 dark:text-white/68">
+                                {firewatch.whatHappened}
+                              </p>
+                            </div>
+                          )}
+                          {firewatch.commonPattern.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {firewatch.commonPattern.map((pattern) => (
+                                <span
+                                  key={`signal-pattern-${pattern}`}
+                                  className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
+                                >
+                                  {pattern}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {firewatch.whyItMayHaveHappened && (
+                            <p className="mt-3 text-[12px] font-medium leading-relaxed text-neutral-500 dark:text-white/46">
+                              {firewatch.whyItMayHaveHappened}
+                            </p>
+                          )}
+                          {firewatch.doNext && (
+                            <div className="mt-3 rounded-xl bg-[#E11D48] px-3 py-2 text-[12px] font-black leading-snug text-white">
+                              {firewatch.doNext}
+                            </div>
+                          )}
+                          {firewatch.watchout && (
+                            <p className="mt-2 text-[11px] font-semibold leading-relaxed text-neutral-400 dark:text-white/36">
+                              {firewatch.watchout}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Supporting Data ── */}
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         <CompactStat label="Avg Top" value={percentText(firewatch.avgHotPercentile)} accent />
-                        <CompactStat label="Winners" value={compactCount(firewatch.matchCount, 'hot')} />
+                        <CompactStat label="Proof" value={compactCount(firewatch.matchCount, 'hot')} />
                         <CompactStat
                           label={firewatch.feedersCount != null && firewatch.feedersCount > 1 ? 'Spread' : 'Format'}
                           value={firewatch.feedersCount != null && firewatch.feedersCount > 1 ? compactCount(firewatch.feedersCount, 'feeders') : firewatch.mediaType}
@@ -766,30 +820,9 @@ export default function FireIntelligenceDialog({
                         />
                       </div>
 
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <SectionTag>Shared Tags</SectionTag>
-                          {firewatch.baselineShare != null && (
-                            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
-                              Baseline {Math.round(firewatch.baselineShare * 100)}%
-                            </div>
-                          )}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {[...(firewatch.requiredCues.length > 0 ? firewatch.requiredCues : firewatch.cues)].slice(0, 6).map((cue) => (
-                            <div
-                              key={`firewatch-cue-${cue}`}
-                              className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
-                            >
-                              {cue}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
                       {firewatch.supportPosts.length > 0 && (
                         <div className="mt-4">
-                          <SectionTag>Supporting Posts</SectionTag>
+                          <SectionTag>Signal Posts</SectionTag>
                           <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
                             {firewatch.supportPosts.map((post) => (
                               <a
@@ -840,7 +873,7 @@ export default function FireIntelligenceDialog({
                       {stats.patternAlerts.length > 0 && (
                         <div>
                           <div className="flex items-center justify-between gap-3">
-                            <SectionTag>Pattern Alerts</SectionTag>
+                            <SectionTag>Signals</SectionTag>
                             <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
                               {stats.patternAlerts.length} active
                             </div>
@@ -859,9 +892,33 @@ export default function FireIntelligenceDialog({
                                     {patternAlert.context} · {patternAlert.alertType}
                                   </div>
                                 </div>
+                                {(patternAlert.whatHappened || patternAlert.whyItMayHaveHappened || patternAlert.doNext || patternAlert.watchout) && (
+                                  <div className="mt-2 rounded-xl bg-white/60 px-3 py-2 dark:bg-white/[0.035]">
+                                    {patternAlert.whatHappened && (
+                                      <p className="text-[11px] font-semibold leading-relaxed text-neutral-700 dark:text-white/68">
+                                        {patternAlert.whatHappened}
+                                      </p>
+                                    )}
+                                    {patternAlert.whyItMayHaveHappened && (
+                                      <p className="mt-1 text-[10px] font-medium leading-relaxed text-neutral-500 dark:text-white/42">
+                                        {patternAlert.whyItMayHaveHappened}
+                                      </p>
+                                    )}
+                                    {patternAlert.doNext && (
+                                      <div className="mt-2 rounded-lg bg-[#E11D48] px-2.5 py-1.5 text-[10px] font-black leading-snug text-white">
+                                        {patternAlert.doNext}
+                                      </div>
+                                    )}
+                                    {patternAlert.watchout && (
+                                      <p className="mt-1.5 text-[9px] font-semibold leading-relaxed text-neutral-400 dark:text-white/34">
+                                        {patternAlert.watchout}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                   {patternAlert.matchCount != null && (
-                                    <MetaBadge value={`${Math.round(patternAlert.matchCount)} Winners`} />
+                                    <MetaBadge value={`${Math.round(patternAlert.matchCount)} Proof`} />
                                   )}
                                   {patternAlert.feedersCount != null && patternAlert.feedersCount > 1 && (
                                     <MetaBadge value={`${Math.round(patternAlert.feedersCount)} Feeders`} />
@@ -877,6 +934,9 @@ export default function FireIntelligenceDialog({
                                   )}
                                   {patternAlert.baselineShare != null && (
                                     <MetaBadge value={`Baseline ${Math.round(patternAlert.baselineShare * 100)}%`} />
+                                  )}
+                                  {patternAlert.confidence && (
+                                    <MetaBadge value={`${patternAlert.confidence} confidence`} />
                                   )}
                                 </div>
                                 {(patternAlert.body || patternAlert.percentile != null) && (
@@ -899,7 +959,7 @@ export default function FireIntelligenceDialog({
                                 {patternAlert.supportPosts.length > 0 && (
                                   <div className="mt-2.5">
                                     <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
-                                      Supporting Posts
+                                      Signal Posts
                                     </div>
                                     <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
                                       {patternAlert.supportPosts.map((post) => (
@@ -930,7 +990,7 @@ export default function FireIntelligenceDialog({
                                       onClick={onClose}
                                       className="inline-flex items-center gap-1 text-[11px] font-bold tracking-[0.02em] text-neutral-500 underline-offset-4 hover:underline dark:text-white/52"
                                     >
-                                      view in firewatch <span aria-hidden>→</span>
+                                      View Feed Signals <span aria-hidden>→</span>
                                     </Link>
                                   </div>
                                 )}
@@ -1045,19 +1105,32 @@ export default function FireIntelligenceDialog({
                     </>
                   )}
 
-                  {/* Open Post CTA */}
+                  {/* CTA — View Patterns for firewatch, Open Post for tracking */}
                   <div className="mt-auto pt-5">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
-                      }}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
-                    >
-                      {firewatch ? 'Open Hero Post' : 'Open Post'}
-                      <ExternalLink size={14} />
-                    </button>
+                    {firewatch ? (
+                      <Link
+                        href={`/?id=${item.feedId}#firewatch-section`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onClose();
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
+                      >
+                        View All Patterns
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
+                      >
+                        Open Post
+                        <ExternalLink size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

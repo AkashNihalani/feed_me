@@ -89,16 +89,16 @@ html.dark {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1.5px;
+  padding: 2px;
   pointer-events: none;
   background: conic-gradient(
     from var(--shimmer-angle, 180deg),
     transparent 0deg,
-    transparent 220deg,
-    rgba(225, 29, 72, 0.06) 250deg,
-    rgba(225, 29, 72, 0.34) 285deg,
-    rgba(225, 29, 72, 0.12) 320deg,
-    transparent 350deg,
+    transparent 180deg,
+    rgba(225, 29, 72, 0.12) 210deg,
+    rgba(225, 29, 72, 0.72) 270deg,
+    rgba(225, 29, 72, 0.28) 320deg,
+    transparent 345deg,
     transparent 360deg
   );
   -webkit-mask:
@@ -109,8 +109,8 @@ html.dark {
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
           mask-composite: exclude;
-  animation: fire-insight-shimmer 6s linear infinite;
-  opacity: 0.72;
+  animation: fire-insight-shimmer 10s linear infinite;
+  opacity: 0.92;
   mix-blend-mode: screen;
 }
 

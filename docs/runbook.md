@@ -37,6 +37,12 @@ python3 -m apps.worker.app.cli --mode once
 python3 -m apps.worker.app.cli --mode worker
 ```
 
+## 5b) Intelligence processor
+Run this as a separate process/container so LLM work never blocks scraping or checkpoints:
+```bash
+python3 -m apps.worker.app.cli --mode intelligence_worker
+```
+
 ## 6) Job behavior
 - Discovery runs every 12 hours through Bright Data Instagram Posts API pulls with a 2-day overlap.
 - D1/D3/D7: scheduled from actual post age and bucketed into 60-minute windows.
@@ -49,5 +55,8 @@ python3 -m apps.worker.app.cli --mode worker
 - Signal intelligence source of truth:
   - deterministic detection writes `signals` + `signal_posts`
   - LLM fingerprints write `post_fingerprints`
+  - alignment reads write `post_focus_reads`
+  - weekly account memory writes `feeder_focus`
+  - weekly feed memory writes `feed_focus`
   - signal cards write `signal_intelligence`
   - legacy `post_intelligence` / pattern-alert extraction is retired

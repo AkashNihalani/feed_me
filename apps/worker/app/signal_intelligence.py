@@ -21,6 +21,12 @@ from .config import (
     SIGNAL_INTELLIGENCE_MODEL,
     SIGNAL_INTELLIGENCE_PROVIDER,
 )
+from .focus_brain import (
+    ensure_post_focus_read,
+    feed_focus_context,
+    feeder_focus_slice,
+    store_post_focus_read,
+)
 
 _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 _GEMINI_UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
@@ -28,36 +34,76 @@ _GEMINI_FILE_URL = "https://generativelanguage.googleapis.com/v1beta/files/{name
 _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
-_FP_PROMPT_VERSION = "fingerprint_v2"
-_CARD_PROMPT_VERSION = "signal_card_v3"
+_FP_PROMPT_VERSION = "fingerprint_v3_focus_read"
+_CARD_PROMPT_VERSION = "signal_card_v4_focus_context"
 _SAMPLING_POLICY_VERSION = "media_sample_v1"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
 _IMAGE_MAX_BYTES = 12 * 1024 * 1024
 _VIDEO_SAMPLE_SECONDS = 90
 
-_FINGERPRINT_SYSTEM = """Describe what this post actually contains. Do not explain performance.
+_FINGERPRINT_SYSTEM = """Describe what this post actually contains and produce a narrow alignment read.
 Use visual evidence first. Caption is supporting context only. If media evidence is partial, say so.
 Use only what you can see or read. Do not invent niche, brand, or campaign details.
-Return only JSON with these keys:
+Do not explain performance. Do not say if the post is good, bad, risky, emerging, or strategic.
+
+Return only JSON:
 {
-  "topic": "",
-  "audience_addressed": "",
-  "hook": "",
-  "opener": "",
-  "payoff": "",
-  "visual_sequence": "",
-  "caption_role": "",
-  "audio_or_text_driver": "",
-  "emotional_trigger": "",
-  "discussion_prompt": "",
-  "craft_moves": [],
-  "campaign_or_context_clues": [],
-  "media_confidence": "high|medium|low"
-}"""
+  "fingerprint": {
+    "content_summary": "",
+    "topic": "",
+    "audience_addressed": "",
+    "hook": "",
+    "opener": "",
+    "payoff": "",
+    "visual_sequence": "",
+    "caption_role": "",
+    "audio_or_text_driver": "",
+    "emotional_trigger": "",
+    "discussion_prompt": "",
+    "craft_moves": [],
+    "campaign_or_context_clues": [],
+    "visual_read": {
+      "opening_frame": "",
+      "subject_focus": "",
+      "setting": "",
+      "camera_language": "",
+      "production_style": "",
+      "human_presence": "",
+      "proof_shown": [],
+      "pacing": "",
+      "on_screen_text_style": ""
+    },
+    "caption_read": {
+      "tone": "",
+      "voice": "",
+      "language_style": "",
+      "specificity": "",
+      "cta_style": "",
+      "emotional_register": "",
+      "caption_confidence": "high|medium|low"
+    },
+    "media_confidence": "high|medium|low"
+  },
+  "focus_read": {
+    "relation_to_feeder_md": {
+      "matches": [],
+      "deviates": [],
+      "unclear": []
+    },
+    "notes": []
+  }
+}
+
+Focus read rules:
+- Compare only to the supplied feeder focus.
+- matches = traits visible in the post that already exist in feeder focus.
+- deviates = visible traits present in this post but not in feeder focus.
+- unclear = things the media/caption cannot prove.
+- If no feeder focus is supplied, keep matches/deviates empty and say no compiled feeder focus is available."""
 
 _CARD_SYSTEM = """You analyze metric-triggered social signals for a social media tracking product.
-Use the feed bible, feeder context, metric snapshot, cohort policy, and post fingerprints only.
+Use the feed bible, feed focus capsule, focus reads, feeder context, metric snapshot, cohort policy, and post fingerprints only.
 The metric_snapshot is the only statistical baseline truth. Do not calculate a new baseline from cohort posts.
 Cohort B/reference posts are visual references only; they are not the statistical baseline.
 Use visual evidence first. Caption is supporting context only.
@@ -66,7 +112,10 @@ Do not discount campaigns, collaborations, celebrity moments, or off-platform co
 If content evidence does not explain the metric, say confidence is low.
 When reference posts exist, watchout must say what to avoid or what the reference posts are missing.
 Never mention internal cohort letters, database roles, or strings like trigger_core/reference_no_jump.
-Use the feed's niche vocabulary. Return only JSON:
+Use the feed's niche vocabulary.
+Classify pattern_type as one of: account_aligned, feed_aligned, account_outlier, conflict_signal, unclear.
+Every do_next must name observable content behaviors from the evidence, not generic advice.
+Return only JSON:
 {
   "title": "",
   "what_happened": "",
@@ -75,7 +124,13 @@ Use the feed's niche vocabulary. Return only JSON:
   "do_next": "",
   "watchout": "",
   "per_post_notes": [],
-  "confidence": "high|medium|low"
+  "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear",
+  "confidence": "high|medium|low",
+  "focus_memory_candidate": {
+    "candidate_patterns": [],
+    "candidate_avoid": [],
+    "candidate_collision": ""
+  }
 }"""
 
 _SIGNAL_QUESTIONS = {
@@ -461,6 +516,7 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
             select p.post_key, p.caption, lower(coalesce(p.media_type, 'image')) as media_type,
                    p.thumbnail_url, p.video_url, p.carousel_urls,
                    p.duration_bucket, p.depth_bucket,
+                   fd.id as feeder_id, fd.feed_id, coalesce(fd.role, 'standard') as feeder_role,
                    fd.handle, fd.context_role, fd.context_note, fd.bio,
                    f.context_bible
             from public.posts p
@@ -577,16 +633,20 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         if existing and isinstance(existing.get("fingerprint"), dict):
             return existing["fingerprint"]
 
+    focus = feeder_focus_slice(conn, int(post.get("feeder_id") or 0), post.get("media_type"))
     user_text = "\n".join([
         f"FEED CONTEXT: {post.get('context_bible') or '(not provided)'}",
         f"FEEDER: @{post.get('handle') or ''} · role={post.get('context_role') or 'standard'} · note={post.get('context_note') or ''}",
+        f"FEEDER FOCUS FOR ALIGNMENT ONLY: {focus.get('text') or '(not available)'}",
         f"BIO: {post.get('bio') or '(not provided)'}",
         f"MEDIA: {post.get('media_type') or 'unknown'} · duration_bucket={post.get('duration_bucket') or ''} · depth_bucket={post.get('depth_bucket') or ''}",
         f"CAPTION: {caption[:2000] or '(no caption)'}",
     ])
-    fingerprint = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=700)
-    if not fingerprint:
+    model_response = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=1100)
+    if not model_response:
         return None
+    focus_read = model_response.get("focus_read") if isinstance(model_response.get("focus_read"), dict) else None
+    fingerprint = model_response.get("fingerprint") if isinstance(model_response.get("fingerprint"), dict) else model_response
     media_confidence = str(fingerprint.get("media_confidence") or confidence).lower()
     if media_confidence not in {"high", "medium", "low"}:
         media_confidence = confidence
@@ -611,6 +671,18 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
             """,
             (post_key, json.dumps(fingerprint), media_hash, caption_hash, _SAMPLING_POLICY_VERSION, model_version, media_confidence),
         )
+    if focus_read:
+        store_post_focus_read(
+            conn,
+            post_key=post_key,
+            feeder_id=int(post.get("feeder_id") or 0),
+            feed_id=int(post.get("feed_id") or 0),
+            media_type=post.get("media_type"),
+            fingerprint=fingerprint,
+            focus_read=focus_read,
+            feeder_focus_version=int(focus.get("version") or 0),
+            model_version=model_version,
+        )
     conn.commit()
     return fingerprint
 
@@ -634,12 +706,19 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
         cur.execute(
             """
             select sp.cohort, sp.rank, sp.role, sp.post_key,
-                   p.post_url, p.caption, fd.handle, fd.context_role, fd.context_note, fd.bio,
-                   pf.fingerprint
+                   p.post_url, p.caption, lower(coalesce(p.media_type, 'image')) as media_type,
+                   fd.id as feeder_id, fd.feed_id, fd.handle, coalesce(fd.role, 'standard') as feeder_role,
+                   fd.context_role, fd.context_note, fd.bio,
+                   pf.fingerprint,
+                   pfr.focus_read,
+                   pfr.feeder_focus_version,
+                   coalesce(ff.focus_version, 0) as current_feeder_focus_version
             from public.signal_posts sp
             join public.posts p on p.post_key = sp.post_key
             join public.feeders fd on fd.id = p.feeder_id
             left join public.post_fingerprints pf on pf.post_key = sp.post_key
+            left join public.post_focus_reads pfr on pfr.post_key = sp.post_key
+            left join public.feeder_focus ff on ff.feeder_id = fd.id
             where sp.signal_id = %s
             order by sp.cohort, sp.rank, sp.post_key
             """,
@@ -649,9 +728,23 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
     return {"signal": signal, "posts": posts}
 
 
-def _sample_hash(posts: list[dict[str, Any]]) -> str:
-    bits = [f"{row.get('cohort')}:{row.get('role')}:{row.get('post_key')}" for row in posts]
-    return _sha("|".join(bits))
+def _sample_hash(posts: list[dict[str, Any]], focus_context: dict[str, Any] | None = None) -> str:
+    bits = []
+    for row in posts:
+        fingerprint = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
+        focus_read = row.get("focus_read") if isinstance(row.get("focus_read"), dict) else {}
+        bits.append(
+            ":".join([
+                str(row.get("cohort") or ""),
+                str(row.get("role") or ""),
+                str(row.get("post_key") or ""),
+                str(row.get("feeder_focus_version") or 0),
+                _sha(fingerprint),
+                _sha(focus_read),
+            ])
+        )
+    focus_bits = json.dumps(focus_context or {}, sort_keys=True, default=str)
+    return _sha("|".join(bits) + "|" + focus_bits)
 
 
 def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limit: int = 1) -> dict[str, int]:
@@ -687,8 +780,20 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         payload = _signal_payload(conn, sid)
         if not payload:
             continue
+        posts = payload["posts"]
+        for row in posts:
+            fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
+            stored_focus_version = int(row.get("feeder_focus_version") or -1)
+            current_focus_version = int(row.get("current_feeder_focus_version") or 0)
+            focus_read_stale = stored_focus_version != current_focus_version
+            if fp and (not isinstance(row.get("focus_read"), dict) or focus_read_stale):
+                ensure_post_focus_read(conn, str(row.get("post_key") or ""), fp)
+        payload = _signal_payload(conn, sid)
+        if not payload:
+            continue
         signal = payload["signal"]
         posts = payload["posts"]
+        focus_context = feed_focus_context(conn, signal, posts)
         fingerprints = []
         for row in posts:
             fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
@@ -696,14 +801,20 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 "post_key": row.get("post_key"),
                 "cohort": row.get("cohort"),
                 "post_role": _display_post_role(row.get("role")),
+                "post_url": row.get("post_url"),
+                "media_type": row.get("media_type"),
                 "handle": row.get("handle"),
+                "feeder_role": row.get("feeder_role"),
                 "feeder_context_role": row.get("context_role"),
                 "feeder_note": row.get("context_note"),
                 "feeder_bio": row.get("bio"),
                 "caption_excerpt": str(row.get("caption") or "")[:500],
                 "fingerprint": fp,
+                "focus_read": row.get("focus_read") if isinstance(row.get("focus_read"), dict) else {},
+                "feeder_focus_version": row.get("feeder_focus_version"),
+                "current_feeder_focus_version": row.get("current_feeder_focus_version"),
             })
-        sample_hash = _sample_hash(posts)
+        sample_hash = _sample_hash(posts, focus_context)
         card_model = current_model_version(kind="card")
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -726,6 +837,7 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             "signal": signal.get("signal_type"),
             "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
             "feed_bible": signal.get("context_bible") or "(not provided)",
+            "feed_focus_context": focus_context,
             "media_type": signal.get("media_type"),
             "sub_bucket": signal.get("sub_bucket"),
             "metric_snapshot": signal.get("metric_snapshot") or {},
@@ -739,20 +851,26 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             conn.commit()
             failed += 1
             continue
+        focus_memory_candidate = card.pop("focus_memory_candidate", {}) if isinstance(card.get("focus_memory_candidate"), dict) else {}
         confidence = str(card.get("confidence") or "").lower()
         signal_status = "fresh" if confidence != "low" else "suppressed_confidence"
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into public.signal_intelligence (signal_id, card, sample_hash, model_version, generated_at, updated_at)
-                values (%s, %s::jsonb, %s, %s, now(), now())
+                insert into public.signal_intelligence (
+                  signal_id, card, sample_hash, model_version, focus_context,
+                  focus_memory_candidate, generated_at, updated_at
+                )
+                values (%s, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, now(), now())
                 on conflict (signal_id) do update set
                   card = excluded.card,
                   sample_hash = excluded.sample_hash,
                   model_version = excluded.model_version,
+                  focus_context = excluded.focus_context,
+                  focus_memory_candidate = excluded.focus_memory_candidate,
                   updated_at = now()
                 """,
-                (sid, json.dumps(card), sample_hash, card_model),
+                (sid, json.dumps(card), sample_hash, card_model, json.dumps(focus_context), json.dumps(focus_memory_candidate)),
             )
             cur.execute("update public.signals set status = %s, updated_at = now() where id = %s", (signal_status, sid))
         conn.commit()

@@ -7,7 +7,9 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v3';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v4';
+const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
+const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -39,6 +41,12 @@ function recordValue(value: unknown): Record<string, unknown> {
 
 function arrayValue<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function suppressFollowerChildrenWhenRollupExists<T extends Record<string, unknown>>(rows: T[]): T[] {
+  const hasFollowerRollup = rows.some((row) => nullableString(row.signal_type) === FOLLOWER_ROLLUP_SIGNAL);
+  if (!hasFollowerRollup) return rows;
+  return rows.filter((row) => !FOLLOWER_CHILD_SIGNALS.has(nullableString(row.signal_type) || ''));
 }
 
 function humanizeSignalLabel(value: string): string {
@@ -902,11 +910,12 @@ async function fetchPatternBoard(
     .limit(300);
 
   if (error) throw error;
-  const signalRows = ((data || []) as Array<Record<string, unknown>>)
-    .filter((row) => {
+  const signalRows = suppressFollowerChildrenWhenRollupExists(
+    ((data || []) as Array<Record<string, unknown>>).filter((row) => {
       const feederId = nullableNumber(row.feeder_id);
       return feederId == null || feederIds.includes(feederId);
-    });
+    }),
+  );
   const signalIds = signalRows
     .map((row) => nullableNumber(row.id))
     .filter((value): value is number => value != null);

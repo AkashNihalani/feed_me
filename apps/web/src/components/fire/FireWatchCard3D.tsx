@@ -103,7 +103,11 @@ export function FireWatchCard3D({
   const isCardInteractive = highlighted || forcedOpen;
   const isOpen = forcedOpen || (isCardInteractive && openLocal);
   const data = useMemo(() => parseFirewatchData(item), [item]);
-  const coverTags = (data.requiredCues.length > 0 ? data.requiredCues : data.cues).slice(0, 2);
+  const patternTags = data.commonPattern.length > 0
+    ? data.commonPattern
+    : data.requiredCues.length > 0
+      ? data.requiredCues
+      : data.cues;
 
   const handleCardActivate = () => {
     if (isDesktopCard) {
@@ -171,42 +175,21 @@ export function FireWatchCard3D({
               <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/52">
                 Avg Top
               </div>
-              <div className="mt-1 text-[38px] font-black leading-[0.9] tracking-[-0.05em] text-white">
+              <div className={`mt-1 text-[48px] font-black leading-[0.88] tracking-[-0.05em] ${data.avgHotPercentile != null && data.avgHotPercentile <= 15 ? 'text-[#E11D48] drop-shadow-[0_0_14px_rgba(225,29,72,0.5)]' : 'text-white'}`}>
                 {percentText(data.avgHotPercentile)}
               </div>
             </div>
             <div className="text-right">
               <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/52">
-                {data.mediaType}
+                Proof
               </div>
-              <div className="mt-1 text-[12px] font-black uppercase tracking-[0.16em] text-white/78">
+              <div className="mt-1 text-[14px] font-black uppercase tracking-[0.12em] text-white/78">
                 {compactCount(data.matchCount, 'hot')}
               </div>
               <div className="mt-1 text-[12px] font-black uppercase tracking-[0.16em] text-white/62">
                 {data.feedersCount != null && data.feedersCount > 1 ? compactCount(data.feedersCount, 'feeders') : data.feedName}
               </div>
             </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {coverTags.map((tag) => (
-              <span
-                key={`${item.id}-${tag}`}
-                className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/74"
-              >
-                {tag}
-              </span>
-            ))}
-            {data.anchorGap != null && (
-              <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/74">
-                Gap +{Math.round(data.anchorGap)}
-              </span>
-            )}
-            {data.recentLift != null && (
-              <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/74">
-                {liftText(data.recentLift)}
-              </span>
-            )}
           </div>
         </div>
       </div>
@@ -270,19 +253,46 @@ export function FireWatchCard3D({
                     )}
                   </div>
 
-                  <div className="mt-3 rounded-[16px] border border-white/60 bg-white/50 p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16)] dark:border-white/18 dark:bg-black/38">
-                    <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/48">Shared Tags</div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {[...(data.requiredCues.length > 0 ? data.requiredCues : data.cues)].slice(0, 4).map((tag) => (
-                        <span
-                          key={`${item.id}-${tag}`}
-                          className="rounded-full border border-black/8 bg-white/62 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/12 dark:bg-white/10 dark:text-white/72"
-                        >
-                          {tag}
-                        </span>
-                      ))}
+                  {(data.whatHappened || data.whyItMayHaveHappened || data.doNext || data.watchout) && (
+                    <div className="mt-3 rounded-[16px] border border-white/60 bg-white/50 p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16)] dark:border-white/18 dark:bg-black/38">
+                      {data.whatHappened && (
+                        <p className="text-[11px] font-semibold leading-relaxed text-foreground/76 dark:text-white/70">
+                          {data.whatHappened}
+                        </p>
+                      )}
+                      {data.whyItMayHaveHappened && (
+                        <p className="mt-1.5 text-[10px] font-medium leading-relaxed text-foreground/50 dark:text-white/44">
+                          {data.whyItMayHaveHappened}
+                        </p>
+                      )}
+                      {data.doNext && (
+                        <div className="mt-2 rounded-[10px] bg-[#E11D48] px-2.5 py-2 text-[10px] font-black leading-snug text-white">
+                          {data.doNext}
+                        </div>
+                      )}
+                      {data.watchout && (
+                        <p className="mt-1.5 text-[9px] font-semibold leading-relaxed text-foreground/42 dark:text-white/34">
+                          {data.watchout}
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  )}
+
+                  {patternTags.length > 0 && (
+                    <div className="mt-3 rounded-[16px] border border-white/60 bg-white/50 p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16)] dark:border-white/18 dark:bg-black/38">
+                      <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/48">Common Pattern</div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {patternTags.slice(0, 4).map((tag) => (
+                          <span
+                            key={`${item.id}-${tag}`}
+                            className="rounded-full border border-black/8 bg-white/62 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/12 dark:bg-white/10 dark:text-white/72"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <SupportRail posts={data.supportPosts} title="Supporting Posts" />
                   <SupportRail posts={data.anchorSupportPosts} title="Anchor Compare" />

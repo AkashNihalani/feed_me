@@ -3,13 +3,15 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Plus, Target, Users, X } from 'lucide-react';
+import { Clock, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
+import FocusDialog from '@/components/feed/FocusDialog';
+import { FocusBrief, CREATE_FEED_LAST_STEP, defaultFocusBrief, buildFocusBible, normalizeFocusBrief } from '@/components/feed/focusUtils';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
@@ -24,7 +26,17 @@ type Feeder = {
   handle: string; isAnchor: boolean; profilePicUrl?: string | null;
   followerCount?: number | null; metrics: Metrics;
 };
-type Feed = { id: string; title: string; feeders: Feeder[]; metrics: FeedMetrics; compositePercentile?: number | string | null };
+type Feed = {
+  id: string;
+  title: string;
+  feeders: Feeder[];
+  metrics: FeedMetrics;
+  compositePercentile?: number | string | null;
+  focusBrief?: Partial<FocusBrief> | Record<string, unknown>;
+  focusBible?: string;
+  contextBrief?: Partial<FocusBrief> | Record<string, unknown>;
+  contextBible?: string;
+};
 type SortMode = 'recent' | 'name' | 'feeders';
 type SlotUsage = {
   used: number;
@@ -50,6 +62,14 @@ const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   '30D': '30D',
   '60D': '60D',
   '90D': '90D',
+};
+
+const pageVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { duration: 0.42, ease: APPLE_EASE },
+  },
 };
 
 function istDateKey(date: Date): string {
@@ -82,14 +102,7 @@ function defaultExportRange() {
   return { from: shiftIsoDate(to, -89), to };
 }
 
-/* ── Slide-up entrance ── */
-const pageVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { duration: 0.42, ease: APPLE_EASE },
-  },
-};
+
 
 function dashboardCacheKey(feedId: string, timeframe: Timeframe, handle: string) {
   return `${DASHBOARD_CACHE_PREFIX}:${feedId}:${TIMEFRAME_TO_DAYS[timeframe]}:${handle}`;
@@ -178,6 +191,13 @@ function FeedPageContent() {
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
   const [pendingDeleteFeedId, setPendingDeleteFeedId] = useState<string | null>(null);
   const [newFeedName, setNewFeedName] = useState('');
+  const [newFeedBrief, setNewFeedBrief] = useState<FocusBrief>(() => defaultFocusBrief());
+  const [createFeedStep, setCreateFeedStep] = useState(0);
+  const [newFeedBibleDraft, setNewFeedBibleDraft] = useState('');
+  const [isEditingFeedContext, setIsEditingFeedContext] = useState(false);
+  const [editFeedBrief, setEditFeedBrief] = useState<FocusBrief>(() => defaultFocusBrief());
+  const [editFeedStep, setEditFeedStep] = useState(0);
+  const [editFeedBibleDraft, setEditFeedBibleDraft] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>('30D');
@@ -207,6 +227,14 @@ function FeedPageContent() {
   const pendingDeleteFeed = useMemo(
     () => (pendingDeleteFeedId ? feeds.find((feed) => feed.id === pendingDeleteFeedId) ?? null : null),
     [feeds, pendingDeleteFeedId]
+  );
+  const newFocusBiblePreview = useMemo(
+    () => buildFocusBible(newFeedBrief, newFeedName.trim() || 'this feed'),
+    [newFeedBrief, newFeedName],
+  );
+  const editFocusBiblePreview = useMemo(
+    () => buildFocusBible(editFeedBrief, activeFeed?.title || 'this feed'),
+    [activeFeed?.title, editFeedBrief],
   );
   const handles = useMemo<string[]>(() => {
     if (!activeFeed) return [];
@@ -467,10 +495,93 @@ function FeedPageContent() {
     finally { clearTimeout(tid); setAddingFeeder(null); setIsBusy(false); }
   };
   const removeFeeder = async (feedId: string, handle: string) => runFeedAction({ action: 'remove_feeder', feedId: Number(feedId), handle });
+  const resetCreateFeedModal = () => {
+    setIsCreatingFeed(false);
+    setNewFeedName('');
+    setNewFeedBrief(defaultFocusBrief());
+    setCreateFeedStep(0);
+    setNewFeedBibleDraft('');
+  };
+  const closeCreateFeedModal = () => {
+    const dirty = Boolean(
+      newFeedName.trim()
+      || JSON.stringify(newFeedBrief) !== JSON.stringify(defaultFocusBrief())
+      || newFeedBibleDraft.trim(),
+    );
+    if (dirty && typeof window !== 'undefined' && !window.confirm('Discard this Focus?')) return;
+    resetCreateFeedModal();
+  };
+  const updateNewFeedBrief = (patch: Partial<FocusBrief>) => {
+    setNewFeedBrief((current) => ({ ...current, ...patch }));
+  };
   const handleCreateFeed = async () => {
     if (!newFeedName.trim()) return;
-    const ok = await runFeedAction({ action: 'create_feed', title: newFeedName.trim() });
-    if (ok) { setNewFeedName(''); setIsCreatingFeed(false); }
+    if (createFeedStep < CREATE_FEED_LAST_STEP) {
+      const nextStep = createFeedStep + 1;
+      if (nextStep === CREATE_FEED_LAST_STEP) {
+        setNewFeedBibleDraft('');
+      }
+      setCreateFeedStep(nextStep);
+      return;
+    }
+    const ok = await runFeedAction({
+      action: 'create_feed',
+      title: newFeedName.trim(),
+      focusBrief: newFeedBrief,
+      focusBible: newFeedBibleDraft.trim() || newFocusBiblePreview,
+    });
+    if (ok) resetCreateFeedModal();
+  };
+  const goToPreviousCreateFeedStep = () => {
+    setCreateFeedStep((step) => Math.max(0, step - 1));
+  };
+  const resetCreateFeedContext = () => {
+    setNewFeedName('');
+    setNewFeedBrief(defaultFocusBrief());
+    setCreateFeedStep(0);
+    setNewFeedBibleDraft('');
+  };
+  const openFeedContextEditor = () => {
+    if (!activeFeed) return;
+    const brief = normalizeFocusBrief(activeFeed.focusBrief || activeFeed.contextBrief);
+    setEditFeedBrief(brief);
+    setEditFeedStep(0);
+    setEditFeedBibleDraft(String(activeFeed.focusBible || activeFeed.contextBible || '').trim() || buildFocusBible(brief, activeFeed.title || 'this feed'));
+    setIsEditingFeedContext(true);
+  };
+  const closeFeedContextEditor = () => {
+    if (!activeFeed) {
+      setIsEditingFeedContext(false);
+      return;
+    }
+    const originalBrief = normalizeFocusBrief(activeFeed.focusBrief || activeFeed.contextBrief);
+    const originalBible = String(activeFeed.focusBible || activeFeed.contextBible || '').trim() || buildFocusBible(originalBrief, activeFeed.title || 'this feed');
+    const dirty = JSON.stringify(editFeedBrief) !== JSON.stringify(originalBrief)
+      || editFeedBibleDraft.trim() !== originalBible.trim();
+    if (dirty && typeof window !== 'undefined' && !window.confirm('Discard changes to this Focus?')) return;
+    setIsEditingFeedContext(false);
+  };
+  const updateEditFeedBrief = (patch: Partial<FocusBrief>) => {
+    setEditFeedBrief((current) => ({ ...current, ...patch }));
+  };
+  const handleSaveFeedContext = async () => {
+    if (!activeFeed) return;
+    if (editFeedStep < CREATE_FEED_LAST_STEP) {
+      const nextStep = editFeedStep + 1;
+      if (nextStep === CREATE_FEED_LAST_STEP && !editFeedBibleDraft.trim()) {
+        setEditFeedBibleDraft('');
+      }
+      setEditFeedStep(nextStep);
+      return;
+    }
+    const ok = await runFeedAction({
+      action: 'update_feed_focus',
+      feedId: Number(activeFeed.id),
+      title: activeFeed.title,
+      focusBrief: editFeedBrief,
+      focusBible: editFeedBibleDraft.trim() || editFocusBiblePreview,
+    });
+    if (ok) setIsEditingFeedContext(false);
   };
   const handleDeleteFeed = async (feedId: string) => {
     setPendingDeleteFeedId(feedId);
@@ -901,6 +1012,39 @@ function FeedPageContent() {
               onExportToChange={setExportTo}
               onExport={() => { play('snapLock'); handleDownloadExport(); }}
             >
+              {activeFeed && (
+                <motion.button
+                  key="focus"
+                  layout
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={openFeedContextEditor}
+                  className="fm-depth-glass flex min-h-[180px] flex-col justify-between rounded-[22px] p-4 text-left"
+                  style={{ willChange: 'transform' }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-black/6 bg-white/68 text-foreground/56 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/48">
+                      <FileText size={19} strokeWidth={2.5} />
+                    </div>
+                    <span className={cn(
+                      'rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em]',
+                      activeFeed.focusBible || activeFeed.contextBible
+                        ? 'bg-[#E11D48] text-white'
+                        : 'bg-black/6 text-foreground/42 dark:bg-white/8 dark:text-white/36',
+                    )}>
+                      {activeFeed.focusBible || activeFeed.contextBible ? 'Saved' : 'Add'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-[18px] font-black tracking-normal text-foreground dark:text-white">Focus</div>
+                    <div className="mt-1 line-clamp-2 text-[11px] font-semibold leading-relaxed text-foreground/48 dark:text-white/38">
+                      {activeFeed.focusBible || activeFeed.contextBible || 'Add the niche, audience, and tracking priorities before intelligence cards run.'}
+                    </div>
+                  </div>
+                </motion.button>
+              )}
               {addingFeeder && <ScanningCard key="scanning" handle={addingFeeder} />}
               {activeFeed?.feeders.length === 0 && !addingFeeder ? (
                 <div className="col-span-full fm-depth-glass flex flex-col items-center justify-center py-20">
@@ -947,45 +1091,47 @@ function FeedPageContent() {
         )}
       </AnimatePresence>
 
-      {/* Create Feed Modal */}
-      <AnimatePresence>
-        {isCreatingFeed && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22, ease: APPLE_EASE }}
-            className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(244,247,249,0.5)] px-4 dark:bg-[rgba(3,3,3,0.64)]">
-            <motion.div initial={{ y: 20, opacity: 0, scale: 0.985 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0, scale: 0.985 }}
-              transition={{ duration: 0.28, ease: APPLE_EASE }}
-              className="fm-depth-glass relative w-full max-w-[560px] overflow-hidden rounded-[32px] border border-white/85 p-6 shadow-[0_20px_60px_-20px_rgba(15,23,42,0.28)] dark:border-white/10 dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]">
-              <div className="pointer-events-none absolute inset-0 rounded-[32px] dark:opacity-0"
-                style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 32%, rgba(0,0,0,0.02) 100%)' }}
-              />
-              <button type="button" onClick={() => { setIsCreatingFeed(false); setNewFeedName(''); }}
-                className="fm-depth-chip absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-[14px] text-foreground/56 dark:text-white/46">
-                <X size={16} strokeWidth={2.6} />
-              </button>
-              <div className="relative z-10 pr-12">
-                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-foreground/46 dark:text-white/36">Create Feed</div>
-                <div className="mt-2 text-[28px] font-black uppercase tracking-[-0.05em] text-foreground dark:text-white">What are you tracking?</div>
-                <p className="mt-2 max-w-[360px] text-[11px] font-black uppercase tracking-[0.1em] text-foreground/38 dark:text-white/32">
-                  Create a fresh bundle and start routing feeders into it.
-                </p>
-              </div>
-              <div className="relative z-10 mt-8 rounded-[24px] border border-white/85 bg-white/62 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_10px_24px_-16px_rgba(15,23,42,0.16)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_16px_32px_-18px_rgba(0,0,0,0.45)]">
-                <div className="text-[9px] font-black uppercase tracking-[0.16em] text-foreground/36 dark:text-white/30">Feed Name</div>
-                <input autoFocus maxLength={15} value={newFeedName} onChange={e => setNewFeedName(e.target.value.toUpperCase())}
-                onKeyDown={e => { if (e.key === 'Enter') handleCreateFeed(); if (e.key === 'Escape') { setIsCreatingFeed(false); setNewFeedName(''); } }}
-                placeholder="FEED NAME" className="mt-2 w-full bg-transparent text-[36px] font-black uppercase tracking-[-0.06em] text-foreground outline-none placeholder:text-foreground/18 dark:text-white" />
-              </div>
-              <div className="relative z-10 mt-5 flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/34">{newFeedName.length} / 15</span>
-                <motion.button type="button" whileTap={{ scale: 0.95 }} onClick={handleCreateFeed} disabled={!newFeedName.trim() || isBusy}
-                  className="rounded-[16px] bg-black px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_10px_22px_-10px_rgba(0,0,0,0.5)] disabled:opacity-40 dark:bg-[#E11D48] dark:text-white dark:shadow-[0_14px_30px_-12px_rgba(225,29,72,0.3)]">
-                  {isBusy ? 'Creating' : 'Create Feed'}
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <FocusDialog
+        open={isCreatingFeed}
+        mode="create"
+        title={newFeedName || 'New feed'}
+        feedName={newFeedName}
+        brief={newFeedBrief}
+        step={createFeedStep}
+        bibleDraft={newFeedBibleDraft}
+        isBusy={isBusy}
+        onFeedNameChange={setNewFeedName}
+        onBriefChange={updateNewFeedBrief}
+        onStepChange={setCreateFeedStep}
+        onBibleDraftChange={setNewFeedBibleDraft}
+        onClose={closeCreateFeedModal}
+        onPrimary={handleCreateFeed}
+        onBack={goToPreviousCreateFeedStep}
+        onStartOver={resetCreateFeedContext}
+      />
+
+      <FocusDialog
+        open={isEditingFeedContext && Boolean(activeFeed)}
+        mode="edit"
+        title={activeFeed?.title || 'Feed'}
+        brief={editFeedBrief}
+        step={editFeedStep}
+        bibleDraft={editFeedBibleDraft}
+        isBusy={isBusy}
+        onBriefChange={updateEditFeedBrief}
+        onStepChange={setEditFeedStep}
+        onBibleDraftChange={setEditFeedBibleDraft}
+        onClose={closeFeedContextEditor}
+        onPrimary={handleSaveFeedContext}
+        onBack={() => setEditFeedStep((current) => Math.max(0, current - 1))}
+        onStartOver={() => {
+          if (!activeFeed) return;
+          const brief = normalizeFocusBrief(activeFeed.focusBrief || activeFeed.contextBrief);
+          setEditFeedBrief(brief);
+          setEditFeedStep(0);
+          setEditFeedBibleDraft(String(activeFeed.focusBible || activeFeed.contextBible || '').trim() || buildFocusBible(brief, activeFeed.title || 'this feed'));
+        }}
+      />
       <AnimatePresence>
         {pendingDeleteFeed && (
           <motion.div

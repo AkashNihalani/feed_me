@@ -76,6 +76,8 @@ type FeedBundlePayload = {
       views: string;
       postsTracked: string;
     };
+    focusBrief?: Record<string, unknown>;
+    focusBible?: string;
     contextBrief?: Record<string, unknown>;
     contextBible?: string;
   }>;
@@ -245,7 +247,21 @@ function briefRelationshipPhrase(value: string) {
   }
 }
 
-function buildContextBibleFromBrief(brief: Record<string, unknown>, fallbackTitle: string) {
+function briefFromBody(body: Record<string, unknown>) {
+  const focusBrief = body.focusBrief && typeof body.focusBrief === 'object' && !Array.isArray(body.focusBrief)
+    ? (body.focusBrief as Record<string, unknown>)
+    : null;
+  const contextBrief = body.contextBrief && typeof body.contextBrief === 'object' && !Array.isArray(body.contextBrief)
+    ? (body.contextBrief as Record<string, unknown>)
+    : null;
+  return focusBrief || contextBrief || {};
+}
+
+function bibleFromBody(body: Record<string, unknown>) {
+  return String(body.focusBible || body.contextBible || '').trim();
+}
+
+function buildFocusBibleFromBrief(brief: Record<string, unknown>, fallbackTitle: string) {
   const location = brief.location && typeof brief.location === 'object' && !Array.isArray(brief.location)
     ? brief.location as Record<string, unknown>
     : null;
@@ -266,10 +282,10 @@ function buildContextBibleFromBrief(brief: Record<string, unknown>, fallbackTitl
   const parts = [
     `This feed tracks ${category || fallbackTitle || 'social activity'} ${formatBriefList(accountTypes.length > 0 ? accountTypes : legacyAccountType ? [legacyAccountType] : [], 'accounts')} ${scopePhrase} for ${briefRelationshipPhrase(relationship)}.`,
     audience ? `The audience that matters: ${audience}.` : '',
-    `Feed Me will surface ${formatBriefList(priorities)} first, while still flagging follower movement, fades, and gaps when they're real.`,
+    `Focus will surface ${formatBriefList(priorities)} first, while still flagging follower movement, fades, and gaps when they're real.`,
     note ? `Local context: ${note}` : '',
   ].filter(Boolean);
-  return parts.join(' ').trim() || `This feed tracks ${fallbackTitle}. Feed Me should explain metric-moving account activity.`;
+  return parts.join(' ').trim() || `This feed tracks ${fallbackTitle}. Focus should explain metric-moving account activity.`;
 }
 
 function isBadInstagramImageUrl(url: string | null | undefined) {
@@ -309,6 +325,12 @@ function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
       return {
         id: String(row.id ?? ''),
         title: String(row.title ?? '').toUpperCase(),
+        focusBrief: row.focusBrief && typeof row.focusBrief === 'object' && !Array.isArray(row.focusBrief)
+          ? row.focusBrief as Record<string, unknown>
+          : row.contextBrief && typeof row.contextBrief === 'object' && !Array.isArray(row.contextBrief)
+            ? row.contextBrief as Record<string, unknown>
+            : {},
+        focusBible: String(row.focusBible || row.contextBible || ''),
         contextBrief: row.contextBrief && typeof row.contextBrief === 'object' && !Array.isArray(row.contextBrief)
           ? row.contextBrief as Record<string, unknown>
           : {},
@@ -384,6 +406,10 @@ async function attachFeedContexts(sb: SupabaseAdminClient, userId: string, bundl
       if (!context) return feed;
       return {
         ...feed,
+        focusBrief: context.context_brief && typeof context.context_brief === 'object' && !Array.isArray(context.context_brief)
+          ? context.context_brief
+          : {},
+        focusBible: String(context.context_bible || ''),
         contextBrief: context.context_brief && typeof context.context_brief === 'object' && !Array.isArray(context.context_brief)
           ? context.context_brief
           : {},
@@ -833,6 +859,10 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
     return {
       id: String(feed.id),
       title: feed.name.toUpperCase(),
+      focusBrief: feed.context_brief && typeof feed.context_brief === 'object' && !Array.isArray(feed.context_brief)
+        ? feed.context_brief
+        : {},
+      focusBible: String(feed.context_bible || ''),
       contextBrief: feed.context_brief && typeof feed.context_brief === 'object' && !Array.isArray(feed.context_brief)
         ? feed.context_brief
         : {},
@@ -901,10 +931,8 @@ export async function POST(request: NextRequest) {
       if (!title) {
         return NextResponse.json({ error: 'Feed name is required' }, { status: 400 });
       }
-      const contextBrief = body?.contextBrief && typeof body.contextBrief === 'object' && !Array.isArray(body.contextBrief)
-        ? (body.contextBrief as Record<string, unknown>)
-        : {};
-      const contextBible = String(body?.contextBible || '').trim() || buildContextBibleFromBrief(contextBrief, title);
+      const contextBrief = briefFromBody(body);
+      const contextBible = bibleFromBody(body) || buildFocusBibleFromBrief(contextBrief, title);
 
       const { error } = await sb.from('feeds').insert({
         user_id: user.id,
@@ -921,15 +949,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(bundle);
     }
 
-    if (action === 'update_feed_context') {
+    if (action === 'update_feed_focus' || action === 'update_feed_context') {
       const feedId = Number(body?.feedId);
       if (!feedId) {
         return NextResponse.json({ error: 'feedId is required' }, { status: 400 });
       }
-      const contextBrief = body?.contextBrief && typeof body.contextBrief === 'object' && !Array.isArray(body.contextBrief)
-        ? (body.contextBrief as Record<string, unknown>)
-        : {};
-      const contextBible = String(body?.contextBible || '').trim() || buildContextBibleFromBrief(contextBrief, String(body?.title || 'this feed'));
+      const contextBrief = briefFromBody(body);
+      const contextBible = bibleFromBody(body) || buildFocusBibleFromBrief(contextBrief, String(body?.title || 'this feed'));
       const { error } = await sb
         .from('feeds')
         .update({ context_brief: contextBrief, context_bible: contextBible, updated_at: new Date().toISOString() })

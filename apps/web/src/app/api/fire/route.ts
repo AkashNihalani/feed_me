@@ -27,6 +27,9 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
+const FIRE_CACHE_VERSION = 'v2';
+const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
+const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
 
@@ -100,6 +103,12 @@ function parseCsvStrings(value: string | null): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function suppressFollowerChildrenWhenRollupExists<T extends { signal_type?: unknown }>(rows: T[]): T[] {
+  const hasFollowerRollup = rows.some((row) => nullableString(row.signal_type) === FOLLOWER_ROLLUP_SIGNAL);
+  if (!hasFollowerRollup) return rows;
+  return rows.filter((row) => !FOLLOWER_CHILD_SIGNALS.has(nullableString(row.signal_type) || ''));
 }
 
 function serializeNumberList(values: number[]): string {
@@ -387,7 +396,7 @@ type AlertSurfaceRow = {
   trajectory_d7: number | null;
   trajectory_d21: number | null;
   intelligence_skipped: boolean | null;
-  pattern_alerts?: FirePatternSummary[] | null;
+  signal_alerts?: FirePatternSummary[] | null;
   is_hot?: boolean | null;
   has_intelligence?: boolean | null;
   hide_signal_chrome?: boolean | null;
@@ -651,7 +660,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   const bestMetric = deriveBestMetric(row);
   const bestMetricValue = rowMetricValue(row, bestMetric);
   const storedMetricMatchesBest = nullableString(row.metric_key)?.toLowerCase() === bestMetric;
-  const primaryPattern = row.pattern_alerts?.[0] ?? null;
+  const primaryPattern = row.signal_alerts?.[0] ?? null;
   const primaryPatternCard = recordValue(primaryPattern?.card);
   const primaryPatternTitle = nullableString(primaryPatternCard.title);
   const payload = {
@@ -698,8 +707,8 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       signal_code: nullableString(row.signal_code),
       signal_context: nullableString(row.context),
       anchor_handle: nullableString(row.anchor_handle),
-      pattern_alert_count: row.pattern_alerts?.length ?? 0,
-      pattern_alerts: row.pattern_alerts ?? [],
+      signal_alert_count: row.signal_alerts?.length ?? 0,
+      signal_alerts: row.signal_alerts ?? [],
       firewatch: primaryPattern ? {
         family_label: firewatchFamilyLabel(primaryPattern.context),
         pattern_label: primaryPatternTitle || getPatternMechanicLabel(primaryPattern.pattern_name) || humanizeSignalCode(primaryPattern.signal_code),
@@ -1394,11 +1403,12 @@ async function fetchFirewatchPatternRows(
 
   if (error) throw error;
 
-  const signalRows = ((data || []) as FireSignalRow[])
-    .filter((row) => {
+  const signalRows = suppressFollowerChildrenWhenRollupExists(
+    ((data || []) as FireSignalRow[]).filter((row) => {
       const feederId = nullableNumber(row.feeder_id);
       return feederId == null || effectiveFeederIds.includes(feederId);
-    });
+    }),
+  );
   if (signalRows.length === 0) return [];
 
   const signalIds = signalRows
@@ -1643,7 +1653,7 @@ function buildFirewatchRows(options: {
       trajectory_d7: primarySummary.avg_hot_percentile ?? null,
       trajectory_d21: null,
       intelligence_skipped: false,
-      pattern_alerts: [{
+      signal_alerts: [{
         ...primarySummary,
         support_posts: allSupportPosts,
         anchor_support_posts: allAnchorSupportPosts,
@@ -1836,7 +1846,7 @@ function buildSyntheticFireRows(options: {
       trajectory_d7: nullableNumber(trajectoryByPost.get(postKey)?.d7?.percentile_performance),
       trajectory_d21: nullableNumber(trajectoryByPost.get(postKey)?.d21?.percentile_performance),
       intelligence_skipped: intelligenceByPostKey.get(postKey)?.model_version === 'skipped',
-      pattern_alerts: null,
+      signal_alerts: null,
       is_hot: isHot,
       has_intelligence: hasIntelligence,
       hide_signal_chrome: false,
@@ -2087,12 +2097,12 @@ async function loadCachedActiveFireState(
 }
 
 function fireMetaCacheKey(userId: string) {
-  return `fire:meta:${userId}:${FIRE_BOOTSTRAP_DAY_COUNT}`;
+  return `fire:meta:${FIRE_CACHE_VERSION}:${userId}:${FIRE_BOOTSTRAP_DAY_COUNT}`;
 }
 
 function firePageCacheKey(userId: string, requestState: FirePageRequestState) {
   return [
-    `fire:page:${userId}`,
+    `fire:page:${FIRE_CACHE_VERSION}:${userId}`,
     requestState.day,
     requestState.threshold,
     requestState.mediaFilter,

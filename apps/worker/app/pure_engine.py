@@ -34,6 +34,10 @@ from .config import (
     CHECKPOINT_BATCH_HOUR_24,
     CHECKPOINT_BATCH_MINUTE,
     CHECKPOINT_BUCKET_MINUTES,
+    FOCUS_BRAIN_AUTO_COMPILE_ENABLED,
+    FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS,
+    FOCUS_BRAIN_FEED_COMPILE_LIMIT,
+    FOCUS_BRAIN_FEEDER_COMPILE_LIMIT,
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_MEDIA_BUCKET,
@@ -46,6 +50,10 @@ from .config import (
     MEDIA_PUBLIC_BASE_URL,
     R2_MEDIA_ENABLED,
     FIRE_MEDIA_RETENTION_ENABLED,
+    SIGNAL_INTELLIGENCE_AUTO_INTERVAL_SECONDS,
+    SIGNAL_INTELLIGENCE_AUTO_LIMIT,
+    SIGNAL_INTELLIGENCE_AUTO_RESOLVE_ENABLED,
+    SIGNAL_INTELLIGENCE_ENABLED,
 )
 from .web_push import is_enabled as web_push_enabled, send as send_web_push
 from .signal_detection import (
@@ -54,6 +62,10 @@ from .signal_detection import (
 )
 from .signal_intelligence import (
     resolve_signal_intelligence as run_signal_intelligence,
+)
+from .focus_brain import (
+    compile_feed_focus as run_compile_feed_focus,
+    compile_feeder_focus as run_compile_feeder_focus,
 )
 from .retry_policy import (
     hard_skip_error as _hard_skip_error,
@@ -2433,6 +2445,22 @@ class PureEngine:
             limit=limit,
         )
 
+    def compile_feeder_focus(self, feeder_id: int | None = None, limit: int = 20, full_rebuild: bool = False):
+        return run_compile_feeder_focus(
+            self.conn,
+            feeder_id=feeder_id,
+            limit=limit,
+            full_rebuild=full_rebuild,
+        )
+
+    def compile_feed_focus(self, feed_id: int | None = None, limit: int = 10, full_rebuild: bool = False):
+        return run_compile_feed_focus(
+            self.conn,
+            feed_id=feed_id,
+            limit=limit,
+            full_rebuild=full_rebuild,
+        )
+
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
         """Get a URL for a cached media asset."""
         with self.conn.cursor(row_factory=dict_row) as cur:
@@ -4621,6 +4649,110 @@ def run_once(run_limit: int = 120, checkpoint_limit: int | None = None):
         eng.process_web_push_jobs()
         eng.ensure_connection("before retention cleanup", verify=True)
         eng.prune_expired_fire_state()
+    finally:
+        eng.close()
+
+
+def run_intelligence_once(
+    signal_limit: int | None = None,
+    feeder_limit: int | None = None,
+    feed_limit: int | None = None,
+    compile_focus: bool = True,
+) -> dict[str, dict]:
+    eng = PureEngine()
+    try:
+        eng.ensure_connection("intelligence_once start", verify=True)
+        result: dict[str, dict] = {}
+        if SIGNAL_INTELLIGENCE_ENABLED and SIGNAL_INTELLIGENCE_AUTO_RESOLVE_ENABLED:
+            result["signal_intelligence"] = eng.resolve_signal_intelligence(
+                limit=max(1, int(signal_limit or SIGNAL_INTELLIGENCE_AUTO_LIMIT))
+            )
+        if SIGNAL_INTELLIGENCE_ENABLED and FOCUS_BRAIN_AUTO_COMPILE_ENABLED and compile_focus:
+            result["feeder_focus"] = eng.compile_feeder_focus(
+                limit=max(1, int(feeder_limit or FOCUS_BRAIN_FEEDER_COMPILE_LIMIT))
+            )
+            result["feed_focus"] = eng.compile_feed_focus(
+                limit=max(1, int(feed_limit or FOCUS_BRAIN_FEED_COMPILE_LIMIT))
+            )
+        return result
+    finally:
+        eng.close()
+
+
+def run_intelligence_worker(loop_sleep_seconds: int = 30):
+    eng = PureEngine()
+    last_signal_intelligence = 0.0
+    last_focus_compile = 0.0
+    print(
+        "[intelligence-worker] "
+        f"signal_enabled={SIGNAL_INTELLIGENCE_ENABLED and SIGNAL_INTELLIGENCE_AUTO_RESOLVE_ENABLED} "
+        f"signal_interval={SIGNAL_INTELLIGENCE_AUTO_INTERVAL_SECONDS}s "
+        f"focus_enabled={SIGNAL_INTELLIGENCE_ENABLED and FOCUS_BRAIN_AUTO_COMPILE_ENABLED} "
+        f"focus_interval={FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS}s"
+    )
+    try:
+        while True:
+            now_ts = time.time()
+            try:
+                eng.ensure_connection("intelligence worker heartbeat", verify=True)
+            except Exception as e:
+                print(f"[intelligence-worker] db reconnect failed: {e}")
+                time.sleep(10)
+                continue
+
+            try:
+                eng.conn.rollback()
+            except Exception:
+                pass
+
+            if (
+                SIGNAL_INTELLIGENCE_ENABLED
+                and SIGNAL_INTELLIGENCE_AUTO_RESOLVE_ENABLED
+                and now_ts - last_signal_intelligence >= max(30, int(SIGNAL_INTELLIGENCE_AUTO_INTERVAL_SECONDS))
+            ):
+                try:
+                    result = eng.resolve_signal_intelligence(limit=max(1, int(SIGNAL_INTELLIGENCE_AUTO_LIMIT)))
+                    if result.get("selected") or result.get("failed"):
+                        print(f"[intelligence-worker] signal_intelligence={result}")
+                except Exception as e:
+                    try:
+                        eng.conn.rollback()
+                    except Exception:
+                        pass
+                    if _is_connection_error(e):
+                        try:
+                            eng._reconnect(f"signal-intelligence: {e}")
+                        except Exception as reconnect_exc:
+                            print(f"[intelligence-worker] reconnect failed: {reconnect_exc}")
+                    print(f"[intelligence-worker] signal-intelligence error: {e}")
+                last_signal_intelligence = now_ts
+
+            if (
+                SIGNAL_INTELLIGENCE_ENABLED
+                and FOCUS_BRAIN_AUTO_COMPILE_ENABLED
+                and now_ts - last_focus_compile >= max(3600, int(FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS))
+            ):
+                try:
+                    feeder_result = eng.compile_feeder_focus(limit=max(1, int(FOCUS_BRAIN_FEEDER_COMPILE_LIMIT)))
+                    feed_result = eng.compile_feed_focus(limit=max(1, int(FOCUS_BRAIN_FEED_COMPILE_LIMIT)))
+                    print(
+                        "[intelligence-worker] "
+                        f"feeder_focus={feeder_result} feed_focus={feed_result}"
+                    )
+                except Exception as e:
+                    try:
+                        eng.conn.rollback()
+                    except Exception:
+                        pass
+                    if _is_connection_error(e):
+                        try:
+                            eng._reconnect(f"focus-compile: {e}")
+                        except Exception as reconnect_exc:
+                            print(f"[intelligence-worker] reconnect failed: {reconnect_exc}")
+                    print(f"[intelligence-worker] focus-compile error: {e}")
+                last_focus_compile = now_ts
+
+            time.sleep(max(1, int(loop_sleep_seconds)))
     finally:
         eng.close()
 

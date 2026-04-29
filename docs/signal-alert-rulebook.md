@@ -1,6 +1,6 @@
 # Signal Alert Rulebook
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 This is the operating guide for the current signal-intelligence system. It replaces the old post-intelligence/tag-pattern alert pipeline.
 
@@ -15,6 +15,9 @@ Live write tables:
 - `signals`: one detected signal row per viable alert candidate.
 - `signal_posts`: max 5 sample posts attached to a signal.
 - `post_fingerprints`: cached post-level multimodal fingerprint.
+- `post_focus_reads`: cached alignment-only read against feeder Focus.
+- `feeder_focus`: weekly account memory built from 90-day evidence.
+- `feed_focus`: weekly feed memory and capsules built from feeder Focus.
 - `signal_intelligence`: cached user-facing card copy.
 
 Retired intelligence path:
@@ -23,6 +26,7 @@ Retired intelligence path:
 - `pattern_alerts.py`, `post_intelligence.py`, and `checkpoint_intelligence.py` are deleted.
 - `fn_process_checkpoint` is retained only as a no-op compatibility function. It must not write `fire_alerts`.
 - Old `OWN_PATTERN`, `CROSS_PATTERN`, and `ANCHOR_PATTERN` fire-alert rows are deleted by migration.
+- Old `fire_alerts.pattern_signal`, `fire_alerts.pattern_payload`, and `fire_alerts.signal_payload` columns are removed. `fire_alerts` remains metric tracking/status history only.
 
 ## Runtime Flow
 
@@ -31,10 +35,11 @@ Retired intelligence path:
 3. Worker runs deterministic detection for D3, D7, D21, and follower daily signals.
 4. Detection writes `signals` and `signal_posts`.
 5. UI can show pending signal shells immediately.
-6. Card intelligence is generated only by `resolve_signal_intelligence`.
-7. `resolve_signal_intelligence` fingerprints missing posts, generates the card, and writes `signal_intelligence`.
+6. The intelligence worker runs `resolve_signal_intelligence`.
+7. `resolve_signal_intelligence` fingerprints missing posts with feeder Focus, stores `post_focus_reads`, generates the card with feed Focus, and writes `signal_intelligence`.
+8. The intelligence worker runs weekly Focus compiles: feeder Focus first, then feed Focus. Full rebuilds are due every 45 days.
 
-Important cost boundary: normal detection has zero LLM cost. The always-on worker loop does not currently auto-run `resolve_signal_intelligence`; this prevents surprise LLM spend. Card generation is an explicit/manual worker mode until we add a controlled lazy endpoint or queue.
+Important cost boundary: detection remains zero LLM cost. LLM spend lives in the separate `intelligence_worker`, not the scraping/checkpoint worker.
 
 ## Inputs We Have
 
@@ -46,6 +51,8 @@ Allowed metrics:
 - follower count snapshots
 - checkpoint percentile ranks
 - metric multiples from rolling baselines
+
+Ranking convention: lower percentile is better. `Top 10%` means `percentile <= 10`; `bottom 25%` means `percentile >= 75`.
 
 Not available and not allowed in trigger logic or LLM claims:
 
@@ -140,9 +147,9 @@ These roles are internal only and must never be shown to users.
 | `OWN_SUSTAIN` | D7 | Last 15 D7 posts include at least 5 top-15% posts, and prior-30 D7 median is over 40 | A: top 5 sustained posts. |
 | `OWN_SUSTAIN_LONG` | D21 | Last 10 D21 posts include at least 3 top-25% posts | A: top 5 evergreen posts. |
 | `OWN_FADE` | D7 | Last 10 D7 posts include 0 or 1 top-25% posts, and prior-30 D7 median is at most 30 | A: 3 weakest recent posts. B: 2 prior strong references. |
-| `OWN_COMMENT_SPIKE` | D7 | Last 10 D7 posts include at least 4 posts with `comments_x >= 2.0`; reels must also have `views_x <= 1.3` when views multiple exists; comments must clear `max(10, prior_comment_median * 1.5)` | A: top 4 matching posts. |
-| `OWN_LIKE_HEAVY` | D7 | Last 10 D7 posts include at least 4 posts with `likes_x >= 2.0`, `comments_x <= 0.8` when present, and reels not materially above usual views | A: top 4 matching posts. |
-| `OWN_VIRAL_PASSIVE` | D7 | Reels only. Last 10 D7 posts include at least 3 posts with `views_x >= 2.5`, `likes_x <= 1.2` when present, and `comments_x <= 1.0` when present | A: top 3 matching reels. |
+| `OWN_COMMENT_SPIKE` | D7 | Last 10 D7 posts include at least 4 posts where `comments_x >= 2.0` and comments are at least `2x` every other available metric multiple; comments must also clear `max(10, prior_comment_median * 1.5)` | A: top 4 matching posts. |
+| `OWN_LIKE_HEAVY` | D7 | Last 10 D7 posts include at least 4 posts where `likes_x >= 2.0` and likes are at least `2x` every other available metric multiple | A: top 4 matching posts. |
+| `OWN_VIRAL_PASSIVE` | D7 | Reels only. Last 10 D7 posts include at least 3 posts where `views_x >= 2.0` and views are at least `2x` likes and comments multiples | A: top 3 matching reels. |
 | `OWN_LATE_JUMP` | D7 or D21 | Recent 15 posts include at least 3 posts that improved by 25+ percentile points from D3 to D7 or D7 to D21 | A: top 3 jumpers. B: 2 no-jump references. |
 | `OWN_FOLLOWER_SPIKE` | Daily | 7-day net gain is at least `max(50, 1% of latest followers)` and at least `max(5x trailing weekly rate, 50)` | A: latest 5 posts in the window. |
 | `OWN_FOLLOWER_DROP` | Daily | 7-day net loss is at least `max(25, 0.5% of latest followers)` and at least 3x weekly volatility | A: latest 5 posts in the window. |

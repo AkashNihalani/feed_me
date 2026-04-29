@@ -210,19 +210,33 @@ export function FireCard3D({
   const inlinePreviewPreload = 'auto' as const;
   const heroMetricStamp = value == null ? '--' : compact(value);
   const hideSignalChrome = item.hideSignalChrome === true;
-  const patternAlerts = Array.isArray(meta.pattern_alerts)
-    ? meta.pattern_alerts
+  const patternAlerts = Array.isArray(meta.signal_alerts)
+    ? meta.signal_alerts
       .map((entry) => asRec(entry))
       .filter((entry) => Object.keys(entry).length > 0)
     : [];
   const primaryPattern = patternAlerts.length > 0 ? patternAlerts[0] : null;
-  const patternCueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
+  const primaryPatternCard = asRec(primaryPattern?.card);
+  const patternCommonLabels = Array.isArray(primaryPatternCard.common_pattern)
+    ? primaryPatternCard.common_pattern
+      .map((entry) => text(entry).trim())
+      .filter(Boolean)
+      .slice(0, 4)
+    : [];
+  const legacyPatternCueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
     ? primaryPattern.cues
       .map((cue) => asRec(cue))
       .map((cue) => text(cue.label))
       .filter(Boolean)
       .slice(0, 4)
     : [];
+  const patternCueLabels = patternCommonLabels.length > 0 ? patternCommonLabels : legacyPatternCueLabels;
+  const patternCardTitle = text(primaryPatternCard.title);
+  const patternWhatHappened = text(primaryPatternCard.what_happened);
+  const patternWhy = text(primaryPatternCard.why_it_may_have_happened);
+  const patternDoNext = text(primaryPatternCard.do_next);
+  const patternWatchout = text(primaryPatternCard.watchout);
+  const patternConfidence = text(primaryPatternCard.confidence);
   const supportPosts = primaryPattern && Array.isArray(primaryPattern.support_posts)
     ? primaryPattern.support_posts
       .map((post) => asRec(post))
@@ -809,12 +823,22 @@ export function FireCard3D({
                 <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/50 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/38 dark:shadow-[0_14px_30px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.1)]">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/62">
-                      Pattern Proof
+                      Firewatch
                     </div>
                     <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/42">
                       {patternMatchCount == null ? '--' : `${Math.round(patternMatchCount)} winners`}
                     </div>
                   </div>
+                  {patternCardTitle && (
+                    <div className="mt-1.5 text-[15px] font-black leading-tight tracking-[-0.02em] text-foreground/92 dark:text-white/88">
+                      {patternCardTitle}
+                    </div>
+                  )}
+                  {patternWhatHappened && (
+                    <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-foreground/62 dark:text-white/54">
+                      {patternWhatHappened}
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {patternAverage != null && (
                       <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
@@ -841,7 +865,31 @@ export function FireCard3D({
                         Baseline {Math.round(patternBaselineShare * 100)}%
                       </span>
                     )}
+                    {patternConfidence && (
+                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
+                        {patternConfidence} confidence
+                      </span>
+                    )}
                   </div>
+                  {(patternWhy || patternDoNext || patternWatchout) && (
+                    <div className="mt-2 rounded-[12px] bg-white/45 px-2.5 py-2 dark:bg-white/[0.055]">
+                      {patternWhy && (
+                        <p className="text-[9px] font-medium leading-relaxed text-foreground/50 dark:text-white/42">
+                          {patternWhy}
+                        </p>
+                      )}
+                      {patternDoNext && (
+                        <div className="mt-1.5 rounded-[9px] bg-[#E11D48] px-2 py-1.5 text-[9px] font-black leading-snug text-white">
+                          {patternDoNext}
+                        </div>
+                      )}
+                      {patternWatchout && (
+                        <p className="mt-1.5 text-[8px] font-semibold leading-relaxed text-foreground/40 dark:text-white/32">
+                          {patternWatchout}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {patternCueLabels.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {patternCueLabels.map((label) => (
