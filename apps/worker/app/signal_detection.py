@@ -926,6 +926,27 @@ def _signal_post_role(candidate: SignalCandidate, cohort: str, rank: int, post: 
     return "reference_context"
 
 
+def _candidate_signal_post_signature(candidate: SignalCandidate) -> list[tuple[str, str, int, str]]:
+    rows: list[tuple[str, str, int, str]] = []
+    has_comparison = len(candidate.cohort_b) > 0
+    remaining_posts = 5
+    cohort_limits = (("a", 3 if has_comparison else 5), ("b", 2))
+    for cohort, limit in cohort_limits:
+        cohort_posts = candidate.cohort_a if cohort == "a" else candidate.cohort_b
+        if remaining_posts <= 0 or limit <= 0:
+            break
+        selected_posts = cohort_posts[:min(limit, remaining_posts)]
+        for idx, post in enumerate(selected_posts, start=1):
+            role = _signal_post_role(candidate, cohort, idx, post)
+            rows.append((post.post_key, cohort, idx, role))
+        remaining_posts -= len(selected_posts)
+    return rows
+
+
+def _json_signature(value: Any) -> str:
+    return json.dumps(value or {}, sort_keys=True, default=str)
+
+
 def _candidate_priority(candidate: SignalCandidate) -> int:
     return _SIGNAL_PRIORITY.get(candidate.signal_type, 0)
 
@@ -1005,7 +1026,58 @@ def _suppress_overlapping_candidates(candidates: list[SignalCandidate]) -> list[
 
 def _upsert_signal(conn: Any, candidate: SignalCandidate) -> int:
     status = candidate.forced_status or _weekly_cap_status(conn, candidate)
+    new_post_signature = _candidate_signal_post_signature(candidate)
     with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select id, status, metric_snapshot
+            from public.signals
+            where scope = %s
+              and feed_id = %s
+              and feeder_id is not distinct from %s
+              and signal_type = %s
+              and media_type is not distinct from %s
+              and sub_bucket is not distinct from %s
+              and checkpoint = %s
+              and business_date_ist = %s
+            limit 1
+            """,
+            (
+                candidate.scope,
+                candidate.feed_id,
+                candidate.feeder_id,
+                candidate.signal_type,
+                candidate.media_type,
+                candidate.sub_bucket,
+                candidate.checkpoint,
+                candidate.business_date,
+            ),
+        )
+        existing_signal = cur.fetchone()
+        existing_status = str((existing_signal or {}).get("status") or "")
+        existing_metric_snapshot = (existing_signal or {}).get("metric_snapshot") or {}
+        existing_post_signature: list[tuple[str, str, int, str]] = []
+        existing_id = int((existing_signal or {}).get("id") or 0)
+        if existing_id:
+            cur.execute(
+                """
+                select post_key, cohort, rank, role
+                from public.signal_posts
+                where signal_id = %s
+                order by cohort, rank, post_key
+                """,
+                (existing_id,),
+            )
+            existing_post_signature = [
+                (
+                    str(row.get("post_key") or ""),
+                    str(row.get("cohort") or ""),
+                    int(row.get("rank") or 0),
+                    str(row.get("role") or ""),
+                )
+                for row in cur.fetchall()
+            ]
+
         cur.execute(
             """
             insert into public.signals (
@@ -1056,19 +1128,10 @@ def _upsert_signal(conn: Any, candidate: SignalCandidate) -> int:
         )
         signal_id = int((cur.fetchone() or {}).get("id") or 0)
         cur.execute("delete from public.signal_posts where signal_id = %s", (signal_id,))
-        post_rows: list[tuple[int, str, str, int, str]] = []
-        has_comparison = len(candidate.cohort_b) > 0
-        remaining_posts = 5
-        cohort_limits = (("a", 3 if has_comparison else 5), ("b", 2))
-        for cohort, limit in cohort_limits:
-            cohort_posts = candidate.cohort_a if cohort == "a" else candidate.cohort_b
-            if remaining_posts <= 0 or limit <= 0:
-                break
-            selected_posts = cohort_posts[:min(limit, remaining_posts)]
-            for idx, post in enumerate(selected_posts, start=1):
-                role = _signal_post_role(candidate, cohort, idx, post)
-                post_rows.append((signal_id, post.post_key, cohort, idx, role))
-            remaining_posts -= len(selected_posts)
+        post_rows: list[tuple[int, str, str, int, str]] = [
+            (signal_id, post_key, cohort, rank, role)
+            for post_key, cohort, rank, role in new_post_signature
+        ]
         if post_rows:
             cur.executemany(
                 """
@@ -1080,6 +1143,16 @@ def _upsert_signal(conn: Any, candidate: SignalCandidate) -> int:
                 """,
                 post_rows,
             )
+        stale_existing_card = (
+            existing_status == "fresh"
+            and (
+                _json_signature(existing_metric_snapshot) != _json_signature(candidate.metric_snapshot)
+                or existing_post_signature != new_post_signature
+            )
+        )
+        if stale_existing_card:
+            cur.execute("delete from public.signal_intelligence where signal_id = %s", (signal_id,))
+            cur.execute("update public.signals set status = 'stale', updated_at = now() where id = %s", (signal_id,))
         return signal_id
 
 

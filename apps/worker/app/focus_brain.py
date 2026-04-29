@@ -869,6 +869,10 @@ def ensure_post_focus_read(conn: Any, post_key: str, fingerprint: dict[str, Any]
     if not post:
         return {}
     focus = feeder_focus_slice(conn, int(post.get("feeder_id") or 0), post.get("media_type"))
+    if int(focus.get("version") or 0) <= 0 or not str(focus.get("text") or "").strip():
+        # First-week behavior: fingerprints can exist before feeder focus exists.
+        # Do not persist a fake alignment read; the card layer will treat focus as unavailable.
+        return {}
     fingerprint_hash = _sha(fingerprint)
     model_version = f"{_provider() or 'disabled'}:{_runtime_model()}:{_FOCUS_READ_PROMPT_VERSION}"
     with conn.cursor(row_factory=dict_row) as cur:
@@ -889,30 +893,20 @@ def ensure_post_focus_read(conn: Any, post_key: str, fingerprint: dict[str, Any]
     if existing and isinstance(existing.get("focus_read"), dict):
         return existing["focus_read"]
 
-    if not focus["text"]:
-        focus_read = {
-            "relation_to_feeder_md": {
-                "matches": [],
-                "deviates": [],
-                "unclear": ["no compiled feeder focus available"],
+    focus_read = _call_text_model(
+        _FOCUS_READ_SYSTEM,
+        {
+            "feeder_focus": focus["text"],
+            "post": {
+                "handle": post.get("handle"),
+                "media_type": post.get("media_type"),
+                "caption_excerpt": str(post.get("caption") or "")[:800],
+                "fingerprint": fingerprint,
             },
-            "notes": [],
-        }
-    else:
-        focus_read = _call_text_model(
-            _FOCUS_READ_SYSTEM,
-            {
-                "feeder_focus": focus["text"],
-                "post": {
-                    "handle": post.get("handle"),
-                    "media_type": post.get("media_type"),
-                    "caption_excerpt": str(post.get("caption") or "")[:800],
-                    "fingerprint": fingerprint,
-                },
-            },
-            model=_runtime_model(),
-            max_tokens=500,
-        ) or {}
+        },
+        model=_runtime_model(),
+        max_tokens=500,
+    ) or {}
 
     with conn.cursor() as cur:
         cur.execute(
@@ -1251,6 +1245,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
     compiled = 0
     skipped = 0
     failed = 0
+    empty_evidence = 0
     for fid in feeder_ids:
         if not _claim_focus_compile_lock(conn, "feeder", fid, force=full_rebuild):
             skipped += 1
@@ -1260,7 +1255,14 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             feeder, evidence, all_evidence = _fetch_feeder_evidence(conn, fid)
             if not feeder or not evidence:
                 skipped += 1
-                _mark_focus_compile_lock(conn, "feeder", fid, success=True)
+                empty_evidence += 1
+                _mark_focus_compile_lock(
+                    conn,
+                    "feeder",
+                    fid,
+                    success=False,
+                    error="empty_fingerprint_evidence_waiting_for_first_focus",
+                )
                 _focus_log("compile_skip_empty_evidence", scope="feeder", entity_id=fid)
                 continue
             current = _fetch_current_feeder_focus(conn, fid) or {}
@@ -1404,7 +1406,13 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             failed += 1
             _mark_focus_compile_lock(conn, "feeder", fid, success=False, error=str(exc))
             _focus_log("compile_failed", scope="feeder", entity_id=fid, reason=str(exc)[:500])
-    return {"selected": selected, "compiled": compiled, "skipped": skipped, "failed": failed}
+    return {
+        "selected": selected,
+        "compiled": compiled,
+        "skipped": skipped,
+        "failed": failed,
+        "empty_evidence": empty_evidence,
+    }
 
 
 def _fetch_feed_payload(conn: Any, feed_id: int) -> dict[str, Any] | None:
@@ -1489,6 +1497,7 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
     compiled = 0
     skipped = 0
     failed = 0
+    no_feeder_focus = 0
     for fid in feed_ids:
         if not _claim_focus_compile_lock(conn, "feed", fid, force=full_rebuild):
             skipped += 1
@@ -1500,6 +1509,28 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                 skipped += 1
                 _mark_focus_compile_lock(conn, "feed", fid, success=True)
                 _focus_log("compile_skip_empty_payload", scope="feed", entity_id=fid)
+                continue
+            focused_feeders = [
+                row for row in (payload.get("feeders") or [])
+                if int(row.get("focus_version") or 0) > 0
+                and (
+                    str(row.get("focus_md_common") or "").strip()
+                    or str(row.get("focus_md_reel") or "").strip()
+                    or str(row.get("focus_md_image") or "").strip()
+                    or str(row.get("focus_md_carousel") or "").strip()
+                )
+            ]
+            if not focused_feeders:
+                skipped += 1
+                no_feeder_focus += 1
+                _mark_focus_compile_lock(
+                    conn,
+                    "feed",
+                    fid,
+                    success=False,
+                    error="no_compiled_feeder_focus_available",
+                )
+                _focus_log("compile_skip_no_feeder_focus", scope="feed", entity_id=fid)
                 continue
             current = _fetch_current_feed_focus(conn, fid) or {}
             rebuild_now = bool(full_rebuild or _full_rebuild_due(current))
@@ -1623,4 +1654,10 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
             failed += 1
             _mark_focus_compile_lock(conn, "feed", fid, success=False, error=str(exc))
             _focus_log("compile_failed", scope="feed", entity_id=fid, reason=str(exc)[:500])
-    return {"selected": selected, "compiled": compiled, "skipped": skipped, "failed": failed}
+    return {
+        "selected": selected,
+        "compiled": compiled,
+        "skipped": skipped,
+        "failed": failed,
+        "no_feeder_focus": no_feeder_focus,
+    }

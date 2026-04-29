@@ -4732,6 +4732,7 @@ def run_intelligence_worker(loop_sleep_seconds: int = 30):
                 and FOCUS_BRAIN_AUTO_COMPILE_ENABLED
                 and now_ts - last_focus_compile >= max(3600, int(FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS))
             ):
+                focus_interval = max(3600, int(FOCUS_BRAIN_COMPILE_INTERVAL_SECONDS))
                 try:
                     feeder_result = eng.compile_feeder_focus(limit=max(1, int(FOCUS_BRAIN_FEEDER_COMPILE_LIMIT)))
                     feed_result = eng.compile_feed_focus(limit=max(1, int(FOCUS_BRAIN_FEED_COMPILE_LIMIT)))
@@ -4739,6 +4740,20 @@ def run_intelligence_worker(loop_sleep_seconds: int = 30):
                         "[intelligence-worker] "
                         f"feeder_focus={feeder_result} feed_focus={feed_result}"
                     )
+                    waiting_for_seed_fingerprints = (
+                        int(feeder_result.get("compiled") or 0) == 0
+                        and int(feed_result.get("compiled") or 0) == 0
+                        and int(feeder_result.get("failed") or 0) == 0
+                        and int(feed_result.get("failed") or 0) == 0
+                        and (
+                            int(feeder_result.get("empty_evidence") or 0) > 0
+                            or int(feed_result.get("no_feeder_focus") or 0) > 0
+                        )
+                    )
+                    if waiting_for_seed_fingerprints:
+                        last_focus_compile = now_ts - focus_interval + 3600
+                    else:
+                        last_focus_compile = now_ts
                 except Exception as e:
                     try:
                         eng.conn.rollback()
@@ -4750,7 +4765,7 @@ def run_intelligence_worker(loop_sleep_seconds: int = 30):
                         except Exception as reconnect_exc:
                             print(f"[intelligence-worker] reconnect failed: {reconnect_exc}")
                     print(f"[intelligence-worker] focus-compile error: {e}")
-                last_focus_compile = now_ts
+                    last_focus_compile = now_ts
 
             time.sleep(max(1, int(loop_sleep_seconds)))
     finally:

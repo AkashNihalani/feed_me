@@ -630,9 +630,6 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
             return existing["fingerprint"]
 
     user_text = "\n".join([
-        f"FEED CONTEXT: {post.get('context_bible') or '(not provided)'}",
-        f"FEEDER: @{post.get('handle') or ''} · role={post.get('context_role') or 'standard'} · note={post.get('context_note') or ''}",
-        f"BIO: {post.get('bio') or '(not provided)'}",
         f"MEDIA: {post.get('media_type') or 'unknown'} · duration_bucket={post.get('duration_bucket') or ''} · depth_bucket={post.get('depth_bucket') or ''}",
         f"CAPTION: {caption[:2000] or '(no caption)'}",
     ])
@@ -710,23 +707,62 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
     return {"signal": signal, "posts": posts}
 
 
-def _sample_hash(posts: list[dict[str, Any]], focus_context: dict[str, Any] | None = None) -> str:
+def _sample_hash(
+    posts: list[dict[str, Any]],
+    focus_context: dict[str, Any] | None = None,
+    signal: dict[str, Any] | None = None,
+) -> str:
     bits = []
     for row in posts:
         fingerprint = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
-        focus_read = row.get("focus_read") if isinstance(row.get("focus_read"), dict) else {}
+        stored_focus_version = int(row.get("feeder_focus_version") or -1)
+        current_focus_version = int(row.get("current_feeder_focus_version") or 0)
+        focus_read = (
+            row.get("focus_read")
+            if current_focus_version > 0
+            and stored_focus_version == current_focus_version
+            and isinstance(row.get("focus_read"), dict)
+            else {}
+        )
         bits.append(
             ":".join([
                 str(row.get("cohort") or ""),
                 str(row.get("role") or ""),
                 str(row.get("post_key") or ""),
-                str(row.get("feeder_focus_version") or 0),
+                str(current_focus_version if focus_read else 0),
                 _sha(fingerprint),
                 _sha(focus_read),
             ])
         )
-    focus_bits = json.dumps(focus_context or {}, sort_keys=True, default=str)
-    return _sha("|".join(bits) + "|" + focus_bits)
+    signal_context = {}
+    if isinstance(signal, dict):
+        signal_context = {
+            "signal_type": signal.get("signal_type"),
+            "scope": signal.get("scope"),
+            "media_type": signal.get("media_type"),
+            "sub_bucket": signal.get("sub_bucket"),
+            "checkpoint": signal.get("checkpoint"),
+            "business_date_ist": signal.get("business_date_ist"),
+            "trigger_window_start": signal.get("trigger_window_start"),
+            "trigger_window_end": signal.get("trigger_window_end"),
+            "metric_snapshot": signal.get("metric_snapshot") or {},
+            "body": signal.get("body"),
+            "context_bible": signal.get("context_bible") or "",
+        }
+    return _sha({
+        "posts": bits,
+        "focus_context": focus_context or {},
+        "signal_context": signal_context,
+    })
+
+
+def _missing_fingerprint_post_keys(posts: list[dict[str, Any]]) -> list[str]:
+    missing: list[str] = []
+    for row in posts:
+        post_key = str(row.get("post_key") or "").strip()
+        if post_key and (not isinstance(row.get("fingerprint"), dict) or not row.get("fingerprint")):
+            missing.append(post_key)
+    return missing
 
 
 def _numeric_percentiles(value: Any) -> list[float]:
@@ -836,7 +872,10 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 """
                 select id
                 from public.signals
-                where status in ('pending', 'stale')
+                where (
+                    status in ('pending', 'stale')
+                    or (status = 'error' and updated_at <= now() - interval '30 minutes')
+                  )
                   and scope in ('own', 'cross', 'anchor')
                 order by business_date_ist desc, created_at desc, id desc
                 limit %s
@@ -853,18 +892,29 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             continue
         posts = payload["posts"]
         for row in posts:
-            if not isinstance(row.get("fingerprint"), dict):
+            if not isinstance(row.get("fingerprint"), dict) or not row.get("fingerprint"):
                 ensure_post_fingerprint(conn, str(row.get("post_key") or ""))
         payload = _signal_payload(conn, sid)
         if not payload:
             continue
         posts = payload["posts"]
+        missing_fingerprints = _missing_fingerprint_post_keys(posts)
+        if missing_fingerprints:
+            with conn.cursor() as cur:
+                cur.execute("update public.signals set status = 'error', updated_at = now() where id = %s", (sid,))
+            conn.commit()
+            print(
+                "[signal-intelligence] missing fingerprints "
+                f"signal_id={sid} post_keys={missing_fingerprints[:8]}"
+            )
+            failed += 1
+            continue
         for row in posts:
             fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
             stored_focus_version = int(row.get("feeder_focus_version") or -1)
             current_focus_version = int(row.get("current_feeder_focus_version") or 0)
             focus_read_stale = stored_focus_version != current_focus_version
-            if fp and (not isinstance(row.get("focus_read"), dict) or focus_read_stale):
+            if fp and current_focus_version > 0 and (not isinstance(row.get("focus_read"), dict) or focus_read_stale):
                 ensure_post_focus_read(conn, str(row.get("post_key") or ""), fp)
         payload = _signal_payload(conn, sid)
         if not payload:
@@ -877,6 +927,15 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         fingerprints = []
         for row in posts:
             fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
+            stored_focus_version = int(row.get("feeder_focus_version") or -1)
+            current_focus_version = int(row.get("current_feeder_focus_version") or 0)
+            focus_read = (
+                row.get("focus_read")
+                if current_focus_version > 0
+                and stored_focus_version == current_focus_version
+                and isinstance(row.get("focus_read"), dict)
+                else {}
+            )
             fingerprints.append({
                 "post_key": row.get("post_key"),
                 "cohort": row.get("cohort"),
@@ -890,11 +949,11 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 "feeder_bio": row.get("bio"),
                 "caption_excerpt": str(row.get("caption") or "")[:500],
                 "fingerprint": fp,
-                "focus_read": row.get("focus_read") if isinstance(row.get("focus_read"), dict) else {},
+                "focus_read": focus_read,
                 "feeder_focus_version": row.get("feeder_focus_version"),
                 "current_feeder_focus_version": row.get("current_feeder_focus_version"),
             })
-        sample_hash = _sample_hash(posts, focus_context)
+        sample_hash = _sample_hash(posts, focus_context, signal)
         card_model = current_model_version(kind="card", model_override=card_model_override)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
