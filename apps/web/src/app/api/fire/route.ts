@@ -524,6 +524,8 @@ type FirePatternAlertRow = {
   body: string | null;
   signal_payload: Record<string, unknown> | null;
   signal_card?: Record<string, unknown> | null;
+  trigger_window_start?: string | null;
+  trigger_window_end?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -541,6 +543,8 @@ type FireSignalRow = {
   metric_snapshot: Record<string, unknown> | null;
   status: string | null;
   body: string | null;
+  trigger_window_start: string | null;
+  trigger_window_end: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -1396,7 +1400,7 @@ async function fetchFirewatchPatternRows(
 
   const { data, error } = await sb
     .from('signals')
-    .select('id,feed_id,feeder_id,scope,signal_type,media_type,sub_bucket,checkpoint,business_date_ist,metric_snapshot,status,body,created_at,updated_at')
+    .select('id,feed_id,feeder_id,scope,signal_type,media_type,sub_bucket,checkpoint,business_date_ist,metric_snapshot,status,body,trigger_window_start,trigger_window_end,created_at,updated_at')
     .in('feed_id', effectiveFeedIds)
     .eq('business_date_ist', day)
     .in('status', ['pending', 'fresh', 'stale']);
@@ -1505,6 +1509,8 @@ async function fetchFirewatchPatternRows(
       body: row.body,
       signal_payload: payload,
       signal_card: cardBySignal.get(signalId) || null,
+      trigger_window_start: row.trigger_window_start,
+      trigger_window_end: row.trigger_window_end,
       created_at: row.created_at,
       updated_at: row.updated_at,
     } as FirePatternAlertRow;
@@ -1591,9 +1597,21 @@ function buildFirewatchRows(options: {
 
     const allSupportPosts = Array.from(supportPosts.values()).slice(0, 6);
     const allAnchorSupportPosts = Array.from(anchorSupportPosts.values()).slice(0, 4);
+    const latestSupportPostedAt = [...allSupportPosts, ...allAnchorSupportPosts]
+      .map((preview) => nullableString(preview.posted_at))
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => parseIsoTime(b) - parseIsoTime(a))[0] || null;
+    const signalSortPostedAt = nullableString(primaryRow.trigger_window_end)
+      || latestSupportPostedAt
+      || heroPreview?.posted_at
+      || nullableString(primarySummary.created_at)
+      || nullableString(primaryRow.created_at)
+      || null;
     const primaryCard = recordValue(primarySummary.card);
     const primaryPatternLabel = nullableString(primaryCard.title) || getPatternMechanicLabel(primarySummary.pattern_name) || humanizeSignalCode(primarySummary.signal_code);
     const familyLabel = firewatchFamilyLabel(primarySummary.context);
+    const signalPercentile = primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null;
+    if (signalPercentile == null) continue;
     const statBits = [
       primarySummary.match_count != null ? `${Math.round(primarySummary.match_count)} hot` : null,
       primarySummary.feeders_count != null && primarySummary.feeders_count > 1 ? `${Math.round(primarySummary.feeders_count)} feeders` : null,
@@ -1616,8 +1634,8 @@ function buildFirewatchRows(options: {
       status: 'new',
       metric_key: null,
       metric_value: primarySummary.match_count ?? null,
-      surface_percentile: primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null,
-      surface_percentile_exact: primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null,
+      surface_percentile: signalPercentile,
+      surface_percentile_exact: signalPercentile,
       surface_delta: null,
       feed_rank: null,
       feeder_rank: null,
@@ -1629,7 +1647,7 @@ function buildFirewatchRows(options: {
       updated_at: nullableString(primaryRow.updated_at) || nullableString(primaryRow.created_at) || new Date().toISOString(),
       handle: feedName,
       media_type: nullableString(primarySummary.media_type) || heroPreview?.media_type || null,
-      posted_at: heroPreview?.posted_at || null,
+      posted_at: signalSortPostedAt,
       post_url: heroPreview?.post_url || null,
       thumbnail_url: heroPreview?.thumbnail_url || null,
       preview_url: null,
@@ -1650,7 +1668,7 @@ function buildFirewatchRows(options: {
       best_in_last_n: null,
       trajectory_d1: null,
       trajectory_d3: null,
-      trajectory_d7: primarySummary.avg_hot_percentile ?? null,
+      trajectory_d7: signalPercentile,
       trajectory_d21: null,
       intelligence_skipped: false,
       signal_alerts: [{
@@ -2243,6 +2261,10 @@ async function buildTrackingFirePagePayload(
   }
 
   const sortedRows = [...filteredRows].sort((a, b) => {
+    const aKindPriority = a.card_kind === 'firewatch' ? 0 : 1;
+    const bKindPriority = b.card_kind === 'firewatch' ? 0 : 1;
+    if (aKindPriority !== bKindPriority) return aKindPriority - bKindPriority;
+
     if (requestState.sort === 'recent') {
       const aPostedAt = parseIsoTime(a.posted_at);
       const bPostedAt = parseIsoTime(b.posted_at);

@@ -98,6 +98,14 @@ Never mention internal cohort letters, database roles, or strings like trigger_c
 Use the feed's niche vocabulary.
 Classify pattern_type as one of: account_aligned, feed_aligned, account_outlier, conflict_signal, unclear.
 Every do_next must name observable content behaviors from the evidence, not generic advice.
+Keep the card concise for a mobile UI:
+- title: 5-10 words.
+- what_happened: one sentence, max 35 words.
+- why_it_may_have_happened: one sentence, max 35 words.
+- common_pattern: 2-4 short phrases, max 4 words each.
+- do_next: one concrete action sentence, max 24 words.
+- watchout: one caution sentence, max 24 words.
+- per_post_notes: max 5 short strings.
 Return only JSON:
 {
   "title": "",
@@ -421,7 +429,37 @@ def _json_from_text(text: str) -> dict[str, Any] | None:
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, dict) else None
     except Exception:
+        pass
+
+    start = raw.find("{")
+    if start < 0:
         return None
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    parsed = json.loads(raw[start:index + 1])
+                    return parsed if isinstance(parsed, dict) else None
+                except Exception:
+                    return None
+    return None
 
 
 def _call_model(
@@ -441,20 +479,22 @@ def _call_model(
         if provider == "openrouter":
             content: list[dict[str, Any]] = list(media_parts)
             content.append({"type": "text", "text": user_text})
-            resp = requests.post(
-                f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}",
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": content},
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": max_tokens,
-                },
-                timeout=120,
-            )
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": content},
+                ],
+                "temperature": 0.1,
+                "max_tokens": max_tokens,
+                "response_format": {"type": "json_object"},
+            }
+            url = f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}"
+            headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
+            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            if resp.status_code >= 400:
+                payload.pop("response_format", None)
+                resp = requests.post(url, headers=headers, json=payload, timeout=120)
         else:
             parts: list[dict[str, Any]] = [{"text": system}, *media_parts, {"text": user_text}]
             resp = requests.post(
@@ -987,7 +1027,7 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             },
             "cohort_posts": fingerprints,
         }, default=str)
-        card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=1200, model_override=card_model_override)
+        card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=2200, model_override=card_model_override)
         schema_errors = _card_schema_errors(card)
         if schema_errors and not card_model_override:
             escalation_reasons = [*escalation_reasons, f"schema_validation_failed:{','.join(schema_errors[:5])}"]
@@ -1009,7 +1049,7 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 "cohort_posts": fingerprints,
             }, default=str)
             print(f"[signal-intelligence] escalating signal_id={sid} reasons={escalation_reasons}")
-            card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=1400, model_override=card_model_override)
+            card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=2600, model_override=card_model_override)
             schema_errors = _card_schema_errors(card)
         if not card or schema_errors:
             with conn.cursor() as cur:

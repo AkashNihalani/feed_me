@@ -386,6 +386,10 @@ function parseTimeValue(value: string | undefined): number {
 
 function sortFireAlertItems(items: FireAlertItem[], sortMode: FireSortMode): FireAlertItem[] {
   return [...items].sort((a, b) => {
+    const aKindPriority = a.cardKind === 'firewatch' ? 0 : 1;
+    const bKindPriority = b.cardKind === 'firewatch' ? 0 : 1;
+    if (aKindPriority !== bKindPriority) return aKindPriority - bKindPriority;
+
     if (sortMode === 'recent') {
       const aRecent = parseTimeValue(a.postedAt || a.createdAt);
       const bRecent = parseTimeValue(b.postedAt || b.createdAt);

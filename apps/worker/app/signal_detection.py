@@ -66,6 +66,9 @@ class Metric:
     views: float | None
     likes: float | None
     comments: float | None
+    views_baseline: float | None
+    likes_baseline: float | None
+    comments_baseline: float | None
     views_x: float | None
     likes_x: float | None
     comments_x: float | None
@@ -122,6 +125,14 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+def _first_float(*values: Any) -> float | None:
+    for value in values:
+        parsed = _to_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _to_dt(value: Any) -> datetime | None:
     if value is None:
         return None
@@ -149,8 +160,30 @@ def _normalize_media_type(value: Any) -> str:
     return normalized or "unknown"
 
 
-def _metric(post: Post, checkpoint: str) -> Metric | None:
+def _raw_metric(post: Post, checkpoint: str) -> Metric | None:
     return post.metrics.get(checkpoint.lower())
+
+
+def _metric_required_channels(post: Post) -> tuple[str, ...]:
+    if post.media_type == "reel":
+        return ("views", "likes", "comments")
+    return ("likes", "comments")
+
+
+def _metric_complete(post: Post, checkpoint: str) -> bool:
+    metric = _raw_metric(post, checkpoint)
+    if metric is None or metric.percentile is None:
+        return False
+    for channel in _metric_required_channels(post):
+        if getattr(metric, channel) is None:
+            return False
+        if getattr(metric, f"{channel}_baseline") is None:
+            return False
+    return True
+
+
+def _metric(post: Post, checkpoint: str) -> Metric | None:
+    return _raw_metric(post, checkpoint) if _metric_complete(post, checkpoint) else None
 
 
 def _pct(post: Post, checkpoint: str) -> float | None:
@@ -220,6 +253,35 @@ def _latest_by_feeder(posts: list[Post], limit: int = 5) -> list[Post]:
         if len(selected) >= limit:
             break
     return selected
+
+
+def _dominant_media_posts(
+    posts: list[Post],
+    checkpoint: str,
+    *,
+    limit: int = 5,
+    unique_feeders: bool = False,
+) -> tuple[str | None, list[Post]]:
+    buckets: dict[str, list[Post]] = defaultdict(list)
+    for post in posts:
+        if _has_pct(post, checkpoint):
+            buckets[post.media_type].append(post)
+    if not buckets:
+        return None, []
+
+    def bucket_rank(item: tuple[str, list[Post]]) -> tuple[int, int, float, float]:
+        _media_type, bucket = item
+        coverage = len({post.feeder_id for post in bucket}) if unique_feeders else len(bucket)
+        avg_pct = _avg([_pct(post, checkpoint) for post in bucket if _pct(post, checkpoint) is not None])
+        latest_ts = max(
+            [(post.posted_at or datetime.min.replace(tzinfo=timezone.utc)).timestamp() for post in bucket],
+            default=0.0,
+        )
+        return coverage, len(bucket), -(avg_pct if avg_pct is not None else 999.0), latest_ts
+
+    media_type, bucket = max(buckets.items(), key=bucket_rank)
+    selected = _latest_by_feeder(bucket, limit) if unique_feeders else _sorted_recent(bucket)[:limit]
+    return media_type, selected
 
 
 def _sample_top(posts: list[Post], checkpoint: str, limit: int = 5) -> list[Post]:
@@ -338,10 +400,13 @@ def _build_posts(rows: list[dict[str, Any]]) -> list[Post]:
             post.metrics[checkpoint] = Metric(
                 checkpoint=checkpoint,
                 business_date=row.get("business_date_ist"),
-                percentile=_to_float(row.get("percentile_performance_exact")) or _to_float(row.get("percentile_performance")),
+                percentile=_first_float(row.get("percentile_performance_exact"), row.get("percentile_performance")),
                 views=_to_float(row.get("views")),
                 likes=_to_float(row.get("likes")),
                 comments=_to_float(row.get("comments")),
+                views_baseline=_to_float(row.get("views_baseline")),
+                likes_baseline=_to_float(row.get("likes_baseline")),
+                comments_baseline=_to_float(row.get("comments_baseline")),
                 views_x=_to_float(row.get("views_multiple")),
                 likes_x=_to_float(row.get("likes_multiple")),
                 comments_x=_to_float(row.get("comments_multiple")),
@@ -373,6 +438,9 @@ def _load_feed_posts(conn: Any, feed_id: int, business_date_ist: date, *, app_ti
               pm.views,
               pm.likes,
               pm.comments,
+              pm.views_baseline,
+              pm.likes_baseline,
+              pm.comments_baseline,
               pm.views_multiple,
               pm.likes_multiple,
               pm.comments_multiple
@@ -505,7 +573,12 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                     _body("OWN_FADE", len(failing), "d7"),
                 ))
 
-            prior_comment_median = _median([(_metric(post, "d7") or Metric("", None, None, None, None, None, None, None, None)).comments for post in prior30_d7 if _metric(post, "d7")])
+            prior_comment_values: list[float] = []
+            for post in prior30_d7:
+                metric = _metric(post, "d7")
+                if metric and metric.comments is not None:
+                    prior_comment_values.append(metric.comments)
+            prior_comment_median = _median(prior_comment_values)
             comment_floor = max(10.0, (prior_comment_median or 0.0) * 1.5)
             comment_spikes: list[Post] = []
             like_heavy: list[Post] = []
@@ -601,26 +674,28 @@ def _cross_candidates(feed_id: int, posts: list[Post], business_date_ist: date, 
     recent_14 = [post for post in d7_posts if post.posted_at and post.posted_at >= cutoff_14]
     prior_60 = [post for post in d7_posts if post.posted_at and cutoff_74 <= post.posted_at < cutoff_14]
 
-    recent_hot_by_feeder: dict[int, list[Post]] = defaultdict(list)
-    for post in recent_14:
-        if _top(post, "d7", 15):
-            recent_hot_by_feeder[post.feeder_id].append(post)
-    prior_hot_feeders = {post.feeder_id for post in prior_60 if _top(post, "d7", 15)}
-    recent_rate = len(recent_hot_by_feeder) / max(len(active_feeders), 1)
-    prior_rate = len(prior_hot_feeders) / max(len(active_feeders), 1)
-    if len(recent_hot_by_feeder) >= 4 and recent_rate >= 0.40 and (recent_rate - prior_rate) >= 0.15:
-        selected = _latest_by_feeder([post for posts_for_feeder in recent_hot_by_feeder.values() for post in posts_for_feeder], 5)
-        candidates.append(SignalCandidate(
-            "cross", "CROSS_MOMENTUM", feed_id, None, "d7", business_date_ist,
-            None, None, business_date_ist - timedelta(days=13), business_date_ist,
-            _snapshot(selected, "d7", {"recent_feeder_rate": round(recent_rate, 4), "prior_feeder_rate": round(prior_rate, 4), "trigger": "40pct_feeders_top15"}),
-            selected, [],
-            _body("CROSS_MOMENTUM", len(selected), "d7"),
-        ))
-
     for media_type in sorted({post.media_type for post in d7_posts}):
         recent_media = [post for post in recent_14 if post.media_type == media_type]
         prior_media = [post for post in prior_60 if post.media_type == media_type]
+        active_media_feeders = {post.feeder_id for post in d7_posts if post.media_type == media_type}
+        if len(active_media_feeders) >= 5:
+            recent_hot_by_feeder: dict[int, list[Post]] = defaultdict(list)
+            for post in recent_media:
+                if _top(post, "d7", 15):
+                    recent_hot_by_feeder[post.feeder_id].append(post)
+            prior_hot_feeders = {post.feeder_id for post in prior_media if _top(post, "d7", 15)}
+            recent_rate = len(recent_hot_by_feeder) / max(len(active_media_feeders), 1)
+            prior_rate = len(prior_hot_feeders) / max(len(active_media_feeders), 1)
+            if len(recent_hot_by_feeder) >= 4 and recent_rate >= 0.40 and (recent_rate - prior_rate) >= 0.15:
+                selected = _latest_by_feeder([post for posts_for_feeder in recent_hot_by_feeder.values() for post in posts_for_feeder], 5)
+                candidates.append(SignalCandidate(
+                    "cross", "CROSS_MOMENTUM", feed_id, None, "d7", business_date_ist,
+                    media_type, None, business_date_ist - timedelta(days=13), business_date_ist,
+                    _snapshot(selected, "d7", {"recent_feeder_rate": round(recent_rate, 4), "prior_feeder_rate": round(prior_rate, 4), "trigger": "40pct_feeders_top15_same_media"}),
+                    selected, [],
+                    _body("CROSS_MOMENTUM", len(selected), "d7", media_type),
+                ))
+
         if len(recent_media) < 5 or len(prior_media) < 10:
             continue
         recent_hot_rate = sum(1 for post in recent_media if _top(post, "d7", 15)) / len(recent_media)
@@ -637,15 +712,6 @@ def _cross_candidates(feed_id: int, posts: list[Post], business_date_ist: date, 
             ))
 
     recent_signals = _fetch_recent_signals(conn, feed_id, 14)
-    own_by_type: dict[str, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
-    for row in recent_signals:
-        scope = str(row.get("scope") or "")
-        signal_type = str(row.get("signal_type") or "")
-        feeder_id = int(row.get("feeder_id") or 0)
-        if scope != "own" or not feeder_id:
-            continue
-        own_by_type[signal_type][feeder_id].extend([str(value) for value in (row.get("cohort_a_post_keys") or []) if value])
-
     micro_map = {
         "CROSS_MICRO_BREAKOUT": {"OWN_BREAKOUT", "OWN_BREAKOUT_EARLY"},
         "CROSS_MICRO_COMMENT_SPIKE": {"OWN_COMMENT_SPIKE"},
@@ -655,21 +721,29 @@ def _cross_candidates(feed_id: int, posts: list[Post], business_date_ist: date, 
     }
     post_by_key = {post.post_key: post for post in posts}
     for cross_type, own_types in micro_map.items():
-        contributing: dict[int, str] = {}
-        for own_type in own_types:
-            for feeder_id, keys in own_by_type.get(own_type, {}).items():
-                for key in keys:
-                    if key in post_by_key:
-                        contributing.setdefault(feeder_id, key)
-                        break
-        if len(contributing) >= 3:
+        contributing_by_media: dict[str, dict[int, str]] = defaultdict(dict)
+        for row in recent_signals:
+            scope = str(row.get("scope") or "")
+            signal_type = str(row.get("signal_type") or "")
+            feeder_id = int(row.get("feeder_id") or 0)
+            if scope != "own" or signal_type not in own_types or not feeder_id:
+                continue
+            for key in [str(value) for value in (row.get("cohort_a_post_keys") or []) if value]:
+                post = post_by_key.get(key)
+                if not post or not _has_pct(post, "d7"):
+                    continue
+                contributing_by_media[post.media_type].setdefault(feeder_id, key)
+                break
+        for media_type, contributing in contributing_by_media.items():
+            if len(contributing) < 3:
+                continue
             selected = [post_by_key[key] for _feeder_id, key in sorted(contributing.items())][:5]
             candidates.append(SignalCandidate(
                 "cross", cross_type, feed_id, None, "d7", business_date_ist,
-                None, None, business_date_ist - timedelta(days=13), business_date_ist,
-                _snapshot(selected, "d7", {"contributing_feeders": len(contributing), "trigger": "3_feeders_with_own_signal"}),
+                media_type, None, business_date_ist - timedelta(days=13), business_date_ist,
+                _snapshot(selected, "d7", {"contributing_feeders": len(contributing), "trigger": "3_feeders_with_own_signal_same_media"}),
                 selected, [],
-                _body(cross_type, len(selected), "d7"),
+                _body(cross_type, len(selected), "d7", media_type),
             ))
 
     follower_signal_feeders = {
@@ -681,14 +755,20 @@ def _cross_candidates(feed_id: int, posts: list[Post], business_date_ist: date, 
     }
     follower_rate = len(follower_signal_feeders) / max(len(active_feeders), 1)
     if len(follower_signal_feeders) >= 2 and follower_rate >= 0.30:
-        selected = _latest_by_feeder([post for post in posts if post.feeder_id in follower_signal_feeders], 5)
-        candidates.append(SignalCandidate(
-            "cross", "CROSS_FOLLOWER_WAVE", feed_id, None, "daily", business_date_ist,
-            None, None, business_date_ist - timedelta(days=13), business_date_ist,
-            {"affected_feeders": len(follower_signal_feeders), "active_feeders": len(active_feeders), "affected_rate": round(follower_rate, 4), "trigger": "30pct_feeders_follower_signal"},
-            selected, [],
-            _body("CROSS_FOLLOWER_WAVE", len(selected), "daily"),
-        ))
+        media_type, selected = _dominant_media_posts(
+            [post for post in posts if post.feeder_id in follower_signal_feeders],
+            "d7",
+            limit=5,
+            unique_feeders=True,
+        )
+        if selected:
+            candidates.append(SignalCandidate(
+                "cross", "CROSS_FOLLOWER_WAVE", feed_id, None, "daily", business_date_ist,
+                media_type, None, business_date_ist - timedelta(days=13), business_date_ist,
+                _snapshot(selected, "d7", {"affected_feeders": len(follower_signal_feeders), "active_feeders": len(active_feeders), "affected_rate": round(follower_rate, 4), "trigger": "30pct_feeders_follower_signal"}),
+                selected, [],
+                _body("CROSS_FOLLOWER_WAVE", len(selected), "daily"),
+            ))
 
     return candidates
 
@@ -933,6 +1013,8 @@ def _candidate_signal_post_signature(candidate: SignalCandidate) -> list[tuple[s
     cohort_limits = (("a", 3 if has_comparison else 5), ("b", 2))
     for cohort, limit in cohort_limits:
         cohort_posts = candidate.cohort_a if cohort == "a" else candidate.cohort_b
+        if cohort == "a" and candidate.media_type:
+            cohort_posts = [post for post in cohort_posts if post.media_type == candidate.media_type]
         if remaining_posts <= 0 or limit <= 0:
             break
         selected_posts = cohort_posts[:min(limit, remaining_posts)]
@@ -1316,20 +1398,22 @@ def resolve_audience_signals_for_feed(
             if day - timedelta(days=7) in by_day
         ]
         volatility = statistics.pstdev(deltas) if len(deltas) >= 2 else max(abs(weekly_rate), 1.0)
-        recent_posts = _sorted_recent(by_feeder.get(fid, []))[:5]
+        media_type, recent_posts = _dominant_media_posts(by_feeder.get(fid, []), "d7", limit=5)
+        if not recent_posts:
+            continue
         if net_7d >= max(50.0, latest_count * 0.01) and net_7d >= max(weekly_rate * 5.0, 50.0):
             candidates.append(SignalCandidate(
                 "own", "OWN_FOLLOWER_SPIKE", feed_id, fid, "daily", business_date_ist,
-                None, None, latest_day - timedelta(days=7), latest_day,
-                {"net_7d": round(net_7d, 2), "weekly_rate": round(weekly_rate, 2), "latest_count": latest_count, "trigger": "7d_gain_5x_trailing_rate"},
+                media_type, None, latest_day - timedelta(days=7), latest_day,
+                _snapshot(recent_posts, "d7", {"net_7d": round(net_7d, 2), "weekly_rate": round(weekly_rate, 2), "latest_count": latest_count, "trigger": "7d_gain_5x_trailing_rate"}),
                 recent_posts, [],
                 _body("OWN_FOLLOWER_SPIKE", len(recent_posts), "daily", "followers"),
             ))
         if abs(net_7d) >= max(25.0, latest_count * 0.005) and net_7d <= -(max(volatility * 3.0, 25.0)):
             candidates.append(SignalCandidate(
                 "own", "OWN_FOLLOWER_DROP", feed_id, fid, "daily", business_date_ist,
-                None, None, latest_day - timedelta(days=7), latest_day,
-                {"net_7d": round(net_7d, 2), "volatility": round(volatility, 2), "latest_count": latest_count, "trigger": "7d_loss_3x_volatility"},
+                media_type, None, latest_day - timedelta(days=7), latest_day,
+                _snapshot(recent_posts, "d7", {"net_7d": round(net_7d, 2), "volatility": round(volatility, 2), "latest_count": latest_count, "trigger": "7d_loss_3x_volatility"}),
                 recent_posts, [],
                 _body("OWN_FOLLOWER_DROP", len(recent_posts), "daily", "followers"),
             ))
@@ -1351,17 +1435,34 @@ def resolve_audience_signals_for_feed(
             if anchor_gain is not None and feed_median_gain is not None:
                 winner_posts: list[Post] = []
                 comparison_posts: list[Post] = []
+                media_type: str | None = None
                 if anchor_gain >= max(feed_median_gain * 2, 50):
-                    winner_posts = _latest_by_feeder([post for post in posts if post.feeder_id in anchor_fids], 3)
-                    comparison_posts = _latest_by_feeder([post for post in posts if post.feeder_id not in anchor_fids], 2)
+                    media_type, winner_posts = _dominant_media_posts(
+                        [post for post in posts if post.feeder_id in anchor_fids],
+                        "d7",
+                        limit=3,
+                        unique_feeders=True,
+                    )
+                    comparison_posts = _latest_by_feeder(
+                        [post for post in posts if post.feeder_id not in anchor_fids and post.media_type == media_type and _has_pct(post, "d7")],
+                        2,
+                    )
                 elif feed_median_gain >= max(anchor_gain * 2, 50):
-                    winner_posts = _latest_by_feeder([post for post in posts if post.feeder_id not in anchor_fids], 3)
-                    comparison_posts = _latest_by_feeder([post for post in posts if post.feeder_id in anchor_fids], 2)
+                    media_type, winner_posts = _dominant_media_posts(
+                        [post for post in posts if post.feeder_id not in anchor_fids],
+                        "d7",
+                        limit=3,
+                        unique_feeders=True,
+                    )
+                    comparison_posts = _latest_by_feeder(
+                        [post for post in posts if post.feeder_id in anchor_fids and post.media_type == media_type and _has_pct(post, "d7")],
+                        2,
+                    )
                 if winner_posts:
                     candidates.append(SignalCandidate(
                         "anchor", "ANCHOR_FOLLOWER_GAP", feed_id, winner_posts[0].feeder_id, "daily", business_date_ist,
-                        None, None, business_date_ist - timedelta(days=30), business_date_ist,
-                        {"anchor_gain": anchor_gain, "feed_median_gain": feed_median_gain, "trigger": "30d_follower_gap_2x"},
+                        media_type, None, business_date_ist - timedelta(days=30), business_date_ist,
+                        _snapshot(winner_posts, "d7", {"anchor_gain": anchor_gain, "feed_median_gain": feed_median_gain, "trigger": "30d_follower_gap_2x"}),
                         winner_posts, comparison_posts,
                         _body("ANCHOR_FOLLOWER_GAP", len(winner_posts), "daily", "followers"),
                     ))
@@ -1383,14 +1484,20 @@ def resolve_audience_signals_for_feed(
     }
     follower_rate = len(follower_signal_feeders) / max(len(active_feeders), 1)
     if len(follower_signal_feeders) >= 2 and follower_rate >= 0.30:
-        selected = _latest_by_feeder([post for post in posts if post.feeder_id in follower_signal_feeders], 5)
-        _upsert_signal(conn, SignalCandidate(
-            "cross", "CROSS_FOLLOWER_WAVE", feed_id, None, "daily", business_date_ist,
-            None, None, business_date_ist - timedelta(days=13), business_date_ist,
-            {"affected_feeders": len(follower_signal_feeders), "active_feeders": len(active_feeders), "affected_rate": round(follower_rate, 4), "trigger": "30pct_feeders_follower_signal"},
-            selected, [],
-            _body("CROSS_FOLLOWER_WAVE", len(selected), "daily"),
-        ))
-        written += 1
-        conn.commit()
+        media_type, selected = _dominant_media_posts(
+            [post for post in posts if post.feeder_id in follower_signal_feeders],
+            "d7",
+            limit=5,
+            unique_feeders=True,
+        )
+        if selected:
+            _upsert_signal(conn, SignalCandidate(
+                "cross", "CROSS_FOLLOWER_WAVE", feed_id, None, "daily", business_date_ist,
+                media_type, None, business_date_ist - timedelta(days=13), business_date_ist,
+                _snapshot(selected, "d7", {"affected_feeders": len(follower_signal_feeders), "active_feeders": len(active_feeders), "affected_rate": round(follower_rate, 4), "trigger": "30pct_feeders_follower_signal"}),
+                selected, [],
+                _body("CROSS_FOLLOWER_WAVE", len(selected), "daily"),
+            ))
+            written += 1
+            conn.commit()
     return {"candidates": len(candidates), "written": written}
