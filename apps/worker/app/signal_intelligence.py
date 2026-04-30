@@ -580,6 +580,8 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
         assets = cur.fetchall()
 
     video_url = str(post.get("video_url") or "").strip() or None
+    video_asset_role = "source_video" if video_url else None
+    preview_video_url: str | None = None
     thumbnail_url = str(post.get("thumbnail_url") or "").strip() or None
     carousel_urls = post.get("carousel_urls") if isinstance(post.get("carousel_urls"), list) else []
     asset_carousel: list[str] = []
@@ -590,13 +592,25 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
             continue
         if role == "video_full":
             video_url = url
+            video_asset_role = "video_full"
+        elif role == "preview_5s":
+            preview_video_url = url
         elif role == "thumbnail":
             thumbnail_url = url
         elif role.startswith("carousel_"):
             asset_carousel.append(url)
+    if str(post.get("media_type") or "").lower() == "reel" and video_asset_role != "video_full" and preview_video_url:
+        video_url = preview_video_url
+        video_asset_role = "preview_5s"
     if asset_carousel:
         carousel_urls = asset_carousel
-    return {**post, "video_url": video_url, "thumbnail_url": thumbnail_url, "carousel_urls": carousel_urls}
+    return {
+        **post,
+        "video_url": video_url,
+        "thumbnail_url": thumbnail_url,
+        "carousel_urls": carousel_urls,
+        "_video_asset_role": video_asset_role,
+    }
 
 
 def _fingerprint_media_parts(post: dict[str, Any], provider: str) -> tuple[list[dict[str, Any]], str, str]:
@@ -604,7 +618,7 @@ def _fingerprint_media_parts(post: dict[str, Any], provider: str) -> tuple[list[
     source_bits: list[str] = []
     parts: list[dict[str, Any]] = []
     confidence = "low"
-    if media_type == "reel":
+    if media_type in {"reel", "video"}:
         video_data = _fetch_bytes(post.get("video_url"), timeout=60, max_bytes=_VIDEO_UPLOAD_MAX_BYTES)
         if video_data:
             video_bytes, mime_type = video_data
@@ -614,8 +628,9 @@ def _fingerprint_media_parts(post: dict[str, Any], provider: str) -> tuple[list[
             part = _openrouter_video_part(video_bytes, mime_type) if provider == "openrouter" else _gemini_video_part(video_bytes, mime_type)
             if part:
                 parts.append(part)
-                confidence = "high"
-                source_bits.append(f"video:{_sha(video_bytes)}")
+                source_role = str(post.get("_video_asset_role") or "video").strip().lower()
+                confidence = "medium" if source_role == "preview_5s" else "high"
+                source_bits.append(f"{source_role}:{_sha(video_bytes)}")
     elif media_type in {"sidecar", "carousel"}:
         urls = _sample_carousel(post.get("carousel_urls") or [])
         fetched = 0
@@ -649,6 +664,9 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
 
     caption = str(post.get("caption") or "")
     media_parts, media_hash, confidence = _fingerprint_media_parts(post, provider)
+    if not media_parts or media_hash == _sha(""):
+        print(f"[signal-intelligence] fingerprint skipped post_key={post_key}: missing visual media")
+        return None
     caption_hash = _sha(caption)
     model_version = current_model_version(kind="fingerprint")
 
@@ -669,6 +687,13 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         if existing and isinstance(existing.get("fingerprint"), dict):
             return existing["fingerprint"]
 
+    # Release the DB transaction before the potentially slow media/model call so
+    # the pooler does not hold an idle transaction while the LLM is thinking.
+    try:
+        conn.commit()
+    except Exception:
+        pass
+
     user_text = "\n".join([
         f"MEDIA: {post.get('media_type') or 'unknown'} · duration_bucket={post.get('duration_bucket') or ''} · depth_bucket={post.get('depth_bucket') or ''}",
         f"CAPTION: {caption[:2000] or '(no caption)'}",
@@ -676,9 +701,7 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
     fingerprint = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=900)
     if not fingerprint:
         return None
-    media_confidence = str(fingerprint.get("media_confidence") or confidence).lower()
-    if media_confidence not in {"high", "medium", "low"}:
-        media_confidence = confidence
+    media_confidence = confidence
     fingerprint["media_confidence"] = media_confidence
     with conn.cursor() as cur:
         cur.execute(

@@ -26,7 +26,8 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v4';
+const FIRE_CACHE_VERSION = 'v5';
+const EMPTY_MEDIA_SOURCE_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
 
@@ -319,7 +320,13 @@ function compactFingerprintLine(label: string, value: unknown): string | null {
   return `${label}: ${textValue}`;
 }
 
+function hasValidFingerprintMedia(row: FireIntelligenceRow | undefined): boolean {
+  const mediaSourceHash = nullableString(row?.fingerprint_media_source_hash);
+  return Boolean(mediaSourceHash && mediaSourceHash !== EMPTY_MEDIA_SOURCE_HASH);
+}
+
 function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
+  if (!hasValidFingerprintMedia(row)) return null;
   const fingerprint = recordValue(row?.fingerprint);
   if (Object.keys(fingerprint).length === 0) return null;
 
@@ -353,6 +360,7 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
 }
 
 function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
+  if (!hasValidFingerprintMedia(row)) return null;
   const focusRead = recordValue(row?.focus_read);
   if (Object.keys(focusRead).length === 0) return buildFingerprintIntelligencePayload(row);
 
@@ -542,6 +550,8 @@ type FireIntelligenceRow = {
   post_key: string | null;
   fingerprint: Record<string, unknown> | null;
   fingerprint_model_version: string | null;
+  fingerprint_media_source_hash: string | null;
+  fingerprint_media_confidence: string | null;
   focus_read: Record<string, unknown> | null;
   focus_read_model_version: string | null;
   feeder_focus_version: number | null;
@@ -551,6 +561,8 @@ type FirePostFingerprintRow = {
   post_key: string | null;
   fingerprint: Record<string, unknown> | null;
   model_version: string | null;
+  media_source_hash: string | null;
+  media_confidence: string | null;
 };
 
 type FirePostFocusReadRow = {
@@ -1173,7 +1185,7 @@ async function fetchIntelligenceRowsForPostKeys(
     const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
     const { data, error } = await sb
       .from('post_fingerprints')
-      .select('post_key,fingerprint,model_version')
+      .select('post_key,fingerprint,model_version,media_source_hash,media_confidence')
       .in('post_key', chunk);
 
     if (error) throw error;
@@ -1184,6 +1196,8 @@ async function fetchIntelligenceRowsForPostKeys(
         post_key: postKey,
         fingerprint: recordValue(row.fingerprint),
         fingerprint_model_version: nullableString(row.model_version),
+        fingerprint_media_source_hash: nullableString(row.media_source_hash),
+        fingerprint_media_confidence: nullableString(row.media_confidence),
         focus_read: null,
         focus_read_model_version: null,
         feeder_focus_version: null,
@@ -1203,6 +1217,8 @@ async function fetchIntelligenceRowsForPostKeys(
         post_key: postKey,
         fingerprint: null,
         fingerprint_model_version: null,
+        fingerprint_media_source_hash: null,
+        fingerprint_media_confidence: null,
         focus_read: null,
         focus_read_model_version: null,
         feeder_focus_version: null,
