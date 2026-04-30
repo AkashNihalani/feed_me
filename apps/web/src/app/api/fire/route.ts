@@ -1610,6 +1610,8 @@ function buildFirewatchRows(options: {
     const primaryCard = recordValue(primarySummary.card);
     const primaryPatternLabel = nullableString(primaryCard.title) || getPatternMechanicLabel(primarySummary.pattern_name) || humanizeSignalCode(primarySummary.signal_code);
     const familyLabel = firewatchFamilyLabel(primarySummary.context);
+    const signalCheckpoint = nullableString(primaryRow.checkpoint)?.toLowerCase();
+    if (!signalCheckpoint) continue;
     const signalPercentile = primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null;
     if (signalPercentile == null) continue;
     const statBits = [
@@ -1625,7 +1627,7 @@ function buildFirewatchRows(options: {
       feed_id: feedId,
       feeder_id: Number.isFinite(feederId) ? feederId : 0,
       post_key: null,
-      checkpoint: 'd7',
+      checkpoint: signalCheckpoint,
       business_date_ist: nullableString(primaryRow.business_date_ist) || '',
       card_kind: 'firewatch',
       signal_code: nullableString(primarySummary.signal_code) || 'CROSS_MOMENTUM',
