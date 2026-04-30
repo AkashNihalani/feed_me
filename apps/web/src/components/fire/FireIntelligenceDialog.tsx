@@ -13,8 +13,6 @@ import {
   orderedSupportMetricsFromPayload,
   resolveBestMetricFromPayload,
 } from './fireMetricDisplay';
-import { parseFirewatchData } from './firewatchUtils';
-import { getFireSignalMeta, getPatternMechanicLabel } from '@/lib/fireSignals';
 
 type FireIntelligenceDialogProps = {
   item: FireItem | null;
@@ -42,6 +40,29 @@ function text(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+function textList(v: unknown, max = 4): string[] {
+  const values = Array.isArray(v) ? v : v ? [v] : [];
+  return Array.from(
+    new Set(
+      values
+        .map((entry) => text(entry).trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, max);
+}
+
+function parsePostContextRead(meta: Record<string, unknown>) {
+  const read = asRecord(meta.post_intelligence);
+  const matches = textList(read.matches);
+  const deviates = textList(read.deviates);
+  const unclear = textList(read.unclear, 3);
+  const notes = textList(read.notes, 3);
+  if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
+    return null;
+  }
+  return { matches, deviates, unclear, notes };
+}
+
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
   const key = postKey.trim();
   if (!key) return '';
@@ -64,7 +85,7 @@ function withRetryBust(url: string, seed: string): string {
 }
 
 function buildFeederArchiveHref(item: FireItem | null): string | null {
-  if (!item || item.cardKind === 'firewatch') return null;
+  if (!item) return null;
   const feedId = item.feedId;
   const handle = String(item.surfaceHandle || item.handle || '').replace(/^@+/, '').trim().toLowerCase();
   if (!Number.isFinite(feedId) || !handle) return null;
@@ -75,20 +96,8 @@ function compactOrDash(v: number | null): string {
   return v == null || !Number.isFinite(v) ? '--' : compact(v);
 }
 
-function percentText(v: number | null): string {
-  return v == null || !Number.isFinite(v) ? '--' : `${Math.round(v)}%`;
-}
-
 function multipleOrDash(v: number | null): string {
   return v == null || !Number.isFinite(v) ? '--' : `${v.toFixed(2)}x`;
-}
-
-function liftText(v: number | null): string {
-  return v == null || !Number.isFinite(v) ? '--' : `${v.toFixed(1)}x`;
-}
-
-function compactCount(v: number | null, suffix: string): string {
-  return v == null || !Number.isFinite(v) ? `-- ${suffix}` : `${Math.round(v)} ${suffix}`;
 }
 
 function topPercentOrDash(v: number | null): string {
@@ -124,14 +133,6 @@ function firstTrajectoryPoint(points: Array<number | null>): number | null {
 }
 
 /* ── Subcomponents ── */
-
-function MetaBadge({ value }: { value: string }) {
-  return (
-    <span className="rounded-full border border-white/[0.12] bg-black/40 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/80 backdrop-blur-sm dark:border-white/[0.12] dark:bg-black/40 dark:text-white/80">
-      {value}
-    </span>
-  );
-}
 
 function TrackingInfoBadge({ value }: { value: string }) {
   return (
@@ -241,27 +242,6 @@ function CompactStat({
   );
 }
 
-function MiniProofStat({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="min-w-0 rounded-xl border border-neutral-200/80 bg-neutral-50/58 px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.025]">
-      <div className="truncate text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400 dark:text-white/34">
-        {label}
-      </div>
-      <div className={`mt-1 truncate text-[13px] font-black uppercase tracking-[0.02em] ${accent ? 'text-[#E11D48]' : 'text-neutral-800 dark:text-white/78'}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function TrajectoryBadge({ delta }: { delta: number | null }) {
   const tone = shiftTone(delta);
   // Flat
@@ -353,68 +333,7 @@ export default function FireIntelligenceDialog({
       multiple: multipleOrDash(metric.multiple),
       value: compactOrDash(metric.value),
     }));
-    const patternAlerts = Array.isArray(meta.signal_alerts)
-      ? meta.signal_alerts
-        .map((entry) => asRecord(entry))
-        .map((entry) => {
-          const signalCode = text(entry.signal_code);
-          const signalMeta = getFireSignalMeta(signalCode);
-          const patternName = text(entry.pattern_name);
-          const card = asRecord(entry.card);
-          const commonPattern = Array.isArray(card.common_pattern)
-            ? card.common_pattern.map((value) => text(value).trim()).filter(Boolean).slice(0, 5)
-            : [];
-          const legacyCues = Array.isArray(entry.cues)
-            ? entry.cues
-              .map((cue) => asRecord(cue))
-              .map((cue) => text(cue.label))
-              .filter(Boolean)
-              .slice(0, 4)
-            : [];
-          const cues = commonPattern.length > 0 ? commonPattern : legacyCues;
-          const supportPosts = Array.isArray(entry.support_posts)
-            ? entry.support_posts
-              .map((post) => asRecord(post))
-              .map((post) => ({
-                postKey: text(post.post_key),
-                handle: text(post.handle),
-                mediaType: text(post.media_type).toUpperCase(),
-                postUrl: text(post.post_url),
-                thumbnailUrl: text(post.thumbnail_url),
-              }))
-              .filter((post) => post.postKey || post.postUrl)
-            : [];
-          const modifierKey = text(entry.modifier_key);
-          const modifierValue = text(entry.modifier_value);
-          const firewatchId = `${signalCode || 'OWN_BREAKOUT'}:${patternName || 'unknown'}:${modifierKey}:${modifierValue}`;
-          return {
-            signalCode,
-            signalLabel: signalMeta?.shortLabel || signalCode || 'Pattern Alert',
-            patternLabel: text(card.title) || getPatternMechanicLabel(patternName) || signalMeta?.headline || signalCode || 'Pattern Alert',
-            context: text(entry.context).toUpperCase() || 'OWN',
-            alertType: text(entry.alert_type).toUpperCase() || 'WATCH',
-            body: text(entry.body),
-            whatHappened: text(card.what_happened),
-            whyItMayHaveHappened: text(card.why_it_may_have_happened),
-            doNext: text(card.do_next),
-            watchout: text(card.watchout),
-            confidence: text(card.confidence),
-            percentile: num(entry.surface_percentile),
-            matchCount: num(entry.match_count),
-            feedersCount: num(entry.feeders_count),
-            avgHotPercentile: num(entry.avg_hot_percentile),
-            baselineShare: num(entry.baseline_share),
-            recentLift: num(entry.recent_lift),
-            contrastGap: num(entry.contrast_gap),
-            anchorAvgPercentile: num(entry.anchor_avg_percentile),
-            anchorGap: num(entry.anchor_gap),
-            cues,
-            supportPosts,
-            firewatchId,
-          };
-        })
-        .filter((entry) => entry.signalCode || entry.body || entry.patternLabel)
-      : [];
+    const postContextRead = parsePostContextRead(meta);
 
     return {
       bestMetric: metricLabel(bestMetric),
@@ -436,23 +355,14 @@ export default function FireIntelligenceDialog({
       handle: `@${(item.surfaceHandle || 'FEEDER').replace(/^@+/, '').toUpperCase()}`,
       mediaType: (item.surfaceMediaType || 'POST').toUpperCase(),
       isD1: item.checkpoint.toUpperCase() === 'D1',
-      patternAlerts,
+      postContextRead,
       hideSignalChrome: item.hideSignalChrome === true,
     };
   }, [item]);
 
-  const firewatch = useMemo(
-    () => (item && item.cardKind === 'firewatch' ? parseFirewatchData(item) : null),
-    [item],
-  );
-  const firewatchDialog = Boolean(firewatch);
-  const dialogStyle = firewatchDialog
-    ? { width: 'min(1040px, calc(100vw - 4rem))', maxHeight: 'min(760px, calc(100vh - 4rem))' }
-    : { width: 'min(800px, calc(100vw - 4rem))', maxHeight: 'min(600px, calc(100vh - 4rem))' };
-  const dialogGridClass = firewatchDialog
-    ? 'grid h-full min-h-[640px] grid-cols-[400px_minmax(0,1fr)]'
-    : 'grid h-full min-h-[520px] grid-cols-[320px_minmax(0,1fr)]';
-  const dialogPanelMinHeightClass = firewatchDialog ? 'min-h-[640px]' : 'min-h-[520px]';
+  const dialogStyle = { width: 'min(800px, calc(100vw - 4rem))', maxHeight: 'min(600px, calc(100vh - 4rem))' };
+  const dialogGridClass = 'grid h-full min-h-[520px] grid-cols-[320px_minmax(0,1fr)]';
+  const dialogPanelMinHeightClass = 'min-h-[520px]';
 
   const previewUrl = (item?.previewUrl || '').trim();
   const directThumbnailUrl = (item?.thumbnailUrl || '').trim();
@@ -758,262 +668,37 @@ export default function FireIntelligenceDialog({
                 </div>
 
                 <div className="relative flex flex-1 flex-col overflow-y-auto p-6">
-                {firewatch ? (
-                  <>
+                  {stats.postContextRead && (
                     <div>
                       <div className="flex items-center justify-between gap-3">
-                        <SectionTag>Hot</SectionTag>
-                        <div className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-neutral-300 dark:text-white/26">
-                          {firewatch.feedName} · {firewatch.mediaType}
+                        <SectionTag>Post Read</SectionTag>
+                        <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
+                          Context Layer
                         </div>
                       </div>
-                      <div className="mt-2 text-[32px] font-black leading-[0.92] tracking-[-0.045em] text-neutral-950 dark:text-white">
-                        {firewatch.patternLabel}
-                      </div>
-                    </div>
-
-                    {(firewatch.whatHappened || firewatch.whyItMayHaveHappened || firewatch.commonPattern.length > 0 || firewatch.doNext || firewatch.watchout) && (
-                      <div className="mt-4 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                        {firewatch.whatHappened && (
-                          <div>
-                            <SectionTag>What Happened</SectionTag>
-                            <p className="mt-1.5 text-[14px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
-                              {firewatch.whatHappened}
-                            </p>
-                          </div>
-                        )}
-                        {firewatch.whyItMayHaveHappened && (
-                          <div className={firewatch.whatHappened ? 'mt-3' : ''}>
-                            <SectionTag>Why</SectionTag>
-                            <p className="mt-1.5 text-[13px] font-medium leading-relaxed text-neutral-600 dark:text-white/52">
-                              {firewatch.whyItMayHaveHappened}
-                            </p>
-                          </div>
-                        )}
-                        {firewatch.commonPattern.length > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {firewatch.commonPattern.map((pattern) => (
-                              <span
-                                key={`signal-pattern-${pattern}`}
-                                className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
-                              >
-                                {pattern}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {firewatch.doNext && (
-                          <div className="mt-3 rounded-xl bg-[#E11D48] px-3 py-2.5 text-[12px] font-black leading-snug text-white shadow-[0_10px_24px_rgba(225,29,72,0.16)]">
-                            {firewatch.doNext}
-                          </div>
-                        )}
-                        {firewatch.watchout && (
-                          <p className="mt-2 text-[11px] font-semibold leading-relaxed text-neutral-400 dark:text-white/36">
-                            {firewatch.watchout}
+                      <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                        {stats.postContextRead.matches[0] ? (
+                          <p className="text-[15px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
+                            {stats.postContextRead.matches[0]}
                           </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-3 grid grid-cols-5 gap-2">
-                      <MiniProofStat label="Avg Top" value={percentText(firewatch.avgHotPercentile)} accent />
-                      <MiniProofStat label="Proof" value={compactCount(firewatch.matchCount, 'hot')} />
-                      <MiniProofStat
-                        label={firewatch.feedersCount != null && firewatch.feedersCount > 1 ? 'Spread' : 'Format'}
-                        value={firewatch.feedersCount != null && firewatch.feedersCount > 1 ? compactCount(firewatch.feedersCount, 'feeders') : firewatch.mediaType}
-                      />
-                      <MiniProofStat
-                        label={firewatch.anchorGap != null ? 'Gap' : 'Lift'}
-                        value={firewatch.anchorGap != null ? `+${Math.round(firewatch.anchorGap)}` : liftText(firewatch.recentLift)}
-                      />
-                      <MiniProofStat label="Read" value={firewatch.confidence || '--'} />
-                    </div>
-
-                    {firewatch.supportPosts.length > 0 && (
-                      <div className="mt-4">
-                        <SectionTag>Signal Posts</SectionTag>
-                        <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
-                          {firewatch.supportPosts.map((post) => (
-                            <a
-                              key={`support-${post.postKey}`}
-                              href={post.postUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="shrink-0"
+                        ) : null}
+                        <div className="mt-3 grid gap-2">
+                          {[...stats.postContextRead.matches.slice(1, 4), ...stats.postContextRead.deviates.slice(0, 3), ...stats.postContextRead.notes.slice(0, 2)].slice(0, 5).map((line) => (
+                            <div
+                              key={`${item.id}-post-read-${line}`}
+                              className="rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52"
                             >
-                              <div className="h-20 w-16 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                                <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                              </div>
-                              <div className="mt-1 max-w-16 truncate text-[8px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
-                                @{(post.handle || 'feed').toUpperCase()}
-                              </div>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {firewatch.anchorSupportPosts.length > 0 && (
-                      <div className="mt-4">
-                        <SectionTag>Anchor Compare</SectionTag>
-                        <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
-                          {firewatch.anchorSupportPosts.map((post) => (
-                            <a
-                              key={`anchor-${post.postKey}`}
-                              href={post.postUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="shrink-0"
-                            >
-                              <div className="h-20 w-16 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                                <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                              </div>
-                              <div className="mt-1 max-w-16 truncate text-[8px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
-                                @{(post.handle || 'feed').toUpperCase()}
-                              </div>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                  ) : (
-                    <>
-                      {stats.patternAlerts.length > 0 && (
-                        <div>
-                          <div className="flex items-center justify-between gap-3">
-                            <SectionTag>Signals</SectionTag>
-                            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
-                              {stats.patternAlerts.length} active
+                              {line}
                             </div>
-                          </div>
-                          <div className="mt-2.5 space-y-2">
-                            {stats.patternAlerts.map((patternAlert) => (
-                              <div
-                                key={`${patternAlert.signalCode}:${patternAlert.context}:${patternAlert.alertType}`}
-                                className="rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]"
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="text-[12px] font-black tracking-[-0.02em] text-neutral-800 dark:text-white/90">
-                                    {patternAlert.patternLabel}
-                                  </div>
-                                  <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
-                                    {patternAlert.context} · {patternAlert.alertType}
-                                  </div>
-                                </div>
-                                {(patternAlert.whatHappened || patternAlert.whyItMayHaveHappened || patternAlert.doNext || patternAlert.watchout) && (
-                                  <div className="mt-2 rounded-xl bg-white/60 px-3 py-2 dark:bg-white/[0.035]">
-                                    {patternAlert.whatHappened && (
-                                      <p className="text-[11px] font-semibold leading-relaxed text-neutral-700 dark:text-white/68">
-                                        {patternAlert.whatHappened}
-                                      </p>
-                                    )}
-                                    {patternAlert.whyItMayHaveHappened && (
-                                      <p className="mt-1 text-[10px] font-medium leading-relaxed text-neutral-500 dark:text-white/42">
-                                        {patternAlert.whyItMayHaveHappened}
-                                      </p>
-                                    )}
-                                    {patternAlert.doNext && (
-                                      <div className="mt-2 rounded-lg bg-[#E11D48] px-2.5 py-1.5 text-[10px] font-black leading-snug text-white">
-                                        {patternAlert.doNext}
-                                      </div>
-                                    )}
-                                    {patternAlert.watchout && (
-                                      <p className="mt-1.5 text-[9px] font-semibold leading-relaxed text-neutral-400 dark:text-white/34">
-                                        {patternAlert.watchout}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {patternAlert.matchCount != null && (
-                                    <MetaBadge value={`${Math.round(patternAlert.matchCount)} Proof`} />
-                                  )}
-                                  {patternAlert.feedersCount != null && patternAlert.feedersCount > 1 && (
-                                    <MetaBadge value={`${Math.round(patternAlert.feedersCount)} Feeders`} />
-                                  )}
-                                  {patternAlert.avgHotPercentile != null && (
-                                    <MetaBadge value={`Avg Top ${Math.round(patternAlert.avgHotPercentile)}%`} />
-                                  )}
-                                  {patternAlert.anchorGap != null && (
-                                    <MetaBadge value={`Gap +${Math.round(patternAlert.anchorGap)} pts`} />
-                                  )}
-                                  {patternAlert.recentLift != null && patternAlert.recentLift > 0 && (
-                                    <MetaBadge value={`14d Lift ${patternAlert.recentLift.toFixed(1)}x`} />
-                                  )}
-                                  {patternAlert.baselineShare != null && (
-                                    <MetaBadge value={`Baseline ${Math.round(patternAlert.baselineShare * 100)}%`} />
-                                  )}
-                                  {patternAlert.confidence && (
-                                    <MetaBadge value={`${patternAlert.confidence} confidence`} />
-                                  )}
-                                </div>
-                                {(patternAlert.body || patternAlert.percentile != null) && (
-                                  <div className="mt-1 text-[11px] font-medium leading-relaxed text-neutral-500 dark:text-white/40">
-                                    {patternAlert.body || `Top ${Math.round(patternAlert.percentile || 0)}%`}
-                                  </div>
-                                )}
-                                {patternAlert.cues.length > 0 && (
-                                  <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {patternAlert.cues.map((cue) => (
-                                      <div
-                                        key={`${patternAlert.signalCode}:${cue}`}
-                                        className="rounded-full border border-neutral-200/80 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:border-white/[0.06] dark:bg-white/[0.045] dark:text-white/58"
-                                      >
-                                        {cue}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                {patternAlert.supportPosts.length > 0 && (
-                                  <div className="mt-2.5">
-                                    <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
-                                      Signal Posts
-                                    </div>
-                                    <div className="hide-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
-                                      {patternAlert.supportPosts.map((post) => (
-                                        <a
-                                          key={`${patternAlert.signalCode}:${post.postKey || post.postUrl}`}
-                                          href={post.postUrl || '#'}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="shrink-0"
-                                        >
-                                          <div className="h-24 w-20 overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-200/60 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                                            {post.thumbnailUrl ? (
-                                              <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                                            ) : null}
-                                          </div>
-                                          <div className="mt-1 max-w-20 truncate text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-500 dark:text-white/54">
-                                            @{(post.handle || 'feed').toUpperCase()}
-                                          </div>
-                                        </a>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {item?.feedId && patternAlert.firewatchId && (
-                                  <div className="mt-2.5">
-                                    <Link
-                                      href={`/?id=${item.feedId}&firewatch=${encodeURIComponent(patternAlert.firewatchId)}`}
-                                      onClick={onClose}
-                                      className="inline-flex items-center gap-1 text-[11px] font-bold tracking-[0.02em] text-neutral-500 underline-offset-4 hover:underline dark:text-white/52"
-                                    >
-                                      View Feed Signals <span aria-hidden>→</span>
-                                    </Link>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
+                          ))}
                         </div>
-                      )}
-                    </>
+                      </div>
+                    </div>
                   )}
 
-                  {!firewatch && (
+                  {(
                     <>
-                      <div className={`${stats.patternAlerts.length > 0 ? 'mt-4 ' : ''}mb-3 flex min-w-0 flex-wrap items-center gap-2`}>
+                      <div className={`${stats.postContextRead ? 'mt-4 ' : ''}mb-3 flex min-w-0 flex-wrap items-center gap-2`}>
                         <TrackingArchivePill href={trackingArchiveHref} label={stats.handle} />
                         <TrackingInfoBadge value={stats.mediaType} />
                         <TrackingInfoBadge value={stats.checkpoint} />
@@ -1114,32 +799,19 @@ export default function FireIntelligenceDialog({
                     </>
                   )}
 
-                  {/* CTA — View Patterns for firewatch, Open Post for tracking */}
+                  {/* CTA */}
                   <div className="mt-auto pt-5">
-                    {firewatch ? (
-                      <Link
-                        href={`/?id=${item.feedId}#firewatch-section`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onClose();
-                        }}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
-                      >
-                        View All Patterns
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
-                        }}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
-                      >
-                        Open Post
-                        <ExternalLink size={14} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
+                      }}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
+                    >
+                      Open Post
+                      <ExternalLink size={14} />
+                    </button>
                   </div>
                 </div>
               </div>

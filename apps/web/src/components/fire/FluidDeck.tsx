@@ -5,7 +5,6 @@ import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
 import { FireCard3D } from './FireCard3D';
-import { FireWatchCard3D } from './FireWatchCard3D';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 import { GRID_LAYOUT_SPRING, GRID_ITEM_EASE } from '@/lib/motion';
 
@@ -174,25 +173,14 @@ function VirtualSlot({
                 : 'shadow-[0_12px_24px_rgba(0,0,0,0.18)] dark:shadow-[0_14px_28px_rgba(0,0,0,0.46)]',
             ].join(' ')}
           >
-            {item.cardKind === 'firewatch' ? (
-              <FireWatchCard3D
-                item={item}
-                highlighted={isActive}
-                layoutMode="mobile"
-                mobileAutoplayEnabled={mobileAutoplayEnabled}
-                onOpenDetails={onOpenDetails}
-                onBeforeOpenPost={onBeforeOpenPost}
-              />
-            ) : (
-              <FireCard3D
-                item={item}
-                highlighted={isActive}
-                layoutMode="mobile"
-                mobileAutoplayEnabled={mobileAutoplayEnabled}
-                onOpenDetails={onOpenDetails}
-                onBeforeOpenPost={onBeforeOpenPost}
-              />
-            )}
+            <FireCard3D
+              item={item}
+              highlighted={isActive}
+              layoutMode="mobile"
+              mobileAutoplayEnabled={mobileAutoplayEnabled}
+              onOpenDetails={onOpenDetails}
+              onBeforeOpenPost={onBeforeOpenPost}
+            />
           </div>
         </motion.div>
       ) : (
@@ -667,29 +655,16 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                         ['--fire-card-aspect' as string]: '9 / 14',
                       }}
                     >
-                      {card.cardKind === 'firewatch' ? (
-                        <FireWatchCard3D
-                          item={card}
-                          highlighted={isCurrent}
-                          layoutMode="mobile"
-                          mobileAutoplayEnabled={mobileAutoplayEnabled}
-                          showMobileAutoplayToggle={isCurrent}
-                          onOpenDetails={() => undefined}
-                          onToggleMobileAutoplay={setMobileAutoplayEnabled}
-                          onBeforeOpenPost={persistStandaloneDeckState}
-                        />
-                      ) : (
-                        <FireCard3D
-                          item={card}
-                          highlighted={isCurrent}
-                          layoutMode="mobile"
-                          mobileAutoplayEnabled={mobileAutoplayEnabled}
-                          showMobileAutoplayToggle={isCurrent}
-                          onOpenDetails={() => undefined}
-                          onToggleMobileAutoplay={setMobileAutoplayEnabled}
-                          onBeforeOpenPost={persistStandaloneDeckState}
-                        />
-                      )}
+                      <FireCard3D
+                        item={card}
+                        highlighted={isCurrent}
+                        layoutMode="mobile"
+                        mobileAutoplayEnabled={mobileAutoplayEnabled}
+                        showMobileAutoplayToggle={isCurrent}
+                        onOpenDetails={() => undefined}
+                        onToggleMobileAutoplay={setMobileAutoplayEnabled}
+                        onBeforeOpenPost={persistStandaloneDeckState}
+                      />
                     </div>
                   </div>
                 </motion.div>
@@ -790,25 +765,14 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                           : 'shadow-[0_14px_26px_rgba(0,0,0,0.22)] dark:shadow-[0_16px_30px_rgba(0,0,0,0.48)]',
                       ].join(' ')}
                     >
-                      {card.cardKind === 'firewatch' ? (
-                        <FireWatchCard3D
-                          item={card}
-                          highlighted={isActive}
-                          layoutMode="desktop"
-                          mobileAutoplayEnabled={mobileAutoplayEnabled}
-                          onOpenDetails={() => onOpenCard?.(card)}
-                          onBeforeOpenPost={persistStandaloneDeckState}
-                        />
-                      ) : (
-                        <FireCard3D
-                          item={card}
-                          highlighted={isActive}
-                          layoutMode="desktop"
-                          mobileAutoplayEnabled={mobileAutoplayEnabled}
-                          onOpenDetails={() => onOpenCard?.(card)}
-                          onBeforeOpenPost={persistStandaloneDeckState}
-                        />
-                      )}
+                      <FireCard3D
+                        item={card}
+                        highlighted={isActive}
+                        layoutMode="desktop"
+                        mobileAutoplayEnabled={mobileAutoplayEnabled}
+                        onOpenDetails={() => onOpenCard?.(card)}
+                        onBeforeOpenPost={persistStandaloneDeckState}
+                      />
                     </div>
                   </motion.div>
                 );

@@ -84,7 +84,7 @@ html.dark {
 }
 
 /* Fire card cover streak. This borrows the login input sweep, but keeps it
-   subtle and cover-bound so Firewatch feels marked without adding chrome. */
+   cover-bound so post intelligence is marked without adding extra chrome. */
 .fm-fire-card-cover-streak {
   position: absolute;
   inset: 0;

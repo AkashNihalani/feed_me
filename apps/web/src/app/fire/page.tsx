@@ -25,7 +25,7 @@ import {
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
 import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
-import { getFireSignalMeta, getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
+import { getFireSignalMeta } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 import { getCache, readCache, setCache } from '@/lib/pageCache';
@@ -44,7 +44,7 @@ const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_CHROME_PILL_SPRING = { type: 'spring', stiffness: 420, damping: 32, mass: 0.82 } as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v5';
 const FIRE_STATE_CACHE_KEY = 'fire:state:v9';
-const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v10';
+const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v11';
 const FIRE_CACHE_TTL = 10 * 60 * 1000;
 const FIRE_LIVE_CACHE_TTL = 15 * 1000;
 const FIRE_META_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -386,10 +386,6 @@ function parseTimeValue(value: string | undefined): number {
 
 function sortFireAlertItems(items: FireAlertItem[], sortMode: FireSortMode): FireAlertItem[] {
   return [...items].sort((a, b) => {
-    const aKindPriority = a.cardKind === 'firewatch' ? 0 : 1;
-    const bKindPriority = b.cardKind === 'firewatch' ? 0 : 1;
-    if (aKindPriority !== bKindPriority) return aKindPriority - bKindPriority;
-
     if (sortMode === 'recent') {
       const aRecent = parseTimeValue(a.postedAt || a.createdAt);
       const bRecent = parseTimeValue(b.postedAt || b.createdAt);
@@ -452,7 +448,9 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   if (status && TERMINAL_STATUSES.has(status)) return null;
 
   const meta = asRecord(payload.meta);
-  const cardKind = asString(meta.card_kind) === 'firewatch' ? 'firewatch' : 'tracking';
+  const rawCardKind = asString(meta.card_kind);
+  if (rawCardKind && rawCardKind !== 'tracking') return null;
+  const cardKind = 'tracking' as const;
   const checkpoint = asString(row.checkpoint) || asString(meta.checkpoint) || 'd1';
   const surfaceHandle = asString(row.surface_handle) || asString(meta.handle);
   const surfaceMediaType = normalizeMediaLabel(
@@ -485,33 +483,10 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   const signalCode = asString(row.signal_code) || asString(meta.signal_code) || 'UNKNOWN_SIGNAL';
   const signalContext = normalizeSignalContext(asString(row.context) || asString(meta.signal_context));
   const signalMeta = getFireSignalMeta(signalCode);
-  const hideSignalChrome = meta.hide_signal_chrome === true;
-  const patternAlerts = Array.isArray(meta.signal_alerts) ? meta.signal_alerts.map((entry) => asRecord(entry)) : [];
-  const primaryPattern = patternAlerts.length > 0 ? patternAlerts[0] : null;
-  const primaryPatternCard = asRecord(primaryPattern?.card);
-  const patternLabel = primaryPattern ? asString(primaryPatternCard.title) || getPatternMechanicLabel(asString(primaryPattern.pattern_name)) : null;
-  const commonPatternLabels = Array.isArray(primaryPatternCard.common_pattern)
-    ? primaryPatternCard.common_pattern
-      .map((value) => asString(value).trim())
-      .filter(Boolean)
-    : [];
-  const legacyCueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
-    ? primaryPattern.cues
-      .map((cue) => asRecord(cue))
-      .map((cue) => getPatternCueLabel(asString(cue.key), asString(cue.value)))
-      .filter((value): value is string => Boolean(value))
-    : [];
-  const cueLabels = commonPatternLabels.length > 0 ? commonPatternLabels : legacyCueLabels;
-  const signalLabel = cardKind === 'firewatch'
-    ? 'Firewatch'
-    : hideSignalChrome
-      ? ''
-      : signalMeta?.shortLabel ?? fallbackSignalLabel(signalCode);
-  const signalHeadline = cardKind === 'firewatch'
-    ? patternLabel || signalMeta?.headline || signalLabel
-    : hideSignalChrome
-      ? ''
-      : patternLabel || signalMeta?.headline || signalLabel;
+  const hideSignalChrome = true;
+  const cueLabels: string[] = [];
+  const signalLabel = '';
+  const signalHeadline = signalMeta?.headline || fallbackSignalLabel(signalCode);
   const resolvedThumbnailUrl =
     asString(row.thumbnail_url)
     || asString(row.resolved_thumbnail_url)
@@ -522,9 +497,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
     || asString(meta.resolved_preview_url)
     || asString(row.preview_url)
     || asString(meta.preview_url);
-  const title = hideSignalChrome
-    ? `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`
-    : `${signalHeadline} · @${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`;
+  const title = `@${surfaceHandle ? surfaceHandle.toUpperCase() : 'FEEDER'} · ${checkpoint.toUpperCase()}`;
 
   return {
     id: `alert-${asString(row.id) || asString(row.dedupe_key) || Math.random().toString(36).slice(2)}`,

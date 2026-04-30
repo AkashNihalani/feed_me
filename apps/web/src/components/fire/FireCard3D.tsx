@@ -43,6 +43,29 @@ function text(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+function textList(v: unknown, max = 4): string[] {
+  const values = Array.isArray(v) ? v : v ? [v] : [];
+  return Array.from(
+    new Set(
+      values
+        .map((entry) => text(entry).trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, max);
+}
+
+function parsePostContextRead(meta: Record<string, unknown>) {
+  const read = asRec(meta.post_intelligence);
+  const matches = textList(read.matches);
+  const deviates = textList(read.deviates);
+  const unclear = textList(read.unclear, 2);
+  const notes = textList(read.notes, 2);
+  if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
+    return null;
+  }
+  return { matches, deviates, unclear, notes };
+}
+
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
   const key = postKey.trim();
   if (!key) return '';
@@ -210,52 +233,7 @@ export function FireCard3D({
   const inlinePreviewPreload = 'auto' as const;
   const heroMetricStamp = value == null ? '--' : compact(value);
   const hideSignalChrome = item.hideSignalChrome === true;
-  const patternAlerts = Array.isArray(meta.signal_alerts)
-    ? meta.signal_alerts
-      .map((entry) => asRec(entry))
-      .filter((entry) => Object.keys(entry).length > 0)
-    : [];
-  const primaryPattern = patternAlerts.length > 0 ? patternAlerts[0] : null;
-  const primaryPatternCard = asRec(primaryPattern?.card);
-  const patternCommonLabels = Array.isArray(primaryPatternCard.common_pattern)
-    ? primaryPatternCard.common_pattern
-      .map((entry) => text(entry).trim())
-      .filter(Boolean)
-      .slice(0, 4)
-    : [];
-  const legacyPatternCueLabels = primaryPattern && Array.isArray(primaryPattern.cues)
-    ? primaryPattern.cues
-      .map((cue) => asRec(cue))
-      .map((cue) => text(cue.label))
-      .filter(Boolean)
-      .slice(0, 4)
-    : [];
-  const patternCueLabels = patternCommonLabels.length > 0 ? patternCommonLabels : legacyPatternCueLabels;
-  const patternCardTitle = text(primaryPatternCard.title);
-  const patternWhatHappened = text(primaryPatternCard.what_happened);
-  const patternWhy = text(primaryPatternCard.why_it_may_have_happened);
-  const patternDoNext = text(primaryPatternCard.do_next);
-  const patternWatchout = text(primaryPatternCard.watchout);
-  const patternConfidence = text(primaryPatternCard.confidence);
-  const supportPosts = primaryPattern && Array.isArray(primaryPattern.support_posts)
-    ? primaryPattern.support_posts
-      .map((post) => asRec(post))
-      .map((post) => ({
-        postKey: text(post.post_key),
-        handle: text(post.handle),
-        mediaType: text(post.media_type).toUpperCase(),
-        postUrl: text(post.post_url),
-        thumbnailUrl: text(post.thumbnail_url),
-      }))
-      .filter((post) => post.postKey && post.postUrl)
-      .slice(0, 4)
-    : [];
-  const patternMatchCount = num(primaryPattern?.match_count);
-  const patternFeedersCount = num(primaryPattern?.feeders_count);
-  const patternAverage = num(primaryPattern?.avg_hot_percentile);
-  const patternBaselineShare = num(primaryPattern?.baseline_share);
-  const patternRecentLift = num(primaryPattern?.recent_lift);
-  const patternAnchorGap = num(primaryPattern?.anchor_gap);
+  const postContextRead = parsePostContextRead(meta);
 
   const handleCardActivate = () => {
     if (isLocked) {
@@ -574,7 +552,7 @@ export function FireCard3D({
         <div className="absolute inset-0 bg-black/40 dark:bg-black/54" />
       )}
 
-      {primaryPattern && (
+      {postContextRead && (
         <span
           aria-hidden="true"
           className="fm-fire-card-cover-streak z-[4]"
@@ -819,124 +797,33 @@ export function FireCard3D({
               
               <div className="relative z-10 flex min-h-0 flex-1 flex-col">
               <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
-              {primaryPattern && (
+              {postContextRead && (
                 <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/50 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/38 dark:shadow-[0_14px_30px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.1)]">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/62">
-                      Firewatch
+                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
+                      Post Read
                     </div>
                     <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/42">
-                      {patternMatchCount == null ? '--' : `${Math.round(patternMatchCount)} winners`}
+                      Context Layer
                     </div>
                   </div>
-                  {patternCardTitle && (
-                    <div className="mt-1.5 text-[15px] font-black leading-tight tracking-[-0.02em] text-foreground/92 dark:text-white/88">
-                      {patternCardTitle}
-                    </div>
-                  )}
-                  {patternWhatHappened && (
-                    <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-foreground/62 dark:text-white/54">
-                      {patternWhatHappened}
+                  {postContextRead.matches.length > 0 && (
+                    <p className="mt-1.5 text-[11px] font-semibold leading-snug text-foreground/72 dark:text-white/64">
+                      {postContextRead.matches[0]}
                     </p>
                   )}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {patternAverage != null && (
-                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
-                        Avg top {Math.round(patternAverage)}%
-                      </span>
-                    )}
-                    {patternFeedersCount != null && patternFeedersCount > 1 && (
-                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
-                        {Math.round(patternFeedersCount)} feeders
-                      </span>
-                    )}
-                    {patternAnchorGap != null && (
-                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
-                        Gap +{Math.round(patternAnchorGap)} pts
-                      </span>
-                    )}
-                    {patternRecentLift != null && patternRecentLift > 0 && (
-                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
-                        14d lift {patternRecentLift.toFixed(1)}x
-                      </span>
-                    )}
-                    {patternBaselineShare != null && (
-                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
-                        Baseline {Math.round(patternBaselineShare * 100)}%
-                      </span>
-                    )}
-                    {patternConfidence && (
-                      <span className="rounded-full bg-black/8 px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/74 dark:bg-white/10 dark:text-white/78">
-                        {patternConfidence} confidence
-                      </span>
-                    )}
+                  <div className="mt-2 grid gap-1.5">
+                    {[...postContextRead.matches.slice(1, 3), ...postContextRead.deviates.slice(0, 2), ...postContextRead.notes.slice(0, 1)].slice(0, 4).map((line) => (
+                      <div
+                        key={`${item.id}-read-${line}`}
+                        className="rounded-[10px] bg-white/50 px-2 py-1.5 text-[9px] font-semibold leading-snug text-foreground/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/[0.07] dark:text-white/46"
+                      >
+                        {line}
+                      </div>
+                    ))}
                   </div>
-                  {(patternWhy || patternDoNext || patternWatchout) && (
-                    <div className="mt-2 rounded-[12px] bg-white/45 px-2.5 py-2 dark:bg-white/[0.055]">
-                      {patternWhy && (
-                        <p className="text-[9px] font-medium leading-relaxed text-foreground/50 dark:text-white/42">
-                          {patternWhy}
-                        </p>
-                      )}
-                      {patternDoNext && (
-                        <div className="mt-1.5 rounded-[9px] bg-[#E11D48] px-2 py-1.5 text-[9px] font-black leading-snug text-white">
-                          {patternDoNext}
-                        </div>
-                      )}
-                      {patternWatchout && (
-                        <p className="mt-1.5 text-[8px] font-semibold leading-relaxed text-foreground/40 dark:text-white/32">
-                          {patternWatchout}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {patternCueLabels.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {patternCueLabels.map((label) => (
-                        <span
-                          key={`${item.id}-${label}`}
-                          className="rounded-full border border-black/8 bg-white/62 px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/12 dark:bg-white/10 dark:text-white/72"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {supportPosts.length > 0 && (
-                    <div className="mt-2.5">
-                      <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/48">
-                        Supporting Posts
-                      </div>
-                      <div className="hide-scrollbar mt-2 -mx-0.5 flex gap-2 overflow-x-auto pb-1">
-                        {supportPosts.map((post) => (
-                          <button
-                            key={`${item.id}-${post.postKey}`}
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (post.postUrl) window.open(post.postUrl, '_blank', 'noreferrer');
-                            }}
-                            className="shrink-0 text-left"
-                          >
-                            <div className="h-20 w-16 overflow-hidden rounded-[12px] border border-white/55 bg-black/12 shadow-[0_8px_18px_rgba(0,0,0,0.18)] dark:border-white/12 dark:bg-white/8">
-                              {post.thumbnailUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element -- fire support thumbnails use dynamic media URLs with lightweight in-card rendering
-                                <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                              ) : (
-                                <div className="h-full w-full bg-black/12 dark:bg-white/8" />
-                              )}
-                            </div>
-                            <div className="mt-1 max-w-16 truncate text-[8px] font-black uppercase tracking-[0.13em] text-foreground/68 dark:text-white/70">
-                              @{(post.handle || 'feed').toUpperCase()}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
-
               <div className="mb-2 sm:mb-3 rounded-[16px] bg-[#E11D48] p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] border border-[#E11D48]/10">
                 <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-white/72">Performance</div>
                 <div className="mt-0.5 text-[clamp(28px,8.2vw,46px)] font-black leading-[0.88] tracking-[-0.04em] text-white drop-shadow-sm">

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { getPatternCueLabel, getPatternMechanicLabel } from '@/lib/fireSignals';
 import { privateJsonResponse } from '@/lib/privateJsonResponse';
 import { withServerRouteCache } from '@/lib/serverRouteCache';
 
@@ -27,9 +26,7 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v2';
-const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
-const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
+const FIRE_CACHE_VERSION = 'v3';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
 
@@ -103,12 +100,6 @@ function parseCsvStrings(value: string | null): string[] {
         .filter(Boolean),
     ),
   );
-}
-
-function suppressFollowerChildrenWhenRollupExists<T extends { signal_type?: unknown }>(rows: T[]): T[] {
-  const hasFollowerRollup = rows.some((row) => nullableString(row.signal_type) === FOLLOWER_ROLLUP_SIGNAL);
-  if (!hasFollowerRollup) return rows;
-  return rows.filter((row) => !FOLLOWER_CHILD_SIGNALS.has(nullableString(row.signal_type) || ''));
 }
 
 function serializeNumberList(values: number[]): string {
@@ -296,23 +287,54 @@ function computeMultiple(value: number | null, baseline: number | null): number 
   return Math.round((value / baseline) * 10000) / 10000;
 }
 
-function patternAlertPriority(value: string | null | undefined): number {
-  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (normalized === 'now' || normalized === 'blaze') return 0;
-  if (normalized === 'today' || normalized === 'burn') return 1;
-  if (normalized === 'watch' || normalized === 'spark') return 2;
-  if (normalized === 'tracking') return 3;
-  return 4;
+function readableText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    return readableText(record.text)
+      || readableText(record.summary)
+      || readableText(record.label)
+      || readableText(record.value)
+      || readableText(record.note);
+  }
+  return '';
 }
 
-function humanizeSignalCode(code: string | null | undefined): string {
-  const normalized = typeof code === 'string' ? code.trim() : '';
-  if (!normalized) return 'Pattern Alert';
-  return normalized
-    .replace(/^(OWN|CROSS|ANCHOR)_\d+_/, '')
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+function readableList(value: unknown, max = 4): string[] {
+  const source = Array.isArray(value) ? value : value ? [value] : [];
+  return Array.from(
+    new Set(
+      source
+        .map(readableText)
+        .map((entry) => entry.replace(/\s+/g, ' ').trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, max);
+}
+
+function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
+  const focusRead = recordValue(row?.focus_read);
+  if (Object.keys(focusRead).length === 0) return null;
+
+  const relation = recordValue(focusRead.relation_to_feeder_md);
+  const matches = readableList(relation.matches);
+  const deviates = readableList(relation.deviates);
+  const unclear = readableList(relation.unclear, 3);
+  const notes = readableList(focusRead.notes, 3);
+  if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
+    return null;
+  }
+
+  return {
+    source: 'post_focus_read',
+    feeder_focus_version: row?.feeder_focus_version ?? null,
+    model_version: row?.focus_read_model_version ?? null,
+    matches,
+    deviates,
+    unclear,
+    notes,
+  };
 }
 
 function isHotPercentile(value: number | null): boolean {
@@ -352,7 +374,7 @@ type AlertSurfaceRow = {
   post_key: string | null;
   checkpoint: string;
   business_date_ist: string;
-  card_kind?: 'tracking' | 'firewatch';
+  card_kind?: 'tracking';
   signal_code: string | null;
   context: string | null;
   alert_type: string | null;
@@ -396,7 +418,7 @@ type AlertSurfaceRow = {
   trajectory_d7: number | null;
   trajectory_d21: number | null;
   intelligence_skipped: boolean | null;
-  signal_alerts?: FirePatternSummary[] | null;
+  post_intelligence?: Record<string, unknown> | null;
   is_hot?: boolean | null;
   has_intelligence?: boolean | null;
   hide_signal_chrome?: boolean | null;
@@ -478,16 +500,22 @@ type FireFeederHourBaselineRow = {
 
 type FireIntelligenceRow = {
   post_key: string | null;
+  fingerprint_model_version: string | null;
+  focus_read: Record<string, unknown> | null;
+  focus_read_model_version: string | null;
+  feeder_focus_version: number | null;
+};
+
+type FirePostFingerprintRow = {
+  post_key: string | null;
   model_version: string | null;
 };
 
-type FirePatternSupportPreview = {
-  post_key: string;
-  handle: string | null;
-  media_type: string | null;
-  post_url: string | null;
-  thumbnail_url: string | null;
-  posted_at: string | null;
+type FirePostFocusReadRow = {
+  post_key: string | null;
+  focus_read: Record<string, unknown> | null;
+  feeder_focus_version: number | string | null;
+  model_version: string | null;
 };
 
 type MediaAssetUrlRow = {
@@ -503,90 +531,6 @@ type MediaAssetUrlRow = {
 type ResolvedMediaUrls = {
   thumbnailUrls: Map<string, string>;
   previewUrls: Map<string, string>;
-};
-
-type FirePatternAlertRow = {
-  id: number | string;
-  dedupe_key: string | null;
-  feed_id: number | string | null;
-  feeder_id: number | string | null;
-  post_key: string | null;
-  checkpoint: string | null;
-  business_date_ist: string | null;
-  signal_code: string | null;
-  context: string | null;
-  alert_type: string | null;
-  status: string | null;
-  metric_key: string | null;
-  metric_value: number | string | null;
-  surface_percentile: number | null;
-  surface_delta: number | null;
-  body: string | null;
-  signal_payload: Record<string, unknown> | null;
-  signal_card?: Record<string, unknown> | null;
-  trigger_window_start?: string | null;
-  trigger_window_end?: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-type FireSignalRow = {
-  id: number | string | null;
-  feed_id: number;
-  feeder_id: number | null;
-  scope: string | null;
-  signal_type: string | null;
-  media_type: string | null;
-  sub_bucket: string | null;
-  checkpoint: string | null;
-  business_date_ist: string | null;
-  metric_snapshot: Record<string, unknown> | null;
-  status: string | null;
-  body: string | null;
-  trigger_window_start: string | null;
-  trigger_window_end: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-type FireSignalPostRow = {
-  signal_id: number | string | null;
-  post_key: string | null;
-  cohort: string | null;
-  rank: number | null;
-  role: string | null;
-};
-
-type FireSignalIntelligenceRow = {
-  signal_id: number | string | null;
-  card: Record<string, unknown> | null;
-};
-
-type FirePatternSummary = {
-  signal_code: string | null;
-  context: string | null;
-  alert_type: string | null;
-  body: string | null;
-  surface_percentile: number | null;
-  created_at: string | null;
-  pattern_name?: string | null;
-  modifier_key?: string | null;
-  modifier_value?: string | null;
-  media_type?: string | null;
-  pattern_key?: string | null;
-  match_count?: number | null;
-  feeders_count?: number | null;
-  avg_hot_percentile?: number | null;
-  baseline_share?: number | null;
-  recent_lift?: number | null;
-  contrast_gap?: number | null;
-  anchor_avg_percentile?: number | null;
-  anchor_gap?: number | null;
-  cues?: Array<{ key: string; value: string; label: string }> | null;
-  required_cues?: Array<{ key: string; value: string; label: string }> | null;
-  support_posts?: FirePatternSupportPreview[] | null;
-  anchor_support_posts?: FirePatternSupportPreview[] | null;
-  card?: Record<string, unknown> | null;
 };
 
 type FireMetricKey = 'views' | 'likes' | 'comments';
@@ -664,9 +608,6 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   const bestMetric = deriveBestMetric(row);
   const bestMetricValue = rowMetricValue(row, bestMetric);
   const storedMetricMatchesBest = nullableString(row.metric_key)?.toLowerCase() === bestMetric;
-  const primaryPattern = row.signal_alerts?.[0] ?? null;
-  const primaryPatternCard = recordValue(primaryPattern?.card);
-  const primaryPatternTitle = nullableString(primaryPatternCard.title);
   const payload = {
     best_metric: bestMetric,
     metrics: {
@@ -711,26 +652,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       signal_code: nullableString(row.signal_code),
       signal_context: nullableString(row.context),
       anchor_handle: nullableString(row.anchor_handle),
-      signal_alert_count: row.signal_alerts?.length ?? 0,
-      signal_alerts: row.signal_alerts ?? [],
-      firewatch: primaryPattern ? {
-        family_label: firewatchFamilyLabel(primaryPattern.context),
-        pattern_label: primaryPatternTitle || getPatternMechanicLabel(primaryPattern.pattern_name) || humanizeSignalCode(primaryPattern.signal_code),
-        media_type: primaryPattern.media_type ?? nullableString(row.media_type),
-        support_posts: primaryPattern.support_posts ?? [],
-        anchor_support_posts: primaryPattern.anchor_support_posts ?? [],
-        required_cues: primaryPattern.required_cues ?? [],
-        cues: primaryPattern.cues ?? [],
-        match_count: primaryPattern.match_count ?? null,
-        feeders_count: primaryPattern.feeders_count ?? null,
-        avg_hot_percentile: primaryPattern.avg_hot_percentile ?? null,
-        baseline_share: primaryPattern.baseline_share ?? null,
-        recent_lift: primaryPattern.recent_lift ?? null,
-        anchor_gap: primaryPattern.anchor_gap ?? null,
-        anchor_avg_percentile: primaryPattern.anchor_avg_percentile ?? null,
-        pattern_key: primaryPattern.pattern_key ?? null,
-        card: primaryPattern.card ?? null,
-      } : null,
+      post_intelligence: row.post_intelligence ?? null,
       is_hot: Boolean(row.is_hot),
       has_intelligence: Boolean(row.has_intelligence),
       hide_signal_chrome: Boolean(row.hide_signal_chrome),
@@ -766,85 +688,6 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
     intelligence_skipped: Boolean(row.intelligence_skipped),
     payload,
   };
-}
-
-function sortPatternAlertRows(rows: FirePatternAlertRow[]): FirePatternAlertRow[] {
-  return [...rows].sort((a, b) => {
-    const aPriority = patternAlertPriority(a.alert_type);
-    const bPriority = patternAlertPriority(b.alert_type);
-    if (aPriority !== bPriority) return aPriority - bPriority;
-
-    const aPercentile = nullableNumber(a.surface_percentile) ?? Number.POSITIVE_INFINITY;
-    const bPercentile = nullableNumber(b.surface_percentile) ?? Number.POSITIVE_INFINITY;
-    if (aPercentile !== bPercentile) return aPercentile - bPercentile;
-
-    return parseIsoTime(nullableString(b.created_at)) - parseIsoTime(nullableString(a.created_at));
-  });
-}
-
-function firewatchFamilyLabel(context: string | null | undefined): string {
-  const normalized = typeof context === 'string' ? context.trim().toLowerCase() : '';
-  if (normalized === 'cross') return 'Feed Signal';
-  if (normalized === 'anchor') return 'Anchor Gap';
-  return 'Own Signal';
-}
-
-function summarizePatternAlertRow(
-  row: FirePatternAlertRow,
-  supportPreviewByKey: Map<string, FirePatternSupportPreview>,
-): FirePatternSummary {
-  const payload = recordValue(row.signal_payload);
-  const mapCueList = (value: unknown) => (
-    Array.isArray(value)
-      ? value
-        .map((cue) => recordValue(cue))
-        .map((cue) => {
-          const key = nullableString(cue.key);
-          const cueValue = nullableString(cue.value);
-          const label = getPatternCueLabel(key, cueValue);
-          if (!key || !cueValue || !label) return null;
-          return { key, value: cueValue, label };
-        })
-        .filter((cue): cue is { key: string; value: string; label: string } => cue !== null)
-      : []
-  );
-  const resolvePreviews = (value: unknown) => (
-    Array.isArray(value)
-      ? value
-        .map((entry) => nullableString(entry))
-        .filter((entry): entry is string => Boolean(entry))
-        .map((postKey) => supportPreviewByKey.get(postKey) || null)
-        .filter((preview): preview is FirePatternSupportPreview => preview !== null)
-      : []
-  );
-  const card = recordValue(payload.card || row.signal_card);
-
-  return {
-    signal_code: nullableString(row.signal_code),
-    context: nullableString(row.context),
-    alert_type: nullableString(row.alert_type),
-    body: nullableString(row.body),
-    surface_percentile: nullableNumber(row.surface_percentile),
-    created_at: nullableString(row.created_at),
-    pattern_name: nullableString(payload.pattern_name),
-    modifier_key: nullableString(payload.modifier_key),
-    modifier_value: nullableString(payload.modifier_value),
-    media_type: nullableString(payload.media_type),
-    pattern_key: nullableString(payload.pattern_key),
-    match_count: nullableNumber(payload.match_count),
-    feeders_count: nullableNumber(payload.feeders_count),
-    avg_hot_percentile: nullableNumber(payload.avg_hot_percentile),
-    baseline_share: nullableNumber(payload.baseline_share),
-    recent_lift: nullableNumber(payload.recent_lift),
-    contrast_gap: nullableNumber(payload.contrast_gap),
-    anchor_avg_percentile: nullableNumber(payload.anchor_avg_percentile),
-    anchor_gap: nullableNumber(payload.anchor_gap),
-    cues: mapCueList(payload.cues),
-    required_cues: mapCueList(payload.required_cues),
-    support_posts: resolvePreviews(payload.support_post_keys),
-    anchor_support_posts: resolvePreviews(payload.anchor_support_post_keys),
-    card: Object.keys(card).length > 0 ? card : null,
-  } satisfies FirePatternSummary;
 }
 
 async function fetchWarmupSummary(
@@ -1283,7 +1126,7 @@ async function fetchIntelligenceRowsForPostKeys(
 ): Promise<FireIntelligenceRow[]> {
   if (postKeys.length === 0) return [];
 
-  const rows: FireIntelligenceRow[] = [];
+  const rowsByPostKey = new Map<string, FireIntelligenceRow>();
   for (let start = 0; start < postKeys.length; start += POST_KEY_CHUNK_SIZE) {
     const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
     const { data, error } = await sb
@@ -1292,10 +1135,44 @@ async function fetchIntelligenceRowsForPostKeys(
       .in('post_key', chunk);
 
     if (error) throw error;
-    rows.push(...((data || []) as FireIntelligenceRow[]));
+    for (const row of (data || []) as FirePostFingerprintRow[]) {
+      const postKey = nullableString(row.post_key);
+      if (!postKey) continue;
+      rowsByPostKey.set(postKey, {
+        post_key: postKey,
+        fingerprint_model_version: nullableString(row.model_version),
+        focus_read: null,
+        focus_read_model_version: null,
+        feeder_focus_version: null,
+      });
+    }
+
+    const { data: focusData, error: focusError } = await sb
+      .from('post_focus_reads')
+      .select('post_key,focus_read,feeder_focus_version,model_version')
+      .in('post_key', chunk);
+
+    if (focusError) throw focusError;
+    for (const row of (focusData || []) as FirePostFocusReadRow[]) {
+      const postKey = nullableString(row.post_key);
+      if (!postKey) continue;
+      const existing = rowsByPostKey.get(postKey) || {
+        post_key: postKey,
+        fingerprint_model_version: null,
+        focus_read: null,
+        focus_read_model_version: null,
+        feeder_focus_version: null,
+      };
+      rowsByPostKey.set(postKey, {
+        ...existing,
+        focus_read: recordValue(row.focus_read),
+        focus_read_model_version: nullableString(row.model_version),
+        feeder_focus_version: nullableNumber(row.feeder_focus_version),
+      });
+    }
   }
 
-  return rows;
+  return Array.from(rowsByPostKey.values());
 }
 
 async function fetchFeederBaselineRows(
@@ -1328,363 +1205,6 @@ async function fetchFeederHourBaselineRows(
 
   if (error) throw error;
   return (data || []) as FireFeederHourBaselineRow[];
-}
-
-async function fetchPatternSupportPreviews(
-  sb: { from: ReturnType<typeof createClient>['from'] },
-  postKeys: string[],
-): Promise<Map<string, FirePatternSupportPreview>> {
-  const previews = new Map<string, FirePatternSupportPreview>();
-  if (postKeys.length === 0) return previews;
-
-  const feederIds = new Set<number>();
-  const rows: Array<FireTrackedPostRow & { feeder_id: number | string | null }> = [];
-  for (let start = 0; start < postKeys.length; start += POST_KEY_CHUNK_SIZE) {
-    const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
-    const { data, error } = await sb
-      .from('posts')
-      .select('post_key,feeder_id,media_type,posted_at,post_url,thumbnail_url')
-      .in('post_key', chunk);
-
-    if (error) throw error;
-    const batch = (data || []) as Array<FireTrackedPostRow & { feeder_id: number | string | null }>;
-    rows.push(...batch);
-    for (const row of batch) {
-      const feederId = Number(row.feeder_id);
-      if (Number.isFinite(feederId)) feederIds.add(feederId);
-    }
-  }
-
-  const feederHandleById = new Map<number, string | null>();
-  if (feederIds.size > 0) {
-    const { data, error } = await sb
-      .from('feeders')
-      .select('id,handle')
-      .in('id', Array.from(feederIds));
-    if (error) throw error;
-    for (const row of (data || []) as Array<{ id: number | string | null; handle: string | null }>) {
-      const feederId = Number(row.id);
-      if (Number.isFinite(feederId)) feederHandleById.set(feederId, nullableString(row.handle));
-    }
-  }
-
-  for (const row of rows) {
-    const postKey = nullableString(row.post_key);
-    const feederId = Number(row.feeder_id);
-    if (!postKey || !Number.isFinite(feederId)) continue;
-    previews.set(postKey, {
-      post_key: postKey,
-      handle: feederHandleById.get(feederId) || null,
-      media_type: nullableString(row.media_type),
-      post_url: nullableString(row.post_url),
-      thumbnail_url: nullableString(row.thumbnail_url),
-      posted_at: nullableString(row.posted_at),
-    });
-  }
-
-  const { thumbnailUrls } = await fetchStoredMediaUrls(sb, rows.map((row) => nullableString(row.post_key)).filter((value): value is string => Boolean(value)));
-  for (const [postKey, preview] of previews) {
-    preview.thumbnail_url = thumbnailUrls.get(postKey) || preview.thumbnail_url || null;
-  }
-
-  return previews;
-}
-
-async function fetchFirewatchPatternRows(
-  sb: { from: ReturnType<typeof createClient>['from'] },
-  effectiveFeedIds: number[],
-  effectiveFeederIds: number[],
-  day: string,
-): Promise<FirePatternAlertRow[]> {
-  if (effectiveFeedIds.length === 0) return [];
-
-  const { data, error } = await sb
-    .from('signals')
-    .select('id,feed_id,feeder_id,scope,signal_type,media_type,sub_bucket,checkpoint,business_date_ist,metric_snapshot,status,body,trigger_window_start,trigger_window_end,created_at,updated_at')
-    .in('feed_id', effectiveFeedIds)
-    .eq('business_date_ist', day)
-    .in('status', ['pending', 'fresh', 'stale']);
-
-  if (error) throw error;
-
-  const signalRows = suppressFollowerChildrenWhenRollupExists(
-    ((data || []) as FireSignalRow[]).filter((row) => {
-      const feederId = nullableNumber(row.feeder_id);
-      return feederId == null || effectiveFeederIds.includes(feederId);
-    }),
-  );
-  if (signalRows.length === 0) return [];
-
-  const signalIds = signalRows
-    .map((row) => nullableNumber(row.id))
-    .filter((value): value is number => value != null);
-  const postsBySignal = new Map<number, FireSignalPostRow[]>();
-  for (let start = 0; start < signalIds.length; start += POST_KEY_CHUNK_SIZE) {
-    const chunk = signalIds.slice(start, start + POST_KEY_CHUNK_SIZE);
-    const { data: postData, error: postError } = await sb
-      .from('signal_posts')
-      .select('signal_id,post_key,cohort,rank,role')
-      .in('signal_id', chunk)
-      .order('rank', { ascending: true });
-    if (postError) throw postError;
-    for (const row of (postData || []) as FireSignalPostRow[]) {
-      const signalId = nullableNumber(row.signal_id);
-      if (signalId == null) continue;
-      const bucket = postsBySignal.get(signalId) || [];
-      bucket.push(row);
-      postsBySignal.set(signalId, bucket);
-    }
-  }
-
-  const cardBySignal = new Map<number, Record<string, unknown>>();
-  for (let start = 0; start < signalIds.length; start += POST_KEY_CHUNK_SIZE) {
-    const chunk = signalIds.slice(start, start + POST_KEY_CHUNK_SIZE);
-    const { data: cardData, error: cardError } = await sb
-      .from('signal_intelligence')
-      .select('signal_id,card')
-      .in('signal_id', chunk);
-    if (cardError) throw cardError;
-    for (const row of (cardData || []) as FireSignalIntelligenceRow[]) {
-      const signalId = nullableNumber(row.signal_id);
-      if (signalId == null || !row.card) continue;
-      cardBySignal.set(signalId, row.card);
-    }
-  }
-
-  return signalRows.map((row) => {
-    const signalId = nullableNumber(row.id) || 0;
-    const posts = postsBySignal.get(signalId) || [];
-    const cohortA = posts
-      .filter((post) => nullableString(post.cohort)?.toLowerCase() !== 'b')
-      .sort((a, b) => (nullableNumber(a.rank) || 0) - (nullableNumber(b.rank) || 0));
-    const cohortB = posts
-      .filter((post) => nullableString(post.cohort)?.toLowerCase() === 'b')
-      .sort((a, b) => (nullableNumber(a.rank) || 0) - (nullableNumber(b.rank) || 0));
-    const heroPostKey = nullableString(cohortA[0]?.post_key) || nullableString(cohortB[0]?.post_key);
-    const snapshot = recordValue(row.metric_snapshot);
-    const avgPercentile = nullableNumber(snapshot.avg_percentile);
-    const bestPercentile = nullableNumber(snapshot.best_percentile);
-    const supportPostKeys = [...cohortA, ...cohortB]
-      .map((post) => nullableString(post.post_key))
-      .filter((value): value is string => Boolean(value));
-    const payload = {
-      version: 3,
-      pattern_name: nullableString(row.signal_type),
-      mechanic: nullableString(row.signal_type),
-      media_type: nullableString(row.media_type),
-      sub_bucket: nullableString(row.sub_bucket),
-      pattern_key: `signal:${signalId}`,
-      match_count: cohortA.length,
-      feeders_count: null,
-      avg_hot_percentile: avgPercentile ?? bestPercentile,
-      baseline_share: null,
-      recent_lift: null,
-      contrast_gap: null,
-      anchor_avg_percentile: nullableNumber(snapshot.anchor_median),
-      anchor_gap: nullableNumber(snapshot.gap),
-      cues: [],
-      required_cues: [],
-      support_post_keys: supportPostKeys,
-      anchor_support_post_keys: cohortB.map((post) => nullableString(post.post_key)).filter((value): value is string => Boolean(value)),
-      metric_snapshot: snapshot,
-      card: cardBySignal.get(signalId) || null,
-    };
-
-    return {
-      id: signalId,
-      dedupe_key: `signal:${signalId}`,
-      feed_id: row.feed_id,
-      feeder_id: row.feeder_id,
-      post_key: heroPostKey,
-      checkpoint: row.checkpoint,
-      business_date_ist: row.business_date_ist,
-      signal_code: row.signal_type,
-      context: row.scope,
-      alert_type: 'watch',
-      status: row.status,
-      metric_key: null,
-      metric_value: cohortA.length,
-      surface_percentile: avgPercentile ?? bestPercentile,
-      surface_delta: null,
-      body: row.body,
-      signal_payload: payload,
-      signal_card: cardBySignal.get(signalId) || null,
-      trigger_window_start: row.trigger_window_start,
-      trigger_window_end: row.trigger_window_end,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    } as FirePatternAlertRow;
-  });
-}
-
-function buildFirewatchPatternGroupKey(row: FirePatternAlertRow): string {
-  const payload = recordValue(row.signal_payload);
-  const patternKey = nullableString(payload.pattern_key);
-  if (patternKey) {
-    return [
-      String(row.feed_id || ''),
-      nullableString(row.business_date_ist) || '',
-      nullableString(row.context) || 'own',
-      patternKey,
-    ].join(':');
-  }
-
-  const cues = Array.isArray(payload.required_cues) ? payload.required_cues : payload.cues;
-  const cueSignature = Array.isArray(cues)
-    ? cues
-      .map((cue) => recordValue(cue))
-      .map((cue) => `${nullableString(cue.key) || ''}:${nullableString(cue.value) || ''}`)
-      .filter(Boolean)
-      .slice(0, 2)
-      .join('|')
-    : '';
-
-  return [
-    String(row.feed_id || ''),
-    nullableString(row.business_date_ist) || '',
-    nullableString(row.context) || 'own',
-    nullableString(payload.pattern_name) || '',
-    nullableString(payload.media_type) || '',
-    cueSignature,
-  ].join(':');
-}
-
-function buildFirewatchRows(options: {
-  patternRows: FirePatternAlertRow[];
-  supportPreviewByKey: Map<string, FirePatternSupportPreview>;
-  feedNamesById: Map<number, string>;
-}): AlertSurfaceRow[] {
-  if (options.patternRows.length === 0) return [];
-
-  const grouped = new Map<string, FirePatternAlertRow[]>();
-  for (const row of options.patternRows) {
-    const key = buildFirewatchPatternGroupKey(row);
-    const bucket = grouped.get(key) || [];
-    bucket.push(row);
-    grouped.set(key, bucket);
-  }
-
-  const rows: AlertSurfaceRow[] = [];
-
-  for (const bucket of grouped.values()) {
-    const sortedRows = sortPatternAlertRows(bucket);
-    const primaryRow = sortedRows[0];
-    if (!primaryRow) continue;
-
-    const primarySummary = summarizePatternAlertRow(primaryRow, options.supportPreviewByKey);
-    const feedId = Number(primaryRow.feed_id);
-    const feederId = Number(primaryRow.feeder_id);
-    const feedName = options.feedNamesById.get(feedId) || 'UNTITLED FEED';
-    const heroPostKey = nullableString(primaryRow.post_key);
-    const heroPreview = heroPostKey ? options.supportPreviewByKey.get(heroPostKey) || null : null;
-    const supportPosts = new Map<string, FirePatternSupportPreview>();
-    const anchorSupportPosts = new Map<string, FirePatternSupportPreview>();
-
-    const collectPreview = (preview: FirePatternSupportPreview | null | undefined, bucketMap: Map<string, FirePatternSupportPreview>) => {
-      if (!preview?.post_key) return;
-      if (!bucketMap.has(preview.post_key)) bucketMap.set(preview.post_key, preview);
-    };
-
-    collectPreview(heroPreview, supportPosts);
-    for (const row of sortedRows) {
-      const summary = summarizePatternAlertRow(row, options.supportPreviewByKey);
-      if (row.post_key && typeof row.post_key === 'string') {
-        collectPreview(options.supportPreviewByKey.get(row.post_key), supportPosts);
-      }
-      for (const preview of summary.support_posts || []) collectPreview(preview, supportPosts);
-      for (const preview of summary.anchor_support_posts || []) collectPreview(preview, anchorSupportPosts);
-    }
-
-    const allSupportPosts = Array.from(supportPosts.values()).slice(0, 6);
-    const allAnchorSupportPosts = Array.from(anchorSupportPosts.values()).slice(0, 4);
-    const latestSupportPostedAt = [...allSupportPosts, ...allAnchorSupportPosts]
-      .map((preview) => nullableString(preview.posted_at))
-      .filter((value): value is string => Boolean(value))
-      .sort((a, b) => parseIsoTime(b) - parseIsoTime(a))[0] || null;
-    const signalSortPostedAt = nullableString(primaryRow.trigger_window_end)
-      || latestSupportPostedAt
-      || heroPreview?.posted_at
-      || nullableString(primarySummary.created_at)
-      || nullableString(primaryRow.created_at)
-      || null;
-    const primaryCard = recordValue(primarySummary.card);
-    const primaryPatternLabel = nullableString(primaryCard.title) || getPatternMechanicLabel(primarySummary.pattern_name) || humanizeSignalCode(primarySummary.signal_code);
-    const familyLabel = firewatchFamilyLabel(primarySummary.context);
-    const signalCheckpoint = nullableString(primaryRow.checkpoint)?.toLowerCase();
-    if (!signalCheckpoint) continue;
-    const signalPercentile = primarySummary.avg_hot_percentile ?? primarySummary.surface_percentile ?? null;
-    if (signalPercentile == null) continue;
-    const statBits = [
-      primarySummary.match_count != null ? `${Math.round(primarySummary.match_count)} hot` : null,
-      primarySummary.feeders_count != null && primarySummary.feeders_count > 1 ? `${Math.round(primarySummary.feeders_count)} feeders` : null,
-      primarySummary.anchor_gap != null ? `gap +${Math.round(primarySummary.anchor_gap)}` : null,
-      primarySummary.recent_lift != null ? `${primarySummary.recent_lift.toFixed(1)}x lift` : null,
-    ].filter(Boolean);
-
-    rows.push({
-      id: `firewatch:${feedId}:${buildFirewatchPatternGroupKey(primaryRow)}`,
-      dedupe_key: `firewatch:${feedId}:${buildFirewatchPatternGroupKey(primaryRow)}`,
-      feed_id: feedId,
-      feeder_id: Number.isFinite(feederId) ? feederId : 0,
-      post_key: null,
-      checkpoint: signalCheckpoint,
-      business_date_ist: nullableString(primaryRow.business_date_ist) || '',
-      card_kind: 'firewatch',
-      signal_code: nullableString(primarySummary.signal_code) || 'CROSS_MOMENTUM',
-      context: nullableString(primarySummary.context) || 'own',
-      alert_type: nullableString(primarySummary.alert_type) || 'watch',
-      status: 'new',
-      metric_key: null,
-      metric_value: primarySummary.match_count ?? null,
-      surface_percentile: signalPercentile,
-      surface_percentile_exact: signalPercentile,
-      surface_delta: null,
-      feed_rank: null,
-      feeder_rank: null,
-      anchor_handle: null,
-      anchor_best_pct: primarySummary.anchor_avg_percentile ?? null,
-      anchor_gap: primarySummary.anchor_gap ?? null,
-      body: [familyLabel, primaryPatternLabel, ...statBits].filter(Boolean).join(' · '),
-      created_at: nullableString(primarySummary.created_at) || nullableString(primaryRow.created_at) || new Date().toISOString(),
-      updated_at: nullableString(primaryRow.updated_at) || nullableString(primaryRow.created_at) || new Date().toISOString(),
-      handle: feedName,
-      media_type: nullableString(primarySummary.media_type) || heroPreview?.media_type || null,
-      posted_at: signalSortPostedAt,
-      post_url: heroPreview?.post_url || null,
-      thumbnail_url: heroPreview?.thumbnail_url || null,
-      preview_url: null,
-      resolved_thumbnail_url: heroPreview?.thumbnail_url || null,
-      resolved_preview_url: null,
-      views: null,
-      likes: null,
-      comments: null,
-      views_baseline: null,
-      likes_baseline: null,
-      comments_baseline: null,
-      views_multiple: null,
-      likes_multiple: null,
-      comments_multiple: null,
-      hour_ist: null,
-      hour_percentile: null,
-      hour_multiple: null,
-      best_in_last_n: null,
-      trajectory_d1: null,
-      trajectory_d3: null,
-      trajectory_d7: signalPercentile,
-      trajectory_d21: null,
-      intelligence_skipped: false,
-      signal_alerts: [{
-        ...primarySummary,
-        support_posts: allSupportPosts,
-        anchor_support_posts: allAnchorSupportPosts,
-      }],
-      is_hot: true,
-      has_intelligence: true,
-      hide_signal_chrome: false,
-    });
-  }
-
-  return rows;
 }
 
 function dedupeMetricRows(rows: FirePostMetricRow[]): FirePostMetricRow[] {
@@ -1799,11 +1319,12 @@ function buildSyntheticFireRows(options: {
     const hourBaseline = hourIst == null
       ? null
       : hourBaselineByKey.get(buildHourBaselineKey(feederId, mediaType, checkpoint, hourIst)) || null;
-    const intelligenceModelVersion = intelligenceByPostKey.get(postKey)?.model_version ?? null;
+    const intelligenceRow = intelligenceByPostKey.get(postKey);
+    const postIntelligence = buildPostIntelligencePayload(intelligenceRow);
     const surfacePercentile = nullableNumber(metricRow.percentile_performance);
     const surfacePercentileExact = nullableNumber(metricRow.percentile_performance_exact) ?? surfacePercentile;
     const displayPercentile = surfacePercentileExact ?? surfacePercentile;
-    const hasIntelligence = Boolean(intelligenceModelVersion && intelligenceModelVersion !== 'skipped');
+    const hasIntelligence = Boolean(postIntelligence);
     const isHot = isHotPercentile(displayPercentile);
 
     const views = nullableNumber(metricRow.views);
@@ -1865,11 +1386,11 @@ function buildSyntheticFireRows(options: {
       trajectory_d3: nullableNumber(trajectoryByPost.get(postKey)?.d3?.percentile_performance),
       trajectory_d7: nullableNumber(trajectoryByPost.get(postKey)?.d7?.percentile_performance),
       trajectory_d21: nullableNumber(trajectoryByPost.get(postKey)?.d21?.percentile_performance),
-      intelligence_skipped: intelligenceByPostKey.get(postKey)?.model_version === 'skipped',
-      signal_alerts: null,
+      intelligence_skipped: intelligenceRow?.fingerprint_model_version === 'skipped',
+      post_intelligence: postIntelligence,
       is_hot: isHot,
       has_intelligence: hasIntelligence,
-      hide_signal_chrome: false,
+      hide_signal_chrome: true,
     } as AlertSurfaceRow;
 
     const bestMetric = deriveBestMetric(rowSeed);
@@ -2192,44 +1713,13 @@ async function buildTrackingFirePagePayload(
   }
 
   const selectedTrackingCheckpoints = resolveRequestedTrackingCheckpoints(requestState.requestedCheckpoints);
-  const [trackingRows, firewatchPatternRows] = await Promise.all([
-    loadTrackingFireRows(sb, {
-      day: requestState.day,
-      feederRows: activeState.normalizedFeeders,
-      effectiveFeedIds: scope.effectiveFeedIds,
-      effectiveFeederIds: scope.effectiveFeederIds,
-      trackingCheckpoints: selectedTrackingCheckpoints,
-    }),
-    fetchFirewatchPatternRows(
-      sb,
-      scope.effectiveFeedIds,
-      scope.effectiveFeederIds,
-      requestState.day,
-    ),
-  ]);
-  const firewatchSupportKeys = Array.from(
-    new Set(
-      firewatchPatternRows.flatMap((row) => {
-        const payload = recordValue(row.signal_payload);
-        const keys = [
-          nullableString(row.post_key),
-          ...(Array.isArray(payload.support_post_keys) ? payload.support_post_keys.map((value) => nullableString(value)) : []),
-          ...(Array.isArray(payload.anchor_support_post_keys) ? payload.anchor_support_post_keys.map((value) => nullableString(value)) : []),
-        ];
-        return keys.filter((value): value is string => Boolean(value));
-      }),
-    ),
-  );
-  const firewatchSupportPreviewByKey = await fetchPatternSupportPreviews(sb, firewatchSupportKeys);
-  const feedNamesById = new Map<number, string>(
-    activeState.normalizedFeeds.map((feed) => [Number(feed.id), String(feed.name || 'UNTITLED FEED').toUpperCase()]),
-  );
-  const firewatchRows = buildFirewatchRows({
-    patternRows: firewatchPatternRows,
-    supportPreviewByKey: firewatchSupportPreviewByKey,
-    feedNamesById,
+  const rows = await loadTrackingFireRows(sb, {
+    day: requestState.day,
+    feederRows: activeState.normalizedFeeders,
+    effectiveFeedIds: scope.effectiveFeedIds,
+    effectiveFeederIds: scope.effectiveFeederIds,
+    trackingCheckpoints: selectedTrackingCheckpoints,
   });
-  const rows = [...trackingRows, ...firewatchRows];
 
   const thresholdLimit = requestState.threshold === 'ALL' ? null : Number.parseInt(requestState.threshold, 10);
   const thresholdedRows = thresholdLimit == null
@@ -2263,10 +1753,6 @@ async function buildTrackingFirePagePayload(
   }
 
   const sortedRows = [...filteredRows].sort((a, b) => {
-    const aKindPriority = a.card_kind === 'firewatch' ? 0 : 1;
-    const bKindPriority = b.card_kind === 'firewatch' ? 0 : 1;
-    if (aKindPriority !== bKindPriority) return aKindPriority - bKindPriority;
-
     if (requestState.sort === 'recent') {
       const aPostedAt = parseIsoTime(a.posted_at);
       const bPostedAt = parseIsoTime(b.posted_at);
