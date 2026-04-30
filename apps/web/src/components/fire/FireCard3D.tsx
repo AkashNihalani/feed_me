@@ -60,10 +60,11 @@ function parsePostContextRead(meta: Record<string, unknown>) {
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 2);
   const notes = textList(read.notes, 2);
+  const sourceLabel = text(read.source_label) || (text(read.source) === 'post_fingerprint' ? 'Fingerprint' : 'Context Layer');
   if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
     return null;
   }
-  return { matches, deviates, unclear, notes };
+  return { matches, deviates, unclear, notes, sourceLabel };
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -804,7 +805,7 @@ export function FireCard3D({
                       Post Read
                     </div>
                     <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/42">
-                      Context Layer
+                      {postContextRead.sourceLabel}
                     </div>
                   </div>
                   {postContextRead.matches.length > 0 && (

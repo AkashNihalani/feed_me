@@ -57,10 +57,11 @@ function parsePostContextRead(meta: Record<string, unknown>) {
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 3);
   const notes = textList(read.notes, 3);
+  const sourceLabel = text(read.source_label) || (text(read.source) === 'post_fingerprint' ? 'Fingerprint' : 'Context Layer');
   if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
     return null;
   }
-  return { matches, deviates, unclear, notes };
+  return { matches, deviates, unclear, notes, sourceLabel };
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -673,7 +674,7 @@ export default function FireIntelligenceDialog({
                       <div className="flex items-center justify-between gap-3">
                         <SectionTag>Post Read</SectionTag>
                         <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
-                          Context Layer
+                          {stats.postContextRead.sourceLabel}
                         </div>
                       </div>
                       <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">

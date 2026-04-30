@@ -26,7 +26,7 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v3';
+const FIRE_CACHE_VERSION = 'v4';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
 
@@ -313,9 +313,48 @@ function readableList(value: unknown, max = 4): string[] {
   ).slice(0, max);
 }
 
+function compactFingerprintLine(label: string, value: unknown): string | null {
+  const textValue = readableText(value).replace(/\s+/g, ' ').trim();
+  if (!textValue) return null;
+  return `${label}: ${textValue}`;
+}
+
+function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
+  const fingerprint = recordValue(row?.fingerprint);
+  if (Object.keys(fingerprint).length === 0) return null;
+
+  const visualRead = recordValue(fingerprint.visual_read);
+  const captionRead = recordValue(fingerprint.caption_read);
+  const summary =
+    readableText(fingerprint.content_summary)
+    || readableText(fingerprint.topic)
+    || readableText(visualRead.subject_focus);
+  const lines = [
+    compactFingerprintLine('Hook', fingerprint.hook || fingerprint.opener),
+    compactFingerprintLine('Payoff', fingerprint.payoff),
+    compactFingerprintLine('Visual read', fingerprint.visual_sequence || visualRead.opening_frame || visualRead.subject_focus),
+    compactFingerprintLine('Emotional pull', fingerprint.emotional_trigger || captionRead.emotional_register),
+    compactFingerprintLine('Caption role', fingerprint.caption_role || captionRead.cta_style),
+    ...readableList(fingerprint.craft_moves, 2).map((line) => `Craft: ${line}`),
+    ...readableList(fingerprint.campaign_or_context_clues, 2).map((line) => `Context clue: ${line}`),
+  ].filter((line): line is string => Boolean(line));
+
+  if (!summary && lines.length === 0) return null;
+
+  return {
+    source: 'post_fingerprint',
+    source_label: 'Fingerprint',
+    model_version: row?.fingerprint_model_version ?? null,
+    matches: summary ? [summary] : lines.slice(0, 1),
+    deviates: summary ? lines.slice(0, 5) : lines.slice(1, 6),
+    unclear: [],
+    notes: readableList(fingerprint.discussion_prompt, 1),
+  };
+}
+
 function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
   const focusRead = recordValue(row?.focus_read);
-  if (Object.keys(focusRead).length === 0) return null;
+  if (Object.keys(focusRead).length === 0) return buildFingerprintIntelligencePayload(row);
 
   const relation = recordValue(focusRead.relation_to_feeder_md);
   const matches = readableList(relation.matches);
@@ -323,11 +362,12 @@ function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Rec
   const unclear = readableList(relation.unclear, 3);
   const notes = readableList(focusRead.notes, 3);
   if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
-    return null;
+    return buildFingerprintIntelligencePayload(row);
   }
 
   return {
     source: 'post_focus_read',
+    source_label: 'Context Layer',
     feeder_focus_version: row?.feeder_focus_version ?? null,
     model_version: row?.focus_read_model_version ?? null,
     matches,
@@ -500,6 +540,7 @@ type FireFeederHourBaselineRow = {
 
 type FireIntelligenceRow = {
   post_key: string | null;
+  fingerprint: Record<string, unknown> | null;
   fingerprint_model_version: string | null;
   focus_read: Record<string, unknown> | null;
   focus_read_model_version: string | null;
@@ -508,6 +549,7 @@ type FireIntelligenceRow = {
 
 type FirePostFingerprintRow = {
   post_key: string | null;
+  fingerprint: Record<string, unknown> | null;
   model_version: string | null;
 };
 
@@ -1131,7 +1173,7 @@ async function fetchIntelligenceRowsForPostKeys(
     const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
     const { data, error } = await sb
       .from('post_fingerprints')
-      .select('post_key,model_version')
+      .select('post_key,fingerprint,model_version')
       .in('post_key', chunk);
 
     if (error) throw error;
@@ -1140,6 +1182,7 @@ async function fetchIntelligenceRowsForPostKeys(
       if (!postKey) continue;
       rowsByPostKey.set(postKey, {
         post_key: postKey,
+        fingerprint: recordValue(row.fingerprint),
         fingerprint_model_version: nullableString(row.model_version),
         focus_read: null,
         focus_read_model_version: null,
@@ -1158,6 +1201,7 @@ async function fetchIntelligenceRowsForPostKeys(
       if (!postKey) continue;
       const existing = rowsByPostKey.get(postKey) || {
         post_key: postKey,
+        fingerprint: null,
         fingerprint_model_version: null,
         focus_read: null,
         focus_read_model_version: null,
