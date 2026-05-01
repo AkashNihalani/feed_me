@@ -15,6 +15,7 @@ from .config import (
     FOCUS_COMPILER_MODEL,
     FOCUS_REBUILD_INTERVAL_DAYS,
     FOCUS_REBUILD_MODEL,
+    FOCUS_V2_SLICES_ENABLED,
     GEMINI_API_KEY,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
@@ -28,6 +29,12 @@ _DEFAULT_FLASH_MODEL = "google/gemini-3-flash-preview"
 _FOCUS_READ_PROMPT_VERSION = "focus_read_v1"
 _FEEDER_FOCUS_PROMPT_VERSION = "feeder_focus_v1"
 _FEED_FOCUS_PROMPT_VERSION = "feed_focus_v1"
+_FOCUS_SCHEMA_VERSION = "v2_shadow"
+_STATS_BUILDER_VERSION = "stats_builder_v1"
+_VALIDATOR_VERSION = "v1.4"
+_FOCUS_V2_COMPILER_PROMPT_VERSION = "compiler_v2"
+_EMPTY_MEDIA_SOURCE_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+_LLM_INPUT_SOFT_TOKEN_LIMIT = 8000
 _MAX_EVIDENCE_POSTS = 160
 _MAX_PATTERNS_PER_BUCKET = 5
 _FEEDER_COMMON_WORD_LIMIT = 80
@@ -189,6 +196,57 @@ Rules:
 - Mention exact observable behaviors, not generic strategy labels.
 - Separate strong from weak based only on supplied percentile values; lower percentile is better.
 - Keep the entire response compact."""
+
+_FOCUS_V2_COMPILER_SYSTEM = """You are the language and pattern-recognition layer of a social-media intelligence brain.
+The server has already computed every number, baseline, evidence count, confidence score, and lifecycle transition.
+Your job is only:
+1. Match content candidates to existing patterns or mark them NEW.
+2. Write compact user-visible labels and content signatures.
+
+You DO NOT write any number. You DO NOT decide lifecycle status. You DO NOT compute metric effects.
+
+Return JSON only:
+{
+  "patterns_proposed": [
+    {
+      "pattern_id_or_match": "<existing pattern_id or NEW>",
+      "candidate_id": "<server candidate_id>",
+      "label": "<2-4 words>",
+      "summary": "<brutal voice, <=12 words>",
+      "content_signature": {
+        "what_happens": "",
+        "hook_style": "",
+        "production_style": "",
+        "voice_tone": "",
+        "key_craft_moves": [],
+        "not_this": []
+      }
+    }
+  ],
+  "content_profile_updates": {
+    "voice": {
+      "dominant_tone": "",
+      "tone_range": [],
+      "register": "",
+      "language_mix": "",
+      "cta_style": ""
+    },
+    "production": {
+      "by_format": {},
+      "human_presence": ""
+    },
+    "format_mix": {},
+    "evolution_notes": []
+  }
+}
+
+Rules:
+- Declarative. Period-driven. Concrete craft language.
+- Forbidden words: may, could, likely, perhaps, suggests, appears, seems, somewhat.
+- Do not output digits, percentages, multipliers, pp, K, or M.
+- Match only when hook style and production approach are semantically equivalent.
+- Respect each existing pattern's not_this boundaries. If a candidate fits a boundary better than the positive signature, return NEW.
+- Do not invent pattern IDs. Existing ID or NEW only."""
 
 
 def _sha(value: Any) -> str:
@@ -485,9 +543,20 @@ def _extract_text(payload: dict[str, Any], provider: str) -> str:
 
 
 def _call_text_model(system: str, payload: dict[str, Any], *, model: str, max_tokens: int = 1600) -> dict[str, Any] | None:
+    parsed, _ = _call_text_model_raw(system, payload, model=model, max_tokens=max_tokens)
+    return parsed
+
+
+def _call_text_model_raw(
+    system: str,
+    payload: dict[str, Any],
+    *,
+    model: str,
+    max_tokens: int = 1600,
+) -> tuple[dict[str, Any] | None, str]:
     provider = _provider()
     if not provider:
-        return None
+        return None, ""
     user_text = json.dumps(payload, default=str)
     try:
         if provider == "openrouter":
@@ -529,10 +598,28 @@ def _call_text_model(system: str, payload: dict[str, Any], *, model: str, max_to
                 model=model,
                 text_excerpt=text[:320],
             )
-        return parsed
+        return parsed, text
     except Exception as exc:
         print(f"[focus-brain] model call failed: {exc}")
-        return None
+        return None, ""
+
+
+def _call_text_model_with_json_retry(
+    system: str,
+    payload: dict[str, Any],
+    *,
+    model: str,
+    max_tokens: int = 1600,
+) -> tuple[dict[str, Any] | None, str, bool]:
+    parsed, raw = _call_text_model_raw(system, payload, model=model, max_tokens=max_tokens)
+    if parsed is not None:
+        return parsed, raw, False
+    retry_system = (
+        f"{system}\n\nYour last response was malformed. Return valid JSON only. "
+        "No prose, no markdown fences, no commentary."
+    )
+    parsed, raw = _call_text_model_raw(retry_system, payload, model=model, max_tokens=max_tokens)
+    return parsed, raw, parsed is None
 
 
 def _media_key(media_type: Any) -> str:
@@ -585,6 +672,182 @@ def _metric_windows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "median_comments": _median([row.get("comments") for row in window_rows if row.get("comments") is not None]),
             }
     return out
+
+
+def _num(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mean(values: list[Any]) -> float | None:
+    clean = [_num(value) for value in values]
+    clean = [value for value in clean if value is not None]
+    if not clean:
+        return None
+    return round(sum(clean) / len(clean), 4)
+
+
+def _pctl(values: list[Any], percentile: float) -> float | None:
+    clean = sorted(value for value in (_num(item) for item in values) if value is not None)
+    if not clean:
+        return None
+    if len(clean) == 1:
+        return round(clean[0], 4)
+    idx = (len(clean) - 1) * percentile
+    lo = int(idx)
+    hi = min(lo + 1, len(clean) - 1)
+    frac = idx - lo
+    return round(clean[lo] * (1 - frac) + clean[hi] * frac, 4)
+
+
+def _norm(value: float | None, *, target: float) -> float:
+    if value is None or target <= 0:
+        return 0.0
+    return max(0.0, min(float(value) / target, 1.0))
+
+
+def _confidence_bucket(score: float) -> str:
+    if score > 0.70:
+        return "high"
+    if score >= 0.40:
+        return "medium"
+    return "low"
+
+
+def _valid_focus_evidence_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    valid: list[dict[str, Any]] = []
+    for row in rows:
+        fingerprint = row.get("fingerprint")
+        media_hash = str(row.get("media_source_hash") or "").strip()
+        if not isinstance(fingerprint, dict) or not fingerprint:
+            continue
+        if not media_hash or media_hash == _EMPTY_MEDIA_SOURCE_HASH:
+            continue
+        valid.append(row)
+    return valid
+
+
+def _count_by_format(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"reel": 0, "image": 0, "carousel": 0}
+    for row in rows:
+        counts[_media_key(row.get("media_type"))] = counts.get(_media_key(row.get("media_type")), 0) + 1
+    return counts
+
+
+def _format_mix(counts: dict[str, int]) -> dict[str, Any]:
+    total = sum(counts.values())
+    if total <= 0:
+        return {"by_format": counts, "pct_by_format": {}, "evolution_30d": "stable"}
+    return {
+        "by_format": counts,
+        "pct_by_format": {key: round(value / total, 4) for key, value in counts.items()},
+        "evolution_30d": "stable",
+    }
+
+
+def _metric_baselines(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {"by_format": {}, "by_sub_bucket": {}}
+    for media in ("reel", "image", "carousel"):
+        bucket = [row for row in rows if _media_key(row.get("media_type")) == media]
+        out["by_format"][media] = {
+            "post_count": len(bucket),
+            "p10_views": _pctl([row.get("views") for row in bucket], 0.90),
+            "p50_views": _pctl([row.get("views") for row in bucket], 0.50),
+            "p90_views": _pctl([row.get("views") for row in bucket], 0.10),
+            "p10_likes": _pctl([row.get("likes") for row in bucket], 0.90),
+            "p50_likes": _pctl([row.get("likes") for row in bucket], 0.50),
+            "p90_likes": _pctl([row.get("likes") for row in bucket], 0.10),
+            "p10_comments": _pctl([row.get("comments") for row in bucket], 0.90),
+            "p50_comments": _pctl([row.get("comments") for row in bucket], 0.50),
+            "p90_comments": _pctl([row.get("comments") for row in bucket], 0.10),
+            "median_d7_percentile": _median([row.get("percentile") for row in bucket]),
+            "median_d21_percentile": _median([row.get("d21_percentile") for row in bucket]),
+        }
+    return out
+
+
+def _metric_trends(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    trends: list[dict[str, Any]] = []
+    for media in ("reel", "image", "carousel"):
+        media_rows = sorted(
+            [row for row in rows if _media_key(row.get("media_type")) == media],
+            key=lambda row: _parse_dt(row.get("posted_at")) or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        if len(media_rows) < 10:
+            continue
+        recent = _median([row.get("percentile") for row in media_rows[:5]])
+        previous = _median([row.get("percentile") for row in media_rows[5:10]])
+        if recent is None or previous is None:
+            continue
+        delta = round(recent - previous, 2)
+        if delta <= -10:
+            direction = "rising"
+        elif delta >= 10:
+            direction = "declining"
+        elif abs(delta) <= 5:
+            direction = "stable"
+        else:
+            direction = "watching"
+        trends.append({
+            "dimension": f"{media}.d7_percentile",
+            "direction": direction,
+            "recent_window_posts": 5,
+            "previous_window_posts": 5,
+            "delta_pp": delta,
+        })
+    return trends
+
+
+def _follower_trends(conn: Any, feeder_id: int) -> dict[str, Any]:
+    try:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select snapshot_date_ist, follower_count
+                from public.feeder_follower_snapshots
+                where feeder_id = %s
+                  and snapshot_date_ist >= (now() at time zone 'Asia/Kolkata')::date - interval '90 days'
+                order by snapshot_date_ist asc
+                """,
+                (feeder_id,),
+            )
+            rows = cur.fetchall()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"current_count": None, "avg_weekly_delta": None, "trend_30d": "unknown"}
+    if not rows:
+        return {"current_count": None, "avg_weekly_delta": None, "trend_30d": "unknown"}
+    counts = [int(row.get("follower_count") or 0) for row in rows]
+    weekly_delta = (counts[-1] - counts[0]) / max(len(rows) / 7, 1)
+    last_30 = counts[-30:] if len(counts) >= 30 else counts
+    trend_delta = last_30[-1] - last_30[0] if len(last_30) >= 2 else 0
+    if trend_delta > max(100, abs(last_30[0]) * 0.005 if last_30 else 0):
+        trend = "rising"
+    elif trend_delta < -max(100, abs(last_30[0]) * 0.005 if last_30 else 0):
+        trend = "declining"
+    else:
+        trend = "stable"
+    return {
+        "current_count": counts[-1],
+        "avg_weekly_delta": round(weekly_delta, 2),
+        "trend_30d": trend,
+    }
+
+
+def _cadence_profile(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    parsed = [dt for row in rows for dt in [_parse_dt(row.get("posted_at"))] if dt is not None]
+    if len(parsed) < 2:
+        return {"posts_per_week_avg": len(parsed), "trend_4w": "stable"}
+    span_days = max(1, (max(parsed) - min(parsed)).days)
+    return {"posts_per_week_avg": round(len(parsed) / max(span_days / 7, 1), 2), "trend_4w": "stable"}
 
 
 def _compact_evidence_post(row: dict[str, Any]) -> dict[str, Any]:
@@ -816,6 +1079,1000 @@ def _apply_server_pattern_stats(structured_patterns: Any, evidence_rows: list[di
     return data
 
 
+def _positive_signature_text(pattern: dict[str, Any]) -> str:
+    signature = pattern.get("content_signature") if isinstance(pattern.get("content_signature"), dict) else {}
+    values: list[str] = [
+        str(pattern.get("label") or ""),
+        str(pattern.get("summary") or ""),
+        str(signature.get("what_happens") or ""),
+        str(signature.get("hook_style") or ""),
+        str(signature.get("production_style") or ""),
+        str(signature.get("voice_tone") or ""),
+        " ".join(str(value) for value in (signature.get("key_craft_moves") or []) if value),
+    ]
+    return " ".join(values)
+
+
+def _negative_signature_text(pattern: dict[str, Any]) -> str:
+    signature = pattern.get("content_signature") if isinstance(pattern.get("content_signature"), dict) else {}
+    return " ".join(str(value) for value in (signature.get("not_this") or []) if value)
+
+
+def _boundary_scores(candidate_text: str, pattern: dict[str, Any]) -> tuple[float, float]:
+    return (
+        _pattern_similarity(candidate_text, _positive_signature_text(pattern)),
+        _pattern_similarity(candidate_text, _negative_signature_text(pattern)),
+    )
+
+
+def _valid_existing_pattern_match(candidate_text: str, existing_pattern: dict[str, Any]) -> bool:
+    positive_score, negative_score = _boundary_scores(candidate_text, existing_pattern)
+    return positive_score > negative_score
+
+
+def _legacy_status_to_v2(value: Any) -> str:
+    status = str(value or "emerging").strip().lower()
+    if status == "watchlist":
+        return "watching"
+    if status in {"emerging", "strengthening", "stable", "watching", "weakening", "decaying", "archived", "conflict"}:
+        return status
+    return "emerging"
+
+
+def _v2_status_to_legacy(value: Any) -> str:
+    status = str(value or "emerging").strip().lower()
+    if status == "watching":
+        return "watchlist"
+    return status
+
+
+def _lifecycle_rank(status: Any) -> int:
+    order = {
+        "archived": -3,
+        "decaying": -2,
+        "weakening": -1,
+        "watching": 0,
+        "emerging": 1,
+        "strengthening": 2,
+        "stable": 3,
+        "conflict": 3,
+    }
+    return order.get(str(status or "").lower(), 0)
+
+
+def _derive_lifecycle_status(previous_status: Any, candidate: dict[str, Any]) -> str:
+    prev = _legacy_status_to_v2(previous_status)
+    evidence_count = int(candidate.get("evidence_count_window") or 0)
+    window_posts = int(candidate.get("window_posts") or 0)
+    last_seen = int(candidate.get("last_seen_n_posts_ago") or 999)
+    opportunities = int(candidate.get("opportunities_since_seen") or 0)
+    evidence_last_5 = int(candidate.get("evidence_in_last_5_posts") or 0)
+    evidence_last_7 = int(candidate.get("evidence_in_last_7_posts") or 0)
+    evidence_last_12 = int(candidate.get("evidence_in_last_12_posts") or 0)
+    evidence_last_18 = int(candidate.get("evidence_in_last_18_posts") or 0)
+    strong_single = bool(candidate.get("single_strong_signal"))
+    window_expired = bool(candidate.get("window_expired"))
+    competing = bool(candidate.get("competing_pattern_strengthening"))
+
+    if prev == "archived":
+        return "archived"
+    if evidence_last_18 == 0 or window_expired or opportunities >= 18:
+        return "archived" if prev == "decaying" else "decaying"
+    if prev == "decaying":
+        return "decaying"
+    if evidence_last_12 <= 1 and opportunities >= 12:
+        return "decaying" if prev == "weakening" else "weakening"
+    if prev == "weakening":
+        return "weakening"
+    if evidence_last_7 <= 1 and opportunities >= 7:
+        return "weakening" if prev == "watching" else prev
+    if prev == "stable" and last_seen >= 5 and competing:
+        return "watching"
+    if evidence_count >= 5 and window_posts >= 10:
+        return "stable" if prev in {"strengthening", "stable"} else "strengthening"
+    if evidence_last_12 >= 5:
+        return "strengthening"
+    if evidence_last_5 >= 2 or strong_single:
+        return "emerging" if prev in {"emerging", "watching"} else prev
+    return prev if prev not in {"watching"} else "watching"
+
+
+def _metric_direction(delta_pp: float | None) -> str:
+    if delta_pp is None:
+        return "stable"
+    if delta_pp <= -10:
+        return "rising"
+    if delta_pp >= 10:
+        return "declining"
+    return "stable"
+
+
+def _confidence_for_candidate(cohort_size: int, vs_baseline_pp: float | None, status: str, last_seen: int) -> dict[str, Any]:
+    metric_magnitude = min(abs(float(vs_baseline_pp or 0)) / 40, 1.0)
+    stability_factor = {
+        "stable": 1.0,
+        "strengthening": 0.75,
+        "emerging": 0.45,
+        "watching": 0.4,
+        "weakening": 0.35,
+        "decaying": 0.25,
+        "archived": 0.1,
+        "conflict": 0.45,
+    }.get(status, 0.35)
+    recency_factor = 1.0 - min(max(last_seen, 0), 18) / 18
+    score = (
+        0.40 * _norm(cohort_size, target=5)
+        + 0.25 * metric_magnitude
+        + 0.20 * stability_factor
+        + 0.15 * recency_factor
+    )
+    rounded = round(score, 4)
+    return {
+        "score": rounded,
+        "bucket": _confidence_bucket(rounded),
+        "components": {
+            "cohort_size": round(_norm(cohort_size, target=5), 4),
+            "metric_magnitude": round(metric_magnitude, 4),
+            "pattern_stability": round(stability_factor, 4),
+            "recency": round(recency_factor, 4),
+        },
+    }
+
+
+def _associated_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "views_x_avg": _mean([row.get("views_multiple") for row in rows]),
+        "comments_x_avg": _mean([row.get("comments_multiple") for row in rows]),
+        "likes_x_avg": _mean([row.get("likes_multiple") for row in rows]),
+        "follower_delta_avg": None,
+    }
+
+
+def _engagement_skew(metrics: dict[str, Any]) -> list[str]:
+    skew: list[str] = []
+    if _num(metrics.get("views_x_avg")) is not None and float(metrics["views_x_avg"]) >= 2.0:
+        skew.append("view_spiking")
+    if _num(metrics.get("comments_x_avg")) is not None and float(metrics["comments_x_avg"]) >= 2.0:
+        skew.append("comment_spiking")
+    if _num(metrics.get("likes_x_avg")) is not None and float(metrics["likes_x_avg"]) >= 2.0:
+        skew.append("like_heavy")
+    return skew
+
+
+def _content_text_from_fingerprint(row: dict[str, Any]) -> str:
+    fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
+    bits = [
+        row.get("caption"),
+        fp.get("content_summary"),
+        fp.get("topic"),
+        fp.get("hook"),
+        fp.get("payoff"),
+        fp.get("visual_sequence"),
+        fp.get("emotional_trigger"),
+        fp.get("caption_role"),
+        " ".join(str(value) for value in (fp.get("craft_moves") or []) if value) if isinstance(fp.get("craft_moves"), list) else "",
+    ]
+    return " ".join(str(bit) for bit in bits if bit)
+
+
+def _candidate_rows_for_terms(rows: list[dict[str, Any]], terms: set[str], media_type: str) -> list[dict[str, Any]]:
+    matched: list[dict[str, Any]] = []
+    for row in rows:
+        if media_type != "common" and _media_key(row.get("media_type")) != media_type:
+            continue
+        if _pattern_match(terms, set(_pattern_terms(_content_text_from_fingerprint(row)))):
+            matched.append(row)
+    return matched
+
+
+def _build_candidate_from_summary(
+    *,
+    summary: str,
+    media_type: str,
+    rows: list[dict[str, Any]],
+    format_baseline: float | None,
+    previous_pattern: dict[str, Any] | None = None,
+    source: str = "pattern",
+) -> dict[str, Any] | None:
+    clean_summary = re.sub(r"\s+", " ", str(summary or "").strip())
+    if not clean_summary:
+        return None
+    terms = set(_pattern_terms(clean_summary))
+    if not terms:
+        return None
+    matched = _candidate_rows_for_terms(rows, terms, media_type)
+    if not matched and previous_pattern:
+        proof = {str(value) for value in (previous_pattern.get("proof_post_keys") or []) if value}
+        matched = [row for row in rows if str(row.get("post_key") or "") in proof]
+    if not matched:
+        matched = [row for row in rows if media_type == "common" or _media_key(row.get("media_type")) == media_type][:2]
+    if not matched:
+        return None
+
+    ordered = sorted(matched, key=lambda row: _parse_dt(row.get("posted_at")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    median_percentile = _median([row.get("percentile") for row in ordered])
+    vs_baseline = round(float(median_percentile) - float(format_baseline), 2) if median_percentile is not None and format_baseline is not None else None
+    relevant_rows = sorted(
+        [row for row in rows if media_type == "common" or _media_key(row.get("media_type")) == media_type],
+        key=lambda row: _parse_dt(row.get("posted_at")) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    matched_keys = {str(row.get("post_key") or "") for row in ordered}
+    latest_match = _parse_dt(ordered[0].get("posted_at")) if ordered else None
+    opportunities_since_seen = 0
+    if latest_match:
+        opportunities_since_seen = sum(
+            1
+            for row in relevant_rows
+            for parsed in [_parse_dt(row.get("posted_at"))]
+            if parsed is not None and parsed > latest_match
+        )
+    evidence_last_5 = sum(1 for row in relevant_rows[:5] if str(row.get("post_key") or "") in matched_keys)
+    evidence_last_7 = sum(1 for row in relevant_rows[:7] if str(row.get("post_key") or "") in matched_keys)
+    evidence_last_12 = sum(1 for row in relevant_rows[:12] if str(row.get("post_key") or "") in matched_keys)
+    evidence_last_18 = sum(1 for row in relevant_rows[:18] if str(row.get("post_key") or "") in matched_keys)
+    previous_status = (
+        (previous_pattern.get("lifecycle") or {}).get("status")
+        if previous_pattern and isinstance(previous_pattern.get("lifecycle"), dict)
+        else previous_pattern.get("status") if previous_pattern else "emerging"
+    )
+    candidate_lifecycle = {
+        "evidence_count_window": len(ordered),
+        "window_posts": len(relevant_rows),
+        "last_seen_n_posts_ago": opportunities_since_seen,
+        "opportunities_since_seen": opportunities_since_seen,
+        "evidence_in_last_5_posts": evidence_last_5,
+        "evidence_in_last_7_posts": evidence_last_7,
+        "evidence_in_last_12_posts": evidence_last_12,
+        "evidence_in_last_18_posts": evidence_last_18,
+        "single_strong_signal": any(row.get("signal_types") for row in ordered[:1]) and (vs_baseline is not None and vs_baseline <= -15),
+        "window_expired": False,
+        "competing_pattern_strengthening": False,
+    }
+    status = _derive_lifecycle_status(previous_status, candidate_lifecycle)
+    associated = _associated_metrics(ordered)
+    confidence = _confidence_for_candidate(len(ordered), vs_baseline, status, opportunities_since_seen)
+    proof = [str(row.get("post_key") or "") for row in ordered if row.get("post_key")][:5]
+    first_seen = min((_parse_dt(row.get("posted_at")) for row in ordered if _parse_dt(row.get("posted_at"))), default=None)
+    latest_seen = max((_parse_dt(row.get("posted_at")) for row in ordered if _parse_dt(row.get("posted_at"))), default=None)
+    trigger_support: dict[str, int] = {}
+    for row in ordered:
+        for signal_type in row.get("signal_types") or []:
+            kind = _candidate_kind(signal_type)
+            trigger_support[kind] = trigger_support.get(kind, 0) + 1
+    candidate_id = f"cand_{hashlib.sha1(f'{media_type}|{clean_summary}|{source}'.encode('utf-8')).hexdigest()[:10]}"
+    return {
+        "candidate_id": candidate_id,
+        "format": media_type,
+        "summary_seed": clean_summary,
+        "source": source,
+        "existing_pattern_id": previous_pattern.get("pattern_id") if previous_pattern else None,
+        "evidence_post_keys": proof,
+        "fingerprint_summary": clean_summary,
+        "server_classification": {
+            "evidence_density": "strong" if len(ordered) >= 5 else "moderate" if len(ordered) >= 2 else "weak",
+            "metric_direction": _metric_direction(vs_baseline),
+            "vs_baseline": "outperforms" if vs_baseline is not None and vs_baseline <= -10 else "underperforms" if vs_baseline is not None and vs_baseline >= 10 else "matches",
+            "lifecycle_phase": status,
+            "engagement_skew": _engagement_skew(associated),
+        },
+        "server_fields": {
+            "metric_effects": {
+                "median_d7_percentile_in_pattern": median_percentile,
+                "vs_baseline_pp": vs_baseline,
+                "associated_metrics": associated,
+                "confidence": confidence,
+            },
+            "lifecycle": {
+                "status": status,
+                "evidence_count_window": len(ordered),
+                "window_posts": len(relevant_rows),
+                "last_seen_n_posts_ago": opportunities_since_seen,
+                "opportunities_since_seen": opportunities_since_seen,
+                "first_seen_at": first_seen.isoformat() if first_seen else None,
+                "promoted_at": latest_seen.isoformat() if status in {"strengthening", "stable"} and latest_seen else None,
+                "trigger_support": trigger_support,
+            },
+            "proof_post_keys": proof,
+        },
+    }
+
+
+def _previous_pattern_registry(current: dict[str, Any]) -> list[dict[str, Any]]:
+    registry = current.get("pattern_registry")
+    return [dict(item) for item in registry if isinstance(item, dict)] if isinstance(registry, list) else []
+
+
+def _legacy_patterns_as_v2(current: dict[str, Any]) -> list[dict[str, Any]]:
+    existing = _previous_pattern_registry(current)
+    if existing:
+        return existing
+    structured = current.get("structured_patterns") if isinstance(current.get("structured_patterns"), dict) else {}
+    rows = structured.get("patterns") if isinstance(structured.get("patterns"), list) else []
+    registry: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        summary = str(row.get("summary") or "").strip()
+        fmt = _media_key(row.get("format") or "common")
+        if str(row.get("format") or "").lower() == "common":
+            fmt = "common"
+        pattern_id = str(row.get("pattern_id") or "") or _pattern_id(fmt, summary)
+        label = " ".join(_pattern_terms(summary)[:2]).replace("_", " ").title() or "Pattern"
+        registry.append({
+            "pattern_id": pattern_id,
+            "format": fmt,
+            "label": label[:48],
+            "summary": summary,
+            "content_signature": {
+                "what_happens": summary,
+                "hook_style": "",
+                "production_style": "",
+                "voice_tone": "",
+                "key_craft_moves": [],
+                "not_this": [],
+            },
+            "metric_effects": {},
+            "lifecycle": {
+                "status": _legacy_status_to_v2(row.get("status")),
+                "evidence_count_window": int(row.get("evidence_count_90d") or 0),
+                "window_posts": int(row.get("media_post_count_30d") or 0),
+                "last_seen_n_posts_ago": int(row.get("opportunities_since_seen") or 0),
+                "opportunities_since_seen": int(row.get("opportunities_since_seen") or 0),
+                "first_seen_at": None,
+                "promoted_at": None,
+                "trigger_support": row.get("trigger_support") or {},
+            },
+            "proof_post_keys": row.get("proof_post_keys") or [],
+            "latest_tweak": "",
+            "recent_tweaks": [],
+        })
+    return registry
+
+
+def _build_content_profile(result: dict[str, Any], rows: list[dict[str, Any]], llm_updates: dict[str, Any] | None = None) -> dict[str, Any]:
+    updates = llm_updates if isinstance(llm_updates, dict) else {}
+    counts = _count_by_format(rows)
+    voice = updates.get("voice") if isinstance(updates.get("voice"), dict) else {}
+    production = updates.get("production") if isinstance(updates.get("production"), dict) else {}
+    format_mix = _format_mix(counts)
+    notes = updates.get("evolution_notes") if isinstance(updates.get("evolution_notes"), list) else []
+    if not notes:
+        notes = [
+            str(result.get("focus_md_common") or "").strip().split(".")[0][:160]
+        ] if str(result.get("focus_md_common") or "").strip() else []
+    notes, _ = _clean_language_list(notes, limit=2)
+    tone_range, _ = _clean_language_list(voice.get("tone_range"), limit=5)
+    return {
+        "voice": {
+            "dominant_tone": _clean_language(voice.get("dominant_tone"), "")[0],
+            "tone_range": tone_range,
+            "register": _clean_language(voice.get("register"), "")[0],
+            "language_mix": _clean_language(voice.get("language_mix"), "")[0],
+            "cta_style": _clean_language(voice.get("cta_style"), "")[0],
+        },
+        "production": _sanitize_language_tree(production) if production else {"by_format": {}, "human_presence": ""},
+        "format_mix": format_mix,
+        "evolution_notes": [str(note) for note in notes if str(note).strip()][:2],
+    }
+
+
+def _build_metric_profile(conn: Any, feeder_id: int, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "baselines": _metric_baselines(rows),
+        "metric_trends": _metric_trends(rows),
+        "follower_trends": _follower_trends(conn, feeder_id),
+        "cadence": _cadence_profile(rows),
+    }
+
+
+def _stats_builder_output(
+    *,
+    conn: Any,
+    feeder: dict[str, Any],
+    rows: list[dict[str, Any]],
+    current: dict[str, Any],
+    result: dict[str, Any],
+    evidence_buckets: list[dict[str, Any]],
+    memory_candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    feeder_id = int(feeder.get("feeder_id") or feeder.get("id") or 0)
+    previous_registry = _legacy_patterns_as_v2(current)
+    format_baselines = {
+        media: (_metric_baselines(rows).get("by_format", {}).get(media) or {}).get("median_d7_percentile")
+        for media in ("reel", "image", "carousel")
+    }
+    candidates: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for pattern in previous_registry:
+        fmt = str(pattern.get("format") or "common")
+        baseline = format_baselines.get(_media_key(fmt)) if fmt != "common" else _median([row.get("percentile") for row in rows])
+        candidate = _build_candidate_from_summary(
+            summary=str(pattern.get("summary") or pattern.get("label") or ""),
+            media_type=fmt,
+            rows=rows,
+            format_baseline=baseline,
+            previous_pattern=pattern,
+            source="previous_registry",
+        )
+        if candidate and candidate["candidate_id"] not in seen_ids:
+            candidates.append(candidate)
+            seen_ids.add(candidate["candidate_id"])
+
+    structured = result.get("structured_patterns") if isinstance(result.get("structured_patterns"), dict) else {}
+    for pattern in structured.get("patterns") or []:
+        if not isinstance(pattern, dict):
+            continue
+        fmt = _media_key(pattern.get("format") or "common")
+        if str(pattern.get("format") or "").lower() == "common":
+            fmt = "common"
+        baseline = format_baselines.get(_media_key(fmt)) if fmt != "common" else _median([row.get("percentile") for row in rows])
+        candidate = _build_candidate_from_summary(
+            summary=str(pattern.get("summary") or ""),
+            media_type=fmt,
+            rows=rows,
+            format_baseline=baseline,
+            source="legacy_compiler",
+        )
+        if candidate and candidate["candidate_id"] not in seen_ids:
+            candidates.append(candidate)
+            seen_ids.add(candidate["candidate_id"])
+
+    for item in memory_candidates[:20]:
+        if not isinstance(item, dict):
+            continue
+        summary = str(item.get("merged_candidate") or "").strip()
+        if not summary:
+            continue
+        candidate = _build_candidate_from_summary(
+            summary=summary,
+            media_type="common",
+            rows=rows,
+            format_baseline=_median([row.get("percentile") for row in rows]),
+            source="signal_memory",
+        )
+        if candidate and candidate["candidate_id"] not in seen_ids:
+            candidates.append(candidate)
+            seen_ids.add(candidate["candidate_id"])
+
+    if not candidates:
+        for bucket in evidence_buckets[:12]:
+            if not isinstance(bucket, dict):
+                continue
+            for key in ("strong_patterns", "weak_patterns"):
+                values = bucket.get(key) if isinstance(bucket.get(key), list) else []
+                for value in values[:2]:
+                    candidate = _build_candidate_from_summary(
+                        summary=str(value or ""),
+                        media_type=_media_key(bucket.get("media_type")),
+                        rows=rows,
+                        format_baseline=format_baselines.get(_media_key(bucket.get("media_type"))),
+                        source=f"bucket_{key}",
+                    )
+                    if candidate and candidate["candidate_id"] not in seen_ids:
+                        candidates.append(candidate)
+                        seen_ids.add(candidate["candidate_id"])
+
+    counts = _count_by_format(rows)
+    return {
+        "meta": {
+            "feeder_id": feeder_id,
+            "handle": feeder.get("handle"),
+            "role": feeder.get("role"),
+            "window_post_count": {"total": len(rows), "by_format": counts},
+        },
+        "metric_profile": _build_metric_profile(conn, feeder_id, rows),
+        "previous_registry": previous_registry,
+        "pattern_candidates": candidates[:30],
+        "evidence_buckets": [
+            {
+                "bucket_key": bucket.get("bucket_key"),
+                "media_type": bucket.get("media_type"),
+                "bucket_summary": bucket.get("bucket_summary"),
+                "strong_patterns": bucket.get("strong_patterns") or [],
+                "weak_patterns": bucket.get("weak_patterns") or [],
+                "caption_tone_notes": bucket.get("caption_tone_notes") or [],
+                "visual_style_notes": bucket.get("visual_style_notes") or [],
+            }
+            for bucket in evidence_buckets[:24]
+            if isinstance(bucket, dict)
+        ],
+    }
+
+
+def _llm_payload_from_stats(stats: dict[str, Any], format_filter: str | None = None) -> dict[str, Any]:
+    candidates = stats.get("pattern_candidates") if isinstance(stats.get("pattern_candidates"), list) else []
+    if format_filter:
+        candidates = [item for item in candidates if _media_key(item.get("format")) == format_filter]
+    previous_registry = stats.get("previous_registry") if isinstance(stats.get("previous_registry"), list) else []
+    previous_slice = [
+        {
+            "pattern_id": item.get("pattern_id"),
+            "format": item.get("format"),
+            "label": item.get("label"),
+            "summary": item.get("summary"),
+            "content_signature": item.get("content_signature") or {},
+        }
+        for item in previous_registry[:30]
+        if isinstance(item, dict)
+    ]
+    return {
+        "previous_registry": previous_slice,
+        "compiled_stats": {
+            "meta": stats.get("meta") or {},
+            "pattern_candidates": [
+                {
+                    "candidate_id": item.get("candidate_id"),
+                    "format": item.get("format"),
+                    "evidence_post_keys": item.get("evidence_post_keys") or [],
+                    "server_classification": item.get("server_classification") or {},
+                    "fingerprint_summary": item.get("fingerprint_summary") or item.get("summary_seed") or "",
+                }
+                for item in candidates
+                if isinstance(item, dict)
+            ],
+        },
+        "evidence_buckets": [
+            bucket for bucket in (stats.get("evidence_buckets") or [])
+            if not format_filter or _media_key(bucket.get("media_type")) == format_filter
+        ],
+    }
+
+
+def _estimated_tokens(value: Any) -> int:
+    return max(1, len(json.dumps(value, default=str)) // 4)
+
+
+def _compile_v2_language(
+    stats: dict[str, Any],
+    *,
+    model: str,
+    system: str = _FOCUS_V2_COMPILER_SYSTEM,
+) -> tuple[dict[str, Any] | None, str, bool, dict[str, Any]]:
+    payload = _llm_payload_from_stats(stats)
+    if _estimated_tokens(payload) <= _LLM_INPUT_SOFT_TOKEN_LIMIT:
+        result, raw, failed = _call_text_model_with_json_retry(
+            system,
+            payload,
+            model=model,
+            max_tokens=2200,
+        )
+        return result, raw, failed, payload
+
+    merged: dict[str, Any] = {"patterns_proposed": [], "content_profile_updates": {}}
+    raw_parts: list[str] = []
+    failed_any = False
+    payloads: list[dict[str, Any]] = []
+    for media in ("reel", "image", "carousel"):
+        scoped = _llm_payload_from_stats(stats, format_filter=media)
+        if not scoped["compiled_stats"]["pattern_candidates"]:
+            continue
+        result, raw, failed = _call_text_model_with_json_retry(
+            system,
+            scoped,
+            model=model,
+            max_tokens=1600,
+        )
+        payloads.append(scoped)
+        raw_parts.append(raw)
+        failed_any = failed_any or failed
+        if not isinstance(result, dict):
+            continue
+        patterns = result.get("patterns_proposed") if isinstance(result.get("patterns_proposed"), list) else []
+        merged["patterns_proposed"].extend(patterns)
+        if not merged.get("content_profile_updates") and isinstance(result.get("content_profile_updates"), dict):
+            merged["content_profile_updates"] = result.get("content_profile_updates") or {}
+    return merged, "\n".join(raw_parts), failed_any, {"format_chunked_payloads": payloads}
+
+
+_HEDGE_RE = re.compile(r"\b(may|could|likely|perhaps|suggests|appears|seems|somewhat)\b", re.IGNORECASE)
+_METRIC_TEXT_RE = re.compile(r"(\d|%|\bpp\b|\bx\b|\bK\b|\bM\b)")
+
+
+def _clean_language(value: Any, fallback: str = "") -> tuple[str, bool]:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    invalid = False
+    if _HEDGE_RE.search(text) or _METRIC_TEXT_RE.search(text):
+        invalid = True
+        text = fallback
+        if _HEDGE_RE.search(text) or _METRIC_TEXT_RE.search(text):
+            text = ""
+    return text, invalid
+
+
+def _clean_language_list(values: Any, *, limit: int, fallback: list[str] | None = None) -> tuple[list[str], bool]:
+    source = values if isinstance(values, list) else []
+    cleaned: list[str] = []
+    invalid = False
+    for idx, value in enumerate(source[:limit]):
+        fallback_value = (fallback or [""])[idx] if fallback and idx < len(fallback) else ""
+        text, bad = _clean_language(value, fallback_value)
+        invalid = invalid or bad
+        if text:
+            cleaned.append(text)
+    return cleaned, invalid
+
+
+def _sanitize_language_tree(value: Any) -> Any:
+    if isinstance(value, str):
+        cleaned, _ = _clean_language(value, "")
+        return cleaned
+    if isinstance(value, list):
+        return [item for item in (_sanitize_language_tree(item) for item in value) if item not in ("", [], {})]
+    if isinstance(value, dict):
+        return {str(key): _sanitize_language_tree(item) for key, item in value.items()}
+    return value
+
+
+def _fallback_label(summary: str) -> str:
+    terms = [term for term in _pattern_terms(summary) if not term.isdigit()]
+    if not terms:
+        return "Content Pattern"
+    return " ".join(term.title() for term in terms[:3])
+
+
+def _fallback_signature(summary: str) -> dict[str, Any]:
+    return {
+        "what_happens": summary,
+        "hook_style": "",
+        "production_style": "",
+        "voice_tone": "",
+        "key_craft_moves": [],
+        "not_this": [],
+    }
+
+
+def _candidate_text(candidate: dict[str, Any]) -> str:
+    return " ".join([
+        str(candidate.get("summary_seed") or ""),
+        str(candidate.get("fingerprint_summary") or ""),
+    ])
+
+
+def _merge_recent_tweaks(previous: dict[str, Any], new_tweak: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    values = [item for item in (previous.get("recent_tweaks") or []) if isinstance(item, dict)]
+    if new_tweak and new_tweak.get("tweak"):
+        values.insert(0, new_tweak)
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in values:
+        key = str(item.get("tweak") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped[:3]
+
+
+def _build_pattern_registry(
+    *,
+    stats: dict[str, Any],
+    llm_result: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    candidates = {
+        str(item.get("candidate_id") or ""): item
+        for item in (stats.get("pattern_candidates") or [])
+        if isinstance(item, dict) and item.get("candidate_id")
+    }
+    previous = {
+        str(item.get("pattern_id") or ""): item
+        for item in (stats.get("previous_registry") or [])
+        if isinstance(item, dict) and item.get("pattern_id")
+    }
+    proposals = (
+        llm_result.get("patterns_proposed")
+        if isinstance(llm_result, dict) and isinstance(llm_result.get("patterns_proposed"), list)
+        else []
+    )
+    proposals_by_candidate = {
+        str(item.get("candidate_id") or ""): item
+        for item in proposals
+        if isinstance(item, dict) and item.get("candidate_id")
+    }
+    invalid_language = 0
+    rejected_matches = 0
+    registry: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+
+    for candidate_id, candidate in candidates.items():
+        proposal = proposals_by_candidate.get(candidate_id) or {}
+        candidate_summary = str(candidate.get("summary_seed") or candidate.get("fingerprint_summary") or "").strip()
+        requested_id = str(proposal.get("pattern_id_or_match") or candidate.get("existing_pattern_id") or "NEW").strip()
+        existing_pattern = previous.get(requested_id) if requested_id != "NEW" else None
+        if existing_pattern and not _valid_existing_pattern_match(_candidate_text(candidate), existing_pattern):
+            existing_pattern = None
+            requested_id = "NEW"
+            rejected_matches += 1
+        if existing_pattern:
+            pattern_id = str(existing_pattern.get("pattern_id"))
+        else:
+            pattern_id = _pattern_id(candidate.get("format") or "common", candidate_summary)
+        while pattern_id in used_ids:
+            pattern_id = f"{pattern_id}_{len(used_ids) + 1}"
+        used_ids.add(pattern_id)
+
+        old = previous.get(pattern_id) or existing_pattern or {}
+        fallback_summary = str(old.get("summary") or candidate_summary)
+        summary, bad = _clean_language(proposal.get("summary") or fallback_summary, "")
+        invalid_language += int(bad)
+        if not summary:
+            summary = "Observed content pattern."
+        label, bad = _clean_language(proposal.get("label") or old.get("label") or _fallback_label(summary), "")
+        invalid_language += int(bad)
+        if not label:
+            label = _fallback_label(summary)
+        signature_in = proposal.get("content_signature") if isinstance(proposal.get("content_signature"), dict) else {}
+        old_sig = old.get("content_signature") if isinstance(old.get("content_signature"), dict) else {}
+        fallback_sig = old_sig or _fallback_signature(summary)
+        signature: dict[str, Any] = {}
+        for key in ("what_happens", "hook_style", "production_style", "voice_tone"):
+            value, bad = _clean_language(signature_in.get(key) or fallback_sig.get(key), "")
+            signature[key] = value
+            invalid_language += int(bad)
+        moves, bad = _clean_language_list(signature_in.get("key_craft_moves"), limit=5, fallback=fallback_sig.get("key_craft_moves") or [])
+        signature["key_craft_moves"] = moves
+        invalid_language += int(bad)
+        not_this, bad = _clean_language_list(signature_in.get("not_this"), limit=4, fallback=fallback_sig.get("not_this") or [])
+        signature["not_this"] = not_this
+        invalid_language += int(bad)
+
+        server_fields = candidate.get("server_fields") if isinstance(candidate.get("server_fields"), dict) else {}
+        lifecycle = dict(server_fields.get("lifecycle") or {})
+        metric_effects = dict(server_fields.get("metric_effects") or {})
+        registry.append({
+            "pattern_id": pattern_id,
+            "format": candidate.get("format") or "common",
+            "label": label,
+            "summary": summary,
+            "content_signature": signature,
+            "metric_effects": metric_effects,
+            "lifecycle": lifecycle,
+            "proof_post_keys": server_fields.get("proof_post_keys") or [],
+            "latest_tweak": str(old.get("latest_tweak") or ""),
+            "recent_tweaks": _merge_recent_tweaks(old),
+        })
+
+    _apply_conflict_status(registry)
+    return registry, {
+        "invalid_language_fields": invalid_language,
+        "not_this_rejected_matches": rejected_matches,
+    }
+
+
+def _apply_conflict_status(registry: list[dict[str, Any]]) -> None:
+    for idx, left in enumerate(registry):
+        left_status = str((left.get("lifecycle") or {}).get("status") or "")
+        if left_status != "stable":
+            continue
+        for right in registry[idx + 1:]:
+            if left.get("format") != right.get("format"):
+                continue
+            right_status = str((right.get("lifecycle") or {}).get("status") or "")
+            if right_status != "stable":
+                continue
+            left_positive, left_negative = _boundary_scores(_positive_signature_text(right), left)
+            right_positive, right_negative = _boundary_scores(_positive_signature_text(left), right)
+            if left_negative >= left_positive and right_negative >= right_positive:
+                left.setdefault("lifecycle", {})["status"] = "conflict"
+                right.setdefault("lifecycle", {})["status"] = "conflict"
+
+
+def _compute_derived_views(pattern_registry: list[dict[str, Any]]) -> dict[str, Any]:
+    top: list[str] = []
+    bottom: list[str] = []
+    media = {
+        "reel": {"best": [], "worst": []},
+        "image": {"best": [], "worst": []},
+        "carousel": {"best": [], "worst": []},
+    }
+    engagement = {
+        "follower_spiking": [],
+        "follower_dropping": [],
+        "view_spiking": [],
+        "comment_spiking": [],
+        "like_heavy": [],
+    }
+    for pattern in pattern_registry:
+        pid = str(pattern.get("pattern_id") or "")
+        if not pid:
+            continue
+        fmt = _media_key(pattern.get("format"))
+        effects = pattern.get("metric_effects") if isinstance(pattern.get("metric_effects"), dict) else {}
+        confidence = effects.get("confidence") if isinstance(effects.get("confidence"), dict) else {}
+        confidence_bucket = str(confidence.get("bucket") or "low")
+        vs = _num(effects.get("vs_baseline_pp"))
+        status = str((pattern.get("lifecycle") or {}).get("status") or "")
+        if confidence_bucket in {"medium", "high"} and status in {"stable", "strengthening"} and vs is not None and vs <= -10:
+            top.append(pid)
+            media.setdefault(fmt, {"best": [], "worst": []})["best"].append(pid)
+        if confidence_bucket in {"medium", "high"} and status in {"weakening", "decaying"} and vs is not None and vs >= 10:
+            bottom.append(pid)
+            media.setdefault(fmt, {"best": [], "worst": []})["worst"].append(pid)
+        associated = effects.get("associated_metrics") if isinstance(effects.get("associated_metrics"), dict) else {}
+        if _num(associated.get("views_x_avg")) is not None and float(associated["views_x_avg"]) >= 2.0:
+            engagement["view_spiking"].append(pid)
+        if _num(associated.get("comments_x_avg")) is not None and float(associated["comments_x_avg"]) >= 2.0:
+            engagement["comment_spiking"].append(pid)
+        if _num(associated.get("likes_x_avg")) is not None and float(associated["likes_x_avg"]) >= 2.0:
+            engagement["like_heavy"].append(pid)
+    return {
+        "top_performers": top,
+        "bottom_performers": bottom,
+        "media_strategies": media,
+        "engagement_associations": engagement,
+    }
+
+
+def _build_delta_log(previous_registry: list[dict[str, Any]], new_registry: list[dict[str, Any]], *, fallback: str | None = None, validator_notes: dict[str, Any] | None = None) -> dict[str, Any]:
+    prev = {str(item.get("pattern_id") or ""): item for item in previous_registry if isinstance(item, dict)}
+    new = {str(item.get("pattern_id") or ""): item for item in new_registry if isinstance(item, dict)}
+    promoted: list[dict[str, Any]] = []
+    demoted: list[dict[str, Any]] = []
+    fresh_tweaks: list[dict[str, Any]] = []
+    for pid, item in new.items():
+        if pid not in prev:
+            continue
+        old_status = str((prev[pid].get("lifecycle") or {}).get("status") or "")
+        new_status = str((item.get("lifecycle") or {}).get("status") or "")
+        if _lifecycle_rank(new_status) > _lifecycle_rank(old_status):
+            promoted.append({"pattern_id": pid, "from": old_status, "to": new_status})
+        elif _lifecycle_rank(new_status) < _lifecycle_rank(old_status):
+            demoted.append({"pattern_id": pid, "from": old_status, "to": new_status})
+        if item.get("latest_tweak") and item.get("latest_tweak") != prev[pid].get("latest_tweak"):
+            fresh_tweaks.append({"pattern_id": pid, "tweak": item.get("latest_tweak")})
+    out = {
+        "added_patterns": [item for pid, item in new.items() if pid not in prev],
+        "promoted": promoted,
+        "demoted": demoted,
+        "archived": [item for pid, item in prev.items() if pid not in new],
+        "fresh_tweaks": fresh_tweaks,
+        "metric_trend_changes": [],
+    }
+    if fallback:
+        out["compiler_fallback"] = fallback
+    if validator_notes:
+        out["validator_notes"] = validator_notes
+    return out
+
+
+def _legacy_focus_from_v2(pattern_registry: list[dict[str, Any]], content_profile: dict[str, Any]) -> dict[str, str]:
+    active = [
+        item for item in pattern_registry
+        if str((item.get("lifecycle") or {}).get("status") or "") in {"stable", "strengthening", "emerging", "conflict"}
+    ]
+    ordered = sorted(
+        active,
+        key=lambda item: (
+            _lifecycle_rank((item.get("lifecycle") or {}).get("status")),
+            _num(((item.get("metric_effects") or {}).get("confidence") or {}).get("score")) or 0,
+        ),
+        reverse=True,
+    )
+
+    def sentence(pattern: dict[str, Any]) -> str:
+        label = str(pattern.get("label") or "Pattern")
+        summary = str(pattern.get("summary") or "").strip()
+        return f"{label}: {summary}" if summary else label
+
+    common_lines = [sentence(item) for item in ordered[:4]]
+    notes = content_profile.get("evolution_notes") if isinstance(content_profile.get("evolution_notes"), list) else []
+    common = " ".join([*common_lines, *[str(note) for note in notes[:1] if note]])
+    result = {"focus_md_common": _cap_words(common, _FEEDER_COMMON_WORD_LIMIT, "feeder.v2.common")[0]}
+    for media in ("reel", "image", "carousel"):
+        lines = [sentence(item) for item in ordered if _media_key(item.get("format")) == media][:4]
+        result[f"focus_md_{media}"] = _cap_words(" ".join(lines), _FEEDER_FORMAT_WORD_LIMIT, f"feeder.v2.{media}")[0]
+    return result
+
+
+def _build_compile_meta(
+    *,
+    entity: dict[str, Any],
+    version: int,
+    model: str,
+    compile_kind: str,
+    started_at: datetime,
+    stats: dict[str, Any],
+    llm_payload: dict[str, Any],
+    llm_raw: str,
+    validated_payload: dict[str, Any],
+    prompt: str = _FOCUS_V2_COMPILER_SYSTEM,
+) -> dict[str, Any]:
+    return {
+        **entity,
+        "version": version,
+        "compiled_at": datetime.now(timezone.utc).isoformat(),
+        "focus_schema_version": _FOCUS_SCHEMA_VERSION,
+        "stats_builder_version": _STATS_BUILDER_VERSION,
+        "validator_version": _VALIDATOR_VERSION,
+        "compiler_prompt_version": _FOCUS_V2_COMPILER_PROMPT_VERSION,
+        "model_version": model,
+        "compiled_stats_hash": _sha(stats),
+        "llm_input_hash": _sha({"prompt": prompt, "payload": llm_payload}),
+        "llm_output_hash": _sha(llm_raw),
+        "validated_output_hash": _sha(validated_payload),
+        "compile_kind": compile_kind,
+        "compile_duration_ms": int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000),
+    }
+
+
+def _build_feeder_focus_v2(
+    *,
+    conn: Any,
+    feeder: dict[str, Any],
+    rows: list[dict[str, Any]],
+    current: dict[str, Any],
+    legacy_result: dict[str, Any],
+    evidence_buckets: list[dict[str, Any]],
+    memory_candidates: list[dict[str, Any]],
+    model: str,
+    compile_kind: str,
+    started_at: datetime,
+    version: int,
+) -> dict[str, Any]:
+    stats = _stats_builder_output(
+        conn=conn,
+        feeder=feeder,
+        rows=rows,
+        current=current,
+        result=legacy_result,
+        evidence_buckets=evidence_buckets,
+        memory_candidates=memory_candidates,
+    )
+    llm_result, llm_raw, json_failed, llm_payload = _compile_v2_language(stats, model=model)
+    previous_registry = stats.get("previous_registry") if isinstance(stats.get("previous_registry"), list) else []
+    registry, validator_notes = _build_pattern_registry(stats=stats, llm_result=llm_result)
+    if int(validator_notes.get("invalid_language_fields") or 0) > 0 and not json_failed:
+        retry_system = (
+            f"{_FOCUS_V2_COMPILER_SYSTEM}\n\n"
+            "Your previous output used forbidden hedging or metric-like numbers. "
+            "Rewrite every user-visible string without digits, percentages, multipliers, pp, K, M, or hedge words."
+        )
+        retry_result, retry_raw, retry_failed, retry_payload = _compile_v2_language(stats, model=model, system=retry_system)
+        retry_registry, retry_notes = _build_pattern_registry(stats=stats, llm_result=retry_result)
+        if int(retry_notes.get("invalid_language_fields") or 0) < int(validator_notes.get("invalid_language_fields") or 0):
+            llm_result = retry_result
+            llm_payload = retry_payload
+            registry = retry_registry
+            validator_notes = retry_notes
+        llm_raw = "\n".join(part for part in (llm_raw, retry_raw) if part)
+        json_failed = json_failed or retry_failed
+    content_updates = (
+        llm_result.get("content_profile_updates")
+        if isinstance(llm_result, dict) and isinstance(llm_result.get("content_profile_updates"), dict)
+        else {}
+    )
+    content_profile = _build_content_profile(legacy_result, rows, content_updates)
+    metric_profile = stats.get("metric_profile") or _build_metric_profile(conn, int(feeder.get("feeder_id") or 0), rows)
+    derived = _compute_derived_views(registry)
+    fallback = "json_parse" if json_failed else "invalid_language" if int(validator_notes.get("invalid_language_fields") or 0) > 0 else None
+    delta = _build_delta_log(previous_registry, registry, fallback=fallback, validator_notes=validator_notes)
+    validated = {
+        "content_profile": content_profile,
+        "metric_profile": metric_profile,
+        "pattern_registry": registry,
+        "derived_views": derived,
+        "delta_log": delta,
+    }
+    compile_meta = _build_compile_meta(
+        entity={
+            "feeder_id": int(feeder.get("feeder_id") or 0),
+            "handle": feeder.get("handle"),
+            "role": feeder.get("role"),
+            "window_post_count": (stats.get("meta") or {}).get("window_post_count") or {},
+        },
+        version=version,
+        model=model,
+        compile_kind=compile_kind,
+        started_at=started_at,
+        stats=stats,
+        llm_payload=llm_payload,
+        llm_raw=llm_raw,
+        validated_payload=validated,
+    )
+    return {**validated, "compile_meta": compile_meta, "legacy_focus": _legacy_focus_from_v2(registry, content_profile)}
+
+
 def _fetch_post_context(conn: Any, post_key: str) -> dict[str, Any] | None:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -836,6 +2093,51 @@ def _fetch_post_context(conn: Any, post_key: str) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+def _serialize_focus_v2_slice(row: dict[str, Any], media_key: str, *, max_tokens: int = 2000) -> str:
+    content = row.get("content_profile") if isinstance(row.get("content_profile"), dict) else {}
+    metric = row.get("metric_profile") if isinstance(row.get("metric_profile"), dict) else {}
+    registry = row.get("pattern_registry") if isinstance(row.get("pattern_registry"), list) else []
+    active_patterns = []
+    for pattern in registry:
+        if not isinstance(pattern, dict) or _media_key(pattern.get("format")) != media_key:
+            continue
+        status = str((pattern.get("lifecycle") or {}).get("status") or "")
+        if status in {"archived", "decaying"}:
+            continue
+        effects = pattern.get("metric_effects") if isinstance(pattern.get("metric_effects"), dict) else {}
+        confidence = effects.get("confidence") if isinstance(effects.get("confidence"), dict) else {}
+        active_patterns.append({
+            "pattern_id": pattern.get("pattern_id"),
+            "label": pattern.get("label"),
+            "summary": pattern.get("summary"),
+            "status": status,
+            "confidence": confidence.get("bucket"),
+            "recent_tweaks": pattern.get("recent_tweaks") or [],
+        })
+    payload = {
+        "content_profile": {
+            "voice": content.get("voice") if isinstance(content.get("voice"), dict) else {},
+            "production_for_media": ((content.get("production") or {}).get("by_format") or {}).get(media_key)
+            if isinstance(content.get("production"), dict)
+            else {},
+            "evolution_notes": content.get("evolution_notes") or [],
+        },
+        "media_metric_context": {
+            "trend": [
+                item for item in (metric.get("metric_trends") or [])
+                if isinstance(item, dict) and str(item.get("dimension") or "").startswith(f"{media_key}.")
+            ],
+        },
+        "patterns": active_patterns[:8],
+    }
+    text = json.dumps(payload, ensure_ascii=True, default=str)
+    while _estimated_tokens(text) > max_tokens and active_patterns:
+        active_patterns.pop()
+        payload["patterns"] = active_patterns
+        text = json.dumps(payload, ensure_ascii=True, default=str)
+    return text
+
+
 def feeder_focus_slice(conn: Any, feeder_id: int, media_type: Any) -> dict[str, Any]:
     key = _media_key(media_type)
     field = {
@@ -843,10 +2145,11 @@ def feeder_focus_slice(conn: Any, feeder_id: int, media_type: Any) -> dict[str, 
         "image": "focus_md_image",
         "carousel": "focus_md_carousel",
     }[key]
+    v2_columns = ", content_profile, metric_profile, pattern_registry" if FOCUS_V2_SLICES_ENABLED else ""
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"""
-            select focus_version, focus_md_common, {field} as focus_md
+            select focus_version, focus_md_common, {field} as focus_md{v2_columns}
             from public.feeder_focus
             where feeder_id = %s
             limit 1
@@ -856,11 +2159,21 @@ def feeder_focus_slice(conn: Any, feeder_id: int, media_type: Any) -> dict[str, 
         row = cur.fetchone()
     if not row:
         return {"version": 0, "text": "", "media_key": key}
+    if FOCUS_V2_SLICES_ENABLED and isinstance(row.get("pattern_registry"), list):
+        text = _serialize_focus_v2_slice(dict(row), key)
+        if text.strip():
+            return {
+                "version": int(row.get("focus_version") or 0),
+                "text": text,
+                "media_key": key,
+                "source": "v2",
+            }
     parts = [str(row.get("focus_md_common") or "").strip(), str(row.get("focus_md") or "").strip()]
     return {
         "version": int(row.get("focus_version") or 0),
         "text": "\n".join(part for part in parts if part),
         "media_key": key,
+        "source": "legacy",
     }
 
 
@@ -1065,9 +2378,14 @@ def _fetch_feeder_evidence(conn: Any, feeder_id: int) -> tuple[dict[str, Any] | 
             """
             select p.post_key, p.post_url, p.caption, p.posted_at,
                    lower(coalesce(p.media_type, 'image')) as media_type,
-                   pm.percentile_performance as percentile,
+                   coalesce(pm.percentile_performance_exact, pm.percentile_performance::numeric) as percentile,
                    pm.views, pm.likes, pm.comments,
-                   pf.fingerprint,
+                   pm.views_multiple, pm.likes_multiple, pm.comments_multiple,
+                   coalesce(d21.percentile_performance_exact, d21.percentile_performance::numeric) as d21_percentile,
+                   d21.views_multiple as d21_views_multiple,
+                   d21.likes_multiple as d21_likes_multiple,
+                   d21.comments_multiple as d21_comments_multiple,
+                   pf.fingerprint, pf.media_source_hash, pf.media_confidence,
                    pfr.focus_read,
                    array(
                      select distinct s.signal_type
@@ -1078,6 +2396,7 @@ def _fetch_feeder_evidence(conn: Any, feeder_id: int) -> tuple[dict[str, Any] | 
                    ) as signal_types
             from public.posts p
             join public.post_metrics pm on pm.post_key = p.post_key and pm.checkpoint = 'd7'
+            left join public.post_metrics d21 on d21.post_key = p.post_key and d21.checkpoint = 'd21'
             left join public.post_fingerprints pf on pf.post_key = p.post_key
             left join public.post_focus_reads pfr on pfr.post_key = p.post_key
             where p.feeder_id = %s
@@ -1088,11 +2407,7 @@ def _fetch_feeder_evidence(conn: Any, feeder_id: int) -> tuple[dict[str, Any] | 
             (feeder_id,),
         )
         rows = cur.fetchall()
-    evidence: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row.get("fingerprint"), dict):
-            continue
-        evidence.append(dict(row))
+    evidence = _valid_focus_evidence_rows([dict(row) for row in rows])
     all_evidence = list(evidence)
     if len(evidence) > _MAX_EVIDENCE_POSTS:
         recent = evidence[:40]
@@ -1252,6 +2567,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             _focus_log("compile_lock_skip", scope="feeder", entity_id=fid)
             continue
         try:
+            started_at = datetime.now(timezone.utc)
             feeder, evidence, all_evidence = _fetch_feeder_evidence(conn, fid)
             if not feeder or not evidence:
                 skipped += 1
@@ -1267,6 +2583,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                 continue
             current = _fetch_current_feeder_focus(conn, fid) or {}
             rebuild_now = bool(full_rebuild or _full_rebuild_due(current))
+            compile_kind = "full_rebuild" if rebuild_now else "weekly_update"
             model = FOCUS_REBUILD_MODEL if rebuild_now else FOCUS_COMPILER_MODEL
             previous_patterns = current.get("structured_patterns") or {}
             metric_windows = _metric_windows(all_evidence)
@@ -1289,7 +2606,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                 for row in all_evidence
             ]
             source_payload = {
-                "mode": "full_rebuild" if rebuild_now else "weekly_update",
+                "mode": compile_kind,
                 "feeder": feeder,
                 "previous_focus": {
                     "structured_patterns": previous_patterns,
@@ -1308,7 +2625,12 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                 "stage_b_memory_candidates": memory_candidates,
             }
             source_hash = _sha(source_payload)
-            if not rebuild_now and current.get("source_hash") == source_hash:
+            current_meta = current.get("compile_meta") if isinstance(current.get("compile_meta"), dict) else {}
+            v2_version_stale = (
+                current_meta.get("focus_schema_version") != _FOCUS_SCHEMA_VERSION
+                or current_meta.get("validator_version") != _VALIDATOR_VERSION
+            )
+            if not rebuild_now and not v2_version_stale and current.get("source_hash") == source_hash:
                 skipped += 1
                 _mark_focus_compile_lock(conn, "feeder", fid, success=True)
                 _focus_log(
@@ -1338,6 +2660,20 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             structured_patterns = _normalize_patterns(structured_patterns)
             patterns_after = len((structured_patterns.get("patterns") if isinstance(structured_patterns, dict) else []) or [])
             version = int(current.get("focus_version") or 0) + 1
+            v2 = _build_feeder_focus_v2(
+                conn=conn,
+                feeder=feeder,
+                rows=all_evidence,
+                current=current,
+                legacy_result={**result, "structured_patterns": structured_patterns},
+                evidence_buckets=evidence_buckets,
+                memory_candidates=memory_candidates,
+                model=model,
+                compile_kind=compile_kind,
+                started_at=started_at,
+                version=version,
+            )
+            legacy_focus = v2.get("legacy_focus") if isinstance(v2.get("legacy_focus"), dict) else {}
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -1345,9 +2681,11 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                       feeder_id, feed_id, structured_patterns, evidence_summary,
                       focus_md_common, focus_md_reel, focus_md_image, focus_md_carousel,
                       focus_version, prompt_version, model_version, source_hash,
+                      content_profile, metric_profile, pattern_registry, derived_views, delta_log, compile_meta,
                       focus_updated_at, last_full_rebuild_at, created_at, updated_at
                     )
-                    values (%s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, now(),
+                    values (%s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, now(),
                             case when %s then now() else null end, now(), now())
                     on conflict (feeder_id) do update set
                       feed_id = excluded.feed_id,
@@ -1361,6 +2699,12 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                       prompt_version = excluded.prompt_version,
                       model_version = excluded.model_version,
                       source_hash = excluded.source_hash,
+                      content_profile = excluded.content_profile,
+                      metric_profile = excluded.metric_profile,
+                      pattern_registry = excluded.pattern_registry,
+                      derived_views = excluded.derived_views,
+                      delta_log = excluded.delta_log,
+                      compile_meta = excluded.compile_meta,
                       focus_updated_at = now(),
                       last_full_rebuild_at = case when %s then now() else public.feeder_focus.last_full_rebuild_at end,
                       updated_at = now()
@@ -1370,14 +2714,20 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                         int(feeder.get("feed_id") or 0),
                         json.dumps(structured_patterns),
                         json.dumps(result.get("evidence_summary") or {}),
-                        str(result.get("focus_md_common") or ""),
-                        str(result.get("focus_md_reel") or ""),
-                        str(result.get("focus_md_image") or ""),
-                        str(result.get("focus_md_carousel") or ""),
+                        str(legacy_focus.get("focus_md_common") or result.get("focus_md_common") or ""),
+                        str(legacy_focus.get("focus_md_reel") or result.get("focus_md_reel") or ""),
+                        str(legacy_focus.get("focus_md_image") or result.get("focus_md_image") or ""),
+                        str(legacy_focus.get("focus_md_carousel") or result.get("focus_md_carousel") or ""),
                         version,
                         _FEEDER_FOCUS_PROMPT_VERSION,
                         model,
                         source_hash,
+                        json.dumps(v2.get("content_profile") or {}),
+                        json.dumps(v2.get("metric_profile") or {}),
+                        json.dumps(v2.get("pattern_registry") or []),
+                        json.dumps(v2.get("derived_views") or {}),
+                        json.dumps(v2.get("delta_log") or {}),
+                        json.dumps(v2.get("compile_meta") or {}),
                         rebuild_now,
                         rebuild_now,
                     ),
@@ -1388,14 +2738,15 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                 "compile_success",
                 scope="feeder",
                 entity_id=fid,
-                mode="full_rebuild" if rebuild_now else "weekly_update",
+                mode=compile_kind,
                 model=model,
                 evidence_count=len(evidence),
                 full_evidence_count=len(all_evidence),
                 bucket_count=len(evidence_buckets),
                 patterns_before=patterns_before,
                 patterns_after=patterns_after,
-                word_counts=_capsule_word_counts(result, ["focus_md_common", "focus_md_reel", "focus_md_image", "focus_md_carousel"]),
+                v2_patterns=len(v2.get("pattern_registry") or []),
+                word_counts=_capsule_word_counts({**result, **legacy_focus}, ["focus_md_common", "focus_md_reel", "focus_md_image", "focus_md_carousel"]),
             )
             compiled += 1
         except Exception as exc:
@@ -1415,6 +2766,305 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
     }
 
 
+def _feed_pattern_text(pattern: dict[str, Any]) -> str:
+    return " ".join([
+        str(pattern.get("label") or ""),
+        str(pattern.get("summary") or ""),
+        _positive_signature_text(pattern),
+    ])
+
+
+def _feeder_v2_patterns(feeders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for feeder in feeders:
+        registry = feeder.get("pattern_registry") if isinstance(feeder.get("pattern_registry"), list) else []
+        for pattern in registry:
+            if not isinstance(pattern, dict):
+                continue
+            status = str((pattern.get("lifecycle") or {}).get("status") or "")
+            if status in {"archived", "decaying"}:
+                continue
+            rows.append({
+                "feeder_id": int(feeder.get("id") or 0),
+                "handle": feeder.get("handle"),
+                "role": feeder.get("role"),
+                "pattern": pattern,
+            })
+    return rows
+
+
+def _cluster_feed_patterns(pattern_rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    clusters: list[list[dict[str, Any]]] = []
+    for row in pattern_rows:
+        pattern = row.get("pattern") if isinstance(row.get("pattern"), dict) else {}
+        fmt = _media_key(pattern.get("format"))
+        text = _feed_pattern_text(pattern)
+        placed = False
+        for cluster in clusters:
+            seed = cluster[0].get("pattern") if isinstance(cluster[0].get("pattern"), dict) else {}
+            if fmt != _media_key(seed.get("format")):
+                continue
+            if _pattern_similarity(text, _feed_pattern_text(seed)) >= 0.45:
+                cluster.append(row)
+                placed = True
+                break
+        if not placed:
+            clusters.append([row])
+    return clusters
+
+
+def _aggregate_metric_effects(patterns: list[dict[str, Any]]) -> dict[str, Any]:
+    effects = [
+        pattern.get("metric_effects")
+        for pattern in patterns
+        if isinstance(pattern.get("metric_effects"), dict)
+    ]
+    associated_rows = [
+        effect.get("associated_metrics")
+        for effect in effects
+        if isinstance(effect.get("associated_metrics"), dict)
+    ]
+    confidence_scores = [
+        _num((effect.get("confidence") or {}).get("score"))
+        for effect in effects
+        if isinstance(effect.get("confidence"), dict)
+    ]
+    confidence_score = _mean(confidence_scores) or 0.0
+    return {
+        "median_d7_percentile_in_pattern": _mean([effect.get("median_d7_percentile_in_pattern") for effect in effects]),
+        "vs_baseline_pp": _mean([effect.get("vs_baseline_pp") for effect in effects]),
+        "associated_metrics": {
+            "views_x_avg": _mean([item.get("views_x_avg") for item in associated_rows]),
+            "comments_x_avg": _mean([item.get("comments_x_avg") for item in associated_rows]),
+            "likes_x_avg": _mean([item.get("likes_x_avg") for item in associated_rows]),
+            "follower_delta_avg": _mean([item.get("follower_delta_avg") for item in associated_rows]),
+        },
+        "confidence": {
+            "score": round(float(confidence_score), 4),
+            "bucket": _confidence_bucket(float(confidence_score)),
+        },
+    }
+
+
+def _feed_lifecycle_from_patterns(patterns: list[dict[str, Any]]) -> dict[str, Any]:
+    statuses = [str((pattern.get("lifecycle") or {}).get("status") or "") for pattern in patterns]
+    stable_count = sum(1 for status in statuses if status in {"stable", "conflict"})
+    strengthening_count = sum(1 for status in statuses if status == "strengthening")
+    if stable_count >= 2:
+        status = "stable"
+    elif stable_count + strengthening_count >= 2:
+        status = "strengthening"
+    else:
+        status = "emerging"
+    proof = []
+    support: dict[str, int] = {}
+    for pattern in patterns:
+        proof.extend(str(value) for value in (pattern.get("proof_post_keys") or []) if value)
+        trigger_support = (pattern.get("lifecycle") or {}).get("trigger_support")
+        if isinstance(trigger_support, dict):
+            for key, value in trigger_support.items():
+                support[str(key)] = support.get(str(key), 0) + int(value or 0)
+    return {
+        "status": status,
+        "evidence_count_window": len({key for key in proof if key}),
+        "window_posts": len(patterns),
+        "last_seen_n_posts_ago": min(
+            [int((pattern.get("lifecycle") or {}).get("last_seen_n_posts_ago") or 999) for pattern in patterns] or [999]
+        ),
+        "opportunities_since_seen": min(
+            [int((pattern.get("lifecycle") or {}).get("opportunities_since_seen") or 999) for pattern in patterns] or [999]
+        ),
+        "first_seen_at": min(
+            [str((pattern.get("lifecycle") or {}).get("first_seen_at") or "") for pattern in patterns if (pattern.get("lifecycle") or {}).get("first_seen_at")] or [None]
+        ),
+        "promoted_at": None,
+        "trigger_support": support,
+    }
+
+
+def _feed_content_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    feeders = payload.get("feeders") if isinstance(payload.get("feeders"), list) else []
+    tones: dict[str, int] = {}
+    production_styles: set[str] = set()
+    for feeder in feeders:
+        content = feeder.get("content_profile") if isinstance(feeder.get("content_profile"), dict) else {}
+        voice = content.get("voice") if isinstance(content.get("voice"), dict) else {}
+        tone = str(voice.get("dominant_tone") or "").strip()
+        if tone:
+            tones[tone] = tones.get(tone, 0) + 1
+        production = content.get("production") if isinstance(content.get("production"), dict) else {}
+        by_format = production.get("by_format") if isinstance(production.get("by_format"), dict) else {}
+        for value in by_format.values():
+            if isinstance(value, dict) and value.get("dominant"):
+                production_styles.add(str(value.get("dominant")))
+    dominant = [key for key, _ in sorted(tones.items(), key=lambda item: item[1], reverse=True)[:5]]
+    style_count = len(production_styles)
+    return {
+        "dominant_voice_signatures": dominant,
+        "production_diversity": "high" if style_count >= 6 else "medium" if style_count >= 3 else "low",
+        "format_mix_feed_level": _format_mix(_count_by_format(payload.get("metric_rows") or [])),
+        "evolution_notes": [],
+    }
+
+
+def _feed_metric_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    rows = payload.get("metric_rows") if isinstance(payload.get("metric_rows"), list) else []
+    feeder_windows = payload.get("feeder_metric_windows") if isinstance(payload.get("feeder_metric_windows"), dict) else {}
+    medians = [
+        _num(((value.get("metric_windows") or {}).get("common") or {}).get("median_percentile"))
+        for value in feeder_windows.values()
+        if isinstance(value, dict)
+    ]
+    clean = [float(value) for value in medians if value is not None]
+    if len(clean) >= 2:
+        volatility = statistics.pstdev(clean)
+        volatility_label = "high" if volatility >= 20 else "medium" if volatility >= 10 else "low"
+    else:
+        volatility_label = "unknown"
+    return {
+        "baselines": _metric_baselines(rows),
+        "metric_trends": _metric_trends(rows),
+        "cross_feeder_volatility": volatility_label,
+    }
+
+
+def _feed_anchor_lens(payload: dict[str, Any], registry: list[dict[str, Any]], legacy_anchor_lens: dict[str, Any]) -> dict[str, Any]:
+    feeders = payload.get("feeders") if isinstance(payload.get("feeders"), list) else []
+    anchor = next((row for row in feeders if str(row.get("role") or "").lower() == "anchor"), None)
+    if not anchor:
+        return legacy_anchor_lens or {}
+    feed_median = (((payload.get("metric_windows") or {}).get("common") or {}).get("median_percentile"))
+    feeder_windows = payload.get("feeder_metric_windows") if isinstance(payload.get("feeder_metric_windows"), dict) else {}
+    anchor_median = (((feeder_windows.get(str(anchor.get("id"))) or {}).get("metric_windows") or {}).get("common") or {}).get("median_percentile")
+    gap = round(float(anchor_median) - float(feed_median), 2) if _num(anchor_median) is not None and _num(feed_median) is not None else None
+    linked = []
+    for pattern in registry:
+        replication = pattern.get("replication") if isinstance(pattern.get("replication"), dict) else {}
+        links = replication.get("linked_feeder_patterns") if isinstance(replication.get("linked_feeder_patterns"), list) else []
+        if any(int(link.get("feeder_id") or 0) == int(anchor.get("id") or 0) for link in links if isinstance(link, dict)):
+            linked.append(pattern.get("pattern_id"))
+    out = dict(legacy_anchor_lens or {})
+    out.update({
+        "anchor_feeder_id": int(anchor.get("id") or 0),
+        "gap_pp": gap,
+        "direction": out.get("direction") or "stable",
+        "linked_anchor_pattern_ids": [str(value) for value in linked if value],
+    })
+    return out
+
+
+def _build_feed_focus_v2(
+    *,
+    payload: dict[str, Any],
+    current: dict[str, Any],
+    legacy_result: dict[str, Any],
+    compile_kind: str,
+    started_at: datetime,
+    version: int,
+) -> dict[str, Any]:
+    feeders = payload.get("feeders") if isinstance(payload.get("feeders"), list) else []
+    pattern_rows = _feeder_v2_patterns(feeders)
+    clusters = _cluster_feed_patterns(pattern_rows)
+    registry: list[dict[str, Any]] = []
+    divergence: list[dict[str, Any]] = []
+    for cluster in clusters:
+        feeder_ids = {int(row.get("feeder_id") or 0) for row in cluster}
+        patterns = [row.get("pattern") for row in cluster if isinstance(row.get("pattern"), dict)]
+        if len(feeder_ids) < 2:
+            pattern = patterns[0] if patterns else {}
+            effects = pattern.get("metric_effects") if isinstance(pattern.get("metric_effects"), dict) else {}
+            confidence = effects.get("confidence") if isinstance(effects.get("confidence"), dict) else {}
+            if str(confidence.get("bucket") or "") == "high":
+                divergence.append({
+                    "feeder_id": int(cluster[0].get("feeder_id") or 0),
+                    "pattern_id": pattern.get("pattern_id"),
+                    "note": str(pattern.get("summary") or ""),
+                    "evidence_posts": len(pattern.get("proof_post_keys") or []),
+                })
+            continue
+        seed = patterns[0]
+        summary = str(seed.get("summary") or "")
+        fmt = _media_key(seed.get("format"))
+        feed_pattern_id = f"feed_{_pattern_id(fmt, summary)}"
+        proof_keys: list[str] = []
+        for pattern in patterns:
+            proof_keys.extend(str(value) for value in (pattern.get("proof_post_keys") or []) if value)
+        registry.append({
+            "pattern_id": feed_pattern_id,
+            "format": fmt,
+            "label": seed.get("label") or _fallback_label(summary),
+            "summary": summary,
+            "content_signature": seed.get("content_signature") or _fallback_signature(summary),
+            "replication": {
+                "feeder_count": len(feeder_ids),
+                "linked_feeder_patterns": [
+                    {
+                        "feeder_id": int(row.get("feeder_id") or 0),
+                        "pattern_id": (row.get("pattern") or {}).get("pattern_id"),
+                    }
+                    for row in cluster
+                ],
+            },
+            "metric_effects": _aggregate_metric_effects(patterns),
+            "lifecycle": _feed_lifecycle_from_patterns(patterns),
+            "proof_post_keys": list(dict.fromkeys(proof_keys))[:8],
+        })
+    _apply_conflict_status(registry)
+    convergence = [
+        {
+            "summary": pattern.get("summary"),
+            "format": pattern.get("format"),
+            "feed_pattern_id": pattern.get("pattern_id"),
+            "feeder_ids": [
+                int(link.get("feeder_id") or 0)
+                for link in ((pattern.get("replication") or {}).get("linked_feeder_patterns") or [])
+                if isinstance(link, dict)
+            ],
+            "evidence_posts": len(pattern.get("proof_post_keys") or []),
+            "status": (pattern.get("lifecycle") or {}).get("status"),
+        }
+        for pattern in registry
+    ]
+    previous_registry = current.get("pattern_registry") if isinstance(current.get("pattern_registry"), list) else []
+    content_profile = _feed_content_profile(payload)
+    metric_profile = _feed_metric_profile(payload)
+    derived = _compute_derived_views(registry)
+    anchor_lens = _feed_anchor_lens(payload, registry, legacy_result.get("anchor_lens") if isinstance(legacy_result.get("anchor_lens"), dict) else {})
+    delta = _build_delta_log(previous_registry, registry)
+    validated = {
+        "content_profile": content_profile,
+        "metric_profile": metric_profile,
+        "pattern_registry": registry,
+        "convergence": convergence,
+        "divergence": divergence,
+        "anchor_lens": anchor_lens,
+        "derived_views": derived,
+        "delta_log": delta,
+    }
+    stats = {
+        "feed": payload.get("feed") or {},
+        "active_feeders_count": len(feeders),
+        "replicated_pattern_count": len(registry),
+        "divergence_count": len(divergence),
+    }
+    compile_meta = _build_compile_meta(
+        entity={
+            "feed_id": int((payload.get("feed") or {}).get("id") or 0),
+            "active_feeders_count": len(feeders),
+        },
+        version=version,
+        model="server",
+        compile_kind=compile_kind,
+        started_at=started_at,
+        stats=stats,
+        llm_payload={"server_feed_focus_v2": stats},
+        llm_raw="",
+        validated_payload=validated,
+        prompt="server_feed_focus_v2",
+    )
+    return {**validated, "compile_meta": compile_meta}
+
+
 def _fetch_feed_payload(conn: Any, feed_id: int) -> dict[str, Any] | None:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute("select id, name, context_bible from public.feeds where id = %s limit 1", (feed_id,))
@@ -1426,7 +3076,8 @@ def _fetch_feed_payload(conn: Any, feed_id: int) -> dict[str, Any] | None:
             select fd.id, fd.handle, coalesce(fd.role, 'standard') as role,
                    ff.structured_patterns, ff.evidence_summary,
                    ff.focus_md_common, ff.focus_md_reel, ff.focus_md_image, ff.focus_md_carousel,
-                   ff.focus_version
+                   ff.focus_version, ff.content_profile, ff.metric_profile, ff.pattern_registry,
+                   ff.derived_views, ff.delta_log, ff.compile_meta
             from public.feeders fd
             left join public.feeder_focus ff on ff.feeder_id = fd.id
             where fd.feed_id = %s and fd.status = 'active'
@@ -1439,10 +3090,17 @@ def _fetch_feed_payload(conn: Any, feed_id: int) -> dict[str, Any] | None:
             """
             select p.post_key, p.posted_at, lower(coalesce(p.media_type, 'image')) as media_type,
                    fd.id as feeder_id, fd.handle, coalesce(fd.role, 'standard') as role,
-                   pm.percentile_performance as percentile, pm.views, pm.likes, pm.comments
+                   coalesce(pm.percentile_performance_exact, pm.percentile_performance::numeric) as percentile,
+                   pm.views, pm.likes, pm.comments,
+                   pm.views_multiple, pm.likes_multiple, pm.comments_multiple,
+                   coalesce(d21.percentile_performance_exact, d21.percentile_performance::numeric) as d21_percentile,
+                   d21.views_multiple as d21_views_multiple,
+                   d21.likes_multiple as d21_likes_multiple,
+                   d21.comments_multiple as d21_comments_multiple
             from public.posts p
             join public.feeders fd on fd.id = p.feeder_id
             join public.post_metrics pm on pm.post_key = p.post_key and pm.checkpoint = 'd7'
+            left join public.post_metrics d21 on d21.post_key = p.post_key and d21.checkpoint = 'd21'
             where fd.feed_id = %s
               and p.posted_at >= now() - interval '90 days'
               and pm.percentile_performance is not null
@@ -1464,6 +3122,7 @@ def _fetch_feed_payload(conn: Any, feed_id: int) -> dict[str, Any] | None:
     return {
         "feed": dict(feed),
         "feeders": [dict(row) for row in feeders],
+        "metric_rows": metric_dicts,
         "metric_windows": _metric_windows(metric_dicts),
         "feeder_metric_windows": feeder_metric_windows,
     }
@@ -1504,6 +3163,7 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
             _focus_log("compile_lock_skip", scope="feed", entity_id=fid)
             continue
         try:
+            started_at = datetime.now(timezone.utc)
             payload = _fetch_feed_payload(conn, fid)
             if not payload:
                 skipped += 1
@@ -1534,9 +3194,10 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                 continue
             current = _fetch_current_feed_focus(conn, fid) or {}
             rebuild_now = bool(full_rebuild or _full_rebuild_due(current))
+            compile_kind = "full_rebuild" if rebuild_now else "weekly_update"
             model = FOCUS_REBUILD_MODEL if rebuild_now else FOCUS_COMPILER_MODEL
             previous_patterns = current.get("structured_patterns") or {}
-            payload["mode"] = "full_rebuild" if rebuild_now else "weekly_update"
+            payload["mode"] = compile_kind
             payload["previous_focus"] = {
                 "structured_patterns": previous_patterns,
                 "anchor_lens": current.get("anchor_lens") or {},
@@ -1552,7 +3213,12 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
             }
             payload["stage_b_memory_candidates"] = _aggregate_memory_candidates(_fetch_stage_b_candidates(conn, feed_id=fid))
             source_hash = _sha(payload)
-            if not rebuild_now and current.get("source_hash") == source_hash:
+            current_meta = current.get("compile_meta") if isinstance(current.get("compile_meta"), dict) else {}
+            v2_version_stale = (
+                current_meta.get("focus_schema_version") != _FOCUS_SCHEMA_VERSION
+                or current_meta.get("validator_version") != _VALIDATOR_VERSION
+            )
+            if not rebuild_now and not v2_version_stale and current.get("source_hash") == source_hash:
                 skipped += 1
                 _mark_focus_compile_lock(conn, "feed", fid, success=True)
                 _focus_log(
@@ -1563,7 +3229,25 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                 )
                 continue
             patterns_before = len((previous_patterns.get("patterns") if isinstance(previous_patterns, dict) else []) or [])
-            result = _call_text_model(_FEED_COMPILER_SYSTEM, payload, model=model, max_tokens=2600)
+            legacy_payload = {
+                **payload,
+                "feeders": [
+                    {
+                        "id": row.get("id"),
+                        "handle": row.get("handle"),
+                        "role": row.get("role"),
+                        "structured_patterns": row.get("structured_patterns") or {},
+                        "evidence_summary": row.get("evidence_summary") or {},
+                        "focus_md_common": row.get("focus_md_common") or "",
+                        "focus_md_reel": row.get("focus_md_reel") or "",
+                        "focus_md_image": row.get("focus_md_image") or "",
+                        "focus_md_carousel": row.get("focus_md_carousel") or "",
+                        "focus_version": row.get("focus_version") or 0,
+                    }
+                    for row in (payload.get("feeders") or [])
+                ],
+            }
+            result = _call_text_model(_FEED_COMPILER_SYSTEM, legacy_payload, model=model, max_tokens=2600)
             if not result:
                 failed += 1
                 _mark_focus_compile_lock(conn, "feed", fid, success=False, error="model_failed_or_malformed")
@@ -1573,6 +3257,14 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
             structured_patterns = _normalize_patterns(result.get("structured_patterns") or {}, cap_per_format=True)
             patterns_after = len((structured_patterns.get("patterns") if isinstance(structured_patterns, dict) else []) or [])
             version = int(current.get("focus_version") or 0) + 1
+            v2 = _build_feed_focus_v2(
+                payload=payload,
+                current=current,
+                legacy_result={**result, "structured_patterns": structured_patterns},
+                compile_kind=compile_kind,
+                started_at=started_at,
+                version=version,
+            )
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -1580,10 +3272,14 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                       feed_id, structured_patterns, anchor_lens, feed_metrics, proof_posts,
                       focus_md, capsule_common, capsule_reel, capsule_image, capsule_carousel,
                       capsule_anchor, capsule_cross, focus_version, prompt_version, model_version,
-                      source_hash, focus_updated_at, last_full_rebuild_at, created_at, updated_at
+                      source_hash, content_profile, metric_profile, pattern_registry, convergence,
+                      divergence, derived_views, delta_log, compile_meta,
+                      focus_updated_at, last_full_rebuild_at, created_at, updated_at
                     )
                     values (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, now(), case when %s then now() else null end, now(), now())
+                            %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+                            %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, now(),
+                            case when %s then now() else null end, now(), now())
                     on conflict (feed_id) do update set
                       structured_patterns = excluded.structured_patterns,
                       anchor_lens = excluded.anchor_lens,
@@ -1600,6 +3296,14 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                       prompt_version = excluded.prompt_version,
                       model_version = excluded.model_version,
                       source_hash = excluded.source_hash,
+                      content_profile = excluded.content_profile,
+                      metric_profile = excluded.metric_profile,
+                      pattern_registry = excluded.pattern_registry,
+                      convergence = excluded.convergence,
+                      divergence = excluded.divergence,
+                      derived_views = excluded.derived_views,
+                      delta_log = excluded.delta_log,
+                      compile_meta = excluded.compile_meta,
                       focus_updated_at = now(),
                       last_full_rebuild_at = case when %s then now() else public.feed_focus.last_full_rebuild_at end,
                       updated_at = now()
@@ -1621,6 +3325,14 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                         _FEED_FOCUS_PROMPT_VERSION,
                         model,
                         source_hash,
+                        json.dumps(v2.get("content_profile") or {}),
+                        json.dumps(v2.get("metric_profile") or {}),
+                        json.dumps(v2.get("pattern_registry") or []),
+                        json.dumps(v2.get("convergence") or []),
+                        json.dumps(v2.get("divergence") or []),
+                        json.dumps(v2.get("derived_views") or {}),
+                        json.dumps(v2.get("delta_log") or {}),
+                        json.dumps(v2.get("compile_meta") or {}),
                         rebuild_now,
                         rebuild_now,
                     ),
@@ -1631,11 +3343,12 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
                 "compile_success",
                 scope="feed",
                 entity_id=fid,
-                mode="full_rebuild" if rebuild_now else "weekly_update",
+                mode=compile_kind,
                 model=model,
                 feeder_count=len(payload.get("feeders") or []),
                 patterns_before=patterns_before,
                 patterns_after=patterns_after,
+                v2_patterns=len(v2.get("pattern_registry") or []),
                 word_counts=_capsule_word_counts(result, [
                     "capsule_common",
                     "capsule_reel",
