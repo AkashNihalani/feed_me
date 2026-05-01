@@ -156,10 +156,117 @@ class FocusBrainV2Test(unittest.TestCase):
 
     def test_language_and_hash_guards(self) -> None:
         clean, bad = fb._clean_language("This seems 2x better.", "Fallback.")
+        vague, vague_bad = fb._clean_language("This generally works.", "Sharper fallback.")
 
         self.assertTrue(bad)
         self.assertEqual(clean, "Fallback.")
+        self.assertTrue(vague_bad)
+        self.assertEqual(vague, "Sharper fallback.")
         self.assertEqual(fb._sha({"b": 2, "a": 1}), fb._sha({"a": 1, "b": 2}))
+
+    def test_prompt_version_stales_existing_v2_focus(self) -> None:
+        self.assertFalse(fb._focus_v2_version_stale({
+            "focus_schema_version": fb._FOCUS_SCHEMA_VERSION,
+            "validator_version": fb._VALIDATOR_VERSION,
+            "compiler_prompt_version": fb._FOCUS_V2_COMPILER_PROMPT_VERSION,
+        }))
+        self.assertTrue(fb._focus_v2_version_stale({
+            "focus_schema_version": fb._FOCUS_SCHEMA_VERSION,
+            "validator_version": fb._VALIDATOR_VERSION,
+            "compiler_prompt_version": "compiler_v2",
+        }))
+
+    def test_short_content_signature_preserves_previous_language(self) -> None:
+        previous_pattern = {
+            "pattern_id": "p1",
+            "format": "reel",
+            "label": "Caption Hook",
+            "summary": "Caption sets joke before action.",
+            "content_signature": {
+                "what_happens": "Caption frames the joke before the visual action begins.",
+                "hook_style": "Text overlay carries the premise before performer entry.",
+                "production_style": "Selfie framing, ambient audio, and single-take delivery.",
+                "voice_tone": "Deadpan and casual.",
+                "key_craft_moves": ["Caption carries setup", "Visual delivers payoff"],
+                "not_this": ["Not product informational copy", "Not music-led visual gag"],
+            },
+            "lifecycle": {"status": "stable"},
+        }
+        stats = {
+            "previous_registry": [previous_pattern],
+            "pattern_candidates": [
+                {
+                    "candidate_id": "cand_1",
+                    "format": "reel",
+                    "summary_seed": "Text overlay carries premise before performer entry. Caption frames joke before visual action begins.",
+                    "existing_pattern_id": "p1",
+                    "server_fields": {
+                        "metric_effects": {},
+                        "lifecycle": {"status": "stable"},
+                        "proof_post_keys": ["a"],
+                    },
+                }
+            ],
+        }
+        llm_result = {
+            "patterns_proposed": [
+                {
+                    "candidate_id": "cand_1",
+                    "pattern_id_or_match": "p1",
+                    "label": "Hook",
+                    "summary": "Hook.",
+                    "content_signature": {
+                        "what_happens": "Caption hook.",
+                        "hook_style": "Text.",
+                        "production_style": "Selfie.",
+                        "voice_tone": "Deadpan.",
+                        "key_craft_moves": ["Setup"],
+                        "not_this": ["Not ads"],
+                    },
+                }
+            ]
+        }
+
+        registry, notes = fb._build_pattern_registry(stats=stats, llm_result=llm_result)
+
+        self.assertGreater(notes["invalid_language_fields"], 0)
+        self.assertEqual(registry[0]["label"], "Caption Hook")
+        self.assertEqual(registry[0]["summary"], "Caption sets joke before action.")
+        self.assertEqual(
+            registry[0]["content_signature"]["what_happens"],
+            "Caption frames the joke before the visual action begins.",
+        )
+        self.assertGreaterEqual(fb._word_count(registry[0]["content_signature"]["hook_style"]), 4)
+
+    def test_content_profile_budgets_are_clipped(self) -> None:
+        profile = fb._build_content_profile(
+            {},
+            [{"media_type": "reel"}, {"media_type": "image"}],
+            {
+                "voice": {
+                    "dominant_tone": "deadpan casual ironic extra",
+                    "tone_range": ["playful ironic extra label", "earnest"],
+                    "register": "very casual spoken extra",
+                    "language_mix": "english hindi code switched extra",
+                    "cta_style": "Question prompts sit in captions and recurring series names invite viewers back without direct asks.",
+                },
+                "production": {
+                    "by_format": {
+                        "reel": "Selfie fishbowl framing with ambient location audio and no visible edit cuts in most posts.",
+                    },
+                    "human_presence": "Single subject anchors nearly every reel and image frame.",
+                },
+                "evolution_notes": [
+                    "Phone-shot vlogs dropped from dominant to occasional while studio framing leads the recent reel window.",
+                ],
+            },
+        )
+
+        self.assertLessEqual(fb._word_count(profile["voice"]["dominant_tone"]), 3)
+        self.assertLessEqual(fb._word_count(profile["voice"]["cta_style"]), 14)
+        self.assertLessEqual(fb._word_count(profile["production"]["by_format"]["reel"]), 14)
+        self.assertLessEqual(fb._word_count(profile["production"]["human_presence"]), 10)
+        self.assertLessEqual(fb._word_count(profile["evolution_notes"][0]), 18)
 
     def test_feed_focus_v2_replication_uses_pointer_arrays(self) -> None:
         feeder_pattern = {

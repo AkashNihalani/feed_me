@@ -32,7 +32,7 @@ _FEED_FOCUS_PROMPT_VERSION = "feed_focus_v1"
 _FOCUS_SCHEMA_VERSION = "v2_shadow"
 _STATS_BUILDER_VERSION = "stats_builder_v1"
 _VALIDATOR_VERSION = "v1.4"
-_FOCUS_V2_COMPILER_PROMPT_VERSION = "compiler_v2"
+_FOCUS_V2_COMPILER_PROMPT_VERSION = "compiler_v3_voice_calibrated"
 _EMPTY_MEDIA_SOURCE_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 _LLM_INPUT_SOFT_TOKEN_LIMIT = 8000
 _MAX_EVIDENCE_POSTS = 160
@@ -198,28 +198,92 @@ Rules:
 - Keep the entire response compact."""
 
 _FOCUS_V2_COMPILER_SYSTEM = """You are the language and pattern-recognition layer of a social-media intelligence brain.
-The server has already computed every number, baseline, evidence count, confidence score, and lifecycle transition.
-Your job is only:
-1. Match content candidates to existing patterns or mark them NEW.
-2. Write compact user-visible labels and content signatures.
+The server has already computed every baseline, evidence count, confidence bucket, and lifecycle transition.
+Your job is two things, in this order:
 
-You DO NOT write any number. You DO NOT decide lifecycle status. You DO NOT compute metric effects.
+First, match each candidate to an existing pattern from previous_focus.pattern_registry, or mark it NEW.
+Second, write the user-facing language for patterns and content_profile.
 
-Return JSON only:
+You DO NOT write any number, percentage, multiplier, pp, K, M, or count.
+You DO NOT decide lifecycle status, evidence counts, confidence, baselines, or metric effects.
+You DO NOT invent pattern_ids. Existing pattern_id from previous_focus, or NEW. Nothing else.
+
+VOICE:
+You write like a cold-eyed analyst documenting an account for another analyst.
+Specific, observational, declarative. No hedging. No warmth. No strategy-speak.
+Name what the camera, caption, edit, sound, face, prop, or sequence actually does.
+
+GOOD voice:
+- "Caption sets up the joke before any action begins. Visual delivers the punchline in the opening beat."
+- "Phone-shot vlogs dropped from dominant to occasional. Studio framing now leads."
+- "Implicit CTAs only. Series naming invites returning viewers without asking."
+
+BAD voice:
+- "Caption hook reel." Too short for content_signature.
+- "This account appears to have shifted toward deliberate productions." Hedged and abstract.
+- "Strong engagement on creative content." Vague, abstract, useless.
+
+Forbidden words:
+may, could, likely, perhaps, suggests, appears, seems, somewhat, fairly, quite, tends to, broadly, generally.
+
+Forbidden constructions:
+- Strategy labels without observable behavior. Do not write "authentic" or "premium positioning"; name the visible behavior.
+- Adjectives without grounding. Do not write "strong" or "compelling" unless the craft is named.
+- Hedged comparisons. Say what is visible, not what might be happening.
+
+PATTERN MATCHING:
+For each candidate in compiled_stats.pattern_candidates:
+
+Step one - try to match an existing pattern_id from previous_focus.pattern_registry.
+A match is valid only if both conditions hold:
+- The candidate's hook style and production approach are semantically equivalent to the existing pattern signature.
+- The candidate does not fit the existing pattern's not_this lines better than its positive signature.
+
+Step two - if no clean match exists, return pattern_id_or_match: "NEW".
+The server will assign a stable pattern_id.
+
+Do NOT match loosely. Shared format plus one shared craft move is not enough.
+Match only when the structural premise of the post is the same.
+
+CONTENT_SIGNATURE FIELDS:
+- what_happens: one or two sentences, at least four words, no more than thirty words. Describe the structural action of the post. Begin with the subject behavior, not the outcome.
+- hook_style: one sentence, at least four words, no more than sixteen words. Name the opening device: text, face, sound, motion, or prop.
+- production_style: one sentence, at least four words, no more than sixteen words. Name camera style, edit cadence, lighting, or sound source.
+- voice_tone: one phrase or short sentence, no more than twelve words. Name the tonal register.
+- key_craft_moves: two to five bullets. Each bullet is three to eight words and names reproducible behavior.
+- not_this: two to four bullets. Each bullet is four to ten words and names what looks similar but is not this pattern.
+
+The not_this lines are the pattern edges. Without them, future compiles collapse different patterns into one.
+
+CONTENT_PROFILE_UPDATES:
+- voice.dominant_tone, voice.register, and voice.language_mix: short labels. Inherit prior values unless recent evidence contradicts them.
+- voice.tone_range: two or three secondary tone labels.
+- voice.cta_style: one sentence, no more than fourteen words. Describe how the account asks for engagement, even when implicit.
+- production.by_format.<format>: one sentence per evidenced format, no more than fourteen words. Describe the dominant production approach.
+- production.human_presence: one phrase, no more than ten words.
+- evolution_notes: one or two lines, no more than eighteen words each. Observational only. Cite concrete shifts from server labels.
+
+INPUTS:
+- previous_focus: prior compiled focus, possibly empty for full rebuilds.
+- compiled_stats: candidates with server_classification labels, fingerprint summaries, proof_post_keys, and lifecycle phase.
+- evidence_buckets: pre-clustered fingerprint summaries.
+- new_signal_cards: signal cards with tweak text when available.
+
+OUTPUT JSON ONLY, exactly this shape:
 {
   "patterns_proposed": [
     {
-      "pattern_id_or_match": "<existing pattern_id or NEW>",
-      "candidate_id": "<server candidate_id>",
-      "label": "<2-4 words>",
-      "summary": "<brutal voice, <=12 words>",
+      "pattern_id_or_match": "<existing pattern_id from previous_focus, or NEW>",
+      "candidate_id": "<server-supplied candidate_id from compiled_stats>",
+      "label": "<two to four words>",
+      "summary": "<one declarative sentence, no more than twelve words>",
       "content_signature": {
-        "what_happens": "",
-        "hook_style": "",
-        "production_style": "",
-        "voice_tone": "",
-        "key_craft_moves": [],
-        "not_this": []
+        "what_happens": "<one or two sentences, no more than thirty words>",
+        "hook_style": "<one sentence, no more than sixteen words>",
+        "production_style": "<one sentence, no more than sixteen words>",
+        "voice_tone": "<one phrase, no more than twelve words>",
+        "key_craft_moves": ["<three to eight words>", "..."],
+        "not_this": ["<four to ten words>", "..."]
       }
     }
   ],
@@ -232,21 +296,12 @@ Return JSON only:
       "cta_style": ""
     },
     "production": {
-      "by_format": {},
+      "by_format": { "reel": "", "carousel": "", "image": "" },
       "human_presence": ""
     },
-    "format_mix": {},
     "evolution_notes": []
   }
-}
-
-Rules:
-- Declarative. Period-driven. Concrete craft language.
-- Forbidden words: may, could, likely, perhaps, suggests, appears, seems, somewhat.
-- Do not output digits, percentages, multipliers, pp, K, or M.
-- Match only when hook style and production approach are semantically equivalent.
-- Respect each existing pattern's not_this boundaries. If a candidate fits a boundary better than the positive signature, return NEW.
-- Do not invent pattern IDs. Existing ID or NEW only."""
+}"""
 
 
 def _sha(value: Any) -> str:
@@ -1441,17 +1496,17 @@ def _build_content_profile(result: dict[str, Any], rows: list[dict[str, Any]], l
         notes = [
             str(result.get("focus_md_common") or "").strip().split(".")[0][:160]
         ] if str(result.get("focus_md_common") or "").strip() else []
-    notes, _ = _clean_language_list(notes, limit=2)
-    tone_range, _ = _clean_language_list(voice.get("tone_range"), limit=5)
+    notes, _ = _clean_language_list(notes, limit=2, max_words=18)
+    tone_range, _ = _clean_language_list(voice.get("tone_range"), limit=3, max_words=3)
     return {
         "voice": {
-            "dominant_tone": _clean_language(voice.get("dominant_tone"), "")[0],
+            "dominant_tone": _clean_language(voice.get("dominant_tone"), "", max_words=3)[0],
             "tone_range": tone_range,
-            "register": _clean_language(voice.get("register"), "")[0],
-            "language_mix": _clean_language(voice.get("language_mix"), "")[0],
-            "cta_style": _clean_language(voice.get("cta_style"), "")[0],
+            "register": _clean_language(voice.get("register"), "", max_words=3)[0],
+            "language_mix": _clean_language(voice.get("language_mix"), "", max_words=4)[0],
+            "cta_style": _clean_language(voice.get("cta_style"), "", max_words=14)[0],
         },
-        "production": _sanitize_language_tree(production) if production else {"by_format": {}, "human_presence": ""},
+        "production": _clean_profile_production(production),
         "format_mix": format_mix,
         "evolution_notes": [str(note) for note in notes if str(note).strip()][:2],
     }
@@ -1666,28 +1721,61 @@ def _compile_v2_language(
     return merged, "\n".join(raw_parts), failed_any, {"format_chunked_payloads": payloads}
 
 
-_HEDGE_RE = re.compile(r"\b(may|could|likely|perhaps|suggests|appears|seems|somewhat)\b", re.IGNORECASE)
+_HEDGE_RE = re.compile(
+    r"\b(may|could|likely|perhaps|suggests|appears|seems|somewhat|fairly|quite|tends\s+to|broadly|generally)\b",
+    re.IGNORECASE,
+)
 _METRIC_TEXT_RE = re.compile(r"(\d|%|\bpp\b|\bx\b|\bK\b|\bM\b)")
+_SIGNATURE_TEXT_BUDGETS = {
+    "what_happens": {"min": 4, "max": 30},
+    "hook_style": {"min": 4, "max": 16},
+    "production_style": {"min": 4, "max": 16},
+    "voice_tone": {"min": 1, "max": 12},
+}
 
 
-def _clean_language(value: Any, fallback: str = "") -> tuple[str, bool]:
+def _clean_language(
+    value: Any,
+    fallback: str = "",
+    *,
+    min_words: int = 0,
+    max_words: int | None = None,
+) -> tuple[str, bool]:
     text = re.sub(r"\s+", " ", str(value or "").strip())
     invalid = False
-    if _HEDGE_RE.search(text) or _METRIC_TEXT_RE.search(text):
+
+    def violates(candidate: str) -> bool:
+        if _HEDGE_RE.search(candidate) or _METRIC_TEXT_RE.search(candidate):
+            return True
+        if min_words and _word_count(candidate) < min_words:
+            return True
+        return False
+
+    if violates(text):
         invalid = True
         text = fallback
-        if _HEDGE_RE.search(text) or _METRIC_TEXT_RE.search(text):
+        if violates(text):
             text = ""
+    if max_words is not None and text and _word_count(text) > max_words:
+        invalid = True
+        text = " ".join(text.split()[:max_words])
     return text, invalid
 
 
-def _clean_language_list(values: Any, *, limit: int, fallback: list[str] | None = None) -> tuple[list[str], bool]:
-    source = values if isinstance(values, list) else []
+def _clean_language_list(
+    values: Any,
+    *,
+    limit: int,
+    fallback: list[str] | None = None,
+    min_words: int = 0,
+    max_words: int | None = None,
+) -> tuple[list[str], bool]:
+    source = values if isinstance(values, list) and values else (fallback or [])
     cleaned: list[str] = []
     invalid = False
     for idx, value in enumerate(source[:limit]):
         fallback_value = (fallback or [""])[idx] if fallback and idx < len(fallback) else ""
-        text, bad = _clean_language(value, fallback_value)
+        text, bad = _clean_language(value, fallback_value, min_words=min_words, max_words=max_words)
         invalid = invalid or bad
         if text:
             cleaned.append(text)
@@ -1705,21 +1793,45 @@ def _sanitize_language_tree(value: Any) -> Any:
     return value
 
 
+def _clean_profile_production(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    by_format_in = source.get("by_format") if isinstance(source.get("by_format"), dict) else {}
+    by_format: dict[str, str] = {}
+    for media in ("reel", "carousel", "image"):
+        text, _ = _clean_language(by_format_in.get(media), "", max_words=14)
+        if text:
+            by_format[media] = text
+    human_presence, _ = _clean_language(source.get("human_presence"), "", max_words=10)
+    return {"by_format": by_format, "human_presence": human_presence}
+
+
+def _focus_v2_version_stale(compile_meta: Any) -> bool:
+    meta = compile_meta if isinstance(compile_meta, dict) else {}
+    return (
+        meta.get("focus_schema_version") != _FOCUS_SCHEMA_VERSION
+        or meta.get("validator_version") != _VALIDATOR_VERSION
+        or meta.get("compiler_prompt_version") != _FOCUS_V2_COMPILER_PROMPT_VERSION
+    )
+
+
 def _fallback_label(summary: str) -> str:
     terms = [term for term in _pattern_terms(summary) if not term.isdigit()]
     if not terms:
         return "Content Pattern"
+    if len(terms) == 1:
+        return f"{terms[0].title()} Pattern"
     return " ".join(term.title() for term in terms[:3])
 
 
 def _fallback_signature(summary: str) -> dict[str, Any]:
+    safe_summary = _clean_language(summary, "", min_words=4, max_words=30)[0] or "Observable structure defines this content pattern."
     return {
-        "what_happens": summary,
-        "hook_style": "",
-        "production_style": "",
-        "voice_tone": "",
-        "key_craft_moves": [],
-        "not_this": [],
+        "what_happens": safe_summary,
+        "hook_style": "Opening device carries the first visible premise.",
+        "production_style": "Production approach stays consistent across the pattern.",
+        "voice_tone": "Neutral observational register.",
+        "key_craft_moves": ["Primary craft move repeats"],
+        "not_this": ["Not a loose format match"],
     }
 
 
@@ -1794,11 +1906,16 @@ def _build_pattern_registry(
 
         old = previous.get(pattern_id) or existing_pattern or {}
         fallback_summary = str(old.get("summary") or candidate_summary)
-        summary, bad = _clean_language(proposal.get("summary") or fallback_summary, "")
+        summary, bad = _clean_language(proposal.get("summary"), fallback_summary, min_words=4, max_words=12)
         invalid_language += int(bad)
         if not summary:
-            summary = "Observed content pattern."
-        label, bad = _clean_language(proposal.get("label") or old.get("label") or _fallback_label(summary), "")
+            summary = "Observed content pattern repeats."
+        label, bad = _clean_language(
+            proposal.get("label"),
+            str(old.get("label") or _fallback_label(summary)),
+            min_words=2,
+            max_words=4,
+        )
         invalid_language += int(bad)
         if not label:
             label = _fallback_label(summary)
@@ -1807,13 +1924,37 @@ def _build_pattern_registry(
         fallback_sig = old_sig or _fallback_signature(summary)
         signature: dict[str, Any] = {}
         for key in ("what_happens", "hook_style", "production_style", "voice_tone"):
-            value, bad = _clean_language(signature_in.get(key) or fallback_sig.get(key), "")
+            budget = _SIGNATURE_TEXT_BUDGETS[key]
+            value, bad = _clean_language(
+                signature_in.get(key) or fallback_sig.get(key),
+                str(fallback_sig.get(key) or ""),
+                min_words=int(budget["min"]),
+                max_words=int(budget["max"]),
+            )
             signature[key] = value
             invalid_language += int(bad)
-        moves, bad = _clean_language_list(signature_in.get("key_craft_moves"), limit=5, fallback=fallback_sig.get("key_craft_moves") or [])
+        moves, bad = _clean_language_list(
+            signature_in.get("key_craft_moves"),
+            limit=5,
+            fallback=fallback_sig.get("key_craft_moves") or ["Primary craft move repeats"],
+            min_words=3,
+            max_words=8,
+        )
+        if len(moves) < 2:
+            invalid_language += 1
+            moves = [*moves, "Secondary craft behavior repeats"][:2]
         signature["key_craft_moves"] = moves
         invalid_language += int(bad)
-        not_this, bad = _clean_language_list(signature_in.get("not_this"), limit=4, fallback=fallback_sig.get("not_this") or [])
+        not_this, bad = _clean_language_list(
+            signature_in.get("not_this"),
+            limit=4,
+            fallback=fallback_sig.get("not_this") or ["Not a loose format match"],
+            min_words=4,
+            max_words=10,
+        )
+        if len(not_this) < 2:
+            invalid_language += 1
+            not_this = [*not_this, "Not any post sharing the format"][:2]
         signature["not_this"] = not_this
         invalid_language += int(bad)
 
@@ -2022,11 +2163,15 @@ def _build_feeder_focus_v2(
     llm_result, llm_raw, json_failed, llm_payload = _compile_v2_language(stats, model=model)
     previous_registry = stats.get("previous_registry") if isinstance(stats.get("previous_registry"), list) else []
     registry, validator_notes = _build_pattern_registry(stats=stats, llm_result=llm_result)
-    if int(validator_notes.get("invalid_language_fields") or 0) > 0 and not json_failed:
+    language_retry_json_failed = False
+    language_retry_count = 0
+    while int(validator_notes.get("invalid_language_fields") or 0) > 0 and not json_failed and language_retry_count < 2:
+        language_retry_count += 1
         retry_system = (
             f"{_FOCUS_V2_COMPILER_SYSTEM}\n\n"
-            "Your previous output used forbidden hedging or metric-like numbers. "
-            "Rewrite every user-visible string without digits, percentages, multipliers, pp, K, M, or hedge words."
+            "Your previous output violated field budgets, used forbidden hedging, or used metric-like text. "
+            "Rewrite every user-visible string with the required minimum detail, without digits, percentages, "
+            "multipliers, pp, K, M, or hedge words."
         )
         retry_result, retry_raw, retry_failed, retry_payload = _compile_v2_language(stats, model=model, system=retry_system)
         retry_registry, retry_notes = _build_pattern_registry(stats=stats, llm_result=retry_result)
@@ -2036,7 +2181,11 @@ def _build_feeder_focus_v2(
             registry = retry_registry
             validator_notes = retry_notes
         llm_raw = "\n".join(part for part in (llm_raw, retry_raw) if part)
-        json_failed = json_failed or retry_failed
+        language_retry_json_failed = language_retry_json_failed or retry_failed
+    if language_retry_count:
+        validator_notes["invalid_language_retry_count"] = language_retry_count
+    if language_retry_json_failed:
+        validator_notes["invalid_language_retry_json_failed"] = True
     content_updates = (
         llm_result.get("content_profile_updates")
         if isinstance(llm_result, dict) and isinstance(llm_result.get("content_profile_updates"), dict)
@@ -2625,11 +2774,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                 "stage_b_memory_candidates": memory_candidates,
             }
             source_hash = _sha(source_payload)
-            current_meta = current.get("compile_meta") if isinstance(current.get("compile_meta"), dict) else {}
-            v2_version_stale = (
-                current_meta.get("focus_schema_version") != _FOCUS_SCHEMA_VERSION
-                or current_meta.get("validator_version") != _VALIDATOR_VERSION
-            )
+            v2_version_stale = _focus_v2_version_stale(current.get("compile_meta"))
             if not rebuild_now and not v2_version_stale and current.get("source_hash") == source_hash:
                 skipped += 1
                 _mark_focus_compile_lock(conn, "feeder", fid, success=True)
@@ -3213,11 +3358,7 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
             }
             payload["stage_b_memory_candidates"] = _aggregate_memory_candidates(_fetch_stage_b_candidates(conn, feed_id=fid))
             source_hash = _sha(payload)
-            current_meta = current.get("compile_meta") if isinstance(current.get("compile_meta"), dict) else {}
-            v2_version_stale = (
-                current_meta.get("focus_schema_version") != _FOCUS_SCHEMA_VERSION
-                or current_meta.get("validator_version") != _VALIDATOR_VERSION
-            )
+            v2_version_stale = _focus_v2_version_stale(current.get("compile_meta"))
             if not rebuild_now and not v2_version_stale and current.get("source_hash") == source_hash:
                 skipped += 1
                 _mark_focus_compile_lock(conn, "feed", fid, success=True)
