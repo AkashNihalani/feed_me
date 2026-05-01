@@ -574,16 +574,73 @@ def _google_model_name(model: str) -> str:
 
 def _json_from_text(text: str) -> dict[str, Any] | None:
     raw = (text or "").strip()
-    if raw.startswith("```"):
-        lines = raw.splitlines()[1:]
-        while lines and lines[-1].strip() == "```":
-            lines.pop()
-        raw = "\n".join(lines).strip()
-    try:
-        parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        return None
+    for candidate in _json_candidates_from_text(raw):
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _json_candidates_from_text(text: str) -> list[str]:
+    raw = (text or "").strip()
+    if not raw:
+        return []
+
+    candidates = [raw]
+    for match in re.finditer(r"```(?:json)?\s*(.*?)```", raw, re.IGNORECASE | re.DOTALL):
+        fenced = (match.group(1) or "").strip()
+        if fenced:
+            candidates.append(fenced)
+    candidates.extend(_balanced_json_object_candidates(raw))
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for candidate in candidates:
+        clean = candidate.strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        unique.append(clean)
+    return unique
+
+
+def _balanced_json_object_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for idx, ch in enumerate(text or ""):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+            continue
+        if ch != "}" or depth == 0:
+            continue
+
+        depth -= 1
+        if depth == 0 and start is not None:
+            candidates.append(text[start : idx + 1])
+            start = None
+
+    return sorted(candidates, key=len, reverse=True)
 
 
 def _extract_text(payload: dict[str, Any], provider: str) -> str:

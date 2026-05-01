@@ -164,6 +164,27 @@ class FocusBrainV2Test(unittest.TestCase):
         self.assertEqual(vague, "Sharper fallback.")
         self.assertEqual(fb._sha({"b": 2, "a": 1}), fb._sha({"a": 1, "b": 2}))
 
+    def test_json_parser_extracts_fenced_json_after_preamble(self) -> None:
+        parsed = fb._json_from_text(
+            "Let's format the JSON properly.\n"
+            "```json\n"
+            '{"structured_patterns": {"patterns": []}, "focus_md_common": "Clean."}\n'
+            "```"
+        )
+
+        self.assertIsInstance(parsed, dict)
+        self.assertEqual(parsed["focus_md_common"], "Clean.")
+
+    def test_json_parser_extracts_balanced_object_after_reasoning(self) -> None:
+        parsed = fb._json_from_text(
+            'Reasoning with braces {not json}. Final: {"a": {"text": "brace } inside string"}, "b": 2} trailing.'
+        )
+
+        self.assertEqual(parsed, {"a": {"text": "brace } inside string"}, "b": 2})
+
+    def test_json_parser_rejects_genuinely_malformed_text(self) -> None:
+        self.assertIsNone(fb._json_from_text("```json\n{\"a\": true,\n```"))
+
     def test_prompt_version_stales_existing_v2_focus(self) -> None:
         self.assertFalse(fb._focus_v2_version_stale({
             "focus_schema_version": fb._FOCUS_SCHEMA_VERSION,
