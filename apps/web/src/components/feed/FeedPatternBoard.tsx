@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { PatternBoardItem, PatternBoardSupportPost } from './dashboardTypes';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { X } from 'lucide-react';
+import { type PatternBoardItem, type PatternBoardSignalCard, type PatternBoardSupportPost } from './dashboardTypes';
 
 type FeedPatternBoardProps = {
   patterns: PatternBoardItem[];
@@ -12,6 +14,12 @@ type FeedPatternBoardProps = {
 type HeadlineNumber = {
   value: string;
   qualifier: string;
+};
+
+type PreviewAsset = {
+  key: string;
+  src: string;
+  post: PatternBoardSupportPost | null;
 };
 
 function toFiniteNumber(value: unknown): number | null {
@@ -28,6 +36,16 @@ function familyTag(context: PatternBoardItem['context']): string {
 function mediaProxyUrl(postKey: string | null | undefined): string {
   const key = (postKey || '').trim();
   return key ? `/api/media?postKey=${encodeURIComponent(key)}&role=thumbnail` : '';
+}
+
+function previewAsset(post: PatternBoardSupportPost | null, forceFallback = false): PreviewAsset {
+  const fallback = mediaProxyUrl(post?.post_key);
+  const src = forceFallback ? fallback : post?.thumbnail_url || fallback;
+  return {
+    key: `${post?.post_key || 'none'}:${src || ''}`,
+    src,
+    post,
+  };
 }
 
 function compactNumber(value: number | null): string {
@@ -71,6 +89,44 @@ function patternPills(pattern: PatternBoardItem): Array<{ label: string; value: 
     avgPctile != null ? { label: 'Avg', value: `Top ${Math.round(avgPctile)}%` } : null,
     triggerCount != null && triggerCount > 0 ? { label: 'Hits', value: compactNumber(triggerCount) } : null,
   ].filter((entry): entry is { label: string; value: string } => Boolean(entry)).slice(0, 3);
+}
+
+function readableSignalCode(value: string | null | undefined): string {
+  return String(value || 'Signal')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function readablePatternType(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizedConfidence(value: string | null | undefined): string {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'high' || normalized === 'medium' || normalized === 'low') return normalized;
+  return '';
+}
+
+function proofMetrics(pattern: PatternBoardItem): Array<{ label: string; value: string }> {
+  const avgPctile = toFiniteNumber(pattern.avg_hot_percentile);
+  const matchCount = toFiniteNumber(pattern.match_count);
+  const feedersCount = toFiniteNumber(pattern.feeders_count);
+  const triggerCount = toFiniteNumber(pattern.trigger_count);
+  const recentLift = toFiniteNumber(pattern.recent_lift);
+  const anchorGap = toFiniteNumber(pattern.anchor_gap);
+
+  return [
+    avgPctile != null ? { label: 'Avg top', value: `${Math.round(avgPctile)}%` } : null,
+    matchCount != null && matchCount > 0 ? { label: 'Matches', value: compactNumber(matchCount) } : null,
+    feedersCount != null && feedersCount > 1 ? { label: 'Feeders', value: compactNumber(feedersCount) } : null,
+    recentLift != null && recentLift > 0 ? { label: 'Lift', value: `${recentLift.toFixed(1)}×` } : null,
+    anchorGap != null && anchorGap > 0 ? { label: 'Gap', value: `+${Math.round(anchorGap)}` } : null,
+    triggerCount != null && triggerCount > 0 ? { label: 'Hits', value: compactNumber(triggerCount) } : null,
+  ].filter((entry): entry is { label: string; value: string } => Boolean(entry)).slice(0, 5);
 }
 
 function ProofTile({
@@ -161,6 +217,422 @@ function ProofMosaic({ posts }: { posts: PatternBoardSupportPost[] }) {
   );
 }
 
+function FeaturedPreviewLayer({
+  asset,
+  onAnimationComplete,
+}: {
+  asset: PreviewAsset;
+  onAnimationComplete?: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0.7, scale: 1.105, filter: 'blur(24px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      transition={{ duration: 2.75, ease: [0.16, 1, 0.3, 1] }}
+      onAnimationComplete={onAnimationComplete}
+      className="absolute -inset-[24%] lg:-inset-[18%]"
+    >
+      {asset.src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- dashboard thumbnails are dynamic feed assets
+        <img
+          src={asset.src}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="h-full w-full" />
+      )}
+    </motion.div>
+  );
+}
+
+function FeaturedPreview({ post }: { post: PatternBoardSupportPost | null }) {
+  const targetAsset = useMemo(
+    () => previewAsset(post),
+    [post],
+  );
+  const [visibleAsset, setVisibleAsset] = useState(targetAsset);
+  const [incomingAsset, setIncomingAsset] = useState<PreviewAsset | null>(null);
+
+  useEffect(() => {
+    if (targetAsset.key === visibleAsset.key || typeof window === 'undefined') return;
+
+    let cancelled = false;
+    const revealAsset = (asset: PreviewAsset) => {
+      if (cancelled) return;
+      setIncomingAsset(asset);
+    };
+
+    if (!targetAsset.src) {
+      revealAsset(targetAsset);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const primaryImage = new window.Image();
+    primaryImage.onload = () => revealAsset(targetAsset);
+    primaryImage.onerror = () => {
+      const fallbackAsset = previewAsset(targetAsset.post, true);
+      if (!fallbackAsset.src || fallbackAsset.src === targetAsset.src) {
+        revealAsset({ ...targetAsset, src: '' });
+        return;
+      }
+
+      const fallbackImage = new window.Image();
+      fallbackImage.onload = () => revealAsset(fallbackAsset);
+      fallbackImage.onerror = () => revealAsset({ ...fallbackAsset, src: '' });
+      fallbackImage.src = fallbackAsset.src;
+    };
+    primaryImage.src = targetAsset.src;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetAsset, visibleAsset.key]);
+
+  return (
+    <div className="relative h-full min-h-0 overflow-hidden rounded-[22px] border-0 bg-[radial-gradient(circle_at_28%_20%,rgba(225,29,72,0.18),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))] outline-none ring-0 lg:rounded-[24px]">
+      <FeaturedPreviewLayer asset={visibleAsset} />
+      {incomingAsset && incomingAsset.key !== visibleAsset.key && (
+        <FeaturedPreviewLayer
+          key={incomingAsset.key}
+          asset={incomingAsset}
+          onAnimationComplete={() => {
+            setVisibleAsset(incomingAsset);
+            setIncomingAsset(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RailThumbnail({
+  post,
+  active,
+  onClick,
+}: {
+  post: PatternBoardSupportPost;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const fallback = mediaProxyUrl(post.post_key);
+  const [src, setSrc] = useState(() => post.thumbnail_url || fallback);
+  const [dead, setDead] = useState(false);
+  const handle = (post.handle || 'feed').replace(/^@+/, '').toUpperCase();
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'group relative h-[66px] w-[58px] shrink-0 overflow-hidden rounded-[14px] border bg-white/[0.04] transition lg:h-[58px] lg:w-[50px] xl:h-[66px] xl:w-[58px]',
+        active
+          ? 'border-[#FB7185]/58 shadow-[0_0_0_1px_rgba(225,29,72,0.22),0_10px_26px_rgba(225,29,72,0.16)]'
+          : 'border-white/[0.08] opacity-62 hover:opacity-100',
+      ].join(' ')}
+      aria-label={`Show @${handle} support post`}
+    >
+      {src && !dead ? (
+        // eslint-disable-next-line @next/next/no-img-element -- dashboard thumbnails are dynamic feed assets
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
+          onError={() => {
+            if (fallback && src !== fallback) {
+              setSrc(fallback);
+              return;
+            }
+            setDead(true);
+          }}
+        />
+      ) : (
+        <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgba(225,29,72,0.22),transparent_42%),rgba(255,255,255,0.035)]" />
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.82)_100%)] px-1.5 pb-1 pt-5">
+        <div className="truncate text-[6px] font-black uppercase tracking-[0.1em] text-white/82">
+          @{handle}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SupportPostRail({
+  posts,
+  selectedIndex,
+  onSelect,
+}: {
+  posts: PatternBoardSupportPost[];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  if (posts.length === 0) return null;
+  return (
+    <div className="min-w-0">
+      <div className="mb-1.5 flex items-center justify-between gap-3 xl:mb-2">
+        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-white/28">
+          Supporting posts
+        </div>
+        <div className="text-[8px] font-black uppercase tracking-[0.16em] text-white/22">
+          {selectedIndex + 1}/{posts.length}
+        </div>
+      </div>
+      <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+        {posts.map((post, index) => (
+          <RailThumbnail
+            key={`${post.post_key}:${post.thumbnail_url || ''}:${index}`}
+            post={post}
+            active={index === selectedIndex}
+            onClick={() => onSelect(index)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailSection({
+  label,
+  children,
+  tone = 'default',
+}: {
+  label: string;
+  children: ReactNode;
+  tone?: 'default' | 'action' | 'warning';
+}) {
+  return (
+    <section
+      className={[
+        'min-h-0 rounded-[18px] border px-4 py-3.5 lg:h-full lg:overflow-hidden lg:rounded-[15px] lg:px-3 lg:py-2 xl:rounded-[16px] xl:px-3.5 xl:py-2.5',
+        tone === 'action'
+          ? 'border-[#E11D48]/24 bg-[#E11D48]/12'
+          : tone === 'warning'
+            ? 'border-white/[0.08] bg-white/[0.045]'
+            : 'border-white/[0.07] bg-white/[0.035]',
+      ].join(' ')}
+    >
+      <div className={tone === 'action'
+        ? 'text-[8px] font-black uppercase tracking-[0.18em] text-[#FDA4AF] lg:text-[7px]'
+        : 'text-[8px] font-black uppercase tracking-[0.18em] text-white/30 lg:text-[7px]'}
+      >
+        {label}
+      </div>
+      <div className="mt-2 text-[13px] font-semibold leading-relaxed text-white/76 sm:text-[14px] lg:mt-1.5 lg:text-[clamp(10px,1.28vh,11.5px)] lg:leading-[1.34] xl:text-[clamp(11px,1.28vh,12.5px)] xl:leading-[1.4]">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function SignalInsightDialog({
+  pattern,
+  onClose,
+}: {
+  pattern: PatternBoardItem | null;
+  onClose: () => void;
+}) {
+  const card: PatternBoardSignalCard | null = pattern?.signal_card ?? null;
+  const supportPosts = pattern?.support_posts ?? [];
+  const [selectedPostIndex, setSelectedPostIndex] = useState(0);
+  const selectedPost = supportPosts[selectedPostIndex] ?? supportPosts[0] ?? null;
+  const title = card?.title || pattern?.pattern_label || readableSignalCode(pattern?.signal_code);
+  const commonPattern = card?.common_pattern?.length ? card.common_pattern : pattern?.cues || [];
+  const metrics = pattern ? proofMetrics(pattern) : [];
+  const confidence = normalizedConfidence(card?.confidence);
+  const patternType = readablePatternType(card?.pattern_type);
+
+  useEffect(() => {
+    if (!pattern || supportPosts.length <= 1 || typeof window === 'undefined') return;
+    const timer = window.setInterval(() => {
+      setSelectedPostIndex((current) => (current + 1) % supportPosts.length);
+    }, 6200);
+    return () => window.clearInterval(timer);
+  }, [pattern, supportPosts.length]);
+
+  useEffect(() => {
+    if (!pattern || typeof window === 'undefined') return;
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.documentElement.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose, pattern]);
+
+  const dialog = (
+    <AnimatePresence>
+      {pattern && (
+        <motion.div
+          className="fixed inset-0 z-[320] flex items-end justify-center px-0 lg:items-center lg:px-5 lg:py-5"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <motion.div
+            className="absolute inset-0 bg-black/72 backdrop-blur-[8px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onClose}
+          />
+
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            initial={{ y: '100%', opacity: 0.96 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0.96 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.95 }}
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[#080808] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] lg:grid lg:h-[min(820px,calc(100dvh-40px))] lg:w-[min(1280px,calc(100vw-40px))] lg:grid-cols-[minmax(310px,0.72fr)_minmax(620px,1.28fr)] lg:rounded-[28px] lg:shadow-[0_32px_90px_rgba(0,0,0,0.72)] xl:h-[min(860px,calc(100dvh-44px))] xl:w-[min(1360px,calc(100vw-56px))] xl:grid-cols-[minmax(360px,0.78fr)_minmax(680px,1.22fr)]"
+            style={{ maxHeight: 'min(860px, calc(100dvh - 18px - env(safe-area-inset-top)))' }}
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/42 to-transparent" />
+            <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/14 lg:hidden" />
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.06] text-white/54 transition hover:bg-white/[0.1] hover:text-white/82 lg:right-5 lg:top-5"
+              aria-label="Close signal card"
+            >
+              <X size={16} strokeWidth={2.4} />
+            </button>
+
+            <div className="hidden min-h-0 flex-col gap-2 p-2 lg:flex xl:gap-2.5 xl:p-2.5">
+              <div className="min-h-0 flex-1">
+                <FeaturedPreview post={selectedPost} />
+              </div>
+              <SupportPostRail
+                posts={supportPosts}
+                selectedIndex={selectedPostIndex}
+                onSelect={setSelectedPostIndex}
+              />
+            </div>
+
+            <div className="min-h-0 overflow-y-auto px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-5 lg:flex lg:flex-col lg:overflow-hidden lg:px-5 lg:pb-5 lg:pt-5 xl:px-6 xl:pb-6 xl:pt-6">
+              <div className="shrink-0 pr-10 lg:pr-12">
+                <div className="flex flex-wrap items-center gap-2 lg:gap-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/70 lg:text-[8px]">
+                    Signal intelligence
+                  </span>
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.045] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/38 lg:px-2 lg:py-0.5 lg:text-[7px]">
+                    {readableSignalCode(pattern.signal_code)}
+                  </span>
+                  {confidence && (
+                    <span className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-[#FDA4AF]/82 lg:px-2 lg:py-0.5 lg:text-[7px]">
+                      {confidence}
+                    </span>
+                  )}
+                </div>
+                <h3 className="mt-3 max-w-[18ch] text-[26px] font-black leading-[1.02] tracking-[-0.04em] text-white sm:text-[32px] lg:mt-2 lg:w-full lg:max-w-[min(760px,calc(100%-64px))] lg:text-[clamp(22px,2.5vh,30px)] lg:leading-[1.06] lg:[text-wrap:balance] xl:max-w-[min(860px,calc(100%-70px))] xl:text-[clamp(25px,2.55vh,34px)]">
+                  {title}
+                </h3>
+                {patternType && (
+                  <div className="mt-3 text-[10px] font-black uppercase tracking-[0.17em] text-white/28 lg:mt-2 lg:text-[8px]">
+                    {patternType}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-3 lg:hidden">
+                <div className="mx-auto aspect-[4/5] w-[min(76vw,286px)] max-w-full sm:w-[min(62vw,304px)]">
+                  <FeaturedPreview post={selectedPost} />
+                </div>
+                <SupportPostRail
+                  posts={supportPosts}
+                  selectedIndex={selectedPostIndex}
+                  onSelect={setSelectedPostIndex}
+                />
+              </div>
+
+              {metrics.length > 0 && (
+                <div className="mt-4 grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:mt-3 lg:grid-cols-3 lg:gap-1.5 xl:mt-4 xl:grid-cols-5 xl:gap-2">
+                  {metrics.map((metric) => (
+                    <div
+                      key={`${pattern.firewatch_id}:${metric.label}`}
+                      className="min-w-0 rounded-[14px] border border-white/[0.06] bg-white/[0.035] px-3 py-2.5 lg:rounded-[12px] lg:px-2.5 lg:py-1.5 xl:rounded-[14px] xl:px-3 xl:py-2"
+                    >
+                      <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-white/28">
+                        {metric.label}
+                      </div>
+                      <div className="mt-1 truncate text-[15px] font-black tracking-[-0.03em] text-white/88 lg:text-[13px] xl:text-[15px]">
+                        {metric.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-5 space-y-3 lg:mt-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:auto-rows-fr lg:gap-2 lg:space-y-0 xl:mt-4 xl:gap-2.5">
+                {card?.what_happened && (
+                  <DetailSection label="What happened">
+                    {card.what_happened}
+                  </DetailSection>
+                )}
+                {card?.why_it_may_have_happened && (
+                  <DetailSection label="Why it moved">
+                    {card.why_it_may_have_happened}
+                  </DetailSection>
+                )}
+                {commonPattern.length > 0 && (
+                  <DetailSection label="Common pattern">
+                    <div className="flex flex-wrap gap-1.5 lg:gap-1.5">
+                      {commonPattern.slice(0, 5).map((cue) => (
+                        <span
+                          key={`${pattern.firewatch_id}:detail:${cue}`}
+                          className="rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/60 lg:px-3 lg:py-1.5 lg:text-[8.5px] lg:tracking-[0.1em] xl:px-3.5 xl:text-[9px]"
+                        >
+                          {cue}
+                        </span>
+                      ))}
+                    </div>
+                  </DetailSection>
+                )}
+                {card?.do_next && (
+                  <DetailSection label="Do next" tone="action">
+                    {card.do_next}
+                  </DetailSection>
+                )}
+                {card?.watchout && (
+                  <DetailSection label="Watchout" tone="warning">
+                    {card.watchout}
+                  </DetailSection>
+                )}
+                {card?.per_post_notes?.length ? (
+                  <DetailSection label="Post notes">
+                    <div className="space-y-2 lg:space-y-1.5">
+                      {card.per_post_notes.slice(0, 4).map((note, index) => (
+                        <div key={`${pattern.firewatch_id}:note:${index}`} className="flex gap-2">
+                          <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#E11D48]/70" />
+                          <span>{note}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </DetailSection>
+                ) : null}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(dialog, document.body);
+}
+
 function PatternCard({
   pattern,
   selected,
@@ -170,13 +642,13 @@ function PatternCard({
   pattern: PatternBoardItem;
   selected: boolean;
   pulse: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (pattern: PatternBoardItem) => void;
 }) {
   const headline = pickHeadlineNumber(pattern);
   const cues = (pattern.cues || []).slice(0, 3);
   const pills = patternPills(pattern);
 
-  const selectCard = () => onSelect(pattern.firewatch_id);
+  const selectCard = () => onSelect(pattern);
 
   return (
     <motion.div
@@ -270,7 +742,7 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
   const searchParams = useSearchParams();
   const firewatchParam = searchParams?.get('firewatch') ?? null;
   const sectionRef = useRef<HTMLDivElement | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activePattern, setActivePattern] = useState<PatternBoardItem | null>(null);
   const [pulseCard, setPulseCard] = useState(false);
 
   const linkedPatternId = useMemo(() => {
@@ -294,7 +766,7 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
     };
   }, [linkedPatternId]);
 
-  const selectedId = activeId || linkedPatternId;
+  const selectedId = activePattern?.firewatch_id || linkedPatternId;
 
   if (patterns.length === 0) {
     return (
@@ -334,10 +806,16 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
             pattern={pattern}
             selected={pattern.firewatch_id === selectedId}
             pulse={pulseCard && pattern.firewatch_id === linkedPatternId}
-            onSelect={setActiveId}
+            onSelect={setActivePattern}
           />
         ))}
       </div>
+
+      <SignalInsightDialog
+        key={activePattern?.firewatch_id || 'closed'}
+        pattern={activePattern}
+        onClose={() => setActivePattern(null)}
+      />
     </div>
   );
 }

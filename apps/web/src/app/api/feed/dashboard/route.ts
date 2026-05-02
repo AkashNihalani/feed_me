@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v4';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v5';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
@@ -826,9 +826,44 @@ type PatternBoardSupport = {
   media_type: string | null;
 };
 
+type PatternBoardSignalCard = {
+  title: string | null;
+  what_happened: string | null;
+  why_it_may_have_happened: string | null;
+  common_pattern: string[];
+  do_next: string | null;
+  watchout: string | null;
+  per_post_notes: string[];
+  pattern_type: string | null;
+  confidence: string | null;
+};
+
 const PATTERN_BOARD_LIMIT = 10;
 const PATTERN_BOARD_CUE_MAX = 4;
 const PATTERN_BOARD_SUPPORT_MAX = 6;
+
+function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCard | null {
+  if (Object.keys(card).length === 0) return null;
+  const commonPattern = arrayValue<unknown>(card.common_pattern)
+    .map((value) => nullableString(value))
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 4);
+  const perPostNotes = arrayValue<unknown>(card.per_post_notes)
+    .map((value) => nullableString(value))
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 5);
+  return {
+    title: nullableString(card.title),
+    what_happened: nullableString(card.what_happened),
+    why_it_may_have_happened: nullableString(card.why_it_may_have_happened),
+    common_pattern: commonPattern,
+    do_next: nullableString(card.do_next),
+    watchout: nullableString(card.watchout),
+    per_post_notes: perPostNotes,
+    pattern_type: nullableString(card.pattern_type),
+    confidence: nullableString(card.confidence),
+  };
+}
 
 async function hydratePatternSupportPreviews(
   sb: ReturnType<typeof adminClient>,
@@ -1114,6 +1149,7 @@ async function fetchPatternBoard(
       latest_business_day: entry.latest_business_day,
       cues,
       support_posts,
+      signal_card: signalCardPayload(recordValue(payload.card)),
     };
   });
 }

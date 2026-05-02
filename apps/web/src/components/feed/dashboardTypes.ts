@@ -86,6 +86,18 @@ export type PatternBoardSupportPost = {
   media_type: string | null;
 };
 
+export type PatternBoardSignalCard = {
+  title: string | null;
+  what_happened: string | null;
+  why_it_may_have_happened: string | null;
+  common_pattern: string[];
+  do_next: string | null;
+  watchout: string | null;
+  per_post_notes: string[];
+  pattern_type: string | null;
+  confidence: string | null;
+};
+
 export type PatternBoardItem = {
   firewatch_id: string;
   signal_code: string;
@@ -102,6 +114,7 @@ export type PatternBoardItem = {
   latest_business_day: string | null;
   cues: string[];
   support_posts: PatternBoardSupportPost[];
+  signal_card: PatternBoardSignalCard | null;
 };
 
 export type PostingPatternStatus = 'accelerating' | 'steady' | 'slowing' | 'dormant' | 'insufficient_data';
