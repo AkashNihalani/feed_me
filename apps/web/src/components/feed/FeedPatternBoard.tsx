@@ -226,11 +226,11 @@ function FeaturedPreviewLayer({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0.7, scale: 1.105, filter: 'blur(24px)' }}
+      initial={{ opacity: 0.7, scale: 1.025, filter: 'blur(24px)' }}
       animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
       transition={{ duration: 2.75, ease: [0.16, 1, 0.3, 1] }}
       onAnimationComplete={onAnimationComplete}
-      className="absolute -inset-[24%] lg:-inset-[18%]"
+      className="absolute inset-0"
     >
       {asset.src ? (
         // eslint-disable-next-line @next/next/no-img-element -- dashboard thumbnails are dynamic feed assets
@@ -406,7 +406,7 @@ function DetailSection({
   return (
     <section
       className={[
-        'min-h-0 rounded-[18px] border px-4 py-3.5 lg:h-full lg:overflow-hidden lg:rounded-[15px] lg:px-3 lg:py-2 xl:rounded-[16px] xl:px-3.5 xl:py-2.5',
+        'min-h-0 rounded-[18px] border px-4 py-3.5 lg:overflow-hidden lg:rounded-[15px] lg:px-3.5 lg:py-3 xl:rounded-[16px] xl:px-4 xl:py-3.5',
         tone === 'action'
           ? 'border-[#E11D48]/24 bg-[#E11D48]/12'
           : tone === 'warning'
@@ -420,7 +420,7 @@ function DetailSection({
       >
         {label}
       </div>
-      <div className="mt-2 text-[13px] font-semibold leading-relaxed text-white/76 sm:text-[14px] lg:mt-1.5 lg:text-[clamp(10px,1.28vh,11.5px)] lg:leading-[1.34] xl:text-[clamp(11px,1.28vh,12.5px)] xl:leading-[1.4]">
+      <div className="mt-2 text-[13px] font-semibold leading-relaxed text-white/76 sm:text-[14px] lg:text-[12px] lg:leading-[1.45] xl:text-[13px]">
         {children}
       </div>
     </section>
@@ -494,8 +494,8 @@ function SignalInsightDialog({
             exit={{ y: '100%', opacity: 0.96 }}
             transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.95 }}
             onClick={(event) => event.stopPropagation()}
-            className="relative flex w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[#080808] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] lg:grid lg:h-[min(820px,calc(100dvh-40px))] lg:w-[min(1280px,calc(100vw-40px))] lg:grid-cols-[minmax(310px,0.72fr)_minmax(620px,1.28fr)] lg:rounded-[28px] lg:shadow-[0_32px_90px_rgba(0,0,0,0.72)] xl:h-[min(860px,calc(100dvh-44px))] xl:w-[min(1360px,calc(100vw-56px))] xl:grid-cols-[minmax(360px,0.78fr)_minmax(680px,1.22fr)]"
-            style={{ maxHeight: 'min(860px, calc(100dvh - 18px - env(safe-area-inset-top)))' }}
+            className="relative flex w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[#080808] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] lg:grid lg:w-[min(1360px,calc(100vw-72px))] lg:grid-cols-[minmax(340px,440px)_minmax(0,1fr)] lg:rounded-[28px] lg:shadow-[0_32px_90px_rgba(0,0,0,0.72)] xl:w-[min(1460px,calc(100vw-96px))] xl:grid-cols-[minmax(400px,500px)_minmax(0,1fr)]"
+            style={{ maxHeight: 'min(820px, calc(100dvh - 72px - env(safe-area-inset-top)))' }}
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/42 to-transparent" />
             <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/14 lg:hidden" />
@@ -509,9 +509,11 @@ function SignalInsightDialog({
               <X size={16} strokeWidth={2.4} />
             </button>
 
-            <div className="hidden min-h-0 flex-col gap-2 p-2 lg:flex xl:gap-2.5 xl:p-2.5">
-              <div className="min-h-0 flex-1">
-                <FeaturedPreview post={selectedPost} />
+            <div className="hidden min-h-0 flex-col justify-center gap-3 p-4 lg:flex xl:p-5">
+              <div className="flex min-h-0 items-center justify-center">
+                <div className="aspect-[4/5] w-full max-w-[410px] xl:max-w-[460px]">
+                  <FeaturedPreview post={selectedPost} />
+                </div>
               </div>
               <SupportPostRail
                 posts={supportPosts}
@@ -520,7 +522,7 @@ function SignalInsightDialog({
               />
             </div>
 
-            <div className="min-h-0 overflow-y-auto px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-5 lg:flex lg:flex-col lg:overflow-hidden lg:px-5 lg:pb-5 lg:pt-5 xl:px-6 xl:pb-6 xl:pt-6">
+            <div className="min-h-0 overflow-y-auto px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-5 lg:overflow-hidden lg:px-7 lg:py-7 xl:px-8 xl:py-8">
               <div className="shrink-0 pr-10 lg:pr-12">
                 <div className="flex flex-wrap items-center gap-2 lg:gap-1.5">
                   <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/70 lg:text-[8px]">
@@ -574,7 +576,7 @@ function SignalInsightDialog({
                 </div>
               )}
 
-              <div className="mt-5 space-y-3 lg:mt-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:auto-rows-fr lg:gap-2 lg:space-y-0 xl:mt-4 xl:gap-2.5">
+              <div className="mt-5 space-y-3 lg:mt-4 lg:grid lg:min-h-0 lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0 xl:gap-3.5">
                 {card?.what_happened && (
                   <DetailSection label="What happened">
                     {card.what_happened}
