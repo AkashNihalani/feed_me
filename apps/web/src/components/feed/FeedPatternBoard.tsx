@@ -537,7 +537,7 @@ function SignalInsightDialog({
                     </span>
                   )}
                 </div>
-                <h3 className="mt-3 max-w-[18ch] text-[26px] font-black leading-[1.02] tracking-[-0.04em] text-white sm:text-[32px] lg:mt-2 lg:w-full lg:max-w-[min(760px,calc(100%-64px))] lg:text-[clamp(22px,2.5vh,30px)] lg:leading-[1.06] lg:[text-wrap:balance] xl:max-w-[min(860px,calc(100%-70px))] xl:text-[clamp(25px,2.55vh,34px)]">
+                <h3 className="mt-3 max-w-[calc(100%-10px)] text-[clamp(28px,8vw,40px)] font-black leading-[1.02] tracking-[-0.05em] text-white [text-wrap:balance] sm:text-[42px] lg:mt-2 lg:w-full lg:max-w-[min(840px,calc(100%-64px))] lg:text-[clamp(22px,2.5vh,30px)] lg:leading-[1.06] xl:max-w-[min(940px,calc(100%-70px))] xl:text-[clamp(25px,2.55vh,34px)]">
                   {title}
                 </h3>
                 {patternType && (

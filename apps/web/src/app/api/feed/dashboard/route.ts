@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v5';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v6';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
@@ -845,24 +845,44 @@ const PATTERN_BOARD_SUPPORT_MAX = 6;
 function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCard | null {
   if (Object.keys(card).length === 0) return null;
   const commonPattern = arrayValue<unknown>(card.common_pattern)
+    .concat(arrayValue<unknown>(card.cues))
+    .concat(arrayValue<unknown>(card.patterns))
     .map((value) => nullableString(value))
     .filter((value): value is string => Boolean(value))
     .slice(0, 4);
   const perPostNotes = arrayValue<unknown>(card.per_post_notes)
+    .concat(arrayValue<unknown>(card.post_notes))
+    .concat(arrayValue<unknown>(card.evidence))
     .map((value) => nullableString(value))
     .filter((value): value is string => Boolean(value))
     .slice(0, 5);
   return {
-    title: nullableString(card.title),
-    what_happened: nullableString(card.what_happened),
-    why_it_may_have_happened: nullableString(card.why_it_may_have_happened),
+    title: nullableString(card.title) || nullableString(card.headline) || nullableString(card.verdict),
+    what_happened: nullableString(card.what_happened) || nullableString(card.summary) || nullableString(card.verdict),
+    why_it_may_have_happened: nullableString(card.why_it_may_have_happened) || nullableString(card.why_it_moved) || nullableString(card.evidence),
     common_pattern: commonPattern,
-    do_next: nullableString(card.do_next),
-    watchout: nullableString(card.watchout),
+    do_next: nullableString(card.do_next) || nullableString(card.tweak) || nullableString(card.recommendation),
+    watchout: nullableString(card.watchout) || nullableString(card.risk),
     per_post_notes: perPostNotes,
     pattern_type: nullableString(card.pattern_type),
     confidence: nullableString(card.confidence),
   };
+}
+
+function signalCardCompleteness(card: Record<string, unknown>): number {
+  const normalized = signalCardPayload(card);
+  if (!normalized) return 0;
+  return [
+    normalized.title,
+    normalized.what_happened,
+    normalized.why_it_may_have_happened,
+    normalized.do_next,
+    normalized.watchout,
+    normalized.pattern_type,
+    normalized.confidence,
+  ].filter(Boolean).length
+    + Math.min(4, normalized.common_pattern.length)
+    + Math.min(5, normalized.per_post_notes.length);
 }
 
 async function hydratePatternSupportPreviews(
@@ -1002,6 +1022,9 @@ async function fetchPatternBoard(
     match_count: number | null;
     latest_business_day: string | null;
     latest_payload: Record<string, unknown> | null;
+    display_payload: Record<string, unknown> | null;
+    display_payload_score: number;
+    display_payload_day: string | null;
   }>();
 
   for (const row of signalRows) {
@@ -1046,6 +1069,9 @@ async function fetchPatternBoard(
       match_count: null,
       latest_business_day: null,
       latest_payload: null,
+      display_payload: null,
+      display_payload_score: -1,
+      display_payload_day: null,
     };
 
     current.trigger_count += 1;
@@ -1084,6 +1110,17 @@ async function fetchPatternBoard(
     }
     if (!current.latest_payload) current.latest_payload = payload;
 
+    const displayScore = signalCardCompleteness(card);
+    if (
+      !current.display_payload
+      || displayScore > current.display_payload_score
+      || (displayScore === current.display_payload_score && businessDay && (!current.display_payload_day || businessDay > current.display_payload_day))
+    ) {
+      current.display_payload = payload;
+      current.display_payload_score = displayScore;
+      current.display_payload_day = businessDay || null;
+    }
+
     aggregate.set(key, current);
   }
 
@@ -1101,7 +1138,7 @@ async function fetchPatternBoard(
   const supportKeysByEntry = new Map<string, string[]>();
   const allKeys: string[] = [];
   for (const entry of ranked) {
-    const payload = entry.latest_payload || {};
+    const payload = entry.display_payload || entry.latest_payload || {};
     const supportKeys = arrayValue<unknown>(payload.support_post_keys)
       .map((value) => nullableString(value))
       .filter((value): value is string => Boolean(value))
@@ -1113,7 +1150,7 @@ async function fetchPatternBoard(
   const supportPreviewByKey = await hydratePatternSupportPreviews(sb, allKeys);
 
   return ranked.map((entry) => {
-    const payload = entry.latest_payload || {};
+    const payload = entry.display_payload || entry.latest_payload || {};
     const cuesRaw = arrayValue<Record<string, unknown>>(payload.required_cues).length > 0
       ? arrayValue<Record<string, unknown>>(payload.required_cues)
       : arrayValue<Record<string, unknown>>(payload.cues);
