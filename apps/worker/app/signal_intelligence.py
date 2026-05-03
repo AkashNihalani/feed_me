@@ -4,9 +4,11 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
+from datetime import date, datetime, timezone
 from typing import Any
 
 import requests
@@ -34,7 +36,7 @@ _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 _FP_PROMPT_VERSION = "fingerprint_v4_neutral"
-_CARD_PROMPT_VERSION = "signal_card_v5_deterministic_escalation"
+_CARD_PROMPT_VERSION = "signal_card_v10_specificity_zone"
 _SAMPLING_POLICY_VERSION = "media_sample_v1"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
@@ -85,38 +87,157 @@ Return only JSON:
   "media_confidence": "high|medium|low"
 }"""
 
-_CARD_SYSTEM = """You analyze metric-triggered social signals for a social media tracking product.
-Use the feed bible, feed focus capsule, focus reads, feeder context, metric snapshot, cohort policy, and post fingerprints only.
-The metric_snapshot is the only statistical baseline truth. Do not calculate a new baseline from cohort posts.
-Cohort B/reference posts are visual references only; they are not the statistical baseline.
+_CARD_SYSTEM = """You write brutal operator cards for a social media tracking product.
+Use only the supplied feed context, focus reads, feeder context, metric_snapshot, metric_classification, evidence policy, and post fingerprints.
+The metric_snapshot is the statistical truth. The META block renders raw numbers separately.
+The metric_classification is the language bridge. Reflect direction, magnitude, breadth, and baseline qualitatively with those labels.
+Do NOT quote raw counts, percentages, multipliers, dates, ranges, or units in prose.
+GOOD: "Followers fell sharply this week."
+GOOD: "A broad wave hit the feed."
+GOOD: "Reach surged. Engagement stayed flat."
+BAD: "Net loss of 2,415 followers over 7 days, a 3x increase."
+BAD: "42% of active feeders saw movement."
+BAD: "Reach jumped 2.4x."
+
 Use visual evidence first. Caption is supporting context only.
 Do not claim saves, shares, or private algorithm behavior unless those facts are explicitly provided.
 Do not discount campaigns, collaborations, celebrity moments, or off-platform context when they visibly explain the metrics.
-If content evidence does not explain the metric, say confidence is low.
-When reference posts exist, watchout must say what to avoid or what the reference posts are missing.
-Never mention internal cohort letters, database roles, or strings like trigger_core/reference_no_jump.
-Use the feed's niche vocabulary.
+If content evidence is thin, write "unclear" as pattern_type and keep the copy blunt. Do not invent certainty.
+When comparison posts exist, watchout must say what to avoid or what the comparison posts are missing.
 Classify pattern_type as one of: account_aligned, feed_aligned, account_outlier, conflict_signal, unclear.
-Every do_next must name observable content behaviors from the evidence, not generic advice.
-Keep the card concise for a mobile UI:
-- title: 5-10 words.
-- what_happened: one sentence, max 35 words.
-- why_it_may_have_happened: one sentence, max 35 words.
-- common_pattern: 2-4 short phrases, max 4 words each.
-- do_next: one concrete action sentence, max 24 words.
-- watchout: one caution sentence, max 24 words.
-- per_post_notes: max 5 short strings.
+
+Lane boundary:
+Most signals compare posts inside the same media lane. Reels are compared to reel history unless the evidence policy says otherwise.
+Keep "static" for static/image posts only. Do not say "static" failed, fell, stayed, or lost unless the supplied fingerprints include static/image posts or the trigger is a format-shift signal.
+Name the content mechanic that changed inside the lane: hook, setup, character, proof, scene structure, caption job, edit rhythm, or payoff.
+
+Forbidden hedge words in user-facing fields:
+may, could, likely, perhaps, suggests, appears, seems, somewhat, tends to.
+
+Forbidden internal vocabulary in user-facing fields:
+cohort, anchor, challenger, bible, feed_focus, signal, pattern_id, cross-feed, cross feed, fingerprint,
+trigger_core, trigger_support, reference_no_jump, reference_typical, reference_strong.
+
+Voice rules:
+- Write like an operator, not a consultant.
+- No "adopt a X-first approach". No "balance the feed by". No strategic filler.
+- title: sentence case, max 7 words. Period-driven micro-sentences are allowed.
+- what_happened: one or two short sentences, max 45 words. Directional, no numbers.
+- why: one sentence, max 30 words. Must start with "Worked because " or "Failed because ".
+- common_pattern: 3-5 craft pattern types, 2-5 words each.
+- do_next: exactly two short imperatives. Format: "Kill X. Build Y."
+- watchout: one aphoristic warning, max 16 words. No hedging.
+- per_post_notes: max 5 strings. Each names an observable craft move, not a subject label.
+
+Tag specificity zone:
+Each common_pattern entry is a craft pattern type: specific enough that a reader recognizes the move, generic enough that it can recur on another post later.
+For every tag, ask:
+Q1: Could this same tag describe a similar craft move on a different post later? If no, generalize.
+Q2: Could this tag describe almost any post in this niche? If yes, specify.
+Q3: Does this tag use a slash to combine two concepts? If yes, split it or pick one.
+Q4: Does this tag use a proper noun: movie title, brand name, product name, location, celebrity name? If yes, generalize to the behavior type.
+
+TOO GENERIC:
+- "satire / parody"
+- "social tension / confidence"
+- "movement / rhythmic pacing"
+- "high energy"
+- "character-led skits"
+- "static setups"
+- "engaging content"
+
+TOO UNIQUE:
+- "Close-up noodle-cup disgust payoff" -> "Disgust-led food reaction"
+- "Devil-Wears-Prada cinematic parody" -> "Movie-tie-in cinematic parody"
+- "Multi-layover luxury travel unboxing" -> "Luxury travel unboxing"
+- "Black-and-white hatewatch reaction" -> "Hate-watch reaction frame"
+- "In-flight passenger conflict skit" -> "In-flight conflict skit"
+
+RIGHT ZONE:
+- "Disgust-led food reaction"
+- "Movie-tie-in cinematic parody"
+- "Hate-watch reaction frame"
+- "Luxury travel unboxing"
+- "Direct-address giveaway loop"
+- "Eldest-daughter persona skit"
+- "Frugal-father character skit"
+
+What happened:
+Open with qualitative metric direction. Then name 2-3 actual craft moves from the main proof posts.
+The reader should know what moved, not only that something moved.
+
+GOOD:
+"Reach surged on a run of reels: an in-flight conflict skit, a hate-watch sports reaction, and a contradictory food vlog. Each replaced the account's studio-shoutout baseline with sharper conflict."
+
+BAD:
+"Reach surged. High-tension skits and polarizing sports reactions beat the previous pattern."
+
+Do-next specificity:
+X and Y in "Kill X. Build Y." must name craft observed in this signal's evidence.
+GOOD: "Kill office testimonials. Build creator-led sketches."
+BAD: "Kill generic setups. Build character-led skits."
+
+Title variation:
+Titles stay period-driven micro-sentences, but vary the verbs. Do not default to repeated surged/fell, hit/missed, won/lost templates.
+Use verbs that name the specific behavior observed here: drove, drowned, beat, replaced, traded, abandoned, recovered, pulled back, broke through, leaned, anchored, stalled, snapped.
+
+Why specificity matters:
+These cards later annotate feeder and feed focus evidence. Specific card language becomes specific rulebook language.
+If you write "satire / parody", the memory layer records a vague bucket. If you write the actual craft, the memory layer can match future posts cleanly.
+
+Good per_post_notes:
+- "Persona-led product ad, vertical scroll"
+- "Travel scrapbook, ambient-only audio"
+- "PR reveal, face-led reaction"
+Bad per_post_notes:
+- "Maybelline #Ad"
+- "Bali travel scrapbook"
+- "Angel-themed portraiture"
+
+Few-shot card A:
+{
+  "title": "Ads hit. Trust left.",
+  "what_happened": "Followers fell sharply. The drop sat outside normal account noise.",
+  "why": "Failed because the feed turned into campaign delivery without enough lived-in proof.",
+  "common_pattern": ["dense brand run", "shock reaction hooks", "thin craft proof"],
+  "do_next": "Kill stacked ads. Build proof-led resets.",
+  "watchout": "A familiar face cannot carry an unfamiliar sales rhythm.",
+  "per_post_notes": ["Persona-led product ad, vertical scroll", "Shock reveal, comment-bait caption"],
+  "pattern_type": "account_outlier",
+  "focus_memory_candidate": {
+    "candidate_patterns": ["proof-led resets after brand runs"],
+    "candidate_avoid": ["stacked sponsored reactions without craft proof"],
+    "candidate_collision": ""
+  }
+}
+
+Few-shot card B:
+{
+  "title": "Drama moved. Product waited.",
+  "what_happened": "A broad wave crossed the feed. Access and tension beat plain product framing.",
+  "why": "Worked because industry proximity gave viewers a story to rank, not just a thing to admire.",
+  "common_pattern": ["exclusive access moments", "industry conflict hook", "face-first product proof"],
+  "do_next": "Kill catalog posture. Build access-led reveals.",
+  "watchout": "Access goes flat when it turns into product posture.",
+  "per_post_notes": ["PR reveal, face-led reaction", "Industry conflict, direct-address hook"],
+  "pattern_type": "feed_aligned",
+  "focus_memory_candidate": {
+    "candidate_patterns": ["access-led product drama"],
+    "candidate_avoid": ["plain product drops without social stakes"],
+    "candidate_collision": ""
+  }
+}
+
 Return only JSON:
 {
   "title": "",
   "what_happened": "",
-  "why_it_may_have_happened": "",
+  "why": "",
   "common_pattern": [],
   "do_next": "",
   "watchout": "",
   "per_post_notes": [],
   "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear",
-  "confidence": "high|medium|low",
   "focus_memory_candidate": {
     "candidate_patterns": [],
     "candidate_avoid": [],
@@ -130,74 +251,74 @@ _SIGNAL_QUESTIONS = {
     "OWN_SUSTAIN": "Why are these posts repeatedly holding strong D7 performance?",
     "OWN_SUSTAIN_LONG": "What makes these posts durable beyond the first week?",
     "OWN_FADE": "What is missing in recent weak posts compared with prior strong visual references?",
-    "OWN_COMMENT_SPIKE": "What in the content likely made people reply more than usual?",
+    "OWN_COMMENT_SPIKE": "What in the content made people reply more than usual?",
     "OWN_LIKE_HEAVY": "What made these posts easy to approve or like without much discussion?",
     "OWN_VIRAL_PASSIVE": "Why did these posts reach more people without matching likes/comments?",
-    "OWN_LATE_JUMP": "What could explain delayed pickup compared with posts that did not jump?",
-    "OWN_FOLLOWER_SPIKE": "What account activity in this window may explain audience growth?",
-    "OWN_FOLLOWER_DROP": "What account activity in this window may explain audience loss?",
+    "OWN_LATE_JUMP": "What explains delayed pickup compared with posts that did not jump?",
+    "OWN_FOLLOWER_SPIKE": "What account activity in this window explains audience growth?",
+    "OWN_FOLLOWER_DROP": "What account activity in this window explains audience loss?",
     "CROSS_MOMENTUM": "What common behavior is appearing across multiple feeders?",
     "CROSS_FORMAT_SHIFT": "Why is this media format currently more productive than other recent format references?",
-    "CROSS_FOLLOWER_WAVE": "What shared activity may explain audience movement across the feed?",
+    "CROSS_FOLLOWER_WAVE": "What shared activity explains audience movement across the feed?",
     "CROSS_MICRO_BREAKOUT": "What common breakout behavior is repeating across feeders?",
     "CROSS_MICRO_COMMENT_SPIKE": "What common content behavior is driving comments across feeders?",
     "CROSS_MICRO_LIKE_HEAVY": "What common content behavior is driving likes across feeders?",
     "CROSS_MICRO_VIRAL_PASSIVE": "What common content behavior is creating passive reach across feeders?",
     "CROSS_MICRO_FADE": "What common weakness is appearing across feeders?",
-    "ANCHOR_GAP_WIDENING": "What is the anchor doing better than feed reference posts, and what should the feed avoid?",
-    "ANCHOR_GAP_CLOSING": "What are competitors doing better than anchor reference posts, and what should the anchor avoid?",
-    "ANCHOR_CHALLENGER_SURGE": "Why is this specific competitor outperforming anchor reference posts, and what should the anchor avoid?",
-    "ANCHOR_FOLLOWER_GAP": "What activity may explain the follower-growth gap, and what should the slower side avoid?",
+    "ANCHOR_GAP_WIDENING": "What is the primary account doing better than feed comparison posts, and what should the feed avoid?",
+    "ANCHOR_GAP_CLOSING": "What are comparison accounts doing better than primary account examples, and what should the primary account avoid?",
+    "ANCHOR_CHALLENGER_SURGE": "Why is this specific comparison account outperforming primary account examples, and what should the primary account avoid?",
+    "ANCHOR_FOLLOWER_GAP": "What activity explains the follower-growth gap, and what should the slower side avoid?",
 }
 
 
-def _cohort_policy(signal: dict[str, Any]) -> dict[str, Any]:
+def _evidence_policy(signal: dict[str, Any]) -> dict[str, Any]:
     signal_type = str(signal.get("signal_type") or "")
     base = {
-        "cohort_a": "trigger posts: the posts that made the metric signal viable",
-        "cohort_b": "reference posts: small visual examples only, not a statistical baseline",
+        "main_posts": "trigger posts: the posts that made the metric movement viable",
+        "comparison_posts": "small visual examples only, not a statistical baseline",
         "rules": [
             "Use metric_snapshot for baseline and trigger numbers.",
-            "Use cohort B only to explain visual/content contrast.",
-            "If cohort A and B share the same content pattern, lower confidence instead of forcing a difference.",
+            "Use comparison posts only to explain visual/content contrast.",
+            "If main and comparison posts share the same content pattern, use pattern_type unclear instead of forcing a difference.",
         ],
     }
     overrides = {
         "OWN_BREAKOUT_EARLY": {
-            "cohort_a": "early breakout posts",
-            "cohort_b": "prior typical references from this feeder/media type",
+            "main_posts": "early breakout posts",
+            "comparison_posts": "prior typical references from this feeder/media type",
         },
         "OWN_BREAKOUT": {
-            "cohort_a": "breakout posts",
-            "cohort_b": "prior typical references from this feeder/media type",
+            "main_posts": "breakout posts",
+            "comparison_posts": "prior typical references from this feeder/media type",
         },
         "OWN_FADE": {
-            "cohort_a": "recent weak posts",
-            "cohort_b": "prior strong references from the same feeder/media type",
+            "main_posts": "recent weak posts",
+            "comparison_posts": "prior strong examples from the same feeder/media type",
         },
         "OWN_LATE_JUMP": {
-            "cohort_a": "posts with delayed percentile pickup",
-            "cohort_b": "recent references that did not show a meaningful checkpoint jump",
+            "main_posts": "posts with delayed percentile pickup",
+            "comparison_posts": "recent examples without a meaningful checkpoint jump",
         },
         "CROSS_FORMAT_SHIFT": {
-            "cohort_a": "hot posts in the rising media format",
-            "cohort_b": "recent references from other media formats",
+            "main_posts": "hot posts in the rising media format",
+            "comparison_posts": "recent examples from other media formats",
         },
         "ANCHOR_GAP_WIDENING": {
-            "cohort_a": "anchor winning posts",
-            "cohort_b": "feed reference posts from non-anchor accounts",
+            "main_posts": "primary account winning posts",
+            "comparison_posts": "feed examples from comparison accounts",
         },
         "ANCHOR_GAP_CLOSING": {
-            "cohort_a": "non-anchor winning posts",
-            "cohort_b": "anchor reference posts",
+            "main_posts": "comparison account winning posts",
+            "comparison_posts": "primary account examples",
         },
         "ANCHOR_CHALLENGER_SURGE": {
-            "cohort_a": "challenger winning posts",
-            "cohort_b": "anchor reference posts",
+            "main_posts": "comparison account winning posts",
+            "comparison_posts": "primary account examples",
         },
         "ANCHOR_FOLLOWER_GAP": {
-            "cohort_a": "posts from the side with stronger follower movement",
-            "cohort_b": "posts from the slower comparison side",
+            "main_posts": "posts from the side with stronger follower movement",
+            "comparison_posts": "posts from the slower comparison side",
         },
     }
     return {**base, **overrides.get(signal_type, {})}
@@ -208,15 +329,31 @@ def _display_post_role(role: Any) -> str:
     labels = {
         "trigger_core": "trigger post",
         "trigger_support": "trigger post",
-        "reference_typical": "typical reference",
-        "reference_strong": "strong reference",
-        "reference_no_jump": "steady reference",
-        "reference_other_format": "other-format reference",
-        "reference_anchor": "anchor reference",
-        "reference_feed": "feed reference",
-        "reference_context": "reference post",
+        "reference_typical": "typical comparison",
+        "reference_strong": "strong comparison",
+        "reference_no_jump": "steady comparison",
+        "reference_other_format": "other-format comparison",
+        "reference_anchor": "primary-account comparison",
+        "reference_feed": "feed comparison",
+        "reference_context": "comparison post",
     }
     return labels.get(normalized, "post reviewed")
+
+
+def _display_trigger_kind(signal_type: Any) -> str:
+    text = str(signal_type or "metric movement").strip().lower().replace("_", " ")
+    replacements = {
+        "own": "account",
+        "cross": "feed-wide",
+        "anchor": "primary-account",
+        "challenger": "comparison-account",
+        "breakout": "breakout",
+        "sustain": "sustain",
+        "fade": "fade",
+        "follower": "audience",
+    }
+    words = [replacements.get(word, word) for word in text.split()]
+    return " ".join(words) or "metric movement"
 
 
 def is_enabled() -> bool:
@@ -770,6 +907,33 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
     return {"signal": signal, "posts": posts}
 
 
+def _recent_signal_cards(conn: Any, signal: dict[str, Any], signal_id: int, *, limit: int = 10) -> list[dict[str, Any]]:
+    feed_id = signal.get("feed_id")
+    if feed_id is None:
+        return []
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select si.card
+            from public.signal_intelligence si
+            join public.signals s on s.id = si.signal_id
+            where s.feed_id = %s
+              and s.id <> %s
+              and si.card is not null
+            order by si.updated_at desc, si.signal_id desc
+            limit %s
+            """,
+            (feed_id, signal_id, max(1, limit)),
+        )
+        rows = cur.fetchall()
+    cards: list[dict[str, Any]] = []
+    for row in rows:
+        card = row.get("card")
+        if isinstance(card, dict):
+            cards.append(card)
+    return cards
+
+
 def _sample_hash(
     posts: list[dict[str, Any]],
     focus_context: dict[str, Any] | None = None,
@@ -809,6 +973,7 @@ def _sample_hash(
             "trigger_window_start": signal.get("trigger_window_start"),
             "trigger_window_end": signal.get("trigger_window_end"),
             "metric_snapshot": signal.get("metric_snapshot") or {},
+            "metric_classification": signal.get("metric_classification") or _metric_classification(signal),
             "body": signal.get("body"),
             "context_bible": signal.get("context_bible") or "",
         }
@@ -844,6 +1009,121 @@ def _numeric_percentiles(value: Any) -> list[float]:
         for child in value:
             found.extend(_numeric_percentiles(child))
     return [item for item in found if 0 <= item <= 100]
+
+
+def _num(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+        return parsed if parsed == parsed and parsed not in {float("inf"), float("-inf")} else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_num(mapping: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = _num(mapping.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _label_from_score(score: int) -> str:
+    if score >= 3:
+        return "extreme"
+    if score == 2:
+        return "sharp"
+    if score == 1:
+        return "notable"
+    return "minor"
+
+
+def _metric_classification(signal: dict[str, Any]) -> dict[str, str]:
+    snapshot = signal.get("metric_snapshot") if isinstance(signal.get("metric_snapshot"), dict) else {}
+    signal_type = str(signal.get("signal_type") or "").upper()
+    direction = "rising"
+    if any(token in signal_type for token in ("DROP", "FADE", "LOSS", "CHURN")):
+        direction = "declining"
+
+    net_7d = _first_num(snapshot, "net_7d", "net_30d", "anchor_gain")
+    feed_median_gain = _first_num(snapshot, "feed_median_gain")
+    if net_7d is not None:
+        direction = "rising" if net_7d > 0 else "declining" if net_7d < 0 else "stable"
+    elif feed_median_gain is not None and net_7d is not None:
+        direction = "rising" if net_7d >= feed_median_gain else "declining"
+
+    magnitude_score = 0
+    percentiles = _numeric_percentiles(snapshot)
+    best_percentile = min(percentiles) if percentiles else None
+    if best_percentile is not None:
+        if best_percentile <= 5:
+            magnitude_score = max(magnitude_score, 3)
+        elif best_percentile <= 15:
+            magnitude_score = max(magnitude_score, 2)
+        elif best_percentile <= 30:
+            magnitude_score = max(magnitude_score, 1)
+
+    gap = abs(_first_num(snapshot, "gap") or 0)
+    if gap >= 20:
+        magnitude_score = max(magnitude_score, 3)
+    elif gap >= 12:
+        magnitude_score = max(magnitude_score, 2)
+    elif gap >= 8:
+        magnitude_score = max(magnitude_score, 1)
+
+    volatility = abs(_first_num(snapshot, "volatility") or 0)
+    weekly_rate = abs(_first_num(snapshot, "weekly_rate") or 0)
+    latest_count = abs(_first_num(snapshot, "latest_count") or 0)
+    net_abs = abs(_first_num(snapshot, "net_7d") or 0)
+    ratios = []
+    if volatility > 0 and net_abs > 0:
+        ratios.append(net_abs / volatility)
+    if weekly_rate > 0 and net_abs > 0:
+        ratios.append(net_abs / weekly_rate)
+    if latest_count > 0 and net_abs > 0:
+        ratios.append(net_abs / latest_count * 100)
+    ratio = max(ratios, default=0)
+    if ratio >= 5:
+        magnitude_score = max(magnitude_score, 3)
+    elif ratio >= 3:
+        magnitude_score = max(magnitude_score, 2)
+    elif ratio >= 1.5:
+        magnitude_score = max(magnitude_score, 1)
+
+    rate = _first_num(snapshot, "affected_rate", "recent_feeder_rate", "recent_hot_rate")
+    prior_rate = _first_num(snapshot, "prior_feeder_rate", "prior_hot_rate")
+    if rate is not None:
+        delta = rate - (prior_rate or 0)
+        if rate >= 0.6 or delta >= 0.35:
+            magnitude_score = max(magnitude_score, 3)
+        elif rate >= 0.4 or delta >= 0.2:
+            magnitude_score = max(magnitude_score, 2)
+        elif rate >= 0.25 or delta >= 0.1:
+            magnitude_score = max(magnitude_score, 1)
+
+    count = int(_first_num(snapshot, "affected_feeders", "contributing_feeders", "post_count", "challenger_count") or 0)
+    if rate is not None:
+        breadth = "dominant" if rate >= 0.6 else "broad" if rate >= 0.3 else "isolated"
+    elif count >= 5:
+        breadth = "broad"
+    else:
+        breadth = "isolated"
+
+    if direction == "stable":
+        vs_baseline = "matches"
+    elif direction == "declining":
+        vs_baseline = "below_normal"
+    else:
+        vs_baseline = "above_normal"
+
+    return {
+        "magnitude": _label_from_score(magnitude_score),
+        "direction": direction,
+        "breadth": breadth,
+        "vs_baseline": vs_baseline,
+        "source": "server_derived_v1",
+    }
 
 
 def _tier1_metric_reason(signal: dict[str, Any]) -> str | None:
@@ -890,27 +1170,358 @@ def _alignment_deviation_reason(posts: list[dict[str, Any]]) -> str | None:
     return None
 
 
+_CARD_STRING_FIELDS = ("title", "what_happened", "why", "do_next", "watchout", "pattern_type")
+_CARD_LIST_FIELDS = ("common_pattern", "per_post_notes")
+_CARD_COPY_FIELDS = ("title", "what_happened", "why", "do_next", "watchout")
+_RAW_NUMBER_RE = re.compile(
+    r"(\d|[%$]|"
+    r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
+    r"billion|twice|thrice|double|triple)\b)",
+    re.IGNORECASE,
+)
+_FORBIDDEN_HEDGES = re.compile(
+    r"\b(?:may|could|likely|perhaps|suggests|appears|seems|somewhat|tends\s+to)\b",
+    re.IGNORECASE,
+)
+_FORBIDDEN_INTERNAL = re.compile(
+    r"\b(?:cohort|anchor|challenger|bible|feed_focus|signals?|pattern_id|cross[-\s]feed|"
+    r"fingerprints?|trigger_core|trigger_support|reference_no_jump|reference_typical|"
+    r"reference_strong)\b",
+    re.IGNORECASE,
+)
+_OVERUSED_BUCKET_RE = re.compile(
+    r"\b(?:"
+    r"satire\s*/\s*parody|social tension(?:\s*/\s*confidence)?|"
+    r"movement\s*/\s*rhythmic pacing|rhythmic movement pacing|"
+    r"high[-\s]?energy(?: content)?|character-led skits?|"
+    r"static setups?|static shots?|static product shots?|tension-led hooks?|"
+    r"engaging content|authentic storytelling"
+    r")\b",
+    re.IGNORECASE,
+)
+_STATIC_TERM_RE = re.compile(r"\bstatics?\b", re.IGNORECASE)
+_STATIC_MEDIA_TYPES = {"image", "photo", "picture", "static"}
+_PROPER_NOUN_TAG_RE = re.compile(
+    r"\b(?:"
+    r"devil(?:[-\s]+wears[-\s]+prada)?|prada|coachella|bali|bollywood|"
+    r"criss[-\s]+angel|sania|saniya|digi[-\s]+yatra|tresemm[eé]|blackpink"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _word_count(text: Any) -> int:
+    return len(re.findall(r"\b[\w'-]+\b", str(text or "")))
+
+
+def _sentence_parts(text: Any) -> list[str]:
+    return [part.strip() for part in re.split(r"[.!?]+", str(text or "")) if part.strip()]
+
+
+def _looks_title_case(text: str) -> bool:
+    words = re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", text)
+    significant = [word for word in words if len(word) > 2 and not word.isupper()]
+    if len(significant) < 3:
+        return False
+    titled = [word for word in significant if word[:1].isupper() and word[1:].islower()]
+    return len(titled) >= max(3, len(significant) - 1)
+
+
+def _card_copy_items(card: dict[str, Any]) -> list[tuple[str, str]]:
+    items: list[tuple[str, str]] = []
+    for key in _CARD_COPY_FIELDS:
+        value = card.get(key)
+        if isinstance(value, str):
+            items.append((key, value))
+    for key in _CARD_LIST_FIELDS:
+        values = card.get(key)
+        if isinstance(values, list):
+            for index, value in enumerate(values):
+                if isinstance(value, str):
+                    items.append((f"{key}[{index}]", value))
+    return items
+
+
 def _card_schema_errors(card: Any) -> list[str]:
     if not isinstance(card, dict):
         return ["card_not_object"]
     errors: list[str] = []
-    for key in ("title", "what_happened", "why_it_may_have_happened", "do_next", "watchout", "confidence", "pattern_type"):
+    for key in _CARD_STRING_FIELDS:
         if key not in card:
             errors.append(f"missing_{key}")
         elif not isinstance(card.get(key), str):
             errors.append(f"{key}_not_string")
-    for key in ("common_pattern", "per_post_notes"):
+    for key in _CARD_LIST_FIELDS:
         if key not in card:
             errors.append(f"missing_{key}")
         elif not isinstance(card.get(key), list):
             errors.append(f"{key}_not_list")
+        else:
+            for index, value in enumerate(card.get(key) or []):
+                if not isinstance(value, str):
+                    errors.append(f"{key}_{index}_not_string")
     if str(card.get("pattern_type") or "") not in {"account_aligned", "feed_aligned", "account_outlier", "conflict_signal", "unclear"}:
         errors.append("invalid_pattern_type")
-    if str(card.get("confidence") or "").lower() not in {"high", "medium", "low"}:
-        errors.append("invalid_confidence")
     if card.get("focus_memory_candidate") is not None and not isinstance(card.get("focus_memory_candidate"), dict):
         errors.append("focus_memory_candidate_not_object")
+
+    title = str(card.get("title") or "")
+    if _word_count(title) > 7:
+        errors.append("title_too_long")
+    if _looks_title_case(title):
+        errors.append("title_looks_title_case")
+    if _word_count(card.get("what_happened")) > 45:
+        errors.append("what_happened_too_long")
+    why = str(card.get("why") or "")
+    if _word_count(why) > 30:
+        errors.append("why_too_long")
+    if why and not (why.startswith("Worked because ") or why.startswith("Failed because ")):
+        errors.append("why_missing_worked_failed_formula")
+    do_next = str(card.get("do_next") or "")
+    if _word_count(do_next) > 16:
+        errors.append("do_next_too_long")
+    if do_next and len(_sentence_parts(do_next)) != 2:
+        errors.append("do_next_not_two_imperatives")
+    if _word_count(card.get("watchout")) > 16:
+        errors.append("watchout_too_long")
+    if isinstance(card.get("common_pattern"), list):
+        common_count = len(card.get("common_pattern") or [])
+        if common_count > 5:
+            errors.append("common_pattern_too_many")
+        if common_count < 3:
+            errors.append("common_pattern_too_few")
+        for index, item in enumerate(card.get("common_pattern") or []):
+            if isinstance(item, str) and _word_count(item) > 5:
+                errors.append(f"common_pattern_{index}_too_long")
+            if isinstance(item, str) and _OVERUSED_BUCKET_RE.search(item):
+                errors.append(f"common_pattern_{index}_generic_bucket")
+            if isinstance(item, str) and "/" in item:
+                errors.append(f"common_pattern_{index}_slash")
+            if isinstance(item, str) and _PROPER_NOUN_TAG_RE.search(item):
+                errors.append(f"common_pattern_{index}_proper_noun")
+            if isinstance(item, str) and _word_count(item) < 2:
+                errors.append(f"common_pattern_{index}_too_generic")
+    if isinstance(card.get("per_post_notes"), list):
+        if len(card.get("per_post_notes") or []) > 5:
+            errors.append("per_post_notes_too_many")
+        for index, item in enumerate(card.get("per_post_notes") or []):
+            if isinstance(item, str) and _word_count(item) > 10:
+                errors.append(f"per_post_notes_{index}_too_long")
+    for key, value in _card_copy_items(card):
+        if _RAW_NUMBER_RE.search(value):
+            errors.append(f"{key}_contains_number")
+        if _FORBIDDEN_HEDGES.search(value):
+            errors.append(f"{key}_contains_hedge")
+        if _FORBIDDEN_INTERNAL.search(value):
+            errors.append(f"{key}_contains_internal_vocab")
     return errors
+
+
+def _tag_key(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _common_pattern_tags(card: Any) -> list[str]:
+    if not isinstance(card, dict) or not isinstance(card.get("common_pattern"), list):
+        return []
+    return [
+        key for key in (_tag_key(item) for item in card.get("common_pattern") or [])
+        if key
+    ]
+
+
+def _tag_diversity_errors(card: Any, recent_cards: list[dict[str, Any]]) -> list[str]:
+    if not isinstance(card, dict):
+        return []
+    counts: dict[str, int] = {}
+    for recent in recent_cards[:10]:
+        for tag in _common_pattern_tags(recent):
+            counts[tag] = counts.get(tag, 0) + 1
+    errors: list[str] = []
+    for index, tag in enumerate(_common_pattern_tags(card)):
+        if counts.get(tag, 0) >= 3:
+            errors.append(f"common_pattern_{index}_tag_reused")
+    return errors
+
+
+def _static_allowed(signal: dict[str, Any], fingerprints: list[dict[str, Any]]) -> bool:
+    signal_type = str(signal.get("signal_type") or "").upper()
+    if "FORMAT_SHIFT" in signal_type:
+        return True
+    media_values = {str(signal.get("media_type") or "").strip().lower()}
+    for post in fingerprints:
+        media_values.add(str(post.get("media_type") or "").strip().lower())
+    return bool(media_values & _STATIC_MEDIA_TYPES)
+
+
+def _card_context_errors(card: Any, signal: dict[str, Any], fingerprints: list[dict[str, Any]]) -> list[str]:
+    if not isinstance(card, dict) or _static_allowed(signal, fingerprints):
+        return []
+    errors: list[str] = []
+    for key, value in _card_copy_items(card):
+        if _STATIC_TERM_RE.search(value):
+            errors.append(f"{key}_static_without_static_lane")
+    return errors
+
+
+def _repair_context_terms(card: Any, context_errors: list[str]) -> Any:
+    if not isinstance(card, dict) or not any("static_without_static_lane" in error for error in context_errors):
+        return card
+    repaired = dict(card)
+
+    def replace_static(text: str) -> str:
+        text = re.sub(r"\bstatic product shots?\b", "plain product shots", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bstatic setups?\b", "plain setups", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bstatic shots?\b", "plain shots", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bstatics?\b", "plain posts", text, flags=re.IGNORECASE)
+        return text
+
+    for key in _CARD_COPY_FIELDS:
+        if isinstance(repaired.get(key), str):
+            repaired[key] = replace_static(str(repaired.get(key) or ""))
+    for key in _CARD_LIST_FIELDS:
+        if isinstance(repaired.get(key), list):
+            repaired[key] = [
+                replace_static(item) if isinstance(item, str) else item
+                for item in repaired.get(key) or []
+            ]
+    return repaired
+
+
+def _repair_common_patterns(card: Any, schema_errors: list[str]) -> Any:
+    if not isinstance(card, dict):
+        return card
+    repaired = dict(card)
+    if "common_pattern_too_many" in schema_errors and isinstance(repaired.get("common_pattern"), list):
+        repaired["common_pattern"] = repaired["common_pattern"][:5]
+    if not any(
+        token in error
+        for error in schema_errors
+        for token in ("generic_bucket", "_slash", "_proper_noun", "_too_long", "_too_generic", "_tag_reused", "common_pattern_too_few")
+    ):
+        return repaired
+    notes = [
+        str(item).strip()
+        for item in (repaired.get("per_post_notes") or [])
+        if isinstance(item, str) and str(item).strip()
+    ]
+    if not notes:
+        return repaired
+    repaired["common_pattern"] = notes[:5]
+    return repaired
+
+
+def _card_validation_errors(
+    card: Any,
+    signal: dict[str, Any],
+    fingerprints: list[dict[str, Any]],
+    recent_cards: list[dict[str, Any]],
+) -> list[str]:
+    return [
+        *_card_schema_errors(card),
+        *_tag_diversity_errors(card, recent_cards),
+        *_card_context_errors(card, signal, fingerprints),
+    ]
+
+
+def _business_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value.strip().replace("Z", "+00:00")).date()
+        except ValueError:
+            try:
+                return date.fromisoformat(value.strip()[:10])
+            except ValueError:
+                return None
+    return None
+
+
+def _recency_score(signal: dict[str, Any]) -> float:
+    business_day = _business_date(signal.get("business_date_ist"))
+    if not business_day:
+        return 0.10
+    age = max(0, (datetime.now(timezone.utc).date() - business_day).days)
+    if age <= 7:
+        return 0.18
+    if age <= 14:
+        return 0.14
+    if age <= 30:
+        return 0.09
+    return 0.05
+
+
+def _cohort_size_score(posts: list[dict[str, Any]]) -> float:
+    keys = {
+        str(row.get("post_key") or "")
+        for row in posts
+        if str(row.get("cohort") or "").lower() == "a" and str(row.get("post_key") or "").strip()
+    }
+    count = len(keys)
+    if count >= 5:
+        return 0.30
+    if count >= 3:
+        return 0.23
+    if count >= 2:
+        return 0.15
+    if count == 1:
+        return 0.08
+    return 0.04
+
+
+def _magnitude_score(metric_classification: dict[str, str]) -> float:
+    return {
+        "extreme": 0.34,
+        "sharp": 0.28,
+        "notable": 0.20,
+        "minor": 0.10,
+    }.get(str(metric_classification.get("magnitude") or "").lower(), 0.10)
+
+
+def _pattern_stability_score(posts: list[dict[str, Any]]) -> float:
+    trigger_posts = [row for row in posts if str(row.get("cohort") or "").lower() == "a"]
+    if not trigger_posts:
+        return 0.08
+    matches = 0
+    deviations = 0
+    stable_context = 0
+    for row in trigger_posts:
+        relation = (row.get("focus_read") or {}).get("relation_to_feeder_md") if isinstance(row.get("focus_read"), dict) else {}
+        if isinstance(relation, dict):
+            if isinstance(relation.get("matches"), list) and relation.get("matches"):
+                matches += 1
+            if isinstance(relation.get("deviates"), list) and relation.get("deviates"):
+                deviations += 1
+        if _stable_patterns(row.get("feeder_structured_patterns")):
+            stable_context += 1
+    if matches >= 2 and deviations == 0:
+        return 0.18
+    if matches >= 2:
+        return 0.15
+    if stable_context >= 2 and deviations <= matches:
+        return 0.13
+    if deviations >= 2 and matches == 0:
+        return 0.07
+    return 0.10
+
+
+def _computed_confidence(signal: dict[str, Any], posts: list[dict[str, Any]], metric_classification: dict[str, str]) -> str:
+    score = (
+        _cohort_size_score(posts)
+        + _magnitude_score(metric_classification)
+        + _pattern_stability_score(posts)
+        + _recency_score(signal)
+    )
+    if score >= 0.72:
+        return "high"
+    if score >= 0.45:
+        return "medium"
+    return "low"
 
 
 def _deterministic_escalation_reasons(signal: dict[str, Any], posts: list[dict[str, Any]]) -> list[str]:
@@ -922,6 +1533,71 @@ def _deterministic_escalation_reasons(signal: dict[str, Any], posts: list[dict[s
     if alignment:
         reasons.append(alignment)
     return reasons
+
+
+def _language_safe_metric_snapshot(value: Any) -> Any:
+    replacements = {
+        "anchor": "primary_account",
+        "challenger": "comparison_account",
+        "cohort": "evidence_group",
+        "signal": "movement",
+    }
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, child in value.items():
+            safe_key = str(key)
+            for needle, replacement in replacements.items():
+                safe_key = re.sub(needle, replacement, safe_key, flags=re.IGNORECASE)
+            out[safe_key] = _language_safe_metric_snapshot(child)
+        return out
+    if isinstance(value, list):
+        return [_language_safe_metric_snapshot(child) for child in value]
+    return value
+
+
+def _card_user_text(
+    signal: dict[str, Any],
+    focus_context: dict[str, Any],
+    fingerprints: list[dict[str, Any]],
+    metric_classification: dict[str, str],
+    escalation_reasons: list[str],
+    card_model_override: str | None,
+    recent_cards: list[dict[str, Any]] | None = None,
+    validation_errors: list[str] | None = None,
+) -> str:
+    recent_tags: list[str] = []
+    for recent in (recent_cards or [])[:10]:
+        recent_tags.extend(_common_pattern_tags(recent))
+    payload: dict[str, Any] = {
+        "trigger_kind": _display_trigger_kind(signal.get("signal_type")),
+        "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
+        "feed_context": signal.get("context_bible") or "(not provided)",
+        "feed_focus_context": focus_context,
+        "media_type": signal.get("media_type"),
+        "sub_bucket": signal.get("sub_bucket"),
+        "metric_snapshot": _language_safe_metric_snapshot(signal.get("metric_snapshot") or {}),
+        "metric_classification": metric_classification,
+        "evidence_policy": _evidence_policy(signal),
+        "model_route": {
+            "escalated_to_pro": bool(card_model_override),
+            "deterministic_reasons": escalation_reasons,
+        },
+        "recent_common_pattern_tags": recent_tags[:40],
+        "cohort_posts": fingerprints,
+    }
+    if validation_errors:
+        payload["rewrite_retry"] = {
+            "validation_errors": validation_errors[:12],
+            "instruction": (
+                "Rewrite the whole card. Preserve the insight, but satisfy the output contract exactly. "
+                "No raw numbers, no hedge words, no internal vocabulary, no confidence field. "
+                "If a common_pattern tag is recycling across cards, pull a more precise craft move from this signal's post reads. "
+                "Use static language only when this signal's media lane or comparison posts are static/image. "
+                "Replace anchor with primary account, challenger with comparison account, "
+                "cohort with evidence group, signal with movement, and fingerprint with post read."
+            ),
+        }
+    return json.dumps(payload, default=str)
 
 
 def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limit: int = 1) -> dict[str, int]:
@@ -985,6 +1661,8 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         signal = payload["signal"]
         posts = payload["posts"]
         focus_context = feed_focus_context(conn, signal, posts)
+        metric_classification = _metric_classification(signal)
+        computed_confidence = _computed_confidence(signal, posts, metric_classification)
         escalation_reasons = _deterministic_escalation_reasons(signal, posts)
         card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL if escalation_reasons else None
         fingerprints = []
@@ -1001,7 +1679,7 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             )
             fingerprints.append({
                 "post_key": row.get("post_key"),
-                "cohort": row.get("cohort"),
+                "evidence_group": "main" if str(row.get("cohort") or "").lower() == "a" else "comparison",
                 "post_role": _display_post_role(row.get("role")),
                 "post_url": row.get("post_url"),
                 "media_type": row.get("media_type"),
@@ -1016,7 +1694,16 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 "feeder_focus_version": row.get("feeder_focus_version"),
                 "current_feeder_focus_version": row.get("current_feeder_focus_version"),
             })
-        sample_hash = _sample_hash(posts, focus_context, signal)
+        recent_cards = _recent_signal_cards(conn, signal, sid)
+        recent_tags = []
+        for recent_card in recent_cards[:10]:
+            recent_tags.extend(_common_pattern_tags(recent_card))
+        signal_for_hash = {
+            **signal,
+            "metric_classification": metric_classification,
+            "recent_common_pattern_tags": recent_tags[:40],
+        }
+        sample_hash = _sample_hash(posts, focus_context, signal_for_hash)
         card_model = current_model_version(kind="card", model_override=card_model_override)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -1035,45 +1722,50 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             resolved += 1
             continue
 
-        user_text = json.dumps({
-            "signal": signal.get("signal_type"),
-            "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
-            "feed_bible": signal.get("context_bible") or "(not provided)",
-            "feed_focus_context": focus_context,
-            "media_type": signal.get("media_type"),
-            "sub_bucket": signal.get("sub_bucket"),
-            "metric_snapshot": signal.get("metric_snapshot") or {},
-            "cohort_policy": _cohort_policy(signal),
-            "model_route": {
-                "escalated_to_pro": bool(card_model_override),
-                "deterministic_reasons": escalation_reasons,
-            },
-            "cohort_posts": fingerprints,
-        }, default=str)
+        user_text = _card_user_text(
+            signal,
+            focus_context,
+            fingerprints,
+            metric_classification,
+            escalation_reasons,
+            card_model_override,
+            recent_cards=recent_cards,
+        )
         card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=2200, model_override=card_model_override)
-        schema_errors = _card_schema_errors(card)
-        if schema_errors and not card_model_override:
-            escalation_reasons = [*escalation_reasons, f"schema_validation_failed:{','.join(schema_errors[:5])}"]
-            card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL
-            card_model = current_model_version(kind="card", model_override=card_model_override)
-            user_text = json.dumps({
-                "signal": signal.get("signal_type"),
-                "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
-                "feed_bible": signal.get("context_bible") or "(not provided)",
-                "feed_focus_context": focus_context,
-                "media_type": signal.get("media_type"),
-                "sub_bucket": signal.get("sub_bucket"),
-                "metric_snapshot": signal.get("metric_snapshot") or {},
-                "cohort_policy": _cohort_policy(signal),
-                "model_route": {
-                    "escalated_to_pro": True,
-                    "deterministic_reasons": escalation_reasons,
-                },
-                "cohort_posts": fingerprints,
-            }, default=str)
-            print(f"[signal-intelligence] escalating signal_id={sid} reasons={escalation_reasons}")
+        schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+        if schema_errors:
+            if not card_model_override:
+                escalation_reasons = [*escalation_reasons, f"schema_validation_failed:{','.join(schema_errors[:5])}"]
+                card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL
+                card_model = current_model_version(kind="card", model_override=card_model_override)
+                print(f"[signal-intelligence] escalating signal_id={sid} reasons={escalation_reasons}")
+            else:
+                escalation_reasons = [*escalation_reasons, f"schema_validation_retry:{','.join(schema_errors[:5])}"]
+                print(f"[signal-intelligence] retrying signal_id={sid} reasons={escalation_reasons}")
+            user_text = _card_user_text(
+                signal,
+                focus_context,
+                fingerprints,
+                metric_classification,
+                escalation_reasons,
+                card_model_override,
+                recent_cards=recent_cards,
+                validation_errors=schema_errors,
+            )
             card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=2600, model_override=card_model_override)
-            schema_errors = _card_schema_errors(card)
+            schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+            if schema_errors and (
+                any("generic_bucket" in error for error in schema_errors)
+                or any("_slash" in error for error in schema_errors)
+                or any("_proper_noun" in error for error in schema_errors)
+                or any("_tag_reused" in error for error in schema_errors)
+                or "common_pattern_too_many" in schema_errors
+            ):
+                card = _repair_common_patterns(card, schema_errors)
+                schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+            if schema_errors and any("static_without_static_lane" in error for error in schema_errors):
+                card = _repair_context_terms(card, schema_errors)
+                schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
         if not card or schema_errors:
             with conn.cursor() as cur:
                 cur.execute("update public.signals set status = 'error', updated_at = now() where id = %s", (sid,))
@@ -1082,7 +1774,10 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 print(f"[signal-intelligence] card schema failed signal_id={sid} errors={schema_errors}")
             failed += 1
             continue
+        card.pop("confidence", None)
+        card.pop("why_it_may_have_happened", None)
         focus_memory_candidate = card.pop("focus_memory_candidate", {}) if isinstance(card.get("focus_memory_candidate"), dict) else {}
+        card["confidence"] = computed_confidence
         signal_status = "fresh"
         with conn.cursor() as cur:
             cur.execute(
