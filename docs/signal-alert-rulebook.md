@@ -244,7 +244,8 @@ Stage 2 receives:
 - `media_type`
 - `sub_bucket`
 - `metric_snapshot`
-- cohort policy
+- `metric_classification`
+- evidence policy
 - post fingerprints
 - feeder handle
 - feeder context role
@@ -255,12 +256,15 @@ Stage 2 receives:
 Stage 2 hard rules:
 
 - `metric_snapshot` is the only statistical baseline truth.
-- Cohort B/reference posts are visual references only.
+- `metric_classification` supplies qualitative words for prose.
+- Comparison posts are visual references only.
 - Do not calculate a new baseline from sample posts.
 - Do not claim saves, shares, or private algorithm behavior.
-- If content evidence does not explain the metric, mark confidence low.
+- Do not quote raw counts, percentages, multipliers, dates, ranges, or units in prose.
+- If content evidence does not explain the metric, use `pattern_type: "unclear"`.
 - If references exist, `watchout` must say what to avoid or what references are missing.
-- Never expose internal cohort letters or database role strings.
+- Never expose internal cohort letters, database role strings, model vocabulary, or feed bible terminology.
+- Confidence is computed server-side after the LLM returns.
 
 Card JSON:
 
@@ -268,17 +272,16 @@ Card JSON:
 {
   "title": "",
   "what_happened": "",
-  "why_it_may_have_happened": "",
+  "why": "",
   "common_pattern": [],
   "do_next": "",
   "watchout": "",
   "per_post_notes": [],
-  "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear",
-  "confidence": "high|medium|low"
+  "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear"
 }
 ```
 
-Low confidence is display metadata only. It must not be used as the escalation trigger or as the only reason to suppress a card. Escalation is deterministic: tier-1 metric magnitude, stable-focus deviation, or card schema failure.
+Server stores `confidence` on the card after validation. It must not be used as the escalation trigger or as the only reason to suppress a card. Escalation is deterministic: tier-1 metric magnitude, stable-focus deviation, or card validation failure.
 
 ## Context Form Contract
 

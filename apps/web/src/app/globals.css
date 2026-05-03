@@ -798,6 +798,54 @@ html.fm-feed-root-scroll body {
   display: none;
 }
 
+html.fm-feed-root-scroll,
+html.fm-fire-root-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+html.fm-feed-root-scroll::-webkit-scrollbar,
+html.fm-feed-root-scroll body::-webkit-scrollbar,
+html.fm-fire-root-scroll::-webkit-scrollbar,
+html.fm-fire-root-scroll body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+@keyframes fm-signal-tile-scroll-reveal {
+  from {
+    opacity: 0.72;
+    transform: translate3d(0, 12px, 0) scale(0.985);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (max-width: 640px) {
+  @supports (animation-timeline: view()) {
+    .fm-signal-scroll-tile {
+      animation: fm-signal-tile-scroll-reveal both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 28%;
+      transform-origin: center top;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-signal-scroll-tile {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
 .fm-ascent-line-clip {
   animation: fm-ascent-line-clip 1.34s cubic-bezier(0.35, 0, 0.12, 1) both;
   transform-box: fill-box;

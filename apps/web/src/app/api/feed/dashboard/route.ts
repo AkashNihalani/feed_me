@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v6';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v8';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
@@ -824,12 +824,16 @@ type PatternBoardSupport = {
   post_url: string | null;
   thumbnail_url: string | null;
   media_type: string | null;
+  post_role: string | null;
+  evidence_group: 'main' | 'comparison' | 'unknown';
+  evidence_label: string | null;
+  evidence_tone: 'positive' | 'negative' | 'reference' | null;
 };
 
 type PatternBoardSignalCard = {
   title: string | null;
   what_happened: string | null;
-  why_it_may_have_happened: string | null;
+  why: string | null;
   common_pattern: string[];
   do_next: string | null;
   watchout: string | null;
@@ -842,6 +846,37 @@ const PATTERN_BOARD_LIMIT = 10;
 const PATTERN_BOARD_CUE_MAX = 4;
 const PATTERN_BOARD_SUPPORT_MAX = 6;
 
+type PatternBoardSupportMeta = {
+  post_key: string;
+  post_role: string | null;
+  cohort: string | null;
+  evidence_group: 'main' | 'comparison' | 'unknown';
+  evidence_label: string | null;
+  evidence_tone: 'positive' | 'negative' | 'reference' | null;
+};
+
+function supportEvidenceMeta(signalCode: string | null | undefined, cohort: string | null | undefined): Pick<PatternBoardSupportMeta, 'evidence_group' | 'evidence_label' | 'evidence_tone'> {
+  const normalizedCohort = String(cohort || '').trim().toLowerCase();
+  const code = String(signalCode || '').toUpperCase();
+  const isMain = normalizedCohort === 'a';
+  const isComparison = normalizedCohort === 'b';
+  const negativeSignal = code.includes('FADE') || code.includes('DROP');
+
+  if (isMain && negativeSignal) {
+    return { evidence_group: 'main', evidence_label: 'Drop', evidence_tone: 'negative' };
+  }
+  if (isMain) {
+    return { evidence_group: 'main', evidence_label: 'Pick', evidence_tone: 'positive' };
+  }
+  if (isComparison && negativeSignal) {
+    return { evidence_group: 'comparison', evidence_label: 'Pick', evidence_tone: 'positive' };
+  }
+  if (isComparison) {
+    return { evidence_group: 'comparison', evidence_label: 'Mid', evidence_tone: 'reference' };
+  }
+  return { evidence_group: 'unknown', evidence_label: null, evidence_tone: null };
+}
+
 function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCard | null {
   if (Object.keys(card).length === 0) return null;
   const commonPattern = arrayValue<unknown>(card.common_pattern)
@@ -849,7 +884,7 @@ function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCar
     .concat(arrayValue<unknown>(card.patterns))
     .map((value) => nullableString(value))
     .filter((value): value is string => Boolean(value))
-    .slice(0, 4);
+    .slice(0, 5);
   const perPostNotes = arrayValue<unknown>(card.per_post_notes)
     .concat(arrayValue<unknown>(card.post_notes))
     .concat(arrayValue<unknown>(card.evidence))
@@ -859,7 +894,7 @@ function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCar
   return {
     title: nullableString(card.title) || nullableString(card.headline) || nullableString(card.verdict),
     what_happened: nullableString(card.what_happened) || nullableString(card.summary) || nullableString(card.verdict),
-    why_it_may_have_happened: nullableString(card.why_it_may_have_happened) || nullableString(card.why_it_moved) || nullableString(card.evidence),
+    why: nullableString(card.why) || nullableString(card.why_it_may_have_happened) || nullableString(card.why_it_moved) || nullableString(card.evidence),
     common_pattern: commonPattern,
     do_next: nullableString(card.do_next) || nullableString(card.tweak) || nullableString(card.recommendation),
     watchout: nullableString(card.watchout) || nullableString(card.risk),
@@ -875,7 +910,7 @@ function signalCardCompleteness(card: Record<string, unknown>): number {
   return [
     normalized.title,
     normalized.what_happened,
-    normalized.why_it_may_have_happened,
+    normalized.why,
     normalized.do_next,
     normalized.watchout,
     normalized.pattern_type,
@@ -938,6 +973,10 @@ async function hydratePatternSupportPreviews(
       post_url: nullableString(row.post_url),
       thumbnail_url: nullableString(row.thumbnail_url),
       media_type: nullableString(row.media_type),
+      post_role: null,
+      evidence_group: 'unknown',
+      evidence_label: null,
+      evidence_tone: null,
     });
   }
 
@@ -974,12 +1013,19 @@ async function fetchPatternBoard(
   const signalIds = signalRows
     .map((row) => nullableNumber(row.id))
     .filter((value): value is number => value != null);
-  const supportBySignal = new Map<number, string[]>();
+  const signalCodeById = new Map<number, string | null>();
+  for (const row of signalRows) {
+    const signalId = nullableNumber(row.id);
+    if (signalId != null) signalCodeById.set(signalId, nullableString(row.signal_type));
+  }
+
+  const supportBySignal = new Map<number, PatternBoardSupportMeta[]>();
   if (signalIds.length > 0) {
     const { data: postRows, error: postError } = await sb
       .from('signal_posts')
-      .select('signal_id,post_key,cohort,rank')
+      .select('signal_id,post_key,cohort,rank,role')
       .in('signal_id', signalIds)
+      .order('cohort', { ascending: true })
       .order('rank', { ascending: true });
     if (postError) throw postError;
     for (const row of (postRows || []) as Array<Record<string, unknown>>) {
@@ -987,7 +1033,13 @@ async function fetchPatternBoard(
       const postKey = nullableString(row.post_key);
       if (signalId == null || !postKey) continue;
       const bucket = supportBySignal.get(signalId) || [];
-      bucket.push(postKey);
+      const cohort = nullableString(row.cohort);
+      bucket.push({
+        post_key: postKey,
+        post_role: nullableString(row.role),
+        cohort,
+        ...supportEvidenceMeta(signalCodeById.get(signalId), cohort),
+      });
       supportBySignal.set(signalId, bucket);
     }
   }
@@ -1044,7 +1096,8 @@ async function fetchPatternBoard(
       recent_lift: null,
       anchor_gap: nullableNumber(snapshot.gap),
       match_count: nullableNumber(snapshot.post_count) ?? (supportBySignal.get(signalId) || []).length,
-      support_post_keys: supportBySignal.get(signalId) || [],
+      support_post_keys: (supportBySignal.get(signalId) || []).map((post) => post.post_key),
+      support_posts_meta: supportBySignal.get(signalId) || [],
       required_cues: [],
       cues: commonPattern.map((label) => ({ key: 'common_pattern', value: label, label })),
       card,
@@ -1136,14 +1189,32 @@ async function fetchPatternBoard(
 
   // Collect support post keys across all top entries (use required_cues priority)
   const supportKeysByEntry = new Map<string, string[]>();
+  const supportMetaByEntry = new Map<string, PatternBoardSupportMeta[]>();
   const allKeys: string[] = [];
   for (const entry of ranked) {
     const payload = entry.display_payload || entry.latest_payload || {};
-    const supportKeys = arrayValue<unknown>(payload.support_post_keys)
+    const supportMeta = arrayValue<PatternBoardSupportMeta>(payload.support_posts_meta)
+      .map((value) => recordValue(value))
+      .map((value) => ({
+        post_key: nullableString(value.post_key),
+        post_role: nullableString(value.post_role),
+        cohort: nullableString(value.cohort),
+        evidence_group: nullableString(value.evidence_group),
+        evidence_label: nullableString(value.evidence_label),
+        evidence_tone: nullableString(value.evidence_tone),
+      }))
+      .filter((value): value is PatternBoardSupportMeta => (
+        Boolean(value.post_key)
+        && (value.evidence_group === 'main' || value.evidence_group === 'comparison' || value.evidence_group === 'unknown')
+        && (value.evidence_tone === 'positive' || value.evidence_tone === 'negative' || value.evidence_tone === 'reference' || value.evidence_tone == null)
+      ))
+      .slice(0, PATTERN_BOARD_SUPPORT_MAX);
+    const supportKeys = (supportMeta.length > 0 ? supportMeta.map((post) => post.post_key) : arrayValue<unknown>(payload.support_post_keys)
       .map((value) => nullableString(value))
-      .filter((value): value is string => Boolean(value))
+      .filter((value): value is string => Boolean(value)))
       .slice(0, PATTERN_BOARD_SUPPORT_MAX);
     supportKeysByEntry.set(entry.firewatch_id, supportKeys);
+    supportMetaByEntry.set(entry.firewatch_id, supportMeta);
     for (const key of supportKeys) allKeys.push(key);
   }
 
@@ -1166,8 +1237,22 @@ async function fetchPatternBoard(
       .slice(0, PATTERN_BOARD_CUE_MAX);
 
     const supportKeys = supportKeysByEntry.get(entry.firewatch_id) || [];
+    const supportMetaByKey = new Map(
+      (supportMetaByEntry.get(entry.firewatch_id) || []).map((meta) => [meta.post_key, meta]),
+    );
     const support_posts: PatternBoardSupport[] = supportKeys
-      .map((key) => supportPreviewByKey.get(key))
+      .map((key) => {
+        const preview = supportPreviewByKey.get(key);
+        if (!preview) return null;
+        const meta = supportMetaByKey.get(key);
+        return {
+          ...preview,
+          post_role: meta?.post_role || preview.post_role,
+          evidence_group: meta?.evidence_group || preview.evidence_group,
+          evidence_label: meta?.evidence_label || preview.evidence_label,
+          evidence_tone: meta?.evidence_tone || preview.evidence_tone,
+        };
+      })
       .filter((preview): preview is PatternBoardSupport => Boolean(preview));
 
     return {

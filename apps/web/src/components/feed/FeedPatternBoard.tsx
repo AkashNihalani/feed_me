@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -19,6 +19,7 @@ type HeadlineNumber = {
 type PreviewAsset = {
   key: string;
   src: string;
+  fallbackSrc: string;
   post: PatternBoardSupportPost | null;
 };
 
@@ -44,8 +45,22 @@ function previewAsset(post: PatternBoardSupportPost | null, forceFallback = fals
   return {
     key: `${post?.post_key || 'none'}:${src || ''}`,
     src,
+    fallbackSrc: fallback,
     post,
   };
+}
+
+function preloadPreviewAssets(posts: PatternBoardSupportPost[], limit = posts.length) {
+  if (typeof window === 'undefined') return;
+  const seen = new Set<string>();
+  for (const post of posts.slice(0, limit)) {
+    const asset = previewAsset(post);
+    const src = asset.src || asset.fallbackSrc;
+    if (!src || seen.has(src)) continue;
+    seen.add(src);
+    const image = new window.Image();
+    image.src = src;
+  }
 }
 
 function compactNumber(value: number | null): string {
@@ -111,6 +126,43 @@ function normalizedConfidence(value: string | null | undefined): string {
   return '';
 }
 
+function evidenceLabel(post: PatternBoardSupportPost | null | undefined): string {
+  return post?.evidence_label || '';
+}
+
+function evidenceToneClasses(post: PatternBoardSupportPost | null | undefined): string {
+  if (post?.evidence_tone === 'positive') return 'border-emerald-300/24 bg-emerald-300/14 text-emerald-100';
+  if (post?.evidence_tone === 'negative') return 'border-[#E11D48]/28 bg-[#E11D48]/16 text-[#FDA4AF]';
+  return 'border-white/[0.1] bg-white/[0.08] text-white/72';
+}
+
+function evidenceSummary(post: PatternBoardSupportPost | null | undefined): string {
+  const label = evidenceLabel(post).toLowerCase();
+  if (label === 'pick') return 'Picked proof';
+  if (label === 'drop') return 'Dropped proof';
+  if (label === 'mid') return 'Middle read';
+  return '';
+}
+
+function readablePostRole(value: string | null | undefined): string {
+  const normalized = String(value || '').trim().toLowerCase();
+  const labels: Record<string, string> = {
+    trigger_core: 'Main evidence',
+    trigger_support: 'Supporting evidence',
+    reference_typical: 'Baseline reference',
+    reference_strong: 'Stronger reference',
+    reference_no_jump: 'No-jump reference',
+    reference_other_format: 'Other-format reference',
+    reference_anchor: 'Primary reference',
+    reference_feed: 'Feed reference',
+    reference_context: 'Comparison reference',
+  };
+  if (labels[normalized]) return labels[normalized];
+  return normalized
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function proofMetrics(pattern: PatternBoardItem): Array<{ label: string; value: string }> {
   const avgPctile = toFiniteNumber(pattern.avg_hot_percentile);
   const matchCount = toFiniteNumber(pattern.match_count);
@@ -140,6 +192,7 @@ function ProofTile({
   const [src, setSrc] = useState(() => post.thumbnail_url || fallback);
   const [dead, setDead] = useState(false);
   const handle = (post.handle || 'feed').replace(/^@+/, '').toUpperCase();
+  const label = evidenceLabel(post);
 
   return (
     <a
@@ -177,8 +230,17 @@ function ProofTile({
       ) : (
         <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgba(225,29,72,0.22),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))]" />
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.7)_100%)] px-2 pb-1.5 pt-5">
-        <div className="truncate text-[8px] font-black uppercase tracking-[0.12em] text-white/86">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex min-w-0 items-center gap-1.5 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.78)_100%)] px-2 pb-1.5 pt-5">
+        {label && (
+          <span className={[
+            'shrink-0 rounded-full border px-1.5 py-0.5 text-[6px] font-black uppercase tracking-[0.1em]',
+            evidenceToneClasses(post),
+          ].join(' ')}
+          >
+            {label}
+          </span>
+        )}
+        <div className="min-w-0 truncate text-[8px] font-black uppercase tracking-[0.12em] text-white/86">
           @{handle}
         </div>
       </div>
@@ -219,25 +281,50 @@ function ProofMosaic({ posts }: { posts: PatternBoardSupportPost[] }) {
 
 function FeaturedPreviewLayer({
   asset,
+  animateIn = true,
   onAnimationComplete,
+  onUnavailable,
 }: {
   asset: PreviewAsset;
+  animateIn?: boolean;
   onAnimationComplete?: () => void;
+  onUnavailable?: () => void;
 }) {
+  const [src, setSrc] = useState(asset.src);
+  const [dead, setDead] = useState(false);
+  const reportedUnavailable = useRef(false);
+
+  const markUnavailable = () => {
+    setDead(true);
+    if (reportedUnavailable.current) return;
+    reportedUnavailable.current = true;
+    onUnavailable?.();
+  };
+
   return (
     <motion.div
-      initial={{ opacity: 0.7, scale: 1.025, filter: 'blur(24px)' }}
+      initial={animateIn ? { opacity: 0.7, scale: 1.025, filter: 'blur(24px)' } : false}
       animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
       transition={{ duration: 2.75, ease: [0.16, 1, 0.3, 1] }}
       onAnimationComplete={onAnimationComplete}
       className="absolute inset-0"
     >
-      {asset.src ? (
+      {src && !dead ? (
         // eslint-disable-next-line @next/next/no-img-element -- dashboard thumbnails are dynamic feed assets
         <img
-          src={asset.src}
+          src={src}
           alt=""
           className="h-full w-full object-cover"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          onError={() => {
+            if (asset.fallbackSrc && src !== asset.fallbackSrc) {
+              setSrc(asset.fallbackSrc);
+              return;
+            }
+            markUnavailable();
+          }}
         />
       ) : (
         <div className="h-full w-full" />
@@ -246,7 +333,13 @@ function FeaturedPreviewLayer({
   );
 }
 
-function FeaturedPreview({ post }: { post: PatternBoardSupportPost | null }) {
+function FeaturedPreview({
+  post,
+  onImageUnavailable,
+}: {
+  post: PatternBoardSupportPost | null;
+  onImageUnavailable?: () => void;
+}) {
   const targetAsset = useMemo(
     () => previewAsset(post),
     [post],
@@ -293,16 +386,29 @@ function FeaturedPreview({ post }: { post: PatternBoardSupportPost | null }) {
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden rounded-[22px] border-0 bg-[radial-gradient(circle_at_28%_20%,rgba(225,29,72,0.18),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))] outline-none ring-0 lg:rounded-[24px]">
-      <FeaturedPreviewLayer asset={visibleAsset} />
+      <FeaturedPreviewLayer
+        key={visibleAsset.key}
+        asset={visibleAsset}
+        animateIn={false}
+        onUnavailable={onImageUnavailable}
+      />
       {incomingAsset && incomingAsset.key !== visibleAsset.key && (
         <FeaturedPreviewLayer
           key={incomingAsset.key}
           asset={incomingAsset}
+          onUnavailable={onImageUnavailable}
           onAnimationComplete={() => {
             setVisibleAsset(incomingAsset);
             setIncomingAsset(null);
           }}
         />
+      )}
+      {post && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-end gap-3 bg-[linear-gradient(180deg,rgba(0,0,0,0.58)_0%,transparent_100%)] px-3 py-3">
+          <span className="rounded-full border border-white/[0.08] bg-black/34 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/76">
+            @{(post.handle || 'feed').replace(/^@+/, '')}
+          </span>
+        </div>
       )}
     </div>
   );
@@ -311,29 +417,43 @@ function FeaturedPreview({ post }: { post: PatternBoardSupportPost | null }) {
 function RailThumbnail({
   post,
   active,
+  index,
   onClick,
 }: {
   post: PatternBoardSupportPost;
   active: boolean;
+  index: number;
   onClick: () => void;
 }) {
   const fallback = mediaProxyUrl(post.post_key);
   const [src, setSrc] = useState(() => post.thumbnail_url || fallback);
   const [dead, setDead] = useState(false);
   const handle = (post.handle || 'feed').replace(/^@+/, '').toUpperCase();
+  const label = evidenceLabel(post);
 
   return (
-    <button
+    <motion.button
       type="button"
+      layout
+      data-rail-index={index}
       onClick={onClick}
       className={[
-        'group relative h-[66px] w-[58px] shrink-0 overflow-hidden rounded-[14px] border bg-white/[0.04] transition lg:h-[58px] lg:w-[50px] xl:h-[66px] xl:w-[58px]',
+        'group relative h-[70px] min-w-[58px] overflow-hidden rounded-[14px] border bg-white/[0.04] transition duration-300 lg:h-[62px] xl:h-[70px]',
         active
-          ? 'border-[#FB7185]/58 shadow-[0_0_0_1px_rgba(225,29,72,0.22),0_10px_26px_rgba(225,29,72,0.16)]'
-          : 'border-white/[0.08] opacity-62 hover:opacity-100',
+          ? 'border-[#FB7185]/48 opacity-100 shadow-[0_12px_28px_rgba(225,29,72,0.16)]'
+          : 'border-white/[0.08] opacity-58 hover:opacity-100',
       ].join(' ')}
+      animate={{ scale: active ? 1 : 0.965 }}
+      transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       aria-label={`Show @${handle} support post`}
     >
+      {active && (
+        <motion.div
+          layoutId="support-rail-active"
+          className="pointer-events-none absolute inset-0 z-20 rounded-[14px] ring-2 ring-[#FB7185]/72 ring-offset-2 ring-offset-[#080808]"
+          transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.8 }}
+        />
+      )}
       {src && !dead ? (
         // eslint-disable-next-line @next/next/no-img-element -- dashboard thumbnails are dynamic feed assets
         <img
@@ -351,12 +471,21 @@ function RailThumbnail({
       ) : (
         <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgba(225,29,72,0.22),transparent_42%),rgba(255,255,255,0.035)]" />
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.82)_100%)] px-1.5 pb-1 pt-5">
-        <div className="truncate text-[6px] font-black uppercase tracking-[0.1em] text-white/82">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex min-w-0 items-center gap-1 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.84)_100%)] px-1.5 pb-1 pt-5">
+        {label && (
+          <span className={[
+            'shrink-0 rounded-full border px-1 py-0.5 text-[5px] font-black uppercase tracking-[0.08em] lg:text-[5.75px]',
+            evidenceToneClasses(post),
+          ].join(' ')}
+          >
+            {label}
+          </span>
+        )}
+        <div className="min-w-0 truncate text-[6px] font-black uppercase tracking-[0.1em] text-white/82">
           @{handle}
         </div>
       </div>
-    </button>
+    </motion.button>
   );
 }
 
@@ -369,6 +498,13 @@ function SupportPostRail({
   selectedIndex: number;
   onSelect: (index: number) => void;
 }) {
+  const railRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const target = railRef.current?.querySelector<HTMLElement>(`[data-rail-index="${selectedIndex}"]`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [selectedIndex]);
+
   if (posts.length === 0) return null;
   return (
     <div className="min-w-0">
@@ -380,12 +516,20 @@ function SupportPostRail({
           {selectedIndex + 1}/{posts.length}
         </div>
       </div>
-      <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+      <div
+        ref={railRef}
+        className="hide-scrollbar grid overflow-x-auto pb-1"
+        style={{
+          gridTemplateColumns: `repeat(${posts.length}, minmax(58px, 1fr))`,
+          gap: '8px',
+        }}
+      >
         {posts.map((post, index) => (
           <RailThumbnail
             key={`${post.post_key}:${post.thumbnail_url || ''}:${index}`}
             post={post}
             active={index === selectedIndex}
+            index={index}
             onClick={() => onSelect(index)}
           />
         ))}
@@ -398,32 +542,52 @@ function DetailSection({
   label,
   children,
   tone = 'default',
+  className = '',
 }: {
   label: string;
   children: ReactNode;
   tone?: 'default' | 'action' | 'warning';
+  className?: string;
 }) {
+  const isAction = tone === 'action';
+  const isWarning = tone === 'warning';
+  const bodyClass = isAction
+    ? 'mt-2 break-words text-[18px] font-black leading-[1.16] tracking-normal text-white/88 sm:text-[19px] md:text-[20px] lg:text-[22px] xl:text-[24px] [text-wrap:balance]'
+    : 'mt-2 break-words text-[13px] font-semibold leading-relaxed text-white/76 sm:text-[14px] md:text-[15px] md:leading-[1.48] lg:text-[16px] xl:text-[17px]';
+
   return (
-    <section
+    <motion.section
+      animate={isAction
+        ? {
+          borderColor: ['rgba(225,29,72,0.24)', 'rgba(251,113,133,0.36)', 'rgba(225,29,72,0.24)'],
+          boxShadow: [
+            'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 rgba(225,29,72,0)',
+            'inset 0 1px 0 rgba(255,255,255,0.04), 0 0 28px rgba(225,29,72,0.08)',
+            'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 rgba(225,29,72,0)',
+          ],
+        }
+        : undefined}
+      transition={isAction ? { duration: 4.2, repeat: Infinity, ease: 'easeInOut' } : undefined}
       className={[
-        'min-h-0 rounded-[18px] border px-4 py-3.5 lg:overflow-hidden lg:rounded-[15px] lg:px-3.5 lg:py-3 xl:rounded-[16px] xl:px-4 xl:py-3.5',
-        tone === 'action'
+        'fm-signal-scroll-tile relative h-auto rounded-[18px] border px-4 py-3.5 md:rounded-[16px] md:px-4 md:py-3.5 lg:px-5 lg:py-4 xl:px-6 xl:py-5',
+        isAction
           ? 'border-[#E11D48]/24 bg-[#E11D48]/12'
-          : tone === 'warning'
+          : isWarning
             ? 'border-white/[0.08] bg-white/[0.045]'
             : 'border-white/[0.07] bg-white/[0.035]',
+        className,
       ].join(' ')}
     >
-      <div className={tone === 'action'
-        ? 'text-[8px] font-black uppercase tracking-[0.18em] text-[#FDA4AF] lg:text-[7px]'
-        : 'text-[8px] font-black uppercase tracking-[0.18em] text-white/30 lg:text-[7px]'}
+      <div className={isAction
+        ? 'text-[8px] font-black uppercase tracking-[0.18em] text-[#FDA4AF] md:text-[9px] xl:text-[9.5px]'
+        : 'text-[8px] font-black uppercase tracking-[0.18em] text-white/30 md:text-[9px] xl:text-[9.5px]'}
       >
         {label}
       </div>
-      <div className="mt-2 text-[13px] font-semibold leading-relaxed text-white/76 sm:text-[14px] lg:text-[12px] lg:leading-[1.45] xl:text-[13px]">
+      <div className={bodyClass}>
         {children}
       </div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -435,14 +599,43 @@ function SignalInsightDialog({
   onClose: () => void;
 }) {
   const card: PatternBoardSignalCard | null = pattern?.signal_card ?? null;
-  const supportPosts = pattern?.support_posts ?? [];
-  const [selectedPostIndex, setSelectedPostIndex] = useState(0);
+  const patternId = pattern?.firewatch_id ?? null;
+  const supportPosts = useMemo(() => pattern?.support_posts ?? [], [pattern?.support_posts]);
+  const [selectedPostSelection, setSelectedPostSelection] = useState<{ patternId: string | null; index: number }>({
+    patternId: null,
+    index: 0,
+  });
+  const rawSelectedPostIndex = selectedPostSelection.patternId === patternId ? selectedPostSelection.index : 0;
+  const selectedPostIndex = supportPosts.length > 0
+    ? Math.min(rawSelectedPostIndex, supportPosts.length - 1)
+    : 0;
   const selectedPost = supportPosts[selectedPostIndex] ?? supportPosts[0] ?? null;
   const title = card?.title || pattern?.pattern_label || readableSignalCode(pattern?.signal_code);
   const commonPattern = card?.common_pattern?.length ? card.common_pattern : pattern?.cues || [];
   const metrics = pattern ? proofMetrics(pattern) : [];
   const confidence = normalizedConfidence(card?.confidence);
   const patternType = readablePatternType(card?.pattern_type);
+  const selectedPostRole = readablePostRole(selectedPost?.post_role);
+  const selectedEvidenceSummary = evidenceSummary(selectedPost);
+  const failedPreviewKeys = useRef<Set<string>>(new Set());
+  const contentPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const setSelectedPostIndex = useCallback((nextIndex: number | ((currentIndex: number) => number)) => {
+    setSelectedPostSelection((current) => {
+      const currentIndex = current.patternId === patternId ? current.index : 0;
+      const index = typeof nextIndex === 'function' ? nextIndex(currentIndex) : nextIndex;
+      return { patternId, index };
+    });
+  }, [patternId]);
+
+  const handlePreviewUnavailable = useCallback(() => {
+    if (!selectedPost?.post_key || supportPosts.length <= 1) return;
+    failedPreviewKeys.current.add(selectedPost.post_key);
+    const replacementIndex = supportPosts.findIndex((post, index) => (
+      index !== selectedPostIndex && !failedPreviewKeys.current.has(post.post_key)
+    ));
+    if (replacementIndex >= 0) setSelectedPostIndex(replacementIndex);
+  }, [selectedPost, selectedPostIndex, setSelectedPostIndex, supportPosts]);
 
   useEffect(() => {
     if (!pattern || supportPosts.length <= 1 || typeof window === 'undefined') return;
@@ -450,7 +643,21 @@ function SignalInsightDialog({
       setSelectedPostIndex((current) => (current + 1) % supportPosts.length);
     }, 6200);
     return () => window.clearInterval(timer);
-  }, [pattern, supportPosts.length]);
+  }, [pattern, setSelectedPostIndex, supportPosts.length]);
+
+  useEffect(() => {
+    if (!pattern) return;
+    preloadPreviewAssets(supportPosts, 4);
+  }, [pattern, supportPosts]);
+
+  useEffect(() => {
+    failedPreviewKeys.current.clear();
+    if (patternId == null || typeof window === 'undefined') return;
+    const frame = window.requestAnimationFrame(() => {
+      contentPanelRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [patternId]);
 
   useEffect(() => {
     if (!pattern || typeof window === 'undefined') return;
@@ -470,7 +677,7 @@ function SignalInsightDialog({
     <AnimatePresence>
       {pattern && (
         <motion.div
-          className="fixed inset-0 z-[320] flex items-end justify-center px-0 lg:items-center lg:px-5 lg:py-5"
+          className="fixed inset-0 z-[320] flex items-end justify-center px-0 sm:items-center sm:px-3 sm:py-3 md:px-4 md:py-4 lg:px-5 lg:py-5"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -494,27 +701,61 @@ function SignalInsightDialog({
             exit={{ y: '100%', opacity: 0.96 }}
             transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.95 }}
             onClick={(event) => event.stopPropagation()}
-            className="relative flex w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[#080808] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] lg:grid lg:w-[min(1360px,calc(100vw-72px))] lg:grid-cols-[minmax(340px,440px)_minmax(0,1fr)] lg:rounded-[28px] lg:shadow-[0_32px_90px_rgba(0,0,0,0.72)] xl:w-[min(1460px,calc(100vw-96px))] xl:grid-cols-[minmax(400px,500px)_minmax(0,1fr)]"
-            style={{ maxHeight: 'min(820px, calc(100dvh - 72px - env(safe-area-inset-top)))' }}
+            className="relative flex h-[var(--signal-dialog-height)] w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[#080808] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] sm:grid sm:w-[min(1120px,calc(100vw-24px))] sm:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.22fr)] sm:rounded-[24px] sm:shadow-[0_32px_90px_rgba(0,0,0,0.72)] md:w-[min(1180px,calc(100vw-40px))] md:grid-cols-[minmax(300px,0.78fr)_minmax(0,1.22fr)] md:rounded-[28px] lg:w-[min(1500px,calc(100vw-64px))] lg:grid-cols-[minmax(410px,500px)_minmax(0,1fr)] xl:w-[min(1600px,calc(100vw-80px))] xl:grid-cols-[minmax(450px,540px)_minmax(0,1fr)]"
+            style={{
+              maxHeight: 'min(790px, calc(100dvh - 56px - env(safe-area-inset-top)))',
+              '--signal-dialog-height': 'min(790px, calc(100dvh - 56px - env(safe-area-inset-top)))',
+            } as CSSProperties}
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/42 to-transparent" />
-            <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/14 lg:hidden" />
+            <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/14 md:hidden" />
 
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.06] text-white/54 transition hover:bg-white/[0.1] hover:text-white/82 lg:right-5 lg:top-5"
+              className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.06] text-white/54 transition hover:bg-white/[0.1] hover:text-white/82 md:right-5 md:top-5"
               aria-label="Close signal card"
             >
               <X size={16} strokeWidth={2.4} />
             </button>
 
-            <div className="hidden min-h-0 flex-col justify-center gap-3 p-4 lg:flex xl:p-5">
+            <div className="flex shrink-0 flex-col justify-center gap-3 px-5 pb-4 pt-5 sm:min-h-0 sm:shrink sm:p-4 md:p-5 lg:gap-4 xl:p-6">
               <div className="flex min-h-0 items-center justify-center">
-                <div className="aspect-[4/5] w-full max-w-[410px] xl:max-w-[460px]">
-                  <FeaturedPreview post={selectedPost} />
+                <div className="aspect-[4/5] w-[min(62vw,236px)] max-w-full sm:w-full sm:max-w-[292px] md:max-w-[330px] lg:max-w-[420px] xl:max-w-[455px]">
+                  <FeaturedPreview post={selectedPost} onImageUnavailable={handlePreviewUnavailable} />
                 </div>
               </div>
+              {selectedPost && (
+                <div className="flex items-center justify-between gap-3 px-1">
+                  <div className="min-w-0">
+                    <div className="truncate text-[10px] font-black uppercase tracking-[0.18em] text-white/32 xl:text-[11px]">
+                      Selected proof
+                    </div>
+                    <div className="mt-1 truncate text-[16px] font-bold text-white/72 lg:text-[17px] xl:text-[18px]">
+                      {selectedEvidenceSummary || selectedPostRole || selectedPost.media_type || 'Post read'}
+                    </div>
+                    {selectedEvidenceSummary && selectedPostRole && (
+                      <div className="mt-0.5 truncate text-[12px] font-bold text-white/38 xl:text-[13px]">
+                        {selectedPostRole}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-full border border-white/[0.08] bg-white/[0.055] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/48">
+                      {selectedPostIndex + 1}/{supportPosts.length}
+                    </span>
+                    {evidenceLabel(selectedPost) && (
+                      <span className={[
+                        'rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] xl:text-[9px]',
+                        evidenceToneClasses(selectedPost),
+                      ].join(' ')}
+                      >
+                        {evidenceLabel(selectedPost)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               <SupportPostRail
                 posts={supportPosts}
                 selectedIndex={selectedPostIndex}
@@ -522,53 +763,46 @@ function SignalInsightDialog({
               />
             </div>
 
-            <div className="min-h-0 overflow-y-auto px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-5 lg:overflow-hidden lg:px-7 lg:py-7 xl:px-8 xl:py-8">
-              <div className="shrink-0 pr-10 lg:pr-12">
-                <div className="flex flex-wrap items-center gap-2 lg:gap-1.5">
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/70 lg:text-[8px]">
-                    Signal intelligence
-                  </span>
-                  <span className="rounded-full border border-white/[0.08] bg-white/[0.045] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/38 lg:px-2 lg:py-0.5 lg:text-[7px]">
-                    {readableSignalCode(pattern.signal_code)}
-                  </span>
-                  {confidence && (
-                    <span className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-[#FDA4AF]/82 lg:px-2 lg:py-0.5 lg:text-[7px]">
-                      {confidence}
+            <div className="relative min-h-0 flex-1 overflow-hidden sm:h-full">
+              <div
+                ref={contentPanelRef}
+                className="hide-scrollbar h-full min-h-0 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-5 sm:flex sm:flex-col sm:overflow-y-auto sm:px-5 sm:py-5 md:px-6 md:py-6 lg:px-8 lg:py-7 xl:px-9 xl:py-8"
+              >
+                <div className="shrink-0 pr-10 md:pr-12">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/70 xl:text-[10px]">
+                      Signal intelligence
                     </span>
+                    <span className="rounded-full border border-white/[0.08] bg-white/[0.045] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/38 md:px-2.5 md:py-1 md:text-[8px]">
+                      {readableSignalCode(pattern.signal_code)}
+                    </span>
+                    {confidence && (
+                      <span className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-[#FDA4AF]/82 md:px-2.5 md:py-1 md:text-[8px]">
+                        {confidence}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="mt-3 max-w-[calc(100%-10px)] text-[30px] font-black leading-[1.03] tracking-normal text-white [text-wrap:balance] sm:w-full sm:max-w-[min(760px,calc(100%-56px))] sm:text-[28px] sm:leading-[1.02] md:mt-3 md:max-w-[min(920px,calc(100%-64px))] md:text-[34px] lg:text-[46px] lg:leading-[1] xl:max-w-[min(1040px,calc(100%-70px))] xl:text-[54px]">
+                    {title}
+                  </h3>
+                  {patternType && (
+                    <div className="mt-3 text-[10px] font-black uppercase tracking-[0.17em] text-white/28 md:mt-2 md:text-[9px] xl:text-[10px]">
+                      {patternType}
+                    </div>
                   )}
                 </div>
-                <h3 className="mt-3 max-w-[calc(100%-10px)] text-[clamp(28px,8vw,40px)] font-black leading-[1.02] tracking-[-0.05em] text-white [text-wrap:balance] sm:text-[42px] lg:mt-2 lg:w-full lg:max-w-[min(840px,calc(100%-64px))] lg:text-[clamp(22px,2.5vh,30px)] lg:leading-[1.06] xl:max-w-[min(940px,calc(100%-70px))] xl:text-[clamp(25px,2.55vh,34px)]">
-                  {title}
-                </h3>
-                {patternType && (
-                  <div className="mt-3 text-[10px] font-black uppercase tracking-[0.17em] text-white/28 lg:mt-2 lg:text-[8px]">
-                    {patternType}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 space-y-3 lg:hidden">
-                <div className="mx-auto aspect-[4/5] w-[min(76vw,286px)] max-w-full sm:w-[min(62vw,304px)]">
-                  <FeaturedPreview post={selectedPost} />
-                </div>
-                <SupportPostRail
-                  posts={supportPosts}
-                  selectedIndex={selectedPostIndex}
-                  onSelect={setSelectedPostIndex}
-                />
-              </div>
 
               {metrics.length > 0 && (
-                <div className="mt-4 grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:mt-3 lg:grid-cols-3 lg:gap-1.5 xl:mt-4 xl:grid-cols-5 xl:gap-2">
+                <div className="mt-4 grid shrink-0 grid-cols-3 gap-1.5 sm:mt-5 sm:gap-2 xl:gap-2.5">
                   {metrics.map((metric) => (
                     <div
                       key={`${pattern.firewatch_id}:${metric.label}`}
-                      className="min-w-0 rounded-[14px] border border-white/[0.06] bg-white/[0.035] px-3 py-2.5 lg:rounded-[12px] lg:px-2.5 lg:py-1.5 xl:rounded-[14px] xl:px-3 xl:py-2"
+                      className="min-w-0 rounded-[12px] border border-white/[0.06] bg-white/[0.035] px-2.5 py-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3 lg:px-5 lg:py-4 xl:px-5 xl:py-4"
                     >
-                      <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-white/28">
+                      <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-white/28 md:text-[9px] xl:text-[10px]">
                         {metric.label}
                       </div>
-                      <div className="mt-1 truncate text-[15px] font-black tracking-[-0.03em] text-white/88 lg:text-[13px] xl:text-[15px]">
+                      <div className="mt-1 truncate text-[18px] font-black tracking-normal text-white/92 sm:text-[24px] md:text-[30px] lg:text-[40px] xl:text-[44px]">
                         {metric.value}
                       </div>
                     </div>
@@ -576,24 +810,24 @@ function SignalInsightDialog({
                 </div>
               )}
 
-              <div className="mt-5 space-y-3 lg:mt-4 lg:grid lg:min-h-0 lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0 xl:gap-3.5">
+              <div className="mt-5 grid gap-2.5 md:mt-5 md:grid-cols-1 md:items-start xl:grid-cols-12 xl:gap-3">
                 {card?.what_happened && (
-                  <DetailSection label="What happened">
+                  <DetailSection label="What happened" className="xl:col-span-6">
                     {card.what_happened}
                   </DetailSection>
                 )}
-                {card?.why_it_may_have_happened && (
-                  <DetailSection label="Why it moved">
-                    {card.why_it_may_have_happened}
+                {card?.why && (
+                  <DetailSection label="Why it moved" className="xl:col-span-6">
+                    {card.why}
                   </DetailSection>
                 )}
                 {commonPattern.length > 0 && (
-                  <DetailSection label="Common pattern">
-                    <div className="flex flex-wrap gap-1.5 lg:gap-1.5">
+                  <DetailSection label="Common pattern" className="xl:col-span-6">
+                    <div className="flex flex-wrap gap-1.5 md:gap-1.5">
                       {commonPattern.slice(0, 5).map((cue) => (
                         <span
                           key={`${pattern.firewatch_id}:detail:${cue}`}
-                          className="rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/60 lg:px-3 lg:py-1.5 lg:text-[8.5px] lg:tracking-[0.1em] xl:px-3.5 xl:text-[9px]"
+                          className="max-w-full rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/60 md:px-3.5 md:py-2 md:text-[10px] md:tracking-[0.1em] lg:text-[11px] xl:px-4 xl:text-[12px]"
                         >
                           {cue}
                         </span>
@@ -602,19 +836,19 @@ function SignalInsightDialog({
                   </DetailSection>
                 )}
                 {card?.do_next && (
-                  <DetailSection label="Do next" tone="action">
+                  <DetailSection label="Do next" tone="action" className="xl:col-span-6">
                     {card.do_next}
                   </DetailSection>
                 )}
                 {card?.watchout && (
-                  <DetailSection label="Watchout" tone="warning">
+                  <DetailSection label="Watchout" tone="warning" className="xl:col-span-6">
                     {card.watchout}
                   </DetailSection>
                 )}
                 {card?.per_post_notes?.length ? (
-                  <DetailSection label="Post notes">
-                    <div className="space-y-2 lg:space-y-1.5">
-                      {card.per_post_notes.slice(0, 4).map((note, index) => (
+                  <DetailSection label="Post notes" className="xl:col-span-6">
+                    <div className="space-y-2 md:space-y-1.5">
+                      {card.per_post_notes.slice(0, 5).map((note, index) => (
                         <div key={`${pattern.firewatch_id}:note:${index}`} className="flex gap-2">
                           <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#E11D48]/70" />
                           <span>{note}</span>
@@ -624,6 +858,7 @@ function SignalInsightDialog({
                   </DetailSection>
                 ) : null}
               </div>
+            </div>
             </div>
           </motion.div>
         </motion.div>
@@ -649,6 +884,7 @@ function PatternCard({
   const headline = pickHeadlineNumber(pattern);
   const cues = (pattern.cues || []).slice(0, 3);
   const pills = patternPills(pattern);
+  const cardTitle = pattern.signal_card?.title || pattern.pattern_label || 'Pattern';
 
   const selectCard = () => onSelect(pattern);
 
@@ -684,8 +920,8 @@ function PatternCard({
 
         <div className="mt-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-[18px] font-black leading-[1.02] tracking-[-0.035em] text-foreground dark:text-white sm:text-[20px]">
-              {pattern.pattern_label || 'Pattern'}
+            <div className="line-clamp-2 text-[18px] font-black leading-[1.02] tracking-normal text-foreground dark:text-white sm:text-[20px]">
+              {cardTitle}
             </div>
             {cues.length > 0 && (
               <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5">
@@ -725,10 +961,10 @@ function PatternCard({
                 key={`${pattern.firewatch_id}:${pill.label}`}
                 className="min-w-0 rounded-[12px] border border-black/[0.04] bg-white/44 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)] dark:border-white/[0.055] dark:bg-white/[0.032] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
               >
-                <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-foreground/34 dark:text-white/28">
+                <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-foreground/34 dark:text-white/28 sm:text-[7.5px]">
                   {pill.label}
                 </div>
-                <div className="mt-0.5 truncate text-[12px] font-black tracking-[-0.02em] text-foreground/84 dark:text-white/74">
+                <div className="mt-0.5 truncate text-[15px] font-black tracking-normal text-foreground/88 dark:text-white/80 sm:text-[16px]">
                   {pill.value}
                 </div>
               </div>
@@ -770,6 +1006,41 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
 
   const selectedId = activePattern?.firewatch_id || linkedPatternId;
 
+  useEffect(() => {
+    for (const pattern of patterns.slice(0, 8)) {
+      preloadPreviewAssets(pattern.support_posts || [], 2);
+    }
+  }, [patterns]);
+
+  const openPattern = useCallback((pattern: PatternBoardItem) => {
+    const supportPostsForPattern = pattern.support_posts || [];
+    preloadPreviewAssets(supportPostsForPattern, 4);
+
+    if (typeof window === 'undefined') {
+      setActivePattern(pattern);
+      return;
+    }
+
+    const firstAsset = previewAsset(supportPostsForPattern[0] || null);
+    const firstSrc = firstAsset.src || firstAsset.fallbackSrc;
+    if (!firstSrc) {
+      setActivePattern(pattern);
+      return;
+    }
+
+    let opened = false;
+    const open = () => {
+      if (opened) return;
+      opened = true;
+      setActivePattern(pattern);
+    };
+    const image = new window.Image();
+    image.onload = open;
+    image.onerror = open;
+    image.src = firstSrc;
+    window.setTimeout(open, 520);
+  }, []);
+
   if (patterns.length === 0) {
     return (
       <div className="fm-feed-mobile-panel min-w-0" ref={sectionRef} id="firewatch-section">
@@ -808,7 +1079,7 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
             pattern={pattern}
             selected={pattern.firewatch_id === selectedId}
             pulse={pulseCard && pattern.firewatch_id === linkedPatternId}
-            onSelect={setActivePattern}
+            onSelect={openPattern}
           />
         ))}
       </div>

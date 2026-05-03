@@ -84,12 +84,16 @@ export type PatternBoardSupportPost = {
   post_url: string | null;
   thumbnail_url: string | null;
   media_type: string | null;
+  post_role: string | null;
+  evidence_group: 'main' | 'comparison' | 'unknown';
+  evidence_label: string | null;
+  evidence_tone: 'positive' | 'negative' | 'reference' | null;
 };
 
 export type PatternBoardSignalCard = {
   title: string | null;
   what_happened: string | null;
-  why_it_may_have_happened: string | null;
+  why: string | null;
   common_pattern: string[];
   do_next: string | null;
   watchout: string | null;
