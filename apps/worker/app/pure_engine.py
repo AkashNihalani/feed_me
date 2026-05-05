@@ -63,7 +63,7 @@ from .signal_detection import (
 from .signal_intelligence import (
     resolve_signal_intelligence as run_signal_intelligence,
 )
-from .focus_brain import (
+from .focus_rulebook import (
     compile_feed_focus as run_compile_feed_focus,
     compile_feeder_focus as run_compile_feeder_focus,
 )

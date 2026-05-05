@@ -24,10 +24,7 @@ from .config import (
     SIGNAL_INTELLIGENCE_MODEL,
     SIGNAL_INTELLIGENCE_PROVIDER,
 )
-from .focus_brain import (
-    ensure_post_focus_read,
-    feed_focus_context,
-)
+from .focus_rulebook import signal_rulebook_context
 
 _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 _GEMINI_UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
@@ -35,214 +32,63 @@ _GEMINI_FILE_URL = "https://generativelanguage.googleapis.com/v1beta/files/{name
 _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
-_FP_PROMPT_VERSION = "fingerprint_v4_neutral"
-_CARD_PROMPT_VERSION = "signal_card_v10_specificity_zone"
-_SAMPLING_POLICY_VERSION = "media_sample_v1"
+_FP_PROMPT_VERSION = "fingerprint_v5_full_context"
+_CARD_PROMPT_VERSION = "signal_card_v4_rulebook"
+_SAMPLING_POLICY_VERSION = "media_sample_v2_120s_all_slides"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
 _IMAGE_MAX_BYTES = 12 * 1024 * 1024
-_VIDEO_SAMPLE_SECONDS = 90
+_VIDEO_SAMPLE_SECONDS = 120
 
-_FINGERPRINT_SYSTEM = """Describe what this post actually contains.
-Use visual evidence first. Caption is supporting context only. If media evidence is partial, say so.
-Use only what you can see or read. Do not invent niche, brand, or campaign details.
-Do not explain performance. Do not say if the post is good, bad, risky, emerging, or strategic.
-Do not compare this post to the account's history. You are making a neutral fingerprint only.
+_FINGERPRINT_SYSTEM = """Create a full neutral fingerprint of this Instagram post.
+You receive only this post: caption, media, audio/video if available, and basic media metadata.
+Do not use account history, feed context, metrics, alerts, or strategy assumptions.
+Do not explain whether it worked. Do not compare it to prior posts.
 
 Return only JSON:
 {
-  "content_summary": "",
-  "topic": "",
-  "audience_addressed": "",
-  "hook": "",
-  "opener": "",
-  "payoff": "",
-  "visual_sequence": "",
-  "caption_role": "",
-  "audio_or_text_driver": "",
-  "emotional_trigger": "",
-  "discussion_prompt": "",
-  "craft_moves": [],
-  "campaign_or_context_clues": [],
-  "visual_read": {
-    "opening_frame": "",
-    "subject_focus": "",
-    "setting": "",
-    "camera_language": "",
-    "production_style": "",
-    "human_presence": "",
-    "proof_shown": [],
-    "pacing": "",
-    "on_screen_text_style": ""
+  "post_id": "",
+  "media_type": "reel|sidecar|image",
+  "duration_seconds": null,
+  "carousel_slide_count": null,
+  "observed": {
+    "caption": "verbatim caption text, or empty string",
+    "transcript": "verbatim spoken text for video/reel, as complete as possible; empty for image/carousel with no speech",
+    "audio_notes": "music, ambient sound, silence, voiceover style, sound effects, audio/text synchronization",
+    "visual_notes": "detailed description: frame-by-frame for short reels, scene-level for long reels up to supplied duration, slide-by-slide for every carousel slide"
   },
-  "caption_read": {
-    "tone": "",
-    "voice": "",
-    "language_style": "",
-    "specificity": "",
-    "cta_style": "",
-    "emotional_register": "",
-    "caption_confidence": "high|medium|low"
+  "synthesis": {
+    "subject": "1-3 sentences: what the post is materially about",
+    "craft": "1-3 sentences: structure, pacing, format choices, transitions, late payoff if present, distinctive moves",
+    "voice": "1-3 sentences: tone, register, posture, how the speaker/brand positions itself",
+    "proof": "1-3 sentences: evidence, credibility devices, scarcity, social proof, visual proof; or 'none'"
   },
   "media_confidence": "high|medium|low"
 }"""
 
-_CARD_SYSTEM = """You write brutal operator cards for a social media tracking product.
-Use only the supplied feed context, focus reads, feeder context, metric_snapshot, metric_classification, evidence policy, and post fingerprints.
-The metric_snapshot is the statistical truth. The META block renders raw numbers separately.
-The metric_classification is the language bridge. Reflect direction, magnitude, breadth, and baseline qualitatively with those labels.
-Do NOT quote raw counts, percentages, multipliers, dates, ranges, or units in prose.
-GOOD: "Followers fell sharply this week."
-GOOD: "A broad wave hit the feed."
-GOOD: "Reach surged. Engagement stayed flat."
-BAD: "Net loss of 2,415 followers over 7 days, a 3x increase."
-BAD: "42% of active feeders saw movement."
-BAD: "Reach jumped 2.4x."
+_CARD_SYSTEM = """You write Feed_Me signal cards.
+The server owns metric truth. You explain what happened in the content, what changed against the rulebook, and how that likely helped or worsened performance.
 
-Use visual evidence first. Caption is supporting context only.
-Do not claim saves, shares, or private algorithm behavior unless those facts are explicitly provided.
-Do not discount campaigns, collaborations, celebrity moments, or off-platform context when they visibly explain the metrics.
-If content evidence is thin, write "unclear" as pattern_type and keep the copy blunt. Do not invent certainty.
-When comparison posts exist, watchout must say what to avoid or what the comparison posts are missing.
-Classify pattern_type as one of: account_aligned, feed_aligned, account_outlier, conflict_signal, unclear.
+Inputs include:
+- alert event and metric snapshot
+- rulebook_context from the v4 focus rulebook
+- evidence posts with full neutral fingerprints
 
-Lane boundary:
-Most signals compare posts inside the same media lane. Reels are compared to reel history unless the evidence policy says otherwise.
-Keep "static" for static/image posts only. Do not say "static" failed, fell, stayed, or lost unless the supplied fingerprints include static/image posts or the trigger is a format-shift signal.
-Name the content mechanic that changed inside the lane: hook, setup, character, proof, scene structure, caption job, edit rhythm, or payoff.
-
-Forbidden hedge words in user-facing fields:
-may, could, likely, perhaps, suggests, appears, seems, somewhat, tends to.
-
-Forbidden internal vocabulary in user-facing fields:
-cohort, anchor, challenger, bible, feed_focus, signal, pattern_id, cross-feed, cross feed, fingerprint,
-trigger_core, trigger_support, reference_no_jump, reference_typical, reference_strong.
-
-Voice rules:
-- Write like an operator, not a consultant.
-- No "adopt a X-first approach". No "balance the feed by". No strategic filler.
-- title: sentence case, max 7 words. Period-driven micro-sentences are allowed.
-- what_happened: one or two short sentences, max 45 words. Directional, no numbers.
-- why: one sentence, max 30 words. Must start with "Worked because " or "Failed because ".
-- common_pattern: 3-5 craft pattern types, 2-5 words each.
-- do_next: exactly two short imperatives. Format: "Kill X. Build Y."
-- watchout: one aphoristic warning, max 16 words. No hedging.
-- per_post_notes: max 5 strings. Each names an observable craft move, not a subject label.
-
-Tag specificity zone:
-Each common_pattern entry is a craft pattern type: specific enough that a reader recognizes the move, generic enough that it can recur on another post later.
-For every tag, ask:
-Q1: Could this same tag describe a similar craft move on a different post later? If no, generalize.
-Q2: Could this tag describe almost any post in this niche? If yes, specify.
-Q3: Does this tag use a slash to combine two concepts? If yes, split it or pick one.
-Q4: Does this tag use a proper noun: movie title, brand name, product name, location, celebrity name? If yes, generalize to the behavior type.
-
-TOO GENERIC:
-- "satire / parody"
-- "social tension / confidence"
-- "movement / rhythmic pacing"
-- "high energy"
-- "character-led skits"
-- "static setups"
-- "engaging content"
-
-TOO UNIQUE:
-- "Close-up noodle-cup disgust payoff" -> "Disgust-led food reaction"
-- "Devil-Wears-Prada cinematic parody" -> "Movie-tie-in cinematic parody"
-- "Multi-layover luxury travel unboxing" -> "Luxury travel unboxing"
-- "Black-and-white hatewatch reaction" -> "Hate-watch reaction frame"
-- "In-flight passenger conflict skit" -> "In-flight conflict skit"
-
-RIGHT ZONE:
-- "Disgust-led food reaction"
-- "Movie-tie-in cinematic parody"
-- "Hate-watch reaction frame"
-- "Luxury travel unboxing"
-- "Direct-address giveaway loop"
-- "Eldest-daughter persona skit"
-- "Frugal-father character skit"
-
-What happened:
-Open with qualitative metric direction. Then name 2-3 actual craft moves from the main proof posts.
-The reader should know what moved, not only that something moved.
-
-GOOD:
-"Reach surged on a run of reels: an in-flight conflict skit, a hate-watch sports reaction, and a contradictory food vlog. Each replaced the account's studio-shoutout baseline with sharper conflict."
-
-BAD:
-"Reach surged. High-tension skits and polarizing sports reactions beat the previous pattern."
-
-Do-next specificity:
-X and Y in "Kill X. Build Y." must name craft observed in this signal's evidence.
-GOOD: "Kill office testimonials. Build creator-led sketches."
-BAD: "Kill generic setups. Build character-led skits."
-
-Title variation:
-Titles stay period-driven micro-sentences, but vary the verbs. Do not default to repeated surged/fell, hit/missed, won/lost templates.
-Use verbs that name the specific behavior observed here: drove, drowned, beat, replaced, traded, abandoned, recovered, pulled back, broke through, leaned, anchored, stalled, snapped.
-
-Why specificity matters:
-These cards later annotate feeder and feed focus evidence. Specific card language becomes specific rulebook language.
-If you write "satire / parody", the memory layer records a vague bucket. If you write the actual craft, the memory layer can match future posts cleanly.
-
-Good per_post_notes:
-- "Persona-led product ad, vertical scroll"
-- "Travel scrapbook, ambient-only audio"
-- "PR reveal, face-led reaction"
-Bad per_post_notes:
-- "Maybelline #Ad"
-- "Bali travel scrapbook"
-- "Angel-themed portraiture"
-
-Few-shot card A:
-{
-  "title": "Ads hit. Trust left.",
-  "what_happened": "Followers fell sharply. The drop sat outside normal account noise.",
-  "why": "Failed because the feed turned into campaign delivery without enough lived-in proof.",
-  "common_pattern": ["dense brand run", "shock reaction hooks", "thin craft proof"],
-  "do_next": "Kill stacked ads. Build proof-led resets.",
-  "watchout": "A familiar face cannot carry an unfamiliar sales rhythm.",
-  "per_post_notes": ["Persona-led product ad, vertical scroll", "Shock reveal, comment-bait caption"],
-  "pattern_type": "account_outlier",
-  "focus_memory_candidate": {
-    "candidate_patterns": ["proof-led resets after brand runs"],
-    "candidate_avoid": ["stacked sponsored reactions without craft proof"],
-    "candidate_collision": ""
-  }
-}
-
-Few-shot card B:
-{
-  "title": "Drama moved. Product waited.",
-  "what_happened": "A broad wave crossed the feed. Access and tension beat plain product framing.",
-  "why": "Worked because industry proximity gave viewers a story to rank, not just a thing to admire.",
-  "common_pattern": ["exclusive access moments", "industry conflict hook", "face-first product proof"],
-  "do_next": "Kill catalog posture. Build access-led reveals.",
-  "watchout": "Access goes flat when it turns into product posture.",
-  "per_post_notes": ["PR reveal, face-led reaction", "Industry conflict, direct-address hook"],
-  "pattern_type": "feed_aligned",
-  "focus_memory_candidate": {
-    "candidate_patterns": ["access-led product drama"],
-    "candidate_avoid": ["plain product drops without social stakes"],
-    "candidate_collision": ""
-  }
-}
+Use the metric snapshot as boundary. Do not invent saves, shares, watch time, profile visits, or algorithm behavior.
+Use every supplied evidence post. Main posts are picks; comparison posts are boundaries.
+Do not create tags. Do not mention internal words like fingerprint, focus brain, memory candidate, cluster, or pattern registry.
+Do not over-focus on hooks. If the reel works through a late payoff, audio turn, visual rhythm, satire, innuendo, carousel sequence, or proof device, name that instead.
+Do not claim saves, shares, or private algorithm behavior unless explicitly provided.
 
 Return only JSON:
 {
   "title": "",
-  "what_happened": "",
-  "why": "",
-  "common_pattern": [],
+  "read": "",
   "do_next": "",
   "watchout": "",
   "per_post_notes": [],
-  "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear",
-  "focus_memory_candidate": {
-    "candidate_patterns": [],
-    "candidate_avoid": [],
-    "candidate_collision": ""
-  }
+  "pattern_type": "account_aligned|feed_aligned|account_outlier|account_emerging|account_violation|feed_emerging|conflict_signal|unclear",
+  "signal_type": ""
 }"""
 
 _SIGNAL_QUESTIONS = {
@@ -651,24 +497,7 @@ def _call_model(
 
 
 def _sample_carousel(urls: list[str]) -> list[str]:
-    clean = [url for url in urls if str(url).strip()]
-    if len(clean) <= 8:
-        return clean
-    selected: list[str] = []
-    selected.extend(clean[:3])
-    selected.extend(clean[-2:])
-    middle = clean[3:-2]
-    if middle:
-        step = max(1, len(middle) // 3)
-        selected.extend(middle[idx] for idx in range(0, len(middle), step)[:3])
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for url in selected:
-        if url in seen:
-            continue
-        deduped.append(url)
-        seen.add(url)
-    return deduped[:8]
+    return [url for url in urls if str(url).strip()]
 
 
 def _media_public_url(row: dict[str, Any]) -> str | None:
@@ -688,7 +517,7 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
             """
             select p.post_key, p.caption, lower(coalesce(p.media_type, 'image')) as media_type,
                    p.thumbnail_url, p.video_url, p.carousel_urls,
-                   p.duration_bucket, p.depth_bucket,
+                   p.duration_seconds, p.duration_bucket, p.carousel_slide_count, p.depth_bucket,
                    fd.id as feeder_id, fd.feed_id, coalesce(fd.role, 'standard') as feeder_role,
                    fd.handle, fd.context_role, fd.context_note, fd.bio,
                    f.context_bible
@@ -832,13 +661,24 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         pass
 
     user_text = "\n".join([
-        f"MEDIA: {post.get('media_type') or 'unknown'} · duration_bucket={post.get('duration_bucket') or ''} · depth_bucket={post.get('depth_bucket') or ''}",
-        f"CAPTION: {caption[:2000] or '(no caption)'}",
+        f"POST_ID: {post_key}",
+        (
+            f"MEDIA: {post.get('media_type') or 'unknown'} "
+            f"duration_seconds={post.get('duration_seconds') or ''} "
+            f"duration_bucket={post.get('duration_bucket') or ''} "
+            f"carousel_slide_count={post.get('carousel_slide_count') or ''} "
+            f"depth_bucket={post.get('depth_bucket') or ''}"
+        ),
+        f"CAPTION: {caption[:6000] or '(no caption)'}",
     ])
-    fingerprint = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=900)
+    fingerprint = _call_model(_FINGERPRINT_SYSTEM, user_text, media_parts, max_tokens=2600)
     if not fingerprint:
         return None
     media_confidence = confidence
+    fingerprint["post_id"] = str(fingerprint.get("post_id") or post_key)
+    fingerprint["media_type"] = str(fingerprint.get("media_type") or post.get("media_type") or "")
+    fingerprint["duration_seconds"] = fingerprint.get("duration_seconds", post.get("duration_seconds"))
+    fingerprint["carousel_slide_count"] = fingerprint.get("carousel_slide_count", post.get("carousel_slide_count"))
     fingerprint["media_confidence"] = media_confidence
     with conn.cursor() as cur:
         cur.execute(
@@ -861,7 +701,6 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
             (post_key, json.dumps(fingerprint), media_hash, caption_hash, _SAMPLING_POLICY_VERSION, model_version, media_confidence),
         )
     conn.commit()
-    ensure_post_focus_read(conn, post_key, fingerprint)
     return fingerprint
 
 
@@ -887,17 +726,11 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
                    p.post_url, p.caption, lower(coalesce(p.media_type, 'image')) as media_type,
                    fd.id as feeder_id, fd.feed_id, fd.handle, coalesce(fd.role, 'standard') as feeder_role,
                    fd.context_role, fd.context_note, fd.bio,
-                   pf.fingerprint,
-                   pfr.focus_read,
-                   pfr.feeder_focus_version,
-                   coalesce(ff.focus_version, 0) as current_feeder_focus_version,
-                   ff.structured_patterns as feeder_structured_patterns
+                   pf.fingerprint
             from public.signal_posts sp
             join public.posts p on p.post_key = sp.post_key
             join public.feeders fd on fd.id = p.feeder_id
             left join public.post_fingerprints pf on pf.post_key = sp.post_key
-            left join public.post_focus_reads pfr on pfr.post_key = sp.post_key
-            left join public.feeder_focus ff on ff.feeder_id = fd.id
             where sp.signal_id = %s
             order by sp.cohort, sp.rank, sp.post_key
             """,
@@ -942,23 +775,12 @@ def _sample_hash(
     bits = []
     for row in posts:
         fingerprint = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
-        stored_focus_version = int(row.get("feeder_focus_version") or -1)
-        current_focus_version = int(row.get("current_feeder_focus_version") or 0)
-        focus_read = (
-            row.get("focus_read")
-            if current_focus_version > 0
-            and stored_focus_version == current_focus_version
-            and isinstance(row.get("focus_read"), dict)
-            else {}
-        )
         bits.append(
             ":".join([
                 str(row.get("cohort") or ""),
                 str(row.get("role") or ""),
                 str(row.get("post_key") or ""),
-                str(current_focus_version if focus_read else 0),
                 _sha(fingerprint),
-                _sha(focus_read),
             ])
         )
     signal_context = {}
@@ -1140,84 +962,21 @@ def _tier1_metric_reason(signal: dict[str, Any]) -> str | None:
     return None
 
 
-def _stable_patterns(value: Any) -> list[dict[str, Any]]:
-    data = value if isinstance(value, dict) else {}
-    rows = data.get("patterns") if isinstance(data.get("patterns"), list) else []
-    return [
-        row for row in rows
-        if isinstance(row, dict) and str(row.get("status") or "").lower() in {"stable", "core", "strengthening"}
-    ]
-
-
-def _focus_deviations(value: Any) -> list[str]:
-    focus_read = value if isinstance(value, dict) else {}
-    relation = focus_read.get("relation_to_feeder_md") if isinstance(focus_read.get("relation_to_feeder_md"), dict) else {}
-    deviations = relation.get("deviates")
-    if not isinstance(deviations, list):
-        return []
-    return [str(item).strip() for item in deviations if str(item or "").strip()]
-
-
-def _alignment_deviation_reason(posts: list[dict[str, Any]]) -> str | None:
-    for row in posts:
-        deviations = _focus_deviations(row.get("focus_read"))
-        if not deviations:
-            continue
-        stable = _stable_patterns(row.get("feeder_structured_patterns"))
-        if not stable:
-            continue
-        return f"alignment_deviation_with_stable_focus:{row.get('post_key')}"
-    return None
-
-
-_CARD_STRING_FIELDS = ("title", "what_happened", "why", "do_next", "watchout", "pattern_type")
-_CARD_LIST_FIELDS = ("common_pattern", "per_post_notes")
-_CARD_COPY_FIELDS = ("title", "what_happened", "why", "do_next", "watchout")
-_RAW_NUMBER_RE = re.compile(
-    r"(\d|[%$]|"
-    r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
-    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
-    r"billion|twice|thrice|double|triple)\b)",
-    re.IGNORECASE,
-)
-_FORBIDDEN_HEDGES = re.compile(
-    r"\b(?:may|could|likely|perhaps|suggests|appears|seems|somewhat|tends\s+to)\b",
-    re.IGNORECASE,
-)
+_CARD_STRING_FIELDS = ("title", "read", "do_next", "watchout", "pattern_type", "signal_type")
+_CARD_LIST_FIELDS = ("per_post_notes",)
+_CARD_COPY_FIELDS = ("title", "read", "do_next", "watchout")
 _FORBIDDEN_INTERNAL = re.compile(
     r"\b(?:cohort|anchor|challenger|bible|feed_focus|signals?|pattern_id|cross[-\s]feed|"
     r"fingerprints?|trigger_core|trigger_support|reference_no_jump|reference_typical|"
     r"reference_strong)\b",
     re.IGNORECASE,
 )
-_OVERUSED_BUCKET_RE = re.compile(
-    r"\b(?:"
-    r"satire\s*/\s*parody|social tension(?:\s*/\s*confidence)?|"
-    r"movement\s*/\s*rhythmic pacing|rhythmic movement pacing|"
-    r"high[-\s]?energy(?: content)?|character-led skits?|"
-    r"static setups?|static shots?|static product shots?|tension-led hooks?|"
-    r"engaging content|authentic storytelling"
-    r")\b",
-    re.IGNORECASE,
-)
 _STATIC_TERM_RE = re.compile(r"\bstatics?\b", re.IGNORECASE)
 _STATIC_MEDIA_TYPES = {"image", "photo", "picture", "static"}
-_PROPER_NOUN_TAG_RE = re.compile(
-    r"\b(?:"
-    r"devil(?:[-\s]+wears[-\s]+prada)?|prada|coachella|bali|bollywood|"
-    r"criss[-\s]+angel|sania|saniya|digi[-\s]+yatra|tresemm[eé]|blackpink"
-    r")\b",
-    re.IGNORECASE,
-)
 
 
 def _word_count(text: Any) -> int:
     return len(re.findall(r"\b[\w'-]+\b", str(text or "")))
-
-
-def _sentence_parts(text: Any) -> list[str]:
-    return [part.strip() for part in re.split(r"[.!?]+", str(text or "")) if part.strip()]
 
 
 def _looks_title_case(text: str) -> bool:
@@ -1262,87 +1021,39 @@ def _card_schema_errors(card: Any) -> list[str]:
             for index, value in enumerate(card.get(key) or []):
                 if not isinstance(value, str):
                     errors.append(f"{key}_{index}_not_string")
-    if str(card.get("pattern_type") or "") not in {"account_aligned", "feed_aligned", "account_outlier", "conflict_signal", "unclear"}:
+    if str(card.get("pattern_type") or "") not in {
+        "account_aligned",
+        "feed_aligned",
+        "account_outlier",
+        "account_emerging",
+        "account_violation",
+        "feed_emerging",
+        "conflict_signal",
+        "unclear",
+    }:
         errors.append("invalid_pattern_type")
-    if card.get("focus_memory_candidate") is not None and not isinstance(card.get("focus_memory_candidate"), dict):
-        errors.append("focus_memory_candidate_not_object")
 
     title = str(card.get("title") or "")
-    if _word_count(title) > 7:
+    if _word_count(title) > 9:
         errors.append("title_too_long")
     if _looks_title_case(title):
         errors.append("title_looks_title_case")
-    if _word_count(card.get("what_happened")) > 45:
-        errors.append("what_happened_too_long")
-    why = str(card.get("why") or "")
-    if _word_count(why) > 30:
-        errors.append("why_too_long")
-    if why and not (why.startswith("Worked because ") or why.startswith("Failed because ")):
-        errors.append("why_missing_worked_failed_formula")
+    if _word_count(card.get("read")) > 90:
+        errors.append("read_too_long")
     do_next = str(card.get("do_next") or "")
-    if _word_count(do_next) > 16:
+    if _word_count(do_next) > 32:
         errors.append("do_next_too_long")
-    if do_next and len(_sentence_parts(do_next)) != 2:
-        errors.append("do_next_not_two_imperatives")
-    if _word_count(card.get("watchout")) > 16:
+    if _word_count(card.get("watchout")) > 28:
         errors.append("watchout_too_long")
-    if isinstance(card.get("common_pattern"), list):
-        common_count = len(card.get("common_pattern") or [])
-        if common_count > 5:
-            errors.append("common_pattern_too_many")
-        if common_count < 3:
-            errors.append("common_pattern_too_few")
-        for index, item in enumerate(card.get("common_pattern") or []):
-            if isinstance(item, str) and _word_count(item) > 5:
-                errors.append(f"common_pattern_{index}_too_long")
-            if isinstance(item, str) and _OVERUSED_BUCKET_RE.search(item):
-                errors.append(f"common_pattern_{index}_generic_bucket")
-            if isinstance(item, str) and "/" in item:
-                errors.append(f"common_pattern_{index}_slash")
-            if isinstance(item, str) and _PROPER_NOUN_TAG_RE.search(item):
-                errors.append(f"common_pattern_{index}_proper_noun")
-            if isinstance(item, str) and _word_count(item) < 2:
-                errors.append(f"common_pattern_{index}_too_generic")
     if isinstance(card.get("per_post_notes"), list):
         if len(card.get("per_post_notes") or []) > 5:
             errors.append("per_post_notes_too_many")
         for index, item in enumerate(card.get("per_post_notes") or []):
-            if isinstance(item, str) and _word_count(item) > 10:
+            if isinstance(item, str) and _word_count(item) > 24:
                 errors.append(f"per_post_notes_{index}_too_long")
     for key, value in _card_copy_items(card):
-        if _RAW_NUMBER_RE.search(value):
-            errors.append(f"{key}_contains_number")
-        if _FORBIDDEN_HEDGES.search(value):
-            errors.append(f"{key}_contains_hedge")
         if _FORBIDDEN_INTERNAL.search(value):
             errors.append(f"{key}_contains_internal_vocab")
-    return errors
-
-
-def _tag_key(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "").strip().lower())
-
-
-def _common_pattern_tags(card: Any) -> list[str]:
-    if not isinstance(card, dict) or not isinstance(card.get("common_pattern"), list):
-        return []
-    return [
-        key for key in (_tag_key(item) for item in card.get("common_pattern") or [])
-        if key
-    ]
-
-
-def _tag_diversity_errors(card: Any, recent_cards: list[dict[str, Any]]) -> list[str]:
-    if not isinstance(card, dict):
-        return []
-    counts: dict[str, int] = {}
-    for recent in recent_cards[:10]:
-        for tag in _common_pattern_tags(recent):
-            counts[tag] = counts.get(tag, 0) + 1
-    errors: list[str] = []
-    for index, tag in enumerate(_common_pattern_tags(card)):
-        if counts.get(tag, 0) >= 3:
-            errors.append(f"common_pattern_{index}_tag_reused")
     return errors
 
 
@@ -1390,27 +1101,23 @@ def _repair_context_terms(card: Any, context_errors: list[str]) -> Any:
     return repaired
 
 
-def _repair_common_patterns(card: Any, schema_errors: list[str]) -> Any:
+def _normalize_card_tag_aliases(card: Any) -> Any:
     if not isinstance(card, dict):
         return card
-    repaired = dict(card)
-    if "common_pattern_too_many" in schema_errors and isinstance(repaired.get("common_pattern"), list):
-        repaired["common_pattern"] = repaired["common_pattern"][:5]
-    if not any(
-        token in error
-        for error in schema_errors
-        for token in ("generic_bucket", "_slash", "_proper_noun", "_too_long", "_too_generic", "_tag_reused", "common_pattern_too_few")
-    ):
-        return repaired
-    notes = [
-        str(item).strip()
-        for item in (repaired.get("per_post_notes") or [])
-        if isinstance(item, str) and str(item).strip()
-    ]
-    if not notes:
-        return repaired
-    repaired["common_pattern"] = notes[:5]
-    return repaired
+    normalized = dict(card)
+    if not isinstance(normalized.get("read"), str) or not normalized.get("read"):
+        legacy_parts = [
+            str(normalized.get("what_happened") or "").strip(),
+            str(normalized.get("why") or "").strip(),
+        ]
+        normalized["read"] = " ".join(part for part in legacy_parts if part).strip()
+    normalized.pop("what_happened", None)
+    normalized.pop("why", None)
+    normalized.pop("mechanic_tags", None)
+    normalized.pop("execution_tags", None)
+    normalized.pop("common_pattern", None)
+    normalized.pop("focus_memory_candidate", None)
+    return normalized
 
 
 def _card_validation_errors(
@@ -1421,7 +1128,6 @@ def _card_validation_errors(
 ) -> list[str]:
     return [
         *_card_schema_errors(card),
-        *_tag_diversity_errors(card, recent_cards),
         *_card_context_errors(card, signal, fingerprints),
     ]
 
@@ -1487,26 +1193,11 @@ def _pattern_stability_score(posts: list[dict[str, Any]]) -> float:
     trigger_posts = [row for row in posts if str(row.get("cohort") or "").lower() == "a"]
     if not trigger_posts:
         return 0.08
-    matches = 0
-    deviations = 0
-    stable_context = 0
-    for row in trigger_posts:
-        relation = (row.get("focus_read") or {}).get("relation_to_feeder_md") if isinstance(row.get("focus_read"), dict) else {}
-        if isinstance(relation, dict):
-            if isinstance(relation.get("matches"), list) and relation.get("matches"):
-                matches += 1
-            if isinstance(relation.get("deviates"), list) and relation.get("deviates"):
-                deviations += 1
-        if _stable_patterns(row.get("feeder_structured_patterns")):
-            stable_context += 1
-    if matches >= 2 and deviations == 0:
+    fingerprinted = sum(1 for row in trigger_posts if isinstance(row.get("fingerprint"), dict) and row.get("fingerprint"))
+    if fingerprinted >= 5:
         return 0.18
-    if matches >= 2:
+    if fingerprinted >= 3:
         return 0.15
-    if stable_context >= 2 and deviations <= matches:
-        return 0.13
-    if deviations >= 2 and matches == 0:
-        return 0.07
     return 0.10
 
 
@@ -1529,9 +1220,6 @@ def _deterministic_escalation_reasons(signal: dict[str, Any], posts: list[dict[s
     tier1 = _tier1_metric_reason(signal)
     if tier1:
         reasons.append(tier1)
-    alignment = _alignment_deviation_reason(posts)
-    if alignment:
-        reasons.append(alignment)
     return reasons
 
 
@@ -1565,16 +1253,14 @@ def _card_user_text(
     recent_cards: list[dict[str, Any]] | None = None,
     validation_errors: list[str] | None = None,
 ) -> str:
-    recent_tags: list[str] = []
-    for recent in (recent_cards or [])[:10]:
-        recent_tags.extend(_common_pattern_tags(recent))
     payload: dict[str, Any] = {
         "trigger_kind": _display_trigger_kind(signal.get("signal_type")),
         "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
         "feed_context": signal.get("context_bible") or "(not provided)",
-        "feed_focus_context": focus_context,
+        "rulebook_context": focus_context,
         "media_type": signal.get("media_type"),
         "sub_bucket": signal.get("sub_bucket"),
+        "signal_type": signal.get("signal_type"),
         "metric_snapshot": _language_safe_metric_snapshot(signal.get("metric_snapshot") or {}),
         "metric_classification": metric_classification,
         "evidence_policy": _evidence_policy(signal),
@@ -1582,7 +1268,6 @@ def _card_user_text(
             "escalated_to_pro": bool(card_model_override),
             "deterministic_reasons": escalation_reasons,
         },
-        "recent_common_pattern_tags": recent_tags[:40],
         "cohort_posts": fingerprints,
     }
     if validation_errors:
@@ -1590,8 +1275,7 @@ def _card_user_text(
             "validation_errors": validation_errors[:12],
             "instruction": (
                 "Rewrite the whole card. Preserve the insight, but satisfy the output contract exactly. "
-                "No raw numbers, no hedge words, no internal vocabulary, no confidence field. "
-                "If a common_pattern tag is recycling across cards, pull a more precise craft move from this signal's post reads. "
+                "No internal vocabulary, no confidence field, no tag fields. "
                 "Use static language only when this signal's media lane or comparison posts are static/image. "
                 "Replace anchor with primary account, challenger with comparison account, "
                 "cohort with evidence group, signal with movement, and fingerprint with post read."
@@ -1648,35 +1332,16 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             )
             failed += 1
             continue
-        for row in posts:
-            fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
-            stored_focus_version = int(row.get("feeder_focus_version") or -1)
-            current_focus_version = int(row.get("current_feeder_focus_version") or 0)
-            focus_read_stale = stored_focus_version != current_focus_version
-            if fp and current_focus_version > 0 and (not isinstance(row.get("focus_read"), dict) or focus_read_stale):
-                ensure_post_focus_read(conn, str(row.get("post_key") or ""), fp)
-        payload = _signal_payload(conn, sid)
-        if not payload:
-            continue
         signal = payload["signal"]
         posts = payload["posts"]
-        focus_context = feed_focus_context(conn, signal, posts)
+        focus_context = signal_rulebook_context(conn, signal, posts)
         metric_classification = _metric_classification(signal)
         computed_confidence = _computed_confidence(signal, posts, metric_classification)
         escalation_reasons = _deterministic_escalation_reasons(signal, posts)
-        card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL if escalation_reasons else None
+        card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL
         fingerprints = []
         for row in posts:
             fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
-            stored_focus_version = int(row.get("feeder_focus_version") or -1)
-            current_focus_version = int(row.get("current_feeder_focus_version") or 0)
-            focus_read = (
-                row.get("focus_read")
-                if current_focus_version > 0
-                and stored_focus_version == current_focus_version
-                and isinstance(row.get("focus_read"), dict)
-                else {}
-            )
             fingerprints.append({
                 "post_key": row.get("post_key"),
                 "evidence_group": "main" if str(row.get("cohort") or "").lower() == "a" else "comparison",
@@ -1690,18 +1355,11 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 "feeder_bio": row.get("bio"),
                 "caption_excerpt": str(row.get("caption") or "")[:500],
                 "fingerprint": fp,
-                "focus_read": focus_read,
-                "feeder_focus_version": row.get("feeder_focus_version"),
-                "current_feeder_focus_version": row.get("current_feeder_focus_version"),
             })
         recent_cards = _recent_signal_cards(conn, signal, sid)
-        recent_tags = []
-        for recent_card in recent_cards[:10]:
-            recent_tags.extend(_common_pattern_tags(recent_card))
         signal_for_hash = {
             **signal,
             "metric_classification": metric_classification,
-            "recent_common_pattern_tags": recent_tags[:40],
         }
         sample_hash = _sample_hash(posts, focus_context, signal_for_hash)
         card_model = current_model_version(kind="card", model_override=card_model_override)
@@ -1731,7 +1389,9 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             card_model_override,
             recent_cards=recent_cards,
         )
-        card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=2200, model_override=card_model_override)
+        card = _normalize_card_tag_aliases(_call_model(_CARD_SYSTEM, user_text, [], max_tokens=2200, model_override=card_model_override))
+        if isinstance(card, dict) and not card.get("signal_type"):
+            card["signal_type"] = str(signal.get("signal_type") or "")
         schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
         if schema_errors:
             if not card_model_override:
@@ -1752,19 +1412,12 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
                 recent_cards=recent_cards,
                 validation_errors=schema_errors,
             )
-            card = _call_model(_CARD_SYSTEM, user_text, [], max_tokens=2600, model_override=card_model_override)
+            card = _normalize_card_tag_aliases(_call_model(_CARD_SYSTEM, user_text, [], max_tokens=2600, model_override=card_model_override))
+            if isinstance(card, dict) and not card.get("signal_type"):
+                card["signal_type"] = str(signal.get("signal_type") or "")
             schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
-            if schema_errors and (
-                any("generic_bucket" in error for error in schema_errors)
-                or any("_slash" in error for error in schema_errors)
-                or any("_proper_noun" in error for error in schema_errors)
-                or any("_tag_reused" in error for error in schema_errors)
-                or "common_pattern_too_many" in schema_errors
-            ):
-                card = _repair_common_patterns(card, schema_errors)
-                schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
             if schema_errors and any("static_without_static_lane" in error for error in schema_errors):
-                card = _repair_context_terms(card, schema_errors)
+                card = _normalize_card_tag_aliases(_repair_context_terms(card, schema_errors))
                 schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
         if not card or schema_errors:
             with conn.cursor() as cur:
@@ -1776,7 +1429,8 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             continue
         card.pop("confidence", None)
         card.pop("why_it_may_have_happened", None)
-        focus_memory_candidate = card.pop("focus_memory_candidate", {}) if isinstance(card.get("focus_memory_candidate"), dict) else {}
+        card.pop("focus_memory_candidate", None)
+        focus_memory_candidate: dict[str, Any] = {}
         card["confidence"] = computed_confidence
         signal_status = "fresh"
         with conn.cursor() as cur:

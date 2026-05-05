@@ -54,9 +54,8 @@ python3 -m apps.worker.app.cli --mode intelligence_worker
 - Use RUN_JOB_CONCURRENCY to fan out feeder discovery jobs in parallel.
 - Signal intelligence source of truth:
   - deterministic detection writes `signals` + `signal_posts`
-  - LLM fingerprints write `post_fingerprints`
-  - alignment reads write `post_focus_reads`
-  - weekly account memory writes `feeder_focus`
-  - weekly feed memory writes `feed_focus`
+  - full neutral fingerprints write `post_fingerprints`
+  - weekly feeder rulebooks write `feeder_focus`
+  - weekly feed rulebooks and capsules write `feed_focus`
   - signal cards write `signal_intelligence`
   - legacy `post_intelligence` / pattern-alert extraction is retired

@@ -811,7 +811,12 @@ function SignalInsightDialog({
               )}
 
               <div className="mt-5 grid gap-2.5 md:mt-5 md:grid-cols-1 md:items-start xl:grid-cols-12 xl:gap-3">
-                {card?.what_happened && (
+                {card?.read && (
+                  <DetailSection label="Read" className="xl:col-span-12">
+                    {card.read}
+                  </DetailSection>
+                )}
+                {card?.what_happened && !card?.read && (
                   <DetailSection label="What happened" className="xl:col-span-6">
                     {card.what_happened}
                   </DetailSection>

@@ -92,9 +92,12 @@ export type PatternBoardSupportPost = {
 
 export type PatternBoardSignalCard = {
   title: string | null;
+  read: string | null;
   what_happened: string | null;
   why: string | null;
   common_pattern: string[];
+  mechanic_tags?: Record<string, unknown>[];
+  execution_tags?: Record<string, unknown>[];
   do_next: string | null;
   watchout: string | null;
   per_post_notes: string[];

@@ -330,13 +330,21 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
   const fingerprint = recordValue(row?.fingerprint);
   if (Object.keys(fingerprint).length === 0) return null;
 
+  const observed = recordValue(fingerprint.observed);
+  const synthesis = recordValue(fingerprint.synthesis);
   const visualRead = recordValue(fingerprint.visual_read);
   const captionRead = recordValue(fingerprint.caption_read);
   const summary =
-    readableText(fingerprint.content_summary)
+    readableText(synthesis.subject)
+    || readableText(fingerprint.content_summary)
     || readableText(fingerprint.topic)
     || readableText(visualRead.subject_focus);
   const lines = [
+    compactFingerprintLine('Craft', synthesis.craft),
+    compactFingerprintLine('Voice', synthesis.voice),
+    compactFingerprintLine('Proof', synthesis.proof),
+    compactFingerprintLine('Audio', observed.audio_notes),
+    compactFingerprintLine('Visual notes', observed.visual_notes),
     compactFingerprintLine('Hook', fingerprint.hook || fingerprint.opener),
     compactFingerprintLine('Payoff', fingerprint.payoff),
     compactFingerprintLine('Visual read', fingerprint.visual_sequence || visualRead.opening_frame || visualRead.subject_focus),
@@ -360,29 +368,7 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
 }
 
 function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
-  if (!hasValidFingerprintMedia(row)) return null;
-  const focusRead = recordValue(row?.focus_read);
-  if (Object.keys(focusRead).length === 0) return buildFingerprintIntelligencePayload(row);
-
-  const relation = recordValue(focusRead.relation_to_feeder_md);
-  const matches = readableList(relation.matches);
-  const deviates = readableList(relation.deviates);
-  const unclear = readableList(relation.unclear, 3);
-  const notes = readableList(focusRead.notes, 3);
-  if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
-    return buildFingerprintIntelligencePayload(row);
-  }
-
-  return {
-    source: 'post_focus_read',
-    source_label: 'Context Layer',
-    feeder_focus_version: row?.feeder_focus_version ?? null,
-    model_version: row?.focus_read_model_version ?? null,
-    matches,
-    deviates,
-    unclear,
-    notes,
-  };
+  return buildFingerprintIntelligencePayload(row);
 }
 
 function isHotPercentile(value: number | null): boolean {
@@ -552,9 +538,6 @@ type FireIntelligenceRow = {
   fingerprint_model_version: string | null;
   fingerprint_media_source_hash: string | null;
   fingerprint_media_confidence: string | null;
-  focus_read: Record<string, unknown> | null;
-  focus_read_model_version: string | null;
-  feeder_focus_version: number | null;
 };
 
 type FirePostFingerprintRow = {
@@ -563,13 +546,6 @@ type FirePostFingerprintRow = {
   model_version: string | null;
   media_source_hash: string | null;
   media_confidence: string | null;
-};
-
-type FirePostFocusReadRow = {
-  post_key: string | null;
-  focus_read: Record<string, unknown> | null;
-  feeder_focus_version: number | string | null;
-  model_version: string | null;
 };
 
 type MediaAssetUrlRow = {
@@ -1198,36 +1174,6 @@ async function fetchIntelligenceRowsForPostKeys(
         fingerprint_model_version: nullableString(row.model_version),
         fingerprint_media_source_hash: nullableString(row.media_source_hash),
         fingerprint_media_confidence: nullableString(row.media_confidence),
-        focus_read: null,
-        focus_read_model_version: null,
-        feeder_focus_version: null,
-      });
-    }
-
-    const { data: focusData, error: focusError } = await sb
-      .from('post_focus_reads')
-      .select('post_key,focus_read,feeder_focus_version,model_version')
-      .in('post_key', chunk);
-
-    if (focusError) throw focusError;
-    for (const row of (focusData || []) as FirePostFocusReadRow[]) {
-      const postKey = nullableString(row.post_key);
-      if (!postKey) continue;
-      const existing = rowsByPostKey.get(postKey) || {
-        post_key: postKey,
-        fingerprint: null,
-        fingerprint_model_version: null,
-        fingerprint_media_source_hash: null,
-        fingerprint_media_confidence: null,
-        focus_read: null,
-        focus_read_model_version: null,
-        feeder_focus_version: null,
-      };
-      rowsByPostKey.set(postKey, {
-        ...existing,
-        focus_read: recordValue(row.focus_read),
-        focus_read_model_version: nullableString(row.model_version),
-        feeder_focus_version: nullableNumber(row.feeder_focus_version),
       });
     }
   }

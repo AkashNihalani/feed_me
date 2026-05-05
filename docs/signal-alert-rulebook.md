@@ -1,6 +1,6 @@
 # Signal Alert Rulebook
 
-Last updated: 2026-04-30
+Last updated: 2026-05-06
 
 This is the operating guide for the current signal-intelligence system. It replaces the old post-intelligence/tag-pattern alert pipeline.
 
@@ -15,9 +15,8 @@ Live write tables:
 - `signals`: one detected signal row per viable alert candidate.
 - `signal_posts`: max 5 sample posts attached to a signal.
 - `post_fingerprints`: cached post-level multimodal fingerprint.
-- `post_focus_reads`: cached alignment-only read against feeder Focus.
-- `feeder_focus`: weekly account memory built from 90-day evidence.
-- `feed_focus`: weekly feed memory and capsules built from feeder Focus.
+- `feeder_focus`: weekly feeder rulebook built from bounded evidence packets.
+- `feed_focus`: weekly feed rulebook and compact capsules built from bounded evidence packets.
 - `signal_intelligence`: cached user-facing card copy.
 
 Retired intelligence path:
@@ -36,13 +35,13 @@ Retired intelligence path:
 4. Detection writes `signals` and `signal_posts`.
 5. UI can show pending signal shells immediately.
 6. The intelligence worker runs `resolve_signal_intelligence`.
-7. `resolve_signal_intelligence` fingerprints missing posts neutrally, then separately compares that fingerprint with feeder Focus and stores `post_focus_reads`.
-8. Stage B generates the card with feed Focus. Escalation to Pro is deterministic: tier-1 metric magnitude, stable-focus deviation, or schema failure.
-9. The intelligence worker runs weekly Focus compiles: feeder Focus first, then feed Focus. Flash compresses evidence into media/date buckets of at most 10 posts before Pro updates Focus. Full rebuilds are due every 45 days.
+7. `resolve_signal_intelligence` fingerprints missing posts neutrally with the v4 full-context fingerprint.
+8. Stage B generates the card with the latest v4 rulebook capsule. Card generation defaults to Pro.
+9. The intelligence worker runs weekly rulebook compiles: feeder rulebooks and feed rulebooks are rebuilt from Top/Bottom evidence packets, anomaly slices, and signal residuals. Full rebuilds are due every 45 days.
 
 Important cost boundary: detection remains zero LLM cost. LLM spend lives in the separate `intelligence_worker`, not the scraping/checkpoint worker.
 
-Pattern decay is opportunity-based, not just time-based. A pattern weakens after enough later posts of the same media type fail to repeat it; the 75-day rule only archives patterns near the end of the 90-day window.
+The rulebook architecture is intentionally LLM-free until compile/card time: code owns metrics, counters, baselines, percentiles, sampling caps, and signal firings; LLMs explain content causality inside those boundaries.
 
 ## Inputs We Have
 
@@ -197,11 +196,11 @@ Cache key:
 
 Media caps:
 
-- Reel/video: first 90 seconds, trimmed with ffmpeg when possible.
+- Reel/video: up to 120 seconds, trimmed with ffmpeg when possible.
 - Video inline cap: 20 MB.
 - Video upload cap: 50 MB.
 - Image cap: 12 MB.
-- Carousel: first 3 slides, last 2 slides, and up to 3 middle slides, max 8 unique slides.
+- Carousel: every available slide.
 
 Fingerprint prompt guardrails:
 
@@ -216,21 +215,64 @@ Fingerprint JSON:
 
 ```json
 {
-  "topic": "",
-  "audience_addressed": "",
-  "hook": "",
-  "opener": "",
-  "payoff": "",
-  "visual_sequence": "",
-  "caption_role": "",
-  "audio_or_text_driver": "",
-  "emotional_trigger": "",
-  "discussion_prompt": "",
-  "craft_moves": [],
-  "campaign_or_context_clues": [],
+  "post_id": "",
+  "media_type": "reel|sidecar|image",
+  "duration_seconds": null,
+  "carousel_slide_count": null,
+  "observed": {
+    "caption": "",
+    "transcript": "",
+    "audio_notes": "",
+    "visual_notes": ""
+  },
+  "synthesis": {
+    "subject": "",
+    "craft": "",
+    "voice": "",
+    "proof": ""
+  },
   "media_confidence": "high|medium|low"
 }
 ```
+
+## Rulebook State Layer
+
+The previous Focus Brain pattern-registry system is removed from runtime. The base architecture is now v4 rulebooks:
+
+- Server builds deterministic evidence packets.
+- Feeder packet hard cap: 100 posts.
+- Feed packet hard cap: 100 posts.
+- Packets are media-type aware (`reel`, `sidecar`, `image`) and checkpoint aware (`D3`, `D7`, `D21`).
+- Per format, packets draw from Top/Bottom performers, comment/like/view/follower anomaly slices, and a `signal_residual` slice.
+- `signal_residual` captures alert-triggered posts outside Top/Bottom/anomaly slices so paid signal evidence does not disappear.
+- Posts carry `signal_types` annotations such as `L_BREAKOUT`, `S_COMMENT_SPIKE`, `T_EARLY`, `L_EVERGREEN`, `T_FALSE_DAWN`, `W_SPIKE`.
+- Pro compiles weekly feeder/feed rulebooks. A 45-day full rebuild starts from the full evidence packet without previous-rulebook anchoring.
+
+Feeder rulebook JSON:
+
+```json
+{
+  "account_read": "",
+  "reels": { "dos": [], "donts": [] },
+  "carousels": { "dos": [], "donts": [] },
+  "statics": { "dos": [], "donts": [] },
+  "by_performance_axis": {
+    "comments": "",
+    "likes": "",
+    "views": "",
+    "followers": "",
+    "early_momentum": "",
+    "evergreen_or_long_tail": "",
+    "decay_or_dropoff": "",
+    "format_movement": "",
+    "cadence_movement": ""
+  },
+  "shifts_since_last_compile": [],
+  "known_unknowns": []
+}
+```
+
+Feed rulebooks mirror the same structure and add `cohort_dynamics`, `anchor_vs_feed`, and capsules (`common`, `reel`, `carousel`, `image`, `anchor`, `cross`) for Stage B cards.
 
 ## LLM Stage 2: Signal Card
 
@@ -240,13 +282,14 @@ Stage 2 receives:
 
 - `signal`
 - tailored signal question
+- latest v4 rulebook capsule
 - `feeds.context_bible`
 - `media_type`
 - `sub_bucket`
 - `metric_snapshot`
 - `metric_classification`
 - evidence policy
-- post fingerprints
+- full post fingerprints
 - feeder handle
 - feeder context role
 - feeder context note
@@ -260,9 +303,10 @@ Stage 2 hard rules:
 - Comparison posts are visual references only.
 - Do not calculate a new baseline from sample posts.
 - Do not claim saves, shares, or private algorithm behavior.
-- Do not quote raw counts, percentages, multipliers, dates, ranges, or units in prose.
 - If content evidence does not explain the metric, use `pattern_type: "unclear"`.
 - If references exist, `watchout` must say what to avoid or what references are missing.
+- `read` explains what happened, what changed against the rulebook, and how the content helped/worsened performance.
+- Do not emit `mechanic_tags`, `execution_tags`, `common_pattern`, clusters, or memory candidates.
 - Never expose internal cohort letters, database role strings, model vocabulary, or feed bible terminology.
 - Confidence is computed server-side after the LLM returns.
 
@@ -271,17 +315,16 @@ Card JSON:
 ```json
 {
   "title": "",
-  "what_happened": "",
-  "why": "",
-  "common_pattern": [],
+  "read": "",
   "do_next": "",
   "watchout": "",
   "per_post_notes": [],
-  "pattern_type": "account_aligned|feed_aligned|account_outlier|conflict_signal|unclear"
+  "pattern_type": "account_aligned|feed_aligned|account_outlier|account_emerging|account_violation|feed_emerging|conflict_signal|unclear",
+  "signal_type": ""
 }
 ```
 
-Server stores `confidence` on the card after validation. It must not be used as the escalation trigger or as the only reason to suppress a card. Escalation is deterministic: tier-1 metric magnitude, stable-focus deviation, or card validation failure.
+Server stores `confidence` on the card after validation. It must not be used as the only reason to suppress a card.
 
 ## Context Form Contract
 

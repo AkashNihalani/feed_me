@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v8';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v9';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
@@ -832,9 +832,12 @@ type PatternBoardSupport = {
 
 type PatternBoardSignalCard = {
   title: string | null;
+  read: string | null;
   what_happened: string | null;
   why: string | null;
   common_pattern: string[];
+  mechanic_tags: Array<Record<string, unknown>>;
+  execution_tags: Array<Record<string, unknown>>;
   do_next: string | null;
   watchout: string | null;
   per_post_notes: string[];
@@ -877,12 +880,24 @@ function supportEvidenceMeta(signalCode: string | null | undefined, cohort: stri
   return { evidence_group: 'unknown', evidence_label: null, evidence_tone: null };
 }
 
+function mechanicTagLabel(value: unknown): string | null {
+  const record = recordValue(value);
+  return nullableString(record.tag) || nullableString(value);
+}
+
 function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCard | null {
   if (Object.keys(card).length === 0) return null;
-  const commonPattern = arrayValue<unknown>(card.common_pattern)
-    .concat(arrayValue<unknown>(card.cues))
-    .concat(arrayValue<unknown>(card.patterns))
-    .map((value) => nullableString(value))
+  const mechanicTags = arrayValue<Record<string, unknown>>(card.mechanic_tags)
+    .map((value) => recordValue(value))
+    .filter((value) => Object.keys(value).length > 0);
+  const executionTags = arrayValue<Record<string, unknown>>(card.execution_tags)
+    .map((value) => recordValue(value))
+    .filter((value) => Object.keys(value).length > 0);
+  const commonPattern = mechanicTags
+    .map((value) => mechanicTagLabel(value))
+    .concat(arrayValue<unknown>(card.common_pattern).map((value) => nullableString(value)))
+    .concat(arrayValue<unknown>(card.cues).map((value) => nullableString(value)))
+    .concat(arrayValue<unknown>(card.patterns).map((value) => nullableString(value)))
     .filter((value): value is string => Boolean(value))
     .slice(0, 5);
   const perPostNotes = arrayValue<unknown>(card.per_post_notes)
@@ -893,9 +908,12 @@ function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCar
     .slice(0, 5);
   return {
     title: nullableString(card.title) || nullableString(card.headline) || nullableString(card.verdict),
-    what_happened: nullableString(card.what_happened) || nullableString(card.summary) || nullableString(card.verdict),
+    read: nullableString(card.read) || nullableString(card.what_happened) || nullableString(card.summary) || nullableString(card.verdict),
+    what_happened: nullableString(card.what_happened) || nullableString(card.read) || nullableString(card.summary) || nullableString(card.verdict),
     why: nullableString(card.why) || nullableString(card.why_it_may_have_happened) || nullableString(card.why_it_moved) || nullableString(card.evidence),
     common_pattern: commonPattern,
+    mechanic_tags: mechanicTags,
+    execution_tags: executionTags,
     do_next: nullableString(card.do_next) || nullableString(card.tweak) || nullableString(card.recommendation),
     watchout: nullableString(card.watchout) || nullableString(card.risk),
     per_post_notes: perPostNotes,
