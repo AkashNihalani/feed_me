@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v9';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v10';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
@@ -848,6 +848,7 @@ type PatternBoardSignalCard = {
 const PATTERN_BOARD_LIMIT = 10;
 const PATTERN_BOARD_CUE_MAX = 4;
 const PATTERN_BOARD_SUPPORT_MAX = 6;
+const CURRENT_SIGNAL_CARD_MODEL_MARKERS = ['signal_card_v5_mechanism_spine'];
 
 type PatternBoardSupportMeta = {
   post_key: string;
@@ -1065,11 +1066,14 @@ async function fetchPatternBoard(
   if (signalIds.length > 0) {
     const { data: cardRows, error: cardError } = await sb
       .from('signal_intelligence')
-      .select('signal_id,card')
+      .select('signal_id,card,model_version')
       .in('signal_id', signalIds);
     if (cardError) throw cardError;
     for (const row of (cardRows || []) as Array<Record<string, unknown>>) {
       const signalId = nullableNumber(row.signal_id);
+      const modelVersion = nullableString(row.model_version) || '';
+      const isCurrentModel = CURRENT_SIGNAL_CARD_MODEL_MARKERS.some((marker) => modelVersion.includes(marker));
+      if (!isCurrentModel) continue;
       const card = recordValue(row.card);
       if (signalId == null || Object.keys(card).length === 0) continue;
       cardBySignal.set(signalId, card);
@@ -1101,6 +1105,7 @@ async function fetchPatternBoard(
     const signalId = nullableNumber(row.id) || 0;
     const snapshot = recordValue(row.metric_snapshot);
     const card = cardBySignal.get(signalId) || {};
+    if (Object.keys(card).length === 0) continue;
     const commonPattern = arrayValue<unknown>(card.common_pattern)
       .map((value) => nullableString(value))
       .filter((value): value is string => Boolean(value))
@@ -1123,7 +1128,7 @@ async function fetchPatternBoard(
     const signalCode = nullableString(row.signal_type) || 'SIGNAL';
     const context = (nullableString(row.scope) || 'own') as 'own' | 'cross' | 'anchor';
     const patternName = nullableString(payload.pattern_name);
-    const key = `${signalCode}:${patternName || 'unknown'}`;
+    const key = `signal:${signalId}`;
     const current = aggregate.get(key) || {
       firewatch_id: key,
       signal_code: signalCode,
