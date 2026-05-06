@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v10';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v11';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
@@ -832,23 +832,16 @@ type PatternBoardSupport = {
 
 type PatternBoardSignalCard = {
   title: string | null;
+  metric_line: string | null;
   read: string | null;
-  what_happened: string | null;
-  why: string | null;
-  common_pattern: string[];
-  mechanic_tags: Array<Record<string, unknown>>;
-  execution_tags: Array<Record<string, unknown>>;
-  do_next: string | null;
-  watchout: string | null;
-  per_post_notes: string[];
-  pattern_type: string | null;
+  evidence_pressure: string[];
   confidence: string | null;
 };
 
 const PATTERN_BOARD_LIMIT = 10;
 const PATTERN_BOARD_CUE_MAX = 4;
 const PATTERN_BOARD_SUPPORT_MAX = 6;
-const CURRENT_SIGNAL_CARD_MODEL_MARKERS = ['signal_card_v5_mechanism_spine'];
+const CURRENT_SIGNAL_CARD_MODEL_MARKERS = ['movement_thesis_v1_pressure'];
 
 type PatternBoardSupportMeta = {
   post_key: string;
@@ -881,44 +874,17 @@ function supportEvidenceMeta(signalCode: string | null | undefined, cohort: stri
   return { evidence_group: 'unknown', evidence_label: null, evidence_tone: null };
 }
 
-function mechanicTagLabel(value: unknown): string | null {
-  const record = recordValue(value);
-  return nullableString(record.tag) || nullableString(value);
-}
-
 function signalCardPayload(card: Record<string, unknown>): PatternBoardSignalCard | null {
   if (Object.keys(card).length === 0) return null;
-  const mechanicTags = arrayValue<Record<string, unknown>>(card.mechanic_tags)
-    .map((value) => recordValue(value))
-    .filter((value) => Object.keys(value).length > 0);
-  const executionTags = arrayValue<Record<string, unknown>>(card.execution_tags)
-    .map((value) => recordValue(value))
-    .filter((value) => Object.keys(value).length > 0);
-  const commonPattern = mechanicTags
-    .map((value) => mechanicTagLabel(value))
-    .concat(arrayValue<unknown>(card.common_pattern).map((value) => nullableString(value)))
-    .concat(arrayValue<unknown>(card.cues).map((value) => nullableString(value)))
-    .concat(arrayValue<unknown>(card.patterns).map((value) => nullableString(value)))
-    .filter((value): value is string => Boolean(value))
-    .slice(0, 5);
-  const perPostNotes = arrayValue<unknown>(card.per_post_notes)
-    .concat(arrayValue<unknown>(card.post_notes))
-    .concat(arrayValue<unknown>(card.evidence))
+  const evidencePressure = arrayValue<unknown>(card.evidence_pressure)
     .map((value) => nullableString(value))
     .filter((value): value is string => Boolean(value))
     .slice(0, 5);
   return {
-    title: nullableString(card.title) || nullableString(card.headline) || nullableString(card.verdict),
-    read: nullableString(card.read) || nullableString(card.what_happened) || nullableString(card.summary) || nullableString(card.verdict),
-    what_happened: nullableString(card.what_happened) || nullableString(card.read) || nullableString(card.summary) || nullableString(card.verdict),
-    why: nullableString(card.why) || nullableString(card.why_it_may_have_happened) || nullableString(card.why_it_moved) || nullableString(card.evidence),
-    common_pattern: commonPattern,
-    mechanic_tags: mechanicTags,
-    execution_tags: executionTags,
-    do_next: nullableString(card.do_next) || nullableString(card.tweak) || nullableString(card.recommendation),
-    watchout: nullableString(card.watchout) || nullableString(card.risk),
-    per_post_notes: perPostNotes,
-    pattern_type: nullableString(card.pattern_type),
+    title: nullableString(card.title),
+    metric_line: nullableString(card.metric_line),
+    read: nullableString(card.read),
+    evidence_pressure: evidencePressure,
     confidence: nullableString(card.confidence),
   };
 }
@@ -928,15 +894,11 @@ function signalCardCompleteness(card: Record<string, unknown>): number {
   if (!normalized) return 0;
   return [
     normalized.title,
-    normalized.what_happened,
-    normalized.why,
-    normalized.do_next,
-    normalized.watchout,
-    normalized.pattern_type,
+    normalized.metric_line,
+    normalized.read,
     normalized.confidence,
   ].filter(Boolean).length
-    + Math.min(4, normalized.common_pattern.length)
-    + Math.min(5, normalized.per_post_notes.length);
+    + Math.min(5, normalized.evidence_pressure.length);
 }
 
 async function hydratePatternSupportPreviews(
@@ -1014,7 +976,7 @@ async function fetchPatternBoard(
 
   const { data, error } = await sb
     .from('signals')
-    .select('id,signal_type,scope,business_date_ist,feeder_id,metric_snapshot')
+    .select('id,signal_type,scope,business_date_ist,feeder_id,media_type,metric_snapshot')
     .eq('feed_id', feedId)
     .in('status', ['pending', 'fresh', 'stale'])
     .gte('business_date_ist', windowStartIst)
@@ -1106,10 +1068,6 @@ async function fetchPatternBoard(
     const snapshot = recordValue(row.metric_snapshot);
     const card = cardBySignal.get(signalId) || {};
     if (Object.keys(card).length === 0) continue;
-    const commonPattern = arrayValue<unknown>(card.common_pattern)
-      .map((value) => nullableString(value))
-      .filter((value): value is string => Boolean(value))
-      .slice(0, PATTERN_BOARD_CUE_MAX);
     const payload = {
       pattern_name: nullableString(row.signal_type),
       pattern_label: nullableString(card.title),
@@ -1122,13 +1080,17 @@ async function fetchPatternBoard(
       support_post_keys: (supportBySignal.get(signalId) || []).map((post) => post.post_key),
       support_posts_meta: supportBySignal.get(signalId) || [],
       required_cues: [],
-      cues: commonPattern.map((label) => ({ key: 'common_pattern', value: label, label })),
+      cues: [],
       card,
     };
     const signalCode = nullableString(row.signal_type) || 'SIGNAL';
     const context = (nullableString(row.scope) || 'own') as 'own' | 'cross' | 'anchor';
     const patternName = nullableString(payload.pattern_name);
-    const key = `signal:${signalId}`;
+    const feederId = nullableNumber(row.feeder_id);
+    const mediaType = nullableString(row.media_type) || 'all';
+    const key = context === 'own'
+      ? `movement:${context}:${feederId ?? 'feed'}:${signalCode}:${mediaType}`
+      : `movement:${context}:${signalCode}:${mediaType}`;
     const current = aggregate.get(key) || {
       firewatch_id: key,
       signal_code: signalCode,
@@ -1189,8 +1151,8 @@ async function fetchPatternBoard(
     const displayScore = signalCardCompleteness(card);
     if (
       !current.display_payload
-      || displayScore > current.display_payload_score
-      || (displayScore === current.display_payload_score && businessDay && (!current.display_payload_day || businessDay > current.display_payload_day))
+      || (businessDay && (!current.display_payload_day || businessDay > current.display_payload_day))
+      || (businessDay === current.display_payload_day && displayScore > current.display_payload_score)
     ) {
       current.display_payload = payload;
       current.display_payload_score = displayScore;

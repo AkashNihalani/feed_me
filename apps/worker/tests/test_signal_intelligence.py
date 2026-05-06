@@ -46,15 +46,18 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
 
     def test_v4_card_contract_accepts_rulebook_card(self) -> None:
         card = {
-            "title": "Confession ran ahead.",
-            "read": "Premise landed in the first line, then the single cut held the emotional turn. The rulebook already had confession-led reels as the account's strongest comment driver, and this post stayed inside that lane without adding production noise.",
-            "do_next": "Keep the bare voice memo structure. Rotate the subject, not the format.",
-            "watchout": "Adding overlays would turn the confession into an explainer.",
-            "per_post_notes": [
-                "Pick: post#9821 opened with admission and closed with permission.",
-                "Contrast: post#9520 used numbered tutorial framing.",
+            "title": "polish became bait",
+            "metric_line": "6 matching reels · avg top 9% D7 · pressure holding",
+            "read": (
+                "The polished setup still earns attention. The stronger reels separate later. "
+                "Recent winners interrupt the bridal or studio fantasy almost immediately with sarcasm, embarrassment, gossip, or commentary that feels slightly too casual for the setting itself. "
+                "The audience gets pulled into the situation instead of watching it safely. Earlier uploads asked to be admired; the newer winners invite judgment, quoting, or reaction instead. "
+                "Visually similar choreography-heavy reels still pull reach, but once the frame stays emotionally composed, replies soften much earlier."
+            ),
+            "evidence_pressure": [
+                "Studio embarrassment beat cleaner performance-led uploads despite weaker visual payoff.",
+                "Wedding gossip kept the frame socially active longer than clean event documentation.",
             ],
-            "pattern_type": "account_aligned",
             "signal_type": "OWN_BREAKOUT_EARLY",
         }
 
@@ -67,10 +70,11 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
             "why": "Worked because the fingerprint matched the memory candidate.",
             "mechanic_tags": [{"tag": "confession hooks"}],
             "common_pattern": ["confession hooks"],
-            "do_next": "Repeat it.",
-            "watchout": "The signal may keep moving.",
-            "per_post_notes": [],
-            "pattern_type": "account_aligned",
+            "metric_line": "3 posts · top 9% D7 · pressure holding",
+            "evidence_pressure": [
+                "Studio embarrassment beat cleaner uploads.",
+                "Wedding gossip stayed socially active longer.",
+            ],
             "signal_type": "OWN_BREAKOUT",
         }
 
@@ -79,41 +83,41 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
 
         self.assertNotIn("missing_read", errors)
         self.assertIn("read_contains_internal_vocab", errors)
-        self.assertNotIn("missing_mechanic_tags", errors)
+        self.assertNotIn("missing_do_next", errors)
 
     def test_normalizer_coerces_object_post_notes_and_clamps_copy(self) -> None:
         card = {
             "title": "Direct persona payoff landed harder than expected today",
             "read": " ".join(["proof"] * 120),
-            "do_next": " ".join(["repeat"] * 40),
-            "watchout": " ".join(["avoid"] * 35),
-            "per_post_notes": [
+            "metric_line": " ".join(["metric"] * 30),
+            "evidence_pressure": [
                 {
                     "post_key": "post#1",
                     "role": "Pick",
                     "note": " ".join(["this"] * 40),
-                }
+                },
+                "Clean comparison stayed flatter after the setup landed.",
             ],
-            "pattern_type": "account_aligned",
             "signal_type": "OWN_SUSTAIN",
         }
 
         normalized = si._normalize_card_tag_aliases(card)
 
         self.assertEqual(si._card_schema_errors(normalized), [])
-        self.assertEqual(len(normalized["per_post_notes"]), 1)
-        self.assertIsInstance(normalized["per_post_notes"][0], str)
-        self.assertLessEqual(si._word_count(normalized["per_post_notes"][0]), 24)
-        self.assertTrue(normalized["read"].endswith("..."))
+        self.assertEqual(len(normalized["evidence_pressure"]), 2)
+        self.assertIsInstance(normalized["evidence_pressure"][0], str)
+        self.assertLessEqual(si._word_count(normalized["evidence_pressure"][0]), 24)
+        self.assertLessEqual(si._word_count(normalized["metric_line"]), 16)
 
     def test_weak_analyst_vocab_is_rejected(self) -> None:
         card = {
-            "title": "Relatable storytelling held d7",
-            "read": "The posts sustained performance through relatable storytelling and high-conflict reactionary formats.",
-            "do_next": "Keep leaning into personality-driven setups.",
-            "watchout": "Avoid generic aesthetic showcases.",
-            "per_post_notes": ["Pick: premium setting broken by casual behavior."],
-            "pattern_type": "account_aligned",
+            "title": "relatable story held d7",
+            "metric_line": "3 posts · top 9% D7 · pressure holding",
+            "read": "The posts sustained performance through relatable storytelling and high-conflict reactionary formats. The weak comparison posts tried the same topic without the same scene pressure, so the viewer stayed outside the moment instead of being pulled into it.",
+            "evidence_pressure": [
+                "Premium setting broke into casual behavior.",
+                "Clean presentation stayed flatter.",
+            ],
             "signal_type": "OWN_SUSTAIN",
         }
 
@@ -121,16 +125,16 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
 
         self.assertIn("title_contains_weak_analyst_vocab", errors)
         self.assertIn("read_contains_weak_analyst_vocab", errors)
-        self.assertIn("do_next_contains_weak_analyst_vocab", errors)
 
     def test_guardrail_repair_replaces_internal_and_weak_terms(self) -> None:
         card = {
-            "title": "Signal from relatable storytelling",
-            "read": "The signal shows engagement rising through relatable storytelling and aesthetic showcases.",
-            "do_next": "Keep leaning into high-conflict reactionary formats with a lot of extra detail that should be trimmed before validation accepts the card output.",
-            "watchout": "Avoid humble setups.",
-            "per_post_notes": ["Fingerprint shows a high-conflict post."],
-            "pattern_type": "account_aligned",
+            "title": "signal from relatable storytelling",
+            "metric_line": "3 triggers · top 9% D7 · pressure holding",
+            "read": "The signal shows engagement rising through relatable storytelling and aesthetic showcases. The weaker posts stay clean, so the audience never has to take a position before the scene finishes explaining itself.",
+            "evidence_pressure": [
+                "Fingerprint shows a high-conflict post.",
+                "Clean upload stayed flatter.",
+            ],
             "signal_type": "OWN_SUSTAIN",
         }
 
@@ -141,7 +145,7 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
 
         self.assertNotIn("read_contains_internal_vocab", errors)
         self.assertNotIn("read_contains_weak_analyst_vocab", errors)
-        self.assertLessEqual(si._word_count(repaired["do_next"]), 32)
+        self.assertLessEqual(si._word_count(repaired["metric_line"]), 16)
 
     def test_server_confidence_uses_fingerprinted_evidence_not_focus_memory(self) -> None:
         confidence = si._computed_confidence(
@@ -172,10 +176,11 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
         card = {
             "title": "Caption hook landed cleanly.",
             "read": "Reach rose sharply on creator-led reel proof.",
-            "do_next": "Kill static setups. Build creator-led sketches.",
-            "watchout": "Persona proof collapses when the product has no job.",
-            "per_post_notes": ["Pick: creator-led product demonstration."],
-            "pattern_type": "feed_aligned",
+            "metric_line": "3 posts · top 9% D7 · pressure holding",
+            "evidence_pressure": [
+                "Creator-led proof beat static setups.",
+                "Product-only footage stayed flatter.",
+            ],
             "signal_type": "OWN_BREAKOUT",
         }
 
@@ -185,7 +190,7 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
             [{"media_type": "reel"}],
         )
 
-        self.assertIn("do_next_static_without_static_lane", errors)
+        self.assertIn("evidence_pressure[0]_static_without_static_lane", errors)
 
 
 if __name__ == "__main__":

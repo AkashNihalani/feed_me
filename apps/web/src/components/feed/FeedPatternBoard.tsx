@@ -29,9 +29,9 @@ function toFiniteNumber(value: unknown): number | null {
 }
 
 function familyTag(context: PatternBoardItem['context']): string {
-  if (context === 'cross') return 'CRS';
-  if (context === 'anchor') return 'ANC';
-  return 'OWN';
+  if (context === 'cross') return 'Feed';
+  if (context === 'anchor') return 'Gap';
+  return 'Read';
 }
 
 function mediaProxyUrl(postKey: string | null | undefined): string {
@@ -96,25 +96,16 @@ function patternPills(pattern: PatternBoardItem): Array<{ label: string; value: 
   const matchCount = toFiniteNumber(pattern.match_count);
   const feedersCount = toFiniteNumber(pattern.feeders_count);
   const avgPctile = toFiniteNumber(pattern.avg_hot_percentile);
-  const triggerCount = toFiniteNumber(pattern.trigger_count);
 
   return [
     matchCount != null && matchCount > 0 ? { label: 'Winners', value: compactNumber(matchCount) } : null,
     feedersCount != null && feedersCount > 1 ? { label: 'Spread', value: compactNumber(feedersCount) } : null,
     avgPctile != null ? { label: 'Avg', value: `Top ${Math.round(avgPctile)}%` } : null,
-    triggerCount != null && triggerCount > 0 ? { label: 'Hits', value: compactNumber(triggerCount) } : null,
   ].filter((entry): entry is { label: string; value: string } => Boolean(entry)).slice(0, 3);
 }
 
 function readableSignalCode(value: string | null | undefined): string {
   return String(value || 'Signal')
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function readablePatternType(value: string | null | undefined): string {
-  return String(value || '')
     .replace(/_/g, ' ')
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -167,7 +158,6 @@ function proofMetrics(pattern: PatternBoardItem): Array<{ label: string; value: 
   const avgPctile = toFiniteNumber(pattern.avg_hot_percentile);
   const matchCount = toFiniteNumber(pattern.match_count);
   const feedersCount = toFiniteNumber(pattern.feeders_count);
-  const triggerCount = toFiniteNumber(pattern.trigger_count);
   const recentLift = toFiniteNumber(pattern.recent_lift);
   const anchorGap = toFiniteNumber(pattern.anchor_gap);
 
@@ -177,7 +167,6 @@ function proofMetrics(pattern: PatternBoardItem): Array<{ label: string; value: 
     feedersCount != null && feedersCount > 1 ? { label: 'Feeders', value: compactNumber(feedersCount) } : null,
     recentLift != null && recentLift > 0 ? { label: 'Lift', value: `${recentLift.toFixed(1)}×` } : null,
     anchorGap != null && anchorGap > 0 ? { label: 'Gap', value: `+${Math.round(anchorGap)}` } : null,
-    triggerCount != null && triggerCount > 0 ? { label: 'Hits', value: compactNumber(triggerCount) } : null,
   ].filter((entry): entry is { label: string; value: string } => Boolean(entry)).slice(0, 5);
 }
 
@@ -611,10 +600,9 @@ function SignalInsightDialog({
     : 0;
   const selectedPost = supportPosts[selectedPostIndex] ?? supportPosts[0] ?? null;
   const title = card?.title || pattern?.pattern_label || readableSignalCode(pattern?.signal_code);
-  const commonPattern = card?.common_pattern?.length ? card.common_pattern : pattern?.cues || [];
   const metrics = pattern ? proofMetrics(pattern) : [];
   const confidence = normalizedConfidence(card?.confidence);
-  const patternType = readablePatternType(card?.pattern_type);
+  const metricLine = card?.metric_line || '';
   const selectedPostRole = readablePostRole(selectedPost?.post_role);
   const selectedEvidenceSummary = evidenceSummary(selectedPost);
   const failedPreviewKeys = useRef<Set<string>>(new Set());
@@ -771,10 +759,7 @@ function SignalInsightDialog({
                 <div className="shrink-0 pr-10 md:pr-12">
                   <div className="flex flex-wrap items-center gap-2 sm:gap-1.5">
                     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/70 xl:text-[10px]">
-                      Signal intelligence
-                    </span>
-                    <span className="rounded-full border border-white/[0.08] bg-white/[0.045] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/38 md:px-2.5 md:py-1 md:text-[8px]">
-                      {readableSignalCode(pattern.signal_code)}
+                      Feed_Me read
                     </span>
                     {confidence && (
                       <span className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-[#FDA4AF]/82 md:px-2.5 md:py-1 md:text-[8px]">
@@ -785,9 +770,9 @@ function SignalInsightDialog({
                   <h3 className="mt-3 max-w-[calc(100%-10px)] text-[30px] font-black leading-[1.03] tracking-normal text-white [text-wrap:balance] sm:w-full sm:max-w-[min(760px,calc(100%-56px))] sm:text-[28px] sm:leading-[1.02] md:mt-3 md:max-w-[min(920px,calc(100%-64px))] md:text-[34px] lg:text-[46px] lg:leading-[1] xl:max-w-[min(1040px,calc(100%-70px))] xl:text-[54px]">
                     {title}
                   </h3>
-                  {patternType && (
-                    <div className="mt-3 text-[10px] font-black uppercase tracking-[0.17em] text-white/28 md:mt-2 md:text-[9px] xl:text-[10px]">
-                      {patternType}
+                  {metricLine && (
+                    <div className="mt-3 max-w-[min(880px,calc(100%-60px))] text-[12px] font-black uppercase tracking-[0.13em] text-white/38 md:text-[13px] xl:text-[14px]">
+                      {metricLine}
                     </div>
                   )}
                 </div>
@@ -816,44 +801,10 @@ function SignalInsightDialog({
                     {card.read}
                   </DetailSection>
                 )}
-                {card?.what_happened && !card?.read && (
-                  <DetailSection label="What happened" className="xl:col-span-6">
-                    {card.what_happened}
-                  </DetailSection>
-                )}
-                {card?.why && (
-                  <DetailSection label="Why it moved" className="xl:col-span-6">
-                    {card.why}
-                  </DetailSection>
-                )}
-                {commonPattern.length > 0 && (
-                  <DetailSection label="Common pattern" className="xl:col-span-6">
-                    <div className="flex flex-wrap gap-1.5 md:gap-1.5">
-                      {commonPattern.slice(0, 5).map((cue) => (
-                        <span
-                          key={`${pattern.firewatch_id}:detail:${cue}`}
-                          className="max-w-full rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/60 md:px-3.5 md:py-2 md:text-[10px] md:tracking-[0.1em] lg:text-[11px] xl:px-4 xl:text-[12px]"
-                        >
-                          {cue}
-                        </span>
-                      ))}
-                    </div>
-                  </DetailSection>
-                )}
-                {card?.do_next && (
-                  <DetailSection label="Do next" tone="action" className="xl:col-span-6">
-                    {card.do_next}
-                  </DetailSection>
-                )}
-                {card?.watchout && (
-                  <DetailSection label="Watchout" tone="warning" className="xl:col-span-6">
-                    {card.watchout}
-                  </DetailSection>
-                )}
-                {card?.per_post_notes?.length ? (
-                  <DetailSection label="Post notes" className="xl:col-span-6">
+                {card?.evidence_pressure?.length ? (
+                  <DetailSection label="Evidence pressure" className="xl:col-span-12">
                     <div className="space-y-2 md:space-y-1.5">
-                      {card.per_post_notes.slice(0, 5).map((note, index) => (
+                      {card.evidence_pressure.slice(0, 5).map((note, index) => (
                         <div key={`${pattern.firewatch_id}:note:${index}`} className="flex gap-2">
                           <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#E11D48]/70" />
                           <span>{note}</span>
@@ -890,6 +841,8 @@ function PatternCard({
   const cues = (pattern.cues || []).slice(0, 3);
   const pills = patternPills(pattern);
   const cardTitle = pattern.signal_card?.title || pattern.pattern_label || 'Pattern';
+  const metricLine = pattern.signal_card?.metric_line || '';
+  const readPreview = pattern.signal_card?.read || '';
 
   const selectCard = () => onSelect(pattern);
 
@@ -928,6 +881,16 @@ function PatternCard({
             <div className="line-clamp-2 text-[18px] font-black leading-[1.02] tracking-normal text-foreground dark:text-white sm:text-[20px]">
               {cardTitle}
             </div>
+            {metricLine && (
+              <div className="mt-1.5 line-clamp-1 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/42 dark:text-white/34">
+                {metricLine}
+              </div>
+            )}
+            {readPreview && (
+              <div className="mt-2 line-clamp-3 text-[12px] font-semibold leading-snug text-foreground/58 dark:text-white/50 sm:text-[13px]">
+                {readPreview}
+              </div>
+            )}
             {cues.length > 0 && (
               <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5">
                 {cues.map((cue) => (

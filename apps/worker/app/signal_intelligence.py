@@ -33,7 +33,7 @@ _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 _FP_PROMPT_VERSION = "fingerprint_v5_full_context"
-_CARD_PROMPT_VERSION = "signal_card_v5_mechanism_spine"
+_CARD_PROMPT_VERSION = "movement_thesis_v1_pressure"
 _SAMPLING_POLICY_VERSION = "media_sample_v2_120s_all_slides"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
@@ -66,8 +66,8 @@ Return only JSON:
   "media_confidence": "high|medium|low"
 }"""
 
-_CARD_SYSTEM = """You write Feed_Me signal cards.
-The server owns metric truth. You explain what happened in the content, what changed against the rulebook, and how that likely helped or worsened performance.
+_CARD_SYSTEM = """You write Feed_Me movement theses.
+The server owns metric truth. You explain what is outperforming what, by how much, and what changed inside the content to create that separation.
 
 Inputs include:
 - alert event and metric snapshot
@@ -80,7 +80,10 @@ Do not create tags. Do not mention internal words like fingerprint, focus brain,
 Do not over-focus on hooks. If the reel works through a late payoff, audio turn, visual rhythm, satire, innuendo, carousel sequence, or proof device, name that instead.
 Do not claim saves, shares, or private algorithm behavior unless explicitly provided.
 
-The key move: collapse the evidence into ONE behavioral mechanism.
+The visible object is not an alert card. It is a defended movement thesis:
+X is beating Y under Z condition.
+
+The key move: collapse the evidence into ONE metric-backed behavioral displacement.
 Do not list buckets like "gossip + satire + conflict + reactions." Those are ingredients, not the read.
 Find the spine underneath them:
 - premium setting -> behavior breaks the polish -> people react
@@ -92,21 +95,33 @@ Write from viewer pressure, not creator terminology.
 Avoid generic analyst words: engagement, relatable, storytelling, personality-driven, high-conflict, reactionary format, aesthetic showcase, humble setup, content pillar.
 Treat filters, hooks, formats, settings, and editing styles as implementation details. The read should explain what social/visual state the viewer enters and how fast.
 
+Editorial shape:
+- title: memorable behavioral interpretation, 2-6 words, not title case, no alert names
+- metric_line: short proof line, e.g. "6 matching reels · avg top ~9% D7 · pressure holding"; no "triggered", "reinforced twice", or backend language
+- read: 80-150 words. Make the argument move forward:
+  1. what changed visibly
+  2. why that changes viewer behavior
+  3. why adjacent variants lose despite looking similar
+  4. what this reveals about current account/feed pressure
+- evidence_pressure: 3-5 bullets. Each bullet must add comparative proof, not repeat the read. No role labels.
+
+Avoid symmetrical essay rhythm. Use selective emphasis. Do not over-explain the same insight.
+Do not write tactical advice. No "do next" and no "watchout".
+Metrics validate the argument; they should not dominate the language.
+Never expose backend plumbing like alerts, triggers, cohorts, scopes, or duplicate grouping.
+
 Shape:
-- title: short behavioral rule, no title case
-- read: 3-5 tight sentences; first sentence names the metric movement, then the mechanism, then boundaries
-- do_next: transferable behavior rule, not a list of formats
-- watchout: what breaks the mechanism
-- per_post_notes: concrete receipts only; each note can name one post behavior
+- title: movement thesis
+- metric_line: proof pressure in one line
+- read: one continuous argument
+- evidence_pressure: comparative evidence bullets
 
 Return only JSON:
 {
   "title": "",
+  "metric_line": "",
   "read": "",
-  "do_next": "",
-  "watchout": "",
-  "per_post_notes": ["one short string per supplied evidence post; never objects"],
-  "pattern_type": "account_aligned|feed_aligned|account_outlier|account_emerging|account_violation|feed_emerging|conflict_signal|unclear",
+  "evidence_pressure": ["one comparative proof bullet"],
   "signal_type": ""
 }"""
 
@@ -145,7 +160,7 @@ def _evidence_policy(signal: dict[str, Any]) -> dict[str, Any]:
         "rules": [
             "Use metric_snapshot for baseline and trigger numbers.",
             "Use comparison posts only to explain visual/content contrast.",
-            "If main and comparison posts share the same content pattern, use pattern_type unclear instead of forcing a difference.",
+            "If main and comparison posts share the same behavior, say the movement is not separable yet instead of forcing a difference.",
         ],
     }
     overrides = {
@@ -981,13 +996,13 @@ def _tier1_metric_reason(signal: dict[str, Any]) -> str | None:
     return None
 
 
-_CARD_STRING_FIELDS = ("title", "read", "do_next", "watchout", "pattern_type", "signal_type")
-_CARD_LIST_FIELDS = ("per_post_notes",)
-_CARD_COPY_FIELDS = ("title", "read", "do_next", "watchout")
+_CARD_STRING_FIELDS = ("title", "metric_line", "read", "signal_type")
+_CARD_LIST_FIELDS = ("evidence_pressure",)
+_CARD_COPY_FIELDS = ("title", "metric_line", "read")
 _FORBIDDEN_INTERNAL = re.compile(
     r"\b(?:cohort|anchor|challenger|bible|feed_focus|signals?|pattern_id|cross[-\s]feed|"
     r"fingerprints?|trigger_core|trigger_support|reference_no_jump|reference_typical|"
-    r"reference_strong)\b",
+    r"reference_strong|alerts?|triggers?|duplicates?|backend)\b",
     re.IGNORECASE,
 )
 _WEAK_ANALYST_VOCAB = re.compile(
@@ -1046,36 +1061,29 @@ def _card_schema_errors(card: Any) -> list[str]:
             for index, value in enumerate(card.get(key) or []):
                 if not isinstance(value, str):
                     errors.append(f"{key}_{index}_not_string")
-    if str(card.get("pattern_type") or "") not in {
-        "account_aligned",
-        "feed_aligned",
-        "account_outlier",
-        "account_emerging",
-        "account_violation",
-        "feed_emerging",
-        "conflict_signal",
-        "unclear",
-    }:
-        errors.append("invalid_pattern_type")
-
     title = str(card.get("title") or "")
-    if _word_count(title) > 9:
+    if _word_count(title) > 7:
         errors.append("title_too_long")
     if _looks_title_case(title):
         errors.append("title_looks_title_case")
-    if _word_count(card.get("read")) > 90:
+    metric_line = str(card.get("metric_line") or "")
+    if _word_count(metric_line) > 16:
+        errors.append("metric_line_too_long")
+    if re.search(r"\b(?:triggered|trigger|alert|reinforced twice|duplicate|backend)\b", metric_line, re.IGNORECASE):
+        errors.append("metric_line_contains_backend_vocab")
+    read_count = _word_count(card.get("read"))
+    if read_count > 160:
         errors.append("read_too_long")
-    do_next = str(card.get("do_next") or "")
-    if _word_count(do_next) > 32:
-        errors.append("do_next_too_long")
-    if _word_count(card.get("watchout")) > 28:
-        errors.append("watchout_too_long")
-    if isinstance(card.get("per_post_notes"), list):
-        if len(card.get("per_post_notes") or []) > 5:
-            errors.append("per_post_notes_too_many")
-        for index, item in enumerate(card.get("per_post_notes") or []):
+    if read_count < 45:
+        errors.append("read_too_short")
+    if isinstance(card.get("evidence_pressure"), list):
+        if len(card.get("evidence_pressure") or []) > 5:
+            errors.append("evidence_pressure_too_many")
+        if len(card.get("evidence_pressure") or []) < 2:
+            errors.append("evidence_pressure_too_few")
+        for index, item in enumerate(card.get("evidence_pressure") or []):
             if isinstance(item, str) and _word_count(item) > 24:
-                errors.append(f"per_post_notes_{index}_too_long")
+                errors.append(f"evidence_pressure_{index}_too_long")
     for key, value in _card_copy_items(card):
         if _FORBIDDEN_INTERNAL.search(value):
             errors.append(f"{key}_contains_internal_vocab")
@@ -1142,6 +1150,10 @@ def _repair_guardrail_terms(card: Any, errors: list[str]) -> Any:
     replacements = [
         (r"\bfingerprints?\b", "post reads"),
         (r"\bsignals?\b", "movement"),
+        (r"\balerts?\b", "movement"),
+        (r"\btriggers?\b", "checks"),
+        (r"\bduplicates?\b", "repeats"),
+        (r"\bbackend\b", "system"),
         (r"\bcohort\b", "evidence group"),
         (r"\banchor\b", "primary account"),
         (r"\bchallenger\b", "comparison account"),
@@ -1229,31 +1241,33 @@ def _normalize_card_tag_aliases(card: Any) -> Any:
         normalized["read"] = " ".join(part for part in legacy_parts if part).strip()
     normalized.pop("what_happened", None)
     normalized.pop("why", None)
+    normalized.pop("do_next", None)
+    normalized.pop("watchout", None)
+    normalized.pop("pattern_type", None)
+    normalized.pop("per_post_notes", None)
     normalized.pop("mechanic_tags", None)
     normalized.pop("execution_tags", None)
     normalized.pop("common_pattern", None)
     normalized.pop("focus_memory_candidate", None)
     if isinstance(normalized.get("read"), str):
-        normalized["read"] = _trim_words(normalized["read"], 90)
-    if isinstance(normalized.get("do_next"), str):
-        normalized["do_next"] = _trim_words(normalized["do_next"], 32)
-    if isinstance(normalized.get("watchout"), str):
-        normalized["watchout"] = _trim_words(normalized["watchout"], 28)
+        normalized["read"] = _trim_words(normalized["read"], 160)
+    if isinstance(normalized.get("metric_line"), str):
+        normalized["metric_line"] = _trim_words(normalized["metric_line"], 16)
     if isinstance(normalized.get("title"), str):
-        normalized["title"] = _trim_words(normalized["title"], 9)
-    if "per_post_notes" in normalized:
-        notes = normalized.get("per_post_notes")
+        normalized["title"] = _trim_words(normalized["title"], 7)
+    if "evidence_pressure" in normalized:
+        notes = normalized.get("evidence_pressure")
         if isinstance(notes, list):
-            normalized["per_post_notes"] = [
+            normalized["evidence_pressure"] = [
                 _trim_words(_stringify_post_note(item), 20)
                 for item in notes[:5]
                 if _stringify_post_note(item)
             ]
         elif notes is None:
-            normalized["per_post_notes"] = []
+            normalized["evidence_pressure"] = []
         else:
             note = _stringify_post_note(notes)
-            normalized["per_post_notes"] = [_trim_words(note, 24)] if note else []
+            normalized["evidence_pressure"] = [_trim_words(note, 24)] if note else []
     return normalized
 
 
@@ -1402,8 +1416,9 @@ def _card_user_text(
         "metric_classification": metric_classification,
         "evidence_policy": _evidence_policy(signal),
         "writing_rules": {
-            "core_task": "collapse all evidence into one behavioral mechanism",
-            "mechanism_test": "If the read says X, Y, Z worked, rewrite it as the single pressure/change that makes X, Y, and Z work.",
+            "core_task": "write one movement thesis: X is beating Y under Z condition",
+            "movement_test": "If the read says X, Y, Z worked, rewrite it as what those winners displaced or beat.",
+            "sequence": "visible shift -> viewer behavior implication -> adjacent variant contrast -> account/feed pressure conclusion",
             "viewer_pressure_examples": [
                 "premium setting -> tone break -> reaction",
                 "tension before understanding -> viewer takes a side",
@@ -1427,6 +1442,8 @@ def _card_user_text(
                 "reactionary format",
                 "aesthetic showcase",
                 "humble setup",
+                "reinforced twice",
+                "triggered",
             ],
         },
         "model_route": {
@@ -1440,12 +1457,15 @@ def _card_user_text(
             "validation_errors": validation_errors[:12],
             "instruction": (
                 "Rewrite the whole card. Preserve the insight, but satisfy the output contract exactly. "
-                "No internal vocabulary, no confidence field, no tag fields. "
-                "Collapse the evidence into one behavioral mechanism instead of listing content buckets. "
+                "Return only title, metric_line, read, evidence_pressure, and signal_type. "
+                "No do_next, no watchout, no pattern_type, no confidence field, no tag fields. "
+                "Collapse the evidence into one metric-backed behavioral displacement instead of listing content buckets. "
+                "Each paragraph must advance the argument, not paraphrase the same insight. "
                 "Avoid weak analyst words like engagement, relatable, storytelling, personality-driven, high-conflict, reactionary format, aesthetic showcase, or humble setup. "
                 "Use static language only when this signal's media lane or comparison posts are static/image. "
                 "Replace anchor with primary account, challenger with comparison account, "
-                "cohort with evidence group, signal with movement, and fingerprint with post read."
+                "cohort with evidence group, signal with movement, and fingerprint with post read. "
+                "Do not expose backend words like trigger, alert, duplicate, or reinforced twice."
             ),
         }
     return json.dumps(payload, default=str)
