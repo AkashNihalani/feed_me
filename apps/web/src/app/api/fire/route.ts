@@ -26,7 +26,7 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v5';
+const FIRE_CACHE_VERSION = 'v6';
 const EMPTY_MEDIA_SOURCE_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
@@ -367,8 +367,44 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
   };
 }
 
+function prefixedLine(label: string, value: unknown): string | null {
+  const textValue = readableText(value).replace(/\s+/g, ' ').trim();
+  if (!textValue) return null;
+  return `${label}: ${textValue}`;
+}
+
+function buildFocusIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
+  const focusRead = recordValue(row?.focus_read);
+  if (Object.keys(focusRead).length === 0) return null;
+
+  const verdict = readableText(focusRead.verdict) || readableText(focusRead.read) || readableText(focusRead.title);
+  const matches = readableList(focusRead.matches, 4);
+  const deviates = readableList(focusRead.deviates, 4);
+  const unclear = readableList(focusRead.unclear, 2);
+  const notes = [
+    ...readableList(focusRead.notes, 2),
+    prefixedLine('Do next', focusRead.do_next),
+    prefixedLine('Watchout', focusRead.watchout),
+  ].filter((line): line is string => Boolean(line));
+
+  const primary = matches.length > 0 ? matches : verdict ? [verdict] : [];
+  if (primary.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) return null;
+
+  return {
+    source: 'post_focus',
+    source_label: readableText(focusRead.source_label) || 'Focus read',
+    model_version: row?.focus_model_version ?? null,
+    feeder_focus_version: row?.feeder_focus_version ?? null,
+    confidence: readableText(focusRead.confidence) || null,
+    matches: primary,
+    deviates,
+    unclear,
+    notes: Array.from(new Set(notes)).slice(0, 4),
+  };
+}
+
 function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
-  return buildFingerprintIntelligencePayload(row);
+  return buildFocusIntelligencePayload(row) || buildFingerprintIntelligencePayload(row);
 }
 
 function isHotPercentile(value: number | null): boolean {
@@ -538,6 +574,12 @@ type FireIntelligenceRow = {
   fingerprint_model_version: string | null;
   fingerprint_media_source_hash: string | null;
   fingerprint_media_confidence: string | null;
+  focus_read?: Record<string, unknown> | null;
+  focus_model_version?: string | null;
+  focus_prompt_version?: string | null;
+  focus_fingerprint_hash?: string | null;
+  feeder_focus_version?: number | null;
+  focus_generated_at?: string | null;
 };
 
 type FirePostFingerprintRow = {
@@ -546,6 +588,16 @@ type FirePostFingerprintRow = {
   model_version: string | null;
   media_source_hash: string | null;
   media_confidence: string | null;
+};
+
+type FirePostFocusReadRow = {
+  post_key: string | null;
+  focus_read: Record<string, unknown> | null;
+  feeder_focus_version: number | string | null;
+  fingerprint_hash: string | null;
+  prompt_version: string | null;
+  model_version: string | null;
+  generated_at: string | null;
 };
 
 type MediaAssetUrlRow = {
@@ -1174,6 +1226,33 @@ async function fetchIntelligenceRowsForPostKeys(
         fingerprint_model_version: nullableString(row.model_version),
         fingerprint_media_source_hash: nullableString(row.media_source_hash),
         fingerprint_media_confidence: nullableString(row.media_confidence),
+      });
+    }
+
+    const { data: focusData, error: focusError } = await sb
+      .from('post_focus_reads')
+      .select('post_key,focus_read,feeder_focus_version,fingerprint_hash,prompt_version,model_version,generated_at')
+      .in('post_key', chunk);
+
+    if (focusError) throw focusError;
+    for (const row of (focusData || []) as FirePostFocusReadRow[]) {
+      const postKey = nullableString(row.post_key);
+      if (!postKey) continue;
+      const existing = rowsByPostKey.get(postKey) || {
+        post_key: postKey,
+        fingerprint: null,
+        fingerprint_model_version: null,
+        fingerprint_media_source_hash: null,
+        fingerprint_media_confidence: null,
+      };
+      rowsByPostKey.set(postKey, {
+        ...existing,
+        focus_read: recordValue(row.focus_read),
+        focus_model_version: nullableString(row.model_version),
+        focus_prompt_version: nullableString(row.prompt_version),
+        focus_fingerprint_hash: nullableString(row.fingerprint_hash),
+        feeder_focus_version: nullableNumber(row.feeder_focus_version),
+        focus_generated_at: nullableString(row.generated_at),
       });
     }
   }

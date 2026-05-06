@@ -66,6 +66,7 @@ from .signal_intelligence import (
 from .focus_rulebook import (
     compile_feed_focus as run_compile_feed_focus,
     compile_feeder_focus as run_compile_feeder_focus,
+    resolve_post_focus_reads as run_resolve_post_focus_reads,
 )
 from .retry_policy import (
     hard_skip_error as _hard_skip_error,
@@ -2468,6 +2469,19 @@ class PureEngine:
             feed_id=feed_id,
             limit=limit,
             full_rebuild=full_rebuild,
+        )
+
+    def resolve_post_focus_reads(
+        self,
+        post_key: str | None = None,
+        feeder_id: int | None = None,
+        limit: int = 5,
+    ):
+        return run_resolve_post_focus_reads(
+            self.conn,
+            post_key=post_key,
+            feeder_id=feeder_id,
+            limit=limit,
         )
 
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:

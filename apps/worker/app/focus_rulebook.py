@@ -20,6 +20,7 @@ from .config import (
     SIGNAL_INTELLIGENCE_PROVIDER,
 )
 from .evidence_packet import (
+    annotate_signal_types,
     build_feed_evidence_packet,
     build_feeder_evidence_packet,
     build_feeder_warm_start_packet,
@@ -32,6 +33,7 @@ _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 _DEFAULT_PRO_MODEL = "google/gemini-3.1-pro-preview"
 _FEEDER_RULEBOOK_PROMPT_VERSION = "feeder_rulebook_v4"
 _FEED_RULEBOOK_PROMPT_VERSION = "feed_rulebook_v4"
+_POST_FOCUS_PROMPT_VERSION = "post_focus_read_v1"
 _RULEBOOK_HARD_CAP = 100
 
 _FEEDER_RULEBOOK_SYSTEM = """You compile Feed_Me feeder rulebooks.
@@ -77,6 +79,37 @@ Return only JSON:
   },
   "shifts_since_last_compile": [],
   "known_unknowns": []
+}"""
+
+_POST_FOCUS_SYSTEM = """You write Feed_Me post-focus reads for one Fire card.
+
+This is not a neutral fingerprint. The fingerprint already says what is in the post.
+Your job is to explain what happened, how it compares to the feeder's rulebook/history, and why the metric result makes sense or looks suspicious.
+
+Inputs include:
+- one post with full neutral fingerprint
+- checkpoint metrics and signal annotations for that post
+- the current feeder rulebook slice for the post's media type
+
+Hard rules:
+- Subject is exactly one post. Do not turn this into a feed-wide signal.
+- Percentiles are ranks: lower is better. Multiples above 1.0 are above the feeder baseline.
+- Do not invent saves, shares, watch time, profile visits, or algorithm behavior.
+- Do not mention internal words like fingerprint, focus brain, packet, tags, clustering, or pattern registry.
+- Do not over-focus on hooks. If the post works through late payoff, audio, visual rhythm, satire, innuendo, carousel sequence, or proof device, name that instead.
+- If rulebook evidence is thin, say so directly and keep confidence low/medium.
+- Keep it concise enough for a card, but make the thinking specific.
+
+Return only JSON:
+{
+  "verdict": "one sharp line, <= 26 words",
+  "matches": ["1-3 short lines naming what aligned with the feeder rulebook"],
+  "deviates": ["1-3 short lines naming what broke from the feeder rulebook or explains downside"],
+  "unclear": ["0-2 short lines for thin evidence or ambiguity"],
+  "notes": ["0-2 short metric/content receipts"],
+  "do_next": "one concrete next move, <= 22 words",
+  "watchout": "one boundary or failure mode, <= 22 words",
+  "confidence": "low|medium|high"
 }"""
 
 _FEED_RULEBOOK_SYSTEM = """You compile Feed_Me feed rulebooks.
@@ -444,6 +477,70 @@ def _normalize_list(value: Any, fallback: str = "Insufficient evidence.") -> lis
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return [fallback]
+
+
+def _clip_words(value: Any, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    words = text.split()
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit]).rstrip(".,;:") + "..."
+
+
+def _short_list(value: Any, *, limit: int = 3, words: int = 24) -> list[str]:
+    if isinstance(value, list):
+        source = value
+    elif value:
+        source = [value]
+    else:
+        source = []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in source:
+        text = _clip_words(item, words)
+        if not text or text in seen:
+            continue
+        out.append(text)
+        seen.add(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _normalize_post_focus_read(value: Any) -> dict[str, Any]:
+    data = value if isinstance(value, dict) else {}
+    verdict = _clip_words(data.get("verdict") or data.get("read") or data.get("title"), 26)
+    matches = _short_list(data.get("matches"), limit=3, words=24)
+    if verdict and verdict not in matches:
+        matches = [verdict, *matches][:3]
+    deviates = _short_list(data.get("deviates"), limit=3, words=24)
+    unclear = _short_list(data.get("unclear"), limit=2, words=22)
+    notes = _short_list(data.get("notes"), limit=2, words=22)
+    do_next = _clip_words(data.get("do_next"), 22)
+    watchout = _clip_words(data.get("watchout"), 22)
+    if do_next:
+        notes.append(f"Do next: {do_next}")
+    if watchout:
+        notes.append(f"Watchout: {watchout}")
+
+    confidence = str(data.get("confidence") or "medium").strip().lower()
+    if confidence not in {"low", "medium", "high"}:
+        confidence = "medium"
+
+    return {
+        "source": "post_focus",
+        "source_label": "Focus read",
+        "verdict": verdict,
+        "matches": matches,
+        "deviates": deviates,
+        "unclear": unclear,
+        "notes": notes[:4],
+        "do_next": do_next,
+        "watchout": watchout,
+        "confidence": confidence,
+    }
 
 
 def _normalize_feeder_rulebook(value: Any) -> dict[str, Any]:
@@ -927,6 +1024,253 @@ def compile_feed_focus(conn: Any, feed_id: int | None = None, *, limit: int = 10
             failed += 1
             _mark_compile_lock(conn, "feed", fid, success=False, error=str(exc))
     return {"selected": selected, "compiled": compiled, "skipped": skipped, "failed": failed, "empty_evidence": empty_evidence}
+
+
+def _fetch_post_focus_candidates(
+    conn: Any,
+    *,
+    post_key: str | None = None,
+    feeder_id: int | None = None,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    where: list[str] = []
+    params: list[Any] = []
+    if post_key:
+        where.append("p.post_key = %s")
+        params.append(str(post_key).strip().lower())
+    else:
+        where.append("p.posted_at >= now() - interval '120 days'")
+        where.append("(coalesce(m.best_percentile, 101) <= 35 or coalesce(array_length(st.source_signal_types, 1), 0) > 0)")
+        if feeder_id is not None:
+            where.append("fd.id = %s")
+            params.append(feeder_id)
+    params.append(max(1, int(limit)))
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""
+            select
+              p.post_key, p.post_url, p.caption, lower(coalesce(p.media_type, 'image')) as media_type,
+              p.posted_at, p.duration_seconds, p.duration_bucket, p.carousel_slide_count, p.depth_bucket,
+              fd.id as feeder_id, fd.feed_id, fd.handle,
+              pf.fingerprint, pf.model_version as fingerprint_model_version,
+              pf.media_source_hash as fingerprint_media_source_hash,
+              ff.focus_version as feeder_focus_version,
+              m.checkpoint_metrics, m.best_percentile, m.last_metric_at,
+              coalesce(st.source_signal_types, '{{}}'::text[]) as source_signal_types,
+              pfr.fingerprint_hash as existing_source_hash,
+              pfr.prompt_version as existing_prompt_version,
+              pfr.model_version as existing_model_version,
+              pfr.feeder_focus_version as existing_feeder_focus_version
+            from public.posts p
+            join public.feeders fd on fd.id = p.feeder_id
+            left join public.post_fingerprints pf on pf.post_key = p.post_key
+            left join public.feeder_focus ff on ff.feeder_id = fd.id
+            left join public.post_focus_reads pfr on pfr.post_key = p.post_key
+            left join lateral (
+              select
+                coalesce(
+                  jsonb_object_agg(
+                    lower(pm.checkpoint),
+                    jsonb_build_object(
+                      'checkpoint', pm.checkpoint,
+                      'business_date_ist', pm.business_date_ist,
+                      'computed_at', pm.computed_at,
+                      'views', pm.views,
+                      'likes', pm.likes,
+                      'comments', pm.comments,
+                      'metric_value', pm.metric_value,
+                      'percentile_performance', pm.percentile_performance,
+                      'percentile_performance_exact', pm.percentile_performance_exact,
+                      'views_percentile', pm.views_percentile,
+                      'likes_percentile', pm.likes_percentile,
+                      'comments_percentile', pm.comments_percentile,
+                      'feed_percentile', pm.feed_percentile,
+                      'ranking_metric', pm.ranking_metric,
+                      'ranking_multiple', pm.ranking_multiple,
+                      'views_multiple', pm.views_multiple,
+                      'likes_multiple', pm.likes_multiple,
+                      'comments_multiple', pm.comments_multiple,
+                      'hour_multiple', pm.hour_multiple
+                    )
+                  ) filter (where pm.checkpoint is not null),
+                  '{{}}'::jsonb
+                ) as checkpoint_metrics,
+                min(coalesce(pm.percentile_performance_exact, pm.percentile_performance)) as best_percentile,
+                max(pm.computed_at) as last_metric_at
+              from public.post_metrics pm
+              where pm.post_key = p.post_key
+                and lower(pm.checkpoint) in ('d1', 'd3', 'd7', 'd21')
+            ) m on true
+            left join lateral (
+              select coalesce(
+                array_remove(array_agg(distinct s.signal_type), null),
+                '{{}}'::text[]
+              ) as source_signal_types
+              from public.signal_posts sp
+              join public.signals s on s.id = sp.signal_id
+              where sp.post_key = p.post_key
+                and s.created_at >= now() - interval '90 days'
+            ) st on true
+            where {' and '.join(where)}
+            order by
+              case when pfr.post_key is null then 0 else 1 end,
+              coalesce(m.best_percentile, 101) asc,
+              m.last_metric_at desc nulls last,
+              p.posted_at desc nulls last
+            limit %s
+            """,
+            tuple(params),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
+
+
+def _post_focus_model_version() -> str:
+    provider = _provider()
+    if not provider:
+        return ""
+    return f"{provider}:{_model(provider, FOCUS_COMPILER_MODEL)}:{_POST_FOCUS_PROMPT_VERSION}"
+
+
+def resolve_post_focus_reads(
+    conn: Any,
+    post_key: str | None = None,
+    *,
+    feeder_id: int | None = None,
+    limit: int = 5,
+) -> dict[str, Any]:
+    if not SIGNAL_INTELLIGENCE_ENABLED:
+        return {"selected": 0, "resolved": 0, "skipped": 0, "failed": 0, "post_keys": []}
+    from .signal_intelligence import ensure_post_fingerprint
+
+    candidates = _fetch_post_focus_candidates(conn, post_key=post_key, feeder_id=feeder_id, limit=limit)
+    selected = len(candidates)
+    resolved = skipped = failed = 0
+    resolved_keys: list[str] = []
+    model_version = _post_focus_model_version()
+    if not model_version:
+        return {"selected": selected, "resolved": 0, "skipped": 0, "failed": selected, "post_keys": []}
+
+    for row in candidates:
+        key = str(row.get("post_key") or "").strip().lower()
+        if not key:
+            skipped += 1
+            continue
+        try:
+            fingerprint = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else None
+            if not fingerprint:
+                fingerprint = ensure_post_fingerprint(conn, key)
+            if not isinstance(fingerprint, dict) or not fingerprint:
+                failed += 1
+                continue
+
+            checkpoint_metrics = row.get("checkpoint_metrics") if isinstance(row.get("checkpoint_metrics"), dict) else {}
+            annotation_row = {
+                "media_type": row.get("media_type"),
+                "checkpoint_metrics": checkpoint_metrics,
+                "source_signal_types": row.get("source_signal_types") if isinstance(row.get("source_signal_types"), list) else [],
+            }
+            signal_types = annotate_signal_types(annotation_row)
+            feed_id = int(row.get("feed_id") or 0)
+            fid = int(row.get("feeder_id") or 0)
+            media_type = str(row.get("media_type") or "image").strip().lower()
+            rulebook_slice = feeder_rulebook_slice(conn, fid, media_type) if fid else {}
+            feeder_focus_version = int(rulebook_slice.get("focus_version") or row.get("feeder_focus_version") or 0)
+            source_hash = _sha({
+                "prompt_version": _POST_FOCUS_PROMPT_VERSION,
+                "post_key": key,
+                "fingerprint": fingerprint,
+                "checkpoint_metrics": checkpoint_metrics,
+                "signal_types": signal_types,
+                "feeder_focus_version": feeder_focus_version,
+                "rulebook_text": rulebook_slice.get("text") or "",
+            })
+            if (
+                str(row.get("existing_source_hash") or "") == source_hash
+                and str(row.get("existing_prompt_version") or "") == _POST_FOCUS_PROMPT_VERSION
+                and str(row.get("existing_model_version") or "") == model_version
+                and int(row.get("existing_feeder_focus_version") or 0) == feeder_focus_version
+            ):
+                skipped += 1
+                continue
+
+            payload = {
+                "post": {
+                    "post_key": key,
+                    "post_url": row.get("post_url"),
+                    "caption_excerpt": " ".join(str(row.get("caption") or "").split())[:800],
+                    "media_type": media_type,
+                    "posted_at": row.get("posted_at"),
+                    "duration_seconds": row.get("duration_seconds"),
+                    "duration_bucket": row.get("duration_bucket"),
+                    "carousel_slide_count": row.get("carousel_slide_count"),
+                    "carousel_depth_bucket": row.get("depth_bucket"),
+                    "feeder_handle": row.get("handle"),
+                },
+                "metrics": {
+                    "best_percentile": row.get("best_percentile"),
+                    "checkpoint_metrics": checkpoint_metrics,
+                    "source_signal_types": row.get("source_signal_types") if isinstance(row.get("source_signal_types"), list) else [],
+                    "signal_types": signal_types,
+                },
+                "fingerprint": _compress_fingerprint(fingerprint),
+                "feeder_rulebook_slice": rulebook_slice,
+                "output_surface": "Fire card Post Read panel and intelligence dialog",
+            }
+            result = _call_json_model(
+                _POST_FOCUS_SYSTEM,
+                payload,
+                model=FOCUS_COMPILER_MODEL,
+                max_tokens=3600,
+            )
+            if not result:
+                failed += 1
+                continue
+            focus_read = _normalize_post_focus_read(result)
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into public.post_focus_reads (
+                      post_key, feeder_id, feed_id, media_type, focus_read,
+                      feeder_focus_version, fingerprint_hash, prompt_version, model_version,
+                      generated_at, updated_at
+                    )
+                    values (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, now(), now())
+                    on conflict (post_key) do update set
+                      feeder_id = excluded.feeder_id,
+                      feed_id = excluded.feed_id,
+                      media_type = excluded.media_type,
+                      focus_read = excluded.focus_read,
+                      feeder_focus_version = excluded.feeder_focus_version,
+                      fingerprint_hash = excluded.fingerprint_hash,
+                      prompt_version = excluded.prompt_version,
+                      model_version = excluded.model_version,
+                      generated_at = now(),
+                      updated_at = now()
+                    """,
+                    (
+                        key,
+                        fid,
+                        feed_id,
+                        media_type,
+                        json.dumps(focus_read),
+                        feeder_focus_version,
+                        source_hash,
+                        _POST_FOCUS_PROMPT_VERSION,
+                        model_version,
+                    ),
+                )
+            conn.commit()
+            resolved += 1
+            resolved_keys.append(key)
+        except Exception as exc:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            print(f"[post-focus] failed post_key={key}: {exc}")
+            failed += 1
+    return {"selected": selected, "resolved": resolved, "skipped": skipped, "failed": failed, "post_keys": resolved_keys}
 
 
 def _media_capsule_key(media_type: Any) -> str:

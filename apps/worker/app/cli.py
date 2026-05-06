@@ -29,6 +29,7 @@ def main():
             "repair_overlong_preview_assets",
             "restore_d7_fire_thumbnails",
             "resolve_signal_intelligence",
+            "resolve_post_focus_reads",
             "compile_feeder_focus",
             "compile_feed_focus",
             "recompute_fire_rankings",
@@ -234,6 +235,21 @@ def main():
             print(
                 f"resolve_signal_intelligence selected={result.get('selected', 0)} "
                 f"resolved={result.get('resolved', 0)} failed={result.get('failed', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "resolve_post_focus_reads":
+        eng = PureEngine()
+        try:
+            result = eng.resolve_post_focus_reads(
+                post_key=args.post_key,
+                feeder_id=args.feeder_id,
+                limit=args.limit,
+            )
+            print(
+                f"resolve_post_focus_reads selected={result.get('selected', 0)} "
+                f"resolved={result.get('resolved', 0)} skipped={result.get('skipped', 0)} "
+                f"failed={result.get('failed', 0)} post_keys={result.get('post_keys', [])}"
             )
         finally:
             eng.close()
