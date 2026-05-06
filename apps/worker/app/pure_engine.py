@@ -3491,7 +3491,7 @@ class PureEngine:
         return {"selected": len(rows), "updated": updated, "missing": missing}
 
     def repair_post_visual_media(self, post_key: str) -> dict[str, Any]:
-        """Re-stage and capture thumbnail/preview assets for a single post using existing source URLs."""
+        """Refresh, re-stage, and capture visual assets for a single post."""
         normalized_post_key = str(post_key or "").strip().lower()
         if not normalized_post_key:
             return {"found": False, "staged": 0, "captured": 0, "failed": 0, "retired": 0, "assets": []}
@@ -3557,17 +3557,35 @@ class PureEngine:
 
         posted_at = _to_dt(row.get("posted_at"))
         business_day = row.get("business_day")
+        media_type = str(row.get("media_type") or "").strip().lower()
         thumbnail_url = str(row.get("thumbnail_url") or row.get("staged_thumbnail_source") or "").strip() or None
         video_url = str(row.get("video_url") or row.get("staged_preview_source") or "").strip() or None
         raw_carousel_urls = row.get("carousel_urls")
         carousel_urls = [str(value).strip() for value in raw_carousel_urls if str(value).strip()] if isinstance(raw_carousel_urls, list) else []
+
+        post_url = str(row.get("post_url") or "").strip()
+        if post_url:
+            try:
+                mode = "reel" if _is_reel_media_type(media_type) else "post"
+                items = run_actor_post_urls("", [post_url], mode=mode)
+                item = items[0] if items else None
+                if item:
+                    fresh_thumbnail_url, fresh_video_url, fresh_carousel_urls = _extract_media_refs(item)
+                    thumbnail_url = fresh_thumbnail_url or thumbnail_url
+                    video_url = fresh_video_url or video_url
+                    carousel_urls = fresh_carousel_urls or carousel_urls
+            except Exception as exc:
+                print(f"[media-repair] source refresh failed post_key={normalized_post_key}: {exc}")
+
         if not thumbnail_url and video_url:
             thumbnail_url = video_url
 
         allow_preview_capture = _preview_capture_allowed_for_business_day(business_day)
         hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
+        carousel_retention_days = _IMAGE_ASSET_RETENTION_DAYS if media_type in {"sidecar", "carousel"} and carousel_urls else None
+        full_video_retention_days = _HEAVY_ASSET_RETENTION_DAYS if _is_reel_media_type(media_type) and video_url else None
 
-        if thumbnail_url or (allow_preview_capture and video_url):
+        if thumbnail_url or (allow_preview_capture and video_url) or carousel_urls:
             self._refresh_post_media(normalized_post_key, thumbnail_url, video_url, carousel_urls)
             self._stage_post_media_assets(
                 normalized_post_key,
@@ -3576,17 +3594,22 @@ class PureEngine:
                 video_url if allow_preview_capture else None,
                 carousel_urls,
                 preview_retention_days=hot_retention_days,
+                full_video_retention_days=full_video_retention_days,
+                carousel_retention_days=carousel_retention_days,
             )
             self.conn.commit()
 
-        capture_result = self._capture_post_media_assets_for_post_keys([normalized_post_key])
+        capture_result = self._capture_post_media_assets_for_post_keys([normalized_post_key], include_all_roles=True)
         retire_result = self._retire_legacy_post_media_rows([normalized_post_key], limit=25)
         assets = self.conn.execute(
             """
             select asset_role, status, storage_provider, public_url, storage_path, purge_after, updated_at
             from public.post_media_assets
             where post_key = %s
-              and asset_role in ('thumbnail', 'preview_5s')
+              and (
+                asset_role in ('thumbnail', 'preview_5s', 'video_full')
+                or asset_role like 'carousel_%%'
+              )
             order by asset_role
             """,
             (normalized_post_key,),
@@ -3801,11 +3824,22 @@ class PureEngine:
               p.thumbnail_url,
               p.video_url,
               p.carousel_urls,
+              p.carousel_slide_count,
               coalesce(
                 latest_metric.business_day,
                 ((coalesce(p.posted_at, p.created_at, now()) at time zone 'Asia/Kolkata')::date)::text
               ) as business_day,
               coalesce(latest_metric.hot_d7, false) as hot_d7,
+              (
+                select count(*)
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role like 'carousel_%%'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              ) as active_carousel_count,
               exists (
                 select 1
                 from public.post_media_assets assets
@@ -3841,6 +3875,22 @@ class PureEngine:
                     and coalesce(assets.storage_provider, 'supabase') = 'r2'
                     and coalesce(assets.storage_path, '') <> ''
                     and coalesce(assets.public_url, '') <> ''
+                )
+                or (
+                  lower(coalesce(p.media_type, '')) in ('sidecar', 'carousel', 'album')
+                  and (
+                    select count(*)
+                    from public.post_media_assets assets
+                    where assets.post_key = p.post_key
+                      and assets.asset_role like 'carousel_%%'
+                      and assets.status in ('active', 'purge_pending')
+                      and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                      and coalesce(assets.storage_path, '') <> ''
+                      and coalesce(assets.public_url, '') <> ''
+                  ) < greatest(
+                    coalesce(p.carousel_slide_count, 0),
+                    case when jsonb_typeof(p.carousel_urls) = 'array' then jsonb_array_length(p.carousel_urls) else 0 end
+                  )
                 )
                 or (
                   lower(coalesce(p.media_type, '')) = 'reel'
@@ -3956,15 +4006,27 @@ class PureEngine:
                         and allow_preview_capture
                         and not bool(row.get("has_r2_preview"))
                     )
+                    expected_carousel_count = max(
+                        int(row.get("carousel_slide_count") or 0),
+                        len(carousel_urls or fallback_carousel_urls),
+                    )
+                    needs_carousel = (
+                        str(row.get("media_type") or "").strip().lower() in {"sidecar", "carousel", "album"}
+                        and expected_carousel_count > 0
+                        and int(row.get("active_carousel_count") or 0) < expected_carousel_count
+                    )
 
                     if needs_thumbnail and not thumbnail_url:
                         missing += 1
                     if needs_preview and not video_url:
                         missing += 1
+                    if needs_carousel and not carousel_urls:
+                        missing += 1
 
                     staged_thumbnail_url = thumbnail_url if needs_thumbnail else None
                     staged_preview_url = video_url if needs_preview else None
-                    if not staged_thumbnail_url and not staged_preview_url:
+                    staged_carousel_urls = carousel_urls if needs_carousel else []
+                    if not staged_thumbnail_url and not staged_preview_url and not staged_carousel_urls:
                         continue
 
                     posted_at = _to_dt(row.get("posted_at"))
@@ -3975,13 +4037,14 @@ class PureEngine:
                         posted_at,
                         staged_thumbnail_url,
                         staged_preview_url,
-                        carousel_urls,
+                        staged_carousel_urls,
                         preview_retention_days=hot_retention_days,
+                        carousel_retention_days=_IMAGE_ASSET_RETENTION_DAYS if staged_carousel_urls else None,
                     )
                     staged_post_keys.append(chunk_post_key)
 
         self.conn.commit()
-        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys)
+        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys, include_all_roles=True)
         retire_result = (
             self._retire_legacy_post_media_rows(staged_post_keys, limit=max(250, len(staged_post_keys) * 4))
             if staged_post_keys
@@ -4027,8 +4090,19 @@ class PureEngine:
               p.thumbnail_url,
               p.video_url,
               p.carousel_urls,
+              p.carousel_slide_count,
               latest_metric.business_day,
               coalesce(latest_metric.hot_d7, false) as hot_d7,
+              (
+                select count(*)
+                from public.post_media_assets assets
+                where assets.post_key = p.post_key
+                  and assets.asset_role like 'carousel_%%'
+                  and assets.status in ('active', 'purge_pending')
+                  and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                  and coalesce(assets.storage_path, '') <> ''
+                  and coalesce(assets.public_url, '') <> ''
+              ) as active_carousel_count,
               thumbnail_asset.source_url as staged_thumbnail_source,
               preview_asset.source_url as staged_preview_source,
               exists (
@@ -4103,6 +4177,22 @@ class PureEngine:
                     and coalesce(assets.public_url, '') <> ''
                 )
                 or (
+                  lower(coalesce(p.media_type, '')) in ('sidecar', 'carousel', 'album')
+                  and (
+                    select count(*)
+                    from public.post_media_assets assets
+                    where assets.post_key = p.post_key
+                      and assets.asset_role like 'carousel_%%'
+                      and assets.status in ('active', 'purge_pending')
+                      and coalesce(assets.storage_provider, 'supabase') = 'r2'
+                      and coalesce(assets.storage_path, '') <> ''
+                      and coalesce(assets.public_url, '') <> ''
+                  ) < greatest(
+                    coalesce(p.carousel_slide_count, 0),
+                    case when jsonb_typeof(p.carousel_urls) = 'array' then jsonb_array_length(p.carousel_urls) else 0 end
+                  )
+                )
+                or (
                   lower(coalesce(p.media_type, '')) = 'reel'
                   and latest_metric.business_day >= %s
                   and not exists (
@@ -4164,8 +4254,14 @@ class PureEngine:
 
             allow_preview_capture = _preview_capture_allowed_for_business_day(business_day)
             hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
+            expected_carousel_count = max(int(row.get("carousel_slide_count") or 0), len(carousel_urls))
+            needs_carousel = (
+                str(row.get("media_type") or "").strip().lower() in {"sidecar", "carousel", "album"}
+                and expected_carousel_count > 0
+                and int(row.get("active_carousel_count") or 0) < expected_carousel_count
+            )
 
-            if not thumbnail_url and not (allow_preview_capture and video_url):
+            if not thumbnail_url and not (allow_preview_capture and video_url) and not (needs_carousel and carousel_urls):
                 missing += 1
                 continue
 
@@ -4177,11 +4273,12 @@ class PureEngine:
                 video_url if allow_preview_capture else None,
                 carousel_urls,
                 preview_retention_days=hot_retention_days,
+                carousel_retention_days=_IMAGE_ASSET_RETENTION_DAYS if needs_carousel else None,
             )
             staged_post_keys.append(post_key)
 
         self.conn.commit()
-        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys)
+        capture_result = self._capture_post_media_assets_for_post_keys(staged_post_keys, include_all_roles=True)
         retire_result = self._retire_legacy_post_media_rows(None, limit=max(500, limit * 4))
         return {
             "selected": len(rows),
