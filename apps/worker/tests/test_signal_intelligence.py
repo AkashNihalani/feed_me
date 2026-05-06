@@ -104,6 +104,44 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
         self.assertEqual(len(normalized["per_post_notes"]), 1)
         self.assertIsInstance(normalized["per_post_notes"][0], str)
         self.assertLessEqual(si._word_count(normalized["per_post_notes"][0]), 24)
+        self.assertTrue(normalized["read"].endswith("..."))
+
+    def test_weak_analyst_vocab_is_rejected(self) -> None:
+        card = {
+            "title": "Relatable storytelling held d7",
+            "read": "The posts sustained performance through relatable storytelling and high-conflict reactionary formats.",
+            "do_next": "Keep leaning into personality-driven setups.",
+            "watchout": "Avoid generic aesthetic showcases.",
+            "per_post_notes": ["Pick: premium setting broken by casual behavior."],
+            "pattern_type": "account_aligned",
+            "signal_type": "OWN_SUSTAIN",
+        }
+
+        errors = si._card_schema_errors(card)
+
+        self.assertIn("title_contains_weak_analyst_vocab", errors)
+        self.assertIn("read_contains_weak_analyst_vocab", errors)
+        self.assertIn("do_next_contains_weak_analyst_vocab", errors)
+
+    def test_guardrail_repair_replaces_internal_and_weak_terms(self) -> None:
+        card = {
+            "title": "Signal from relatable storytelling",
+            "read": "The signal shows engagement rising through relatable storytelling and aesthetic showcases.",
+            "do_next": "Keep leaning into high-conflict reactionary formats with a lot of extra detail that should be trimmed before validation accepts the card output.",
+            "watchout": "Avoid humble setups.",
+            "per_post_notes": ["Fingerprint shows a high-conflict post."],
+            "pattern_type": "account_aligned",
+            "signal_type": "OWN_SUSTAIN",
+        }
+
+        repaired = si._normalize_card_tag_aliases(
+            si._repair_guardrail_terms(card, si._card_schema_errors(card))
+        )
+        errors = si._card_schema_errors(repaired)
+
+        self.assertNotIn("read_contains_internal_vocab", errors)
+        self.assertNotIn("read_contains_weak_analyst_vocab", errors)
+        self.assertLessEqual(si._word_count(repaired["do_next"]), 32)
 
     def test_server_confidence_uses_fingerprinted_evidence_not_focus_memory(self) -> None:
         confidence = si._computed_confidence(

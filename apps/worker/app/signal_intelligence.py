@@ -33,7 +33,7 @@ _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 _FP_PROMPT_VERSION = "fingerprint_v5_full_context"
-_CARD_PROMPT_VERSION = "signal_card_v4_rulebook"
+_CARD_PROMPT_VERSION = "signal_card_v5_mechanism_spine"
 _SAMPLING_POLICY_VERSION = "media_sample_v2_120s_all_slides"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
@@ -80,6 +80,25 @@ Do not create tags. Do not mention internal words like fingerprint, focus brain,
 Do not over-focus on hooks. If the reel works through a late payoff, audio turn, visual rhythm, satire, innuendo, carousel sequence, or proof device, name that instead.
 Do not claim saves, shares, or private algorithm behavior unless explicitly provided.
 
+The key move: collapse the evidence into ONE behavioral mechanism.
+Do not list buckets like "gossip + satire + conflict + reactions." Those are ingredients, not the read.
+Find the spine underneath them:
+- premium setting -> behavior breaks the polish -> people react
+- tension arrives before context -> viewer takes a side
+- visual proof appears before explanation -> decision window compresses
+- plain product setup -> interactive counting prompt -> comments become the task
+
+Write from viewer pressure, not creator terminology.
+Avoid generic analyst words: engagement, relatable, storytelling, personality-driven, high-conflict, reactionary format, aesthetic showcase, humble setup, content pillar.
+Treat filters, hooks, formats, settings, and editing styles as implementation details. The read should explain what social/visual state the viewer enters and how fast.
+
+Shape:
+- title: short behavioral rule, no title case
+- read: 3-5 tight sentences; first sentence names the metric movement, then the mechanism, then boundaries
+- do_next: transferable behavior rule, not a list of formats
+- watchout: what breaks the mechanism
+- per_post_notes: concrete receipts only; each note can name one post behavior
+
 Return only JSON:
 {
   "title": "",
@@ -92,15 +111,15 @@ Return only JSON:
 }"""
 
 _SIGNAL_QUESTIONS = {
-    "OWN_BREAKOUT_EARLY": "What makes the trigger posts different from the feeder's typical visual references, while keeping D3 uncertainty in mind?",
-    "OWN_BREAKOUT": "What makes the trigger posts different from the feeder's typical visual references?",
-    "OWN_SUSTAIN": "Why are these posts repeatedly holding strong D7 performance?",
-    "OWN_SUSTAIN_LONG": "What makes these posts durable beyond the first week?",
-    "OWN_FADE": "What is missing in recent weak posts compared with prior strong visual references?",
-    "OWN_COMMENT_SPIKE": "What in the content made people reply more than usual?",
-    "OWN_LIKE_HEAVY": "What made these posts easy to approve or like without much discussion?",
-    "OWN_VIRAL_PASSIVE": "Why did these posts reach more people without matching likes/comments?",
-    "OWN_LATE_JUMP": "What explains delayed pickup compared with posts that did not jump?",
+    "OWN_BREAKOUT_EARLY": "What single behavioral mechanism made these early breakout posts different from typical references, while keeping D3 uncertainty in mind?",
+    "OWN_BREAKOUT": "What single behavioral mechanism made the breakout posts different from typical references?",
+    "OWN_SUSTAIN": "What repeated mechanism is holding D7 performance, and what boundary makes it predictive instead of just descriptive?",
+    "OWN_SUSTAIN_LONG": "What mechanism makes these posts durable beyond the first week?",
+    "OWN_FADE": "What viewer-pressure mechanism is missing in recent weak posts compared with prior strong references?",
+    "OWN_COMMENT_SPIKE": "What behavior in the content made replying feel like the natural action?",
+    "OWN_LIKE_HEAVY": "What made these posts easy to approve quickly without much discussion?",
+    "OWN_VIRAL_PASSIVE": "What made people keep watching or passing through without matching likes/comments?",
+    "OWN_LATE_JUMP": "What delayed-payoff or context mechanism explains pickup compared with posts that did not jump?",
     "OWN_FOLLOWER_SPIKE": "What account activity in this window explains audience growth?",
     "OWN_FOLLOWER_DROP": "What account activity in this window explains audience loss?",
     "CROSS_MOMENTUM": "What common behavior is appearing across multiple feeders?",
@@ -971,6 +990,12 @@ _FORBIDDEN_INTERNAL = re.compile(
     r"reference_strong)\b",
     re.IGNORECASE,
 )
+_WEAK_ANALYST_VOCAB = re.compile(
+    r"\b(?:engagement|relatable|storytelling|personality-driven|high-conflict|"
+    r"reactionary\s+formats?|aesthetic\s+showcases?|humble\s+setups?|"
+    r"content\s+pillars?|leaning\s+(?:heavily\s+)?into)\b",
+    re.IGNORECASE,
+)
 _STATIC_TERM_RE = re.compile(r"\bstatics?\b", re.IGNORECASE)
 _STATIC_MEDIA_TYPES = {"image", "photo", "picture", "static"}
 
@@ -1054,6 +1079,8 @@ def _card_schema_errors(card: Any) -> list[str]:
     for key, value in _card_copy_items(card):
         if _FORBIDDEN_INTERNAL.search(value):
             errors.append(f"{key}_contains_internal_vocab")
+        if _WEAK_ANALYST_VOCAB.search(value):
+            errors.append(f"{key}_contains_weak_analyst_vocab")
     return errors
 
 
@@ -1101,11 +1128,67 @@ def _repair_context_terms(card: Any, context_errors: list[str]) -> Any:
     return repaired
 
 
+def _repair_guardrail_terms(card: Any, errors: list[str]) -> Any:
+    if not isinstance(card, dict):
+        return card
+    if not any(
+        marker in error
+        for error in errors
+        for marker in ("contains_internal_vocab", "contains_weak_analyst_vocab")
+    ):
+        return card
+    repaired = dict(card)
+
+    replacements = [
+        (r"\bfingerprints?\b", "post reads"),
+        (r"\bsignals?\b", "movement"),
+        (r"\bcohort\b", "evidence group"),
+        (r"\banchor\b", "primary account"),
+        (r"\bchallenger\b", "comparison account"),
+        (r"\bengagement\b", "reaction"),
+        (r"\brelatable\b", "recognizable"),
+        (r"\bstorytelling\b", "setup"),
+        (r"\bpersonality-driven\b", "behavior-led"),
+        (r"\bhigh-conflict\b", "tension-first"),
+        (r"\breactionary\s+formats?\b", "reaction setup"),
+        (r"\baesthetic\s+showcases?\b", "clean presentation"),
+        (r"\bhumble\s+setups?\b", "quiet setup"),
+        (r"\bcontent\s+pillars?\b", "repeatable moves"),
+        (r"\bleaning\s+(?:heavily\s+)?into\b", "using"),
+    ]
+
+    def replace_terms(text: str) -> str:
+        out = text
+        for pattern, replacement in replacements:
+            out = re.sub(pattern, replacement, out, flags=re.IGNORECASE)
+        return out
+
+    for key in _CARD_COPY_FIELDS:
+        if isinstance(repaired.get(key), str):
+            repaired[key] = replace_terms(str(repaired.get(key) or ""))
+    for key in _CARD_LIST_FIELDS:
+        if isinstance(repaired.get(key), list):
+            repaired[key] = [
+                replace_terms(item) if isinstance(item, str) else item
+                for item in repaired.get(key) or []
+            ]
+    return repaired
+
+
 def _trim_words(text: Any, max_words: int) -> str:
-    words = re.findall(r"\S+", str(text or "").strip())
+    value = str(text or "").strip()
+    words = re.findall(r"\S+", value)
     if len(words) <= max_words:
-        return str(text or "").strip()
-    return " ".join(words[:max_words]).rstrip(" ,;:.-") + "."
+        return value
+    boundary = re.search(r"^((?:[^.!?]+[.!?]){1,3})", value)
+    if boundary:
+        candidate = boundary.group(1).strip()
+        if 0 < _word_count(candidate) <= max_words:
+            return candidate
+    trimmed = " ".join(words[:max_words]).rstrip(" ,;:.-")
+    while _word_count(trimmed) > max_words and " " in trimmed:
+        trimmed = trimmed.rsplit(" ", 1)[0].rstrip(" ,;:.-")
+    return trimmed + "..."
 
 
 def _stringify_post_note(value: Any) -> str:
@@ -1318,6 +1401,34 @@ def _card_user_text(
         "metric_snapshot": _language_safe_metric_snapshot(signal.get("metric_snapshot") or {}),
         "metric_classification": metric_classification,
         "evidence_policy": _evidence_policy(signal),
+        "writing_rules": {
+            "core_task": "collapse all evidence into one behavioral mechanism",
+            "mechanism_test": "If the read says X, Y, Z worked, rewrite it as the single pressure/change that makes X, Y, and Z work.",
+            "viewer_pressure_examples": [
+                "premium setting -> tone break -> reaction",
+                "tension before understanding -> viewer takes a side",
+                "payoff before process -> decision window compresses",
+                "numbered visual task -> comments become the action",
+            ],
+            "implementation_not_intelligence": [
+                "filters",
+                "hooks",
+                "formats",
+                "editing styles",
+                "settings",
+                "topic labels",
+            ],
+            "avoid_words": [
+                "engagement",
+                "relatable",
+                "storytelling",
+                "personality-driven",
+                "high-conflict",
+                "reactionary format",
+                "aesthetic showcase",
+                "humble setup",
+            ],
+        },
         "model_route": {
             "escalated_to_pro": bool(card_model_override),
             "deterministic_reasons": escalation_reasons,
@@ -1330,6 +1441,8 @@ def _card_user_text(
             "instruction": (
                 "Rewrite the whole card. Preserve the insight, but satisfy the output contract exactly. "
                 "No internal vocabulary, no confidence field, no tag fields. "
+                "Collapse the evidence into one behavioral mechanism instead of listing content buckets. "
+                "Avoid weak analyst words like engagement, relatable, storytelling, personality-driven, high-conflict, reactionary format, aesthetic showcase, or humble setup. "
                 "Use static language only when this signal's media lane or comparison posts are static/image. "
                 "Replace anchor with primary account, challenger with comparison account, "
                 "cohort with evidence group, signal with movement, and fingerprint with post read."
@@ -1472,6 +1585,12 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
             if schema_errors and any("static_without_static_lane" in error for error in schema_errors):
                 card = _normalize_card_tag_aliases(_repair_context_terms(card, schema_errors))
+                schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+            if schema_errors and any(
+                "contains_internal_vocab" in error or "contains_weak_analyst_vocab" in error or error.endswith("_too_long")
+                for error in schema_errors
+            ):
+                card = _normalize_card_tag_aliases(_repair_guardrail_terms(card, schema_errors))
                 schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
         if not card or schema_errors:
             with conn.cursor() as cur:

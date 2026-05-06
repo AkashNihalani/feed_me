@@ -33,7 +33,7 @@ _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 _DEFAULT_PRO_MODEL = "google/gemini-3.1-pro-preview"
 _FEEDER_RULEBOOK_PROMPT_VERSION = "feeder_rulebook_v4"
 _FEED_RULEBOOK_PROMPT_VERSION = "feed_rulebook_v4"
-_POST_FOCUS_PROMPT_VERSION = "post_focus_read_v1"
+_POST_FOCUS_PROMPT_VERSION = "post_focus_read_v2_mechanism_spine"
 _RULEBOOK_HARD_CAP = 100
 
 _FEEDER_RULEBOOK_SYSTEM = """You compile Feed_Me feeder rulebooks.
@@ -99,6 +99,8 @@ Hard rules:
 - Do not over-focus on hooks. If the post works through late payoff, audio, visual rhythm, satire, innuendo, carousel sequence, or proof device, name that instead.
 - If rulebook evidence is thin, say so directly and keep confidence low/medium.
 - Keep it concise enough for a card, but make the thinking specific.
+- Do not list category buckets. Name the one viewer-pressure mechanism inside this post: what state the viewer enters, what shifts, and why the metric result follows.
+- Avoid generic analyst words: engagement, relatable, storytelling, personality-driven, high-conflict, reactionary format, aesthetic showcase, humble setup.
 
 Return only JSON:
 {
