@@ -7,7 +7,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 const DASHBOARD_ROUTE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_ROUTE_CACHE_VERSION = 'v11';
+const DASHBOARD_ROUTE_CACHE_VERSION = 'v12';
 const FOLLOWER_ROLLUP_SIGNAL = 'CROSS_FOLLOWER_WAVE';
 const FOLLOWER_CHILD_SIGNALS = new Set(['OWN_FOLLOWER_SPIKE', 'OWN_FOLLOWER_DROP']);
 
