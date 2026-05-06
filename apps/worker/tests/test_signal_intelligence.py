@@ -81,6 +81,30 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
         self.assertIn("read_contains_internal_vocab", errors)
         self.assertNotIn("missing_mechanic_tags", errors)
 
+    def test_normalizer_coerces_object_post_notes_and_clamps_copy(self) -> None:
+        card = {
+            "title": "Direct persona payoff landed harder than expected today",
+            "read": " ".join(["proof"] * 120),
+            "do_next": " ".join(["repeat"] * 40),
+            "watchout": " ".join(["avoid"] * 35),
+            "per_post_notes": [
+                {
+                    "post_key": "post#1",
+                    "role": "Pick",
+                    "note": " ".join(["this"] * 40),
+                }
+            ],
+            "pattern_type": "account_aligned",
+            "signal_type": "OWN_SUSTAIN",
+        }
+
+        normalized = si._normalize_card_tag_aliases(card)
+
+        self.assertEqual(si._card_schema_errors(normalized), [])
+        self.assertEqual(len(normalized["per_post_notes"]), 1)
+        self.assertIsInstance(normalized["per_post_notes"][0], str)
+        self.assertLessEqual(si._word_count(normalized["per_post_notes"][0]), 24)
+
     def test_server_confidence_uses_fingerprinted_evidence_not_focus_memory(self) -> None:
         confidence = si._computed_confidence(
             {"business_date_ist": date.today()},

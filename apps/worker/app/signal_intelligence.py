@@ -86,7 +86,7 @@ Return only JSON:
   "read": "",
   "do_next": "",
   "watchout": "",
-  "per_post_notes": [],
+  "per_post_notes": ["one short string per supplied evidence post; never objects"],
   "pattern_type": "account_aligned|feed_aligned|account_outlier|account_emerging|account_violation|feed_emerging|conflict_signal|unclear",
   "signal_type": ""
 }"""
@@ -1101,6 +1101,39 @@ def _repair_context_terms(card: Any, context_errors: list[str]) -> Any:
     return repaired
 
 
+def _trim_words(text: Any, max_words: int) -> str:
+    words = re.findall(r"\S+", str(text or "").strip())
+    if len(words) <= max_words:
+        return str(text or "").strip()
+    return " ".join(words[:max_words]).rstrip(" ,;:.-") + "."
+
+
+def _stringify_post_note(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        post_key = str(value.get("post_key") or value.get("post") or value.get("id") or "").strip()
+        role = str(value.get("role") or value.get("post_role") or value.get("type") or "").strip()
+        note = ""
+        for key in ("note", "read", "observation", "summary", "what_happened", "why", "body", "point"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                note = candidate.strip()
+                break
+        if not note:
+            text_parts = [
+                str(child).strip()
+                for child in value.values()
+                if isinstance(child, (str, int, float)) and str(child).strip()
+            ]
+            note = " ".join(text_parts[:3]).strip()
+        prefix = " ".join(part for part in (role, post_key) if part).strip()
+        return f"{prefix}: {note}".strip(": ").strip()
+    if isinstance(value, list):
+        return " ".join(str(item).strip() for item in value if str(item).strip())
+    return str(value or "").strip()
+
+
 def _normalize_card_tag_aliases(card: Any) -> Any:
     if not isinstance(card, dict):
         return card
@@ -1117,6 +1150,27 @@ def _normalize_card_tag_aliases(card: Any) -> Any:
     normalized.pop("execution_tags", None)
     normalized.pop("common_pattern", None)
     normalized.pop("focus_memory_candidate", None)
+    if isinstance(normalized.get("read"), str):
+        normalized["read"] = _trim_words(normalized["read"], 90)
+    if isinstance(normalized.get("do_next"), str):
+        normalized["do_next"] = _trim_words(normalized["do_next"], 32)
+    if isinstance(normalized.get("watchout"), str):
+        normalized["watchout"] = _trim_words(normalized["watchout"], 28)
+    if isinstance(normalized.get("title"), str):
+        normalized["title"] = _trim_words(normalized["title"], 9)
+    if "per_post_notes" in normalized:
+        notes = normalized.get("per_post_notes")
+        if isinstance(notes, list):
+            normalized["per_post_notes"] = [
+                _trim_words(_stringify_post_note(item), 20)
+                for item in notes[:5]
+                if _stringify_post_note(item)
+            ]
+        elif notes is None:
+            normalized["per_post_notes"] = []
+        else:
+            note = _stringify_post_note(notes)
+            normalized["per_post_notes"] = [_trim_words(note, 24)] if note else []
     return normalized
 
 
