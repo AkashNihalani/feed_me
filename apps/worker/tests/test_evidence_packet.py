@@ -34,11 +34,14 @@ def row(
     source_signal_types: list[str] | None = None,
     d3: float | None = None,
     d21: float | None = None,
+    posted_at: str | None = None,
+    fingerprint_model_version: str = "fingerprint:v5",
 ) -> dict[str, object]:
     return {
         "post_key": post_key,
         "media_type": media_type,
         "caption": f"caption {post_key}",
+        "posted_at": posted_at,
         "checkpoint_metrics": {
             "d3": {"percentile_performance": d3 if d3 is not None else percentile},
             "d7": {
@@ -51,6 +54,7 @@ def row(
         },
         "source_signal_types": source_signal_types or [],
         "fingerprint": {"synthesis": {"craft": "test craft"}},
+        "fingerprint_model_version": fingerprint_model_version,
     }
 
 
@@ -88,6 +92,41 @@ class EvidencePacketSelectionTest(unittest.TestCase):
 
         self.assertNotIn("view_outlier", groups["carousel-view"])
         self.assertIn("view_outlier", groups["reel-view"])
+
+    def test_fingerprint_model_version_controls_missing_keys(self) -> None:
+        packet = {
+            "posts": [
+                row("current", 10, fingerprint_model_version="fingerprint:v5"),
+                row("old", 11, fingerprint_model_version="fingerprint:v4"),
+                {**row("missing", 12), "fingerprint": {}},
+            ]
+        }
+
+        self.assertEqual(
+            ep.packet_post_keys_needing_fingerprints(packet, required_model_version="fingerprint:v5"),
+            ["old", "missing"],
+        )
+
+    def test_warm_start_packet_is_capped_and_mixed(self) -> None:
+        rows = [
+            row("signal-1", 42, source_signal_types=["OWN_COMMENT_SPIKE"], posted_at="2026-05-05T01:00:00+00:00"),
+            row("signal-2", 44, source_signal_types=["OWN_LIKE_HEAVY"], posted_at="2026-05-04T01:00:00+00:00"),
+            row("top-1", 2, posted_at="2026-05-03T01:00:00+00:00"),
+            row("top-2", 3, posted_at="2026-05-02T01:00:00+00:00"),
+            row("bottom-1", 98, posted_at="2026-05-01T01:00:00+00:00"),
+            row("bottom-2", 96, posted_at="2026-04-30T01:00:00+00:00"),
+            row("typical-1", 50, posted_at="2026-04-29T01:00:00+00:00"),
+            row("typical-2", 52, posted_at="2026-04-28T01:00:00+00:00"),
+        ]
+
+        selected = ep.select_warm_start_posts(rows, hard_cap=8)
+        groups = {group for item in selected for group in item["groups"]}
+
+        self.assertLessEqual(len(selected), 8)
+        self.assertIn("signal_residual", groups)
+        self.assertIn("top", groups)
+        self.assertIn("bottom", groups)
+        self.assertIn("typical", groups)
 
 
 if __name__ == "__main__":

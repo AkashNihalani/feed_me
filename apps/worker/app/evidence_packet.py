@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 
 _WINDOW_DAYS = 90
 _HARD_CAP = 100
+_WARM_START_CAP = 15
 _MAX_TOP_BOTTOM_PER_FORMAT = 30
 _MAX_FEED_TOP_BOTTOM_PER_FEEDER_FORMAT = 10
 _ANOMALY_SLICE_CAP = 5
@@ -234,6 +235,7 @@ def _entry(row: dict[str, Any], group: str, rank: int | None) -> dict[str, Any]:
         "source_signal_types": _source_signal_types(row),
         "recent_signal_types": _recent_signal_types(row),
         "fingerprint": row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {},
+        "fingerprint_model_version": row.get("fingerprint_model_version"),
         "caption_excerpt": _caption_excerpt(row.get("caption")),
     }
 
@@ -329,6 +331,86 @@ def select_packet_posts(
     )
 
 
+def _d7_percentile(row: dict[str, Any]) -> float | None:
+    value = _metric(row, "percentile_performance_exact", "d7")
+    if value is None:
+        value = _metric(row, "percentile_performance", "d7")
+    return value
+
+
+def select_warm_start_posts(rows: list[dict[str, Any]], *, hard_cap: int = _WARM_START_CAP) -> list[dict[str, Any]]:
+    """Small pilot packet: recent signal, top, bottom, typical references.
+
+    This is intentionally account-level, not per-format. It keeps pilot LLM
+    cost bounded while still giving Pro contrast instead of only winners.
+    """
+    hard_cap = max(1, int(hard_cap))
+    signal_quota = min(5, max(1, round(hard_cap * 5 / _WARM_START_CAP)))
+    top_quota = min(4, max(1, round(hard_cap * 4 / _WARM_START_CAP)))
+    bottom_quota = min(4, max(1, round(hard_cap * 4 / _WARM_START_CAP)))
+    typical_quota = min(2, max(1, hard_cap - signal_quota - top_quota - bottom_quota))
+    selected: dict[str, dict[str, Any]] = {}
+
+    def room() -> bool:
+        return len(selected) < hard_cap
+
+    signal_rows = [row for row in rows if _recent_signal_types(row)]
+    signal_rows.sort(key=lambda row: str(row.get("posted_at") or ""), reverse=True)
+    for row in signal_rows[: min(signal_quota, hard_cap)]:
+        if not room():
+            break
+        _add_entry(selected, row, group="signal_residual", rank=None)
+
+    top_rows = [row for row in rows if _best_top_metric(row)]
+    top_rows.sort(key=lambda row: (_best_top_metric(row) or (999, "z"))[0])
+    top_rank = 0
+    for row in top_rows:
+        if not room() or top_rank >= top_quota:
+            break
+        key = str(row.get("post_key") or "")
+        if key in selected:
+            continue
+        top_rank += 1
+        _add_entry(selected, row, group="top", rank=top_rank)
+
+    bottom_rows = [row for row in rows if _bottom_metric(row)]
+    bottom_rows.sort(key=lambda row: (_bottom_metric(row) or (-1, "z"))[0], reverse=True)
+    bottom_rank = 0
+    for row in bottom_rows:
+        if not room() or bottom_rank >= bottom_quota:
+            break
+        key = str(row.get("post_key") or "")
+        if key in selected:
+            continue
+        bottom_rank += 1
+        _add_entry(selected, row, group="bottom", rank=bottom_rank)
+
+    percentiles = [value for row in rows if (value := _d7_percentile(row)) is not None]
+    median_percentile = _median(percentiles)
+    if median_percentile is not None:
+        typical_rows = [row for row in rows if _d7_percentile(row) is not None]
+        typical_rows.sort(key=lambda row: abs((_d7_percentile(row) or median_percentile) - median_percentile))
+        typical_rank = 0
+        for row in typical_rows:
+            if not room() or typical_rank >= typical_quota:
+                break
+            key = str(row.get("post_key") or "")
+            if key in selected:
+                continue
+            typical_rank += 1
+            _add_entry(selected, row, group="typical", rank=typical_rank)
+
+    if room():
+        for entry in select_packet_posts(rows, hard_cap=hard_cap):
+            if not room():
+                break
+            key = str(entry.get("post_key") or "")
+            if key and key not in selected:
+                selected[key] = entry
+
+    return sorted(list(selected.values()), key=lambda entry: (str(entry.get("posted_at") or ""), str(entry.get("post_key") or "")), reverse=True)
+
+
 def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(row)
     metrics = normalized.get("checkpoint_metrics")
@@ -360,6 +442,7 @@ def _fetch_rows(conn: Any, *, feeder_id: int | None = None, feed_id: int | None 
               fd.id as feeder_id, fd.feed_id, fd.handle, coalesce(fd.role, 'standard') as feeder_role,
               fd.context_role, fd.context_note, fd.bio,
               pf.fingerprint,
+              pf.model_version as fingerprint_model_version,
               coalesce(
                 jsonb_object_agg(
                   pm.checkpoint,
@@ -408,7 +491,7 @@ def _fetch_rows(conn: Any, *, feeder_id: int | None = None, feed_id: int | None 
               p.post_key, p.post_url, p.caption, p.media_type, p.posted_at,
               p.duration_seconds, p.duration_bucket, p.carousel_slide_count, p.depth_bucket,
               fd.id, fd.feed_id, fd.handle, fd.role, fd.context_role, fd.context_note, fd.bio,
-              pf.fingerprint
+              pf.fingerprint, pf.model_version
             order by p.posted_at desc nulls last, p.post_key
             """,
             tuple(params),
@@ -630,6 +713,30 @@ def build_feeder_evidence_packet(
     }
 
 
+def build_feeder_warm_start_packet(
+    conn: Any,
+    feeder_id: int,
+    *,
+    hard_cap: int = _WARM_START_CAP,
+    window_days: int = _WINDOW_DAYS,
+) -> dict[str, Any]:
+    feeder = _fetch_feeder(conn, feeder_id)
+    rows = _fetch_rows(conn, feeder_id=feeder_id, window_days=window_days)
+    posts = select_warm_start_posts(rows, hard_cap=hard_cap)
+    return {
+        "packet_version": "evidence_packet_v4_warm_start",
+        "scope": "feeder",
+        "compile_kind": "warm_start",
+        "feeder": feeder,
+        "posts": posts,
+        "metric_windows": metric_windows(rows),
+        "follower_trends": follower_trends(conn, feeder_id=feeder_id),
+        "cadence": cadence_profile(rows),
+        "format_mix": format_mix(rows),
+        "summary": _packet_summary(rows, posts, hard_cap),
+    }
+
+
 def build_feed_evidence_packet(
     conn: Any,
     feed_id: int,
@@ -679,12 +786,16 @@ def build_feed_evidence_packet(
     }
 
 
-def packet_post_keys_needing_fingerprints(packet: dict[str, Any]) -> list[str]:
+def packet_post_keys_needing_fingerprints(packet: dict[str, Any], *, required_model_version: str | None = None) -> list[str]:
     keys: list[str] = []
     for post in packet.get("posts") or []:
         if not isinstance(post, dict):
             continue
-        if isinstance(post.get("fingerprint"), dict) and post.get("fingerprint"):
+        if (
+            isinstance(post.get("fingerprint"), dict)
+            and post.get("fingerprint")
+            and (not required_model_version or post.get("fingerprint_model_version") == required_model_version)
+        ):
             continue
         key = str(post.get("post_key") or "").strip()
         if key:

@@ -22,6 +22,7 @@ from .config import (
 from .evidence_packet import (
     build_feed_evidence_packet,
     build_feeder_evidence_packet,
+    build_feeder_warm_start_packet,
     packet_post_keys_needing_fingerprints,
 )
 from .ticker_facts import ticker_facts_from_feed_rulebook, ticker_facts_from_feeder_rulebook
@@ -39,6 +40,7 @@ You are not detecting alerts. The server already did that. You are reading a bou
 - Top and bottom posts per media format
 - anomaly slices for comments, likes, views, followers
 - signal_residual posts that fired an alert but fell outside the main slices
+- typical reference posts used as baseline contrast in warm-start compiles
 - metric windows, cadence, follower trends, and previous rulebook
 
 Write rules from evidence, not taste. Do not invent saves, shares, watch time, profile visits, or algorithm behavior.
@@ -392,10 +394,12 @@ def _signal_card_footnotes(conn: Any, *, feed_id: int, feeder_id: int | None = N
 
 
 def _ensure_packet_fingerprints(conn: Any, packet: dict[str, Any]) -> int:
-    missing = packet_post_keys_needing_fingerprints(packet)
+    from .signal_intelligence import current_model_version, ensure_post_fingerprint
+
+    required_model_version = current_model_version(kind="fingerprint")
+    missing = packet_post_keys_needing_fingerprints(packet, required_model_version=required_model_version)
     if not missing:
         return 0
-    from .signal_intelligence import ensure_post_fingerprint
 
     created = 0
     for post_key in missing:
@@ -591,20 +595,37 @@ def _select_feed_ids(conn: Any, feed_id: int | None, limit: int) -> list[int]:
         return [int(row["id"]) for row in cur.fetchall()]
 
 
-def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int = 20, full_rebuild: bool = False) -> dict[str, int]:
+def compile_feeder_focus(
+    conn: Any,
+    feeder_id: int | None = None,
+    *,
+    limit: int = 20,
+    full_rebuild: bool = False,
+    warm_start: bool = False,
+    post_cap: int | None = None,
+) -> dict[str, int]:
     if not SIGNAL_INTELLIGENCE_ENABLED:
         return {"selected": 0, "compiled": 0, "skipped": 0, "failed": 0}
     feeder_ids = _select_feeder_ids(conn, feeder_id, limit)
     selected = len(feeder_ids)
     compiled = skipped = failed = empty_evidence = 0
     for fid in feeder_ids:
-        if not _claim_compile_lock(conn, "feeder", fid, force=full_rebuild):
+        if not _claim_compile_lock(conn, "feeder", fid, force=bool(full_rebuild or warm_start)):
             skipped += 1
             continue
         try:
-            packet = build_feeder_evidence_packet(conn, fid, hard_cap=_RULEBOOK_HARD_CAP)
+            packet_cap = max(1, int(post_cap or (15 if warm_start else _RULEBOOK_HARD_CAP)))
+            packet = (
+                build_feeder_warm_start_packet(conn, fid, hard_cap=packet_cap)
+                if warm_start
+                else build_feeder_evidence_packet(conn, fid, hard_cap=packet_cap)
+            )
             _ensure_packet_fingerprints(conn, packet)
-            packet = build_feeder_evidence_packet(conn, fid, hard_cap=_RULEBOOK_HARD_CAP)
+            packet = (
+                build_feeder_warm_start_packet(conn, fid, hard_cap=packet_cap)
+                if warm_start
+                else build_feeder_evidence_packet(conn, fid, hard_cap=packet_cap)
+            )
             if not packet.get("posts"):
                 skipped += 1
                 empty_evidence += 1
@@ -613,6 +634,7 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
 
             current = _current_feeder_focus(conn, fid)
             rebuild_now = bool(full_rebuild or _full_rebuild_due(current))
+            compile_kind = "warm_start" if warm_start else "full_rebuild" if rebuild_now else "weekly_update"
             model = FOCUS_REBUILD_MODEL if rebuild_now else FOCUS_COMPILER_MODEL
             previous_rulebook = {} if rebuild_now else current.get("structured_patterns") or {}
             prompt_packet = _compile_packet_for_prompt(packet)
@@ -629,7 +651,9 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
                     "post_fingerprint_hashes": [_sha(post.get("fingerprint")) for post in packet.get("posts") or []],
                 },
                 "footnotes": footnotes,
-                "mode": "full_rebuild" if rebuild_now else "weekly_update",
+                "mode": compile_kind,
+                "warm_start": warm_start,
+                "post_cap": packet_cap,
             })
             if not rebuild_now and current.get("source_hash") == source_hash:
                 skipped += 1
@@ -639,14 +663,15 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             result = _call_json_model(
                 _FEEDER_RULEBOOK_SYSTEM,
                 {
-                    "mode": "full_rebuild" if rebuild_now else "weekly_update",
+                    "mode": compile_kind,
                     "previous_rulebook": previous_rulebook,
                     "evidence_packet": prompt_packet,
                     "signal_card_footnotes_since_last_compile": footnotes,
                     "hard_rules": {
                         "saves_and_shares": "out_of_scope",
                         "no_pattern_tags": True,
-                        "hard_cap_posts": _RULEBOOK_HARD_CAP,
+                        "hard_cap_posts": packet_cap,
+                        "warm_start": warm_start,
                     },
                 },
                 model=model,
@@ -665,7 +690,9 @@ def compile_feeder_focus(conn: Any, feeder_id: int | None = None, *, limit: int 
             }
             compile_meta = {
                 "architecture": "focus_rulebook_v4",
-                "compile_kind": "full_rebuild" if rebuild_now else "weekly_update",
+                "compile_kind": compile_kind,
+                "warm_start": warm_start,
+                "post_cap": packet_cap,
                 "packet_summary": packet.get("summary"),
                 "compiled_at": datetime.now(timezone.utc).isoformat(),
             }

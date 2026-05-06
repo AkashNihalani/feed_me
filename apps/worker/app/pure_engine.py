@@ -2445,12 +2445,21 @@ class PureEngine:
             limit=limit,
         )
 
-    def compile_feeder_focus(self, feeder_id: int | None = None, limit: int = 20, full_rebuild: bool = False):
+    def compile_feeder_focus(
+        self,
+        feeder_id: int | None = None,
+        limit: int = 20,
+        full_rebuild: bool = False,
+        warm_start: bool = False,
+        post_cap: int | None = None,
+    ):
         return run_compile_feeder_focus(
             self.conn,
             feeder_id=feeder_id,
             limit=limit,
             full_rebuild=full_rebuild,
+            warm_start=warm_start,
+            post_cap=post_cap,
         )
 
     def compile_feed_focus(self, feed_id: int | None = None, limit: int = 10, full_rebuild: bool = False):

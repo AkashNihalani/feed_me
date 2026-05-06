@@ -44,6 +44,8 @@ def main():
     p.add_argument("--feeder-id", type=int, default=None)
     p.add_argument("--feed-id", type=int, default=None)
     p.add_argument("--full-rebuild", action="store_true")
+    p.add_argument("--warm-start", action="store_true")
+    p.add_argument("--post-cap", type=int, default=None)
     p.add_argument("--skip-focus-compile", action="store_true")
     args = p.parse_args()
 
@@ -238,7 +240,13 @@ def main():
     elif args.mode == "compile_feeder_focus":
         eng = PureEngine()
         try:
-            result = eng.compile_feeder_focus(feeder_id=args.feeder_id, limit=args.limit, full_rebuild=args.full_rebuild)
+            result = eng.compile_feeder_focus(
+                feeder_id=args.feeder_id,
+                limit=args.limit,
+                full_rebuild=args.full_rebuild,
+                warm_start=args.warm_start,
+                post_cap=args.post_cap,
+            )
             print(
                 f"compile_feeder_focus selected={result.get('selected', 0)} "
                 f"compiled={result.get('compiled', 0)} skipped={result.get('skipped', 0)} "
