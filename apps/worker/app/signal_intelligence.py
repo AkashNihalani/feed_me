@@ -181,33 +181,6 @@ Rules:
 - no markdown, no backticks, no prose outside JSON.
 """
 
-_SIGNAL_QUESTIONS = {
-    "OWN_BREAKOUT_EARLY": "What single behavioral mechanism made these early breakout posts different from typical references, while keeping D3 uncertainty in mind?",
-    "OWN_BREAKOUT": "What single behavioral mechanism made the breakout posts different from typical references?",
-    "OWN_SUSTAIN": "What repeated mechanism is holding D7 performance, and what boundary makes it predictive instead of just descriptive?",
-    "OWN_SUSTAIN_LONG": "What mechanism makes these posts durable beyond the first week?",
-    "OWN_FADE": "What viewer-pressure mechanism is missing in recent weak posts compared with prior strong references?",
-    "OWN_COMMENT_SPIKE": "What behavior in the content made replying feel like the natural action?",
-    "OWN_LIKE_HEAVY": "What made these posts easy to approve quickly without much discussion?",
-    "OWN_VIRAL_PASSIVE": "What made people keep watching or passing through without matching likes/comments?",
-    "OWN_LATE_JUMP": "What delayed-payoff or context mechanism explains pickup compared with posts that did not jump?",
-    "OWN_FOLLOWER_SPIKE": "What account activity in this window explains audience growth?",
-    "OWN_FOLLOWER_DROP": "What account activity in this window explains audience loss?",
-    "CROSS_MOMENTUM": "What common behavior is appearing across multiple feeders?",
-    "CROSS_FORMAT_SHIFT": "Why is this media format currently more productive than other recent format references?",
-    "CROSS_FOLLOWER_WAVE": "What shared activity explains audience movement across the feed?",
-    "CROSS_MICRO_BREAKOUT": "What common breakout behavior is repeating across feeders?",
-    "CROSS_MICRO_COMMENT_SPIKE": "What common content behavior is driving comments across feeders?",
-    "CROSS_MICRO_LIKE_HEAVY": "What common content behavior is driving likes across feeders?",
-    "CROSS_MICRO_VIRAL_PASSIVE": "What common content behavior is creating passive reach across feeders?",
-    "CROSS_MICRO_FADE": "What common weakness is appearing across feeders?",
-    "ANCHOR_GAP_WIDENING": "What is the primary account doing better than feed comparison posts, and what should the feed avoid?",
-    "ANCHOR_GAP_CLOSING": "What are comparison accounts doing better than primary account examples, and what should the primary account avoid?",
-    "ANCHOR_CHALLENGER_SURGE": "Why is this specific comparison account outperforming primary account examples, and what should the primary account avoid?",
-    "ANCHOR_FOLLOWER_GAP": "What activity explains the follower-growth gap, and what should the slower side avoid?",
-}
-
-
 def _evidence_policy(signal: dict[str, Any]) -> dict[str, Any]:
     signal_type = str(signal.get("signal_type") or "")
     base = {
@@ -1770,7 +1743,7 @@ def _card_user_text(
 ) -> str:
     payload: dict[str, Any] = {
         "metric_event_kind": _display_trigger_kind(signal.get("signal_type")),
-        "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
+        "central_question": "What did the winning posts make visible that weaker similar posts did not?",
         "feed_context": signal.get("context_bible") or "(not provided)",
         "rulebook_context": focus_context,
         "media_type": signal.get("media_type"),

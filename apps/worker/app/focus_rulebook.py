@@ -683,6 +683,20 @@ def _movement_post_keys(ledger: dict[str, Any]) -> set[str]:
     return keys
 
 
+def _prune_stale_movements(ledger: dict[str, Any], live_post_keys: set[str]) -> dict[str, Any]:
+    movements = ledger.get("movements") if isinstance(ledger.get("movements"), dict) else {}
+    pruned: dict[str, Any] = {}
+    for movement_id, movement in movements.items():
+        if not isinstance(movement, dict):
+            continue
+        support_posts = {str(key or "").strip() for key in _as_list(movement.get("support_posts")) if str(key or "").strip()}
+        if support_posts & live_post_keys:
+            pruned[str(movement_id)] = movement
+    clean = dict(ledger)
+    clean["movements"] = pruned
+    return clean
+
+
 def _movement_entries_for_prompt(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     movements = ledger.get("movements") if isinstance(ledger.get("movements"), dict) else {}
     out: list[dict[str, Any]] = []
@@ -734,6 +748,8 @@ def _build_feeder_focus_state_packet(
         for row in fetch_recent_evidence_rows(conn, feeder_id=feeder_id, window_days=90)
         if isinstance(row.get("fingerprint"), dict) and row.get("fingerprint")
     ]
+    live_post_keys = {str(row.get("post_key") or "").strip() for row in rows if str(row.get("post_key") or "").strip()}
+    ledger = _prune_stale_movements(ledger, live_post_keys)
     support_keys = _movement_post_keys(ledger)
     selected: list[dict[str, Any]] = []
     selected_keys: set[str] = set()
@@ -1443,7 +1459,7 @@ def compile_feeder_focus_state(
     selected = len(feeder_ids)
     compiled = skipped = failed = empty_evidence = 0
     for fid in feeder_ids:
-        if not _claim_compile_lock(conn, "feeder", fid, force=bool(full_rebuild)):
+        if not _claim_compile_lock(conn, "feeder_focus_state", fid, force=bool(full_rebuild)):
             skipped += 1
             continue
         try:
