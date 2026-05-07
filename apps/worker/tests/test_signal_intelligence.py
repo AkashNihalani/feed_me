@@ -106,8 +106,8 @@ class SignalIntelligenceV4CardContractTest(unittest.TestCase):
         self.assertEqual(si._card_schema_errors(normalized), [])
         self.assertEqual(len(normalized["evidence_pressure"]), 2)
         self.assertIsInstance(normalized["evidence_pressure"][0], str)
-        self.assertLessEqual(si._word_count(normalized["evidence_pressure"][0]), 24)
-        self.assertLessEqual(si._word_count(normalized["metric_line"]), 16)
+        self.assertLessEqual(si._word_count(normalized["evidence_pressure"][0]), 34)
+        self.assertLessEqual(si._word_count(normalized["metric_line"]), 18)
 
     def test_weak_analyst_vocab_is_rejected(self) -> None:
         card = {

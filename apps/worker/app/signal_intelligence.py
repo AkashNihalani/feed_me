@@ -23,6 +23,7 @@ from .config import (
     SIGNAL_INTELLIGENCE_ENABLED,
     SIGNAL_INTELLIGENCE_MODEL,
     SIGNAL_INTELLIGENCE_PROVIDER,
+    SIGNAL_INTELLIGENCE_REPAIR_MODEL,
 )
 from .focus_rulebook import signal_rulebook_context
 
@@ -33,7 +34,7 @@ _OPENROUTER_CHAT_URL = "/chat/completions"
 _DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
 _DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 _FP_PROMPT_VERSION = "fingerprint_v5_full_context"
-_CARD_PROMPT_VERSION = "movement_thesis_v1_pressure"
+_CARD_PROMPT_VERSION = "movement_thesis_v4_scene_pressure"
 _SAMPLING_POLICY_VERSION = "media_sample_v2_120s_all_slides"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
@@ -72,6 +73,7 @@ The server owns metric truth. You explain what is outperforming what, by how muc
 Inputs include:
 - alert event and metric snapshot
 - rulebook_context from the v4 focus rulebook
+- slow account memory when available
 - evidence posts with full neutral fingerprints
 
 Use the metric snapshot as boundary. Do not invent saves, shares, watch time, profile visits, or algorithm behavior.
@@ -80,6 +82,10 @@ Do not create tags. Do not mention internal words like fingerprint, focus brain,
 Do not over-focus on hooks. If the reel works through a late payoff, audio turn, visual rhythm, satire, innuendo, carousel sequence, or proof device, name that instead.
 Do not claim saves, shares, or private algorithm behavior unless explicitly provided.
 
+Account memory is atmospheric memory, not decision memory.
+It explains what a movement means for this account. It does not decide the movement.
+Do not force-fit the evidence into account archetype, persona, brand category, or prior identity language.
+
 The visible object is not an alert card. It is a defended movement thesis:
 X is beating Y under Z condition.
 
@@ -87,18 +93,22 @@ The key move: collapse the evidence into ONE metric-backed behavioral displaceme
 Do not list buckets like "gossip + satire + conflict + reactions." Those are ingredients, not the read.
 Find the spine underneath them:
 - premium setting -> behavior breaks the polish -> people react
-- tension arrives before context -> viewer takes a side
+- tension arrives before context -> people take a side
 - visual proof appears before explanation -> decision window compresses
 - plain product setup -> interactive counting prompt -> comments become the task
 
-Write from viewer pressure, not creator terminology.
+Write from scene pressure, not creator terminology.
 Avoid generic analyst words: engagement, relatable, storytelling, personality-driven, high-conflict, reactionary format, aesthetic showcase, humble setup, content pillar.
-Treat filters, hooks, formats, settings, and editing styles as implementation details. The read should explain what social/visual state the viewer enters and how fast.
+Treat filters, hooks, formats, settings, and editing styles as implementation details. The read should explain what social/visual state the post creates and how fast.
+Do not open with "the viewer", "the audience", "D7", "performance", or "because". Open inside the scene.
 
 Editorial shape:
 - title: memorable behavioral interpretation, 2-6 words, not title case, no alert names
+- title must sound observed, not categorized. Bad: "premium visual, candid friction", "familiar script -> hostile escalation -> tension fallout". Good: "the setup looks expensive. the behavior doesn't", "the argument starts before context".
 - metric_line: short proof line, e.g. "6 matching reels · avg top ~9% D7 · pressure holding"; no "triggered", "reinforced twice", or backend language
-- read: 80-150 words. Make the argument move forward:
+- read: 100-190 words. Do not open with D7, performance, percentile, or "because". Start inside the content tension, then let metrics stay in metric_line.
+- read must feel specifically earned from this account/feed evidence. Name concrete scene pressure from supplied posts; avoid portable strategist language.
+- Make the argument move forward:
   1. what changed visibly
   2. why that changes viewer behavior
   3. why adjacent variants lose despite looking similar
@@ -109,6 +119,19 @@ Avoid symmetrical essay rhythm. Use selective emphasis. Do not over-explain the 
 Do not write tactical advice. No "do next" and no "watchout".
 Metrics validate the argument; they should not dominate the language.
 Never expose backend plumbing like alerts, triggers, cohorts, scopes, or duplicate grouping.
+Avoid framework fingerprints: mechanism, behavioral contrast, social dynamic, viewer pressure, viewer, forced, high-status visual environments, familiar script, hostile escalation, tension fallout.
+Avoid synthetic social-media phrases: passive scrolling, active peer exchange, invited into the joke, commits to the interaction, visual markers, traps attention, permission to scroll, visceral disruption.
+
+Use the evidence roles as argument scaffolding only:
+- anchor_winner: the clearest proof post
+- reinforcement: same pressure repeated elsewhere
+- contrast_failure: nearby or visually similar posts that lost separation
+- boundary_case: partially works, but exposes the edge
+Never print those role names. Let the read carry the argument naturally.
+
+Central hidden question:
+What did the winning posts make visible that weaker similar posts did not?
+Answer through concrete scene pressure: what happened in the room, what broke, what arrived too early, what stayed too clean.
 
 Shape:
 - title: movement thesis
@@ -124,6 +147,39 @@ Return only JSON:
   "evidence_pressure": ["one comparative proof bullet"],
   "signal_type": ""
 }"""
+
+_CARD_REPAIR_SYSTEM = """You repair Feed_Me movement thesis outputs into strict JSON.
+You receive raw model output that may contain prose, markdown, malformed JSON, or extra fields.
+
+Your task is structural extraction only.
+You are not the writer.
+Copy text spans from raw_output as directly as possible.
+Preserve the analyst wording.
+Do not improve the analysis.
+Do not rewrite the thesis.
+Do not replace concrete scenes with generic explanations.
+Do not summarize unless a field is too long.
+Do not add new claims, metrics, posts, evidence, warnings, or advice.
+Do not invent missing facts.
+If a required field is missing from raw_output, leave it empty instead of creating one.
+
+Return valid JSON only:
+{
+  "title": "",
+  "metric_line": "",
+  "read": "",
+  "evidence_pressure": [],
+  "signal_type": ""
+}
+
+Rules:
+- title is 2-7 words, lowercase unless a proper noun appears.
+- metric_line is one short proof line.
+- read is the main movement thesis prose.
+- evidence_pressure is 2-5 concrete evidence bullets.
+- signal_type must match the supplied signal_type.
+- no markdown, no backticks, no prose outside JSON.
+"""
 
 _SIGNAL_QUESTIONS = {
     "OWN_BREAKOUT_EARLY": "What single behavioral mechanism made these early breakout posts different from typical references, while keeping D3 uncertainty in mind?",
@@ -486,10 +542,11 @@ def _call_model(
     *,
     max_tokens: int = 700,
     model_override: str | None = None,
-) -> dict[str, Any] | None:
+    return_raw: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any] | None, str] | None:
     provider = _provider()
     if not provider:
-        return None
+        return (None, "") if return_raw else None
     model = _model(provider, model_override)
     media_parts = media_parts or []
     try:
@@ -524,10 +581,12 @@ def _call_model(
                 timeout=120,
             )
         resp.raise_for_status()
-        return _json_from_text(_extract_text(resp.json(), provider))
+        raw_text = _extract_text(resp.json(), provider)
+        parsed = _json_from_text(raw_text)
+        return (parsed, raw_text) if return_raw else parsed
     except Exception as exc:
         print(f"[signal-intelligence] model call failed: {exc}")
-        return None
+        return (None, "") if return_raw else None
 
 
 def _sample_carousel(urls: list[str]) -> list[str]:
@@ -758,14 +817,50 @@ def _signal_payload(conn: Any, signal_id: int) -> dict[str, Any] | None:
             """
             select sp.cohort, sp.rank, sp.role, sp.post_key,
                    p.post_url, p.caption, lower(coalesce(p.media_type, 'image')) as media_type,
+                   p.posted_at, p.duration_seconds, p.duration_bucket,
+                   p.carousel_slide_count, p.depth_bucket,
                    fd.id as feeder_id, fd.feed_id, fd.handle, coalesce(fd.role, 'standard') as feeder_role,
                    fd.context_role, fd.context_note, fd.bio,
-                   pf.fingerprint
+                   pf.fingerprint,
+                   coalesce(
+                     jsonb_object_agg(
+                       pm.checkpoint,
+                       jsonb_build_object(
+                         'checkpoint', pm.checkpoint,
+                         'business_date_ist', pm.business_date_ist,
+                         'computed_at', pm.computed_at,
+                         'views', pm.views,
+                         'likes', pm.likes,
+                         'comments', pm.comments,
+                         'metric_value', pm.metric_value,
+                         'percentile_performance', pm.percentile_performance,
+                         'percentile_performance_exact', pm.percentile_performance_exact,
+                         'views_percentile', pm.views_percentile,
+                         'likes_percentile', pm.likes_percentile,
+                         'comments_percentile', pm.comments_percentile,
+                         'feed_percentile', pm.feed_percentile,
+                         'ranking_metric', pm.ranking_metric,
+                         'ranking_multiple', pm.ranking_multiple,
+                         'views_multiple', pm.views_multiple,
+                         'likes_multiple', pm.likes_multiple,
+                         'comments_multiple', pm.comments_multiple,
+                         'hour_multiple', pm.hour_multiple
+                       )
+                     ) filter (where pm.checkpoint is not null),
+                     '{}'::jsonb
+                   ) as checkpoint_metrics
             from public.signal_posts sp
             join public.posts p on p.post_key = sp.post_key
             join public.feeders fd on fd.id = p.feeder_id
             left join public.post_fingerprints pf on pf.post_key = sp.post_key
+            left join public.post_metrics pm on pm.post_key = sp.post_key and pm.checkpoint in ('d1', 'd3', 'd7', 'd21')
             where sp.signal_id = %s
+            group by
+              sp.cohort, sp.rank, sp.role, sp.post_key,
+              p.post_url, p.caption, p.media_type, p.posted_at, p.duration_seconds,
+              p.duration_bucket, p.carousel_slide_count, p.depth_bucket,
+              fd.id, fd.feed_id, fd.handle, fd.role, fd.context_role, fd.context_note, fd.bio,
+              pf.fingerprint
             order by sp.cohort, sp.rank, sp.post_key
             """,
             (signal_id,),
@@ -815,6 +910,7 @@ def _sample_hash(
                 str(row.get("role") or ""),
                 str(row.get("post_key") or ""),
                 _sha(fingerprint),
+                _sha(_json_dict(row.get("checkpoint_metrics"))),
             ])
         )
     signal_context = {}
@@ -883,6 +979,210 @@ def _first_num(mapping: dict[str, Any], *keys: str) -> float | None:
         if value is not None:
             return value
     return None
+
+
+def _json_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _checkpoint_metrics_for(row: dict[str, Any], checkpoint: str) -> dict[str, Any]:
+    metrics = _json_dict(row.get("checkpoint_metrics"))
+    value = metrics.get(str(checkpoint or "").lower())
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _metric_for(row: dict[str, Any], key: str, checkpoint: str) -> float | None:
+    checkpoint = str(checkpoint or "d7").lower()
+    for cp in (checkpoint, "d7", "d3", "d21", "d1"):
+        value = _num(_checkpoint_metrics_for(row, cp).get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _pct_for(row: dict[str, Any], checkpoint: str) -> float | None:
+    return (
+        _metric_for(row, "percentile_performance_exact", checkpoint)
+        or _metric_for(row, "percentile_performance", checkpoint)
+    )
+
+
+def _avg(values: list[float]) -> float | None:
+    clean = [float(value) for value in values if value is not None]
+    if not clean:
+        return None
+    return sum(clean) / len(clean)
+
+
+def _round_metric(value: float | None, digits: int = 2) -> float | None:
+    if value is None:
+        return None
+    return round(float(value), digits)
+
+
+def _main_axis(signal: dict[str, Any]) -> str:
+    signal_type = str(signal.get("signal_type") or "").upper()
+    snapshot = signal.get("metric_snapshot") if isinstance(signal.get("metric_snapshot"), dict) else {}
+    body = str(signal.get("body") or "").lower()
+    trigger = str(snapshot.get("trigger") or "").lower()
+    if "COMMENT" in signal_type or "comments" in body or "comments" in trigger:
+        return "comments"
+    if "LIKE" in signal_type or "likes" in body or "likes" in trigger:
+        return "likes"
+    if "VIRAL_PASSIVE" in signal_type or "VIEW" in signal_type or "views" in body or "views" in trigger:
+        return "views"
+    if "FOLLOWER" in signal_type or "follower" in body or "follower" in trigger:
+        return "followers"
+    if "LATE_JUMP" in signal_type or "SUSTAIN_LONG" in signal_type:
+        return "durability"
+    return "d7"
+
+
+def _axis_multiple_key(axis: str) -> str | None:
+    return {
+        "comments": "comments_multiple",
+        "likes": "likes_multiple",
+        "views": "views_multiple",
+    }.get(axis)
+
+
+def _summarize_metric_rows(rows: list[dict[str, Any]], checkpoint: str, axis: str) -> dict[str, Any]:
+    pcts = [value for row in rows if (value := _pct_for(row, checkpoint)) is not None]
+    axis_key = _axis_multiple_key(axis)
+    axis_values = [
+        value
+        for row in rows
+        if axis_key and (value := _metric_for(row, axis_key, checkpoint)) is not None
+    ]
+    return {
+        "count": len({str(row.get("post_key") or "") for row in rows if row.get("post_key")}),
+        "avg_percentile": _round_metric(_avg(pcts), 2),
+        "best_percentile": _round_metric(min(pcts), 2) if pcts else None,
+        "axis_multiple_avg": _round_metric(_avg(axis_values), 2),
+        "axis_multiple_best": _round_metric(max(axis_values), 2) if axis_values else None,
+    }
+
+
+def _metric_pressure(signal: dict[str, Any], posts: list[dict[str, Any]]) -> dict[str, Any]:
+    checkpoint = str(signal.get("checkpoint") or "d7").lower()
+    if checkpoint not in {"d1", "d3", "d7", "d21"}:
+        checkpoint = "d7"
+    axis = _main_axis(signal)
+    main_rows = [row for row in posts if str(row.get("cohort") or "").lower() == "a"]
+    contrast_rows = [row for row in posts if str(row.get("cohort") or "").lower() != "a"]
+    main = _summarize_metric_rows(main_rows, checkpoint, axis)
+    contrast = _summarize_metric_rows(contrast_rows, checkpoint, axis)
+    snapshot = signal.get("metric_snapshot") if isinstance(signal.get("metric_snapshot"), dict) else {}
+    fallback_keys = (
+        "prior_30_d7_median",
+        "prior_median",
+        "feed_median",
+        "primary_account_median",
+        "comparison_account_avg_percentile",
+        "comparison_account_median",
+    )
+    fallback_contrast = _first_num(snapshot, *fallback_keys)
+    contrast_source = "evidence_posts" if contrast_rows else None
+    if contrast.get("avg_percentile") is None and fallback_contrast is not None:
+        contrast["avg_percentile"] = _round_metric(fallback_contrast, 2)
+        contrast_source = "snapshot_baseline"
+    main_avg = _num(main.get("avg_percentile"))
+    contrast_avg = _num(contrast.get("avg_percentile"))
+    gap = (contrast_avg - main_avg) if main_avg is not None and contrast_avg is not None else None
+    metric_line_hint_parts: list[str] = []
+    if main.get("count"):
+        noun = "reels" if str(signal.get("media_type") or "").lower() == "reel" else "posts"
+        metric_line_hint_parts.append(f"{main['count']} matching {noun}")
+    if main_avg is not None:
+        metric_line_hint_parts.append(f"avg top ~{round(main_avg)}% {checkpoint.upper()}")
+    if gap is not None and gap > 0:
+        metric_line_hint_parts.append(f"~{round(gap)}pp over contrast")
+    elif main.get("count"):
+        metric_line_hint_parts.append("pressure holding")
+    return {
+        "main_axis": axis,
+        "checkpoint": checkpoint,
+        "main": main,
+        "contrast": contrast,
+        "contrast_source": contrast_source,
+        "percentile_gap": _round_metric(gap, 2),
+        "metric_line_hint": " · ".join(metric_line_hint_parts),
+        "interpretation_rule": (
+            "Lower percentile is stronger. Positive percentile_gap means main evidence outranked contrast."
+        ),
+    }
+
+
+def _argument_role(row: dict[str, Any], signal: dict[str, Any]) -> str:
+    cohort = str(row.get("cohort") or "").lower()
+    role = str(row.get("role") or "").lower()
+    if cohort == "a":
+        if int(_num(row.get("rank")) or 0) <= 1:
+            return "anchor_winner"
+        return "reinforcement"
+    if "typical" in role or "other_format" in role or "no_jump" in role:
+        return "contrast_failure"
+    return "boundary_case"
+
+
+def _post_metrics_for_prompt(row: dict[str, Any], checkpoint: str, axis: str) -> dict[str, Any]:
+    metrics = _checkpoint_metrics_for(row, checkpoint)
+    axis_key = _axis_multiple_key(axis)
+    return {
+        "checkpoint": checkpoint,
+        "percentile_performance": _pct_for(row, checkpoint),
+        "views_percentile": _num(metrics.get("views_percentile")),
+        "likes_percentile": _num(metrics.get("likes_percentile")),
+        "comments_percentile": _num(metrics.get("comments_percentile")),
+        "views_multiple": _metric_for(row, "views_multiple", checkpoint),
+        "likes_multiple": _metric_for(row, "likes_multiple", checkpoint),
+        "comments_multiple": _metric_for(row, "comments_multiple", checkpoint),
+        "main_axis_value": _metric_for(row, axis_key, checkpoint) if axis_key else None,
+        "ranking_metric": metrics.get("ranking_metric"),
+        "ranking_multiple": _num(metrics.get("ranking_multiple")),
+    }
+
+
+def _evidence_posts_for_prompt(
+    signal: dict[str, Any],
+    posts: list[dict[str, Any]],
+    metric_pressure: dict[str, Any],
+) -> list[dict[str, Any]]:
+    checkpoint = str(metric_pressure.get("checkpoint") or "d7")
+    axis = str(metric_pressure.get("main_axis") or "d7")
+    evidence: list[dict[str, Any]] = []
+    for row in posts:
+        fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
+        cohort = str(row.get("cohort") or "").lower()
+        evidence.append({
+            "post_key": row.get("post_key"),
+            "argument_role": _argument_role(row, signal),
+            "evidence_group": "main" if cohort == "a" else "contrast",
+            "selection_role": _display_post_role(row.get("role")),
+            "rank_in_packet": row.get("rank"),
+            "post_url": row.get("post_url"),
+            "media_type": row.get("media_type"),
+            "handle": row.get("handle"),
+            "feeder_role": row.get("feeder_role"),
+            "feeder_context_role": row.get("context_role"),
+            "feeder_note": row.get("context_note"),
+            "feeder_bio": row.get("bio"),
+            "posted_at": row.get("posted_at"),
+            "metrics": _post_metrics_for_prompt(row, checkpoint, axis),
+            "caption_excerpt": str(row.get("caption") or "")[:500],
+            "fingerprint": fp,
+        })
+    return evidence
 
 
 def _label_from_score(score: int) -> str:
@@ -1008,7 +1308,12 @@ _FORBIDDEN_INTERNAL = re.compile(
 _WEAK_ANALYST_VOCAB = re.compile(
     r"\b(?:engagement|relatable|storytelling|personality-driven|high-conflict|"
     r"reactionary\s+formats?|aesthetic\s+showcases?|humble\s+setups?|"
-    r"content\s+pillars?|leaning\s+(?:heavily\s+)?into)\b",
+    r"content\s+pillars?|leaning\s+(?:heavily\s+)?into|mechanisms?|"
+    r"behavioral\s+contrasts?|social\s+dynamics?|viewer\s+pressure|viewers?|forced|"
+    r"high-status\s+visual\s+environments?|familiar\s+scripts?|"
+    r"hostile\s+escalation|tension\s+fallout|passive\s+scrolling|"
+    r"active\s+peer\s+exchange|invited\s+into\s+the\s+joke|commits?\s+to\s+the\s+interaction|"
+    r"visual\s+markers?|traps?\s+attention|permission\s+to\s+scroll|visceral\s+disruption)\b",
     re.IGNORECASE,
 )
 _STATIC_TERM_RE = re.compile(r"\bstatics?\b", re.IGNORECASE)
@@ -1067,14 +1372,14 @@ def _card_schema_errors(card: Any) -> list[str]:
     if _looks_title_case(title):
         errors.append("title_looks_title_case")
     metric_line = str(card.get("metric_line") or "")
-    if _word_count(metric_line) > 16:
+    if _word_count(metric_line) > 18:
         errors.append("metric_line_too_long")
     if re.search(r"\b(?:triggered|trigger|alert|reinforced twice|duplicate|backend)\b", metric_line, re.IGNORECASE):
         errors.append("metric_line_contains_backend_vocab")
     read_count = _word_count(card.get("read"))
-    if read_count > 160:
+    if read_count > 190:
         errors.append("read_too_long")
-    if read_count < 45:
+    if read_count < 55:
         errors.append("read_too_short")
     if isinstance(card.get("evidence_pressure"), list):
         if len(card.get("evidence_pressure") or []) > 5:
@@ -1082,7 +1387,7 @@ def _card_schema_errors(card: Any) -> list[str]:
         if len(card.get("evidence_pressure") or []) < 2:
             errors.append("evidence_pressure_too_few")
         for index, item in enumerate(card.get("evidence_pressure") or []):
-            if isinstance(item, str) and _word_count(item) > 24:
+            if isinstance(item, str) and _word_count(item) > 34:
                 errors.append(f"evidence_pressure_{index}_too_long")
     for key, value in _card_copy_items(card):
         if _FORBIDDEN_INTERNAL.search(value):
@@ -1167,6 +1472,26 @@ def _repair_guardrail_terms(card: Any, errors: list[str]) -> Any:
         (r"\bhumble\s+setups?\b", "quiet setup"),
         (r"\bcontent\s+pillars?\b", "repeatable moves"),
         (r"\bleaning\s+(?:heavily\s+)?into\b", "using"),
+        (r"\bmechanisms?\b", "read"),
+        (r"\bbehavioral\s+contrasts?\b", "unexpected behavior"),
+        (r"\bsocial\s+dynamics?\b", "social situation"),
+        (r"\bviewer\s+pressure\b", "reaction pull"),
+        (r"\bthe viewer is presented with\b", "the post opens on"),
+        (r"\bthe viewer\b", "people"),
+        (r"\bviewers?\b", "people"),
+        (r"\bforced\b", "pushed"),
+        (r"\bhigh-status\s+visual\s+environments?\b", "expensive-looking setups"),
+        (r"\bfamiliar\s+scripts?\b", "known setup"),
+        (r"\bhostile\s+escalation\b", "argument"),
+        (r"\btension\s+fallout\b", "mess after the argument"),
+        (r"\bpassive\s+scrolling\b", "watching from outside"),
+        (r"\bactive\s+peer\s+exchange\b", "messy group-chat feeling"),
+        (r"\binvited\s+into\s+the\s+joke\b", "given something to answer"),
+        (r"\bcommits?\s+to\s+the\s+interaction\b", "stays with the scene"),
+        (r"\bvisual\s+markers?\b", "visible signs"),
+        (r"\btraps?\s+attention\b", "keeps the scene unresolved"),
+        (r"\bpermission\s+to\s+scroll\b", "a clean exit"),
+        (r"\bvisceral\s+disruption\b", "raw disruption"),
     ]
 
     def replace_terms(text: str) -> str:
@@ -1250,16 +1575,16 @@ def _normalize_card_tag_aliases(card: Any) -> Any:
     normalized.pop("common_pattern", None)
     normalized.pop("focus_memory_candidate", None)
     if isinstance(normalized.get("read"), str):
-        normalized["read"] = _trim_words(normalized["read"], 160)
+        normalized["read"] = _trim_words(normalized["read"], 190)
     if isinstance(normalized.get("metric_line"), str):
-        normalized["metric_line"] = _trim_words(normalized["metric_line"], 16)
+        normalized["metric_line"] = _trim_words(normalized["metric_line"], 18)
     if isinstance(normalized.get("title"), str):
         normalized["title"] = _trim_words(normalized["title"], 7)
     if "evidence_pressure" in normalized:
         notes = normalized.get("evidence_pressure")
         if isinstance(notes, list):
             normalized["evidence_pressure"] = [
-                _trim_words(_stringify_post_note(item), 20)
+                _trim_words(_stringify_post_note(item), 32)
                 for item in notes[:5]
                 if _stringify_post_note(item)
             ]
@@ -1269,6 +1594,44 @@ def _normalize_card_tag_aliases(card: Any) -> Any:
             note = _stringify_post_note(notes)
             normalized["evidence_pressure"] = [_trim_words(note, 24)] if note else []
     return normalized
+
+
+def _trim_raw_model_output(raw_text: Any, limit: int = 7000) -> str:
+    text = str(raw_text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "\n...[truncated]"
+
+
+def _repair_card_from_raw(raw_text: Any, signal: dict[str, Any], errors: list[str] | None = None) -> dict[str, Any] | None:
+    raw = _trim_raw_model_output(raw_text)
+    if not raw:
+        return None
+    payload = {
+        "signal_type": str(signal.get("signal_type") or ""),
+        "validation_errors": list(errors or [])[:12],
+        "raw_output": raw,
+        "hard_limits": {
+            "title_words_max": 7,
+            "metric_line_words_max": 18,
+            "read_words_min": 55,
+            "read_words_max": 190,
+            "evidence_pressure_items": "2-5",
+            "evidence_pressure_words_max": 34,
+        },
+    }
+    repaired = _call_model(
+        _CARD_REPAIR_SYSTEM,
+        json.dumps(payload, default=str),
+        [],
+        max_tokens=1600,
+        model_override=SIGNAL_INTELLIGENCE_REPAIR_MODEL,
+    )
+    if not isinstance(repaired, dict):
+        return None
+    if not repaired.get("signal_type"):
+        repaired["signal_type"] = str(signal.get("signal_type") or "")
+    return _normalize_card_tag_aliases(repaired) if isinstance(repaired, dict) else None
 
 
 def _card_validation_errors(
@@ -1397,7 +1760,8 @@ def _language_safe_metric_snapshot(value: Any) -> Any:
 def _card_user_text(
     signal: dict[str, Any],
     focus_context: dict[str, Any],
-    fingerprints: list[dict[str, Any]],
+    evidence_posts: list[dict[str, Any]],
+    metric_pressure: dict[str, Any],
     metric_classification: dict[str, str],
     escalation_reasons: list[str],
     card_model_override: str | None,
@@ -1405,7 +1769,7 @@ def _card_user_text(
     validation_errors: list[str] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
-        "trigger_kind": _display_trigger_kind(signal.get("signal_type")),
+        "metric_event_kind": _display_trigger_kind(signal.get("signal_type")),
         "question": _SIGNAL_QUESTIONS.get(str(signal.get("signal_type") or ""), "What explains this metric-triggered signal?"),
         "feed_context": signal.get("context_bible") or "(not provided)",
         "rulebook_context": focus_context,
@@ -1413,25 +1777,41 @@ def _card_user_text(
         "sub_bucket": signal.get("sub_bucket"),
         "signal_type": signal.get("signal_type"),
         "metric_snapshot": _language_safe_metric_snapshot(signal.get("metric_snapshot") or {}),
+        "metric_pressure": metric_pressure,
         "metric_classification": metric_classification,
         "evidence_policy": _evidence_policy(signal),
-        "writing_rules": {
-            "core_task": "write one movement thesis: X is beating Y under Z condition",
-            "movement_test": "If the read says X, Y, Z worked, rewrite it as what those winners displaced or beat.",
-            "sequence": "visible shift -> viewer behavior implication -> adjacent variant contrast -> account/feed pressure conclusion",
-            "viewer_pressure_examples": [
-                "premium setting -> tone break -> reaction",
-                "tension before understanding -> viewer takes a side",
-                "payoff before process -> decision window compresses",
-                "numbered visual task -> comments become the action",
+        "analysis_rules": {
+            "primary_goal": "Identify the strongest repeated content advantage visible across the main evidence posts.",
+            "comparison_goal": "Explain why adjacent variants underperformed despite surface similarity.",
+            "central_question": "What did the winning posts make visible that weaker similar posts did not?",
+            "contrast_priority": [
+                "timing differences",
+                "behavior differences",
+                "scene structure",
+                "expectation reversal",
+                "dialogue vs silent framing",
+                "reaction density",
+                "late payoff",
+                "audio/visual sync",
             ],
-            "implementation_not_intelligence": [
-                "filters",
-                "hooks",
-                "formats",
-                "editing styles",
-                "settings",
-                "topic labels",
+            "argument_structure": [
+                "visible shift",
+                "structural implication",
+                "comparison against weaker adjacent variants",
+                "metric consequence",
+                "account/feed pressure conclusion",
+            ],
+            "evidence_roles_are_internal_only": [
+                "anchor_winner establishes the thesis",
+                "reinforcement proves repeatability",
+                "contrast_failure explains separation",
+                "boundary_case prevents overclaiming",
+            ],
+            "metric_rules": [
+                "Use metric_pressure.metric_line_hint as proof context, not mandatory wording.",
+                "Lower percentile is better.",
+                "If contrast is absent or weak, be less absolute.",
+                "Do not open the read with metrics.",
             ],
             "avoid_words": [
                 "engagement",
@@ -1444,13 +1824,31 @@ def _card_user_text(
                 "humble setup",
                 "reinforced twice",
                 "triggered",
+                "mechanism",
+                "behavioral contrast",
+                "social dynamic",
+                "viewer pressure",
+                "viewer",
+                "forced",
+                "high-status visual environments",
+                "familiar script",
+                "hostile escalation",
+                "tension fallout",
+                "passive scrolling",
+                "active peer exchange",
+                "invited into the joke",
+                "commits to the interaction",
+                "visual markers",
+                "traps attention",
+                "permission to scroll",
+                "visceral disruption",
             ],
         },
         "model_route": {
             "escalated_to_pro": bool(card_model_override),
             "deterministic_reasons": escalation_reasons,
         },
-        "cohort_posts": fingerprints,
+        "evidence_posts": evidence_posts,
     }
     if validation_errors:
         payload["rewrite_retry"] = {
@@ -1469,6 +1867,280 @@ def _card_user_text(
             ),
         }
     return json.dumps(payload, default=str)
+
+
+def _slugify(value: Any, *, fallback: str = "movement") -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return text[:80] or fallback
+
+
+def _movement_candidate(
+    signal_id: int,
+    signal: dict[str, Any],
+    card: dict[str, Any],
+    posts: list[dict[str, Any]],
+    metric_pressure: dict[str, Any],
+    confidence: str,
+) -> dict[str, Any]:
+    title = str(card.get("title") or "movement").strip()
+    scope = str(signal.get("scope") or "own").strip().lower() or "own"
+    media_type = str(signal.get("media_type") or "").strip().lower()
+    axis = str(metric_pressure.get("main_axis") or _main_axis(signal))
+    movement_id = ":".join([
+        "movement",
+        scope,
+        str(signal.get("feed_id") or ""),
+        str(signal.get("feeder_id") or ""),
+        media_type or "all",
+        axis,
+        _slugify(title),
+    ])
+    support_posts = [
+        str(row.get("post_key") or "")
+        for row in posts
+        if str(row.get("cohort") or "").lower() == "a" and str(row.get("post_key") or "").strip()
+    ]
+    contrast_posts = [
+        str(row.get("post_key") or "")
+        for row in posts
+        if str(row.get("cohort") or "").lower() != "a" and str(row.get("post_key") or "").strip()
+    ]
+    support_rows = [row for row in posts if str(row.get("cohort") or "").lower() == "a"]
+    formats = _ordered_strings([row.get("media_type") for row in support_rows] or [media_type])
+    duration_buckets = _ordered_strings([row.get("duration_bucket") for row in support_rows])
+    axes = _ordered_strings([
+        axis,
+        str(metric_pressure.get("main_axis") or ""),
+        *([
+            "comments" if str(signal.get("signal_type") or "").upper() == "OWN_COMMENT_SPIKE" else "",
+            "likes" if str(signal.get("signal_type") or "").upper() == "OWN_LIKE_HEAVY" else "",
+            "views" if str(signal.get("signal_type") or "").upper() == "OWN_VIRAL_PASSIVE" else "",
+            "followers" if "FOLLOWER" in str(signal.get("signal_type") or "").upper() else "",
+        ]),
+    ])
+    business_day = _business_date(signal.get("business_date_ist"))
+    days_since = None
+    if business_day:
+        days_since = max(0, (datetime.now(timezone.utc).date() - business_day).days)
+    return {
+        "movement_id": movement_id,
+        "title": title,
+        "scope": scope,
+        "feed_id": signal.get("feed_id"),
+        "feeder_id": signal.get("feeder_id"),
+        "media_type": media_type,
+        "signal_types": [str(signal.get("signal_type") or "")],
+        "main_axis": axis,
+        "first_seen": str(signal.get("business_date_ist") or ""),
+        "last_seen": str(signal.get("business_date_ist") or ""),
+        "canonical_summary": str(card.get("read") or "").strip(),
+        "key_separation": str(card.get("title") or "").strip(),
+        "metric_line": str(card.get("metric_line") or metric_pressure.get("metric_line_hint") or "").strip(),
+        "metric_pressure": metric_pressure,
+        "evidence_pressure": [
+            str(item).strip()
+            for item in (card.get("evidence_pressure") if isinstance(card.get("evidence_pressure"), list) else [])
+            if str(item).strip()
+        ],
+        "support_posts": support_posts,
+        "contrast_posts": contrast_posts,
+        "movement_scope": {
+            "formats": formats,
+            "duration_buckets": duration_buckets,
+            "contexts": [],
+            "axes": axes,
+        },
+        "movement_health": {
+            "recent_support": len(support_posts),
+            "recent_contradictions": 0,
+            "last_major_separation": str(signal.get("business_date_ist") or ""),
+            "days_since_reinforced": days_since,
+            "decay_risk": "unknown",
+        },
+        "pressure_state": {
+            "recent_reinforcements": 1,
+            "current_gap_strength": metric_pressure.get("percentile_gap"),
+            "last_seen": str(signal.get("business_date_ist") or ""),
+            "confidence": confidence,
+            "contradiction_load": 0,
+        },
+        "last_signal_ids": [signal_id],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _merge_movement(existing: dict[str, Any] | None, candidate: dict[str, Any]) -> dict[str, Any]:
+    if not existing:
+        return candidate
+    merged = dict(existing)
+    merged.update({
+        "title": candidate.get("title") or existing.get("title"),
+        "last_seen": candidate.get("last_seen") or existing.get("last_seen"),
+        "canonical_summary": candidate.get("canonical_summary") or existing.get("canonical_summary"),
+        "key_separation": candidate.get("key_separation") or existing.get("key_separation"),
+        "metric_line": candidate.get("metric_line") or existing.get("metric_line"),
+        "metric_pressure": candidate.get("metric_pressure") or existing.get("metric_pressure"),
+        "movement_scope": candidate.get("movement_scope") or existing.get("movement_scope") or {},
+        "movement_health": candidate.get("movement_health") or existing.get("movement_health") or {},
+        "evidence_pressure": candidate.get("evidence_pressure") or existing.get("evidence_pressure") or [],
+        "updated_at": candidate.get("updated_at"),
+    })
+    merged["signal_types"] = _ordered_strings([
+        *(existing.get("signal_types") if isinstance(existing.get("signal_types"), list) else []),
+        *(candidate.get("signal_types") if isinstance(candidate.get("signal_types"), list) else []),
+    ])
+    merged["support_posts"] = _ordered_strings([
+        *(existing.get("support_posts") if isinstance(existing.get("support_posts"), list) else []),
+        *(candidate.get("support_posts") if isinstance(candidate.get("support_posts"), list) else []),
+    ])
+    merged["contrast_posts"] = _ordered_strings([
+        *(existing.get("contrast_posts") if isinstance(existing.get("contrast_posts"), list) else []),
+        *(candidate.get("contrast_posts") if isinstance(candidate.get("contrast_posts"), list) else []),
+    ])
+    merged["last_signal_ids"] = _ordered_strings([
+        *(existing.get("last_signal_ids") if isinstance(existing.get("last_signal_ids"), list) else []),
+        *(candidate.get("last_signal_ids") if isinstance(candidate.get("last_signal_ids"), list) else []),
+    ])[-10:]
+    pressure_state = existing.get("pressure_state") if isinstance(existing.get("pressure_state"), dict) else {}
+    candidate_state = candidate.get("pressure_state") if isinstance(candidate.get("pressure_state"), dict) else {}
+    pressure_state.update(candidate_state)
+    pressure_state["recent_reinforcements"] = len(merged["last_signal_ids"])
+    merged["pressure_state"] = pressure_state
+    health = merged.get("movement_health") if isinstance(merged.get("movement_health"), dict) else {}
+    health["recent_support"] = len(merged.get("support_posts") if isinstance(merged.get("support_posts"), list) else [])
+    health["recent_contradictions"] = int(health.get("recent_contradictions") or pressure_state.get("contradiction_load") or 0)
+    health["last_major_separation"] = candidate.get("last_seen") or existing.get("last_seen") or health.get("last_major_separation")
+    if "days_since_reinforced" not in health or health.get("days_since_reinforced") is None:
+        health["days_since_reinforced"] = 0
+    if not health.get("decay_risk"):
+        health["decay_risk"] = "unknown"
+    merged["movement_health"] = health
+    return merged
+
+
+def _ordered_strings(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _ledger_with_candidate(ledger: Any, candidate: dict[str, Any]) -> dict[str, Any]:
+    clean = _json_dict(ledger)
+    movements = clean.get("movements") if isinstance(clean.get("movements"), dict) else {}
+    movement_id = str(candidate.get("movement_id") or _slugify(candidate.get("title")))
+    movements[movement_id] = _merge_movement(
+        movements.get(movement_id) if isinstance(movements.get(movement_id), dict) else None,
+        candidate,
+    )
+    clean.update({
+        "version": "movement_ledger_v1",
+        "movements": movements,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return clean
+
+
+def _account_memory_with_candidate(memory: Any, candidate: dict[str, Any]) -> dict[str, Any]:
+    clean = _json_dict(memory)
+    movement_id = str(candidate.get("movement_id") or "")
+    drift_item = {
+        "movement_id": movement_id,
+        "title": candidate.get("title"),
+        "metric_line": candidate.get("metric_line"),
+        "observed_at": candidate.get("last_seen"),
+    }
+    existing_drift = clean.get("movement_drift") if isinstance(clean.get("movement_drift"), list) else []
+    movement_drift = [item for item in existing_drift if isinstance(item, dict) and item.get("movement_id") != movement_id]
+    movement_drift.append(drift_item)
+    movement_drift = movement_drift[-12:]
+
+    pressure_state = candidate.get("pressure_state") if isinstance(candidate.get("pressure_state"), dict) else {}
+    confidence = str(pressure_state.get("confidence") or clean.get("confidence") or "medium")
+    clean.update({
+        "version": "account_memory_v1",
+        "philosophy": "atmospheric_memory_not_decision_memory",
+        "movement_drift": movement_drift,
+        "last_updated_from_movements": _ordered_strings([
+            *(clean.get("last_updated_from_movements") if isinstance(clean.get("last_updated_from_movements"), list) else []),
+            movement_id,
+        ])[-8:],
+        "confidence": confidence,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if not clean.get("surface_world"):
+        clean["surface_world"] = ""
+    if not clean.get("voice_contract"):
+        clean["voice_contract"] = ""
+    if not clean.get("audience_role"):
+        clean["audience_role"] = ""
+    if not clean.get("proof_style"):
+        clean["proof_style"] = ""
+    if not clean.get("identity_tension"):
+        clean["identity_tension"] = str(candidate.get("key_separation") or candidate.get("title") or "")
+    if not clean.get("current_gravity"):
+        clean["current_gravity"] = str(candidate.get("metric_line") or "")
+    return clean
+
+
+def _upsert_focus_movement_ledger(conn: Any, signal: dict[str, Any], candidate: dict[str, Any]) -> None:
+    scope = str(signal.get("scope") or "").lower()
+    if scope == "own" and signal.get("feeder_id"):
+        feeder_id = int(signal.get("feeder_id") or 0)
+        feed_id = int(signal.get("feed_id") or 0)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("select movement_ledger, account_memory from public.feeder_focus where feeder_id = %s limit 1", (feeder_id,))
+            row = cur.fetchone()
+        ledger = _ledger_with_candidate((row or {}).get("movement_ledger") if row else {}, candidate)
+        account_memory = _account_memory_with_candidate((row or {}).get("account_memory") if row else {}, candidate)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into public.feeder_focus (
+                  feeder_id, feed_id, movement_ledger, account_memory, focus_updated_at, created_at, updated_at
+                )
+                values (%s, %s, %s::jsonb, %s::jsonb, now(), now(), now())
+                on conflict (feeder_id) do update set
+                  feed_id = excluded.feed_id,
+                  movement_ledger = excluded.movement_ledger,
+                  account_memory = excluded.account_memory,
+                  focus_updated_at = now(),
+                  updated_at = now()
+                """,
+                (feeder_id, feed_id, json.dumps(ledger), json.dumps(account_memory)),
+            )
+        conn.commit()
+        return
+
+    feed_id = int(signal.get("feed_id") or 0)
+    if feed_id <= 0:
+        return
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("select movement_ledger from public.feed_focus where feed_id = %s limit 1", (feed_id,))
+        row = cur.fetchone()
+    ledger = _ledger_with_candidate((row or {}).get("movement_ledger") if row else {}, candidate)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into public.feed_focus (
+              feed_id, movement_ledger, focus_updated_at, created_at, updated_at
+            )
+            values (%s, %s::jsonb, now(), now(), now())
+            on conflict (feed_id) do update set
+              movement_ledger = excluded.movement_ledger,
+              focus_updated_at = now(),
+              updated_at = now()
+            """,
+            (feed_id, json.dumps(ledger)),
+        )
+    conn.commit()
 
 
 def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limit: int = 1) -> dict[str, int]:
@@ -1523,30 +2195,16 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         posts = payload["posts"]
         focus_context = signal_rulebook_context(conn, signal, posts)
         metric_classification = _metric_classification(signal)
+        metric_pressure = _metric_pressure(signal, posts)
         computed_confidence = _computed_confidence(signal, posts, metric_classification)
         escalation_reasons = _deterministic_escalation_reasons(signal, posts)
         card_model_override = SIGNAL_INTELLIGENCE_ESCALATION_MODEL
-        fingerprints = []
-        for row in posts:
-            fp = row.get("fingerprint") if isinstance(row.get("fingerprint"), dict) else {}
-            fingerprints.append({
-                "post_key": row.get("post_key"),
-                "evidence_group": "main" if str(row.get("cohort") or "").lower() == "a" else "comparison",
-                "post_role": _display_post_role(row.get("role")),
-                "post_url": row.get("post_url"),
-                "media_type": row.get("media_type"),
-                "handle": row.get("handle"),
-                "feeder_role": row.get("feeder_role"),
-                "feeder_context_role": row.get("context_role"),
-                "feeder_note": row.get("context_note"),
-                "feeder_bio": row.get("bio"),
-                "caption_excerpt": str(row.get("caption") or "")[:500],
-                "fingerprint": fp,
-            })
+        evidence_posts = _evidence_posts_for_prompt(signal, posts, metric_pressure)
         recent_cards = _recent_signal_cards(conn, signal, sid)
         signal_for_hash = {
             **signal,
             "metric_classification": metric_classification,
+            "metric_pressure": metric_pressure,
         }
         sample_hash = _sample_hash(posts, focus_context, signal_for_hash)
         card_model = current_model_version(kind="card", model_override=card_model_override)
@@ -1570,16 +2228,34 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         user_text = _card_user_text(
             signal,
             focus_context,
-            fingerprints,
+            evidence_posts,
+            metric_pressure,
             metric_classification,
             escalation_reasons,
             card_model_override,
             recent_cards=recent_cards,
         )
-        card = _normalize_card_tag_aliases(_call_model(_CARD_SYSTEM, user_text, [], max_tokens=2200, model_override=card_model_override))
+        raw_result = _call_model(
+            _CARD_SYSTEM,
+            user_text,
+            [],
+            max_tokens=2200,
+            model_override=card_model_override,
+            return_raw=True,
+        )
+        raw_card, raw_text = raw_result if isinstance(raw_result, tuple) else (raw_result, "")
+        card = _normalize_card_tag_aliases(raw_card)
+        repair_used = False
+        repair_model_version = ""
+        if not card and raw_text:
+            repaired_card = _repair_card_from_raw(raw_text, signal, ["card_not_object"])
+            if repaired_card:
+                card = repaired_card
+                repair_used = True
+                repair_model_version = current_model_version(kind="card", model_override=SIGNAL_INTELLIGENCE_REPAIR_MODEL)
         if isinstance(card, dict) and not card.get("signal_type"):
             card["signal_type"] = str(signal.get("signal_type") or "")
-        schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+        schema_errors = _card_validation_errors(card, signal, evidence_posts, recent_cards)
         if schema_errors:
             if not card_model_override:
                 escalation_reasons = [*escalation_reasons, f"schema_validation_failed:{','.join(schema_errors[:5])}"]
@@ -1592,26 +2268,44 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             user_text = _card_user_text(
                 signal,
                 focus_context,
-                fingerprints,
+                evidence_posts,
+                metric_pressure,
                 metric_classification,
                 escalation_reasons,
                 card_model_override,
                 recent_cards=recent_cards,
                 validation_errors=schema_errors,
             )
-            card = _normalize_card_tag_aliases(_call_model(_CARD_SYSTEM, user_text, [], max_tokens=2600, model_override=card_model_override))
+            retry_result = _call_model(
+                _CARD_SYSTEM,
+                user_text,
+                [],
+                max_tokens=2600,
+                model_override=card_model_override,
+                return_raw=True,
+            )
+            retry_card, retry_text = retry_result if isinstance(retry_result, tuple) else (retry_result, "")
+            if retry_text:
+                raw_text = retry_text
+            card = _normalize_card_tag_aliases(retry_card)
+            if not card and retry_text:
+                repaired_card = _repair_card_from_raw(retry_text, signal, ["card_not_object"])
+                if repaired_card:
+                    card = repaired_card
+                    repair_used = True
+                    repair_model_version = current_model_version(kind="card", model_override=SIGNAL_INTELLIGENCE_REPAIR_MODEL)
             if isinstance(card, dict) and not card.get("signal_type"):
                 card["signal_type"] = str(signal.get("signal_type") or "")
-            schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+            schema_errors = _card_validation_errors(card, signal, evidence_posts, recent_cards)
             if schema_errors and any("static_without_static_lane" in error for error in schema_errors):
                 card = _normalize_card_tag_aliases(_repair_context_terms(card, schema_errors))
-                schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+                schema_errors = _card_validation_errors(card, signal, evidence_posts, recent_cards)
             if schema_errors and any(
                 "contains_internal_vocab" in error or "contains_weak_analyst_vocab" in error or error.endswith("_too_long")
                 for error in schema_errors
             ):
                 card = _normalize_card_tag_aliases(_repair_guardrail_terms(card, schema_errors))
-                schema_errors = _card_validation_errors(card, signal, fingerprints, recent_cards)
+                schema_errors = _card_validation_errors(card, signal, evidence_posts, recent_cards)
         if not card or schema_errors:
             with conn.cursor() as cur:
                 cur.execute("update public.signals set status = 'error', updated_at = now() where id = %s", (sid,))
@@ -1623,8 +2317,20 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
         card.pop("confidence", None)
         card.pop("why_it_may_have_happened", None)
         card.pop("focus_memory_candidate", None)
-        focus_memory_candidate: dict[str, Any] = {}
         card["confidence"] = computed_confidence
+        if repair_used:
+            card["payload_repaired"] = True
+            if repair_model_version:
+                card["repair_model_version"] = repair_model_version
+            card_model = f"{card_model}+repair:{repair_model_version or SIGNAL_INTELLIGENCE_REPAIR_MODEL}"
+        focus_memory_candidate = _movement_candidate(
+            sid,
+            signal,
+            card,
+            posts,
+            metric_pressure,
+            computed_confidence,
+        )
         signal_status = "fresh"
         with conn.cursor() as cur:
             cur.execute(
@@ -1646,5 +2352,13 @@ def resolve_signal_intelligence(conn: Any, signal_id: int | None = None, *, limi
             )
             cur.execute("update public.signals set status = %s, updated_at = now() where id = %s", (signal_status, sid))
         conn.commit()
+        try:
+            _upsert_focus_movement_ledger(conn, signal, focus_memory_candidate)
+        except Exception as exc:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            print(f"[signal-intelligence] movement ledger update failed signal_id={sid}: {exc}")
         resolved += 1
     return {"selected": len(ids), "resolved": resolved, "failed": failed}

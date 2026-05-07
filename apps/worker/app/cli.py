@@ -31,6 +31,7 @@ def main():
             "resolve_signal_intelligence",
             "resolve_post_focus_reads",
             "compile_feeder_focus",
+            "compile_feeder_focus_state",
             "compile_feed_focus",
             "recompute_fire_rankings",
         ],
@@ -265,6 +266,22 @@ def main():
             )
             print(
                 f"compile_feeder_focus selected={result.get('selected', 0)} "
+                f"compiled={result.get('compiled', 0)} skipped={result.get('skipped', 0)} "
+                f"failed={result.get('failed', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "compile_feeder_focus_state":
+        eng = PureEngine()
+        try:
+            result = eng.compile_feeder_focus_state(
+                feeder_id=args.feeder_id,
+                limit=args.limit,
+                full_rebuild=args.full_rebuild,
+                post_cap=args.post_cap,
+            )
+            print(
+                f"compile_feeder_focus_state selected={result.get('selected', 0)} "
                 f"compiled={result.get('compiled', 0)} skipped={result.get('skipped', 0)} "
                 f"failed={result.get('failed', 0)}"
             )

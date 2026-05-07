@@ -66,6 +66,7 @@ from .signal_intelligence import (
 from .focus_rulebook import (
     compile_feed_focus as run_compile_feed_focus,
     compile_feeder_focus as run_compile_feeder_focus,
+    compile_feeder_focus_state as run_compile_feeder_focus_state,
     resolve_post_focus_reads as run_resolve_post_focus_reads,
 )
 from .retry_policy import (
@@ -2460,6 +2461,21 @@ class PureEngine:
             limit=limit,
             full_rebuild=full_rebuild,
             warm_start=warm_start,
+            post_cap=post_cap,
+        )
+
+    def compile_feeder_focus_state(
+        self,
+        feeder_id: int | None = None,
+        limit: int = 20,
+        full_rebuild: bool = False,
+        post_cap: int | None = None,
+    ):
+        return run_compile_feeder_focus_state(
+            self.conn,
+            feeder_id=feeder_id,
+            limit=limit,
+            full_rebuild=full_rebuild,
             post_cap=post_cap,
         )
 
