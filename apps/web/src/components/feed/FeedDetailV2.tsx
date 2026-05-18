@@ -9,7 +9,7 @@ import FeedExportTile from './FeedExportTile';
 import FeedKillZone from './FeedKillZone';
 import FeedScatterField from './FeedScatterField';
 import FeedPostingPattern from './FeedPostingPattern';
-import FeedPatternBoard from './FeedPatternBoard';
+import FeederPoolHero from './FeederPoolHero';
 import PostingHeatmap from './PostingHeatmap';
 import FeedEngagementAverages from './FeedEngagementAverages';
 import { DashboardPayload, Timeframe } from './dashboardTypes';
@@ -25,6 +25,7 @@ interface FeedDetailV2Props {
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
   baselineDashboardData?: DashboardPayload | null;
+  selectedHandle?: string;
   usePageScroll?: boolean;
   mobileSnapSections?: boolean;
   bottomClearance?: string;
@@ -114,13 +115,15 @@ function DeferredMobileSection({
   reduceMotion: boolean;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
+  const renderImmediately = eager || usePageScroll || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function');
   const [isReady, setIsReady] = useState(() => (
-    eager || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function')
+    renderImmediately
   ));
+  const isSectionReady = isReady || renderImmediately;
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
 
   useEffect(() => {
-    if (eager || isReady || typeof window === 'undefined') return;
+    if (renderImmediately || isReady || typeof window === 'undefined') return;
 
     const node = sectionRef.current;
     if (!node) return;
@@ -140,7 +143,7 @@ function DeferredMobileSection({
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [eager, isReady, scrollRootRef, usePageScroll]);
+  }, [isReady, renderImmediately, scrollRootRef, usePageScroll]);
 
   return (
     <section
@@ -152,14 +155,12 @@ function DeferredMobileSection({
       }
       style={{
         scrollMarginTop: mobileSnapSections ? 'calc(var(--fm-mobile-detail-header-offset) + 10px)' : undefined,
-        contentVisibility: 'auto',
-        containIntrinsicSize: '420px',
       }}
     >
       <div className="fm-tab-canvas-shell mx-auto flex w-full">
         <div className={`mx-auto flex w-full max-w-[760px] flex-col gap-3 ${mobileSnapSections ? 'justify-center' : ''}`}>
           {section.items.map((item, itemIndex) => (
-            isReady ? (
+            isSectionReady ? (
               <motion.div
                 key={item.key}
                 variants={tileVariant}
@@ -191,6 +192,7 @@ export default function FeedDetailV2({
   timeframe,
   dashboardData,
   baselineDashboardData = null,
+  selectedHandle = 'all',
   usePageScroll = false,
   mobileSnapSections = false,
   bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
@@ -348,19 +350,16 @@ export default function FeedDetailV2({
             scrollRootRef={scrollRef}
             usePageScroll={usePageScroll}
             mobileSnapSections={mobileSnapSections}
-            eager={sectionIndex === 0}
+            eager={sectionIndex === 0 || usePageScroll}
             reduceMotion={reduceMotion}
           />
         ))}
 
-        <div
-          className="mt-2 px-2 pb-1 sm:px-3"
-          style={{ contentVisibility: 'auto', containIntrinsicSize: '860px' }}
-        >
+        <div className="mt-2 px-2 pb-1 sm:px-3">
           <div className="fm-tab-canvas-shell mx-auto">
             <div className="w-full pt-1 pb-4">
               <div className="mb-4">
-                <FeedPatternBoard patterns={dashboardData?.pattern_board ?? []} />
+                <FeederPoolHero selectedHandle={selectedHandle} />
               </div>
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -420,7 +419,7 @@ export default function FeedDetailV2({
           <motion.div data-lock-id="targets" variants={tileVariant} style={{ gridArea: 'targets' }}>
             <div className="w-full pt-1 pb-4 lg:pt-2">
               <div className="mb-3">
-                <FeedPatternBoard patterns={dashboardData?.pattern_board ?? []} />
+                <FeederPoolHero selectedHandle={selectedHandle} />
               </div>
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3 2xl:grid-cols-4">

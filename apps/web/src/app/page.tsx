@@ -108,6 +108,60 @@ function dashboardCacheKey(feedId: string, timeframe: Timeframe, handle: string)
   return `${DASHBOARD_CACHE_PREFIX}:${feedId}:${TIMEFRAME_TO_DAYS[timeframe]}:${handle}`;
 }
 
+function parseMetricNumber(value: string | number | null | undefined): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const cleaned = value.replace(/[,\s]/g, '').toLowerCase();
+  if (!cleaned || cleaned === '--') return null;
+  const multiplier = cleaned.endsWith('m') ? 1_000_000 : cleaned.endsWith('k') ? 1_000 : 1;
+  const numeric = Number.parseFloat(cleaned.replace(/[km]$/, ''));
+  return Number.isFinite(numeric) ? numeric * multiplier : null;
+}
+
+function dashboardFallbackFromFeed(feed: Feed | null | undefined, timeframe: Timeframe): DashboardPayload | null {
+  if (!feed) return null;
+  const windowEnd = istDateKey(new Date());
+  const windowStart = shiftIsoDate(windowEnd, -(TIMEFRAME_TO_DAYS[timeframe] - 1));
+  const avgPercentileRaw = Number(feed.metrics?.percentile ?? feed.compositePercentile);
+  const avgPercentile = Number.isFinite(avgPercentileRaw) && avgPercentileRaw > 0 ? avgPercentileRaw : null;
+  const postCount = Math.max(0, Math.round(parseMetricNumber(feed.metrics?.postsTracked) ?? 0));
+  const avgLikes = parseMetricNumber(feed.metrics?.likes);
+  const avgComments = parseMetricNumber(feed.metrics?.comments);
+  const avgViews = parseMetricNumber(feed.metrics?.views);
+
+  return {
+    ascent_series: [],
+    frequency_series: [],
+    heatmap_daily: [],
+    killzone_hours: [],
+    killzone_days: [],
+    apex_mix: [],
+    scatter_points: [],
+    engagement_averages: [
+      {
+        media_type: 'all',
+        post_count: postCount,
+        metric_count: postCount,
+        avg_likes: avgLikes,
+        avg_comments: avgComments,
+        avg_views: avgViews,
+      },
+    ],
+    summary: {
+      window_days: TIMEFRAME_TO_DAYS[timeframe],
+      window_start_ist: windowStart,
+      window_end_ist: windowEnd,
+      post_count: postCount,
+      posts_with_metrics: postCount,
+      avg_percentile_performance: avgPercentile,
+      avg_views_percentile: null,
+      avg_likes_percentile: null,
+      avg_comments_percentile: null,
+    },
+    pattern_board: [],
+  };
+}
+
 async function fetchDashboardSnapshot(feedId: string, timeframe: Timeframe, handle: string): Promise<DashboardPayload | null> {
   const cacheKey = dashboardCacheKey(feedId, timeframe, handle);
   const cached = getCache<DashboardPayload>(cacheKey, DASHBOARD_CACHE_TTL);
@@ -216,6 +270,12 @@ function FeedPageContent() {
   const [headerHeight, setHeaderHeight] = useState(() => (urlSelectedFeedId ? 204 : 176));
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
+  const dashboardFallback = useMemo(
+    () => dashboardFallbackFromFeed(activeFeed, timeframe),
+    [activeFeed, timeframe],
+  );
+  const effectiveDashboardData = dashboardData ?? dashboardFallback;
+  const effectiveBaselineDashboardData = baselineDashboardData ?? effectiveDashboardData;
   const useFeedRootSnap = view === 'detail' && useBrowserPageScroll && isStandaloneMode;
   const sortedFeeds = useMemo(() => {
     const list = [...feeds];
@@ -242,12 +302,12 @@ function FeedPageContent() {
   }, [activeFeed]);
 
   const topAveragePercentile = useMemo(() => {
-    const raw = Number(dashboardData?.summary?.avg_percentile_performance);
+    const raw = Number(effectiveDashboardData?.summary?.avg_percentile_performance);
     if (!Number.isFinite(raw) || raw <= 0) return null;
     return Math.max(1, Math.min(100, Math.round(raw)));
-  }, [dashboardData]);
+  }, [effectiveDashboardData]);
   const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
-  const topAveragePosts = Math.max(0, Number(dashboardData?.summary?.posts_with_metrics) || 0);
+  const topAveragePosts = Math.max(0, Number(effectiveDashboardData?.summary?.posts_with_metrics) || 0);
   const exportScopeLabel = selectedHandle === 'all' ? 'FULL FEED' : `@${selectedHandle.toUpperCase()}`;
 
   useIsomorphicLayoutEffect(() => {
@@ -376,6 +436,7 @@ function FeedPageContent() {
     if (cachedEntry?.data) {
       setDashboardData(cachedEntry.data);
       if (selectedHandle === 'all') setBaselineDashboardData(cachedEntry.data);
+      setApiError((current) => current && current.toLowerCase().includes('dashboard') ? null : current);
     }
 
     if (selectedHandle !== 'all') {
@@ -407,10 +468,16 @@ function FeedPageContent() {
         if (cancelled) return;
         setDashboardData(next);
         if (selectedHandle === 'all' && next) setBaselineDashboardData(next);
+        setApiError((current) => current && current.toLowerCase().includes('dashboard') ? null : current);
       })
       .catch((err: unknown) => {
         if (!cancelled && !hadCache) {
-          setApiError(err instanceof Error ? err.message : 'Failed');
+          const baselineCached = readCache<DashboardPayload>(baselineCacheKey)?.data ?? null;
+          if (baselineCached) setDashboardData(baselineCached);
+          setApiError((current) => current && current.toLowerCase().includes('dashboard') ? null : current);
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('Dashboard snapshot refresh failed', err);
+          }
         }
       });
     return () => {
@@ -621,7 +688,7 @@ function FeedPageContent() {
       )}>
         <div className="relative fm-tab-header-shell">
           <div className="fm-depth-chrome fm-depth-chrome--header w-full">
-            <div className="relative z-10 px-3 py-2 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2">
+            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2">
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
               <div className="flex flex-col gap-1.5 sm:gap-2 lg:hidden">
                 {/* Row 1: Title + actions */}
@@ -645,10 +712,10 @@ function FeedPageContent() {
                     </AnimatePresence>
                     <div className="min-w-0 flex-1">
                       <h1 className={cn(
-                        'font-black leading-none text-black dark:text-white fm-depth-title transition-[font-size,letter-spacing] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                        'font-extrabold leading-none text-black dark:text-white fm-depth-title transition-[font-size,letter-spacing] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] sm:font-black',
                         view === 'list'
-                          ? 'text-[30px] tracking-[0.14em] sm:text-[38px]'
-                          : 'truncate text-[26px] tracking-[-0.04em] sm:text-[32px]'
+                          ? 'text-[22px] tracking-[0.14em] sm:text-[38px]'
+                          : 'truncate text-[22px] tracking-[-0.04em] sm:text-[32px]'
                       )}>
                         {view === 'list' ? 'FEED' : shortTitle}
                       </h1>
@@ -999,8 +1066,9 @@ function FeedPageContent() {
             <FeedDetailV2
               activeFeed={activeFeed}
               timeframe={timeframe}
-              dashboardData={dashboardData}
-              baselineDashboardData={baselineDashboardData}
+              dashboardData={effectiveDashboardData}
+              baselineDashboardData={effectiveBaselineDashboardData}
+              selectedHandle={selectedHandle}
               usePageScroll={useBrowserPageScroll}
               mobileSnapSections={isStandaloneMode}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}

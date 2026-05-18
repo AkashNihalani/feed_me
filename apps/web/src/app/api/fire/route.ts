@@ -433,6 +433,23 @@ function shouldFallbackToLegacyFireDayLoad(error: unknown): boolean {
     || normalized.includes('post_metrics');
 }
 
+function isMissingRelationError(error: unknown, relationName: string): boolean {
+  const record = error && typeof error === 'object' ? (error as Record<string, unknown>) : {};
+  const message = error instanceof Error
+    ? error.message
+    : typeof record.message === 'string'
+      ? record.message
+      : String(error || '');
+  const code = typeof record.code === 'string' ? record.code : '';
+  const normalized = message.toLowerCase();
+  const relation = relationName.toLowerCase();
+  return code === 'PGRST205'
+    || (
+      normalized.includes('could not find')
+      && normalized.includes(relation)
+    );
+}
+
 type ActiveFeedRow = { id: number; name: string | null };
 type ActiveFeederRow = { id: number; feed_id: number; handle: string | null; created_at: string | null };
 type FireMetricCheckpointRow = { post_key: string | null; checkpoint: string | null };
@@ -1234,7 +1251,10 @@ async function fetchIntelligenceRowsForPostKeys(
       .select('post_key,focus_read,feeder_focus_version,fingerprint_hash,prompt_version,model_version,generated_at')
       .in('post_key', chunk);
 
-    if (focusError) throw focusError;
+    if (focusError) {
+      if (isMissingRelationError(focusError, 'post_focus_reads')) continue;
+      throw focusError;
+    }
     for (const row of (focusData || []) as FirePostFocusReadRow[]) {
       const postKey = nullableString(row.post_key);
       if (!postKey) continue;
@@ -1642,6 +1662,20 @@ function emptyFirePagePayload(day: string, cursor: number) {
   };
 }
 
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (process.env.NODE_ENV === 'production') return fallback;
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const message = typeof record.message === 'string' ? record.message.trim() : '';
+    const details = typeof record.details === 'string' ? record.details.trim() : '';
+    const hint = typeof record.hint === 'string' ? record.hint.trim() : '';
+    const code = typeof record.code === 'string' ? record.code.trim() : '';
+    return [message, details, hint, code && `code ${code}`].filter(Boolean).join(' · ') || fallback;
+  }
+  return fallback;
+}
+
 function resolveFireScope(
   activeFeedIds: number[],
   normalizedFeeders: ActiveFeederRow[],
@@ -2013,7 +2047,6 @@ export async function GET(request: NextRequest) {
     try {
       const pageSize = parsePageSizeValue(params.get('pageSize'), FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE);
       const prefetchDayCount = parseBootstrapPrefetchDayCount(params.get('prefetchDays'));
-      const initialDay = recentKeys[0] || todayIstDayKey();
       const bootstrapDays = recentKeys.slice(0, prefetchDayCount);
       const [meta, prefetchedPages] = await Promise.all([
         buildCachedFireMetaPayload(supabase, userId, activeState, recentKeys),
@@ -2034,7 +2067,14 @@ export async function GET(request: NextRequest) {
           })),
         ),
       ]);
-      const initialPage = prefetchedPages.find((entry) => entry.day === initialDay)?.payload
+      const initialEntry = prefetchedPages.find((entry) => {
+        const rows = Array.isArray(entry.payload?.rows) ? entry.payload.rows.length : 0;
+        const total = typeof entry.payload?.total === 'number' ? entry.payload.total : 0;
+        return rows > 0 || total > 0;
+      });
+      const initialDay = initialEntry?.day || recentKeys[0] || todayIstDayKey();
+      const initialPage = initialEntry?.payload
+        || prefetchedPages.find((entry) => entry.day === initialDay)?.payload
         || prefetchedPages[0]?.payload
         || emptyFirePagePayload(initialDay, 0);
       return privateJsonResponse(request, {
@@ -2066,7 +2106,7 @@ export async function GET(request: NextRequest) {
     return privateJsonResponse(request, payload, fireResponseCacheOptions(requestState.day));
   } catch (error) {
     console.error('[/api/fire] Error:', error);
-    const message = error instanceof Error ? error.message : 'Failed to load fire alerts';
+    const message = apiErrorMessage(error, 'Failed to load fire alerts');
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -2116,7 +2156,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   } catch (error) {
     console.error('[/api/fire:POST] Error:', error);
-    const message = error instanceof Error ? error.message : 'Failed to load fire alerts';
+    const message = apiErrorMessage(error, 'Failed to load fire alerts');
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
