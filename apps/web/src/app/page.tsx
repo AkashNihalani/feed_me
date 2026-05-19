@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
+import FeederboardTile from '@/components/feed/FeederboardTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
@@ -1076,7 +1077,6 @@ function FeedPageContent() {
               timeframe={timeframe}
               dashboardData={effectiveDashboardData}
               baselineDashboardData={effectiveBaselineDashboardData}
-              selectedHandle={selectedHandle}
               usePageScroll={useBrowserPageScroll}
               mobileSnapSections={isStandaloneMode}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
@@ -1088,6 +1088,21 @@ function FeedPageContent() {
               onExportToChange={setExportTo}
               onExport={() => { play('snapLock'); handleDownloadExport(); }}
             >
+              {activeFeed && (
+                <FeederboardTile
+                  key="feederboard"
+                  feedTitle={activeFeed.title}
+                  feederCount={activeFeed.feeders.length}
+                  trackedPosts={activeFeed.metrics?.postsTracked || '0'}
+                  onOpen={() => {
+                    const params = new URLSearchParams();
+                    if (selectedHandle !== 'all') params.set('handle', selectedHandle);
+                    const query = params.toString();
+                    play('snapLock');
+                    router.push(`/feed/${activeFeed.id}/feederboard${query ? `?${query}` : ''}`, { scroll: false });
+                  }}
+                />
+              )}
               {activeFeed && (
                 <motion.button
                   key="focus"

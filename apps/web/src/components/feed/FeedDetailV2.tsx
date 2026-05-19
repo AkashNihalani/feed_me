@@ -9,13 +9,10 @@ import FeedExportTile from './FeedExportTile';
 import FeedKillZone from './FeedKillZone';
 import FeedScatterField from './FeedScatterField';
 import FeedPostingPattern from './FeedPostingPattern';
-import FeederPoolHero from './FeederPoolHero';
 import PostingHeatmap from './PostingHeatmap';
 import FeedEngagementAverages from './FeedEngagementAverages';
 import { DashboardPayload, Timeframe } from './dashboardTypes';
 import { GRID_ITEM_EASE } from '@/lib/motion';
-
-const ENABLE_FEEDER_POOL_HERO = process.env.NEXT_PUBLIC_ENABLE_FEEDER_POOL_HERO === 'true';
 
 type ActiveFeed = {
   id: string;
@@ -27,7 +24,6 @@ interface FeedDetailV2Props {
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
   baselineDashboardData?: DashboardPayload | null;
-  selectedHandle?: string;
   usePageScroll?: boolean;
   mobileSnapSections?: boolean;
   bottomClearance?: string;
@@ -194,7 +190,6 @@ export default function FeedDetailV2({
   timeframe,
   dashboardData,
   baselineDashboardData = null,
-  selectedHandle = 'all',
   usePageScroll = false,
   mobileSnapSections = false,
   bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
@@ -360,11 +355,6 @@ export default function FeedDetailV2({
         <div className="mt-2 px-2 pb-1 sm:px-3">
           <div className="fm-tab-canvas-shell mx-auto">
             <div className="w-full pt-1 pb-4">
-              {ENABLE_FEEDER_POOL_HERO && (
-                <div className="mb-4">
-                  <FeederPoolHero selectedHandle={selectedHandle} />
-                </div>
-              )}
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <AnimatePresence mode="popLayout">
@@ -422,11 +412,6 @@ export default function FeedDetailV2({
 
           <motion.div data-lock-id="targets" variants={tileVariant} style={{ gridArea: 'targets' }}>
             <div className="w-full pt-1 pb-4 lg:pt-2">
-              {ENABLE_FEEDER_POOL_HERO && (
-                <div className="mb-3">
-                  <FeederPoolHero selectedHandle={selectedHandle} />
-                </div>
-              )}
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
                 <AnimatePresence mode="popLayout">
