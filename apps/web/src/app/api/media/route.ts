@@ -92,7 +92,7 @@ async function fetchStoredAsset(postKey: string, assetRole: string): Promise<Res
         .select('storage_provider,storage_bucket,storage_path,public_url,mime_type,status,purge_after,source_url,updated_at')
         .eq('post_key', candidatePostKey)
         .eq('asset_role', candidateRole)
-        .in('status', ['active', 'purge_pending'])
+        .in('status', ['active', 'purge_pending', 'pending_capture'])
         .order('updated_at', { ascending: false })
         .limit(8);
 
@@ -185,27 +185,6 @@ function resolvePublicMediaUrl(data: {
   return `${base}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-function redirectRemoteAsset(raw: string): Response | null {
-  let target: URL;
-  try {
-    target = new URL(raw);
-  } catch {
-    return null;
-  }
-
-  if (!['http:', 'https:'].includes(target.protocol) || !isAllowedHost(target.hostname)) {
-    return null;
-  }
-
-  return new Response(null, {
-    status: 302,
-    headers: {
-      location: target.toString(),
-      'cache-control': 'public, max-age=1800, stale-while-revalidate=3600',
-    },
-  });
-}
-
 async function fetchRemoteAsset(raw: string): Promise<Response> {
   let target: URL;
   try {
@@ -284,8 +263,6 @@ export async function GET(req: NextRequest) {
       }
       const sourceUrl = await fetchPostSourceUrl(postKey, assetRole || 'thumbnail');
       if (sourceUrl) {
-        const redirect = redirectRemoteAsset(sourceUrl);
-        if (redirect) return redirect;
         return fetchRemoteAssetForRole(sourceUrl, assetRole || 'thumbnail');
       }
     } catch {

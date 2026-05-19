@@ -26,7 +26,7 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v6';
+const FIRE_CACHE_VERSION = 'v7';
 const EMPTY_MEDIA_SOURCE_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
@@ -240,6 +240,21 @@ function publicMediaUrlFromPath(path: string | null | undefined): string | null 
   const cleanPath = typeof path === 'string' ? path.trim().replace(/^\/+/, '') : '';
   if (!base || !cleanPath) return null;
   return `${base}/${cleanPath.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function mediaRouteUrlForPostKey(postKey: string | null | undefined, role = 'thumbnail'): string | null {
+  const key = typeof postKey === 'string' ? postKey.trim() : '';
+  if (!key) return null;
+  const params = new URLSearchParams({ postKey: key, role });
+  return `/api/media?${params.toString()}`;
+}
+
+function candidatePostKeys(postKey: string): string[] {
+  const trimmed = (postKey || '').trim();
+  const withoutHash = trimmed.split('#')[0] || '';
+  const lower = trimmed.toLowerCase();
+  const lowerWithoutHash = lower.split('#')[0] || '';
+  return Array.from(new Set([trimmed, withoutHash, lower, lowerWithoutHash].filter(Boolean)));
 }
 
 function previewCaptureAllowedForBusinessDay(businessDay: string | null | undefined): boolean {
@@ -1081,6 +1096,18 @@ async function fetchStoredMediaUrls(
     return { thumbnailUrls, previewUrls };
   }
 
+  const originalsByCandidate = new Map<string, string[]>();
+  const queryPostKeys = Array.from(
+    new Set(
+      uniquePostKeys.flatMap((originalPostKey) => candidatePostKeys(originalPostKey).map((candidatePostKey) => {
+        const bucket = originalsByCandidate.get(candidatePostKey) || [];
+        bucket.push(originalPostKey);
+        originalsByCandidate.set(candidatePostKey, bucket);
+        return candidatePostKey;
+      })),
+    ),
+  );
+
   const rolePriority = new Map([
     ['thumbnail', 0],
     ['display', 1],
@@ -1088,14 +1115,14 @@ async function fetchStoredMediaUrls(
   ]);
   const chosenThumbnailPriority = new Map<string, number>();
 
-  for (let start = 0; start < uniquePostKeys.length; start += POST_KEY_CHUNK_SIZE) {
-    const chunk = uniquePostKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
+  for (let start = 0; start < queryPostKeys.length; start += POST_KEY_CHUNK_SIZE) {
+    const chunk = queryPostKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
     const { data, error } = await sb
       .from('post_media_assets')
       .select('post_key,asset_role,storage_provider,storage_path,public_url,mime_type,purge_after')
       .in('post_key', chunk)
       .in('asset_role', ['thumbnail', 'display', 'carousel_0', 'preview_5s'])
-      .in('status', ['active', 'purge_pending']);
+      .in('status', ['active', 'purge_pending', 'pending_capture']);
 
     if (error) throw error;
 
@@ -1110,19 +1137,24 @@ async function fetchStoredMediaUrls(
       const mimeType = nullableString(row.mime_type)?.toLowerCase() || '';
       const url = directMediaUrl(row);
       if (!url) continue;
+      const originalPostKeys = originalsByCandidate.get(postKey) || [postKey];
 
       if (role === 'preview_5s') {
         if (mimeType && !mimeType.startsWith('video/')) continue;
-        previewUrls.set(postKey, url);
+        for (const originalPostKey of originalPostKeys) {
+          previewUrls.set(originalPostKey, url);
+        }
         continue;
       }
 
       if (mimeType && !mimeType.startsWith('image/')) continue;
       const priority = rolePriority.get(role) ?? Number.POSITIVE_INFINITY;
-      const currentPriority = chosenThumbnailPriority.get(postKey) ?? Number.POSITIVE_INFINITY;
-      if (priority < currentPriority) {
-        thumbnailUrls.set(postKey, url);
-        chosenThumbnailPriority.set(postKey, priority);
+      for (const originalPostKey of originalPostKeys) {
+        const currentPriority = chosenThumbnailPriority.get(originalPostKey) ?? Number.POSITIVE_INFINITY;
+        if (priority < currentPriority) {
+          thumbnailUrls.set(originalPostKey, url);
+          chosenThumbnailPriority.set(originalPostKey, priority);
+        }
       }
     }
   }
@@ -1915,7 +1947,7 @@ async function buildTrackingFirePagePayload(
     rows: pagedRows.map((row) => serializeAlertRow({
       ...row,
       resolved_thumbnail_url: row.post_key
-        ? storedThumbnailUrls.get(row.post_key) || nullableString(row.thumbnail_url) || null
+        ? storedThumbnailUrls.get(row.post_key) || mediaRouteUrlForPostKey(row.post_key) || nullableString(row.thumbnail_url) || null
         : nullableString(row.thumbnail_url) || null,
       resolved_preview_url: previewCaptureAllowedForBusinessDay(nullableString(row.business_date_ist))
         ? row.post_key
