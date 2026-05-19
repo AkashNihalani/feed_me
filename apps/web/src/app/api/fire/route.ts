@@ -245,7 +245,7 @@ function publicMediaUrlFromPath(path: string | null | undefined): string | null 
 function mediaRouteUrlForPostKey(postKey: string | null | undefined, role = 'thumbnail'): string | null {
   const key = typeof postKey === 'string' ? postKey.trim() : '';
   if (!key) return null;
-  const params = new URLSearchParams({ postKey: key, role });
+  const params = new URLSearchParams({ postKey: key, role, v: FIRE_CACHE_VERSION });
   return `/api/media?${params.toString()}`;
 }
 

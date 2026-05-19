@@ -70,7 +70,7 @@ function parsePostContextRead(meta: Record<string, unknown>) {
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
   const key = postKey.trim();
   if (!key) return '';
-  const params = new URLSearchParams({ postKey: key, role });
+  const params = new URLSearchParams({ postKey: key, role, v: 'fire-v7' });
   return `/api/media?${params.toString()}`;
 }
 
