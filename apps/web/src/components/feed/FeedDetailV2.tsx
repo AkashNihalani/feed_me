@@ -15,6 +15,8 @@ import FeedEngagementAverages from './FeedEngagementAverages';
 import { DashboardPayload, Timeframe } from './dashboardTypes';
 import { GRID_ITEM_EASE } from '@/lib/motion';
 
+const ENABLE_FEEDER_POOL_HERO = process.env.NEXT_PUBLIC_ENABLE_FEEDER_POOL_HERO === 'true';
+
 type ActiveFeed = {
   id: string;
 };
@@ -358,9 +360,11 @@ export default function FeedDetailV2({
         <div className="mt-2 px-2 pb-1 sm:px-3">
           <div className="fm-tab-canvas-shell mx-auto">
             <div className="w-full pt-1 pb-4">
-              <div className="mb-4">
-                <FeederPoolHero selectedHandle={selectedHandle} />
-              </div>
+              {ENABLE_FEEDER_POOL_HERO && (
+                <div className="mb-4">
+                  <FeederPoolHero selectedHandle={selectedHandle} />
+                </div>
+              )}
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <AnimatePresence mode="popLayout">
@@ -418,9 +422,11 @@ export default function FeedDetailV2({
 
           <motion.div data-lock-id="targets" variants={tileVariant} style={{ gridArea: 'targets' }}>
             <div className="w-full pt-1 pb-4 lg:pt-2">
-              <div className="mb-3">
-                <FeederPoolHero selectedHandle={selectedHandle} />
-              </div>
+              {ENABLE_FEEDER_POOL_HERO && (
+                <div className="mb-3">
+                  <FeederPoolHero selectedHandle={selectedHandle} />
+                </div>
+              )}
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
                 <AnimatePresence mode="popLayout">
