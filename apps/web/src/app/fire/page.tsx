@@ -1,6 +1,7 @@
 'use client';
 
 import { CSSProperties, startTransition, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ArrowUpDown, Loader2, SlidersHorizontal } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ChronoTabs from '@/components/fire/ChronoTabs';
@@ -28,7 +29,7 @@ import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
 import { getFireSignalMeta } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
-import { getCache, readCache, setCache } from '@/lib/pageCache';
+import { clearCacheByPrefix, getCache, readCache, removeCache, setCache } from '@/lib/pageCache';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 import { acquireDocumentClass, acquireRootPageScroll } from '@/lib/rootScrollMode';
 
@@ -63,6 +64,20 @@ const FIRE_MEDIA_FILTER_OPTIONS: { label: string; value: FireMediaFilter }[] = [
   { label: 'REELS', value: 'REEL' },
   { label: 'ALL', value: 'ALL' },
 ];
+
+function unauthorizedError(): Error {
+  return new Error('Unauthorized');
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase() === 'unauthorized';
+}
+
+function clearFireCaches() {
+  removeCache(FIRE_META_CACHE_KEY);
+  removeCache(FIRE_STATE_CACHE_KEY);
+  clearCacheByPrefix(FIRE_PAGE_CACHE_PREFIX);
+}
 
 function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -554,7 +569,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
 
 async function fetchMeta(): Promise<{ days: string[]; feeds: FireFeedOption[]; warmupSummary: WarmupSummary }> {
   const res = await fetch('/api/fire?mode=meta', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Meta fetch failed: ${res.status}`);
+  if (!res.ok) throw (res.status === 401 ? unauthorizedError() : new Error(`Meta fetch failed: ${res.status}`));
   const data = await res.json();
   return { days: data.days ?? [], feeds: data.feeds ?? [], warmupSummary: data.warmupSummary ?? {} };
 }
@@ -596,7 +611,7 @@ async function fetchBootstrap(pageSize: number, prefetchDays: number): Promise<{
     prefetchDays: String(prefetchDays),
   });
   const res = await fetch(`/api/fire?${params.toString()}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Bootstrap fetch failed: ${res.status}`);
+  if (!res.ok) throw (res.status === 401 ? unauthorizedError() : new Error(`Bootstrap fetch failed: ${res.status}`));
   const data = await res.json();
   return {
     days: data.days ?? [],
@@ -672,6 +687,7 @@ async function fetchPage(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
+    if (res.status === 401) throw unauthorizedError();
     throw new Error(body.error || `HTTP ${res.status}`);
   }
 
@@ -679,6 +695,7 @@ async function fetchPage(
 }
 
 export default function FirePage() {
+  const router = useRouter();
   const { play } = useAppHaptics();
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -722,6 +739,21 @@ export default function FirePage() {
       setFilters(updater);
     });
   }, []);
+
+  const handleUnauthorized = useCallback(() => {
+    clearFireCaches();
+    setCards([]);
+    setPickerDays([]);
+    setAvailableFeeds([]);
+    setAvailableCheckpoints([]);
+    setWarmupSummary({});
+    setHasMore(false);
+    setTotal(0);
+    setLoading(false);
+    setIsRefreshing(false);
+    setError(null);
+    router.replace(`/login?next=${encodeURIComponent('/fire')}`);
+  }, [router]);
 
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
@@ -853,6 +885,10 @@ export default function FirePage() {
         setError(null);
       } catch (err) {
         if (!mounted) return;
+        if (isUnauthorizedError(err)) {
+          handleUnauthorized();
+          return;
+        }
         console.error('[FirePage] Bootstrap fetch error:', err);
       } finally {
         if (mounted) {
@@ -863,7 +899,7 @@ export default function FirePage() {
     })();
 
     return () => { mounted = false; };
-  }, []);
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     if (!initialDataReady || pickerDays.length === 0) return;
@@ -1104,6 +1140,7 @@ export default function FirePage() {
     try {
       meta = await fetchMeta();
     } catch (error) {
+      if (isUnauthorizedError(error)) throw error;
       if (cached) return;
       throw error;
     }
@@ -1141,6 +1178,10 @@ export default function FirePage() {
         lastMetaRefreshAtRef.current = Date.now();
       } catch (err) {
         if (!mounted) return;
+        if (isUnauthorizedError(err)) {
+          handleUnauthorized();
+          return;
+        }
         console.error('[FirePage] Meta fetch error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load');
         setLoading(false);
@@ -1165,7 +1206,7 @@ export default function FirePage() {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
     };
-  }, [initialDataReady, refreshMeta]);
+  }, [handleUnauthorized, initialDataReady, refreshMeta]);
 
   useEffect(() => {
     setFilters((current) => {
@@ -1262,6 +1303,10 @@ export default function FirePage() {
         });
       } catch (err) {
         if (!mounted || fetchKeyRef.current !== key) return;
+        if (isUnauthorizedError(err)) {
+          handleUnauthorized();
+          return;
+        }
         if (!preserveVisibleCards) {
           setError(err instanceof Error ? err.message : 'Failed to load alerts');
         } else {
@@ -1276,7 +1321,7 @@ export default function FirePage() {
     })();
 
     return () => { mounted = false; };
-  }, [initialDataReady, selectedDay, filters, availableFeeds]);
+  }, [initialDataReady, selectedDay, filters, availableFeeds, handleUnauthorized]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !selectedDay) return;
@@ -1312,11 +1357,15 @@ export default function FirePage() {
       snapshotTokenRef.current = result.snapshotToken;
       cursorRef.current = nextCursor;
     } catch (err) {
+      if (isUnauthorizedError(err)) {
+        handleUnauthorized();
+        return;
+      }
       console.error('[FirePage] Load more error:', err);
     } finally {
       setLoadingMore(false);
     }
-  }, [availableFeeds, filters, hasMore, loadingMore, selectedDay]);
+  }, [availableFeeds, filters, handleUnauthorized, hasMore, loadingMore, selectedDay]);
 
   const openPreviousDesktopCard = useCallback(() => {
     setDesktopModalCard((current) => {

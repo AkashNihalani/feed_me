@@ -15,7 +15,7 @@ import { FocusBrief, CREATE_FEED_LAST_STEP, defaultFocusBrief, buildFocusBible, 
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
-import { getCache, readCache, setCache } from '@/lib/pageCache';
+import { clearCacheByPrefix, getCache, readCache, removeCache, setCache } from '@/lib/pageCache';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 
@@ -49,7 +49,6 @@ const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FEED_CACHE_KEY = 'feed:bundle:v7';
 const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v11';
-const FEED_CACHE_TTL = 10 * 60 * 1000;
 const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
 const dashboardInflight = new Map<string, Promise<DashboardPayload | null>>();
 const FEED_TILE_ENTRY_BASE_DELAY = 0.08;
@@ -106,6 +105,10 @@ function defaultExportRange() {
 
 function dashboardCacheKey(feedId: string, timeframe: Timeframe, handle: string) {
   return `${DASHBOARD_CACHE_PREFIX}:${feedId}:${TIMEFRAME_TO_DAYS[timeframe]}:${handle}`;
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase() === 'unauthorized';
 }
 
 function parseMetricNumber(value: string | number | null | undefined): number | null {
@@ -332,14 +335,6 @@ function FeedPageContent() {
   const loadFeeds = useCallback(async () => {
     const cachedEntry = readCache<{ feeds: Feed[]; ticker: TickerItem[]; slots?: SlotUsage }>(FEED_CACHE_KEY);
     const cached = cachedEntry?.data ?? null;
-    const hasFreshCache = Boolean(cachedEntry && Date.now() - cachedEntry.ts <= FEED_CACHE_TTL);
-    const hasHydratedCache = Boolean(
-      cached
-      && (
-        (Array.isArray(cached.feeds) && cached.feeds.length > 0)
-        || (Array.isArray(cached.ticker) && cached.ticker.length > 0)
-      ),
-    );
 
     if (cached) {
       setFeeds(cached.feeds ?? INITIAL_FEEDS);
@@ -348,14 +343,22 @@ function FeedPageContent() {
       setFeedDataReady(true);
     }
 
-    if (hasFreshCache && hasHydratedCache) {
-      return;
-    }
-
     try {
       const res = await fetch('/api/feed');
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to load feeds');
+      if (!res.ok) {
+        if (res.status === 401) {
+          removeCache(FEED_CACHE_KEY);
+          clearCacheByPrefix(DASHBOARD_CACHE_PREFIX);
+          setFeeds(INITIAL_FEEDS);
+          setTickerItems([]);
+          setSlotUsage({ used: 0 });
+          setFeedDataReady(true);
+          router.replace(`/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
+          throw new Error('Unauthorized');
+        }
+        throw new Error(json.error || 'Failed to load feeds');
+      }
       const nextFeeds = (json.feeds || []) as Feed[];
       const nextTicker = (json.ticker || []) as TickerItem[];
       const nextSlots = (json.slots || null) as SlotUsage | null;
@@ -368,9 +371,14 @@ function FeedPageContent() {
       setFeedDataReady(true);
       throw err;
     }
-  }, []);
+  }, [router]);
 
-  useEffect(() => { loadFeeds().catch(err => setApiError(err instanceof Error ? err.message : 'Failed to load feeds')); }, [loadFeeds]);
+  useEffect(() => {
+    loadFeeds().catch((err) => {
+      if (isUnauthorizedError(err)) return;
+      setApiError(err instanceof Error ? err.message : 'Failed to load feeds');
+    });
+  }, [loadFeeds]);
   useEffect(() => { setSelectedHandle('all'); setTimeframe('30D'); }, [selectedFeedId]);
 
   useEffect(() => {

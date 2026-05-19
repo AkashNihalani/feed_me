@@ -41,3 +41,27 @@ export function setCache<T>(key: string, data: T) {
     // ignore storage failures
   }
 }
+
+export function removeCache(key: string) {
+  memoryCache.delete(key);
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+export function clearCacheByPrefix(prefix: string) {
+  for (const key of Array.from(memoryCache.keys())) {
+    if (key.startsWith(prefix)) memoryCache.delete(key);
+  }
+
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
+    }
+  } catch {
+    // ignore storage failures
+  }
+}

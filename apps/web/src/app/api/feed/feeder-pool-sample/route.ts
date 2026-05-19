@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import feederPoolSample from '@/data/feeder_pool_metric_attached_sample.json';
+import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,16 @@ function normalizeHandle(value: string | null): string {
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const handle = normalizeHandle(request.nextUrl.searchParams.get('handle'));
     const accounts = Array.isArray(feederPoolSample.accounts) ? feederPoolSample.accounts : [];
     const filtered = handle && handle !== 'all'
