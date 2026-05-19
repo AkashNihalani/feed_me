@@ -39,6 +39,21 @@ function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function isMissingRelationError(error: unknown, relation: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as Record<string, unknown>;
+  const code = typeof record.code === 'string' ? record.code : '';
+  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
+  const details = typeof record.details === 'string' ? record.details.toLowerCase() : '';
+  const target = relation.toLowerCase();
+  return (
+    code === 'PGRST205'
+    || message.includes(`could not find the table 'public.${target}'`)
+    || message.includes(`relation \"${target}\" does not exist`)
+    || details.includes(`public.${target}`)
+  );
+}
+
 function arrayValue<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -1030,15 +1045,18 @@ async function fetchPatternBoard(
       .from('signal_intelligence')
       .select('signal_id,card,model_version')
       .in('signal_id', signalIds);
-    if (cardError) throw cardError;
-    for (const row of (cardRows || []) as Array<Record<string, unknown>>) {
-      const signalId = nullableNumber(row.signal_id);
-      const modelVersion = nullableString(row.model_version) || '';
-      const isCurrentModel = CURRENT_SIGNAL_CARD_MODEL_MARKERS.some((marker) => modelVersion.includes(marker));
-      if (!isCurrentModel) continue;
-      const card = recordValue(row.card);
-      if (signalId == null || Object.keys(card).length === 0) continue;
-      cardBySignal.set(signalId, card);
+    if (cardError) {
+      if (!isMissingRelationError(cardError, 'signal_intelligence')) throw cardError;
+    } else {
+      for (const row of (cardRows || []) as Array<Record<string, unknown>>) {
+        const signalId = nullableNumber(row.signal_id);
+        const modelVersion = nullableString(row.model_version) || '';
+        const isCurrentModel = CURRENT_SIGNAL_CARD_MODEL_MARKERS.some((marker) => modelVersion.includes(marker));
+        if (!isCurrentModel) continue;
+        const card = recordValue(row.card);
+        if (signalId == null || Object.keys(card).length === 0) continue;
+        cardBySignal.set(signalId, card);
+      }
     }
   }
 
