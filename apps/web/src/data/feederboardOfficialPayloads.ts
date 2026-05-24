@@ -65,40 +65,39 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
     "focus_overview": {
       "focus_id": "pattern_02",
       "tile_label": "Caught Performing",
-      "tile_headline": "Showing the Feeling You're Pretending Not to Have",
-      "tile_read": "The viewer isn't waiting for a confession — they're already inspecting the performance for the crack.",
-      "modal_headline": "Showing the Feeling You're Pretending Not to Have",
-      "the_hook": "The viewer isn't waiting for a confession — they're already inspecting the performance for the crack.",
+      "tile_headline": "The feeling you're performing over the one you actually have",
+      "tile_read": "The post lets you see through someone before they let you.",
+      "modal_headline": "The feeling you're performing over the one you actually have",
+      "the_hook": "The post lets you see through someone before they let you.",
       "the_breakdown": [
-        "You walk into something that looks like normal social behavior. A check-in, a casual moment, someone going about their day. Nothing flags it as confessional. Then a small detail — a caption, a frame choice, a lyric — tells you to stop watching the scene and start watching the person inside it.",
-        "From there, the gap does the work. The performed cover holds just long enough for you to feel the distance between it and what's actually showing. A face shifts. A camera lingers somewhere it shouldn't. The fantasy the person is living quietly fails to match the reality in the frame. You keep watching because you're waiting for the slip to complete itself.",
-        "When it lands, it lands as recognition. Not surprise — you already saw it coming. That's the point. You caught the real feeling before it was admitted, and that small act of seeing is exactly what the post was built to give you."
+        "You walk into something that looks like a normal moment — someone going about their day, holding a mood together, keeping it social. Nothing announces itself as a reveal. But something in the frame, the caption, or the way the camera sits on a face tells you to look closer than the performer wants you to.",
+        "From there, the gap is the whole game. The cover story is running, but it's leaking. A face does something small. The camera lingers a beat too long. The status the moment is supposed to project quietly doesn't add up. You're not waiting to be told what's happening — you're already reading it, and the post knows you are.",
+        "It ends before the admission comes. You get the recognition without the confession, which is exactly why it lands. The satisfaction is in catching it yourself, not in being handed it."
       ],
-      "why_it_works": "The viewer is cast as a witness, not an audience. Once the reframe tells them what to inspect, every detail becomes evidence — and finding evidence feels like insight. The post doesn't deliver a feeling; it lets the viewer discover one, which makes the payoff feel earned rather than handed over.",
+      "why_it_works": "People are wired to read faces and situations for what's being managed rather than what's being said — it's how social life actually works. This pattern puts that instinct to use. The viewer isn't a passive audience; they're doing something, and the small reward of being right is what makes the whole thing feel good.",
       "what_to_keep": [
-        "The reframe has to arrive early enough to prime inspection before the cover slips.",
-        "The tell must be visible, not stated — the viewer needs to see it, not be told it.",
-        "The hidden feeling has to be instantly recognizable without any explanation."
+        "The gap between performed feeling and real feeling has to be visible, not just implied.",
+        "Let the viewer find the tell — don't caption it into the ground before they get there.",
+        "The hidden feeling needs to be instantly recognizable once spotted, no explanation required."
       ],
       "what_kills_it": [
-        "Stating the feeling directly collapses the gap the whole pattern depends on.",
-        "If the visual confirm never arrives, the viewer has nothing to catch and the inspection goes nowhere.",
-        "A sincere tone throughout removes the cover, so there's nothing to see through."
+        "Stating the real feeling outright collapses the inspection and turns it into a confession.",
+        "If the visual confirm never arrives, the viewer has nothing to catch and the gap just hangs there.",
+        "Playing it fully sincere removes the cover, and without a cover there's nothing to see through."
       ]
     },
     "proof_rail": [
       {
         "post_key": "p/dxxb6rrif3e#f16",
-        "proof_label": "Face Cracks the Disclaimer",
-        "proof_headline": "The eye-roll arrives exactly when the lyric says she's fine.",
-        "post_read": "The post opens on what looks like a warm video call — man in the main frame, woman smiling in a small inset window — until the text at the bottom reframes it: he is talking about his local best friend, and she is just listening. At 00:05 the inset expands to fill the screen and holds on her face, which is no longer smiling — she squints, pulls at her cheek, and rolls her eyes, the composed look from three seconds ago completely gone. \"CAUSE I DON'T CARE\" drops in large white caps over her face at the exact beat the lyric hits and the eye-roll peaks, and the joke lands because her face already gave it away before the text showed up.",
-        "what_clicked": "The cut to her face forces the viewer to inspect the very thing she is trying to hide, so the \"I don't care\" overlay reads as a confession caught in the act, not a denial that lands clean.",
+        "proof_label": "Eye-Roll Beats the Lyric",
+        "proof_headline": "Her face confesses before the text overlay even shows up.",
+        "post_read": "The post opens as a video call that reads warm — man in the main frame looking neutral, woman smiling in a small inset window — and the bottom text is the only thing that reframes it as a wound: he is talking about how much he loves his local best friend, and she is just listening. At 00:03 her inset expands to fill the screen, which is the post's first move against her, because the expansion happens before she has time to reset the smile. By 00:05 the close-up is holding on a squint, a hand going to her cheek, and a full eye-roll — the composed look from three seconds ago completely gone — and the viewer has already caught it before the text does anything. \"CAUSE I DON'T CARE\" drops in large white caps at the exact beat the lyric hits and the eye-roll peaks, landing not as a punchline but as a caption for something the face already said out loud. The upbeat pop track underneath makes the whole denial feel even less convincing, because nothing about the sound matches the effort she is putting into not caring.",
+        "what_clicked": "The inset expansion is timed to the beat but functions as an ambush — it moves the camera onto her face at the one moment she cannot manage what it shows.",
         "evidence": [
-          "Woman smiles in the small inset window while the man talks, performing ease.",
-          "Inset expands at 00:03, shifting all attention to her before she can reset.",
-          "Hard cut at 00:05 holds on the squint, cheek-pull, and eye-roll in close-up.",
-          "\"CAUSE I DON'T CARE\" appears over her face as lyric and eye-roll land together.",
-          "Upbeat pop track plays throughout, making the dismissal feel even less convincing."
+          "Woman holds a smile in the small inset while he talks about his local friend.",
+          "Inset expands at 00:03, beat-timed, before her expression has reset.",
+          "Close-up at 00:05 holds on squint, cheek-pull, and eye-roll simultaneously.",
+          "\"CAUSE I DON'T CARE\" overlays her face as lyric and eye-roll land together."
         ],
         "metrics": [
           {
@@ -131,16 +130,15 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
       },
       {
         "post_key": "p/dxewewacicl#f16",
-        "proof_label": "Camera as Editorial Witness",
-        "proof_headline": "The caption makes the lens the thing being watched, not the gossip it caught.",
-        "post_read": "The reel drops you mid-story — she's already past the setup, already at \"friend X hooked up with friend Y,\" and the three men in the podcast studio are already reacting before you've oriented yourself. Then the Hindi kicks in: someone off-camera mutters \"Somu, kya kar raha hai yaar? Saniya ko pasand aayega baadme\" — a guy telling the videographer to stop recording, which means the videographer kept recording. The whole thing ends on \"He has all the tea,\" and the caption — \"understood the assignment a little too well\" — has already told you that the real subject was never the hookups, it was the person holding the camera.",
-        "what_clicked": "The caption reframes the footage as evidence of the videographer's choices, so every cut and angle reads as something he decided to keep rather than something that just happened to be there.",
+        "proof_label": "Videographer as Accidental Narrator",
+        "proof_headline": "The caption makes the camera operator the subject, not the gossip he recorded.",
+        "post_read": "She drops you into the middle of the story — \"friend X hooked up with friend Y\" is already out before you've placed yourself in the podcast studio — and the three men are already reacting, which means you're catching up to a room that already knows something. The tell arrives in Hindi: someone off-camera mutters \"Somu, kya kar raha hai yaar? Saniya ko pasand aayega baadme\" — a direct instruction to stop recording, which the videographer ignored. That ignored instruction is the whole post. By the time she lands on \"He has all the tea,\" the caption has already done its work: \"understood the assignment a little too well\" isn't praise for the footage, it's a read on the person who chose to keep rolling when someone told him not to. The hookups are the surface; the videographer's editorial judgment is what you're actually watching.",
+        "what_clicked": "The off-camera voice telling Somu to stop is the mechanism — it turns passive recording into a decision, and that decision is what the caption is really about.",
         "evidence": [
-          "\"A little too well\" implies the camera went past its job description.",
-          "Off-camera voice tells Somu to stop — he keeps rolling anyway.",
-          "\"He has all the tea\" lands as a verdict on the videographer, not the friends.",
-          "Hindi interjection at the end signals a private moment that was not meant to be caught.",
-          "\"Got everything\" — her word is \"everything,\" not \"it\" or \"that.\""
+          "Off-camera voice tells Somu to stop; he keeps rolling anyway.",
+          "\"A little too well\" in the caption signals the camera exceeded its brief.",
+          "\"He has all the tea\" lands as a verdict on the videographer's choices, not the friends' behavior.",
+          "Hindi interjection marks a private moment explicitly not meant to be captured."
         ],
         "metrics": [
           {
@@ -168,16 +166,15 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
       },
       {
         "post_key": "p/dxtkzzzcfna#f16",
-        "proof_label": "Manufactured Audience",
-        "proof_headline": "The lyric invents a crowd the airport never provided.",
-        "post_read": "The post opens on a woman in a black tank top already swaying in selfie frame, smiling before the gate is even in sight — the performance is running before the product appears. The text overlay lands fast: \"How I walk in the airport because I downloaded Digi Yatra,\" which tells you immediately this is a feeling being acted out, not a feature being shown. The camera then passes through the green-lit e-gate in one uncut shot while \"All eyes on us / They watching us\" plays directly over three uniformed security personnel who are not watching her at all.",
-        "what_clicked": "The music assigns an audience to people doing their jobs, and the empty queue lines behind her make the gap between that fantasy and the actual airport visible enough to be the joke.",
+        "proof_label": "Borrowed Crowd, Empty Gate",
+        "proof_headline": "The song invents witnesses the airport forgot to provide.",
+        "post_read": "This post figured out that the gap between performed feeling and real feeling works even harder when the environment actively refuses to cooperate. She's already smiling in selfie frame before the gate is in sight — the confidence is fully operational before there's anything to be confident about. The text overlay hits immediately: \"How I walk in the airport because I downloaded Digi Yatra,\" which locks in that this is a mood being enacted, not a process being shown. Then the camera passes through the green-lit e-gate in one uncut move while \"All eyes on us / They watching us\" plays directly over three uniformed security personnel who are visibly doing anything but watching her. The queue lines behind the gate are empty the whole time — the fast-track fantasy has no crowd to beat, no line to skip, no audience to impress — and the caption \"The superiority complex is insane\" only names the delusion after the shot has already made it visible.",
+        "what_clicked": "The music assigns an audience to people doing their jobs, and the empty lines make the distance between that fantasy and the actual airport legible enough to become the joke.",
         "evidence": [
           "\"All eyes on us\" plays while three uniformed personnel visibly ignore her.",
-          "Queue lines behind the e-gate are completely empty throughout the shot.",
-          "Green checkmark and face-scan icon appear as the camera moves through, not before.",
-          "Caption \"The superiority complex is insane\" names the fantasy only after the shot commits.",
-          "Selfie frame drops at 0:02 — the switch from face to gate is where the brag goes public."
+          "Queue lines behind the e-gate are empty throughout — nothing to bypass.",
+          "Selfie frame drops at 0:02; the switch from face to gate is where the performance goes public.",
+          "Caption names \"superiority complex\" only after the shot has already exposed it."
         ],
         "metrics": [
           {
@@ -231,40 +228,39 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
     "focus_overview": {
       "focus_id": "enumerated-shade-range-completion",
       "tile_label": "Shade Range Closer",
-      "tile_headline": "The Full-Range Loop Viewers Have to Finish",
-      "tile_read": "Give the viewer a count and a sequence, and they can't leave until it closes.",
-      "modal_headline": "The Full-Range Loop Viewers Have to Finish",
-      "the_hook": "Give the viewer a count and a sequence, and they can't leave until it closes.",
+      "tile_headline": "Name the Full Set, Then Make Them Watch It Close",
+      "tile_read": "The moment you tell someone there are N things to see, they can't leave until they've seen all N.",
+      "modal_headline": "Name the Full Set, Then Make Them Watch It Close",
+      "the_hook": "The moment you tell someone there are N things to see, they can't leave until they've seen all N.",
       "the_breakdown": [
-        "The viewer walks in knowing exactly what they signed up for — a named set, a number, a sequence that has a start and an end. That framing turns passive watching into active tracking before a single unit has played.",
-        "Each item in the range runs the same tight loop: it appears, it lands, it resolves, and the next one starts. The count ticking down is what keeps the viewer in — they're not waiting to be told what to pick, they're running their own bracket the whole way through.",
-        "By the end, the feeling isn't \"I watched a review.\" It's completion — the whole set has been seen, and the viewer has quietly built their own shortlist without being handed one."
+        "You walk in knowing exactly what you're getting. The set is declared upfront — a count, a name, a clear boundary — so the viewer isn't guessing whether more is coming. That declaration is the whole setup. It turns a piece of content into a sequence with a known end, and a sequence with a known end is almost impossible to leave early.",
+        "What keeps you watching is a small loop that runs once per unit and resets. Each item appears, lands, resolves, and the next one starts. The count ticking down in your head is doing real work — you're not just watching, you're tracking. You're comparing what you just saw to what came before and holding it against what's still left.",
+        "When it ends, you don't feel like you were shown something. You feel like you finished something. The shortlist you leave with feels like yours, because you built it by watching, not because someone handed it to you."
       ],
-      "why_it_works": "A declared, countable set turns watching into a task the viewer assigned themselves. The micro-loop structure resets attention at every unit without breaking the rhythm, and the count keeps the viewer aware of what's left. Leaving early means leaving a task unfinished — and most people won't.",
+      "why_it_works": "The count converts a passive viewer into an active one before the first unit even plays. Once someone is tracking a sequence, they're invested in closing it — not because the content is gripping, but because an open count feels unfinished. The pattern borrows the same pull as a checklist.",
       "what_to_keep": [
-        "Declare the count up front so the viewer knows exactly what the sequence owes them.",
-        "Run every unit through the same loop — any break in the rhythm breaks the bracket.",
-        "Let the viewer reach their own shortlist; the moment you tell them what to pick, the task collapses."
+        "Declare the full count early — the tension only exists if the viewer knows how far they have to go.",
+        "Keep each micro-loop identical in structure so the comparison is clean and the rhythm holds.",
+        "Let the viewer land on their own answer; the pattern breaks the moment you steer them toward one."
       ],
       "what_kills_it": [
-        "Skipping units or leaving the count open-ended removes the closure the whole mechanic runs on.",
-        "Turning any unit into a longer feature moment breaks the rhythm and signals the sequence isn't equal.",
-        "Telling the viewer which one to choose converts their active comparison into passive receiving."
+        "Leaving the set open-ended removes the finish line and kills the reason to stay.",
+        "Skipping units or breaking the loop structure collapses the sense of a complete sequence.",
+        "Telling the viewer which option wins turns a comparison into a recommendation, and they stop deciding for themselves."
       ]
     },
     "proof_rail": [
       {
         "post_key": "p/dye-ckenrme#f10",
-        "proof_label": "Declared Paradox",
-        "proof_headline": "Framing abundance as the problem keeps viewers watching all seven shades to solve it.",
-        "post_read": "The reel opens on a woman holding all seven SUGAR lipsticks fanned between her fingers, and the text lands immediately — \"POV: Shade range is SO good you can't decide\" — so the viewer's job is set before a single shade is shown. Each shade then runs the same four-beat loop: closed tube, bottom label, open bullet, application and smile, with the shade name updating at the bottom to match, and the whole thing resets seven times without breaking pace. By the time a yellow \"LAST ONE\" cuts in at 0:46, the viewer has been quietly running their own bracket the entire way through and still hasn't picked one.",
-        "what_clicked": "The opening frame hands the viewer a problem they accept as their own, so every subsequent shade feels like evidence in a decision they're already committed to making.",
+        "proof_label": "Abundance Framed as Problem",
+        "proof_headline": "The opening text makes indecision the premise, so every shade becomes evidence in a verdict the viewer is already trying to reach.",
+        "post_read": "Most posts in this pattern declare a count and let the sequence do the work — this one goes a step further by declaring the count as a problem before shade 01 even appears. \"POV: Shade range is SO good you can't decide\" lands while all seven tubes are still fanned between her fingers, which means the viewer enters the loop already mid-deliberation. Each shade then runs the same four-beat cycle — closed tube, bottom label, open bullet, application and smile — with the text at the bottom swapping from \"01 Santorini Sunset\" through \"07 Tuscany Truffle\" like a scoreboard the viewer is quietly updating. The city-themed names do extra work here: Positano, Cairo, Tuscany each carry a mood that the swatch alone wouldn't, so the comparison isn't just shade versus shade, it's a feeling versus a feeling. When the verbal \"WOOOOOOW... Last one.\" breaks in at 0:45, it confirms what the viewer already suspects — they've watched all seven and still haven't settled — and the caption's \"tell us the number you're stuck between\" converts that unresolved feeling directly into a comment.",
+        "what_clicked": "Naming indecision as the premise in the first frame makes the viewer's own uncertainty feel like the point of watching, not a side effect of it.",
         "evidence": [
-          "\"POV: Shade range is SO good you can't decide\" appears before shade 01 is shown.",
-          "All seven tubes are fanned in both hands at 0:00 before any individual cycle begins.",
-          "Bottom text overlay updates per shade — \"01 Santorini Sunset\" through \"07 Tuscany Truffle.\"",
-          "Yellow interjection \"WOOOOOOW... Last one.\" breaks the neutral cadence at 0:45–0:48.",
-          "Caption CTA asks viewers to \"tell us the number you're stuck between,\" matching the numbered sequence on screen."
+          "\"POV: Shade range is SO good you can't decide\" appears before any individual shade is shown.",
+          "All seven tubes fanned in both hands at 0:00 before the per-shade loop begins.",
+          "Bottom text updates per shade from \"01 Santorini Sunset\" through \"07 Tuscany Truffle.\"",
+          "Verbal \"WOOOOOOW... Last one.\" breaks the neutral cadence at 0:45–0:48."
         ],
         "metrics": [
           {
@@ -294,14 +290,13 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
         "post_key": "p/dxrbg0zilbr#f10",
         "proof_label": "Calendar Loop",
         "proof_headline": "Seven days frame seven shades as a set that must complete.",
-        "post_read": "The reel opens cold on a lip close-up — \"01 Peach Ping\" and \"MONDAY\" stacked at the bottom of frame, no setup, just the first slot already filled. From there it runs a strict two-beat cycle for every day: tight lip shot with the shade tube held to the chin, then a medium lifestyle shot where the outfit, background color, and props have all shifted to match that shade's mood — pink blazer on Tuesday, green dress on Friday, tie-dye on Saturday. At the end, both hands come up holding all seven tubes at once against a purple background, and the count the viewer has been running since Monday closes.",
-        "what_clicked": "The calendar structure borrows the viewer's own sense of how a week works — once Monday is named, Sunday becomes an obligation, not a choice.",
+        "post_read": "The reel opens cold on a lip close-up — \"01 Peach Ping\" and \"MONDAY\" stacked at the bottom of frame, no setup, no introduction, just the first slot already filled. What this post figured out is that the calendar is a count the viewer already owns — once Monday is named, Sunday exists whether the reel earns it or not. From there it runs a strict two-beat cycle: tight lip shot with the shade tube held to the chin, then a medium lifestyle shot where the outfit, background color, and props have all shifted to match that shade's mood — pink blazer on Tuesday, green dress on Friday, tie-dye on Saturday. The voiceover calls each day by name in sequence, which means the viewer isn't tracking an arbitrary number but a structure they already have memorized. When both hands come up holding all seven tubes at once against a purple background, the count closes — not because the reel announced it was over, but because Sunday was always the last slot.",
+        "what_clicked": "The calendar borrows a sequence the viewer already carries, so the obligation to finish it was never the reel's to create.",
         "evidence": [
-          "\"01 Peach Ping MONDAY\" opens the reel with no introduction.",
-          "Every day opens on a lip close-up before cutting to a lifestyle shot.",
-          "Background color and outfit shift with each shade across all seven days.",
-          "Voiceover calls each day by name, locking the sequence to a familiar order.",
-          "Both hands hold all seven tubes simultaneously in the final shot."
+          "\"01 Peach Ping MONDAY\" opens with no context — the slot is simply filled.",
+          "Outfit, background color, and props shift to match each shade across all seven days.",
+          "Voiceover names each day in order, locking the sequence to a structure the viewer already knows.",
+          "Both hands hold all seven tubes simultaneously in the final shot, closing the count visually."
         ],
         "metrics": [
           {
@@ -329,16 +324,15 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
       },
       {
         "post_key": "p/dxmvkifcctz#f10",
-        "proof_label": "Regret Frame",
-        "proof_headline": "Performed regret turns a seven-shade range into a decision the viewer feels they're already behind on.",
-        "post_read": "The post opens on a woman cupping all seven Glide Peptide Plumping Gloss Stick tubes at once, asking \"Tell me why I haven't bought these sooner\" before a single shade has been named — the regret lands before any product information does. From 00:11 onward, the same four-beat loop runs seven times: hold the tube, call the name, apply it, smile, with numbered overlays (\"01 Peach Ping,\" \"02 Pink Pop,\" all the way to \"07 Brown Buzz\") so you always know exactly where you are in the set. The closing line — \"suitable for all Indian skin tones\" — arrives at the exact moment you've already narrowed to a shortlist, and it removes the last reason to wait.",
-        "what_clicked": "She names the viewer's hesitation out loud at 00:05 — \"you don't know which shade works for you\" — so every swatch that follows is answering a question the viewer already had, not pitching one they didn't.",
+        "proof_label": "Regret-First Swatch Run",
+        "proof_headline": "The regret hook arrives before shade one, so every swatch feels like catching up.",
+        "post_read": "Most posts in this pattern declare the count and start the loop — this one inserts a layer of performed regret before either happens. The woman opens holding all seven tubes at once and asks \"Tell me why I haven't bought these sooner,\" which means the viewer's first impression of the product is someone already wishing they'd moved faster. At 00:05 she names the exact hesitation — \"you don't know which shade works for you\" — and the numbered loop that follows (01 Peach Ping through 07 Brown Buzz, each with its own overlay) is now answering a question rather than running a demo. The click sound effect at 00:13 when she says \"It's non-retractable\" is the only moment the loop breaks rhythm, and it lands a product detail without slowing the sequence down. By the time she closes on \"suitable for all Indian skin tones,\" the viewer has already built a shortlist — that line removes the last reason to wait rather than introducing a reason to buy.",
+        "what_clicked": "The regret frame front-loads a feeling of being behind, so the numbered sequence reads as the viewer catching up to a decision they should have already made.",
         "evidence": [
-          "\"Tell me why I haven''t bought these sooner\" plays before any shade is shown.",
+          "\"Tell me why I haven't bought these sooner\" plays before any shade appears.",
+          "\"You don't know which shade works for you\" spoken at 00:05, naming the block exactly.",
           "Numbered overlays 01 through 07 run with each shade name from 00:11 to 00:36.",
-          "\"You don''t know which shade works for you\" spoken at 00:05, naming the exact block.",
-          "A click sound effect punctuates \"It''s non-retractable\" at 00:13, marking a product detail mid-loop.",
-          "Woman returns to holding all seven tubes at 00:39, closing the frame opened in the first shot."
+          "Click sound effect punctuates \"It's non-retractable\" at 00:13 mid-loop without breaking rhythm."
         ],
         "metrics": [
           {
@@ -392,40 +386,39 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
     "focus_overview": {
       "focus_id": "gap_between_claimed_and_visible",
       "tile_label": "Self-Image Collapse",
-      "tile_headline": "The Claim That Disproves Itself While Being Made",
-      "tile_read": "The subject tells you who they are while the same frame shows you they aren't.",
-      "modal_headline": "The Claim That Disproves Itself While Being Made",
-      "the_hook": "The subject tells you who they are while the same frame shows you they aren't.",
+      "tile_headline": "The Claim and the Proof Arrive in the Same Frame",
+      "tile_read": "Someone tells you who they are while the footage quietly disagrees.",
+      "modal_headline": "The Claim and the Proof Arrive in the Same Frame",
+      "the_hook": "Someone tells you who they are while the footage quietly disagrees.",
       "the_breakdown": [
-        "You walk in mid-performance. The subject is already declaring something — their character, their values, their version of events. You get a clean, confident picture of how they see themselves before anything pushes back.",
-        "Then the contradiction appears in the same breath. Another person, the camera, their own body — something in the frame quietly disagrees. The subject keeps going anyway, which is exactly what holds you. Every new claim widens the gap instead of closing it.",
-        "You leave holding the receipt. The subject never names the gap, never flinches, never resolves it. That's your job, and the post hands it to you without asking."
+        "You come in mid-performance. The subject is already stating their case — confident, certain, fully committed to a version of themselves. There's no setup because none is needed. The self-image is the setup.",
+        "What keeps you watching is that the contradiction doesn't arrive later. It's already there. Something in the same shot — another person, their own body, the gap between what they're saying and what's visibly happening — is doing the opposite of confirming them. The subject keeps going. The viewer keeps watching. Nobody names it.",
+        "When it ends, you leave holding the receipt. The post never called it out, never resolved it, never asked you to feel a certain way about it. It just let the gap sit there long enough for you to see it clearly, and that's enough."
       ],
-      "why_it_works": "The viewer gets to be the smartest person in the room without being told they are. No twist is needed because the gap is visible the whole time — the satisfaction is confirmation, not surprise. That's a stronger pull than a reveal, because the viewer earns the conclusion themselves.",
+      "why_it_works": "The viewer gets to be the one who notices. Nothing is handed to them — no caption explaining the irony, no reaction shot cuing the laugh. That act of noticing, of holding the contradiction yourself, is where all the satisfaction lives. The post trusts you to get it, and that trust is the whole move.",
       "what_to_keep": [
-        "The contradiction has to live inside the same frame as the claim — cut away and you lose everything.",
-        "The subject must stay committed; the moment they wink at the camera, the gap collapses into a bit.",
-        "Let the viewer hold the judgment — the second you name the gap out loud, you've stolen their moment."
+        "The contradiction has to be visible in the same frame as the claim — not after, not cut to, right there.",
+        "The subject must stay fully committed; the moment they wink at the camera, the gap closes.",
+        "Leave the gap unnamed — the viewer's job is to confirm it, not receive it pre-labeled."
       ],
       "what_kills_it": [
-        "If the subject acknowledges the gap, admits fault, or grows, the tension resolves and there's nothing left to confirm.",
-        "Withholding the contradiction as a final twist turns confirmation into surprise, which is a different pattern entirely.",
-        "An outside voice explaining the irony does the viewer's work for them and kills the satisfaction."
+        "Ending with a twist reveals the subject always knew, which turns confirmation into a prank and loses the viewer's role entirely.",
+        "Any outside voice explaining the irony removes the one thing that makes this work — the viewer doing it themselves.",
+        "If the subject admits the gap or grows out of it, there's nothing left to hold."
       ]
     },
     "proof_rail": [
       {
         "post_key": "p/dxy_ou6kc9k#f27",
-        "proof_label": "Live Deflation By Subject",
-        "proof_headline": "Sania Mirza dismantles each claim in the same breath it's made, so the gap never gets a chance to close.",
-        "post_read": "The reel opens on a man on a bench, holding a jar of pickles, delivering a mock-serious testimonial — \"It's almost as if I am the Sania Mirza of Pickleball\" — with complete conviction. Every claim he makes is answered immediately by Sania Mirza herself, on the same court, in the same cut: he says he respects the rules, she calls \"one tip out\" against him; he says you learn to accept the result, she tells him she'll see him outside. The whole collapse gets absorbed by a single overlay at the end — \"You don't have to be Sania Mirza to play\" — which turns his humiliation into the product's actual pitch.",
-        "what_clicked": "The deflation never pauses long enough to become a punchline — Sania's response lands inside the same moment as the claim, so the viewer is always watching the gap widen in real time rather than waiting for a reveal.",
+        "proof_label": "Celebrity Installed as Fact-Checker",
+        "proof_headline": "Sania Mirza doesn't cameo — she audits every claim as it leaves his mouth.",
+        "post_read": "The reel opens on a man holding a jar of pickles on a bench, delivering a mock-serious testimonial with total commitment — \"It's almost as if I am the Sania Mirza of Pickleball\" — while wearing the exact same black-over-pink outfit Sania is wearing on the court behind him, so the visual contradiction is already running before she says a word. What this post figured out is that the celebrity doesn't need to be the proof of the product — she can be the proof against the protagonist, which makes the product pitch land somewhere else entirely. Every claim he makes gets answered inside the same cut: \"Rules — I don't take the rules lightly\" is followed immediately by Sania calling \"one tip out\" against him; \"you learn to accept\" is answered by \"I'll see you outside\" before the sentence can settle. The overlay that closes it — \"You don't have to be Sania Mirza to play\" — converts his complete on-court humiliation into the actual reason to download the app, so the viewer leaves holding a discount offer that feels like a punchline they earned.",
+        "what_clicked": "Sania's responses are timed to land inside the protagonist's claims rather than after them, so the gap between self-image and reality never gets a moment to close — the viewer watches it widen in real time instead of waiting for a reveal.",
         "evidence": [
+          "Matching black-over-pink outfits make the contrast visual before any gameplay begins.",
           "\"Sania Mirza of Pickleball\" claim answered by \"Come, fight me\" at 00:13.",
-          "Narrator and Sania wear matching black-over-pink outfits, making the contrast visual before it's verbal.",
-          "\"Rules — I don't take the rules lightly\" followed immediately by Sania calling \"one tip out\" at 00:36.",
-          "\"You learn to accept\" answered by \"I'll see you outside\" before the sentence can settle.",
-          "Pickle jar on the bench ties the pickleball pun to the character before a word is spoken."
+          "Rules — I don't take the rules lightly\" followed immediately by Sania calling \"one tip out.",
+          "\"You learn to accept\" answered by \"I'll see you outside\" before the line can land."
         ],
         "metrics": [
           {
@@ -453,16 +446,15 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
       },
       {
         "post_key": "p/dxoh-undfw1#f27",
-        "proof_label": "Dual-Frame Collapse In Progress",
-        "proof_headline": "Son performs sincerity while smirking at the camera he just denied was rolling.",
-        "post_read": "The caption — \"telling my mom i'm in love with a married woman\" — sits at the top of the frame before anyone speaks, so you already know where this is going before the son opens his mouth. What keeps you watching is the escalation ladder: each new detail he adds (\"her husband is boring,\" \"she's 35,\" \"I can save her\") lands while his mother's outrage is already maxed out, so every rung feels deliberate rather than defensive. Then at 0:23 she says \"I think you're recording,\" he denies it directly to the camera that is visibly rolling, and at 0:52 he turns and smirks straight into the lens — confirming the whole thing was a performance for you, not a confession to her.",
-        "what_clicked": "The mother's suspicion collapses his cover story mid-scene — he lies to her face while the camera proves the lie to you in real time, and the smirk at 0:52 closes the loop.",
+        "proof_label": "Lie Told To Camera's Face",
+        "proof_headline": "He denies the camera is rolling while the camera is rolling, then smirks to confirm it.",
+        "post_read": "The caption does something specific here — it tells you the confession before the son does, so when he opens with \"I'm in love, mom,\" you're not waiting to find out what happens, you're watching how he plays it. He plays it calm, almost bored, which is what makes each new detail land harder than the last — \"her husband is boring,\" \"she's 35,\" \"I can save her\" — not as escalations he's forced into, but as moves he's choosing while his mother's outrage is already at its ceiling. Then at 0:23 she says \"I think you're recording,\" and he looks directly into the lens and denies it, which is the moment the post breaks open: the viewer is the proof that he's lying, and he knows it. The smirk at 0:52 — mid-sentence, mid-claim about saving this woman — closes it without a word. The black and white filter, the static single shot, the chain and tank top framed against a high-rise window — none of it reads as accidental, and that's the point. You leave holding the gap between what he told her and what he showed you.",
+        "what_clicked": "He makes the viewer complicit in the lie the moment he denies the camera to the camera — you're not watching the contradiction from outside, you are the contradiction.",
         "evidence": [
-          "\"I think you're recording\" — denied at 0:23 while the camera rolls uncut.",
-          "Static single shot, no cuts — the camera's presence is never hidden from the viewer.",
-          "Each escalation is unprompted: boring husband, can't satisfy her, I can save her.",
-          "Direct smirk into the lens at 0:52 while mid-sentence about saving her.",
-          "Black and white filter frames the scene as composed, not candid."
+          "\"I think you're recording\" denied at 0:23 directly into the rolling lens.",
+          "Smirk at 0:52 lands mid-sentence, mid-claim about saving her from her husband.",
+          "Each escalation — boring husband, she's 35, I can save her — is unprompted, not defensive.",
+          "Single uncut shot means the camera's presence is never hidden, only verbally denied."
         ],
         "metrics": [
           {
@@ -491,15 +483,14 @@ export const FEEDERBOARD_FOCUSES: FeederboardFocus[] = [
       {
         "post_key": "p/dxjldsojbr7#f27",
         "proof_label": "Idealist Folds on Offer",
-        "proof_headline": "Self-declared liberal collapses the instant power is offered — and says so out loud.",
-        "post_read": "The post opens mid-rant: curly hair, silver chain, animated hands, someone already deep into calling politicians \"anpadh gundas\" and citing his own credentials — \"cool, liberal, woke\" — as the reason you should trust him. At 0:07, a flat-faced man with a mustache cuts in with one question — \"You wanna join us or what?\" — and the first guy's body swings toward the offer before he's finished a thought. The close-out is \"I have no morals,\" delivered with a nervous laugh, which isn't a punchline so much as a signed confession.",
-        "what_clicked": "The body turn at 0:08 lands before the words do — the physical pivot makes the collapse visible a half-second before the mouth catches up, so the viewer clocks the betrayal twice.",
+        "proof_headline": "The collapse is physical before it's verbal — the body sells out half a second ahead of the mouth.",
+        "post_read": "The reel opens with someone already mid-conviction — silver chain, animated hands, \"unpadh gundas\" — staking his credibility on the three words \"cool, liberal, woke\" before a single politician has appeared on screen. The claim and the credentials land in the same breath, which means when the mustached man cuts in at 0:07 with one flat question — \"You wanna join us or what?\" — the viewer is already holding the full weight of the self-image that's about to go. The body swings toward the offer before the mouth has caught up, so the betrayal registers twice: once in the pivot, once in the words. What makes this version of the pattern specific is that the subject doesn't just fold — he narrates the fold, landing on \"I have no morals\" with a nervous laugh that isn't a joke so much as a live transcript of the gap the viewer already clocked. The post never names the irony; it just lets the confession sit there, delivered by the same voice that was citing its own integrity eight seconds earlier.",
+        "what_clicked": "The physical pivot at 0:08 makes the reversal legible before the admission arrives, so the viewer catches the betrayal in the body first and the words second — two receipts for the same collapse.",
         "evidence": [
-          "\"cool, liberal, woke\" — self-image staked before any offer appears.",
-          "\"You wanna join us or what?\" — the entire reversal triggered by one flat question.",
+          "\"cool, liberal, woke\" — credentials staked before any offer is visible.",
+          "\"You wanna join us or what?\" — one flat question triggers the entire reversal.",
           "Body swings toward the second figure before the first character speaks again.",
-          "\"I have no morals\" delivered with a nervous laugh, no recovery attempt.",
-          "Mustached man's stern silence makes the offer feel like a test already passed."
+          "\"I have no morals\" delivered with a nervous laugh, no recovery attempt."
         ],
         "metrics": [
           {
