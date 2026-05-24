@@ -56,7 +56,6 @@ export default function FeederboardTile({
       whileTap={{ scale: 0.985 }}
       className="fm-depth-glass group relative isolate flex min-h-[180px] flex-col justify-between overflow-hidden rounded-[22px] p-4 text-left"
       aria-label={`Open Feederboard for ${feedTitle}`}
-      style={{ willChange: 'transform' }}
     >
       <div className="pointer-events-none absolute inset-0 z-0">
         <div className="absolute right-[-26%] top-[-42%] h-52 w-52 rounded-full bg-[radial-gradient(circle,rgba(225,29,72,0.28),transparent_68%)] blur-[6px]" />
