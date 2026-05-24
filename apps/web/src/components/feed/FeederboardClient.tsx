@@ -63,6 +63,22 @@ function DefRow({ label, text }: { label: string; text: string }) {
   );
 }
 
+function PatternList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="rounded-[22px] border border-black/[0.06] bg-white/72 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-white/[0.08] dark:bg-white/[0.05] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E11D48]">{label}</div>
+      <ul className="mt-4 space-y-3 text-[14.5px] font-bold leading-[1.55] text-black/64 dark:text-white/62">
+        {items.map((item, i) => (
+          <li key={`${label}:${i}`} className="flex gap-3">
+            <span className="mt-[0.62em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#E11D48]" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Thumb({
   post,
   className = '',
@@ -253,24 +269,26 @@ type ModalTab = 'pattern' | 'proofs';
 function PatternView({ focus }: { focus: FeederboardFocus }) {
   return (
     <div className="mx-auto max-w-[760px]">
-      <div className="space-y-5 text-[16px] font-extrabold leading-[1.65] text-black/72 dark:text-white/68 sm:text-[17px]">
-        {focus.focus_overview.pattern_read.map((p, i) => (
+      <div className="rounded-[24px] border border-[#E11D48]/16 bg-[#E11D48]/8 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[#FB7185]/18 dark:bg-[#FB7185]/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E11D48]">The hook</div>
+        <p className="mt-3 text-[20px] font-black leading-[1.24] text-black dark:text-white sm:text-[23px]">
+          {focus.focus_overview.the_hook}
+        </p>
+      </div>
+
+      <div className="mt-8 space-y-5 text-[16px] font-extrabold leading-[1.65] text-black/72 dark:text-white/68 sm:text-[17px]">
+        {focus.focus_overview.the_breakdown.map((p, i) => (
           <p key={`${focus.focus_id}:read:${i}`}>{p}</p>
         ))}
       </div>
 
       <dl className="mt-10 grid gap-x-8 gap-y-2 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-y-6">
-        <DefRow label="Why it matters" text={focus.focus_overview.why_it_matters} />
-        <DefRow label="Belongs when" text={focus.focus_overview.match_read} />
-        <DefRow label="Not this when" text={focus.focus_overview.avoid_read} />
-        <DefRow label="Watch out" text={focus.focus_overview.watch_out} />
+        <DefRow label="Why it works" text={focus.focus_overview.why_it_works} />
       </dl>
 
-      <div className="mt-10 rounded-[24px] border border-[#E11D48]/16 bg-[#E11D48]/8 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[#FB7185]/18 dark:bg-[#FB7185]/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E11D48]">Playbook · How to repeat</div>
-        <p className="mt-3 text-[16px] font-extrabold leading-[1.6] text-black/76 dark:text-white/76">
-          {focus.focus_overview.how_to_repeat_it}
-        </p>
+      <div className="mt-10 grid gap-4 md:grid-cols-2">
+        <PatternList label="What to keep" items={focus.focus_overview.what_to_keep} />
+        <PatternList label="What kills it" items={focus.focus_overview.what_kills_it} />
       </div>
     </div>
   );
