@@ -35,4 +35,4 @@ The web app currently relies on:
 
 ## Environment Notes
 
-See [`.env.example`](/Users/Akash/feed_me/apps/web/.env.example) for the expected variable names.
+See `.env.example` for the expected variable names.

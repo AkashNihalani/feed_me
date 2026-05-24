@@ -349,12 +349,31 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
   const synthesis = recordValue(fingerprint.synthesis);
   const visualRead = recordValue(fingerprint.visual_read);
   const captionRead = recordValue(fingerprint.caption_read);
+  const clustering = recordValue(fingerprint.pool_clustering_fields);
+  const structure = recordValue(clustering.structure);
+  const receiptLines = Array.isArray(clustering.structural_receipts)
+    ? clustering.structural_receipts.flatMap((item) => {
+      const rec = recordValue(item);
+      const receipt = readableText(rec.receipt);
+      const evidence = readableList(rec.evidence, 3);
+      return receipt ? [receipt, ...evidence] : evidence;
+    })
+    : [];
   const summary =
-    readableText(synthesis.subject)
+    readableText(clustering.dominant_tension)
+    || readableText(synthesis.subject)
     || readableText(fingerprint.content_summary)
     || readableText(fingerprint.topic)
     || readableText(visualRead.subject_focus);
   const lines = [
+    compactFingerprintLine('Entry', structure.entry_state),
+    compactFingerprintLine('Progression', structure.progression),
+    compactFingerprintLine('Shift', structure.shift),
+    compactFingerprintLine('Ending', structure.ending_state),
+    compactFingerprintLine('Caption role', clustering.caption_connection),
+    compactFingerprintLine('Interaction surface', clustering.interaction_surface),
+    compactFingerprintLine('Visual sequence', clustering.visual_sequence),
+    compactFingerprintLine('Audio', clustering.audio_behavior),
     compactFingerprintLine('Craft', synthesis.craft),
     compactFingerprintLine('Voice', synthesis.voice),
     compactFingerprintLine('Proof', synthesis.proof),
@@ -367,6 +386,7 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
     compactFingerprintLine('Caption role', fingerprint.caption_role || captionRead.cta_style),
     ...readableList(fingerprint.craft_moves, 2).map((line) => `Craft: ${line}`),
     ...readableList(fingerprint.campaign_or_context_clues, 2).map((line) => `Context clue: ${line}`),
+    ...receiptLines.slice(0, 5).map((line) => `Receipt: ${line}`),
   ].filter((line): line is string => Boolean(line));
 
   if (!summary && lines.length === 0) return null;
@@ -382,44 +402,8 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
   };
 }
 
-function prefixedLine(label: string, value: unknown): string | null {
-  const textValue = readableText(value).replace(/\s+/g, ' ').trim();
-  if (!textValue) return null;
-  return `${label}: ${textValue}`;
-}
-
-function buildFocusIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
-  const focusRead = recordValue(row?.focus_read);
-  if (Object.keys(focusRead).length === 0) return null;
-
-  const verdict = readableText(focusRead.verdict) || readableText(focusRead.read) || readableText(focusRead.title);
-  const matches = readableList(focusRead.matches, 4);
-  const deviates = readableList(focusRead.deviates, 4);
-  const unclear = readableList(focusRead.unclear, 2);
-  const notes = [
-    ...readableList(focusRead.notes, 2),
-    prefixedLine('Do next', focusRead.do_next),
-    prefixedLine('Watchout', focusRead.watchout),
-  ].filter((line): line is string => Boolean(line));
-
-  const primary = matches.length > 0 ? matches : verdict ? [verdict] : [];
-  if (primary.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) return null;
-
-  return {
-    source: 'post_focus',
-    source_label: readableText(focusRead.source_label) || 'Focus read',
-    model_version: row?.focus_model_version ?? null,
-    feeder_focus_version: row?.feeder_focus_version ?? null,
-    confidence: readableText(focusRead.confidence) || null,
-    matches: primary,
-    deviates,
-    unclear,
-    notes: Array.from(new Set(notes)).slice(0, 4),
-  };
-}
-
 function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
-  return buildFocusIntelligencePayload(row) || buildFingerprintIntelligencePayload(row);
+  return buildFingerprintIntelligencePayload(row);
 }
 
 function isHotPercentile(value: number | null): boolean {
@@ -446,23 +430,6 @@ function shouldFallbackToLegacyFireDayLoad(error: unknown): boolean {
     || normalized.includes('not embedded')
     || normalized.includes('post.feeder_id')
     || normalized.includes('post_metrics');
-}
-
-function isMissingRelationError(error: unknown, relationName: string): boolean {
-  const record = error && typeof error === 'object' ? (error as Record<string, unknown>) : {};
-  const message = error instanceof Error
-    ? error.message
-    : typeof record.message === 'string'
-      ? record.message
-      : String(error || '');
-  const code = typeof record.code === 'string' ? record.code : '';
-  const normalized = message.toLowerCase();
-  const relation = relationName.toLowerCase();
-  return code === 'PGRST205'
-    || (
-      normalized.includes('could not find')
-      && normalized.includes(relation)
-    );
 }
 
 type ActiveFeedRow = { id: number; name: string | null };
@@ -520,7 +487,7 @@ type AlertSurfaceRow = {
   trajectory_d7: number | null;
   trajectory_d21: number | null;
   intelligence_skipped: boolean | null;
-  post_intelligence?: Record<string, unknown> | null;
+  post_read?: Record<string, unknown> | null;
   is_hot?: boolean | null;
   has_intelligence?: boolean | null;
   hide_signal_chrome?: boolean | null;
@@ -606,12 +573,6 @@ type FireIntelligenceRow = {
   fingerprint_model_version: string | null;
   fingerprint_media_source_hash: string | null;
   fingerprint_media_confidence: string | null;
-  focus_read?: Record<string, unknown> | null;
-  focus_model_version?: string | null;
-  focus_prompt_version?: string | null;
-  focus_fingerprint_hash?: string | null;
-  feeder_focus_version?: number | null;
-  focus_generated_at?: string | null;
 };
 
 type FirePostFingerprintRow = {
@@ -620,16 +581,6 @@ type FirePostFingerprintRow = {
   model_version: string | null;
   media_source_hash: string | null;
   media_confidence: string | null;
-};
-
-type FirePostFocusReadRow = {
-  post_key: string | null;
-  focus_read: Record<string, unknown> | null;
-  feeder_focus_version: number | string | null;
-  fingerprint_hash: string | null;
-  prompt_version: string | null;
-  model_version: string | null;
-  generated_at: string | null;
 };
 
 type MediaAssetUrlRow = {
@@ -766,7 +717,7 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
       signal_code: nullableString(row.signal_code),
       signal_context: nullableString(row.context),
       anchor_handle: nullableString(row.anchor_handle),
-      post_intelligence: row.post_intelligence ?? null,
+      post_read: row.post_read ?? null,
       is_hot: Boolean(row.is_hot),
       has_intelligence: Boolean(row.has_intelligence),
       hide_signal_chrome: Boolean(row.hide_signal_chrome),
@@ -1278,35 +1229,6 @@ async function fetchIntelligenceRowsForPostKeys(
       });
     }
 
-    const { data: focusData, error: focusError } = await sb
-      .from('post_focus_reads')
-      .select('post_key,focus_read,feeder_focus_version,fingerprint_hash,prompt_version,model_version,generated_at')
-      .in('post_key', chunk);
-
-    if (focusError) {
-      if (isMissingRelationError(focusError, 'post_focus_reads')) continue;
-      throw focusError;
-    }
-    for (const row of (focusData || []) as FirePostFocusReadRow[]) {
-      const postKey = nullableString(row.post_key);
-      if (!postKey) continue;
-      const existing = rowsByPostKey.get(postKey) || {
-        post_key: postKey,
-        fingerprint: null,
-        fingerprint_model_version: null,
-        fingerprint_media_source_hash: null,
-        fingerprint_media_confidence: null,
-      };
-      rowsByPostKey.set(postKey, {
-        ...existing,
-        focus_read: recordValue(row.focus_read),
-        focus_model_version: nullableString(row.model_version),
-        focus_prompt_version: nullableString(row.prompt_version),
-        focus_fingerprint_hash: nullableString(row.fingerprint_hash),
-        feeder_focus_version: nullableNumber(row.feeder_focus_version),
-        focus_generated_at: nullableString(row.generated_at),
-      });
-    }
   }
 
   return Array.from(rowsByPostKey.values());
@@ -1524,7 +1446,7 @@ function buildSyntheticFireRows(options: {
       trajectory_d7: nullableNumber(trajectoryByPost.get(postKey)?.d7?.percentile_performance),
       trajectory_d21: nullableNumber(trajectoryByPost.get(postKey)?.d21?.percentile_performance),
       intelligence_skipped: intelligenceRow?.fingerprint_model_version === 'skipped',
-      post_intelligence: postIntelligence,
+      post_read: postIntelligence,
       is_hot: isHot,
       has_intelligence: hasIntelligence,
       hide_signal_chrome: true,

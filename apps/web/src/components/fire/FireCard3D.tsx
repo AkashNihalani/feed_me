@@ -55,7 +55,7 @@ function textList(v: unknown, max = 4): string[] {
 }
 
 function parsePostContextRead(meta: Record<string, unknown>) {
-  const read = asRec(meta.post_intelligence);
+  const read = asRec(meta.post_read);
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 2);
@@ -85,6 +85,23 @@ function withRetryBust(url: string, seed: string): string {
   } catch {
     const joiner = value.includes('?') ? '&' : '?';
     return `${value}${joiner}_retry=${encodeURIComponent(seed)}`;
+  }
+}
+
+function isRetryVariantOf(url: string, baseUrl: string): boolean {
+  const value = url.trim();
+  const base = baseUrl.trim();
+  if (!value || !base) return false;
+  if (value === base) return true;
+  try {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://feedmemore.vercel.app';
+    const current = new URL(value, origin);
+    const target = new URL(base, origin);
+    current.searchParams.delete('_retry');
+    target.searchParams.delete('_retry');
+    return current.pathname === target.pathname && current.searchParams.toString() === target.searchParams.toString();
+  } catch {
+    return value.startsWith(`${base}&`) || value.startsWith(`${base}?`);
   }
 }
 
@@ -137,6 +154,7 @@ export function FireCard3D({
   const previewProgressRef = useRef(0);
   const previewSessionRef = useRef(0);
   const previewRetryTimeoutRef = useRef<number | null>(null);
+  const thumbnailRetryCountRef = useRef(0);
   const lockControls = useAnimationControls();
   const isDesktopCard = layoutMode === 'desktop';
   const isCardInteractive = highlighted || forcedOpen;
@@ -293,6 +311,7 @@ export function FireCard3D({
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setImgDead(false);
+      thumbnailRetryCountRef.current = 0;
       setThumbnailUrl(text(item.thumbnailUrl) || thumbnailFallbackUrl);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -300,7 +319,9 @@ export function FireCard3D({
 
   useEffect(() => {
     if (!highlighted || !imgDead || !thumbnailFallbackUrl) return;
+    if (thumbnailRetryCountRef.current >= 2) return;
     const timeoutId = window.setTimeout(() => {
+      thumbnailRetryCountRef.current += 1;
       setImgDead(false);
       setThumbnailUrl(withRetryBust(thumbnailFallbackUrl, `${item.id}-${Date.now()}`));
     }, 450);
@@ -524,7 +545,8 @@ export function FireCard3D({
           fetchPriority={highlighted ? 'high' : 'auto'}
           decoding="async"
           onError={() => {
-            if (thumbnailFallbackUrl && thumbnailUrl !== thumbnailFallbackUrl) {
+            if (thumbnailFallbackUrl && !isRetryVariantOf(thumbnailUrl, thumbnailFallbackUrl)) {
+              thumbnailRetryCountRef.current += 1;
               setThumbnailUrl(withRetryBust(thumbnailFallbackUrl, `${item.id}-${Date.now()}`));
               return;
             }
@@ -535,7 +557,7 @@ export function FireCard3D({
             opacity: canRenderInlinePreview && previewPlaying && shouldPlayPreview ? 0 : 1,
           }}
           transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-          style={{ willChange: 'transform' }}
+          style={{ willChange: isDesktopCard ? 'auto' : 'transform' }}
         />
       ) : (
         <div className="absolute inset-0 bg-black" />

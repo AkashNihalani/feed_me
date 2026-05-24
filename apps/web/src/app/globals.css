@@ -441,7 +441,7 @@ html.fm-feed-root-scroll body {
 
 @media (min-width: 1024px) {
   .fm-feed-detail-scroll {
-    --fm-mobile-detail-header-offset: 148px;
+    --fm-mobile-detail-header-offset: calc(var(--fm-feed-header-height, 164px) + 16px);
     --fm-feed-mobile-section-height: auto;
   }
 }
@@ -568,6 +568,7 @@ html.fm-feed-root-scroll body {
 
   .fm-fire-card-shell {
     position: relative;
+    isolation: isolate;
     border-radius: 24px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     background:

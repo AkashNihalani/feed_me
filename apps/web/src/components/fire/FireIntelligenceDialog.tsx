@@ -52,7 +52,7 @@ function textList(v: unknown, max = 4): string[] {
 }
 
 function parsePostContextRead(meta: Record<string, unknown>) {
-  const read = asRecord(meta.post_intelligence);
+  const read = asRecord(meta.post_read);
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 3);

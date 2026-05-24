@@ -1540,7 +1540,7 @@ export default function FundPage() {
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="fm-tab-canvas-shell mx-auto space-y-4 px-2 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7 transform-gpu will-change-transform"
+            className="fm-tab-canvas-shell mx-auto space-y-4 px-2 sm:space-y-5 sm:px-0 lg:space-y-6 xl:space-y-7"
           >
             {/* Middle Section: Management & Control Center */}
             <div className="grid items-stretch gap-4 xl:grid-cols-[0.92fr_1.08fr] xl:gap-5 2xl:grid-cols-[0.88fr_1.12fr] 2xl:gap-6">

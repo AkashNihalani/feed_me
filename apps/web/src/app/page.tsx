@@ -651,7 +651,7 @@ function FeedPageContent() {
       return;
     }
     const ok = await runFeedAction({
-      action: 'update_feed_focus',
+      action: 'update_feed_context',
       feedId: Number(activeFeed.id),
       title: activeFeed.title,
       focusBrief: editFeedBrief,
@@ -678,7 +678,10 @@ function FeedPageContent() {
         useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#f4f7f9] dark:bg-[#030303]',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
-      style={appShellStyle}
+      style={{
+        ...appShellStyle,
+        ['--fm-feed-header-height' as string]: `${headerHeight}px`,
+      }}
     >
       {/* Ambient bg */}
       <div
@@ -1042,7 +1045,6 @@ function FeedPageContent() {
                             ease: GRID_ITEM_EASE,
                           },
                         }}
-                        style={{ willChange: 'transform, opacity' }}
                       >
                         <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
                           metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} enableEntranceAnimation={false} />
@@ -1080,6 +1082,7 @@ function FeedPageContent() {
               usePageScroll={useBrowserPageScroll}
               mobileSnapSections={isStandaloneMode}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
+              headerOffset={useBrowserPageScroll ? undefined : `${headerHeight + 16}px`}
               immersiveBrowserMode={useTranslucentBrowserChrome}
               exportScopeLabel={exportScopeLabel}
               exportFrom={exportFrom}
@@ -1113,7 +1116,6 @@ function FeedPageContent() {
                   type="button"
                   onClick={openFeedContextEditor}
                   className="fm-depth-glass flex min-h-[180px] flex-col justify-between rounded-[22px] p-4 text-left"
-                  style={{ willChange: 'transform' }}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-black/6 bg-white/68 text-foreground/56 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/48">
@@ -1156,7 +1158,7 @@ function FeedPageContent() {
               )}
               <motion.div layout initial={{ scale: 0.95 }} animate={{ scale: 1 }} whileTap={{ scale: 0.98 }}
                 className={cn("fm-depth-glass rounded-[22px] p-4 min-h-[180px] flex flex-col justify-center items-center group cursor-pointer", isAddingFeeder ? "ring-1 ring-black/10 dark:ring-[#E11D48]/45" : "")}
-                style={{ willChange: 'transform' }} onClick={() => !isAddingFeeder && setIsAddingFeeder(true)}>
+                onClick={() => !isAddingFeeder && setIsAddingFeeder(true)}>
                 {!isAddingFeeder ? (
                   <div className="flex flex-col items-center gap-2">
                     <Plus size={48} strokeWidth={2} className="text-foreground/30" />

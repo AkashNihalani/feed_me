@@ -1437,7 +1437,7 @@ export default function FirePage() {
                       opacity: headerCompressed ? 0.9 : 1,
                     }}
                     transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-                    className="origin-left shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black will-change-transform sm:text-[38px] dark:text-white fm-depth-title"
+                    className="origin-left shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title"
                   >
                     FIRE
                   </motion.h1>

@@ -43,7 +43,6 @@ export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, on
         'fm-depth-glass group relative flex flex-col justify-between overflow-hidden rounded-[22px] p-4',
         isAnchor && 'ring-1 ring-[#E11D48]/35'
       )}
-      style={{ willChange: 'transform' }}
     >
       {isAnchor && (
         <div className="absolute right-0 top-0 z-20 flex items-center gap-1 rounded-bl-[16px] border border-[#FB7185] bg-[#E11D48] px-3 py-1 text-[9px] font-black uppercase text-white shadow-[0_4px_12px_rgba(225,29,72,0.24)]">

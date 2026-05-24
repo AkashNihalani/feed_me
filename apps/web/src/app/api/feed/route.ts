@@ -949,7 +949,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(bundle);
     }
 
-    if (action === 'update_feed_focus' || action === 'update_feed_context') {
+    if (action === 'update_feed_context') {
       const feedId = Number(body?.feedId);
       if (!feedId) {
         return NextResponse.json({ error: 'feedId is required' }, { status: 400 });

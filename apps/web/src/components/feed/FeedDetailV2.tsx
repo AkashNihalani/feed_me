@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
@@ -27,6 +27,7 @@ interface FeedDetailV2Props {
   usePageScroll?: boolean;
   mobileSnapSections?: boolean;
   bottomClearance?: string;
+  headerOffset?: string;
   immersiveBrowserMode?: boolean;
   exportScopeLabel: string;
   exportFrom: string;
@@ -193,6 +194,7 @@ export default function FeedDetailV2({
   usePageScroll = false,
   mobileSnapSections = false,
   bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
+  headerOffset,
   immersiveBrowserMode = false,
   exportScopeLabel,
   exportFrom,
@@ -207,6 +209,14 @@ export default function FeedDetailV2({
   const reduceMotion = Boolean(prefersReducedMotion);
   const staggerContainer = useMemo(() => createStaggerContainer(reduceMotion), [reduceMotion]);
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
+  const activeFeedId = activeFeed?.id ?? null;
+
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    if (usePageScroll && typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [activeFeedId, usePageScroll]);
 
   if (!activeFeed) return null;
 
@@ -326,14 +336,15 @@ export default function FeedDetailV2({
       ref={scrollRef}
       className={
         usePageScroll
-          ? 'fm-feed-detail-scroll w-full min-h-[var(--fm-app-height,100dvh)] overflow-visible overflow-x-hidden scroll-smooth transform-gpu'
-          : 'fm-feed-detail-scroll hide-scrollbar h-full w-full snap-y snap-mandatory overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth transform-gpu'
+          ? 'fm-feed-detail-scroll w-full min-h-[var(--fm-app-height,100dvh)] overflow-visible overflow-x-hidden scroll-smooth'
+          : 'fm-feed-detail-scroll hide-scrollbar h-full w-full snap-y snap-mandatory overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth'
       }
       style={{
         WebkitOverflowScrolling: 'touch',
         scrollPaddingTop: 'calc(var(--fm-mobile-detail-header-offset) + 6px)',
         scrollPaddingBottom: bottomClearance,
         ['--fm-feed-bottom-clearance' as string]: bottomClearance,
+        ...(headerOffset ? { ['--fm-mobile-detail-header-offset' as string]: headerOffset } : {}),
       }}
     >
       <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)' }} />
@@ -370,7 +381,7 @@ export default function FeedDetailV2({
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
-        className="fm-tab-canvas-shell mx-auto hidden w-full px-2 sm:px-0 transform-gpu lg:block"
+        className="fm-tab-canvas-shell mx-auto hidden w-full px-2 sm:px-0 lg:block"
         style={{ paddingBottom: bottomClearance }}
       >
         <div className="bento-feed-grid grid gap-2.5 sm:gap-3 lg:gap-3.5">
