@@ -1225,15 +1225,14 @@ def _upsert_signal(conn: Any, candidate: SignalCandidate) -> int:
                 """,
                 post_rows,
             )
-        stale_existing_card = (
+        stale_existing_signal = (
             existing_status == "fresh"
             and (
                 _json_signature(existing_metric_snapshot) != _json_signature(candidate.metric_snapshot)
                 or existing_post_signature != new_post_signature
             )
         )
-        if stale_existing_card:
-            cur.execute("delete from public.signal_intelligence where signal_id = %s", (signal_id,))
+        if stale_existing_signal:
             cur.execute("update public.signals set status = 'stale', updated_at = now() where id = %s", (signal_id,))
         return signal_id
 

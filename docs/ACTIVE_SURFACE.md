@@ -14,24 +14,24 @@ This project is being actively maintained around a small, stable contract:
 
 ## Active backend files
 
-- `/Users/Akash/feed_me/apps/worker/app/brightdata.py`
-- `/Users/Akash/feed_me/apps/worker/app/scraper.py`
-- `/Users/Akash/feed_me/apps/worker/app/pure_engine.py`
-- `/Users/Akash/feed_me/apps/web/src/app/api/feed/route.ts`
-- `/Users/Akash/feed_me/apps/web/src/app/api/feed/dashboard/route.ts`
+- `apps/worker/app/brightdata.py`
+- `apps/worker/app/scraper.py`
+- `apps/worker/app/pure_engine.py`
+- `apps/web/src/app/api/feed/route.ts`
+- `apps/web/src/app/api/feed/dashboard/route.ts`
 
 ## Active SQL files
 
-- `/Users/Akash/feed_me/infra/supabase/sql/brightdata_schedule_source_of_truth.sql`
-- `/Users/Akash/feed_me/infra/supabase/migrations/20260327113000_brightdata_exact_checkpoint_schedule.sql`
+- `infra/supabase/sql/brightdata_schedule_source_of_truth.sql`
+- `infra/supabase/migrations/20260327113000_brightdata_exact_checkpoint_schedule.sql`
 
 ## Active frontend surfaces
 
-- `/Users/Akash/feed_me/apps/web/src/app/page.tsx`
-- `/Users/Akash/feed_me/apps/web/src/app/fire/page.tsx`
-- `/Users/Akash/feed_me/apps/web/src/app/profile/page.tsx`
-- `/Users/Akash/feed_me/apps/web/src/components/TopNav.tsx`
-- `/Users/Akash/feed_me/apps/web/src/components/BottomNav.tsx`
+- `apps/web/src/app/page.tsx`
+- `apps/web/src/app/fire/page.tsx`
+- `apps/web/src/app/profile/page.tsx`
+- `apps/web/src/components/TopNav.tsx`
+- `apps/web/src/components/BottomNav.tsx`
 
 ## Notes on legacy migrations
 

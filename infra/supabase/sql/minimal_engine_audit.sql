@@ -13,7 +13,8 @@ with required_tables(name) as (
     ('signals'),
     ('signal_posts'),
     ('post_fingerprints'),
-    ('signal_intelligence'),
+    ('post_breakdowns'),
+    ('feeder_files'),
     ('post_media_assets'),
     ('web_push_subscriptions'),
     ('web_push_jobs')

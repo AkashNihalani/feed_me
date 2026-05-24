@@ -39,21 +39,6 @@ function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function isMissingRelationError(error: unknown, relation: string): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const record = error as Record<string, unknown>;
-  const code = typeof record.code === 'string' ? record.code : '';
-  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
-  const details = typeof record.details === 'string' ? record.details.toLowerCase() : '';
-  const target = relation.toLowerCase();
-  return (
-    code === 'PGRST205'
-    || message.includes(`could not find the table 'public.${target}'`)
-    || message.includes(`relation \"${target}\" does not exist`)
-    || details.includes(`public.${target}`)
-  );
-}
-
 function arrayValue<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -856,7 +841,6 @@ type PatternBoardSignalCard = {
 const PATTERN_BOARD_LIMIT = 10;
 const PATTERN_BOARD_CUE_MAX = 4;
 const PATTERN_BOARD_SUPPORT_MAX = 6;
-const CURRENT_SIGNAL_CARD_MODEL_MARKERS = ['movement_thesis_v1_pressure'];
 
 type PatternBoardSupportMeta = {
   post_key: string;
@@ -1039,27 +1023,6 @@ async function fetchPatternBoard(
       supportBySignal.set(signalId, bucket);
     }
   }
-  const cardBySignal = new Map<number, Record<string, unknown>>();
-  if (signalIds.length > 0) {
-    const { data: cardRows, error: cardError } = await sb
-      .from('signal_intelligence')
-      .select('signal_id,card,model_version')
-      .in('signal_id', signalIds);
-    if (cardError) {
-      if (!isMissingRelationError(cardError, 'signal_intelligence')) throw cardError;
-    } else {
-      for (const row of (cardRows || []) as Array<Record<string, unknown>>) {
-        const signalId = nullableNumber(row.signal_id);
-        const modelVersion = nullableString(row.model_version) || '';
-        const isCurrentModel = CURRENT_SIGNAL_CARD_MODEL_MARKERS.some((marker) => modelVersion.includes(marker));
-        if (!isCurrentModel) continue;
-        const card = recordValue(row.card);
-        if (signalId == null || Object.keys(card).length === 0) continue;
-        cardBySignal.set(signalId, card);
-      }
-    }
-  }
-
   const aggregate = new Map<string, {
     firewatch_id: string;
     signal_code: string;
@@ -1084,8 +1047,7 @@ async function fetchPatternBoard(
   for (const row of signalRows) {
     const signalId = nullableNumber(row.id) || 0;
     const snapshot = recordValue(row.metric_snapshot);
-    const card = cardBySignal.get(signalId) || {};
-    if (Object.keys(card).length === 0) continue;
+    const card: Record<string, unknown> = {};
     const payload = {
       pattern_name: nullableString(row.signal_type),
       pattern_label: nullableString(card.title),
