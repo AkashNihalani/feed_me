@@ -345,10 +345,11 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
             select asset_role, public_url, storage_path
             from public.post_media_assets
             where post_key = %s
-              and asset_role in ('video_full', 'preview_5s')
-              and status in ('active', 'purge_pending', 'pending_capture')
+              and asset_role = 'video_full'
+              and status in ('active', 'purge_pending')
               and coalesce(storage_path, public_url, '') <> ''
-            order by case asset_role when 'video_full' then 0 else 1 end
+            order by updated_at desc nulls last
+            limit 1
             """,
             (post_key,),
         )
@@ -370,6 +371,9 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
 def _fingerprint_media_parts(post: dict[str, Any], provider: str) -> tuple[list[dict[str, Any]], str, str]:
     if str(post.get("media_type") or "").lower() not in {"reel", "video"}:
         return [], _sha(""), "low"
+    source_role = str(post.get("_video_asset_role") or "").strip().lower()
+    if source_role != "video_full":
+        return [], _sha(""), "low"
     video_data = _fetch_bytes(post.get("video_url"), timeout=60, max_bytes=_VIDEO_UPLOAD_MAX_BYTES)
     if not video_data:
         return [], _sha(""), "low"
@@ -380,9 +384,7 @@ def _fingerprint_media_parts(post: dict[str, Any], provider: str) -> tuple[list[
     part = _openrouter_video_part(video_bytes, mime_type) if provider == "openrouter" else _gemini_video_part(video_bytes, mime_type)
     if not part:
         return [], _sha(""), "low"
-    source_role = str(post.get("_video_asset_role") or "video").strip().lower()
-    confidence = "medium" if source_role == "preview_5s" else "high"
-    return [part], _sha(f"{source_role}:{_sha(video_bytes)}"), confidence
+    return [part], _sha(f"{source_role}:{_sha(video_bytes)}"), "high"
 
 
 def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
@@ -394,9 +396,9 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         return None
 
     caption = str(post.get("caption") or "")
-    media_parts, media_hash, confidence = _fingerprint_media_parts(post, provider)
+    media_parts, media_hash, _confidence = _fingerprint_media_parts(post, provider)
     if not media_parts or media_hash == _sha(""):
-        print(f"[fingerprint] skipped post_key={post_key}: missing stored reel media")
+        print(f"[fingerprint] skipped post_key={post_key}: missing active video_full media")
         return None
 
     caption_hash = _sha(caption)
@@ -442,7 +444,7 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         fingerprint = fingerprint["pool_clustering_fields"]
     fingerprint["post_key"] = str(fingerprint.get("post_key") or post_key)
     fingerprint["media_type"] = "reel"
-    fingerprint["media_confidence"] = str(fingerprint.get("media_confidence") or confidence)
+    fingerprint["media_confidence"] = "high"
     fingerprint["fingerprint_status"] = {
         "media_confidence": fingerprint["media_confidence"],
         "model_version": model_version,
@@ -482,7 +484,6 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
 
 
 def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: int) -> list[str]:
-    model_version = current_model_version()
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -496,17 +497,25 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                   coalesce(pm.percentile_performance, 101)
                 ) as d7_percentile,
                 row_number() over (partition by p.feeder_id order by p.posted_at desc nulls last) as recent_rank,
-                pf.model_version,
-                pf.sampling_policy_version
+                pf_high.post_key as high_fingerprint_post_key
               from public.posts p
               join public.post_metrics pm
                 on pm.post_key = p.post_key
                and pm.checkpoint = 'd7'
-              left join public.post_fingerprints pf
-                on pf.post_key = p.post_key
+              left join public.post_fingerprints pf_high
+                on pf_high.post_key = p.post_key
+               and pf_high.media_confidence = 'high'
               where lower(coalesce(p.media_type, '')) in ('reel', 'video')
                 and p.posted_at >= now() - (%s::int * interval '1 day')
                 and (%s::int is null or p.feeder_id = %s::int)
+                and exists (
+                  select 1
+                  from public.post_media_assets pma
+                  where pma.post_key = p.post_key
+                    and pma.asset_role = 'video_full'
+                    and pma.status in ('active', 'purge_pending')
+                    and coalesce(pma.storage_path, pma.public_url, '') <> ''
+                )
             ),
             scored as (
               select
@@ -525,15 +534,11 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                 d7_percentile <= 25
                 or (recent_rank <= 10 and recent_performance_rank <= 2)
               )
-              and (
-                model_version is null
-                or model_version <> %s
-                or sampling_policy_version <> %s
-              )
+              and high_fingerprint_post_key is null
             order by d7_percentile asc nulls last, posted_at desc nulls last
             limit %s
             """,
-            (max(1, int(days)), feeder_id, feeder_id, model_version, FINGERPRINT_SAMPLING_POLICY_VERSION, max(1, int(limit))),
+            (max(1, int(days)), feeder_id, feeder_id, max(1, int(limit))),
         )
         rows = cur.fetchall()
     return [str(row["post_key"]) for row in rows if row.get("post_key")]

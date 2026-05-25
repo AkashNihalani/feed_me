@@ -46,7 +46,7 @@ OUTPUT
   "observed_alignments": [],
   "notable_observed_details": [],
   "uncertainties": [],
-  "media_confidence": "high|medium|low"
+  "media_confidence": "high"
 }
 
 FIELD RULES
