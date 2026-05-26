@@ -4,7 +4,7 @@ import { ArrowUpRight, BrainCircuit, LayoutGrid, Sparkles } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { GRID_ITEM_EASE } from '@/lib/motion';
 
-type FeederboardTileProps = {
+type FeederFileTileProps = {
   feedTitle: string;
   feederCount: number;
   trackedPosts: string;
@@ -29,12 +29,12 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function FeederboardTile({
+export default function FeederFileTile({
   feedTitle,
   feederCount,
   trackedPosts,
   onOpen,
-}: FeederboardTileProps) {
+}: FeederFileTileProps) {
   const prefersReducedMotion = useReducedMotion();
 
   return (
@@ -55,7 +55,7 @@ export default function FeederboardTile({
       }
       whileTap={{ scale: 0.985 }}
       className="fm-depth-glass group relative isolate flex min-h-[180px] flex-col justify-between overflow-hidden rounded-[22px] p-4 text-left"
-      aria-label={`Open Feederboard for ${feedTitle}`}
+      aria-label={`Open Feeder File for ${feedTitle}`}
     >
       <div className="pointer-events-none absolute inset-0 z-0">
         <div className="absolute right-[-26%] top-[-42%] h-52 w-52 rounded-full bg-[radial-gradient(circle,rgba(225,29,72,0.28),transparent_68%)] blur-[6px]" />
@@ -75,7 +75,7 @@ export default function FeederboardTile({
       <div className="relative z-10 mt-5">
         <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-foreground/42 dark:text-white/36">
           <LayoutGrid size={12} strokeWidth={2.8} />
-          Feederboard
+          Feeder File
         </div>
         <h3 className="mt-1.5 text-[25px] font-black leading-[0.92] tracking-normal text-foreground dark:text-white">
           Content intelligence

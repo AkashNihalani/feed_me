@@ -5,14 +5,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
-import FeederboardTile from '@/components/feed/FeederboardTile';
+import FeederFileTile from '@/components/feed/FeederFileTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
-import FocusDialog from '@/components/feed/FocusDialog';
-import { FocusBrief, CREATE_FEED_LAST_STEP, defaultFocusBrief, buildFocusBible, normalizeFocusBrief } from '@/components/feed/focusUtils';
+import FeedBriefDialog from '@/components/feed/FeedBriefDialog';
+import { FeedBrief, CREATE_FEED_LAST_STEP, defaultFeedBrief, buildFeedBriefText, normalizeFeedBrief } from '@/components/feed/feedBriefUtils';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
 import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
@@ -33,9 +33,9 @@ type Feed = {
   feeders: Feeder[];
   metrics: FeedMetrics;
   compositePercentile?: number | string | null;
-  focusBrief?: Partial<FocusBrief> | Record<string, unknown>;
-  focusBible?: string;
-  contextBrief?: Partial<FocusBrief> | Record<string, unknown>;
+  feedBrief?: Partial<FeedBrief> | Record<string, unknown>;
+  feedBriefText?: string;
+  contextBrief?: Partial<FeedBrief> | Record<string, unknown>;
   contextBible?: string;
 };
 type SortMode = 'recent' | 'name' | 'feeders';
@@ -249,11 +249,11 @@ function FeedPageContent() {
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
   const [pendingDeleteFeedId, setPendingDeleteFeedId] = useState<string | null>(null);
   const [newFeedName, setNewFeedName] = useState('');
-  const [newFeedBrief, setNewFeedBrief] = useState<FocusBrief>(() => defaultFocusBrief());
+  const [newFeedBrief, setNewFeedBrief] = useState<FeedBrief>(() => defaultFeedBrief());
   const [createFeedStep, setCreateFeedStep] = useState(0);
   const [newFeedBibleDraft, setNewFeedBibleDraft] = useState('');
   const [isEditingFeedContext, setIsEditingFeedContext] = useState(false);
-  const [editFeedBrief, setEditFeedBrief] = useState<FocusBrief>(() => defaultFocusBrief());
+  const [editFeedBrief, setEditFeedBrief] = useState<FeedBrief>(() => defaultFeedBrief());
   const [editFeedStep, setEditFeedStep] = useState(0);
   const [editFeedBibleDraft, setEditFeedBibleDraft] = useState('');
   const [isBusy, setIsBusy] = useState(false);
@@ -292,12 +292,12 @@ function FeedPageContent() {
     () => (pendingDeleteFeedId ? feeds.find((feed) => feed.id === pendingDeleteFeedId) ?? null : null),
     [feeds, pendingDeleteFeedId]
   );
-  const newFocusBiblePreview = useMemo(
-    () => buildFocusBible(newFeedBrief, newFeedName.trim() || 'this feed'),
+  const newFeedBriefPreview = useMemo(
+    () => buildFeedBriefText(newFeedBrief, newFeedName.trim() || 'this feed'),
     [newFeedBrief, newFeedName],
   );
-  const editFocusBiblePreview = useMemo(
-    () => buildFocusBible(editFeedBrief, activeFeed?.title || 'this feed'),
+  const editFeedBriefPreview = useMemo(
+    () => buildFeedBriefText(editFeedBrief, activeFeed?.title || 'this feed'),
     [activeFeed?.title, editFeedBrief],
   );
   const handles = useMemo<string[]>(() => {
@@ -574,20 +574,20 @@ function FeedPageContent() {
   const resetCreateFeedModal = () => {
     setIsCreatingFeed(false);
     setNewFeedName('');
-    setNewFeedBrief(defaultFocusBrief());
+    setNewFeedBrief(defaultFeedBrief());
     setCreateFeedStep(0);
     setNewFeedBibleDraft('');
   };
   const closeCreateFeedModal = () => {
     const dirty = Boolean(
       newFeedName.trim()
-      || JSON.stringify(newFeedBrief) !== JSON.stringify(defaultFocusBrief())
+      || JSON.stringify(newFeedBrief) !== JSON.stringify(defaultFeedBrief())
       || newFeedBibleDraft.trim(),
     );
-    if (dirty && typeof window !== 'undefined' && !window.confirm('Discard this Focus?')) return;
+    if (dirty && typeof window !== 'undefined' && !window.confirm('Discard this Brief?')) return;
     resetCreateFeedModal();
   };
-  const updateNewFeedBrief = (patch: Partial<FocusBrief>) => {
+  const updateNewFeedBrief = (patch: Partial<FeedBrief>) => {
     setNewFeedBrief((current) => ({ ...current, ...patch }));
   };
   const handleCreateFeed = async () => {
@@ -603,8 +603,8 @@ function FeedPageContent() {
     const ok = await runFeedAction({
       action: 'create_feed',
       title: newFeedName.trim(),
-      focusBrief: newFeedBrief,
-      focusBible: newFeedBibleDraft.trim() || newFocusBiblePreview,
+      feedBrief: newFeedBrief,
+      feedBriefText: newFeedBibleDraft.trim() || newFeedBriefPreview,
     });
     if (ok) resetCreateFeedModal();
   };
@@ -613,16 +613,16 @@ function FeedPageContent() {
   };
   const resetCreateFeedContext = () => {
     setNewFeedName('');
-    setNewFeedBrief(defaultFocusBrief());
+    setNewFeedBrief(defaultFeedBrief());
     setCreateFeedStep(0);
     setNewFeedBibleDraft('');
   };
   const openFeedContextEditor = () => {
     if (!activeFeed) return;
-    const brief = normalizeFocusBrief(activeFeed.focusBrief || activeFeed.contextBrief);
+    const brief = normalizeFeedBrief(activeFeed.feedBrief || activeFeed.contextBrief);
     setEditFeedBrief(brief);
     setEditFeedStep(0);
-    setEditFeedBibleDraft(String(activeFeed.focusBible || activeFeed.contextBible || '').trim() || buildFocusBible(brief, activeFeed.title || 'this feed'));
+    setEditFeedBibleDraft(String(activeFeed.feedBriefText || activeFeed.contextBible || '').trim() || buildFeedBriefText(brief, activeFeed.title || 'this feed'));
     setIsEditingFeedContext(true);
   };
   const closeFeedContextEditor = () => {
@@ -630,14 +630,14 @@ function FeedPageContent() {
       setIsEditingFeedContext(false);
       return;
     }
-    const originalBrief = normalizeFocusBrief(activeFeed.focusBrief || activeFeed.contextBrief);
-    const originalBible = String(activeFeed.focusBible || activeFeed.contextBible || '').trim() || buildFocusBible(originalBrief, activeFeed.title || 'this feed');
+    const originalBrief = normalizeFeedBrief(activeFeed.feedBrief || activeFeed.contextBrief);
+    const originalBible = String(activeFeed.feedBriefText || activeFeed.contextBible || '').trim() || buildFeedBriefText(originalBrief, activeFeed.title || 'this feed');
     const dirty = JSON.stringify(editFeedBrief) !== JSON.stringify(originalBrief)
       || editFeedBibleDraft.trim() !== originalBible.trim();
-    if (dirty && typeof window !== 'undefined' && !window.confirm('Discard changes to this Focus?')) return;
+    if (dirty && typeof window !== 'undefined' && !window.confirm('Discard changes to this Brief?')) return;
     setIsEditingFeedContext(false);
   };
-  const updateEditFeedBrief = (patch: Partial<FocusBrief>) => {
+  const updateEditFeedBrief = (patch: Partial<FeedBrief>) => {
     setEditFeedBrief((current) => ({ ...current, ...patch }));
   };
   const handleSaveFeedContext = async () => {
@@ -654,8 +654,8 @@ function FeedPageContent() {
       action: 'update_feed_context',
       feedId: Number(activeFeed.id),
       title: activeFeed.title,
-      focusBrief: editFeedBrief,
-      focusBible: editFeedBibleDraft.trim() || editFocusBiblePreview,
+      feedBrief: editFeedBrief,
+      feedBriefText: editFeedBibleDraft.trim() || editFeedBriefPreview,
     });
     if (ok) setIsEditingFeedContext(false);
   };
@@ -1092,8 +1092,8 @@ function FeedPageContent() {
               onExport={() => { play('snapLock'); handleDownloadExport(); }}
             >
               {activeFeed && (
-                <FeederboardTile
-                  key="feederboard"
+                <FeederFileTile
+                  key="feeder-file"
                   feedTitle={activeFeed.title}
                   feederCount={activeFeed.feeders.length}
                   trackedPosts={activeFeed.metrics?.postsTracked || '0'}
@@ -1102,13 +1102,13 @@ function FeedPageContent() {
                     if (selectedHandle !== 'all') params.set('handle', selectedHandle);
                     const query = params.toString();
                     play('snapLock');
-                    router.push(`/feed/${activeFeed.id}/feederboard${query ? `?${query}` : ''}`, { scroll: false });
+                    router.push(`/feed/${activeFeed.id}/feeder-file${query ? `?${query}` : ''}`, { scroll: false });
                   }}
                 />
               )}
               {activeFeed && (
                 <motion.button
-                  key="focus"
+                  key="brief"
                   layout
                   initial={{ scale: 0.95 }}
                   animate={{ scale: 1 }}
@@ -1123,17 +1123,17 @@ function FeedPageContent() {
                     </div>
                     <span className={cn(
                       'rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em]',
-                      activeFeed.focusBible || activeFeed.contextBible
+                      activeFeed.feedBriefText || activeFeed.contextBible
                         ? 'bg-[#E11D48] text-white'
                         : 'bg-black/6 text-foreground/42 dark:bg-white/8 dark:text-white/36',
                     )}>
-                      {activeFeed.focusBible || activeFeed.contextBible ? 'Saved' : 'Add'}
+                      {activeFeed.feedBriefText || activeFeed.contextBible ? 'Saved' : 'Add'}
                     </span>
                   </div>
                   <div>
-                    <div className="text-[18px] font-black tracking-normal text-foreground dark:text-white">Focus</div>
+                    <div className="text-[18px] font-black tracking-normal text-foreground dark:text-white">Brief</div>
                     <div className="mt-1 line-clamp-2 text-[11px] font-semibold leading-relaxed text-foreground/48 dark:text-white/38">
-                      {activeFeed.focusBible || activeFeed.contextBible || 'Add the niche, audience, and tracking priorities before intelligence cards run.'}
+                      {activeFeed.feedBriefText || activeFeed.contextBible || 'Add the niche, audience, and tracking priorities before intelligence cards run.'}
                     </div>
                   </div>
                 </motion.button>
@@ -1184,7 +1184,7 @@ function FeedPageContent() {
         )}
       </AnimatePresence>
 
-      <FocusDialog
+      <FeedBriefDialog
         open={isCreatingFeed}
         mode="create"
         title={newFeedName || 'New feed'}
@@ -1203,7 +1203,7 @@ function FeedPageContent() {
         onStartOver={resetCreateFeedContext}
       />
 
-      <FocusDialog
+      <FeedBriefDialog
         open={isEditingFeedContext && Boolean(activeFeed)}
         mode="edit"
         title={activeFeed?.title || 'Feed'}
@@ -1219,10 +1219,10 @@ function FeedPageContent() {
         onBack={() => setEditFeedStep((current) => Math.max(0, current - 1))}
         onStartOver={() => {
           if (!activeFeed) return;
-          const brief = normalizeFocusBrief(activeFeed.focusBrief || activeFeed.contextBrief);
+          const brief = normalizeFeedBrief(activeFeed.feedBrief || activeFeed.contextBrief);
           setEditFeedBrief(brief);
           setEditFeedStep(0);
-          setEditFeedBibleDraft(String(activeFeed.focusBible || activeFeed.contextBible || '').trim() || buildFocusBible(brief, activeFeed.title || 'this feed'));
+          setEditFeedBibleDraft(String(activeFeed.feedBriefText || activeFeed.contextBible || '').trim() || buildFeedBriefText(brief, activeFeed.title || 'this feed'));
         }}
       />
       <AnimatePresence>

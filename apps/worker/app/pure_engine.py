@@ -34,6 +34,8 @@ from .config import (
     CHECKPOINT_BATCH_HOUR_24,
     CHECKPOINT_BATCH_MINUTE,
     CHECKPOINT_BUCKET_MINUTES,
+    FEEDER_FILE_MEMORY_DAYS,
+    FEEDER_FILE_MEMORY_LIMIT,
     FEEDER_INTELLIGENCE_AUTO_INTERVAL_SECONDS,
     FEEDER_INTELLIGENCE_AUTO_LIMIT,
     FEEDER_INTELLIGENCE_ENABLED,
@@ -56,7 +58,11 @@ from .signal_detection import (
     resolve_signals_for_feed as run_signals_for_feed,
 )
 from .fingerprint_intelligence import fingerprint_reels as run_fingerprint_reels
-from .official_feeder_files import upsert_official_feeder_files as run_upsert_official_feeder_files
+from .feeder_file_pipeline import (
+    package_feeder_file_once as package_feeder_file_pipeline_once,
+    run_feeder_file_from_recent_fingerprints_once as run_feeder_file_recent_fingerprints_pipeline_once,
+    run_feeder_file_once as run_feeder_file_pipeline_once,
+)
 from .retry_policy import (
     hard_skip_error as _hard_skip_error,
     is_connection_error as _is_connection_error,
@@ -1649,6 +1655,127 @@ class PureEngine:
                 include_all_roles=True,
             )
 
+    def _stage_d7_feeder_file_media_for_feeder(
+        self,
+        feeder_id: int,
+        *,
+        limit: int | None = None,
+        days: int = _FIRE_RANKING_WINDOW_DAYS,
+    ) -> dict[str, int]:
+        if not FIRE_MEDIA_RETENTION_ENABLED or feeder_id <= 0:
+            return {"selected": 0, "staged": 0, "captured": 0, "failed": 0}
+
+        rows = self.conn.execute(
+            """
+            with reel_d7 as (
+              select
+                p.post_key,
+                p.feeder_id,
+                p.posted_at,
+                lower(coalesce(p.media_type, '')) as media_type,
+                p.video_url,
+                least(
+                  coalesce(pm.percentile_performance_exact, 101),
+                  coalesce(pm.percentile_performance, 101)
+                ) as d7_percentile,
+                row_number() over (
+                  partition by p.feeder_id
+                  order by p.posted_at desc nulls last
+                ) as recent_rank,
+                pf_high.post_key as high_fingerprint_post_key
+              from public.posts p
+              join public.post_metrics pm
+                on pm.post_key = p.post_key
+               and lower(pm.checkpoint) = 'd7'
+              left join public.post_fingerprints pf_high
+                on pf_high.post_key = p.post_key
+               and pf_high.media_confidence = 'high'
+              where p.feeder_id = %s
+                and lower(coalesce(p.media_type, '')) in ('reel', 'video')
+                and p.posted_at >= now() - (%s::int * interval '1 day')
+            ),
+            scored as (
+              select
+                *,
+                row_number() over (
+                  partition by feeder_id
+                  order by
+                    case when recent_rank <= 10 then d7_percentile else null end asc nulls last,
+                    posted_at desc nulls last
+                ) as recent_performance_rank
+              from reel_d7
+            )
+            select post_key, posted_at, media_type, video_url
+            from scored
+            where (
+                d7_percentile <= 25
+                or (recent_rank <= 10 and recent_performance_rank <= 2)
+              )
+              and high_fingerprint_post_key is null
+              and coalesce(video_url, '') <> ''
+              and not exists (
+                select 1
+                from public.post_media_assets pma
+                where pma.post_key = scored.post_key
+                  and pma.asset_role = 'video_full'
+                  and pma.status in ('active', 'purge_pending')
+                  and coalesce(pma.storage_path, pma.public_url, '') <> ''
+              )
+            order by d7_percentile asc nulls last, posted_at desc nulls last
+            limit %s
+            """,
+            (feeder_id, max(1, int(days)), max(1, int(limit or FEEDER_INTELLIGENCE_AUTO_LIMIT))),
+        ).fetchall()
+
+        staged_post_keys: list[str] = []
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            video_url = str(row.get("video_url") or "").strip() or None
+            if not post_key or not video_url:
+                continue
+            self._stage_post_media_assets(
+                post_key,
+                _to_dt(row.get("posted_at")),
+                None,
+                video_url,
+                None,
+                full_video_retention_days=_HOT_VISUAL_ASSET_RETENTION_DAYS,
+                stage_preview=False,
+            )
+            staged_post_keys.append(post_key)
+        self.conn.commit()
+
+        capture_result = {"captured": 0, "failed": 0}
+        if staged_post_keys:
+            capture_result = self._capture_post_media_assets_for_post_keys(
+                staged_post_keys,
+                asset_roles=("video_full",),
+            )
+        return {
+            "selected": len(rows),
+            "staged": len(staged_post_keys),
+            "captured": int(capture_result.get("captured", 0)),
+            "failed": int(capture_result.get("failed", 0)),
+        }
+
+    def _run_d7_feeder_file_metric_trigger(self, feeder_id: int) -> dict[str, Any]:
+        if not FEEDER_INTELLIGENCE_ENABLED or feeder_id <= 0:
+            return {"enabled": False}
+        media_result = self._stage_d7_feeder_file_media_for_feeder(
+            feeder_id,
+            limit=max(1, int(FEEDER_INTELLIGENCE_AUTO_LIMIT)),
+        )
+        intelligence_result = self.fingerprint_reels(
+            feeder_id=feeder_id,
+            limit=max(1, int(FEEDER_INTELLIGENCE_AUTO_LIMIT)),
+            days=_FIRE_RANKING_WINDOW_DAYS,
+        )
+        return {
+            "enabled": True,
+            "media": media_result,
+            "intelligence": intelligence_result,
+        }
+
     def _claim_post_media_assets_for_capture(self, limit: int) -> list[dict]:
         if not FIRE_MEDIA_RETENTION_ENABLED:
             return []
@@ -2441,8 +2568,54 @@ class PureEngine:
             days=days,
         )
 
-    def seed_official_feeder_files(self):
-        return run_upsert_official_feeder_files(self.conn)
+    def run_feeder_file_once(
+        self,
+        feeder_id: int | None = None,
+        handle: str | None = None,
+        limit: int = FEEDER_FILE_MEMORY_LIMIT,
+        days: int = FEEDER_FILE_MEMORY_DAYS,
+        pattern_limit: int = 3,
+    ):
+        return run_feeder_file_pipeline_once(
+            self.conn,
+            feeder_id=feeder_id,
+            handle=handle,
+            limit=limit,
+            days=days,
+            pattern_limit=pattern_limit,
+        )
+
+    def run_feeder_file_from_recent_fingerprints_once(
+        self,
+        feeder_id: int | None = None,
+        handle: str | None = None,
+        limit: int = 10,
+        pattern_limit: int = 3,
+    ):
+        return run_feeder_file_recent_fingerprints_pipeline_once(
+            self.conn,
+            feeder_id=feeder_id,
+            handle=handle,
+            limit=limit,
+            pattern_limit=pattern_limit,
+        )
+
+    def package_feeder_file_once(
+        self,
+        feeder_id: int | None = None,
+        handle: str | None = None,
+        compile_version: str | None = None,
+        pattern_id: str | None = None,
+        pattern_limit: int = 3,
+    ):
+        return package_feeder_file_pipeline_once(
+            self.conn,
+            feeder_id=feeder_id,
+            handle=handle,
+            compile_version=compile_version,
+            pattern_id=pattern_id,
+            pattern_limit=pattern_limit,
+        )
 
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
         """Get a URL for a cached media asset."""
@@ -2962,6 +3135,7 @@ class PureEngine:
                                 touched.add((feeder_id, cp, business_day))
 
             recomputed_pairs: set[tuple[int, str]] = set()
+            intelligence_triggered_feeders: set[int] = set()
 
             # Resolver chain for checkpoint jobs once batch writes are done
             for feeder_id, cp, business_day in sorted(touched, key=lambda item: (item[2], item[0], item[1])):
@@ -2971,6 +3145,29 @@ class PureEngine:
                         self._recompute_feeder_checkpoint_rankings(feeder_id, cp)
                         recomputed_pairs.add(recompute_key)
                     self._extend_hot_visual_media_for_day(feeder_id, cp, business_day)
+                    if cp == "d7" and feeder_id not in intelligence_triggered_feeders:
+                        intelligence_triggered_feeders.add(feeder_id)
+                        try:
+                            intelligence_result = self._run_d7_feeder_file_metric_trigger(feeder_id)
+                            stats = intelligence_result.get("intelligence") if isinstance(intelligence_result, dict) else None
+                            media_stats = intelligence_result.get("media") if isinstance(intelligence_result, dict) else None
+                            if (
+                                isinstance(stats, dict)
+                                and (stats.get("selected") or stats.get("failed"))
+                            ) or (
+                                isinstance(media_stats, dict)
+                                and (media_stats.get("staged") or media_stats.get("failed"))
+                            ):
+                                print(
+                                    "[feeder-file-trigger] "
+                                    f"feeder_id={feeder_id} media={media_stats} intelligence={stats}"
+                                )
+                        except Exception as intelligence_exc:
+                            try:
+                                self.conn.rollback()
+                            except Exception:
+                                pass
+                            print(f"[feeder-file-trigger] failed for feeder={feeder_id}: {intelligence_exc}")
                     self._resolve_for_feeder(feeder_id, cp, business_day)
                     self._try_resolve_feed(feeder_id, cp, business_day)
                 except Exception as resolve_exc:

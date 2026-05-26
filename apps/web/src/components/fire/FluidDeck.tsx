@@ -643,8 +643,6 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                   style={{
                     zIndex: style.zIndex,
                     pointerEvents: isCurrent ? 'auto' : 'none',
-                    willChange: 'transform',
-                    backfaceVisibility: 'hidden',
                   }}
                 >
                   <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset }}>

@@ -104,7 +104,7 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
               animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
               exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
               transition={{ duration: FLIP_DURATION, ease: LUXURY_EASE }}
-              style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
+              style={{ transformOrigin: 'center center' }}
             >
               {item.handle}
             </motion.span>
@@ -125,7 +125,7 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
                 animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
                 exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
                 transition={{ duration: FLIP_DURATION, ease: LUXURY_EASE, delay: STAGGER_S }}
-                style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
+                style={{ transformOrigin: 'center center' }}
               >
                 <ValueBadge value={item.likesDelta} />
               </motion.div>
@@ -147,7 +147,7 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
                 animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
                 exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
                 transition={{ duration: FLIP_DURATION, ease: LUXURY_EASE, delay: STAGGER_S * 2 }}
-                style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
+                style={{ transformOrigin: 'center center' }}
               >
                 <ValueBadge value={item.commentsDelta} />
               </motion.div>
@@ -169,7 +169,7 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
                 animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
                 exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
                 transition={{ duration: FLIP_DURATION, ease: LUXURY_EASE, delay: STAGGER_S * 3 }}
-                style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden' }}
+                style={{ transformOrigin: 'center center' }}
               >
                 <ValueBadge value={item.viewsDelta} />
               </motion.div>
@@ -236,7 +236,7 @@ function MobileTicker({ items, className }: FlipTickerProps) {
             animate={{ rotateX: 0, opacity: 1 }}
             exit={{ rotateX: -60, opacity: 0 }}
             transition={{ duration: MOBILE_FLIP_DURATION, ease: LUXURY_EASE }}
-            style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden', willChange: 'transform, opacity' }}
+            style={{ transformOrigin: 'center center' }}
           >
             <span className="text-[14px] font-black uppercase tracking-[0.16em] text-black/60 dark:text-white/55 sm:text-[15px]">
               {item.handle}
@@ -267,7 +267,7 @@ function MobileTicker({ items, className }: FlipTickerProps) {
                   ease: LUXURY_EASE,
                   delay: i * MOBILE_STAGGER_S,
                 }}
-                style={{ transformOrigin: 'center center', backfaceVisibility: 'hidden', willChange: 'transform, opacity' }}
+                style={{ transformOrigin: 'center center' }}
               >
                 <Icon size={14} strokeWidth={2.5} className="text-black/35 dark:text-white/30" />
                 <span className="text-[13px]"><ValueBadge value={value} /></span>

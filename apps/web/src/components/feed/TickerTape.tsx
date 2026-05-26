@@ -151,10 +151,9 @@ export default function TickerTape({ items, className }: TickerTapeProps) {
       {/* CSS-animated infinite scrolling track */}
       <div
         ref={trackRef}
-        className="flex items-center whitespace-nowrap will-change-transform"
+        className="flex items-center whitespace-nowrap"
         style={{
           animation: `tickerScrollHalf ${duration}s linear infinite`,
-          transform: 'translate3d(0,0,0)',
         }}
       >
         {renderTape()}

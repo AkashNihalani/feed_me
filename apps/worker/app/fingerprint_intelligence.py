@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -11,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 import requests
+import yaml
 from psycopg.rows import dict_row
 
 from .config import (
@@ -21,11 +23,14 @@ from .config import (
     MEDIA_PUBLIC_BASE_URL,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
+    POST_BREAKDOWN_MODEL,
 )
 from .feeder_prompts import (
     FINGERPRINT_EXTRACTION_SYSTEM_V8,
     FINGERPRINT_PROMPT_VERSION,
     FINGERPRINT_SAMPLING_POLICY_VERSION,
+    POST_BREAKDOWN_EXTRACTION_SYSTEM_V2,
+    POST_BREAKDOWN_PROMPT_VERSION,
 )
 
 _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -263,6 +268,52 @@ def _json_from_text(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _strip_fences(value: str) -> str:
+    text = str(value or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        while lines and lines[-1].strip() == "```":
+            lines.pop()
+        text = "\n".join(lines).strip()
+    return text
+
+
+def _yaml_mapping_from_text(text: str) -> dict[str, Any] | None:
+    raw = _strip_fences(text)
+    for candidate in (raw, _repair_yaml_lines(raw)):
+        parsed = _safe_yaml_mapping(candidate)
+        if parsed is not None:
+            return parsed
+    index = raw.find("post_breakdown:")
+    if index > 0:
+        for candidate in (raw[index:], _repair_yaml_lines(raw[index:])):
+            parsed = _safe_yaml_mapping(candidate)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _repair_yaml_lines(text: str) -> str:
+    repaired: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and re.match(r"^(→|->|=>)\s+", stripped):
+            indent = line[: len(line) - len(line.lstrip())]
+            safe = stripped.replace("\\", "\\\\").replace('"', '\\"')
+            repaired.append(f'{indent}- "{safe}"')
+            continue
+        repaired.append(line)
+    return "\n".join(repaired)
+
+
+def _safe_yaml_mapping(text: str) -> dict[str, Any] | None:
+    try:
+        parsed = yaml.safe_load(text)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _call_model(
     user_text: str,
     media_parts: list[dict[str, Any]],
@@ -311,6 +362,180 @@ def _call_model(
     except Exception as exc:
         print(f"[fingerprint] model call failed: {exc}")
         return None
+
+
+def post_breakdown_model_version() -> str:
+    model = (POST_BREAKDOWN_MODEL or "").strip() or "none"
+    return f"openrouter:{model}:{POST_BREAKDOWN_PROMPT_VERSION}"
+
+
+def _call_post_breakdown_model(fingerprint: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    if not OPENROUTER_API_KEY:
+        return None
+    model = (POST_BREAKDOWN_MODEL or "").strip()
+    if not model:
+        return None
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": POST_BREAKDOWN_EXTRACTION_SYSTEM_V2},
+            {"role": "user", "content": json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False, indent=2, default=str)},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 1800,
+    }
+    try:
+        resp = requests.post(
+            f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://feedme.local",
+                "X-Title": "FeedMe Post Breakdown Pipeline",
+            },
+            json=payload,
+            timeout=180,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"OpenRouter status {resp.status_code}: {resp.text[:1200]}")
+        content = _extract_text(resp.json(), "openrouter")
+        parsed = _yaml_mapping_from_text(content)
+        if parsed:
+            return _strip_fences(content), parsed
+        raise RuntimeError("post breakdown output did not parse as YAML mapping")
+    except Exception as exc:
+        print(f"[post_breakdown] model call failed: {exc}")
+        return None
+
+
+def ensure_post_breakdown(conn: Any, post_key: str, fingerprint: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    if not fingerprint:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select fingerprint
+                from public.post_fingerprints
+                where post_key = %s
+                  and media_confidence = 'high'
+                limit 1
+                """,
+                (post_key,),
+            )
+            row = cur.fetchone()
+        fingerprint = row.get("fingerprint") if row else None
+    if not isinstance(fingerprint, dict):
+        return None
+
+    fingerprint_hash = _sha(fingerprint)
+    fingerprint_status = fingerprint.get("fingerprint_status") if isinstance(fingerprint.get("fingerprint_status"), dict) else {}
+    source_fingerprint_model_version = str(fingerprint_status.get("model_version") or "")
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select breakdown
+            from public.post_breakdowns
+            where post_key = %s
+              and breakdown_version = %s
+              and source_fingerprint_hash = %s
+            """,
+            (post_key, POST_BREAKDOWN_PROMPT_VERSION, fingerprint_hash),
+        )
+        existing = cur.fetchone()
+        if existing and isinstance(existing.get("breakdown"), dict):
+            return existing["breakdown"]
+
+    result = _call_post_breakdown_model(fingerprint)
+    if not result:
+        return None
+    raw_output, parsed = result
+    breakdown = parsed.get("post_breakdown")
+    if not isinstance(breakdown, dict):
+        print(f"[post_breakdown] skipped post_key={post_key}: missing post_breakdown")
+        return None
+    breakdown["post_key"] = str(breakdown.get("post_key") or post_key)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into public.post_breakdowns (
+              post_key, breakdown, breakdown_version,
+              source_fingerprint_model_version, source_fingerprint_hash,
+              generated_at, updated_at
+            )
+            values (%s, %s::jsonb, %s, %s, %s, now(), now())
+            on conflict (post_key) do update set
+              breakdown = excluded.breakdown,
+              breakdown_version = excluded.breakdown_version,
+              source_fingerprint_model_version = excluded.source_fingerprint_model_version,
+              source_fingerprint_hash = excluded.source_fingerprint_hash,
+              updated_at = now()
+            """,
+            (
+                post_key,
+                json.dumps({"post_breakdown": breakdown}, ensure_ascii=False),
+                POST_BREAKDOWN_PROMPT_VERSION,
+                source_fingerprint_model_version,
+                fingerprint_hash,
+            ),
+        )
+        cur.execute(
+            """
+            insert into public.feeder_file_model_calls (
+              feeder_file_id, call_key, call_type, feeder_handle, post_key,
+              model, prompt_version, system_prompt, user_payload,
+              raw_output, parsed_output, status, started_at, completed_at, updated_at
+            )
+            select null, %s, 'post_breakdown', lower(coalesce(f.handle, '')), %s,
+                   %s, %s, %s, %s::jsonb, %s, %s::jsonb,
+                   'complete', now(), now(), now()
+            from public.posts p
+            left join public.feeders f on f.id = p.feeder_id
+            where p.post_key = %s
+            on conflict (call_type, post_key, prompt_version)
+            where call_type = 'post_breakdown' and post_key is not null
+            do update set
+              feeder_handle = excluded.feeder_handle,
+              model = excluded.model,
+              system_prompt = excluded.system_prompt,
+              user_payload = excluded.user_payload,
+              raw_output = excluded.raw_output,
+              parsed_output = excluded.parsed_output,
+              status = 'complete',
+              error = null,
+              completed_at = now(),
+              updated_at = now()
+            """,
+            (
+                f"post_breakdown:{post_key}",
+                post_key,
+                POST_BREAKDOWN_MODEL,
+                POST_BREAKDOWN_PROMPT_VERSION,
+                POST_BREAKDOWN_EXTRACTION_SYSTEM_V2,
+                json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False),
+                raw_output,
+                json.dumps(parsed, ensure_ascii=False),
+                post_key,
+            ),
+        )
+    conn.commit()
+    return {"post_breakdown": breakdown}
+
+
+def _existing_high_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select fingerprint
+            from public.post_fingerprints
+            where post_key = %s
+              and media_confidence = 'high'
+            limit 1
+            """,
+            (post_key,),
+        )
+        row = cur.fetchone()
+    fingerprint = row.get("fingerprint") if row else None
+    return fingerprint if isinstance(fingerprint, dict) else None
 
 
 def _media_public_url(row: dict[str, Any]) -> str | None:
@@ -497,7 +722,8 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                   coalesce(pm.percentile_performance, 101)
                 ) as d7_percentile,
                 row_number() over (partition by p.feeder_id order by p.posted_at desc nulls last) as recent_rank,
-                pf_high.post_key as high_fingerprint_post_key
+                pf_high.post_key as high_fingerprint_post_key,
+                pb.post_key as post_breakdown_post_key
               from public.posts p
               join public.post_metrics pm
                 on pm.post_key = p.post_key
@@ -505,16 +731,21 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
               left join public.post_fingerprints pf_high
                 on pf_high.post_key = p.post_key
                and pf_high.media_confidence = 'high'
+              left join public.post_breakdowns pb
+                on pb.post_key = p.post_key
               where lower(coalesce(p.media_type, '')) in ('reel', 'video')
                 and p.posted_at >= now() - (%s::int * interval '1 day')
                 and (%s::int is null or p.feeder_id = %s::int)
-                and exists (
+                and (
+                  pf_high.post_key is not null
+                  or exists (
                   select 1
                   from public.post_media_assets pma
                   where pma.post_key = p.post_key
                     and pma.asset_role = 'video_full'
                     and pma.status in ('active', 'purge_pending')
                     and coalesce(pma.storage_path, pma.public_url, '') <> ''
+                  )
                 )
             ),
             scored as (
@@ -534,7 +765,7 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                 d7_percentile <= 25
                 or (recent_rank <= 10 and recent_performance_rank <= 2)
               )
-              and high_fingerprint_post_key is null
+              and (high_fingerprint_post_key is null or post_breakdown_post_key is null)
             order by d7_percentile asc nulls last, posted_at desc nulls last
             limit %s
             """,
@@ -547,13 +778,19 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
 def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 10, days: int = 90) -> dict[str, Any]:
     post_keys = _candidate_post_keys(conn, feeder_id=feeder_id, limit=limit, days=days)
     resolved = 0
+    breakdowns = 0
     missing_media = 0
     failed = 0
     for post_key in post_keys:
         try:
-            fingerprint = ensure_post_fingerprint(conn, post_key)
+            fingerprint = _existing_high_fingerprint(conn, post_key) or ensure_post_fingerprint(conn, post_key)
             if fingerprint:
                 resolved += 1
+                breakdown = ensure_post_breakdown(conn, post_key, fingerprint)
+                if breakdown:
+                    breakdowns += 1
+                else:
+                    failed += 1
             else:
                 missing_media += 1
         except Exception as exc:
@@ -566,6 +803,7 @@ def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 1
     return {
         "selected": len(post_keys),
         "resolved": resolved,
+        "post_breakdowns": breakdowns,
         "missing_media": missing_media,
         "failed": failed,
         "post_keys": post_keys,

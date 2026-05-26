@@ -13,6 +13,8 @@ import {
 import { useAppHaptics } from '@/lib/haptics';
 
 const PREVIEW_MAX_SECONDS = 5;
+const THUMBNAIL_FAILURE_TTL_MS = 10 * 60 * 1000;
+const thumbnailFailureCache = new Map<string, number>();
 
 export type FireCard3DProps = {
   item: FireItem;
@@ -105,6 +107,19 @@ function isRetryVariantOf(url: string, baseUrl: string): boolean {
   }
 }
 
+function isThumbnailFailureCached(key: string): boolean {
+  if (!key) return false;
+  const failedAt = thumbnailFailureCache.get(key);
+  if (!failedAt) return false;
+  if (Date.now() - failedAt <= THUMBNAIL_FAILURE_TTL_MS) return true;
+  thumbnailFailureCache.delete(key);
+  return false;
+}
+
+function rememberThumbnailFailure(key: string) {
+  if (key) thumbnailFailureCache.set(key, Date.now());
+}
+
 function clampPreviewProgress(currentTime: number, duration = PREVIEW_MAX_SECONDS): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
   return Math.max(0, Math.min(1, currentTime / duration));
@@ -139,15 +154,17 @@ export function FireCard3D({
   onBeforeOpenPost,
 }: FireCard3DProps) {
   const { play } = useAppHaptics();
+  const thumbnailFailureKey = item.postKey || item.id;
+  const initialThumbnailFailed = isThumbnailFailureCached(thumbnailFailureKey);
   const [openLocal, setOpenLocal] = useState(false);
-  const [imgDead, setImgDead] = useState(false);
+  const [imgDead, setImgDead] = useState(initialThumbnailFailed);
   const [previewReady, setPreviewReady] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [usePreviewFallback, setUsePreviewFallback] = useState(false);
   const [previewRetrySeed, setPreviewRetrySeed] = useState(0);
   const [isPrimed, setIsPrimed] = useState(false);
-  const [thumbnailUrl, setThumbnailUrl] = useState(text(item.thumbnailUrl));
+  const [thumbnailUrl, setThumbnailUrl] = useState(initialThumbnailFailed ? '' : text(item.thumbnailUrl));
   const primedTimeoutRef = useRef<number | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const previewProgressRingRef = useRef<HTMLSpanElement | null>(null);
@@ -310,12 +327,17 @@ export function FireCard3D({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      setImgDead(false);
       thumbnailRetryCountRef.current = 0;
+      if (isThumbnailFailureCached(thumbnailFailureKey)) {
+        setImgDead(true);
+        setThumbnailUrl('');
+        return;
+      }
+      setImgDead(false);
       setThumbnailUrl(text(item.thumbnailUrl) || thumbnailFallbackUrl);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [item.id, item.thumbnailUrl, thumbnailFallbackUrl]);
+  }, [item.id, item.thumbnailUrl, thumbnailFallbackUrl, thumbnailFailureKey]);
 
   useEffect(() => {
     if (!highlighted || !imgDead || !thumbnailFallbackUrl) return;
@@ -550,6 +572,8 @@ export function FireCard3D({
               setThumbnailUrl(withRetryBust(thumbnailFallbackUrl, `${item.id}-${Date.now()}`));
               return;
             }
+            rememberThumbnailFailure(thumbnailFailureKey);
+            setThumbnailUrl('');
             setImgDead(true);
           }}
           animate={{

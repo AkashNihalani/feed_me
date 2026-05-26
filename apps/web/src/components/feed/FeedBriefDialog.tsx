@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, RotateCcw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GRID_LAYOUT_SPRING } from '@/lib/motion';
 import {
-  FocusBrief,
+  FeedBrief,
   RELATIONSHIP_OPTIONS,
   ACCOUNT_TYPE_OPTIONS,
   CATEGORY_OPTIONS,
@@ -15,20 +15,20 @@ import {
   CREATE_FEED_STEPS,
   CREATE_FEED_LAST_STEP,
   MAX_PRIORITY_SELECTIONS,
-  buildFocusBible,
-} from './focusUtils';
+  buildFeedBriefText,
+} from './feedBriefUtils';
 
-type FocusDialogProps = {
+type FeedBriefDialogProps = {
   open: boolean;
   mode: 'create' | 'edit';
   title: string;
   feedName?: string;
-  brief: FocusBrief;
+  brief: FeedBrief;
   step: number;
   bibleDraft: string;
   isBusy: boolean;
   onFeedNameChange?: (value: string) => void;
-  onBriefChange: (patch: Partial<FocusBrief>) => void;
+  onBriefChange: (patch: Partial<FeedBrief>) => void;
   onStepChange: (step: number) => void;
   onBibleDraftChange: (value: string) => void;
   onClose: () => void;
@@ -39,7 +39,7 @@ type FocusDialogProps = {
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 
-export default function FocusDialog({
+export default function FeedBriefDialog({
   open,
   mode,
   title,
@@ -56,8 +56,8 @@ export default function FocusDialog({
   onPrimary,
   onBack,
   onStartOver,
-}: FocusDialogProps) {
-  const generatedSummary = useMemo(() => buildFocusBible(brief, title || feedName || 'this feed'), [brief, feedName, title]);
+}: FeedBriefDialogProps) {
+  const generatedSummary = useMemo(() => buildFeedBriefText(brief, title || feedName || 'this feed'), [brief, feedName, title]);
   const [typedSummary, setTypedSummary] = useState('');
   const [isTypingSummary, setIsTypingSummary] = useState(false);
   const isSummaryStep = step === CREATE_FEED_LAST_STEP;
@@ -194,7 +194,7 @@ export default function FocusDialog({
             <div className="border-b border-black/10 px-5 pb-4 pt-4 dark:border-white/8 md:px-6 md:pt-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400 dark:text-white/38">Focus</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400 dark:text-white/38">Brief</div>
                   <div className="mt-1 truncate text-[26px] font-black tracking-normal">{mode === 'create' ? 'New feed' : title}</div>
                   <p className="mt-2 text-[14px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Two minutes. We&apos;ll use this to read every signal in your voice.</p>
                 </div>
@@ -341,7 +341,7 @@ export default function FocusDialog({
                   <motion.div key="brain" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={GRID_LAYOUT_SPRING} className="flex h-full flex-col">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[22px] font-black tracking-normal">Your Focus</div>
+                        <div className="text-[22px] font-black tracking-normal">Your Brief</div>
                         <p className="mt-3 text-[15px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Edit the summary until it sounds like the way you want this feed read.</p>
                       </div>
                       <button
@@ -388,7 +388,7 @@ export default function FocusDialog({
                   disabled={!canProceed || isBusy}
                   className="flex h-11 items-center gap-2 rounded-[14px] bg-[#E11D48] px-5 text-[12px] font-black text-white disabled:opacity-40"
                 >
-                  {isBusy ? (isSummaryStep ? 'Saving' : 'Working') : isSummaryStep ? 'Save Focus' : 'Next'}
+                  {isBusy ? (isSummaryStep ? 'Saving' : 'Working') : isSummaryStep ? 'Save Brief' : 'Next'}
                   {!isBusy && !isSummaryStep && <ArrowRight size={15} strokeWidth={2.6} />}
                 </motion.button>
               </div>

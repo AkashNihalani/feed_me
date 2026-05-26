@@ -16,7 +16,9 @@ def main():
             "worker",
             "fingerprint_reels_once",
             "fingerprint_reels_worker",
-            "seed_official_feeder_files",
+            "feeder_file_once",
+            "feeder_file_recent_fingerprints_once",
+            "feeder_file_package_once",
             "backfill_d1_media",
             "backfill_fire_day_media",
             "repair_post_visual_media",
@@ -39,6 +41,11 @@ def main():
     p.add_argument("--day", type=str, default=None)
     p.add_argument("--post-key", type=str, default=None)
     p.add_argument("--feeder-id", type=int, default=None)
+    p.add_argument("--handle", type=str, default=None)
+    p.add_argument("--handles", type=str, default=None)
+    p.add_argument("--pattern-limit", type=int, default=3)
+    p.add_argument("--pattern-id", type=str, default=None)
+    p.add_argument("--compile-version", type=str, default=None)
     args = p.parse_args()
 
     if args.mode == "enqueue_daily":
@@ -74,10 +81,72 @@ def main():
         print(f"fingerprint_reels_once={result}")
     elif args.mode == "fingerprint_reels_worker":
         run_fingerprint_worker()
-    elif args.mode == "seed_official_feeder_files":
+    elif args.mode == "feeder_file_once":
         eng = PureEngine()
         try:
-            print(f"seed_official_feeder_files={eng.seed_official_feeder_files()}")
+            result = eng.run_feeder_file_once(
+                feeder_id=args.feeder_id,
+                handle=args.handle,
+                limit=args.limit,
+                days=args.days,
+                pattern_limit=args.pattern_limit,
+            )
+            print(
+                f"feeder_file_once feeder_file_id={result.get('feeder_file_id')} "
+                f"handle={result.get('feeder_handle')} "
+                f"patterns={result.get('patterns', 0)} proofs={result.get('proofs', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "feeder_file_recent_fingerprints_once":
+        eng = PureEngine()
+        try:
+            handles = [
+                value.strip()
+                for value in str(args.handles or args.handle or "").split(",")
+                if value.strip()
+            ]
+            if not handles and args.feeder_id is None:
+                raise SystemExit("--handle, --handles, or --feeder-id is required")
+            targets = handles or [None]
+            for target_handle in targets:
+                result = eng.run_feeder_file_from_recent_fingerprints_once(
+                    feeder_id=args.feeder_id if target_handle is None else None,
+                    handle=target_handle,
+                    limit=args.limit,
+                    pattern_limit=args.pattern_limit,
+                )
+                print(
+                    f"feeder_file_recent_fingerprints_once "
+                    f"feeder_file_id={result.get('feeder_file_id')} "
+                    f"handle={result.get('feeder_handle')} "
+                    f"post_count={result.get('post_count', 0)} "
+                    f"created_breakdowns={result.get('created_breakdowns', 0)} "
+                    f"ready_breakdowns={result.get('ready_breakdowns', 0)} "
+                    f"patterns={result.get('patterns', 0)} "
+                    f"candidates={result.get('candidates', 0)} "
+                    f"proofs={result.get('proofs', 0)} "
+                    f"selected_post_keys={','.join(result.get('selected_post_keys') or [])}"
+                )
+        finally:
+            eng.close()
+    elif args.mode == "feeder_file_package_once":
+        eng = PureEngine()
+        try:
+            result = eng.package_feeder_file_once(
+                feeder_id=args.feeder_id,
+                handle=args.handle,
+                compile_version=args.compile_version,
+                pattern_id=args.pattern_id,
+                pattern_limit=args.pattern_limit,
+            )
+            print(
+                f"feeder_file_package_once feeder_file_id={result.get('feeder_file_id')} "
+                f"handle={result.get('feeder_handle')} "
+                f"patterns={result.get('patterns', 0)} "
+                f"candidates={result.get('candidates', 0)} "
+                f"proofs={result.get('proofs', 0)}"
+            )
         finally:
             eng.close()
     elif args.mode == "backfill_d1_media":

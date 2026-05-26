@@ -14,7 +14,9 @@ Run in Supabase SQL Editor:
 
 Feeder intelligence has one prompt pair:
 - reels-only fingerprint extraction: `apps/worker/app/feeder_prompts.py`
+- post breakdown extraction: `apps/worker/app/feeder_prompts.py`
 - feeder-file compilation v2: `apps/worker/app/feeder_prompts.py`
+- feeder-file frontend pattern/proof reads: `apps/worker/app/feeder_prompts.py`
 
 ## 3) Worker setup
 ```bash
@@ -39,15 +41,20 @@ python3 -m apps.worker.app.cli --mode worker
 ```
 
 ## 5b) Fingerprint processor
-Run this as a separate process/container so LLM work never blocks scraping or checkpoints:
+Run this as a separate recovery process/container. The primary feeder file path is triggered from D7 metric processing; this worker catches old or interrupted qualifying posts:
 ```bash
 python3 -m apps.worker.app.cli --mode fingerprint_reels_worker
 ```
 
-## 5c) Seed validated feeder files
-Run after applying the legacy-retirement migration when the manually validated Feederboard reads need to exist in backend storage:
+## 5c) Compile feeder files
+Run when a feeder has enough stored post breakdowns to form pattern candidates:
 ```bash
-python3 -m apps.worker.app.cli --mode seed_official_feeder_files
+python3 -m apps.worker.app.cli --mode feeder_file_once --handle <handle> --limit 12 --days 90
+```
+
+For the first compile from existing stored fingerprints, use the recent-fingerprint path. This converts the exact selected fingerprints to post breakdowns first, then compiles from the same set:
+```bash
+python3 -m apps.worker.app.cli --mode feeder_file_recent_fingerprints_once --handles lakmeindia,anuj.mp4 --limit 10
 ```
 
 ## 6) Job behavior
@@ -61,7 +68,11 @@ python3 -m apps.worker.app.cli --mode seed_official_feeder_files
 - Use RUN_JOB_CONCURRENCY to fan out feeder discovery jobs in parallel.
 - Feeder intelligence source of truth:
   - deterministic detection writes metric signals only
-  - v8 reels-only fingerprints write `post_fingerprints`
-  - validated feeder files live in `feeder_files`
-  - feeder-file compilation uses the v2 prompt contract only
-  - legacy focus/rulebook/signal-card LLM compilation is retired
+  - D7 top 25% overall or top 20% among the last 10 posts triggers reel fingerprinting
+  - fingerprints write `post_fingerprints`
+  - post breakdowns write `post_breakdowns`
+  - feeder-file memory keeps up to 100 reels per feeder, within the 90-day window and retained while D7 rank is top 35% or better
+  - feeder-file compilation writes all active and candidate pools to `feeder_files`
+  - `feeder_file_patterns` stores every active and candidate pool; only selected active pools get frontend pattern/proof reads
+  - candidate pools promote to active at 3 core posts, or 2 core posts plus 1 support post
+  - legacy rulebook/signal-card LLM compilation is retired

@@ -48,4 +48,4 @@ comment on table public.post_breakdowns is
   'Strategic compression layer generated from post_fingerprints for feeder-file clustering.';
 
 comment on table public.feeder_files is
-  'Rolling behavioral memory for one feeder, compiled from post_breakdowns and consumed by Feederboard.';
+  'Rolling behavioral memory for one feeder, compiled from post_breakdowns and consumed by feeder file pattern/proof surfaces.';

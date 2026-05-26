@@ -1,4 +1,4 @@
-export type FocusBrief = {
+export type FeedBrief = {
   relationship: string;
   accountTypes: string[];
   category: string;
@@ -33,13 +33,13 @@ export const CREATE_FEED_STEPS = [
   'Audience',
   'First',
   'Context',
-  'Focus',
+  'Brief',
 ] as const;
 
 export const CREATE_FEED_LAST_STEP = CREATE_FEED_STEPS.length - 1;
 export const MAX_PRIORITY_SELECTIONS = 3;
 
-export function defaultFocusBrief(): FocusBrief {
+export function defaultFeedBrief(): FeedBrief {
   return {
     relationship: RELATIONSHIP_OPTIONS[0]!.label,
     accountTypes: ['Creators'],
@@ -74,7 +74,7 @@ function relationshipPhrase(value: string) {
   }
 }
 
-export function buildFocusBible(brief: FocusBrief, fallbackTitle: string) {
+export function buildFeedBriefText(brief: FeedBrief, fallbackTitle: string) {
   const relationship = brief.relationship.trim();
   const accountTypes = brief.accountTypes.map((value) => value.trim()).filter(Boolean);
   const category = brief.category.trim();
@@ -92,13 +92,13 @@ export function buildFocusBible(brief: FocusBrief, fallbackTitle: string) {
   const parts = [
     `This feed tracks ${categoryPhrase} ${accountPhrase} ${scopePhrase} for ${relationshipPhrase(relationship)}.`,
     audience ? `The audience that matters: ${audience}.` : '',
-    `Focus will surface ${formatList(priorities)} first, while still flagging follower movement, fades, and gaps when they're real.`,
+    `Brief will surface ${formatList(priorities)} first, while still flagging follower movement, fades, and gaps when they're real.`,
     note ? `Local context: ${note}` : '',
   ].filter(Boolean);
-  return parts.join(' ').trim() || `This feed tracks ${fallbackTitle}. Focus should explain metric-moving account activity.`;
+  return parts.join(' ').trim() || `This feed tracks ${fallbackTitle}. Brief should explain metric-moving account activity.`;
 }
 
-export function normalizeFocusBrief(value: unknown): FocusBrief {
+export function normalizeFeedBrief(value: unknown): FeedBrief {
   const row = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
@@ -122,11 +122,11 @@ export function normalizeFocusBrief(value: unknown): FocusBrief {
   const legacyMarket = String(row.market || locationText || '').trim();
   return {
     relationship: String(row.relationship || row.trackingMode || row.trackingType || row.tracking_type || '').trim() || RELATIONSHIP_OPTIONS[0]!.label,
-    accountTypes: accountTypes.length > 0 ? accountTypes : defaultFocusBrief().accountTypes,
+    accountTypes: accountTypes.length > 0 ? accountTypes : defaultFeedBrief().accountTypes,
     category: String(row.category || legacyMarket || '').trim(),
-    geography: String(row.geography || '').trim() || (legacyMarket ? '' : defaultFocusBrief().geography),
+    geography: String(row.geography || '').trim() || (legacyMarket ? '' : defaultFeedBrief().geography),
     audience: String(row.audience || '').trim(),
-    priorities: priorities.length > 0 ? priorities : defaultFocusBrief().priorities,
+    priorities: priorities.length > 0 ? priorities : defaultFeedBrief().priorities,
     note: String(row.note || row.freeNote || row.free_note || '').trim(),
   };
 }
