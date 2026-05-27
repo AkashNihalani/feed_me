@@ -809,8 +809,9 @@ def _record_call_done(
     raw_output: str | None = None,
     parsed_output: dict[str, Any] | None = None,
     error: str | None = None,
+    status_override: str | None = None,
 ) -> None:
-    status = "failed" if error else "complete"
+    status = status_override or ("failed" if error else "complete")
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -832,6 +833,40 @@ def _record_call_done(
             ),
         )
     conn.commit()
+
+
+_PROOF_CONTEST_PHRASES = (
+    "cannot produce a valid proof",
+    "can't produce a valid proof",
+    "cannot create a valid proof",
+    "cannot write a valid proof",
+    "does not execute this pattern",
+    "doesn't execute this pattern",
+    "does not fit this pattern",
+    "doesn't fit this pattern",
+    "does not match this pattern",
+    "doesn't match this pattern",
+    "would be fabricated",
+    "would require fabrication",
+    "fabricated or incoherent",
+    "not a true member",
+    "not a valid proof",
+)
+
+
+def _proof_contest_reason(
+    raw_output: str | None,
+    parsed_output: dict[str, Any] | None = None,
+) -> str | None:
+    if parsed_output and isinstance(parsed_output.get("post_proof"), dict):
+        return None
+    normalized = re.sub(r"\s+", " ", str(raw_output or "").strip().lower())
+    if not normalized:
+        return None
+    for phrase in _PROOF_CONTEST_PHRASES:
+        if phrase in normalized:
+            return f"contested proof: proof model said the post does not match the pattern ({phrase})"
+    return None
 
 
 def _recover_stored_model_call(
@@ -957,19 +992,37 @@ def _call_openrouter(
             content = "\n".join(str(part.get("text") or "") for part in content if isinstance(part, dict))
         raw_output = _strip_fences(str(content))
         parsed = _parse_yaml_mapping(raw_output)
-        _record_call_done(conn, call_id, raw_output=raw_output, parsed_output=parsed)
+        contest_reason = _proof_contest_reason(raw_output, parsed) if call_type == "proof" else None
+        _record_call_done(
+            conn,
+            call_id,
+            raw_output=raw_output,
+            parsed_output=parsed,
+            error=contest_reason,
+            status_override="contested" if contest_reason else None,
+        )
         print(
             "[feeder-file-model] "
-            f"complete call_type={call_type} handle={feeder_handle} pattern_id={pattern_id or ''} "
+            f"{'contested' if contest_reason else 'complete'} call_type={call_type} "
+            f"handle={feeder_handle} pattern_id={pattern_id or ''} "
             f"post_key={post_key or ''}",
             flush=True,
         )
         return call_id, parsed
     except Exception as exc:
-        _record_call_done(conn, call_id, raw_output=raw_output, parsed_output=parsed, error=str(exc))
+        contest_reason = _proof_contest_reason(raw_output, parsed) if call_type == "proof" else None
+        _record_call_done(
+            conn,
+            call_id,
+            raw_output=raw_output,
+            parsed_output=parsed,
+            error=contest_reason or str(exc),
+            status_override="contested" if contest_reason else None,
+        )
         print(
             "[feeder-file-model] "
-            f"failed call_type={call_type} handle={feeder_handle} pattern_id={pattern_id or ''} "
+            f"{'contested' if contest_reason else 'failed'} call_type={call_type} "
+            f"handle={feeder_handle} pattern_id={pattern_id or ''} "
             f"post_key={post_key or ''} error={str(exc)[:240]}",
             flush=True,
         )
@@ -1269,6 +1322,7 @@ def _package_patterns(
     frontend_count = 0
     proof_count = 0
     deduped_proof_count = 0
+    skipped_proof_count = 0
     claimed_frontend_post_keys: set[str] = set()
     for pattern in selected_patterns:
         pattern_id = str(pattern.get("pattern_id") or f"pattern_{active_count + len(candidate_ids) + 1}")
@@ -1329,12 +1383,31 @@ def _package_patterns(
         members = pattern.get("members") or []
         if not isinstance(members, list):
             members = []
+        skipped_mismatch_keys = [
+            str(member.get("post_key") or "").strip()
+            for member in members
+            if isinstance(member, dict)
+            and str(member.get("fit_type") or "").lower() in {"support", "secondary"}
+            and member.get("mismatch_fields")
+            and str(member.get("post_key") or "").strip()
+        ]
+        if skipped_mismatch_keys:
+            skipped_proof_count += len(skipped_mismatch_keys)
+            print(
+                "[feeder-file] "
+                f"package pattern={pattern_id} skipped_mismatch_proofs={','.join(skipped_mismatch_keys)}",
+                flush=True,
+            )
         proof_members = [
             member
             for member in members
             if isinstance(member, dict)
             and str(member.get("fit_type") or "core").lower() in {"core", "support", "secondary"}
             and str(member.get("post_key") or "").strip()
+            and (
+                str(member.get("fit_type") or "core").lower() == "core"
+                or not member.get("mismatch_fields")
+            )
         ]
         proof_members, dropped_duplicate_keys = _unique_frontend_proof_members(
             proof_members,
@@ -1380,23 +1453,38 @@ def _package_patterns(
                 "post_breakdown": _breakdown_body(row),
                 "membership": member,
             }
-            _, proof_parsed = _call_openrouter(
-                conn,
-                feeder_file_id=feeder_file_id,
-                call_key=f"proof:{pattern_id}:{post_key}",
-                call_type="proof",
-                feeder_handle=feeder_handle,
-                pattern_id=pattern_id,
-                post_key=post_key,
-                model=FEEDER_FILE_PROOF_MODEL,
-                prompt_version=FEEDER_FILE_PROOF_PROMPT_VERSION,
-                system_prompt=FEEDER_FILE_PROOF_FRONTEND_PROMPT_V3,
-                user_payload=proof_payload,
-                max_tokens=1800,
-            )
+            try:
+                _, proof_parsed = _call_openrouter(
+                    conn,
+                    feeder_file_id=feeder_file_id,
+                    call_key=f"proof:{pattern_id}:{post_key}",
+                    call_type="proof",
+                    feeder_handle=feeder_handle,
+                    pattern_id=pattern_id,
+                    post_key=post_key,
+                    model=FEEDER_FILE_PROOF_MODEL,
+                    prompt_version=FEEDER_FILE_PROOF_PROMPT_VERSION,
+                    system_prompt=FEEDER_FILE_PROOF_FRONTEND_PROMPT_V3,
+                    user_payload=proof_payload,
+                    max_tokens=1800,
+                )
+            except Exception as exc:
+                skipped_proof_count += 1
+                print(
+                    "[feeder-file] "
+                    f"package pattern={pattern_id} skipped_proof={post_key} reason={str(exc)[:240]}",
+                    flush=True,
+                )
+                continue
             proof = proof_parsed.get("post_proof")
             if not isinstance(proof, dict):
-                raise RuntimeError(f"proof call did not return post_proof for {post_key}")
+                skipped_proof_count += 1
+                print(
+                    "[feeder-file] "
+                    f"package pattern={pattern_id} skipped_proof={post_key} reason=missing post_proof",
+                    flush=True,
+                )
+                continue
             proofs.append(
                 _proof_card(
                     post_key=post_key,
@@ -1408,6 +1496,17 @@ def _package_patterns(
                 )
             )
             proof_count += 1
+
+        if not proofs:
+            _upsert_feeder_file_pattern(
+                conn,
+                feeder_file_id=feeder_file_id,
+                feeder_handle=feeder_handle,
+                pattern=pattern,
+                status="active",
+                reason="active pattern kept for feeder file memory; frontend read skipped because no proof reads survived validation",
+            )
+            continue
 
         pattern_card = _pattern_card(
             feeder_handle=feeder_handle,
@@ -1435,6 +1534,7 @@ def _package_patterns(
         "candidates": len(candidate_ids),
         "proofs": proof_count,
         "deduped_proofs": deduped_proof_count,
+        "skipped_proofs": skipped_proof_count,
         "selected_pattern_ids": active_ids,
         "candidate_pattern_ids": candidate_ids,
     }
