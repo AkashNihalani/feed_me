@@ -1,11 +1,12 @@
 'use client';
 
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, BrainCircuit, ChevronRight, X } from 'lucide-react';
+import { type CSSProperties, type UIEvent, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowUpRight, ChevronRight, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useScroll, useTransform, useSpring } from 'framer-motion';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
+import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING } from '@/lib/motion';
 import type { FeederFilePattern, MetricCard, ProofBlock } from '@/types/feederFile';
 
 /* ─── types ─── */
@@ -59,6 +60,9 @@ const ACCENT = '#E11D48';
 const DEFAULT_ACCOUNT = '';
 const STORY_RING_RADIUS = 44;
 const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * STORY_RING_RADIUS;
+const POPUP_MOBILE_EXIT_MS = 520;
+const POPUP_DESKTOP_EXIT_MS = 460;
+const FEEDER_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
 
 const ACCOUNT_INITIALS: Record<string, string> = {
   '@anuj.mp4': 'AJ',
@@ -87,6 +91,80 @@ function patternsForAccount(selectedAccount: string, patterns: FeederFilePattern
   const handle = String(selectedAccount || '').replace(/^@+/, '').toLowerCase();
   if (!handle || handle === 'all') return patterns;
   return patterns.filter((pattern) => pattern.account.replace(/^@+/, '').toLowerCase() === handle);
+}
+
+function TypebackText({ value }: { value: string }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const displayRef = useRef(value);
+  const targetRef = useRef(value);
+  const [typing, setTyping] = useState(false);
+
+  useEffect(() => {
+    targetRef.current = value;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        displayRef.current = value;
+        setDisplayValue(value);
+        setTyping(false);
+      }, 0);
+
+      return () => {
+        cancelled = true;
+        if (timer !== null) window.clearTimeout(timer);
+      };
+    }
+
+    const write = (next: string) => {
+      displayRef.current = next;
+      setDisplayValue(next);
+    };
+
+    const step = () => {
+      if (cancelled) return;
+
+      const current = displayRef.current;
+      const target = targetRef.current;
+
+      if (current === target) {
+        setTyping(false);
+        return;
+      }
+
+      setTyping(true);
+
+      if (current.length > 0 && !target.startsWith(current)) {
+        write(current.slice(0, -1));
+        timer = window.setTimeout(step, 22);
+        return;
+      }
+
+      write(target.slice(0, current.length + 1));
+      timer = window.setTimeout(step, 34);
+    };
+
+    timer = window.setTimeout(step, 90);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [value]);
+
+  return (
+    <span className="inline-flex min-w-0 items-baseline">
+      <span>{displayValue}</span>
+      <motion.span
+        aria-hidden="true"
+        className="ml-1 inline-block h-[0.82em] w-[0.08em] rounded-full bg-[#E11D48]"
+        animate={{ opacity: typing ? [0.25, 1, 0.35] : 0 }}
+        transition={{ duration: 0.58, repeat: typing ? Infinity : 0, ease: 'easeInOut' }}
+      />
+    </span>
+  );
 }
 
 /* ─── corner ticks ─── */
@@ -298,9 +376,7 @@ function StoryRing({
     >
       {/* ring + portrait */}
       <div className="relative">
-        <div
-          className="relative flex h-[78px] w-[78px] items-center justify-center rounded-full p-[5px] transition-all duration-300 sm:h-[88px] sm:w-[88px]"
-        >
+        <div className="relative flex h-[96px] w-[96px] items-center justify-center rounded-full p-[6px] transition-all duration-300 sm:h-[100px] sm:w-[100px]">
           <span
             className={[
               'absolute inset-0 rounded-full transition-colors duration-300',
@@ -349,7 +425,7 @@ function StoryRing({
               </motion.svg>
             </>
           )}
-          <div className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[22px] font-black text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF] sm:text-[25px]">
+          <div className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[26px] font-black text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF] sm:text-[28px]">
             {showProfilePic ? (
               // eslint-disable-next-line @next/next/no-img-element -- feeder avatars are proxied dynamic profile images
               <img
@@ -400,7 +476,7 @@ function StoryStrip({
   onSelectAccount: (account: string) => void;
 }) {
   return (
-    <div className="hide-scrollbar flex gap-6 overflow-x-auto px-1 pb-1 sm:gap-8">
+    <div className="hide-scrollbar flex gap-8 overflow-x-auto px-5 pb-2 sm:gap-8 sm:px-1">
       {accounts.map((account) => (
         <StoryRing
           key={account}
@@ -446,59 +522,166 @@ function PatternCard({
   // --- PREMIUM AUTOMATIC STACKED CAROUSEL STATE ---
   const [activeIndex, setActiveIndex] = useState(0);
   const totalProofs = pattern.proofs.length;
+  const activeProof = pattern.proofs[activeIndex] || pattern.proofs[0];
+  const visibleCount = Math.min(totalProofs, 3);
+  const coverSlots = Array.from({ length: totalProofs <= 1 ? 1 : visibleCount }, (_, slot) => {
+    const proofIndex = (activeIndex + slot) % totalProofs;
+    const post = pattern.proofs[proofIndex];
+    return post ? { post, proofIndex, slot } : null;
+  }).filter((slot): slot is { post: ProofBlock; proofIndex: number; slot: number } => Boolean(slot));
 
   useEffect(() => {
     if (totalProofs <= 1) return;
     const interval = setInterval(() => {
       setActiveIndex((prev) => (prev + 1) % totalProofs);
-    }, 4000); // Swaps smoothly every 4 seconds
+    }, 4600); // Smooth gentle transition cycle
     return () => clearInterval(interval);
   }, [totalProofs]);
 
+  const enterDelay = Math.min(patternIndex * 0.034, 0.18);
+  const mobileCoverHeight = 'clamp(286px, 78vw, 326px)';
+
   return (
     <motion.button
+      layout
       type="button"
       onClick={() => onOpen(pattern)}
-      className="group/card relative overflow-hidden rounded-[26px] border border-black/[0.06] bg-[linear-gradient(135deg,#ffffff,#fff3f7)] p-5 text-left shadow-[0_12px_36px_-28px_rgba(15,23,42,0.5),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.08] dark:bg-[linear-gradient(135deg,#18181b,#09090b)] dark:shadow-[0_14px_44px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.08)] sm:p-6 md:p-7 lg:p-8"
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
+      className="group/card relative overflow-hidden rounded-[24px] border border-black/[0.06] bg-[linear-gradient(135deg,#ffffff,#fff3f7)] p-5 text-left shadow-[0_12px_36px_-28px_rgba(15,23,42,0.5),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.08] dark:bg-[linear-gradient(135deg,#18181b,#09090b)] dark:shadow-[0_14px_44px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.08)] sm:rounded-[26px] sm:p-6 md:p-7 lg:p-8"
+      initial={{ opacity: 0, y: 24, scale: 0.982, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, y: -14, scale: 0.976, filter: 'blur(8px)' }}
       whileHover={{ y: -4 }}
       whileTap={{ scale: 0.992 }}
-      transition={{ duration: 0.4, ease: APPLE_EASE, delay: patternIndex * 0.08 }}
+      transition={{
+        layout: GRID_LAYOUT_SPRING,
+        opacity: { duration: 0.24, delay: enterDelay, ease: GRID_ITEM_EASE },
+        y: { duration: 0.34, delay: enterDelay, ease: GRID_ITEM_EASE },
+        scale: { duration: 0.34, delay: enterDelay, ease: GRID_ITEM_EASE },
+        filter: { duration: 0.3, delay: enterDelay, ease: GRID_ITEM_EASE },
+      }}
+      style={{ willChange: 'opacity, transform, filter' }}
     >
       {/* rank badge */}
       {rankMetric && (
-        <div className="absolute right-5 top-5 z-10 rounded-full bg-[#E11D48] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[0_8px_20px_-10px_rgba(225,29,72,0.7)] sm:right-6 sm:top-6 md:right-7 md:top-7 lg:right-8 lg:top-8">
+        <div className="absolute right-5 top-5 z-10 hidden rounded-full bg-[#E11D48] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[0_8px_20px_-10px_rgba(225,29,72,0.7)] sm:block sm:right-6 sm:top-6 md:right-7 md:top-7 lg:right-8 lg:top-8">
           {rankMetric.value}
         </div>
       )}
 
+      {activeProof && coverSlots.length > 0 && (
+        <div
+          data-pattern-hero="mobile"
+          className="relative -mx-5 -mt-5 mb-8 overflow-hidden rounded-t-[24px] sm:hidden"
+        >
+          <div className="relative z-10">
+            <AnimatePresence initial={false}>
+              {coverSlots.map(({ post, proofIndex, slot }) => {
+                const isTop = slot === 0;
+                const cardTop = isTop ? 0 : slot === 1 ? 30 : 60;
+                const sideInset = isTop ? 0 : slot === 1 ? 6 : 12;
+                const restingScale = isTop ? 1 : slot === 1 ? 0.95 : 0.90;
+                const restingOpacity = isTop ? 1 : slot === 1 ? 0.90 : 0.78;
+
+                // Add conditional suffix to card key when looping back to force true unmount exit
+                const isLoopingBack = proofIndex === (activeIndex - 1 + totalProofs) % totalProofs;
+                const cardKey = isLoopingBack ? `${post.post_key}-loop` : post.post_key;
+
+                return (
+                  <motion.div
+                    key={cardKey}
+                    data-pattern-hero-frame={isTop ? 'true' : undefined}
+                    data-pattern-stack-layer={!isTop ? 'true' : undefined}
+                    className="absolute overflow-hidden rounded-[22px] border border-black/[0.08] dark:border-white/[0.12] bg-[#f5f0f2] shadow-[0_18px_48px_-30px_rgba(15,23,42,0.62),inset_0_-1px_0_rgba(255,255,255,0.78)] dark:bg-white/[0.07] dark:shadow-[0_20px_56px_-30px_rgba(0,0,0,0.95)]"
+                    initial={{ y: cardTop + 10, scale: restingScale - 0.02, opacity: 0, zIndex: 10 }}
+                    animate={{ y: cardTop, left: sideInset, right: sideInset, scale: restingScale, opacity: restingOpacity, zIndex: isTop ? 20 : 14 - slot }}
+                    exit={isTop ? {
+                      y: -360,
+                      scale: 1.012,
+                      opacity: 0,
+                      zIndex: 30,
+                      transition: {
+                        y: { type: 'spring', stiffness: 85, damping: 20, mass: 1.05 },
+                        scale: { duration: 0.4, ease: 'easeOut' },
+                        opacity: { duration: 0.46, delay: 0.12, ease: 'easeOut' }
+                      }
+                    } : {
+                      opacity: 0,
+                      scale: restingScale - 0.02,
+                      transition: { duration: 0.3, ease: 'easeOut' }
+                    }}
+                    transition={{
+                      duration: 0.8,
+                      ease: [0.16, 1, 0.3, 1]
+                    }}
+                    style={{
+                      height: `calc(${mobileCoverHeight} - 32px)`,
+                      transformOrigin: 'center top',
+                      willChange: 'opacity, transform',
+                    }}
+                  >
+                    <Thumb
+                      post={post}
+                      showCaption={false}
+                      onUnavailable={noteThumbnailUnavailable}
+                      className="h-full w-full"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),transparent_38%,rgba(0,0,0,0.72))]" />
+                    {isTop && (
+                      <div className="pointer-events-none absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">
+                        <div
+                          data-pattern-proof-chip="true"
+                          className="rounded-full bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-[0_8px_22px_-16px_rgba(0,0,0,0.76)] backdrop-blur-md"
+                        >
+                          {proofIndex + 1}/{pattern.proofs.length}
+                        </div>
+
+                        <div className="flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_22px_-16px_rgba(0,0,0,0.76)] backdrop-blur-md">
+                          <span className="flex -space-x-1">
+                            {Array.from({ length: Math.min(totalProofs, 4) }, (_, dot) => (
+                              <span
+                                key={`depth-dot-${pattern.pattern_id}-${dot}`}
+                                className="block h-2 w-2 rounded-full border border-white/50 bg-white/75"
+                              />
+                            ))}
+                          </span>
+                          <span>{totalProofs} {totalProofs === 1 ? 'proof' : 'proofs'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+
+          {coverSlots.length > 1 && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-6 bottom-0 z-[7] h-8 rounded-full bg-black/14 blur-2xl dark:bg-black/50"
+            />
+          )}
+
+          <div className="relative z-0" style={{ height: mobileCoverHeight }} aria-hidden="true" />
+        </div>
+      )}
+
       {/* Two-column grid layout for pattern covers */}
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] md:grid-cols-[1fr_210px] lg:grid-cols-[1fr_240px] gap-6 md:gap-8 items-center w-full">
+      <div className="grid w-full grid-cols-1 items-center gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(210px,36%)] md:grid-cols-[minmax(0,1fr)_minmax(250px,38%)] md:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,38%)] xl:grid-cols-[minmax(0,1fr)_minmax(250px,36%)] 2xl:grid-cols-[minmax(0,1fr)_minmax(290px,38%)]">
         
         {/* Left Column: Text detail + metrics */}
         <div className="flex flex-col h-full justify-between min-w-0">
           <div>
-            {/* pattern label + tile label */}
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-black/38 dark:text-white/34" style={{ fontFamily: 'monospace' }}>
+            <div className="hidden items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-black/38 dark:text-white/34 sm:flex" style={{ fontFamily: 'monospace' }}>
               <span className="text-[#E11D48]">PATTERN {String(patternIndex + 1).padStart(2, '0')}</span>
-              <span className="text-black/18 dark:text-white/14">/</span>
-              <span>{pattern.pattern.tile_label}</span>
             </div>
 
-            {/* headline */}
-            <h2 className="mt-3 max-w-[480px] pr-14 sm:pr-4 text-[20px] font-black leading-[1.15] tracking-tight text-black dark:text-white sm:mt-4 sm:text-[22px] md:text-[24px] lg:text-[26px]">
+            <h2 className="max-w-[560px] text-[29px] font-black leading-[1.01] tracking-normal text-black dark:text-white sm:mt-5 sm:pr-4 sm:text-[34px] md:text-[38px] lg:text-[42px]">
               {pattern.pattern.tile_headline}
             </h2>
-
-            {/* read snippet */}
-            <p className="mt-2.5 max-w-[440px] text-[12.5px] sm:text-[13px] md:text-[13.5px] lg:text-[14px] font-bold leading-relaxed text-black/54 line-clamp-4 dark:text-white/50">
-              {pattern.pattern.tile_read}
-            </p>
           </div>
 
           {/* bottom: metrics + open cue */}
-          <div className="mt-5 flex items-center justify-between gap-4 border-t border-black/[0.04] dark:border-white/[0.04] pt-4">
+          <div className="mt-4 flex items-center justify-between gap-4 border-t border-black/[0.04] pt-3 dark:border-white/[0.04] sm:mt-5 sm:pt-4">
             <div className="flex flex-wrap items-center gap-x-1.5 sm:gap-x-3 gap-y-1 text-[9px] sm:text-[10px] md:text-[11px] font-black uppercase tracking-[0.03em] sm:tracking-[0.14em]">
               {pattern.patternMetrics.slice(1).map((m) => (
                 <div key={`${pattern.pattern_id}:${m.label}`} className="flex items-center gap-1">
@@ -515,9 +698,9 @@ function PatternCard({
           </div>
         </div>
 
-        {/* Right Column: Premium circular stacked carousel (Big & Hero) */}
-        <div className="flex items-center justify-center sm:justify-end shrink-0 select-none py-2">
-          <div className="h-[125px] w-[230px] sm:h-[185px] sm:w-[200px] md:h-[230px] md:w-[230px] lg:h-[270px] lg:w-[260px] relative flex items-center justify-center">
+        {/* Right Column: Desktop proof deck */}
+        <div data-pattern-rail="desktop" className="hidden min-w-0 shrink-0 select-none items-center justify-end overflow-visible py-1 sm:flex">
+          <div className="relative flex h-[218px] w-full max-w-[240px] items-center justify-center overflow-visible md:h-[274px] md:max-w-[280px] lg:h-[316px] lg:max-w-[308px] xl:h-[278px] xl:max-w-[270px] 2xl:h-[318px] 2xl:max-w-[310px]">
             {pattern.proofs.map((post, i) => {
               let position: 'center' | 'left' | 'right' | 'hidden' = 'hidden';
               
@@ -532,20 +715,20 @@ function PatternCard({
               let positionClasses = "";
               
               if (position === 'center') {
-                positionClasses = "z-35 scale-[1.14] translate-x-0 rotate-0 opacity-100 blur-0 shadow-[0_20px_48px_-12px_rgba(0,0,0,0.38)] dark:shadow-[0_28px_60px_-16px_rgba(0,0,0,0.9)] group-hover/card:scale-[1.20] group-hover/card:shadow-[0_26px_56px_-10px_rgba(0,0,0,0.48)] dark:group-hover/card:shadow-[0_34px_72px_-14px_rgba(0,0,0,0.98)] pointer-events-auto";
+                positionClasses = "z-30 translate-x-0 rotate-0 scale-100 opacity-100 blur-0 shadow-[0_24px_58px_-18px_rgba(15,23,42,0.58)] group-hover/card:scale-[1.02] group-hover/card:shadow-[0_30px_68px_-18px_rgba(15,23,42,0.68)] dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.92)] dark:group-hover/card:shadow-[0_34px_78px_-14px_rgba(0,0,0,0.98)] pointer-events-auto";
               } else if (position === 'left') {
-                positionClasses = "z-10 scale-[0.82] -translate-x-[52px] sm:-translate-x-[58px] md:-translate-x-[74px] lg:-translate-x-[88px] rotate-[-10deg] opacity-48 blur-[1.5px] group-hover/card:-translate-x-[62px] sm:group-hover/card:-translate-x-[72px] md:group-hover/card:-translate-x-[88px] lg:group-hover/card:-translate-x-[102px] group-hover/card:rotate-[-15deg] group-hover/card:opacity-75 group-hover/card:blur-[0.5px] pointer-events-none";
+                positionClasses = "z-10 scale-[0.82] -translate-x-[42px] md:-translate-x-[58px] lg:-translate-x-[68px] xl:-translate-x-[56px] 2xl:-translate-x-[68px] rotate-[-7deg] opacity-56 blur-[1px] brightness-[0.82] group-hover/card:-translate-x-[50px] md:group-hover/card:-translate-x-[68px] lg:group-hover/card:-translate-x-[78px] xl:group-hover/card:-translate-x-[66px] 2xl:group-hover/card:-translate-x-[78px] group-hover/card:rotate-[-10deg] group-hover/card:opacity-72 group-hover/card:blur-[0.25px] pointer-events-none";
               } else if (position === 'right') {
-                positionClasses = "z-10 scale-[0.82] translate-x-[52px] sm:translate-x-[58px] md:translate-x-[74px] lg:translate-x-[88px] rotate-[10deg] opacity-48 blur-[1.5px] group-hover/card:translate-x-[62px] sm:group-hover/card:translate-x-[72px] md:group-hover/card:translate-x-[88px] lg:group-hover/card:translate-x-[102px] group-hover/card:rotate-[15deg] group-hover/card:opacity-75 group-hover/card:blur-[0.5px] pointer-events-none";
+                positionClasses = "z-10 scale-[0.82] translate-x-[42px] md:translate-x-[58px] lg:translate-x-[68px] xl:translate-x-[56px] 2xl:translate-x-[68px] rotate-[7deg] opacity-56 blur-[1px] brightness-[0.82] group-hover/card:translate-x-[50px] md:group-hover/card:translate-x-[68px] lg:group-hover/card:translate-x-[78px] xl:group-hover/card:translate-x-[66px] 2xl:group-hover/card:translate-x-[78px] group-hover/card:rotate-[10deg] group-hover/card:opacity-72 group-hover/card:blur-[0.25px] pointer-events-none";
               } else {
-                positionClasses = "z-0 scale-[0.6] translate-x-0 rotate-0 opacity-0 blur-[4px] pointer-events-none";
+                positionClasses = "z-0 scale-[0.72] translate-x-0 rotate-0 opacity-0 blur-[4px] pointer-events-none";
               }
 
               return (
                 <div
                   key={post.post_key}
                   className={[
-                    "absolute aspect-[4/5] w-[86px] sm:w-[110px] md:w-[124px] lg:w-[136px] shrink-0 overflow-hidden rounded-[16px] border border-black/10 dark:border-white/10 shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-[1000ms]",
+                    "absolute aspect-[4/5] w-[154px] shrink-0 overflow-hidden rounded-[22px] bg-[#f5f0f2] shadow-[0_10px_24px_-16px_rgba(15,23,42,0.45)] transition-all duration-[980ms] md:w-[190px] lg:w-[218px] xl:w-[188px] 2xl:w-[218px] dark:bg-white/[0.07]",
                     positionClasses
                   ].join(" ")}
                   style={{
@@ -560,9 +743,9 @@ function PatternCard({
                     onUnavailable={noteThumbnailUnavailable}
                     className="h-full w-full"
                   />
-                  {position === 'center' && <CornerTicks color={ACCENT} size={8} inset={5} />}
-                  {/* rank chip on thumb */}
-                  <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-white">
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.03),transparent_36%,rgba(0,0,0,0.76))]" />
+                  {position === 'center' && <CornerTicks color={ACCENT} size={10} inset={8} />}
+                  <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-[0_10px_24px_-18px_rgba(0,0,0,0.9)] backdrop-blur-md">
                     {i + 1}/{pattern.proofs.length}
                   </div>
                 </div>
@@ -580,21 +763,97 @@ function PatternCard({
    3. POPUP – MOBILE (card-based sections)
    ═══════════════════════════════════════════ */
 
+function MobileBreakdownStepCard({
+  item,
+  index,
+  containerRef,
+}: {
+  item: string;
+  index: number;
+  containerRef: RefObject<HTMLDivElement | null>;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: cardRef,
+    container: containerRef,
+    offset: ["start end", "end start"],
+  });
+
+  const opacity = useTransform(
+    scrollYProgress,
+    [0, 0.35, 0.5, 0.65, 1],
+    [0.72, 0.38, 0.06, 0.38, 0.72]
+  );
+
+  const scale = useTransform(
+    scrollYProgress,
+    [0, 0.35, 0.5, 0.65, 1],
+    [1.24, 1.1, 0.96, 1.1, 1.24]
+  );
+
+  const y = useTransform(
+    scrollYProgress,
+    [0, 0.35, 0.5, 0.65, 1],
+    [24, 8, 0, -8, -24]
+  );
+
+  const smoothOpacity = useSpring(opacity, { stiffness: 90, damping: 24, mass: 0.8 });
+  const smoothScale = useSpring(scale, { stiffness: 90, damping: 24, mass: 0.8 });
+  const smoothY = useSpring(y, { stiffness: 90, damping: 24, mass: 0.8 });
+
+  return (
+    <div
+      ref={cardRef}
+      className="relative overflow-hidden rounded-[16px] border border-black/[0.05] bg-black/[0.015] p-5 transition-colors duration-300 dark:border-white/[0.05] dark:bg-white/[0.015]"
+    >
+      {/* Centered massive background step number watermark with buttery spring scrolling */}
+      <motion.div
+        className="absolute inset-0 flex items-center justify-center font-mono font-black text-[#E11D48] dark:text-[#FB7185] select-none pointer-events-none z-0"
+        style={{
+          fontSize: 'min(170px, 38vw)',
+          lineHeight: 1,
+          opacity: smoothOpacity,
+          scale: smoothScale,
+          y: smoothY,
+        }}
+      >
+        {String(index + 1).padStart(2, '0')}
+      </motion.div>
+      {/* Bigger and clearer full-width foreground text */}
+      <p className="relative z-10 w-full text-[15.5px] font-extrabold leading-[1.52] text-black/88 dark:text-zinc-100">
+        {item}
+      </p>
+    </div>
+  );
+}
+
 function MobilePopup({
   pattern,
   proofIndex,
   setProofIndex,
   onClose,
+  isClosing,
 }: {
   pattern: FeederFilePattern;
   proofIndex: number;
   setProofIndex: (i: number) => void;
   onClose: () => void;
+  isClosing: boolean;
 }) {
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const mobileContainerRef = useRef<HTMLDivElement | null>(null);
+  const assignScrollContainer = useCallback((node: HTMLDivElement | null) => {
+    mobileContainerRef.current = node;
+    setScrollContainer(node);
+  }, []);
   const proof = pattern.proofs[proofIndex];
   const total = pattern.proofs.length;
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [closeVisible, setCloseVisible] = useState(true);
   const proofReadRef = useRef<HTMLElement>(null);
+  const lastScrollTopRef = useRef(0);
+  const closeVisibleRef = useRef(true);
+  const scrollIntentRef = useRef({ up: 0, down: 0 });
   const safeProof = proof ?? EMPTY_PROOF;
   const proofReadParagraphs = useMemo(() => readParagraphs(safeProof.post_read), [safeProof.post_read]);
   const proofSignalCards = useMemo(
@@ -615,37 +874,83 @@ function MobilePopup({
     [total, setProofIndex],
   );
 
+  const setCloseVisibility = useCallback((visible: boolean) => {
+    if (closeVisibleRef.current === visible) return;
+    closeVisibleRef.current = visible;
+    setCloseVisible(visible);
+  }, []);
+
+  const handlePopupScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const nextTop = event.currentTarget.scrollTop;
+    const delta = nextTop - lastScrollTopRef.current;
+    const intent = scrollIntentRef.current;
+
+    if (nextTop < 48) {
+      intent.up = 0;
+      intent.down = 0;
+      setCloseVisibility(true);
+    } else if (delta < -1) {
+      intent.up += Math.abs(delta);
+      intent.down = 0;
+      if (intent.up >= 22) setCloseVisibility(true);
+    } else if (delta > 1) {
+      intent.down += delta;
+      intent.up = 0;
+      if (intent.down >= 48 && nextTop > 150) setCloseVisibility(false);
+    }
+
+    lastScrollTopRef.current = nextTop;
+  }, [setCloseVisibility]);
+
   if (!proof || total === 0) return null;
 
   return (
     <motion.div
-      className="fixed inset-0 z-[1000] overflow-y-auto overflow-x-hidden bg-[#FAF9F6] dark:bg-[#09090b] text-[#111111] dark:text-white transition-colors duration-300"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: APPLE_EASE }}
+      ref={assignScrollContainer}
+      className="fixed inset-0 z-[1000] overflow-y-auto overflow-x-hidden bg-[#FAF9F6]/94 text-[#111111] backdrop-blur-xl transition-colors duration-300 dark:bg-[#09090b]/94 dark:text-white"
+      initial={{ opacity: 0, y: 28, scale: 0.982, filter: 'blur(14px)' }}
+      animate={isClosing
+        ? { opacity: 0, y: 34, scale: 0.976, filter: 'blur(16px)' }
+        : { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, y: 34, scale: 0.976, filter: 'blur(16px)', transition: { duration: 0.5, ease: APPLE_EASE } }}
+      transition={{
+        opacity: { duration: isClosing ? 0.36 : 0.32, ease: APPLE_EASE },
+        y: { type: 'spring', stiffness: isClosing ? 180 : 230, damping: isClosing ? 26 : 30, mass: 0.9 },
+        scale: { type: 'spring', stiffness: isClosing ? 180 : 230, damping: isClosing ? 27 : 30, mass: 0.9 },
+        filter: { duration: isClosing ? 0.5 : 0.42, ease: APPLE_EASE },
+      }}
+      style={{ willChange: 'opacity, transform, filter' }}
+      onScroll={handlePopupScroll}
     >
-      {/* fixed header */}
-      <div className="fixed inset-x-0 top-0 z-[1020] bg-[linear-gradient(180deg,#FAF9F6_75%,transparent)] dark:bg-[linear-gradient(180deg,#09090b_75%,transparent)] pb-6 pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center justify-between px-3.5 pt-3">
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/44 font-mono">
-            <span className="text-[#E11D48] dark:text-[#FB7185]">{pattern.pattern.tile_label}</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-black/10 dark:bg-white/18" />
-            <span>{pattern.account}</span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-black/5 text-black transition-all active:scale-95 hover:bg-[#E11D48] hover:text-white dark:bg-white/10 dark:text-white dark:hover:bg-[#E11D48] sm:backdrop-blur-md lg:backdrop-blur-none"
-            aria-label="Close"
-          >
-            <X size={20} strokeWidth={3} />
-          </button>
-        </div>
+      <div className="pointer-events-none sticky top-0 z-[1020] flex h-0 justify-end px-3.5 pt-[calc(10px+env(safe-area-inset-top))]">
+        <motion.button
+          type="button"
+          onClick={onClose}
+          data-mobile-popup-close="true"
+          className={[
+            'flex h-12 w-12 items-center justify-center rounded-full border border-white/18 bg-[#E11D48] text-white shadow-[0_18px_38px_-16px_rgba(225,29,72,0.95),0_0_0_1px_rgba(255,255,255,0.14)_inset] backdrop-blur-xl transition-colors hover:bg-[#BE123C] active:scale-95 dark:border-white/16 dark:bg-[#E11D48] dark:shadow-[0_18px_42px_-14px_rgba(225,29,72,0.8),0_0_0_1px_rgba(255,255,255,0.12)_inset]',
+            closeVisible ? 'pointer-events-auto' : 'pointer-events-none',
+          ].join(' ')}
+          aria-label="Close"
+          initial={{ opacity: 0, scale: 0.92, y: -14, filter: 'blur(5px)' }}
+          animate={closeVisible
+            ? { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }
+            : { opacity: 0, scale: 0.92, y: -16, filter: 'blur(5px)' }}
+          transition={{
+            opacity: { duration: closeVisible ? 0.5 : 0.42, ease: APPLE_EASE },
+            y: { type: 'spring', stiffness: closeVisible ? 135 : 120, damping: closeVisible ? 24 : 25, mass: 1.15 },
+            scale: { type: 'spring', stiffness: closeVisible ? 145 : 120, damping: closeVisible ? 25 : 26, mass: 1.15 },
+            filter: { duration: closeVisible ? 0.46 : 0.38, ease: APPLE_EASE },
+          }}
+          whileTap={{ scale: 0.92 }}
+          style={{ willChange: 'opacity, transform, filter' }}
+        >
+          <X size={21} strokeWidth={3.2} />
+        </motion.button>
       </div>
 
       <div
-        style={{ paddingTop: 'calc(136px + env(safe-area-inset-top))' }}
+        style={{ paddingTop: 'calc(72px + env(safe-area-inset-top))' }}
         className="px-0 pb-[calc(32px+env(safe-area-inset-bottom))]"
       >
 
@@ -707,14 +1012,14 @@ function MobilePopup({
                 transition={{ duration: 0.26, ease: APPLE_EASE }}
                 className="overflow-hidden"
               >
-                <div className="space-y-3 pt-4 text-[13px] font-bold leading-[1.52] text-black/60 dark:text-white/48">
-                  {pattern.pattern.the_breakdown.map((item, i) => (
-                    <div key={`mbd:${i}`} className="flex gap-3">
-                      <span className="mt-0.5 text-[14px] font-black leading-none text-[#E11D48]">
-                        {String(i + 1).padStart(2, '0')}
-                      </span>
-                      <p className="text-black/80 dark:text-zinc-200 font-extrabold">{item}</p>
-                    </div>
+                <div className="flex flex-col gap-3.5 pt-4 w-full">
+                  {scrollContainer && pattern.pattern.the_breakdown.map((item, i) => (
+                    <MobileBreakdownStepCard
+                      key={`mbd:${i}`}
+                      item={item}
+                      index={i}
+                      containerRef={mobileContainerRef}
+                    />
                   ))}
                 </div>
 
@@ -727,7 +1032,7 @@ function MobilePopup({
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] dark:text-[#FB7185] font-mono">Keep</div>
                     <ul className="mt-2.5 space-y-3">
                       {pattern.pattern.what_to_keep.map((item, i) => (
-                        <li key={`mk:${i}`} className="flex gap-3 items-start">
+                        <li key={`mk:${i}`} className="flex gap-3 items-center">
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#E11D48] text-[11px] font-black text-white shadow-sm">+</span>
                           <span className="text-[13.5px] font-bold leading-[1.3] text-black dark:text-zinc-100">{item}</span>
                         </li>
@@ -738,7 +1043,7 @@ function MobilePopup({
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-black dark:text-white font-mono">Kills</div>
                     <ul className="mt-2.5 space-y-3">
                       {pattern.pattern.what_kills_it.map((item, i) => (
-                        <li key={`mki:${i}`} className="flex gap-3 items-start">
+                        <li key={`mki:${i}`} className="flex gap-3 items-center">
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 text-[11px] font-black text-black/50 dark:text-white/40">-</span>
                           <span className="text-[13.5px] font-semibold leading-[1.3] text-black/80 dark:text-zinc-300">{item}</span>
                         </li>
@@ -888,11 +1193,13 @@ function DesktopPopup({
   proofIndex,
   setProofIndex,
   onClose,
+  isClosing,
 }: {
   pattern: FeederFilePattern;
   proofIndex: number;
   setProofIndex: (i: number) => void;
   onClose: () => void;
+  isClosing: boolean;
 }) {
   const proof = pattern.proofs[proofIndex];
   const total = pattern.proofs.length;
@@ -934,11 +1241,19 @@ function DesktopPopup({
 
   return (
     <motion.div
-      className="fixed inset-0 z-[1000] flex flex-col bg-[#FAF9F6] dark:bg-[#09090b] text-[#111111] dark:text-[#f4f4f5] transition-colors duration-300"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-[1000] flex flex-col bg-[#FAF9F6]/96 text-[#111111] backdrop-blur-xl transition-colors duration-300 dark:bg-[#09090b]/96 dark:text-[#f4f4f5]"
+      initial={{ opacity: 0, y: 18, scale: 0.982, filter: 'blur(12px)' }}
+      animate={isClosing
+        ? { opacity: 0, y: 24, scale: 0.98, filter: 'blur(14px)' }
+        : { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, y: 24, scale: 0.98, filter: 'blur(14px)', transition: { duration: 0.44, ease: APPLE_EASE } }}
+      transition={{
+        opacity: { duration: isClosing ? 0.32 : 0.3, ease: APPLE_EASE },
+        y: { type: 'spring', stiffness: isClosing ? 190 : 240, damping: isClosing ? 28 : 32, mass: 0.9 },
+        scale: { type: 'spring', stiffness: isClosing ? 190 : 240, damping: isClosing ? 28 : 32, mass: 0.9 },
+        filter: { duration: isClosing ? 0.44 : 0.38, ease: APPLE_EASE },
+      }}
+      style={{ willChange: 'opacity, transform, filter' }}
     >
       {/* close button */}
       <button
@@ -1011,13 +1326,15 @@ function DesktopPopup({
               {/* Breakdown */}
               <div className="flex h-full min-w-0 flex-col rounded-[24px] border border-black/[0.055] bg-white/88 p-[clamp(18px,1.7vw,28px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] transition-all duration-300 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-900/82">
                 <div className="mb-5 font-mono text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white">Breakdown</div>
-                <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-3.5 w-full items-stretch">
                   {pattern.pattern.the_breakdown.map((item, i) => (
-                    <div key={`dbd:${i}`} className="grid min-h-0 grid-cols-[48px_minmax(0,1fr)] gap-4 rounded-[16px] border border-black/[0.03] bg-black/[0.015] p-3.5 transition-colors duration-300 hover:border-[#E11D48]/18 dark:border-white/[0.03] dark:bg-white/[0.015]">
-                      <div className="text-[clamp(28px,1.9vw,40px)] font-black leading-none text-[#E11D48] dark:text-[#FB7185] font-mono drop-shadow-[0_2px_4px_rgba(225,29,72,0.15)]">
+                    <div key={`dbd:${i}`} className="flex w-full min-h-0 items-center gap-[clamp(16px,1.5vw,26px)] rounded-[16px] border border-black/[0.03] bg-black/[0.015] p-[clamp(14px,1.2vw,20px)] transition-colors duration-300 hover:border-[#E11D48]/18 dark:border-white/[0.03] dark:bg-white/[0.015]">
+                      <div className="shrink-0 font-mono text-[clamp(36px,2.4vw,48px)] font-black leading-none text-[#E11D48] dark:text-[#FB7185] drop-shadow-[0_2px_4px_rgba(225,29,72,0.15)]">
                         {String(i + 1).padStart(2, '0')}
                       </div>
-                      <p className="self-center text-[clamp(14px,0.88vw,16px)] font-extrabold leading-[1.32] text-black/70 dark:text-zinc-300">{item}</p>
+                      <p className="flex-1 min-w-0 text-[clamp(14.5px,0.92vw,17px)] font-extrabold leading-[1.38] text-black/76 dark:text-zinc-200">
+                        {item}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -1042,7 +1359,7 @@ function DesktopPopup({
                         <div className="text-[13px] font-black uppercase tracking-[0.22em] text-[#E11D48] dark:text-[#FB7185] font-mono">Keep</div>
                         <ul className="space-y-4">
                           {pattern.pattern.what_to_keep.map((item, i) => (
-                            <li key={`desktop-pattern-keep:${i}`} className="flex gap-4 items-start">
+                            <li key={`desktop-pattern-keep:${i}`} className="flex gap-4 items-center">
                               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#E11D48] text-[13px] font-black text-white shadow-[0_2px_8px_rgba(225,29,72,0.3)]">
                                 +
                               </span>
@@ -1057,7 +1374,7 @@ function DesktopPopup({
                         <div className="text-[13px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Kills</div>
                         <ul className="space-y-4">
                           {pattern.pattern.what_kills_it.map((item, i) => (
-                            <li key={`desktop-pattern-kill:${i}`} className="flex gap-4 items-start">
+                            <li key={`desktop-pattern-kill:${i}`} className="flex gap-4 items-center">
                               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 text-[13px] font-black text-black/60 dark:text-white/60">
                                 -
                               </span>
@@ -1366,9 +1683,45 @@ function PatternPopup({
   onClose: () => void;
 }) {
   const [proofIndex, setProofIndex] = useState(0);
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
   );
+
+  const requestClose = useCallback(() => {
+    if (isClosing || !pattern) return;
+    setIsClosing(true);
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      onClose();
+      setIsClosing(false);
+    }, isDesktop ? POPUP_DESKTOP_EXIT_MS : POPUP_MOBILE_EXIT_MS);
+  }, [isClosing, isDesktop, onClose, pattern]);
+
+  useEffect(() => {
+    if (!pattern) return undefined;
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      setIsClosing(false);
+      setProofIndex(0);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pattern]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 1024px)');
@@ -1385,7 +1738,7 @@ function PatternPopup({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose();
+        requestClose();
         return;
       }
       if (event.key === 'ArrowLeft') {
@@ -1403,7 +1756,7 @@ function PatternPopup({
       document.documentElement.style.overflow = previous;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [pattern, onClose]);
+  }, [pattern, requestClose]);
 
   if (typeof document === 'undefined') return null;
 
@@ -1415,7 +1768,8 @@ function PatternPopup({
           pattern={pattern}
           proofIndex={proofIndex}
           setProofIndex={setProofIndex}
-          onClose={onClose}
+          onClose={requestClose}
+          isClosing={isClosing}
         />
       )}
       {pattern && !isDesktop && (
@@ -1424,7 +1778,8 @@ function PatternPopup({
           pattern={pattern}
           proofIndex={proofIndex}
           setProofIndex={setProofIndex}
-          onClose={onClose}
+          onClose={requestClose}
+          isClosing={isClosing}
         />
       )}
     </AnimatePresence>,
@@ -1556,35 +1911,29 @@ export default function FeederFileClient({
     >
       <main className="relative mx-auto flex w-full max-w-[1500px] flex-col px-3 pb-10 pt-[calc(16px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-5 lg:px-8">
 
-        {/* ── sticky masthead + rings ── */}
-        <div className="sticky top-[calc(env(safe-area-inset-top)+var(--pwa-top-fix,0px))] z-30">
-          {/* title bar */}
-          <div className="flex items-center gap-3 rounded-b-[22px] bg-white/86 pb-3 pt-1 dark:bg-[#08080a]/86 sm:pb-4 sm:backdrop-blur-xl lg:bg-white/96 lg:backdrop-blur-none lg:dark:bg-[#08080a]/96">
+        {/* ── masthead + rings ── */}
+        <div className="-mx-3 overflow-hidden sm:mx-0">
+          <div className="flex items-center gap-3 rounded-none bg-white/96 px-5 pb-4 pt-3 dark:bg-[#08080a]/96 sm:gap-2 sm:rounded-b-[18px] sm:px-0 sm:pb-3 sm:pt-0 sm:backdrop-blur-xl lg:bg-white/96 lg:backdrop-blur-none lg:dark:bg-[#08080a]/96">
             <button
               type="button"
               onClick={() => router.push(`/?id=${feedId}`, { scroll: false })}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-black/[0.06] bg-white/76 text-black/52 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/54 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              className="group/back -ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transparent text-black transition-all hover:bg-black/[0.04] active:scale-95 dark:text-white dark:hover:bg-white/[0.07] sm:h-8 sm:w-8"
               aria-label="Back to feed dashboard"
             >
-              <ArrowLeft size={20} strokeWidth={2.6} />
+              <ArrowLeft className="h-8 w-8 transition-transform group-hover/back:-translate-x-0.5 sm:h-5 sm:w-5" strokeWidth={3.35} />
             </button>
 
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[#E11D48]/18 bg-[#E11D48]/10 text-[#BE123C] shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-[#FB7185]/20 dark:bg-[#FB7185]/12 dark:text-[#FDA4AF] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <BrainCircuit size={18} strokeWidth={2.6} />
-            </div>
-
-            <div className="flex min-w-0 flex-1 items-baseline gap-2">
-              <h1 className="truncate text-[20px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[24px]">
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 sm:gap-0.5">
+              <h1 className="truncate font-mono text-[33px] font-black uppercase leading-none tracking-[0.02em] text-black dark:text-white sm:text-[22px] sm:leading-none sm:tracking-[0.04em]">
                 Feeder File
               </h1>
-              <span className="hidden text-[9px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/26 sm:inline">
+              <span className="font-mono text-[9px] font-black uppercase tracking-[0.24em] text-black/34 dark:text-white/30 sm:text-[8px] sm:tracking-[0.14em] sm:text-black/26 sm:dark:text-white/24">
                 Content intelligence
               </span>
             </div>
           </div>
 
-          {/* story rings strip */}
-          <div className="rounded-b-[22px] bg-white/72 px-2 pb-4 pt-2 dark:bg-[#08080a]/72 sm:px-4 sm:backdrop-blur-xl lg:bg-white/94 lg:backdrop-blur-none lg:dark:bg-[#08080a]/94">
+          <div className="rounded-none bg-white/94 px-0 pb-5 pt-2 dark:bg-[#08080a]/94 sm:rounded-b-[22px] sm:px-4 sm:pb-4 sm:backdrop-blur-xl lg:bg-white/94 lg:backdrop-blur-none lg:dark:bg-[#08080a]/94">
             <StoryStrip
               accounts={accounts}
               activeAccount={selectedAccount}
@@ -1595,39 +1944,80 @@ export default function FeederFileClient({
           </div>
         </div>
 
-        {/* ── "Reading @handle" hero section ── */}
-        <section className="mt-6 sm:mt-8">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48]">
-            <span className="h-2 w-2 rounded-full bg-[#E11D48]" />
-            Reading
-          </div>
-          <h2 className="mt-2 text-[36px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[48px] lg:text-[54px]">
-            {activeAccountLabel}
-          </h2>
-          <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em] text-black/34 dark:text-white/28">
-            {activeAccountMeta}
-          </p>
+        {/* ── "Feeding on @handle" hero section ── */}
+        <section className="mt-6 overflow-hidden sm:mt-8">
+          <motion.div
+            initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{
+              opacity: { duration: 0.24, ease: GRID_ITEM_EASE },
+              y: FEEDER_DECK_SWAP_SPRING,
+              filter: { duration: 0.26, ease: GRID_ITEM_EASE },
+            }}
+            style={{ willChange: 'opacity, transform, filter' }}
+          >
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48]">
+              <span className="h-2 w-2 rounded-full bg-[#E11D48]" />
+              Feeding on
+            </div>
+            <h2 className="mt-2 min-h-[1em] text-[36px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[48px] lg:text-[54px]">
+              <TypebackText value={activeAccountLabel} />
+            </h2>
+            <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em] text-black/34 dark:text-white/28">
+              {activeAccountMeta}
+            </p>
+          </motion.div>
         </section>
 
         {/* ── pattern cards grid ── */}
-        <section className="mt-6 grid gap-8 sm:gap-10 sm:mt-8 xl:grid-cols-2">
-          <AnimatePresence mode="popLayout">
-            {renderablePatterns.map((pattern, i) => (
-              <PatternCard
-                key={`${pattern.account}:${pattern.pattern_id}`}
-                pattern={pattern}
-                patternIndex={i}
-                onOpen={setActivePattern}
-              />
-            ))}
+        <section className="mt-2 sm:mt-8">
+          <AnimatePresence initial={false} mode="sync">
+            <motion.div
+              key={`feeder-patterns:${selectedAccount}`}
+              data-feeder-pattern-deck="true"
+              className="grid gap-8 sm:gap-10 xl:grid-cols-2"
+              initial={{ opacity: 0, y: 22, scale: 0.985, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -14, scale: 0.992, filter: 'blur(8px)' }}
+              transition={{
+                opacity: { duration: 0.22, ease: GRID_ITEM_EASE },
+                y: FEEDER_DECK_SWAP_SPRING,
+                scale: FEEDER_DECK_SWAP_SPRING,
+                filter: { duration: 0.26, ease: GRID_ITEM_EASE },
+              }}
+              style={{ willChange: 'opacity, transform, filter' }}
+            >
+              <AnimatePresence mode="popLayout">
+                {renderablePatterns.map((pattern, i) => (
+                  <PatternCard
+                    key={`${pattern.account}:${pattern.pattern_id}`}
+                    pattern={pattern}
+                    patternIndex={i}
+                    onOpen={setActivePattern}
+                  />
+                ))}
+              </AnimatePresence>
+              {renderablePatterns.length === 0 && (
+                <motion.div
+                  layout
+                  className="rounded-[22px] border border-black/[0.06] bg-white/76 p-6 text-[12px] font-bold leading-relaxed text-black/46 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white/40"
+                  initial={{ opacity: 0, y: 12, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.975 }}
+                  transition={{
+                    layout: GRID_LAYOUT_SPRING,
+                    opacity: { duration: 0.2, ease: GRID_ITEM_EASE },
+                    y: { duration: 0.28, ease: GRID_ITEM_EASE },
+                    scale: { duration: 0.28, ease: GRID_ITEM_EASE },
+                  }}
+                >
+                  {patternsLoaded
+                    ? 'Feeder file pattern reads will appear after D7-qualified posts generate fingerprints, post breakdowns, and a compiled feeder file.'
+                    : 'Loading feeder file pattern reads from the database.'}
+                </motion.div>
+              )}
+            </motion.div>
           </AnimatePresence>
-          {renderablePatterns.length === 0 && (
-            <div className="rounded-[22px] border border-black/[0.06] bg-white/76 p-6 text-[12px] font-bold leading-relaxed text-black/46 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white/40">
-              {patternsLoaded
-                ? 'Feeder file pattern reads will appear after D7-qualified posts generate fingerprints, post breakdowns, and a compiled feeder file.'
-                : 'Loading feeder file pattern reads from the database.'}
-            </div>
-          )}
         </section>
       </main>
 
