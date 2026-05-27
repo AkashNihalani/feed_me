@@ -55,16 +55,78 @@ def _strip_fences(value: str) -> str:
 _YAML_ROOT_KEYS = ("feed_file:", "pattern_breakdown:", "post_proof:")
 
 
+def _fenced_blocks(value: str) -> list[str]:
+    blocks = re.findall(r"```(?:yaml|yml|json)?\s*\n(.*?)```", str(value or ""), flags=re.IGNORECASE | re.DOTALL)
+    return [block.strip() for block in blocks if block.strip()]
+
+
+def _mapping_sources(raw_output: str) -> list[str]:
+    sources: list[str] = []
+    seen: set[str] = set()
+
+    def add(candidate: str):
+        cleaned = _strip_fences(candidate)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            sources.append(cleaned)
+
+    add(raw_output)
+    for block in _fenced_blocks(raw_output):
+        add(block)
+
+    for source in list(sources):
+        for root_key in _YAML_ROOT_KEYS:
+            index = source.find(root_key)
+            if index >= 0:
+                add(source[index:])
+        json_index = source.find("{")
+        if json_index >= 0:
+            add(source[json_index:])
+
+    return sources
+
+
 def _repair_yaml_lines(text: str) -> str:
+    lines = text.splitlines()
     repaired: list[str] = []
-    for line in text.splitlines():
+    index = 0
+    while index < len(lines):
+        line = lines[index]
         stripped = line.strip()
         if stripped and re.match(r"^(→|->|=>)\s+", stripped):
             indent = line[: len(line) - len(line.lstrip())]
             safe = stripped.replace("\\", "\\\\").replace('"', '\\"')
             repaired.append(f'{indent}- "{safe}"')
+            index += 1
             continue
+        if stripped.startswith("- ") and not stripped[2:].startswith(("{", "[")):
+            indent = line[: len(line) - len(line.lstrip())]
+            value = stripped[2:].strip()
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*:\s", value):
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                    value = value[1:-1]
+                continuation: list[str] = []
+                next_index = index + 1
+                while next_index < len(lines):
+                    next_line = lines[next_index]
+                    next_stripped = next_line.strip()
+                    if not next_stripped:
+                        continuation.append("")
+                        next_index += 1
+                        continue
+                    next_indent_len = len(next_line) - len(next_line.lstrip())
+                    if next_indent_len <= len(indent):
+                        break
+                    continuation.append(next_stripped)
+                    next_index += 1
+                repaired.append(f"{indent}- >")
+                repaired.append(f"{indent}  {value}")
+                for continuation_line in continuation:
+                    repaired.append(f"{indent}  {continuation_line}" if continuation_line else "")
+                index = next_index
+                continue
         repaired.append(line)
+        index += 1
     return "\n".join(repaired)
 
 
@@ -77,17 +139,8 @@ def _safe_yaml_mapping(text: str) -> dict[str, Any] | None:
 
 
 def _parse_yaml_mapping(raw_output: str) -> dict[str, Any]:
-    text = _strip_fences(raw_output)
-    for candidate in (text, _repair_yaml_lines(text)):
-        parsed = _safe_yaml_mapping(candidate)
-        if parsed is not None:
-            return parsed
-
-    for root_key in _YAML_ROOT_KEYS:
-        index = text.find(root_key)
-        if index <= 0:
-            continue
-        for candidate in (text[index:], _repair_yaml_lines(text[index:])):
+    for source in _mapping_sources(raw_output):
+        for candidate in (source, _repair_yaml_lines(source)):
             parsed = _safe_yaml_mapping(candidate)
             if parsed is not None:
                 return parsed
@@ -306,7 +359,8 @@ def _load_post_inputs_by_keys(conn: Any, post_keys: list[str]) -> dict[str, dict
     return by_key
 
 
-def _load_recent_high_fingerprints(conn: Any, *, feeder_id: int, limit: int) -> list[dict[str, Any]]:
+def _load_recent_high_fingerprints(conn: Any, *, feeder_id: int, limit: int, days: int) -> list[dict[str, Any]]:
+    scoped_limit = min(max(1, int(limit)), max(1, int(FEEDER_FILE_MEMORY_LIMIT)))
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -319,14 +373,27 @@ def _load_recent_high_fingerprints(conn: Any, *, feeder_id: int, limit: int) -> 
             join public.post_fingerprints pf
               on pf.post_key = p.post_key
              and pf.media_confidence = 'high'
+            join public.post_metrics pm
+              on pm.post_key = p.post_key
+             and lower(pm.checkpoint) = 'd7'
             left join public.post_breakdowns pb
               on pb.post_key = p.post_key
             where p.feeder_id = %s
               and lower(coalesce(p.media_type, '')) in ('reel', 'video')
+              and p.posted_at >= now() - (%s::int * interval '1 day')
+              and least(
+                coalesce(pm.percentile_performance_exact, 101),
+                coalesce(pm.percentile_performance, 101)
+              ) <= %s
             order by p.posted_at desc nulls last, pf.updated_at desc nulls last
             limit %s
             """,
-            (feeder_id, max(1, int(limit))),
+            (
+                feeder_id,
+                max(1, int(days)),
+                float(FEEDER_FILE_RETENTION_PERCENTILE_MAX),
+                scoped_limit,
+            ),
         )
         return [dict(row) for row in cur.fetchall()]
 
@@ -767,6 +834,50 @@ def _record_call_done(
     conn.commit()
 
 
+def _recover_stored_model_call(
+    conn: Any,
+    *,
+    feeder_file_id: int | None,
+    call_key: str,
+    call_type: str,
+    feeder_handle: str,
+    prompt_version: str,
+) -> tuple[int, dict[str, Any]] | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select id, raw_output
+            from public.feeder_file_model_calls
+            where call_key = %s
+              and call_type = %s
+              and lower(feeder_handle) = lower(%s)
+              and prompt_version = %s
+              and (%s::bigint is null or feeder_file_id = %s::bigint)
+              and coalesce(raw_output, '') <> ''
+            order by updated_at desc nulls last, id desc
+            limit 3
+            """,
+            (call_key, call_type, feeder_handle, prompt_version, feeder_file_id, feeder_file_id),
+        )
+        rows = cur.fetchall()
+
+    for row in rows:
+        raw_output = str(row.get("raw_output") or "")
+        try:
+            parsed = _parse_yaml_mapping(raw_output)
+        except Exception:
+            continue
+        call_id = int(row["id"])
+        _record_call_done(conn, call_id, raw_output=raw_output, parsed_output=parsed)
+        print(
+            "[feeder-file-model] "
+            f"recovered call_type={call_type} handle={feeder_handle} call_key={call_key}",
+            flush=True,
+        )
+        return call_id, parsed
+    return None
+
+
 def _call_openrouter(
     conn: Any,
     *,
@@ -786,6 +897,16 @@ def _call_openrouter(
         raise RuntimeError("OPENROUTER_API_KEY is required for feeder file model calls")
     if call_type == "proof" and prompt_version != "feeder_file_proof_frontend_v3":
         raise RuntimeError(f"frontend proof calls must use v3 prompt, got {prompt_version}")
+    recovered = _recover_stored_model_call(
+        conn,
+        feeder_file_id=feeder_file_id,
+        call_key=call_key,
+        call_type=call_type,
+        feeder_handle=feeder_handle,
+        prompt_version=prompt_version,
+    )
+    if recovered is not None:
+        return recovered
     print(
         "[feeder-file-model] "
         f"start call_type={call_type} handle={feeder_handle} pattern_id={pattern_id or ''} "
@@ -1382,15 +1503,17 @@ def run_feeder_file_from_recent_fingerprints_once(
     feeder_id: int | None = None,
     handle: str | None = None,
     limit: int = 10,
+    days: int = FEEDER_FILE_MEMORY_DAYS,
     pattern_limit: int = 3,
 ) -> dict[str, Any]:
-    scoped_limit = max(1, int(limit))
+    scoped_limit = min(max(1, int(limit)), max(1, int(FEEDER_FILE_MEMORY_LIMIT)))
     feeder = _resolve_feeder(conn, feeder_id=feeder_id, handle=handle)
     feeder_handle = str(feeder["handle"])
     fingerprint_rows = _load_recent_high_fingerprints(
         conn,
         feeder_id=int(feeder["id"]),
         limit=scoped_limit,
+        days=days,
     )
     if len(fingerprint_rows) < scoped_limit:
         raise RuntimeError(
@@ -1442,7 +1565,10 @@ def run_feeder_file_from_recent_fingerprints_once(
         feeder_id=int(feeder["id"]),
         feeder_handle=feeder_handle,
         rows=compile_rows,
-        active_window=f"recent{scoped_limit}_high_fingerprints",
+        active_window=(
+            f"recent{scoped_limit}_high_fingerprints_"
+            f"{max(1, int(days))}d_retention{float(FEEDER_FILE_RETENTION_PERCENTILE_MAX):g}"
+        ),
         pattern_limit=pattern_limit,
     )
     return {

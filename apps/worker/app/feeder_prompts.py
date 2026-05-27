@@ -247,7 +247,7 @@ feed_file:
   source_breakdown_version:
   active_window:
   memory_hard_cap: 100
-  retention_percentile_max: 35
+  retention_percentile_max: 40
   pool_min_core_posts: 3
   pattern_limit: 15
   patterns:

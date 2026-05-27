@@ -2590,6 +2590,7 @@ class PureEngine:
         feeder_id: int | None = None,
         handle: str | None = None,
         limit: int = 10,
+        days: int = FEEDER_FILE_MEMORY_DAYS,
         pattern_limit: int = 3,
     ):
         return run_feeder_file_recent_fingerprints_pipeline_once(
@@ -2597,6 +2598,7 @@ class PureEngine:
             feeder_id=feeder_id,
             handle=handle,
             limit=limit,
+            days=days,
             pattern_limit=pattern_limit,
         )
 

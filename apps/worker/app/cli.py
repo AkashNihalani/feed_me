@@ -109,11 +109,15 @@ def main():
             if not handles and args.feeder_id is None:
                 raise SystemExit("--handle, --handles, or --feeder-id is required")
             targets = handles or [None]
+            recent_fingerprint_days = {}
+            if args.days != p.get_default("days"):
+                recent_fingerprint_days["days"] = args.days
             for target_handle in targets:
                 result = eng.run_feeder_file_from_recent_fingerprints_once(
                     feeder_id=args.feeder_id if target_handle is None else None,
                     handle=target_handle,
                     limit=args.limit,
+                    **recent_fingerprint_days,
                     pattern_limit=args.pattern_limit,
                 )
                 print(
