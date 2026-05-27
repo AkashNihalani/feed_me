@@ -57,7 +57,8 @@ function rememberThumbnailFailure(postKey: string | null | undefined) {
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const ACCENT = '#E11D48';
 const DEFAULT_ACCOUNT = '';
-const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * 45;
+const STORY_RING_RADIUS = 44;
+const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * STORY_RING_RADIUS;
 
 const ACCOUNT_INITIALS: Record<string, string> = {
   '@anuj.mp4': 'AJ',
@@ -298,54 +299,55 @@ function StoryRing({
       {/* ring + portrait */}
       <div className="relative">
         <div
-          className="relative flex h-[78px] w-[78px] items-center justify-center rounded-full p-[4px] transition-all duration-300 sm:h-[88px] sm:w-[88px]"
+          className="relative flex h-[78px] w-[78px] items-center justify-center rounded-full p-[5px] transition-all duration-300 sm:h-[88px] sm:w-[88px]"
         >
           <span
             className={[
               'absolute inset-0 rounded-full transition-colors duration-300',
               active
-                ? 'bg-[#FFE4EA] dark:bg-[#3F0F1B]'
+                ? 'bg-[#FFE4EA] shadow-[0_10px_26px_-18px_rgba(225,29,72,0.9)] dark:bg-[#3F0F1B]'
                 : 'bg-black/[0.08] dark:bg-white/[0.12]',
             ].join(' ')}
           />
           {active && (
-            <motion.svg
-              className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
-              viewBox="0 0 100 100"
-              aria-hidden="true"
-            >
-              <g transform="rotate(-90 50 50)">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  fill="none"
-                  stroke="rgba(225,29,72,0.16)"
-                  strokeWidth="5"
-                />
-                <motion.circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  fill="none"
-                  stroke={ACCENT}
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeDasharray={STORY_RING_CIRCUMFERENCE}
-                  animate={{
-                    opacity: [1, 1, 0.2],
-                    strokeDashoffset: [STORY_RING_CIRCUMFERENCE, 0, 0],
-                  }}
-                  transition={{
-                    duration: 4.2,
-                    ease: 'linear',
-                    repeat: Infinity,
-                    repeatDelay: 0.18,
-                    times: [0, 0.86, 1],
-                  }}
-                />
-              </g>
-            </motion.svg>
+            <>
+              <motion.span
+                className="pointer-events-none absolute -inset-1 rounded-full bg-[#E11D48]/28 blur-md"
+                initial={{ opacity: 0, scale: 0.86 }}
+                animate={{ opacity: [0, 0.72, 0], scale: [0.86, 1.18, 1.02] }}
+                transition={{ duration: 0.62, ease: APPLE_EASE, times: [0, 0.38, 1] }}
+              />
+              <motion.svg
+                className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+                viewBox="0 0 100 100"
+                aria-hidden="true"
+              >
+                <g transform="rotate(-90 50 50)">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={STORY_RING_RADIUS}
+                    fill="none"
+                    stroke="rgba(225,29,72,0.24)"
+                    strokeWidth="8"
+                  />
+                  <motion.circle
+                    cx="50"
+                    cy="50"
+                    r={STORY_RING_RADIUS}
+                    fill="none"
+                    stroke={ACCENT}
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={STORY_RING_CIRCUMFERENCE}
+                    initial={{ opacity: 0.92, strokeDashoffset: STORY_RING_CIRCUMFERENCE }}
+                    animate={{ opacity: 1, strokeDashoffset: 0 }}
+                    transition={{ duration: 0.72, ease: APPLE_EASE }}
+                    style={{ filter: 'drop-shadow(0 3px 8px rgba(225,29,72,0.42))' }}
+                  />
+                </g>
+              </motion.svg>
+            </>
           )}
           <div className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[22px] font-black text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF] sm:text-[25px]">
             {showProfilePic ? (
