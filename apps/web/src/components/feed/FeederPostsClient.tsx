@@ -63,6 +63,16 @@ function mediaLabel(value: MediaFilter | FeederPostItem['mediaType']) {
   return 'Unknown';
 }
 
+function instagramPostUrl(postKey: string | null | undefined, postUrl?: string | null): string {
+  const explicitUrl = String(postUrl || '').trim();
+  if (explicitUrl) return explicitUrl;
+  const cleanKey = String(postKey || '').trim().split('#')[0];
+  const parts = cleanKey.split('/').filter(Boolean);
+  const shortcode = parts.at(-1);
+  const mediaType = parts[0] === 'reel' ? 'reel' : 'p';
+  return shortcode ? `https://www.instagram.com/${mediaType}/${encodeURIComponent(shortcode)}/` : '';
+}
+
 function feederInitial(handle: string | null | undefined) {
   const clean = String(handle || '').replace(/^@+/, '').trim();
   return clean.slice(0, 1).toUpperCase() || 'F';
@@ -311,12 +321,14 @@ export default function FeederPostsClient({
 }
 
 function FeederPostCard({ post }: { post: FeederPostItem }) {
+  const postHref = instagramPostUrl(post.postKey, post.postUrl);
+
   return (
     <motion.a
       layout
-      href={post.postUrl || undefined}
-      target={post.postUrl ? '_blank' : undefined}
-      rel={post.postUrl ? 'noreferrer' : undefined}
+      href={postHref || undefined}
+      target={postHref ? '_blank' : undefined}
+      rel={postHref ? 'noopener noreferrer' : undefined}
       initial={{ opacity: 0, y: 18, scale: 0.975 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 10, scale: 0.97 }}
@@ -358,9 +370,11 @@ function FeederPostCard({ post }: { post: FeederPostItem }) {
                 {post.latestPercentile != null ? `Top ${Math.round(post.latestPercentile)}%` : '--'}
               </div>
             </div>
-            {post.postUrl ? (
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E11D48] text-white shadow-[0_8px_18px_rgba(225,29,72,0.28)]">
-                <ArrowUpRight size={18} strokeWidth={2.6} />
+            {postHref ? (
+              <div className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#E11D48] px-3 text-white shadow-[0_8px_18px_rgba(225,29,72,0.28)]">
+                <span className="hidden text-[9px] font-black uppercase tracking-[0.12em] sm:inline">Instagram</span>
+                <span className="text-[9px] font-black uppercase tracking-[0.12em] sm:hidden">Open</span>
+                <ArrowUpRight size={16} strokeWidth={2.8} />
               </div>
             ) : null}
           </div>

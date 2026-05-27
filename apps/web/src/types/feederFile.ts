@@ -7,6 +7,7 @@ export type MetricCard = {
 
 export type ProofBlock = {
   post_key: string;
+  post_url?: string | null;
   proof_label: string;
   proof_headline: string;
   post_read: string;

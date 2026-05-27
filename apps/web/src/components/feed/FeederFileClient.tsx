@@ -25,7 +25,9 @@ function mediaProxyUrl(postKey: string | null | undefined): string {
   return key ? `/api/media?postKey=${encodeURIComponent(key)}&role=thumbnail` : '';
 }
 
-function instagramPostUrl(postKey: string | null | undefined): string {
+function instagramPostUrl(postKey: string | null | undefined, postUrl?: string | null): string {
+  const explicitUrl = String(postUrl || '').trim();
+  if (explicitUrl) return explicitUrl;
   const cleanKey = String(postKey || '').trim().split('#')[0];
   const parts = cleanKey.split('/').filter(Boolean);
   const shortcode = parts.at(-1);
@@ -54,8 +56,8 @@ function rememberThumbnailFailure(postKey: string | null | undefined) {
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const ACCENT = '#E11D48';
-const ACCENT_LIGHT = '#FB7185';
 const DEFAULT_ACCOUNT = '';
+const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * 45;
 
 const ACCOUNT_INITIALS: Record<string, string> = {
   '@anuj.mp4': 'AJ',
@@ -64,6 +66,7 @@ const ACCOUNT_INITIALS: Record<string, string> = {
 
 const EMPTY_PROOF: ProofBlock = {
   post_key: '',
+  post_url: null,
   proof_label: '',
   proof_headline: '',
   post_read: '',
@@ -295,14 +298,56 @@ function StoryRing({
       {/* ring + portrait */}
       <div className="relative">
         <div
-          className="flex h-[78px] w-[78px] items-center justify-center rounded-full p-[3px] transition-all duration-300 sm:h-[88px] sm:w-[88px]"
-          style={{
-            background: active
-              ? `conic-gradient(from 0deg, ${ACCENT}, ${ACCENT_LIGHT}, ${ACCENT})`
-              : 'conic-gradient(from 0deg, rgba(120,120,120,0.3), rgba(160,160,160,0.2), rgba(120,120,120,0.3))',
-          }}
+          className="relative flex h-[78px] w-[78px] items-center justify-center rounded-full p-[4px] transition-all duration-300 sm:h-[88px] sm:w-[88px]"
         >
-          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[22px] font-black text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF] sm:text-[25px]">
+          <span
+            className={[
+              'absolute inset-0 rounded-full transition-colors duration-300',
+              active
+                ? 'bg-[#FFE4EA] dark:bg-[#3F0F1B]'
+                : 'bg-black/[0.08] dark:bg-white/[0.12]',
+            ].join(' ')}
+          />
+          {active && (
+            <motion.svg
+              className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+              viewBox="0 0 100 100"
+              aria-hidden="true"
+            >
+              <g transform="rotate(-90 50 50)">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="45"
+                  fill="none"
+                  stroke="rgba(225,29,72,0.16)"
+                  strokeWidth="5"
+                />
+                <motion.circle
+                  cx="50"
+                  cy="50"
+                  r="45"
+                  fill="none"
+                  stroke={ACCENT}
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                  strokeDasharray={STORY_RING_CIRCUMFERENCE}
+                  animate={{
+                    opacity: [1, 1, 0.2],
+                    strokeDashoffset: [STORY_RING_CIRCUMFERENCE, 0, 0],
+                  }}
+                  transition={{
+                    duration: 4.2,
+                    ease: 'linear',
+                    repeat: Infinity,
+                    repeatDelay: 0.18,
+                    times: [0, 0.86, 1],
+                  }}
+                />
+              </g>
+            </motion.svg>
+          )}
+          <div className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[22px] font-black text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF] sm:text-[25px]">
             {showProfilePic ? (
               // eslint-disable-next-line @next/next/no-img-element -- feeder avatars are proxied dynamic profile images
               <img
@@ -758,6 +803,17 @@ function MobilePopup({
           <h4 className="text-[25px] font-serif font-extrabold leading-[1.1] tracking-tight text-black dark:text-white">
             {proof.proof_headline}
           </h4>
+
+          <a
+            href={instagramPostUrl(proof.post_key, proof.post_url)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-full bg-[#E11D48] px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_-16px_rgba(225,29,72,0.8)] active:scale-[0.98]"
+            aria-label="Open selected proof on Instagram"
+          >
+            <span>Open on Instagram</span>
+            <ArrowUpRight size={13} strokeWidth={3} />
+          </a>
 
           <div className="mt-5 border-t-2 border-[#E11D48] pt-3.5">
             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] dark:text-[#FB7185] font-mono">What clicked</div>
@@ -1226,7 +1282,7 @@ function DesktopPopup({
                 </div>
 
                 <a
-                  href={instagramPostUrl(proof.post_key)}
+                  href={instagramPostUrl(proof.post_key, proof.post_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(event) => event.stopPropagation()}

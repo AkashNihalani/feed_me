@@ -25,6 +25,7 @@ type ApiMetric = {
 
 type ApiProof = {
   post_key: string;
+  post_url: string | null;
   proof_label: string;
   proof_headline: string;
   post_read: string;
@@ -52,6 +53,11 @@ type ApiPattern = {
     what_kills_it: string[];
   };
   proofs: ApiProof[];
+};
+
+type PostUrlRow = {
+  post_key: string | null;
+  post_url: string | null;
 };
 
 function adminClient() {
@@ -103,6 +109,12 @@ function proofList(value: unknown) {
 
 function proofKey(value: unknown) {
   return String(value || '').trim().toLowerCase();
+}
+
+function postUrlForProof(postUrlByKey: Map<string, string>, postKey: string) {
+  const exact = String(postKey || '').trim();
+  if (!exact) return null;
+  return postUrlByKey.get(exact) || postUrlByKey.get(exact.toLowerCase()) || null;
 }
 
 function reindexProofs(proofs: ApiProof[]): ApiProof[] {
@@ -209,6 +221,27 @@ export async function GET(req: NextRequest) {
     if (!uniquePatterns.has(key)) uniquePatterns.set(key, row);
   }
 
+  const proofPostKeys = Array.from(new Set(
+    Array.from(uniquePatterns.values())
+      .flatMap((pattern) => proofList(pattern.proof_reads).map((proof) => text(proof.post_key)))
+      .filter(Boolean),
+  ));
+  const postUrlByKey = new Map<string, string>();
+  if (proofPostKeys.length > 0) {
+    const { data: postUrlRows, error: postUrlError } = await admin
+      .from('posts')
+      .select('post_key,post_url')
+      .in('post_key', proofPostKeys);
+    if (postUrlError) throw postUrlError;
+    for (const row of (postUrlRows || []) as PostUrlRow[]) {
+      const key = text(row.post_key);
+      const urlValue = text(row.post_url);
+      if (!key || !urlValue) continue;
+      postUrlByKey.set(key, urlValue);
+      postUrlByKey.set(key.toLowerCase(), urlValue);
+    }
+  }
+
   const patterns = Array.from(uniquePatterns.values())
     .sort((a, b) => {
       const handleCompare = normalizeHandle(a.feeder_handle).localeCompare(normalizeHandle(b.feeder_handle));
@@ -243,6 +276,7 @@ export async function GET(req: NextRequest) {
         },
         proofs: proofs.map((proof, index) => ({
           post_key: text(proof.post_key),
+          post_url: text(proof.post_url) || postUrlForProof(postUrlByKey, text(proof.post_key)),
           proof_label: text(proof.proof_label, `Proof ${index + 1}`),
           proof_headline: text(proof.proof_headline),
           post_read: text(proof.post_read),
