@@ -33,6 +33,7 @@ export type FeederFilePattern = {
   account: string;
   accountLabel: string;
   accountMeta: string;
+  accountMemoryMeta?: string;
   pattern_id: string;
   pattern: PatternBreakdown;
   proofs: ProofBlock[];

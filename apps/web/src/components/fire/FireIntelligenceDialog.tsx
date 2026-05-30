@@ -53,15 +53,21 @@ function textList(v: unknown, max = 4): string[] {
 
 function parsePostContextRead(meta: Record<string, unknown>) {
   const read = asRecord(meta.post_read);
+  const source = text(read.source);
+  const headline = text(read.headline).trim();
+  const metricContext = text(read.metric_context).trim();
+  const readText = text(read.read).trim();
+  const direction = text(read.direction).trim();
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 3);
   const notes = textList(read.notes, 3);
-  const sourceLabel = text(read.source_label) || (text(read.source) === 'post_fingerprint' ? 'Fingerprint' : 'Context Layer');
-  if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
+  const isD7Read = source === 'd7_read' || Boolean(headline || metricContext || readText || direction);
+  const sourceLabel = text(read.source_label) || (source === 'post_fingerprint' ? 'Fingerprint' : isD7Read ? 'D7 Post Mortem' : 'Context Layer');
+  if (!isD7Read && matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
     return null;
   }
-  return { matches, deviates, unclear, notes, sourceLabel };
+  return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, isD7Read };
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -672,27 +678,54 @@ export default function FireIntelligenceDialog({
                   {stats.postContextRead && (
                     <div>
                       <div className="flex items-center justify-between gap-3">
-                        <SectionTag>Post Read</SectionTag>
+                        <SectionTag>{stats.postContextRead.isD7Read ? 'Post Mortem' : 'Post Read'}</SectionTag>
                         <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
                           {stats.postContextRead.sourceLabel}
                         </div>
                       </div>
                       <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                        {stats.postContextRead.matches[0] ? (
-                          <p className="text-[15px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
-                            {stats.postContextRead.matches[0]}
-                          </p>
-                        ) : null}
-                        <div className="mt-3 grid gap-2">
-                          {[...stats.postContextRead.matches.slice(1, 4), ...stats.postContextRead.deviates.slice(0, 3), ...stats.postContextRead.notes.slice(0, 2)].slice(0, 5).map((line) => (
-                            <div
-                              key={`${item.id}-post-read-${line}`}
-                              className="rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52"
-                            >
-                              {line}
+                        {stats.postContextRead.isD7Read ? (
+                          <>
+                            {stats.postContextRead.headline ? (
+                              <p className="text-[20px] font-black leading-tight tracking-[-0.03em] text-neutral-950 dark:text-white">
+                                {stats.postContextRead.headline}
+                              </p>
+                            ) : null}
+                            {stats.postContextRead.metricContext ? (
+                              <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#E11D48]">
+                                {stats.postContextRead.metricContext}
+                              </p>
+                            ) : null}
+                            {stats.postContextRead.readText ? (
+                              <p className="mt-3 text-[14px] font-semibold leading-relaxed text-neutral-800 dark:text-white/72">
+                                {stats.postContextRead.readText}
+                              </p>
+                            ) : null}
+                            {stats.postContextRead.direction ? (
+                              <div className="mt-3 rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52">
+                                {stats.postContextRead.direction}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            {stats.postContextRead.matches[0] ? (
+                              <p className="text-[15px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
+                                {stats.postContextRead.matches[0]}
+                              </p>
+                            ) : null}
+                            <div className="mt-3 grid gap-2">
+                              {[...stats.postContextRead.matches.slice(1, 4), ...stats.postContextRead.deviates.slice(0, 3), ...stats.postContextRead.notes.slice(0, 2)].slice(0, 5).map((line) => (
+                                <div
+                                  key={`${item.id}-post-read-${line}`}
+                                  className="rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52"
+                                >
+                                  {line}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

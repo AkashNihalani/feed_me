@@ -16,6 +16,7 @@ const WARMUP_META_PAGE_SIZE = 1000;
 const WARMUP_METRIC_CHUNK_SIZE = 250;
 const TRACKING_SIGNAL_CODE = 'TRACKING_BASE';
 const HOT_PERCENTILE_MAX = 35;
+const D7_READ_PROMPT_VERSION = 'd7_read_v1_unarguable_comment';
 const PREVIEW_CAPTURE_START_DAY = (process.env.FIRE_PREVIEW_START_DAY || '2026-04-14').trim();
 const FIRE_BOOTSTRAP_DAY_COUNT = 7;
 const FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE = 20;
@@ -26,7 +27,7 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v7';
+const FIRE_CACHE_VERSION = 'v9';
 const EMPTY_MEDIA_SOURCE_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
@@ -235,13 +236,6 @@ function dedupeSortedAlertRows(rows: AlertSurfaceRow[]): AlertSurfaceRow[] {
   return Array.from(deduped.values());
 }
 
-function publicMediaUrlFromPath(path: string | null | undefined): string | null {
-  const base = (process.env.MEDIA_PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
-  const cleanPath = typeof path === 'string' ? path.trim().replace(/^\/+/, '') : '';
-  if (!base || !cleanPath) return null;
-  return `${base}/${cleanPath.split('/').map(encodeURIComponent).join('/')}`;
-}
-
 function mediaRouteUrlForPostKey(postKey: string | null | undefined, role = 'thumbnail'): string | null {
   const key = typeof postKey === 'string' ? postKey.trim() : '';
   if (!key) return null;
@@ -404,6 +398,37 @@ function buildFingerprintIntelligencePayload(row: FireIntelligenceRow | undefine
 
 function buildPostIntelligencePayload(row: FireIntelligenceRow | undefined): Record<string, unknown> | null {
   return buildFingerprintIntelligencePayload(row);
+}
+
+function d7ReadBody(value: unknown): Record<string, unknown> {
+  const parsed = recordValue(value);
+  const direct = recordValue(parsed.d7_read);
+  if (Object.keys(direct).length > 0) return direct;
+  return parsed;
+}
+
+function buildD7ReadPayload(row: FireD7ReadRow | undefined): Record<string, unknown> | null {
+  if (!row?.parsed_output) return null;
+  const body = d7ReadBody(row.parsed_output);
+  const headline = readableText(body.headline);
+  const metricContext = readableText(body.metric_context);
+  const read = readableText(body.read);
+  const direction = readableText(body.direction);
+  if (!headline && !metricContext && !read && !direction) return null;
+
+  return {
+    source: 'd7_read',
+    source_label: 'D7 Post Mortem',
+    model_version: row.model ? `openrouter:${row.model}:${row.prompt_version || D7_READ_PROMPT_VERSION}` : row.prompt_version || D7_READ_PROMPT_VERSION,
+    headline,
+    metric_context: metricContext,
+    read,
+    direction,
+    matches: [headline, metricContext, read].filter(Boolean),
+    deviates: direction ? [direction] : [],
+    unclear: [],
+    notes: [],
+  };
 }
 
 function isHotPercentile(value: number | null): boolean {
@@ -575,6 +600,14 @@ type FireIntelligenceRow = {
   fingerprint_media_confidence: string | null;
 };
 
+type FireD7ReadRow = {
+  post_key: string | null;
+  model: string | null;
+  prompt_version: string | null;
+  parsed_output: Record<string, unknown> | null;
+  updated_at: string | null;
+};
+
 type FirePostFingerprintRow = {
   post_key: string | null;
   fingerprint: Record<string, unknown> | null;
@@ -588,7 +621,6 @@ type MediaAssetUrlRow = {
   asset_role: string | null;
   storage_provider: string | null;
   storage_path: string | null;
-  public_url: string | null;
   mime_type: string | null;
   purge_after: string | null;
 };
@@ -1030,10 +1062,8 @@ async function fetchCurrentDayTrackingRows(
   return { posts, metricRows };
 }
 
-function directMediaUrl(row: MediaAssetUrlRow): string | null {
-  const publicUrl = nullableString(row.public_url);
-  if (publicUrl) return publicUrl;
-  return row.storage_provider === 'r2' ? publicMediaUrlFromPath(row.storage_path) : null;
+function hasStoredR2Media(row: MediaAssetUrlRow): boolean {
+  return row.storage_provider === 'r2' && Boolean(nullableString(row.storage_path));
 }
 
 async function fetchStoredMediaUrls(
@@ -1070,7 +1100,7 @@ async function fetchStoredMediaUrls(
     const chunk = queryPostKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
     const { data, error } = await sb
       .from('post_media_assets')
-      .select('post_key,asset_role,storage_provider,storage_path,public_url,mime_type,purge_after')
+      .select('post_key,asset_role,storage_provider,storage_path,mime_type,purge_after')
       .in('post_key', chunk)
       .in('asset_role', ['thumbnail', 'display', 'carousel_0', 'preview_5s'])
       .in('status', ['active', 'purge_pending', 'pending_capture']);
@@ -1084,16 +1114,16 @@ async function fetchStoredMediaUrls(
 
       const purgeAfter = row.purge_after ? Date.parse(row.purge_after) : Number.POSITIVE_INFINITY;
       if (Number.isFinite(purgeAfter) && purgeAfter <= Date.now()) continue;
+      if (!hasStoredR2Media(row)) continue;
 
       const mimeType = nullableString(row.mime_type)?.toLowerCase() || '';
-      const url = directMediaUrl(row);
-      if (!url) continue;
       const originalPostKeys = originalsByCandidate.get(postKey) || [postKey];
 
       if (role === 'preview_5s') {
         if (mimeType && !mimeType.startsWith('video/')) continue;
         for (const originalPostKey of originalPostKeys) {
-          previewUrls.set(originalPostKey, url);
+          const url = mediaRouteUrlForPostKey(originalPostKey, 'preview_5s');
+          if (url) previewUrls.set(originalPostKey, url);
         }
         continue;
       }
@@ -1103,8 +1133,11 @@ async function fetchStoredMediaUrls(
       for (const originalPostKey of originalPostKeys) {
         const currentPriority = chosenThumbnailPriority.get(originalPostKey) ?? Number.POSITIVE_INFINITY;
         if (priority < currentPriority) {
-          thumbnailUrls.set(originalPostKey, url);
-          chosenThumbnailPriority.set(originalPostKey, priority);
+          const url = mediaRouteUrlForPostKey(originalPostKey);
+          if (url) {
+            thumbnailUrls.set(originalPostKey, url);
+            chosenThumbnailPriority.set(originalPostKey, priority);
+          }
         }
       }
     }
@@ -1234,6 +1267,41 @@ async function fetchIntelligenceRowsForPostKeys(
   return Array.from(rowsByPostKey.values());
 }
 
+async function fetchD7ReadRowsForPostKeys(
+  sb: { from: ReturnType<typeof createClient>['from'] },
+  postKeys: string[],
+): Promise<FireD7ReadRow[]> {
+  if (postKeys.length === 0) return [];
+
+  const rowsByPostKey = new Map<string, FireD7ReadRow>();
+  for (let start = 0; start < postKeys.length; start += POST_KEY_CHUNK_SIZE) {
+    const chunk = postKeys.slice(start, start + POST_KEY_CHUNK_SIZE);
+    const { data, error } = await sb
+      .from('feeder_file_model_calls')
+      .select('post_key,model,prompt_version,parsed_output,updated_at')
+      .eq('call_type', 'd7_read')
+      .eq('status', 'complete')
+      .eq('prompt_version', D7_READ_PROMPT_VERSION)
+      .in('post_key', chunk)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    for (const row of (data || []) as FireD7ReadRow[]) {
+      const postKey = nullableString(row.post_key);
+      if (!postKey || rowsByPostKey.has(postKey)) continue;
+      rowsByPostKey.set(postKey, {
+        post_key: postKey,
+        model: nullableString(row.model),
+        prompt_version: nullableString(row.prompt_version),
+        parsed_output: recordValue(row.parsed_output),
+        updated_at: nullableString(row.updated_at),
+      });
+    }
+  }
+
+  return Array.from(rowsByPostKey.values());
+}
+
 async function fetchFeederBaselineRows(
   sb: { from: ReturnType<typeof createClient>['from'] },
   feederIds: number[],
@@ -1301,6 +1369,7 @@ function buildSyntheticFireRows(options: {
   baselineRows: FireFeederBaselineRow[];
   hourBaselineRows: FireFeederHourBaselineRow[];
   intelligenceRows: FireIntelligenceRow[];
+  d7ReadRows: FireD7ReadRow[];
 }): AlertSurfaceRow[] {
   const feederById = new Map<number, ActiveFeederRow>(
     options.feederRows.map((row) => [Number(row.id), row]),
@@ -1347,6 +1416,12 @@ function buildSyntheticFireRows(options: {
     if (postKey) intelligenceByPostKey.set(postKey, row);
   }
 
+  const d7ReadByPostKey = new Map<string, FireD7ReadRow>();
+  for (const row of options.d7ReadRows) {
+    const postKey = typeof row.post_key === 'string' ? row.post_key.trim() : '';
+    if (postKey) d7ReadByPostKey.set(postKey, row);
+  }
+
   const rows: AlertSurfaceRow[] = [];
   for (const metricRow of dedupeMetricRows(options.currentMetricRows)) {
     const postKey = typeof metricRow.post_key === 'string' ? metricRow.post_key.trim() : '';
@@ -1380,10 +1455,14 @@ function buildSyntheticFireRows(options: {
       : hourBaselineByKey.get(buildHourBaselineKey(feederId, mediaType, checkpoint, hourIst)) || null;
     const intelligenceRow = intelligenceByPostKey.get(postKey);
     const postIntelligence = buildPostIntelligencePayload(intelligenceRow);
+    const d7Read = checkpoint === 'd7' ? buildD7ReadPayload(d7ReadByPostKey.get(postKey)) : null;
+    if (checkpoint === 'd7' && !d7Read) {
+      continue;
+    }
     const surfacePercentile = nullableNumber(metricRow.percentile_performance);
     const surfacePercentileExact = nullableNumber(metricRow.percentile_performance_exact) ?? surfacePercentile;
     const displayPercentile = surfacePercentileExact ?? surfacePercentile;
-    const hasIntelligence = Boolean(postIntelligence);
+    const hasIntelligence = Boolean(d7Read || postIntelligence);
     const isHot = isHotPercentile(displayPercentile);
 
     const views = nullableNumber(metricRow.views);
@@ -1446,7 +1525,7 @@ function buildSyntheticFireRows(options: {
       trajectory_d7: nullableNumber(trajectoryByPost.get(postKey)?.d7?.percentile_performance),
       trajectory_d21: nullableNumber(trajectoryByPost.get(postKey)?.d21?.percentile_performance),
       intelligence_skipped: intelligenceRow?.fingerprint_model_version === 'skipped',
-      post_read: postIntelligence,
+      post_read: d7Read || postIntelligence,
       is_hot: isHot,
       has_intelligence: hasIntelligence,
       hide_signal_chrome: true,
@@ -1501,9 +1580,12 @@ async function loadTrackingFireRows(
   if (dayPostKeys.length === 0) return [];
 
   const needsLegacyBaselineFallback = dedupedDayMetricRows.some(requiresLegacyBaselineFallback);
-  const [allMetricRows, intelligenceRows, baselineRows, hourBaselineRows] = await Promise.all([
+  const [allMetricRows, intelligenceRows, d7ReadRows, baselineRows, hourBaselineRows] = await Promise.all([
     fetchMetricRowsForPostKeys(sb, dayPostKeys, { checkpoints: [...TRACKING_CHECKPOINTS] }),
     fetchIntelligenceRowsForPostKeys(sb, dayPostKeys),
+    options.trackingCheckpoints.includes('d7')
+      ? fetchD7ReadRowsForPostKeys(sb, dayPostKeys)
+      : Promise.resolve([] as FireD7ReadRow[]),
     needsLegacyBaselineFallback
       ? fetchFeederBaselineRows(sb, options.effectiveFeederIds, [...options.trackingCheckpoints])
       : Promise.resolve([] as FireFeederBaselineRow[]),
@@ -1520,6 +1602,7 @@ async function loadTrackingFireRows(
     baselineRows,
     hourBaselineRows,
     intelligenceRows,
+    d7ReadRows,
   });
 }
 

@@ -1830,7 +1830,7 @@ export default function FeederFileClient({
   const renderablePatterns = useMemo(() => visiblePatterns.filter(hasRenderableProofs), [visiblePatterns]);
   const activeFeed = renderablePatterns[0] ?? visiblePatterns[0] ?? null;
   const activeAccountLabel = activeFeed?.account ?? (patternsLoaded ? selectedAccount || 'Feeder File' : 'Loading feeder file');
-  const activeAccountMeta = activeFeed?.accountMeta ?? (
+  const activeAccountMeta = activeFeed?.accountMemoryMeta ?? activeFeed?.accountMeta ?? (
     patternsLoaded
       ? 'Waiting for D7-qualified pattern reads'
       : 'Reading official DB payloads'

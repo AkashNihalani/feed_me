@@ -60,6 +60,7 @@ from .signal_detection import (
 from .fingerprint_intelligence import fingerprint_reels as run_fingerprint_reels
 from .feeder_file_pipeline import (
     package_feeder_file_once as package_feeder_file_pipeline_once,
+    repair_feeder_file_compile_once as repair_feeder_file_compile_pipeline_once,
     run_feeder_file_from_recent_fingerprints_once as run_feeder_file_recent_fingerprints_pipeline_once,
     run_feeder_file_once as run_feeder_file_pipeline_once,
 )
@@ -762,6 +763,18 @@ def _r2_client():
     return _R2_CLIENT
 
 
+def _r2_signed_object_url(bucket: str, path: str, expires_seconds: int = 900) -> str | None:
+    clean_bucket = (bucket or "").strip()
+    clean_path = (path or "").strip().lstrip("/")
+    if not clean_bucket or not clean_path:
+        return None
+    return _r2_client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": clean_bucket, "Key": clean_path},
+        ExpiresIn=max(60, min(3600, int(expires_seconds))),
+    )
+
+
 def _extract_instagram_meta_content(html: str, key: str) -> str | None:
     if not html or not key:
         return None
@@ -1060,20 +1073,12 @@ class PureEngine:
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
                            and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
                            and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
-                           and (
-                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
-                             or coalesce(public.post_media_assets.public_url, '') <> ''
-                           )
                         then 'active'
                       when public.post_media_assets.status = 'purge_pending'
                            and coalesce(public.post_media_assets.storage_path, '') <> ''
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
                            and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
                            and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
-                           and (
-                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
-                             or coalesce(public.post_media_assets.public_url, '') <> ''
-                           )
                         then 'active'
                       else 'pending_capture'
                     end,
@@ -1083,10 +1088,6 @@ class PureEngine:
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
                            and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
                            and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
-                           and (
-                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
-                             or coalesce(public.post_media_assets.public_url, '') <> ''
-                           )
                         then public.post_media_assets.attempt
                       else 0
                     end,
@@ -1096,10 +1097,6 @@ class PureEngine:
                            and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
                            and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
                            and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
-                           and (
-                             coalesce(public.post_media_assets.storage_provider, 'supabase') <> 'r2'
-                             or coalesce(public.post_media_assets.public_url, '') <> ''
-                           )
                         then public.post_media_assets.next_run_at
                       else now()
                     end
@@ -1263,7 +1260,6 @@ class PureEngine:
                         and r2.status in ('active', 'purge_pending')
                         and coalesce(r2.storage_provider, 'supabase') = 'r2'
                         and coalesce(r2.storage_path, '') <> ''
-                        and coalesce(r2.public_url, '') <> ''
                     )
                   )
                 )
@@ -2345,7 +2341,6 @@ class PureEngine:
               and status in ('active', 'purge_pending')
               and coalesce(storage_provider, 'supabase') = 'r2'
               and coalesce(storage_path, '') <> ''
-              and coalesce(public_url, '') <> ''
             limit 1
             """,
             (post_key,),
@@ -2619,6 +2614,23 @@ class PureEngine:
             pattern_limit=pattern_limit,
         )
 
+    def repair_feeder_file_compile_once(
+        self,
+        feeder_id: int | None = None,
+        handle: str | None = None,
+        compile_version: str | None = None,
+        pattern_id: str | None = None,
+        pattern_limit: int = 3,
+    ):
+        return repair_feeder_file_compile_pipeline_once(
+            self.conn,
+            feeder_id=feeder_id,
+            handle=handle,
+            compile_version=compile_version,
+            pattern_id=pattern_id,
+            pattern_limit=pattern_limit,
+        )
+
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
         """Get a URL for a cached media asset."""
         with self.conn.cursor(row_factory=dict_row) as cur:
@@ -2634,10 +2646,11 @@ class PureEngine:
             row = cur.fetchone()
         if not row or not row.get("storage_path"):
             return None
+        if row.get("storage_provider") == "r2":
+            bucket = row.get("storage_bucket") or R2_BUCKET
+            return _r2_signed_object_url(str(bucket), str(row["storage_path"]))
         if row.get("public_url"):
             return str(row["public_url"])
-        if row.get("storage_provider") == "r2":
-            return _public_media_url(str(row["storage_path"]))
         bucket = row.get("storage_bucket") or SUPABASE_MEDIA_BUCKET
         path = row["storage_path"]
         return _storage_authenticated_object_url(str(bucket), str(path))
@@ -2658,13 +2671,14 @@ class PureEngine:
             rows = cur.fetchall()
         urls = []
         for row in rows:
-            if row.get("public_url"):
-                urls.append(str(row["public_url"]))
-                continue
             if row.get("storage_provider") == "r2":
-                url = _public_media_url(str(row["storage_path"]))
+                bucket = row.get("storage_bucket") or R2_BUCKET
+                url = _r2_signed_object_url(str(bucket), str(row["storage_path"]))
                 if url:
                     urls.append(url)
+                continue
+            if row.get("public_url"):
+                urls.append(str(row["public_url"]))
                 continue
             bucket = row.get("storage_bucket") or SUPABASE_MEDIA_BUCKET
             path = row["storage_path"]
@@ -3416,10 +3430,6 @@ class PureEngine:
                     and assets.status = 'active'
                     and coalesce(assets.storage_provider, 'supabase') = %s
                     and coalesce(assets.storage_path, '') <> ''
-                    and (
-                      coalesce(assets.storage_provider, 'supabase') <> 'r2'
-                      or coalesce(assets.public_url, '') <> ''
-                    )
                 )
                 or (
                   lower(coalesce(p.media_type, '')) = 'reel'
@@ -3431,10 +3441,6 @@ class PureEngine:
                       and assets.asset_role = 'preview_5s'
                       and assets.status = 'active'
                       and coalesce(assets.storage_path, '') <> ''
-                      and (
-                        coalesce(assets.storage_provider, 'supabase') <> 'r2'
-                        or coalesce(assets.public_url, '') <> ''
-                      )
                   )
                 )
               )
@@ -3544,10 +3550,6 @@ class PureEngine:
                     and assets.status = 'active'
                     and coalesce(assets.storage_provider, 'supabase') = %s
                     and coalesce(assets.storage_path, '') <> ''
-                    and (
-                      coalesce(assets.storage_provider, 'supabase') <> 'r2'
-                      or coalesce(assets.public_url, '') <> ''
-                    )
                 )
                 or (
                   lower(coalesce(p.media_type, '')) = 'reel'
@@ -3558,10 +3560,6 @@ class PureEngine:
                       and assets.asset_role = 'preview_5s'
                       and assets.status = 'active'
                       and coalesce(assets.storage_path, '') <> ''
-                      and (
-                        coalesce(assets.storage_provider, 'supabase') <> 'r2'
-                        or coalesce(assets.public_url, '') <> ''
-                      )
                   )
                 )
               )
@@ -3920,7 +3918,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               )
             order by coalesce(p.posted_at, p.created_at) desc, p.post_key desc
             limit %s
@@ -4011,7 +4008,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               ) as active_carousel_count,
               exists (
                 select 1
@@ -4021,7 +4017,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               ) as has_r2_thumbnail,
               exists (
                 select 1
@@ -4031,7 +4026,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               ) as has_r2_preview
             from public.posts p
             left join latest_metric
@@ -4047,7 +4041,6 @@ class PureEngine:
                     and assets.status in ('active', 'purge_pending')
                     and coalesce(assets.storage_provider, 'supabase') = 'r2'
                     and coalesce(assets.storage_path, '') <> ''
-                    and coalesce(assets.public_url, '') <> ''
                 )
                 or (
                   lower(coalesce(p.media_type, '')) in ('sidecar', 'carousel', 'album')
@@ -4059,7 +4052,6 @@ class PureEngine:
                       and assets.status in ('active', 'purge_pending')
                       and coalesce(assets.storage_provider, 'supabase') = 'r2'
                       and coalesce(assets.storage_path, '') <> ''
-                      and coalesce(assets.public_url, '') <> ''
                   ) < greatest(
                     coalesce(p.carousel_slide_count, 0),
                     case when jsonb_typeof(p.carousel_urls) = 'array' then jsonb_array_length(p.carousel_urls) else 0 end
@@ -4079,7 +4071,6 @@ class PureEngine:
                       and assets.status in ('active', 'purge_pending')
                       and coalesce(assets.storage_provider, 'supabase') = 'r2'
                       and coalesce(assets.storage_path, '') <> ''
-                      and coalesce(assets.public_url, '') <> ''
                   )
                 )
               )
@@ -4274,7 +4265,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               ) as active_carousel_count,
               thumbnail_asset.source_url as staged_thumbnail_source,
               preview_asset.source_url as staged_preview_source,
@@ -4286,7 +4276,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               ) as has_r2_thumbnail,
               exists (
                 select 1
@@ -4296,7 +4285,6 @@ class PureEngine:
                   and assets.status in ('active', 'purge_pending')
                   and coalesce(assets.storage_provider, 'supabase') = 'r2'
                   and coalesce(assets.storage_path, '') <> ''
-                  and coalesce(assets.public_url, '') <> ''
               ) as has_r2_preview,
               exists (
                 select 1
@@ -4347,7 +4335,6 @@ class PureEngine:
                     and assets.status in ('active', 'purge_pending')
                     and coalesce(assets.storage_provider, 'supabase') = 'r2'
                     and coalesce(assets.storage_path, '') <> ''
-                    and coalesce(assets.public_url, '') <> ''
                 )
                 or (
                   lower(coalesce(p.media_type, '')) in ('sidecar', 'carousel', 'album')
@@ -4359,7 +4346,6 @@ class PureEngine:
                       and assets.status in ('active', 'purge_pending')
                       and coalesce(assets.storage_provider, 'supabase') = 'r2'
                       and coalesce(assets.storage_path, '') <> ''
-                      and coalesce(assets.public_url, '') <> ''
                   ) < greatest(
                     coalesce(p.carousel_slide_count, 0),
                     case when jsonb_typeof(p.carousel_urls) = 'array' then jsonb_array_length(p.carousel_urls) else 0 end
@@ -4376,7 +4362,6 @@ class PureEngine:
                       and assets.status in ('active', 'purge_pending')
                       and coalesce(assets.storage_provider, 'supabase') = 'r2'
                       and coalesce(assets.storage_path, '') <> ''
-                      and coalesce(assets.public_url, '') <> ''
                   )
                 )
                 or exists (

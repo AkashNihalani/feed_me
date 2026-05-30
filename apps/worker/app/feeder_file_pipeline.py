@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from hashlib import sha256
 from typing import Any
 
@@ -10,13 +11,17 @@ import yaml
 from psycopg.rows import dict_row
 
 from .config import (
+    FEEDER_FILE_ACTIVE_POST_LIMIT,
     FEEDER_FILE_COMPILER_MODEL,
     FEEDER_FILE_MEMORY_DAYS,
     FEEDER_FILE_MEMORY_LIMIT,
+    FEEDER_FILE_RECENT_CONTEXT_TARGET,
     FEEDER_FILE_RETENTION_PERCENTILE_MAX,
     FEEDER_FILE_SLOT_BATCH_PERCENT,
     FEEDER_FILE_PATTERN_MODEL,
     FEEDER_FILE_PROOF_MODEL,
+    FEEDER_FILE_WINNER_PERCENTILE_MAX,
+    FEEDER_FILE_WINNER_SLOT_TARGET,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
 )
@@ -217,6 +222,170 @@ def _metric_cards(row: dict[str, Any]) -> list[dict[str, Any]]:
     return list(_metric_payload(row).get("display") or [])
 
 
+def _d7_percentile(row: dict[str, Any]) -> float | None:
+    for key in ("percentile_performance_exact", "percentile_performance"):
+        try:
+            value = row.get(key)
+            if value is not None:
+                return float(value)
+        except Exception:
+            continue
+    return None
+
+
+def _posted_timestamp(row: dict[str, Any]) -> float:
+    value = row.get("posted_at")
+    try:
+        return float(value.timestamp())
+    except Exception:
+        pass
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return 0.0
+    return 0.0
+
+
+def _post_memory_payload(row: dict[str, Any]) -> dict[str, Any]:
+    value = row.get("post_memory")
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _active_memory_limits() -> tuple[int, int, int]:
+    active_limit = max(1, int(FEEDER_FILE_ACTIVE_POST_LIMIT))
+    winner_target = min(active_limit, max(0, int(FEEDER_FILE_WINNER_SLOT_TARGET)))
+    recent_target = min(max(0, int(FEEDER_FILE_RECENT_CONTEXT_TARGET)), max(0, active_limit - winner_target))
+    return active_limit, winner_target, recent_target
+
+
+def _annotate_post_memory(
+    row: dict[str, Any],
+    *,
+    memory_type: str,
+    occupying_slot: str,
+    slot_index: int,
+    winner: bool,
+    reason: str,
+) -> dict[str, Any]:
+    annotated = dict(row)
+    percentile = _d7_percentile(row)
+    qualified_winner = bool(percentile is not None and percentile <= float(FEEDER_FILE_WINNER_PERCENTILE_MAX))
+    annotated["post_memory"] = {
+        "memory_type": memory_type,
+        "occupying_slot": occupying_slot,
+        "slot_index": slot_index,
+        "winner": bool(winner),
+        "qualified_winner": qualified_winner,
+        "reason": reason,
+        "d7_percentile": percentile,
+    }
+    return annotated
+
+
+def _select_active_post_memories(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    active_limit, winner_target, recent_target = _active_memory_limits()
+    unique_rows: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for row in rows:
+        post_key = str(row.get("post_key") or "").strip()
+        if not post_key or post_key in seen_keys:
+            continue
+        seen_keys.add(post_key)
+        unique_rows.append(row)
+
+    winner_candidates = [
+        row
+        for row in unique_rows
+        if (_d7_percentile(row) is not None and _d7_percentile(row) <= float(FEEDER_FILE_WINNER_PERCENTILE_MAX))
+    ]
+    winner_candidates.sort(key=lambda row: (_d7_percentile(row) or 101.0, -_posted_timestamp(row)))
+    selected: list[dict[str, Any]] = []
+    selected_keys: set[str] = set()
+
+    for index, row in enumerate(winner_candidates[:winner_target]):
+        post_key = str(row.get("post_key") or "").strip()
+        selected_keys.add(post_key)
+        selected.append(
+            _annotate_post_memory(
+                row,
+                memory_type="ranked_winner",
+                occupying_slot="ranked_winner_slot",
+                slot_index=index + 1,
+                winner=True,
+                reason=f"qualified winner: top {float(FEEDER_FILE_WINNER_PERCENTILE_MAX):g}% account-relative D7",
+            )
+        )
+
+    recent_rows = sorted(
+        [row for row in unique_rows if str(row.get("post_key") or "").strip() not in selected_keys],
+        key=_posted_timestamp,
+        reverse=True,
+    )
+    recent_fill_needed = min(max(0, winner_target - len(selected)), max(0, active_limit - len(selected)))
+    for index, row in enumerate(recent_rows[:recent_fill_needed]):
+        post_key = str(row.get("post_key") or "").strip()
+        selected_keys.add(post_key)
+        selected.append(
+            _annotate_post_memory(
+                row,
+                memory_type="recent_fill",
+                occupying_slot="ranked_winner_slot",
+                slot_index=len(selected) + 1,
+                winner=False,
+                reason="not enough ranked winners yet",
+            )
+        )
+
+    recent_context_rows = sorted(
+        [row for row in unique_rows if str(row.get("post_key") or "").strip() not in selected_keys],
+        key=_posted_timestamp,
+        reverse=True,
+    )
+    context_needed = min(recent_target, max(0, active_limit - len(selected)))
+    for index, row in enumerate(recent_context_rows[:context_needed]):
+        selected.append(
+            _annotate_post_memory(
+                row,
+                memory_type="recent_context",
+                occupying_slot="recent_context_slot",
+                slot_index=index + 1,
+                winner=False,
+                reason="latest D7-settled post not already selected",
+            )
+        )
+
+    return selected[:active_limit]
+
+
+def _active_memory_summary(selected_rows: list[dict[str, Any]], *, source_post_count: int) -> dict[str, Any]:
+    active_limit, winner_target, recent_target = _active_memory_limits()
+    counts = {"ranked_winner": 0, "recent_fill": 0, "recent_context": 0}
+    for row in selected_rows:
+        memory_type = str(_post_memory_payload(row).get("memory_type") or "")
+        if memory_type in counts:
+            counts[memory_type] += 1
+    return {
+        "max_posts": active_limit,
+        "source_post_count": source_post_count,
+        "selected_post_count": len(selected_rows),
+        "ranked_winner_slots": {
+            "target": winner_target,
+            "filled_by_ranked_winners": counts["ranked_winner"],
+            "filled_by_recent_fill": counts["recent_fill"],
+            "qualification": f"top_{float(FEEDER_FILE_WINNER_PERCENTILE_MAX):g}_percent_account_relative_d7",
+        },
+        "recent_context_slots": {
+            "target": recent_target,
+            "filled": counts["recent_context"],
+            "selection": "latest_d7_settled_not_already_selected",
+        },
+        "counts": counts,
+    }
+
+
 def _resolve_feeder(conn: Any, *, feeder_id: int | None, handle: str | None) -> dict[str, Any]:
     with conn.cursor(row_factory=dict_row) as cur:
         if feeder_id is not None:
@@ -294,19 +463,12 @@ def _load_post_inputs(conn: Any, *, feeder_id: int, days: int, limit: int) -> li
             where p.feeder_id = %s
               and lower(coalesce(p.media_type, '')) in ('reel', 'video')
               and p.posted_at >= now() - (%s::int * interval '1 day')
-              and least(
-                coalesce(pm.percentile_performance_exact, 101),
-                coalesce(pm.percentile_performance, 101)
-              ) <= %s
+              and coalesce(pm.percentile_performance_exact, pm.percentile_performance) is not null
             order by
-              least(
-                coalesce(pm.percentile_performance_exact, 101),
-                coalesce(pm.percentile_performance, 101)
-              ) asc,
               p.posted_at desc nulls last
             limit %s
             """,
-            (feeder_id, max(1, int(days)), float(FEEDER_FILE_RETENTION_PERCENTILE_MAX), scoped_limit),
+            (feeder_id, max(1, int(days)), scoped_limit),
         )
         return [dict(row) for row in cur.fetchall()]
 
@@ -421,6 +583,7 @@ def _compile_post_payloads(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "input_index": index,
                 "post_key": str(row.get("post_key") or ""),
+                "post_memory": _post_memory_payload(row),
                 "post_breakdown": _breakdown_body(row),
             }
         )
@@ -441,6 +604,29 @@ def _row_lookup(rows: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], 
         else:
             by_key.setdefault(f"p/{key}", row)
     return by_index, by_key
+
+
+def _row_input_index(index_rows: dict[int, dict[str, Any]], row: dict[str, Any]) -> int | None:
+    return next((idx for idx, candidate in index_rows.items() if candidate is row), None)
+
+
+def _member_index_row(
+    raw_index: Any,
+    index_rows: dict[int, dict[str, Any]],
+) -> tuple[int | None, dict[str, Any] | None]:
+    if raw_index is None:
+        return None, None
+    try:
+        index = int(raw_index)
+    except Exception:
+        return None, None
+    row = index_rows.get(index)
+    if row is not None:
+        return index, row
+    one_based_index = index - 1
+    if index > 0 and one_based_index in index_rows:
+        return one_based_index, index_rows[one_based_index]
+    return index, None
 
 
 def _member_fit_type(member: dict[str, Any]) -> str:
@@ -527,9 +713,11 @@ def _canonicalize_patterns(feed_file: dict[str, Any], rows: list[dict[str, Any]]
     patterns = feed_file.get("patterns") or []
     if not isinstance(patterns, list):
         return feed_file
+    mapping_repairs: list[dict[str, Any]] = []
     for pattern in patterns:
         if not isinstance(pattern, dict):
             continue
+        pattern_id = str(pattern.get("pattern_id") or "pattern")
         members = pattern.get("members") or []
         if not isinstance(members, list):
             continue
@@ -537,21 +725,55 @@ def _canonicalize_patterns(feed_file: dict[str, Any], rows: list[dict[str, Any]]
         for member in members:
             if not isinstance(member, dict):
                 continue
-            row = None
+            row_by_key = None
+            post_key = str(member.get("post_key") or "").strip()
+            if post_key:
+                row_by_key = key_rows.get(post_key)
             raw_index = member.get("member_index", member.get("input_index"))
+            resolved_index, row_by_index = _member_index_row(raw_index, index_rows)
             try:
-                if raw_index is not None:
-                    row = index_rows.get(int(raw_index))
+                raw_index_int = int(raw_index) if raw_index is not None else None
             except Exception:
-                row = None
-            if row is None:
-                post_key = str(member.get("post_key") or "").strip()
-                row = key_rows.get(post_key)
+                raw_index_int = None
+
+            # post_key is the only durable identifier after the model returns YAML.
+            # member_index is kept as a consistency check and fallback, because LLMs
+            # sometimes echo a 1-based/rank-like number even when the post_key is right.
+            row = row_by_key or row_by_index
             if row is None:
                 continue
             fixed_member = {**member}
-            fixed_member["member_index"] = next((idx for idx, candidate in index_rows.items() if candidate is row), None)
+            canonical_index = _row_input_index(index_rows, row)
+            if (
+                row_by_key is not None
+                and row_by_index is not None
+                and row_by_key is not row_by_index
+            ):
+                mapping_repairs.append(
+                    {
+                        "pattern_id": pattern_id,
+                        "raw_member_index": raw_index,
+                        "raw_post_key": post_key,
+                        "index_resolved_to": str(row_by_index.get("post_key") or ""),
+                        "post_key_resolved_to": str(row_by_key.get("post_key") or ""),
+                        "kept": "post_key",
+                    }
+                )
+            elif row_by_key is None and raw_index_int is not None and resolved_index != raw_index_int:
+                mapping_repairs.append(
+                    {
+                        "pattern_id": pattern_id,
+                        "raw_member_index": raw_index,
+                        "canonical_member_index": resolved_index,
+                        "post_key_resolved_to": str(row.get("post_key") or ""),
+                        "kept": "member_index_fallback",
+                    }
+                )
+            fixed_member["member_index"] = canonical_index
             fixed_member["post_key"] = str(row.get("post_key") or "")
+            post_memory = _post_memory_payload(row)
+            if post_memory:
+                fixed_member["post_memory"] = post_memory
             canonical_members.append(fixed_member)
         pattern["members"] = canonical_members
         core_count, support_count = _pattern_counts(pattern)
@@ -564,6 +786,12 @@ def _canonicalize_patterns(feed_file: dict[str, Any], rows: list[dict[str, Any]]
         if not isinstance(validation, dict):
             validation = {}
         validation["duplicate_member_drops"] = dropped_members
+        feed_file["server_validation"] = validation
+    if mapping_repairs:
+        validation = feed_file.get("server_validation")
+        if not isinstance(validation, dict):
+            validation = {}
+        validation["member_mapping_repairs"] = mapping_repairs
         feed_file["server_validation"] = validation
     return feed_file
 
@@ -650,14 +878,20 @@ def _compile_feeder_file_from_rows(
     active_window: str,
     pattern_limit: int,
 ) -> dict[str, Any]:
-    if len(rows) < 3:
-        raise RuntimeError(f"need at least 3 stored post_breakdowns, found {len(rows)}")
-    source_version = _source_breakdown_version(rows)
+    active_rows = _select_active_post_memories(rows)
+    if len(active_rows) < 3:
+        raise RuntimeError(f"need at least 3 stored post_breakdowns, found {len(active_rows)}")
+    source_version = _source_breakdown_version(active_rows)
+    active_memory = _active_memory_summary(active_rows, source_post_count=len(rows))
     feeder_file_id = _upsert_feeder_file(
         conn,
         feeder_id=feeder_id,
         feeder_handle=feeder_handle,
-        feed_file={"compile_version": FEEDER_FILE_PROMPT_VERSION, "patterns": []},
+        feed_file={
+            "compile_version": FEEDER_FILE_PROMPT_VERSION,
+            "active_post_memory": active_memory,
+            "patterns": [],
+        },
         source_breakdown_version=source_version,
         active_window=active_window,
     )
@@ -666,7 +900,8 @@ def _compile_feeder_file_from_rows(
         "handle": feeder_handle,
         "source_breakdown_version": source_version,
         "active_window": active_window,
-        "post_breakdowns": _compile_post_payloads(rows),
+        "active_post_memory": active_memory,
+        "post_breakdowns": _compile_post_payloads(active_rows),
     }
     compile_call_id, compile_parsed = _call_openrouter(
         conn,
@@ -686,7 +921,10 @@ def _compile_feeder_file_from_rows(
     feed_file = compile_parsed.get("feed_file")
     if not isinstance(feed_file, dict):
         raise RuntimeError("feeder file compiler did not return feed_file")
-    feed_file = _canonicalize_patterns(feed_file, rows)
+    feed_file = _canonicalize_patterns(feed_file, active_rows)
+    feed_file["active_post_memory"] = active_memory
+    feed_file["memory_hard_cap"] = max(1, int(FEEDER_FILE_MEMORY_LIMIT))
+    feed_file["winner_percentile_max"] = float(FEEDER_FILE_WINNER_PERCENTILE_MAX)
     feeder_file_id = _upsert_feeder_file(
         conn,
         feeder_id=feeder_id,
@@ -705,7 +943,9 @@ def _compile_feeder_file_from_rows(
     )
     return {
         **result,
-        "post_count": len(rows),
+        "post_count": len(active_rows),
+        "source_post_count": len(rows),
+        "active_post_memory": active_memory,
         "active_window": active_window,
     }
 
@@ -1570,6 +1810,104 @@ def package_feeder_file_once(
     )
 
 
+def _compile_rows_from_model_payload(user_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    items = user_payload.get("post_breakdowns") if isinstance(user_payload, dict) else None
+    if not isinstance(items, list):
+        return []
+    indexed_rows: list[tuple[int, dict[str, Any]]] = []
+    for fallback_index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        post_key = str(item.get("post_key") or "").strip()
+        if not post_key:
+            continue
+        try:
+            input_index = int(item.get("input_index"))
+        except Exception:
+            input_index = fallback_index
+        row = {"post_key": post_key}
+        post_memory = item.get("post_memory")
+        if isinstance(post_memory, dict):
+            row["post_memory"] = post_memory
+        indexed_rows.append((input_index, row))
+    indexed_rows.sort(key=lambda pair: pair[0])
+    return [row for _, row in indexed_rows]
+
+
+def repair_feeder_file_compile_once(
+    conn: Any,
+    *,
+    feeder_id: int | None = None,
+    handle: str | None = None,
+    compile_version: str | None = None,
+    pattern_id: str | None = None,
+    pattern_limit: int = 3,
+) -> dict[str, Any]:
+    feeder = _resolve_feeder(conn, feeder_id=feeder_id, handle=handle)
+    feeder_file = _latest_feeder_file(
+        conn,
+        feeder_id=int(feeder["id"]),
+        feeder_handle=str(feeder["handle"]),
+        compile_version=compile_version,
+    )
+    feeder_file_id = int(feeder_file["id"])
+    feeder_handle = str(feeder_file.get("feeder_handle") or feeder["handle"])
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select id, user_payload, raw_output, parsed_output
+            from public.feeder_file_model_calls
+            where feeder_file_id = %s
+              and call_key = 'feeder_file_compile'
+              and call_type = 'feeder_file_compile'
+              and lower(feeder_handle) = lower(%s)
+              and prompt_version = %s
+            order by updated_at desc nulls last, id desc
+            limit 1
+            """,
+            (feeder_file_id, feeder_handle, str(feeder_file.get("compile_version") or FEEDER_FILE_PROMPT_VERSION)),
+        )
+        compile_call = cur.fetchone()
+    if not compile_call:
+        raise RuntimeError(f"stored feeder file compile call not found for @{feeder_handle}")
+
+    parsed_output = compile_call.get("parsed_output")
+    if not isinstance(parsed_output, dict) or not isinstance(parsed_output.get("feed_file"), dict):
+        raw_output = str(compile_call.get("raw_output") or "")
+        parsed_output = _parse_yaml_mapping(raw_output)
+    feed_file = parsed_output.get("feed_file")
+    if not isinstance(feed_file, dict):
+        raise RuntimeError("stored feeder file compiler output did not contain feed_file")
+    rows = _compile_rows_from_model_payload(compile_call.get("user_payload") or {})
+    if not rows:
+        raise RuntimeError("stored feeder file compiler payload did not contain post_breakdowns")
+
+    repaired_feed_file = _canonicalize_patterns(feed_file, rows)
+    repaired_feeder_file_id = _upsert_feeder_file(
+        conn,
+        feeder_id=int(feeder["id"]),
+        feeder_handle=feeder_handle,
+        feed_file=repaired_feed_file,
+        source_breakdown_version=str(feeder_file.get("source_breakdown_version") or ""),
+        active_window=str(feeder_file.get("active_window") or ""),
+        source="repair",
+    )
+    selected_patterns = _patterns_by_id(repaired_feed_file, pattern_id, pattern_limit)
+    result = _package_patterns(
+        conn,
+        feeder_file_id=repaired_feeder_file_id,
+        feeder_handle=feeder_handle,
+        selected_patterns=selected_patterns,
+        frontend_pattern_limit=pattern_limit,
+    )
+    return {
+        **result,
+        "repaired": True,
+        "compile_call_id": int(compile_call["id"]),
+        "post_count": len(rows),
+    }
+
+
 def run_feeder_file_once(
     conn: Any,
     *,
@@ -1583,8 +1921,10 @@ def run_feeder_file_once(
     feeder_handle = str(feeder["handle"])
     scoped_limit = min(max(1, int(limit)), max(1, int(FEEDER_FILE_MEMORY_LIMIT)))
     active_window = (
-        f"{max(1, int(days))}d_top{scoped_limit}_retention"
-        f"{float(FEEDER_FILE_RETENTION_PERCENTILE_MAX):g}"
+        f"{max(1, int(days))}d_memory{scoped_limit}_active"
+        f"{max(1, int(FEEDER_FILE_ACTIVE_POST_LIMIT))}_winner"
+        f"{max(0, int(FEEDER_FILE_WINNER_SLOT_TARGET))}_recent"
+        f"{max(0, int(FEEDER_FILE_RECENT_CONTEXT_TARGET))}"
     )
     rows = _load_post_inputs(conn, feeder_id=int(feeder["id"]), days=days, limit=scoped_limit)
     return _compile_feeder_file_from_rows(

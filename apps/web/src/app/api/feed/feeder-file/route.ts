@@ -16,6 +16,11 @@ type DbPatternRow = {
   updated_at: string | null;
 };
 
+type DbFeederFileRow = {
+  id: number;
+  feed_file: Record<string, unknown> | null;
+};
+
 type ApiMetric = {
   label: string;
   value: string;
@@ -38,6 +43,7 @@ type ApiPattern = {
   account: string;
   accountLabel: string;
   accountMeta: string;
+  accountMemoryMeta?: string;
   pattern_id: string;
   patternMetrics: ApiMetric[];
   pattern: {
@@ -59,6 +65,10 @@ type PostUrlRow = {
   post_key: string | null;
   post_url: string | null;
 };
+
+const TEMP_LOCAL_FEEDER_FILE_HANDLES = process.env.NODE_ENV === 'development'
+  ? ['traya.health']
+  : [];
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -82,6 +92,30 @@ function accountForHandle(value: string | null | undefined) {
 
 function text(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback;
+}
+
+function objectValue(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function numberValue(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function accountMemoryMeta(feedFile: Record<string, unknown> | null | undefined) {
+  const activeMemory = objectValue(feedFile?.active_post_memory);
+  const rankedSlots = objectValue(activeMemory.ranked_winner_slots);
+  const target = numberValue(rankedSlots.target);
+  const rankedWinners = numberValue(rankedSlots.filled_by_ranked_winners);
+  const recentFill = numberValue(rankedSlots.filled_by_recent_fill);
+  if (target > 0 && (rankedWinners < target || recentFill > 0)) {
+    return 'Still learning this account. Recent posts are carrying more of the read right now.';
+  }
+  if (target > 0 && rankedWinners >= target) {
+    return 'Enough history now. Feed Me has a clearer memory of what this account wins with.';
+  }
+  return '';
 }
 
 function stringList(value: unknown) {
@@ -196,9 +230,14 @@ export async function GET(req: NextRequest) {
     .eq('status', 'active');
   if (feederError) throw feederError;
 
-  const handles = (feederRows || [])
+  const handleSet = new Set((feederRows || [])
     .map((row) => normalizeHandle(row.handle))
-    .filter((handle) => handle && (!selectedHandle || handle === selectedHandle));
+    .filter(Boolean));
+  for (const handle of TEMP_LOCAL_FEEDER_FILE_HANDLES) {
+    handleSet.add(normalizeHandle(handle));
+  }
+  const handles = Array.from(handleSet)
+    .filter((handle) => !selectedHandle || handle === selectedHandle);
 
   if (handles.length === 0) {
     return privateJsonResponse(req, { patterns: [] });
@@ -219,6 +258,23 @@ export async function GET(req: NextRequest) {
     if (!row.pattern_read || Object.keys(row.pattern_read).length === 0) continue;
     const key = `${normalizeHandle(row.feeder_handle)}:${row.pattern_id}`;
     if (!uniquePatterns.has(key)) uniquePatterns.set(key, row);
+  }
+
+  const feederFileIds = Array.from(new Set(
+    Array.from(uniquePatterns.values())
+      .map((pattern) => Number(pattern.feeder_file_id))
+      .filter((id) => Number.isFinite(id)),
+  ));
+  const feedFileById = new Map<number, Record<string, unknown>>();
+  if (feederFileIds.length > 0) {
+    const { data: feederFileRows, error: feederFileError } = await admin
+      .from('feeder_files')
+      .select('id,feed_file')
+      .in('id', feederFileIds);
+    if (feederFileError) throw feederFileError;
+    for (const row of (feederFileRows || []) as DbFeederFileRow[]) {
+      if (row.feed_file) feedFileById.set(Number(row.id), row.feed_file);
+    }
   }
 
   const proofPostKeys = Array.from(new Set(
@@ -252,10 +308,12 @@ export async function GET(req: NextRequest) {
       const patternRead = pattern.pattern_read || {};
       const proofs = proofList(pattern.proof_reads);
       const account = accountForHandle(pattern.feeder_handle);
+      const memoryMeta = accountMemoryMeta(feedFileById.get(Number(pattern.feeder_file_id)));
       return {
         account,
         accountLabel: account,
         accountMeta: `${Number(pattern.core_post_count || 0)} core posts · ${Number(pattern.support_post_count || 0)} support posts`,
+        ...(memoryMeta ? { accountMemoryMeta: memoryMeta } : {}),
         pattern_id: pattern.pattern_id,
         patternMetrics: [
           { label: 'Proofs', value: String(proofs.length), detail: 'post proof reads', accent: true },

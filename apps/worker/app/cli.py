@@ -19,6 +19,7 @@ def main():
             "feeder_file_once",
             "feeder_file_recent_fingerprints_once",
             "feeder_file_package_once",
+            "feeder_file_repair_compile_once",
             "backfill_d1_media",
             "backfill_fire_day_media",
             "repair_post_visual_media",
@@ -150,6 +151,27 @@ def main():
                 f"patterns={result.get('patterns', 0)} "
                 f"candidates={result.get('candidates', 0)} "
                 f"proofs={result.get('proofs', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "feeder_file_repair_compile_once":
+        eng = PureEngine()
+        try:
+            result = eng.repair_feeder_file_compile_once(
+                feeder_id=args.feeder_id,
+                handle=args.handle,
+                compile_version=args.compile_version,
+                pattern_id=args.pattern_id,
+                pattern_limit=args.pattern_limit,
+            )
+            print(
+                f"feeder_file_repair_compile_once feeder_file_id={result.get('feeder_file_id')} "
+                f"compile_call_id={result.get('compile_call_id')} "
+                f"handle={result.get('feeder_handle')} "
+                f"patterns={result.get('patterns', 0)} "
+                f"candidates={result.get('candidates', 0)} "
+                f"proofs={result.get('proofs', 0)} "
+                f"post_count={result.get('post_count', 0)}"
             )
         finally:
             eng.close()

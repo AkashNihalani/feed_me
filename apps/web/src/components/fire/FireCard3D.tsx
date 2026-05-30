@@ -58,15 +58,21 @@ function textList(v: unknown, max = 4): string[] {
 
 function parsePostContextRead(meta: Record<string, unknown>) {
   const read = asRec(meta.post_read);
+  const source = text(read.source);
+  const headline = text(read.headline).trim();
+  const metricContext = text(read.metric_context).trim();
+  const readText = text(read.read).trim();
+  const direction = text(read.direction).trim();
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 2);
   const notes = textList(read.notes, 2);
-  const sourceLabel = text(read.source_label) || (text(read.source) === 'post_fingerprint' ? 'Fingerprint' : 'Context Layer');
-  if (matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
+  const isD7Read = source === 'd7_read' || Boolean(headline || metricContext || readText || direction);
+  const sourceLabel = text(read.source_label) || (source === 'post_fingerprint' ? 'Fingerprint' : isD7Read ? 'D7 Post Mortem' : 'Context Layer');
+  if (!isD7Read && matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
     return null;
   }
-  return { matches, deviates, unclear, notes, sourceLabel };
+  return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, isD7Read };
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -270,6 +276,7 @@ export function FireCard3D({
   const heroMetricStamp = value == null ? '--' : compact(value);
   const hideSignalChrome = item.hideSignalChrome === true;
   const postContextRead = parsePostContextRead(meta);
+  const showPostMortemStreak = postContextRead?.isD7Read === true;
 
   const handleCardActivate = () => {
     if (isLocked) {
@@ -599,7 +606,7 @@ export function FireCard3D({
         <div className="absolute inset-0 bg-black/40 dark:bg-black/54" />
       )}
 
-      {postContextRead && (
+      {showPostMortemStreak && (
         <span
           aria-hidden="true"
           className="fm-fire-card-cover-streak z-[4]"
@@ -848,27 +855,54 @@ export function FireCard3D({
                 <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/50 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/38 dark:shadow-[0_14px_30px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.1)]">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
-                      Post Read
+                      {postContextRead.isD7Read ? 'Post Mortem' : 'Post Read'}
                     </div>
                     <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/42">
                       {postContextRead.sourceLabel}
                     </div>
                   </div>
-                  {postContextRead.matches.length > 0 && (
-                    <p className="mt-1.5 text-[11px] font-semibold leading-snug text-foreground/72 dark:text-white/64">
-                      {postContextRead.matches[0]}
-                    </p>
-                  )}
-                  <div className="mt-2 grid gap-1.5">
-                    {[...postContextRead.matches.slice(1, 3), ...postContextRead.deviates.slice(0, 2), ...postContextRead.notes.slice(0, 1)].slice(0, 4).map((line) => (
-                      <div
-                        key={`${item.id}-read-${line}`}
-                        className="rounded-[10px] bg-white/50 px-2 py-1.5 text-[9px] font-semibold leading-snug text-foreground/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/[0.07] dark:text-white/46"
-                      >
-                        {line}
+                  {postContextRead.isD7Read ? (
+                    <>
+                      {postContextRead.headline ? (
+                        <p className="mt-1.5 text-[13px] font-black leading-tight tracking-[-0.02em] text-foreground/86 dark:text-white/82">
+                          {postContextRead.headline}
+                        </p>
+                      ) : null}
+                      {postContextRead.metricContext ? (
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#E11D48]/82">
+                          {postContextRead.metricContext}
+                        </p>
+                      ) : null}
+                      {postContextRead.readText ? (
+                        <p className="mt-1.5 text-[10px] font-semibold leading-snug text-foreground/66 dark:text-white/58">
+                          {postContextRead.readText}
+                        </p>
+                      ) : null}
+                      {postContextRead.direction ? (
+                        <div className="mt-2 rounded-[10px] bg-white/50 px-2 py-1.5 text-[9px] font-semibold leading-snug text-foreground/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/[0.07] dark:text-white/46">
+                          {postContextRead.direction}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      {postContextRead.matches.length > 0 && (
+                        <p className="mt-1.5 text-[11px] font-semibold leading-snug text-foreground/72 dark:text-white/64">
+                          {postContextRead.matches[0]}
+                        </p>
+                      )}
+                      <div className="mt-2 grid gap-1.5">
+                        {[...postContextRead.matches.slice(1, 3), ...postContextRead.deviates.slice(0, 2), ...postContextRead.notes.slice(0, 1)].slice(0, 4).map((line) => (
+                          <div
+                            key={`${item.id}-read-${line}`}
+                            className="rounded-[10px] bg-white/50 px-2 py-1.5 text-[9px] font-semibold leading-snug text-foreground/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/[0.07] dark:text-white/46"
+                          >
+                            {line}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
               <div className="mb-2 sm:mb-3 rounded-[16px] bg-[#E11D48] p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] border border-[#E11D48]/10">

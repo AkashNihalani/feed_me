@@ -1,10 +1,30 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PROTECTED_PREFIXES = ['/profile', '/feed']
+const PROTECTED_PREFIXES = ['/profile', '/feed', '/fire']
+const PROTECTED_EXACT_PATHS = new Set(['/'])
+
+function safeInternalPath(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return '/'
+  }
+
+  try {
+    const parsed = new URL(value, 'https://feedme.local')
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return '/'
+  }
+}
 
 function isProtectedPath(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  return PROTECTED_EXACT_PATHS.has(pathname) || PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
+function redirectToLogin(request: NextRequest) {
+  const loginUrl = new URL('/login', request.url)
+  loginUrl.searchParams.set('next', safeInternalPath(`${request.nextUrl.pathname}${request.nextUrl.search}`))
+  return NextResponse.redirect(loginUrl)
 }
 
 export async function proxy(request: NextRequest) {
@@ -40,22 +60,23 @@ export async function proxy(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (isProtectedPath(request.nextUrl.pathname) && !user) {
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('next', request.nextUrl.pathname)
-      return NextResponse.redirect(loginUrl)
+      return redirectToLogin(request)
     }
 
     if (request.nextUrl.pathname.startsWith('/login') && user) {
-      const nextPath = request.nextUrl.searchParams.get('next') || '/'
+      const nextPath = safeInternalPath(request.nextUrl.searchParams.get('next'))
       return NextResponse.redirect(new URL(nextPath, request.url))
     }
   } catch (err) {
-    console.error('[proxy] Auth check failed, passing through:', err)
+    console.error('[proxy] Auth check failed:', err)
+    if (isProtectedPath(request.nextUrl.pathname)) {
+      return redirectToLogin(request)
+    }
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/profile/:path*', '/feed/:path*', '/login'],
+  matcher: ['/', '/fire/:path*', '/profile/:path*', '/feed/:path*', '/login'],
 }

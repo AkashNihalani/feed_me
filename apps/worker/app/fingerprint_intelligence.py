@@ -16,6 +16,7 @@ import yaml
 from psycopg.rows import dict_row
 
 from .config import (
+    D7_READ_MODEL,
     FEEDER_FINGERPRINT_MODEL,
     FEEDER_INTELLIGENCE_ENABLED,
     FEEDER_INTELLIGENCE_PROVIDER,
@@ -24,25 +25,33 @@ from .config import (
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     POST_BREAKDOWN_MODEL,
+    POST_CONDENSATION_MODEL,
 )
 from .feeder_prompts import (
+    D7_READ_PROMPT_VERSION,
+    D7_READ_SYSTEM_V1,
     FINGERPRINT_EXTRACTION_SYSTEM_V8,
     FINGERPRINT_PROMPT_VERSION,
     FINGERPRINT_SAMPLING_POLICY_VERSION,
     POST_BREAKDOWN_EXTRACTION_SYSTEM_V2,
     POST_BREAKDOWN_PROMPT_VERSION,
+    POST_CONDENSATION_PROMPT_VERSION,
+    POST_CONDENSATION_SYSTEM_V5,
 )
 
 _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 _GEMINI_UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
 _GEMINI_FILE_URL = "https://generativelanguage.googleapis.com/v1beta/files/{name}"
 _OPENROUTER_CHAT_URL = "/chat/completions"
-_DEFAULT_OPENROUTER_MODEL = "google/gemini-3-flash-preview"
-_DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+_DEFAULT_OPENROUTER_MODEL = "google/gemini-3.5-flash"
+_DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
 _VIDEO_SAMPLE_SECONDS = 120
 _POST_BREAKDOWN_MAX_TOKENS = int(os.getenv("POST_BREAKDOWN_MAX_TOKENS", "5000"))
+_POST_CONDENSATION_MAX_TOKENS = int(os.getenv("POST_CONDENSATION_MAX_TOKENS", "2600"))
+_POST_CONDENSATION_WORD_TOLERANCE = float(os.getenv("POST_CONDENSATION_WORD_TOLERANCE", "0.15"))
+_D7_READ_MAX_TOKENS = int(os.getenv("D7_READ_MAX_TOKENS", "1800"))
 _POST_BREAKDOWN_KEYS = {
     "post_key",
     "works_because",
@@ -51,6 +60,20 @@ _POST_BREAKDOWN_KEYS = {
     "viewer_mode",
     "lands_as",
     "receipts",
+}
+_POST_CONDENSATION_KEYS = {
+    "post_key",
+    "meta",
+    "caption",
+    "reel",
+    "standout_details",
+}
+_D7_READ_KEYS = {
+    "post_key",
+    "headline",
+    "metric_context",
+    "read",
+    "direction",
 }
 _FINGERPRINT_LIST_FIELDS = (
     "visible_text",
@@ -396,6 +419,261 @@ def _normalize_post_breakdown_mapping(parsed: dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
+def _word_count(text: Any) -> int:
+    return len(re.findall(r"\S+", str(text or "")))
+
+
+def _infer_condensation_complexity(fingerprint: dict[str, Any]) -> tuple[str, int, int]:
+    sequence = fingerprint.get("visual_sequence")
+    audio = fingerprint.get("audio_behavior")
+    transcript_words = _word_count(fingerprint.get("transcript"))
+    sequence_count = len(sequence) if isinstance(sequence, list) else 0
+    audio_count = len(audio) if isinstance(audio, list) else 0
+    observed_density = sequence_count + audio_count
+
+    if transcript_words >= 180 or sequence_count >= 8 or observed_density >= 11:
+        return "dense", 200, 280
+    if transcript_words >= 45 or sequence_count >= 3 or observed_density >= 4:
+        return "standard", 140, 200
+    return "simple", 60, 100
+
+
+def _post_condensation_body(parsed: dict[str, Any]) -> dict[str, Any] | None:
+    value = parsed.get("post_condensed")
+    if isinstance(value, dict):
+        return value
+    if _POST_CONDENSATION_KEYS.intersection(parsed.keys()):
+        return parsed
+    for value in parsed.values():
+        if isinstance(value, dict) and _POST_CONDENSATION_KEYS.intersection(value.keys()):
+            return value
+    return None
+
+
+def _normalize_post_condensation_mapping(
+    parsed: dict[str, Any],
+    *,
+    post_key: str,
+    fingerprint: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    condensed = _post_condensation_body(parsed)
+    if not isinstance(condensed, dict):
+        return None
+
+    warnings: list[str] = []
+    model_post_key = str(condensed.get("post_key") or "").strip()
+    if model_post_key and model_post_key != post_key:
+        warnings.append("post_key_overridden_to_server_post_key")
+
+    reel = str(condensed.get("reel") or "").strip()
+    if not reel:
+        return None
+
+    caption_value = condensed.get("caption")
+    if caption_value is None and isinstance(fingerprint, dict):
+        caption_value = fingerprint.get("caption")
+    caption = str(caption_value or "").strip()
+
+    def coerce_detail(item: Any) -> str:
+        if isinstance(item, dict):
+            parts: list[str] = []
+            for key, value in item.items():
+                key_text = str(key or "").strip()
+                value_text = str(value or "").strip()
+                if key_text and value_text:
+                    parts.append(f"{key_text}: {value_text}")
+                elif key_text:
+                    parts.append(key_text)
+                elif value_text:
+                    parts.append(value_text)
+            return "; ".join(parts).strip()
+        return str(item or "").strip()
+
+    details_value = condensed.get("standout_details")
+    if isinstance(details_value, list):
+        details = [coerce_detail(item) for item in details_value if coerce_detail(item)]
+    elif details_value:
+        details = [coerce_detail(details_value)]
+        warnings.append("standout_details_recovered_from_scalar")
+    else:
+        details = []
+        warnings.append("standout_details_missing")
+
+    meta_value = condensed.get("meta") if isinstance(condensed.get("meta"), dict) else {}
+    if isinstance(fingerprint, dict):
+        duration_seconds = meta_value.get("duration_seconds", fingerprint.get("duration_seconds"))
+        media_type = meta_value.get("media_type", fingerprint.get("media_type") or "reel")
+        media_truncated = meta_value.get("media_truncated", fingerprint.get("media_truncated") or False)
+        observed_window = meta_value.get("observed_window", fingerprint.get("observed_window") or "")
+    else:
+        duration_seconds = meta_value.get("duration_seconds")
+        media_type = meta_value.get("media_type") or "reel"
+        media_truncated = meta_value.get("media_truncated") or False
+        observed_window = meta_value.get("observed_window") or ""
+
+    reel_words = _word_count(reel)
+    complexity = "unknown"
+    target_min = 0
+    target_max = 0
+    soft_max = 0
+    if isinstance(fingerprint, dict):
+        complexity, target_min, target_max = _infer_condensation_complexity(fingerprint)
+        soft_max = int(round(target_max * (1 + _POST_CONDENSATION_WORD_TOLERANCE)))
+        if reel_words > soft_max:
+            warnings.append("reel_word_count_far_over_target")
+        elif reel_words > target_max:
+            warnings.append("reel_word_count_over_target_within_tolerance")
+
+    normalized = {
+        "post_key": post_key,
+        "meta": {
+            "duration_seconds": duration_seconds,
+            "media_type": str(media_type or "reel"),
+            "media_truncated": bool(media_truncated),
+            "observed_window": str(observed_window or ""),
+        },
+        "caption": caption,
+        "reel": reel,
+        "standout_details": details,
+    }
+    validation = {
+        "accepted": True,
+        "warnings": warnings,
+        "reel_word_count": reel_words,
+        "standout_detail_count": len(details),
+        "target_reel_word_budget": {
+            "complexity": complexity,
+            "min": target_min,
+            "max": target_max,
+            "soft_max": soft_max,
+            "tolerance": _POST_CONDENSATION_WORD_TOLERANCE,
+        },
+    }
+    return {"post_condensed": normalized, "server_validation": validation}
+
+
+def _recover_post_condensation_from_text(text: str, *, post_key: str, fingerprint: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    source = _strip_fences(text)
+    post_key_match = re.search(r"(?m)^\s*post_key:\s*(.+?)\s*$", source)
+    recovered_post_key = (post_key_match.group(1).strip().strip("'\"") if post_key_match else post_key).strip()
+
+    caption = ""
+    caption_block = re.search(r"(?ms)^\s*caption:\s*\|-\s*\n(?P<body>.*?)(?=^\s*reel:\s*\|-)", source)
+    if caption_block:
+        caption = _dedent_yaml_block(caption_block.group("body")).strip()
+    else:
+        caption_inline = re.search(r"(?m)^\s*caption:\s*(.+?)\s*$", source)
+        if caption_inline:
+            caption = caption_inline.group(1).strip().strip("'\"")
+
+    reel = ""
+    reel_block = re.search(r"(?ms)^\s*reel:\s*\|-\s*\n(?P<body>.*?)(?=^\s*standout_details:\s*$)", source)
+    if reel_block:
+        reel = _dedent_yaml_block(reel_block.group("body")).strip()
+
+    details: list[str] = []
+    details_block = re.search(r"(?ms)^\s*standout_details:\s*\n(?P<body>.*)$", source)
+    if details_block:
+        for line in details_block.group("body").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                details.append(stripped[2:].strip().strip("'\""))
+
+    if not reel:
+        return None
+    return _normalize_post_condensation_mapping(
+        {
+            "post_condensed": {
+                "post_key": recovered_post_key,
+                "caption": caption,
+                "reel": reel,
+                "standout_details": details,
+            }
+        },
+        post_key=post_key,
+        fingerprint=fingerprint,
+    )
+
+
+def _dedent_yaml_block(block: str) -> str:
+    lines = block.splitlines()
+    indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
+    indent = min(indents) if indents else 0
+    return "\n".join(line[indent:] if len(line) >= indent else line for line in lines)
+
+
+def _yaml_post_condensation_from_text(
+    text: str,
+    *,
+    post_key: str,
+    fingerprint: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    for source in _mapping_sources(text, ("post_condensed:", '"post_condensed"', "{")):
+        parsed_json = _json_from_text(source)
+        if parsed_json is not None:
+            normalized = _normalize_post_condensation_mapping(parsed_json, post_key=post_key, fingerprint=fingerprint)
+            if normalized:
+                return normalized
+        for candidate in (source, _repair_yaml_lines(source)):
+            parsed = _safe_yaml_mapping(candidate)
+            if parsed is not None:
+                normalized = _normalize_post_condensation_mapping(parsed, post_key=post_key, fingerprint=fingerprint)
+                if normalized:
+                    return normalized
+    return _recover_post_condensation_from_text(text, post_key=post_key, fingerprint=fingerprint)
+
+
+def _d7_read_body(parsed: dict[str, Any]) -> dict[str, Any] | None:
+    value = parsed.get("d7_read")
+    if isinstance(value, dict):
+        return value
+    if _D7_READ_KEYS.intersection(parsed.keys()):
+        return parsed
+    for value in parsed.values():
+        if isinstance(value, dict) and _D7_READ_KEYS.intersection(value.keys()):
+            return value
+    return None
+
+
+def _normalize_d7_read_mapping(parsed: dict[str, Any], *, post_key: str) -> dict[str, Any] | None:
+    body = _d7_read_body(parsed)
+    if not isinstance(body, dict):
+        return None
+
+    headline = str(body.get("headline") or "").strip()
+    metric_context = str(body.get("metric_context") or "").strip()
+    read = str(body.get("read") or "").strip()
+    direction = str(body.get("direction") or "").strip()
+    if not (headline or metric_context or read or direction):
+        return None
+
+    return {
+        "d7_read": {
+            "post_key": post_key,
+            "headline": headline,
+            "metric_context": metric_context,
+            "read": read,
+            "direction": direction,
+        }
+    }
+
+
+def _yaml_d7_read_from_text(text: str, *, post_key: str) -> dict[str, Any] | None:
+    for source in _mapping_sources(text, ("d7_read:", '"d7_read"', "{")):
+        parsed_json = _json_from_text(source)
+        if parsed_json is not None:
+            normalized = _normalize_d7_read_mapping(parsed_json, post_key=post_key)
+            if normalized:
+                return normalized
+        for candidate in (source, _repair_yaml_lines(source)):
+            parsed = _safe_yaml_mapping(candidate)
+            if parsed is not None:
+                normalized = _normalize_d7_read_mapping(parsed, post_key=post_key)
+                if normalized:
+                    return normalized
+    return None
+
+
 def _yaml_mapping_from_text(text: str) -> dict[str, Any] | None:
     for source in _mapping_sources(text, ("post_breakdown:", '"post_breakdown"', "{")):
         parsed_json = _json_from_text(source)
@@ -543,6 +821,16 @@ def post_breakdown_model_version() -> str:
     return f"openrouter:{model}:{POST_BREAKDOWN_PROMPT_VERSION}"
 
 
+def post_condensation_model_version() -> str:
+    model = (POST_CONDENSATION_MODEL or "").strip() or "none"
+    return f"openrouter:{model}:{POST_CONDENSATION_PROMPT_VERSION}"
+
+
+def d7_read_model_version() -> str:
+    model = (D7_READ_MODEL or "").strip() or "none"
+    return f"openrouter:{model}:{D7_READ_PROMPT_VERSION}"
+
+
 def _call_post_breakdown_model(fingerprint: dict[str, Any]) -> tuple[str, dict[str, Any] | None, str | None] | None:
     if not OPENROUTER_API_KEY:
         return None
@@ -591,6 +879,110 @@ def _call_post_breakdown_model(fingerprint: dict[str, Any]) -> tuple[str, dict[s
         return _strip_fences(content), None, str(exc)
 
 
+def _call_post_condensation_model(
+    fingerprint: dict[str, Any],
+    *,
+    post_key: str,
+) -> tuple[str, dict[str, Any] | None, str | None] | None:
+    if not OPENROUTER_API_KEY:
+        return None
+    model = (POST_CONDENSATION_MODEL or "").strip()
+    if not model:
+        return None
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": POST_CONDENSATION_SYSTEM_V5},
+            {"role": "user", "content": json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False, indent=2, default=str)},
+        ],
+        "temperature": 0.1,
+        "max_tokens": _POST_CONDENSATION_MAX_TOKENS,
+    }
+    content = ""
+    try:
+        resp = requests.post(
+            f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://feedme.local",
+                "X-Title": "FeedMe Post Condensation Pipeline",
+            },
+            json=payload,
+            timeout=180,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"OpenRouter status {resp.status_code}: {resp.text[:1200]}")
+        data = resp.json()
+        content = _extract_text(data, "openrouter")
+        parsed = _yaml_post_condensation_from_text(content, post_key=post_key, fingerprint=fingerprint)
+        if parsed:
+            return _strip_fences(content), parsed, None
+        finish_reason = ""
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if isinstance(choices, list) and choices:
+            finish_reason = str((choices[0] or {}).get("finish_reason") or "").strip()
+        error = "post condensation output did not contain a usable reel"
+        if finish_reason:
+            error = f"{error}; finish_reason={finish_reason}"
+        return _strip_fences(content), None, error
+    except Exception as exc:
+        print(f"[post_condensation] model call failed: {exc}")
+        return _strip_fences(content), None, str(exc)
+
+
+def _call_d7_read_model(
+    user_payload: dict[str, Any],
+    *,
+    post_key: str,
+) -> tuple[str, dict[str, Any] | None, str | None] | None:
+    if not OPENROUTER_API_KEY:
+        return None
+    model = (D7_READ_MODEL or "").strip()
+    if not model:
+        return None
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": D7_READ_SYSTEM_V1},
+            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, indent=2, default=str)},
+        ],
+        "temperature": 0.2,
+        "max_tokens": _D7_READ_MAX_TOKENS,
+    }
+    content = ""
+    try:
+        resp = requests.post(
+            f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://feedme.local",
+                "X-Title": "FeedMe D7 Read Pipeline",
+            },
+            json=payload,
+            timeout=180,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"OpenRouter status {resp.status_code}: {resp.text[:1200]}")
+        data = resp.json()
+        content = _extract_text(data, "openrouter")
+        parsed = _yaml_d7_read_from_text(content, post_key=post_key)
+        if parsed:
+            return _strip_fences(content), parsed, None
+        finish_reason = ""
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if isinstance(choices, list) and choices:
+            finish_reason = str((choices[0] or {}).get("finish_reason") or "").strip()
+        error = "d7 read output did not parse as YAML mapping"
+        if finish_reason:
+            error = f"{error}; finish_reason={finish_reason}"
+        return _strip_fences(content), None, error
+    except Exception as exc:
+        print(f"[d7_read] model call failed: {exc}")
+        return _strip_fences(content), None, str(exc)
+
+
 def _record_post_breakdown_model_call(
     conn: Any,
     *,
@@ -636,6 +1028,116 @@ def _record_post_breakdown_model_call(
                 POST_BREAKDOWN_PROMPT_VERSION,
                 POST_BREAKDOWN_EXTRACTION_SYSTEM_V2,
                 json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False),
+                raw_output,
+                json.dumps(parsed_output, ensure_ascii=False) if parsed_output is not None else None,
+                status,
+                (error or "")[:1000] if error else None,
+                post_key,
+            ),
+        )
+    conn.commit()
+
+
+def _record_post_condensation_model_call(
+    conn: Any,
+    *,
+    post_key: str,
+    fingerprint: dict[str, Any],
+    raw_output: str,
+    parsed_output: dict[str, Any] | None,
+    status: str,
+    error: str | None,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into public.feeder_file_model_calls (
+              feeder_file_id, call_key, call_type, feeder_handle, post_key,
+              model, prompt_version, system_prompt, user_payload,
+              raw_output, parsed_output, status, error, started_at, completed_at, updated_at
+            )
+            select null, %s, 'post_condensation', lower(coalesce(f.handle, '')), %s,
+                   %s, %s, %s, %s::jsonb, %s, %s::jsonb,
+                   %s, %s, now(), now(), now()
+            from public.posts p
+            left join public.feeders f on f.id = p.feeder_id
+            where p.post_key = %s
+            on conflict (call_type, post_key, prompt_version)
+            where call_type = 'post_condensation' and post_key is not null
+            do update set
+              feeder_handle = excluded.feeder_handle,
+              model = excluded.model,
+              system_prompt = excluded.system_prompt,
+              user_payload = excluded.user_payload,
+              raw_output = excluded.raw_output,
+              parsed_output = excluded.parsed_output,
+              status = excluded.status,
+              error = excluded.error,
+              completed_at = now(),
+              updated_at = now()
+            """,
+            (
+                f"post_condensation:{post_key}",
+                post_key,
+                POST_CONDENSATION_MODEL,
+                POST_CONDENSATION_PROMPT_VERSION,
+                POST_CONDENSATION_SYSTEM_V5,
+                json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False),
+                raw_output,
+                json.dumps(parsed_output, ensure_ascii=False) if parsed_output is not None else None,
+                status,
+                (error or "")[:1000] if error else None,
+                post_key,
+            ),
+        )
+    conn.commit()
+
+
+def _record_d7_read_model_call(
+    conn: Any,
+    *,
+    post_key: str,
+    user_payload: dict[str, Any],
+    raw_output: str,
+    parsed_output: dict[str, Any] | None,
+    status: str,
+    error: str | None,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into public.feeder_file_model_calls (
+              feeder_file_id, call_key, call_type, feeder_handle, post_key,
+              model, prompt_version, system_prompt, user_payload,
+              raw_output, parsed_output, status, error, started_at, completed_at, updated_at
+            )
+            select null, %s, 'd7_read', lower(coalesce(f.handle, '')), %s,
+                   %s, %s, %s, %s::jsonb, %s, %s::jsonb,
+                   %s, %s, now(), now(), now()
+            from public.posts p
+            left join public.feeders f on f.id = p.feeder_id
+            where p.post_key = %s
+            on conflict (call_type, post_key, prompt_version)
+            where call_type = 'd7_read' and post_key is not null
+            do update set
+              feeder_handle = excluded.feeder_handle,
+              model = excluded.model,
+              system_prompt = excluded.system_prompt,
+              user_payload = excluded.user_payload,
+              raw_output = excluded.raw_output,
+              parsed_output = excluded.parsed_output,
+              status = excluded.status,
+              error = excluded.error,
+              completed_at = now(),
+              updated_at = now()
+            """,
+            (
+                f"d7_read:{post_key}",
+                post_key,
+                D7_READ_MODEL,
+                D7_READ_PROMPT_VERSION,
+                D7_READ_SYSTEM_V1,
+                json.dumps(user_payload, ensure_ascii=False, default=str),
                 raw_output,
                 json.dumps(parsed_output, ensure_ascii=False) if parsed_output is not None else None,
                 status,
@@ -738,6 +1240,46 @@ def _recover_post_breakdown_from_stored_raw(
     return None
 
 
+def _recover_post_condensation_from_stored_raw(
+    conn: Any,
+    *,
+    post_key: str,
+    fingerprint: dict[str, Any],
+) -> dict[str, Any] | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select raw_output
+            from public.feeder_file_model_calls
+            where call_type = 'post_condensation'
+              and post_key = %s
+              and prompt_version = %s
+              and coalesce(raw_output, '') <> ''
+            order by updated_at desc nulls last, id desc
+            limit 3
+            """,
+            (post_key, POST_CONDENSATION_PROMPT_VERSION),
+        )
+        rows = cur.fetchall()
+
+    for row in rows:
+        raw_output = str(row.get("raw_output") or "")
+        parsed = _yaml_post_condensation_from_text(raw_output, post_key=post_key, fingerprint=fingerprint)
+        if not parsed:
+            continue
+        _record_post_condensation_model_call(
+            conn,
+            post_key=post_key,
+            fingerprint=fingerprint,
+            raw_output=raw_output,
+            parsed_output=parsed,
+            status="complete",
+            error=None,
+        )
+        return parsed
+    return None
+
+
 def ensure_post_breakdown(conn: Any, post_key: str, fingerprint: dict[str, Any] | None = None) -> dict[str, Any] | None:
     if not fingerprint:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -815,6 +1357,360 @@ def ensure_post_breakdown(conn: Any, post_key: str, fingerprint: dict[str, Any] 
         )
         return None
     return stored
+
+
+def ensure_post_condensation(conn: Any, post_key: str, fingerprint: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    if not fingerprint:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select fingerprint
+                from public.post_fingerprints
+                where post_key = %s
+                  and media_confidence = 'high'
+                limit 1
+                """,
+                (post_key,),
+            )
+            row = cur.fetchone()
+        fingerprint = row.get("fingerprint") if row else None
+    if not isinstance(fingerprint, dict):
+        return None
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select parsed_output
+            from public.feeder_file_model_calls
+            where call_type = 'post_condensation'
+              and post_key = %s
+              and prompt_version = %s
+              and status = 'complete'
+              and parsed_output is not null
+            order by updated_at desc nulls last, id desc
+            limit 1
+            """,
+            (post_key, POST_CONDENSATION_PROMPT_VERSION),
+        )
+        existing = cur.fetchone()
+        parsed_output = existing.get("parsed_output") if existing else None
+        if isinstance(parsed_output, dict):
+            normalized = _normalize_post_condensation_mapping(parsed_output, post_key=post_key, fingerprint=fingerprint)
+            if normalized:
+                return normalized
+
+    recovered = _recover_post_condensation_from_stored_raw(conn, post_key=post_key, fingerprint=fingerprint)
+    if recovered:
+        return recovered
+
+    result = _call_post_condensation_model(fingerprint, post_key=post_key)
+    if not result:
+        return None
+    raw_output, parsed, call_error = result
+    if parsed is None:
+        _record_post_condensation_model_call(
+            conn,
+            post_key=post_key,
+            fingerprint=fingerprint,
+            raw_output=raw_output,
+            parsed_output=None,
+            status="failed",
+            error=call_error or "post condensation output did not parse",
+        )
+        if call_error:
+            print(f"[post_condensation] model call failed: {call_error}")
+        return None
+
+    _record_post_condensation_model_call(
+        conn,
+        post_key=post_key,
+        fingerprint=fingerprint,
+        raw_output=raw_output,
+        parsed_output=parsed,
+        status="complete",
+        error=None,
+    )
+    return parsed
+
+
+def _condensed_post_payload(condensation: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(condensation, dict):
+        return None
+    body = _post_condensation_body(condensation)
+    if not isinstance(body, dict):
+        return None
+    reel = str(body.get("reel") or "").strip()
+    if not reel:
+        return None
+    return {
+        "post_key": str(body.get("post_key") or "").strip(),
+        "post_condensed": {
+            "caption": str(body.get("caption") or "").strip(),
+            "reel": reel,
+            "standout_details": [str(item or "").strip() for item in body.get("standout_details") or [] if str(item or "").strip()]
+            if isinstance(body.get("standout_details"), list)
+            else [],
+            "meta": body.get("meta") if isinstance(body.get("meta"), dict) else {},
+        },
+    }
+
+
+def _metric_payload_for_d7_read(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "views": row.get("views"),
+        "likes": row.get("likes"),
+        "comments": row.get("comments"),
+        "percentile_performance": row.get("percentile_performance"),
+        "percentile_performance_exact": row.get("percentile_performance_exact"),
+        "ranking_metric": row.get("ranking_metric"),
+        "ranking_multiple": row.get("ranking_multiple"),
+    }
+
+
+def _standing_for_d7_read(rank: int, total: int) -> dict[str, Any]:
+    if total <= 0 or rank <= 0:
+        return {"rank_plain": "no recent comparison yet"}
+    third = "strong" if rank <= max(1, total / 3) else "middle" if rank <= max(1, (2 * total) / 3) else "weak"
+    if third == "strong":
+        rank_plain = "one of the stronger recent reels"
+    elif third == "middle":
+        rank_plain = "right in the middle of the recent run"
+    else:
+        rank_plain = "behind the stronger recent reels"
+    return {
+        "rank_plain": rank_plain,
+        "band": third,
+        "rank_of_window": {"rank": rank, "total": total},
+    }
+
+
+def _post_group_for_d7_read(rank: int, total: int) -> str:
+    if total <= 0:
+        return "what_almost_wins"
+    if rank <= max(1, total / 3):
+        return "what_wins"
+    if rank <= max(1, (2 * total) / 3):
+        return "what_almost_wins"
+    return "what_flops"
+
+
+def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select
+              p.post_key,
+              p.feeder_id,
+              p.caption,
+              p.media_type,
+              p.posted_at,
+              f.handle,
+              fd.name as feed_name,
+              pm.views,
+              pm.likes,
+              pm.comments,
+              pm.percentile_performance,
+              pm.percentile_performance_exact,
+              pm.ranking_metric,
+              pm.ranking_multiple,
+              pm.business_date_ist
+            from public.posts p
+            join public.feeders f on f.id = p.feeder_id
+            left join public.feeds fd on fd.id = f.feed_id
+            join public.post_metrics pm
+              on pm.post_key = p.post_key
+             and lower(pm.checkpoint) = 'd7'
+            where p.post_key = %s
+            order by pm.computed_at desc nulls last
+            limit 1
+            """,
+            (post_key,),
+        )
+        trigger = cur.fetchone()
+    if not trigger:
+        return None
+
+    trigger_condensation = ensure_post_condensation(conn, post_key)
+    trigger_payload = _condensed_post_payload(trigger_condensation)
+    if not trigger_payload:
+        return None
+
+    feeder_id = int(trigger["feeder_id"])
+    media_type = str(trigger.get("media_type") or "reel").strip().lower()
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select
+              p.post_key,
+              p.media_type,
+              p.posted_at,
+              pm.views,
+              pm.likes,
+              pm.comments,
+              pm.percentile_performance,
+              pm.percentile_performance_exact,
+              pm.ranking_metric,
+              pm.ranking_multiple,
+              fmc.parsed_output as condensation
+            from public.posts p
+            join public.post_metrics pm
+              on pm.post_key = p.post_key
+             and lower(pm.checkpoint) = 'd7'
+            left join public.feeder_file_model_calls fmc
+              on fmc.post_key = p.post_key
+             and fmc.call_type = 'post_condensation'
+             and fmc.prompt_version = %s
+             and fmc.status = 'complete'
+            where p.feeder_id = %s
+              and lower(coalesce(p.media_type, '')) = %s
+              and p.posted_at >= now() - interval '90 days'
+            order by
+              least(
+                coalesce(pm.percentile_performance_exact, 101),
+                coalesce(pm.percentile_performance, 101)
+              ) asc,
+              p.posted_at desc nulls last
+            limit 30
+            """,
+            (POST_CONDENSATION_PROMPT_VERSION, feeder_id, media_type),
+        )
+        memory_rows = [dict(row) for row in cur.fetchall()]
+
+    if not any(str(row.get("post_key") or "") == post_key for row in memory_rows):
+        memory_rows.append(dict(trigger))
+
+    def posted_ts(row: dict[str, Any]) -> float:
+        value = row.get("posted_at")
+        return value.timestamp() if isinstance(value, datetime) else 0.0
+
+    performance_rows = sorted(
+        memory_rows,
+        key=lambda row: (
+            float(row.get("percentile_performance_exact") or row.get("percentile_performance") or 101),
+            -posted_ts(row),
+        ),
+    )
+    total = len(performance_rows)
+    trigger_rank = next((idx + 1 for idx, row in enumerate(performance_rows) if str(row.get("post_key") or "") == post_key), total)
+
+    recency_rows = sorted(
+        memory_rows,
+        key=posted_ts,
+        reverse=True,
+    )
+    posts_ago_by_key = {
+        str(row.get("post_key") or ""): idx
+        for idx, row in enumerate(recency_rows)
+    }
+
+    groups: dict[str, list[dict[str, Any]]] = {"what_wins": [], "what_almost_wins": [], "what_flops": []}
+    for idx, row in enumerate(performance_rows):
+        row_post_key = str(row.get("post_key") or "").strip()
+        if not row_post_key or row_post_key == post_key:
+            continue
+        condensed = _condensed_post_payload(row.get("condensation") if isinstance(row.get("condensation"), dict) else None)
+        if not condensed:
+            continue
+        bucket = _post_group_for_d7_read(idx + 1, total)
+        if len(groups[bucket]) >= 10:
+            continue
+        groups[bucket].append({
+            "post_key": row_post_key,
+            "posts_ago": posts_ago_by_key.get(row_post_key),
+            "posted_at": row.get("posted_at"),
+            "media_type": row.get("media_type"),
+            "metrics": _metric_payload_for_d7_read(row),
+            **condensed,
+        })
+
+    recent_direction = {
+        "last_8_posts_by_recency": [
+            {
+                "post_key": str(row.get("post_key") or ""),
+                "posts_ago": idx,
+                "standing": _standing_for_d7_read(
+                    next((rank_idx + 1 for rank_idx, ranked in enumerate(performance_rows) if ranked.get("post_key") == row.get("post_key")), 0),
+                    total,
+                ).get("rank_plain"),
+                "metrics": _metric_payload_for_d7_read(row),
+            }
+            for idx, row in enumerate(recency_rows[:8])
+        ],
+        "instruction": "Use only to judge whether the trigger continues, breaks, or reverses recent execution direction.",
+    }
+
+    return {
+        "account": {
+            "handle": str(trigger.get("handle") or "").strip(),
+            "feed_name": str(trigger.get("feed_name") or "").strip(),
+            "kind": "creator" if str(trigger.get("feed_name") or "").strip().lower() == "creators" else "brand",
+        },
+        "trigger_post": {
+            "post_key": post_key,
+            "posted_at": trigger.get("posted_at"),
+            "media_type": trigger.get("media_type"),
+            "caption": trigger.get("caption"),
+            "metrics": _metric_payload_for_d7_read(dict(trigger)),
+            "standing": _standing_for_d7_read(trigger_rank, total),
+            **trigger_payload,
+        },
+        "feeder_memory": groups,
+        "recent_direction": recent_direction,
+    }
+
+
+def ensure_d7_read(conn: Any, post_key: str) -> dict[str, Any] | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select parsed_output
+            from public.feeder_file_model_calls
+            where call_type = 'd7_read'
+              and post_key = %s
+              and prompt_version = %s
+              and status = 'complete'
+              and parsed_output is not null
+            order by updated_at desc nulls last, id desc
+            limit 1
+            """,
+            (post_key, D7_READ_PROMPT_VERSION),
+        )
+        existing = cur.fetchone()
+    parsed_output = existing.get("parsed_output") if existing else None
+    if isinstance(parsed_output, dict):
+        normalized = _normalize_d7_read_mapping(parsed_output, post_key=post_key)
+        if normalized:
+            return normalized
+
+    user_payload = _build_d7_read_input(conn, post_key)
+    if not user_payload:
+        return None
+    result = _call_d7_read_model(user_payload, post_key=post_key)
+    if not result:
+        return None
+    raw_output, parsed, call_error = result
+    if parsed is None:
+        _record_d7_read_model_call(
+            conn,
+            post_key=post_key,
+            user_payload=user_payload,
+            raw_output=raw_output,
+            parsed_output=None,
+            status="failed",
+            error=call_error or "d7 read output did not parse",
+        )
+        return None
+
+    _record_d7_read_model_call(
+        conn,
+        post_key=post_key,
+        user_payload=user_payload,
+        raw_output=raw_output,
+        parsed_output=parsed,
+        status="complete",
+        error=None,
+    )
+    return parsed
 
 
 def _existing_high_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
@@ -1172,6 +2068,18 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         )
         return None
 
+    duration_seconds = post.get("duration_seconds")
+    media_truncated = False
+    try:
+        media_truncated = float(duration_seconds) > _VIDEO_SAMPLE_SECONDS if duration_seconds is not None else False
+    except Exception:
+        media_truncated = False
+    fingerprint["duration_seconds"] = fingerprint.get("duration_seconds", duration_seconds)
+    fingerprint["media_truncated"] = bool(fingerprint.get("media_truncated", media_truncated))
+    fingerprint["observed_window"] = str(
+        fingerprint.get("observed_window") or ("0:00-2:00" if media_truncated else "")
+    )
+
     stored = _store_post_fingerprint(
         conn,
         post_key=post_key,
@@ -1208,16 +2116,22 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                 ) as d7_percentile,
                 row_number() over (partition by p.feeder_id order by p.posted_at desc nulls last) as recent_rank,
                 pf_high.post_key as high_fingerprint_post_key,
-                pb.post_key as post_breakdown_post_key
+                pb.post_key as post_breakdown_post_key,
+                fmc_d7.post_key as d7_read_post_key
               from public.posts p
               join public.post_metrics pm
                 on pm.post_key = p.post_key
-               and pm.checkpoint = 'd7'
+               and lower(pm.checkpoint) = 'd7'
               left join public.post_fingerprints pf_high
                 on pf_high.post_key = p.post_key
                and pf_high.media_confidence = 'high'
               left join public.post_breakdowns pb
                 on pb.post_key = p.post_key
+              left join public.feeder_file_model_calls fmc_d7
+                on fmc_d7.post_key = p.post_key
+               and fmc_d7.call_type = 'd7_read'
+               and fmc_d7.prompt_version = %s
+               and fmc_d7.status = 'complete'
               where lower(coalesce(p.media_type, '')) in ('reel', 'video')
                 and p.posted_at >= now() - (%s::int * interval '1 day')
                 and (%s::int is null or p.feeder_id = %s::int)
@@ -1247,14 +2161,20 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
             select post_key
             from scored
             where (
-                d7_percentile <= 25
-                or (recent_rank <= 10 and recent_performance_rank <= 2)
+                (
+                  d7_percentile <= 25
+                  or (recent_rank <= 10 and recent_performance_rank <= 2)
+                )
+                and (
+                  high_fingerprint_post_key is null
+                  or post_breakdown_post_key is null
+                  or d7_read_post_key is null
+                )
               )
-              and (high_fingerprint_post_key is null or post_breakdown_post_key is null)
             order by d7_percentile asc nulls last, posted_at desc nulls last
             limit %s
             """,
-            (max(1, int(days)), feeder_id, feeder_id, max(1, int(limit))),
+            (D7_READ_PROMPT_VERSION, max(1, int(days)), feeder_id, feeder_id, max(1, int(limit))),
         )
         rows = cur.fetchall()
     return [str(row["post_key"]) for row in rows if row.get("post_key")]
@@ -1264,6 +2184,8 @@ def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 1
     post_keys = _candidate_post_keys(conn, feeder_id=feeder_id, limit=limit, days=days)
     resolved = 0
     breakdowns = 0
+    condensations = 0
+    d7_reads = 0
     missing_media = 0
     failed = 0
     for post_key in post_keys:
@@ -1274,6 +2196,12 @@ def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 1
                 breakdown = ensure_post_breakdown(conn, post_key, fingerprint)
                 if breakdown:
                     breakdowns += 1
+                    condensation = ensure_post_condensation(conn, post_key, fingerprint)
+                    if condensation:
+                        condensations += 1
+                    d7_read = ensure_d7_read(conn, post_key)
+                    if d7_read:
+                        d7_reads += 1
                 else:
                     failed += 1
             else:
@@ -1289,6 +2217,8 @@ def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 1
         "selected": len(post_keys),
         "resolved": resolved,
         "post_breakdowns": breakdowns,
+        "post_condensations": condensations,
+        "d7_reads": d7_reads,
         "missing_media": missing_media,
         "failed": failed,
         "post_keys": post_keys,

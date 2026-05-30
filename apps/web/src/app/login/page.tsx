@@ -12,6 +12,19 @@ type AuthMode = 'login' | 'signup' | 'forgot';
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 
+function safeInternalNextPath(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return '/';
+  }
+
+  try {
+    const parsed = new URL(value, window.location.origin);
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return '/';
+  }
+}
+
 /* ─────────────────────────────────────────────
    PAC-MAN HERO — Premium conveyor-belt animation
 
@@ -380,7 +393,7 @@ export default function LoginPage() {
 
         setIsSuccess(true);
         setTimeout(() => {
-          const nextPath = new URLSearchParams(window.location.search).get('next') || '/';
+          const nextPath = safeInternalNextPath(new URLSearchParams(window.location.search).get('next'));
           router.replace(nextPath);
           router.refresh();
         }, 1000);
