@@ -1,0 +1,23 @@
+[Unit]
+Description=FeedMe fingerprint worker
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=feedme
+Group=feedme
+WorkingDirectory=/opt/feed_me
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/opt/feed_me/apps/worker/.env
+ExecStart=/opt/feed_me/.venv/bin/python -m apps.worker.app.cli --mode fingerprint_reels_worker
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGINT
+SyslogIdentifier=feedme-fingerprint-worker
+
+[Install]
+WantedBy=multi-user.target

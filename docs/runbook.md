@@ -22,31 +22,64 @@ Feeder intelligence has one prompt pair:
 ```bash
 cd /path/to/feed_me
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -r apps/worker/requirements.txt
+.venv/bin/python -m pip install -r apps/worker/requirements.txt
 ```
 
-Create env file from `infra/.env.worker.example` and export vars.
+Create `apps/worker/.env` from `infra/.env.worker.example`.
 
 ## 4) First real run
 ```bash
-python3 -m apps.worker.app.cli --mode enqueue_daily
-python3 -m apps.worker.app.cli --mode enqueue_poll
-python3 -m apps.worker.app.cli --mode once
+set -a; source apps/worker/.env; set +a
+.venv/bin/python -m apps.worker.app.cli --mode enqueue_daily
+.venv/bin/python -m apps.worker.app.cli --mode enqueue_poll
+.venv/bin/python -m apps.worker.app.cli --mode once
 ```
 
 ## 5) Continuous processor
 ```bash
-python3 -m apps.worker.app.cli --mode worker
+set -a; source apps/worker/.env; set +a
+.venv/bin/python -m apps.worker.app.cli --mode worker
 ```
 
 ## 5b) Fingerprint processor
-Run this as a separate recovery process/container. The primary feeder file path is triggered from D7 metric processing; this worker catches old or interrupted qualifying posts:
+Run this as a separate recovery process. The primary feeder file path is triggered from D7 metric processing; this worker catches old or interrupted qualifying posts:
 ```bash
-python3 -m apps.worker.app.cli --mode fingerprint_reels_worker
+set -a; source apps/worker/.env; set +a
+.venv/bin/python -m apps.worker.app.cli --mode fingerprint_reels_worker
 ```
 
-## 5c) Compile feeder files
+## 5c) Production systemd services
+The worker runs natively from the repo venv. There is no container layer in production.
+
+First install OS packages:
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv ffmpeg git
+```
+
+Then install or refresh the services from the repo root:
+```bash
+FEEDME_HOME=/opt/feed_me \
+FEEDME_USER=feedme \
+FEEDME_GROUP=feedme \
+FEEDME_ENV_FILE=/opt/feed_me/apps/worker/.env \
+infra/scripts/install-native-worker-services.sh
+```
+
+Daily deploy from the worker host:
+```bash
+cd /opt/feed_me
+infra/scripts/deploy-native-worker.sh
+```
+
+Useful checks:
+```bash
+systemctl status feedme-worker feedme-fingerprint-worker
+journalctl -u feedme-worker -n 200 --no-pager
+journalctl -u feedme-fingerprint-worker -n 200 --no-pager
+```
+
+## 5d) Compile feeder files
 Run when a feeder has enough stored post breakdowns to form pattern candidates:
 ```bash
 python3 -m apps.worker.app.cli --mode feeder_file_once --handle <handle> --limit 12 --days 90
