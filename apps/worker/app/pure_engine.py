@@ -25,6 +25,7 @@ from .scraper import run_actor_handle, run_actor_post_urls
 from .instagram import canonical_post_url, shortcode_from_media_id, shortcode_from_url
 from .config import (
     POSTGRES_DSN,
+    POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS,
     RETRY_BACKOFF_MINUTES,
     APP_TIMEZONE,
     RUN_JOB_CONCURRENCY,
@@ -945,15 +946,20 @@ class PureEngine:
         self._feeder_tracking_started_cache: dict[int, datetime | None] = {}
 
     def _connect(self):
-        return psycopg.connect(
+        idle_timeout_ms = max(1000, int(POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS))
+        conn = psycopg.connect(
             POSTGRES_DSN,
             row_factory=dict_row,
             connect_timeout=10,
+            application_name="feedme-worker",
             keepalives=1,
             keepalives_idle=30,
             keepalives_interval=10,
             keepalives_count=3,
         )
+        conn.execute(f"set idle_in_transaction_session_timeout = {idle_timeout_ms}")
+        conn.commit()
+        return conn
 
     def _reconnect(self, reason: str | None = None):
         try:

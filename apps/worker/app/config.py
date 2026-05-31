@@ -18,6 +18,9 @@ def _get_bool_env(name: str, default: bool = False) -> bool:
 
 
 POSTGRES_DSN = _get_env("POSTGRES_DSN", required=True)
+POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS = int(
+    _get_env("POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS", "60000")
+)
 SCRAPER_PROVIDER = "brightdata"
 BRIGHTDATA_API_KEY = _get_env("BRIGHTDATA_API_KEY", required=True)
 BRIGHTDATA_API_BASE_URL = _get_env("BRIGHTDATA_API_BASE_URL", "https://api.brightdata.com")
