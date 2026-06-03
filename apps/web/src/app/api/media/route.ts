@@ -18,6 +18,14 @@ const PRIVATE_MEDIA_CACHE_CONTROL = 'private, max-age=3600, stale-while-revalida
 const R2_SIGNED_URL_DEFAULT_EXPIRES_SECONDS = 600;
 const R2_SIGNED_URL_MIN_EXPIRES_SECONDS = 60;
 const R2_SIGNED_URL_MAX_EXPIRES_SECONDS = 3600;
+const THUMBNAIL_ASSET_ROLES = [
+  'thumbnail',
+  'display',
+  'carousel_0',
+  'carousel_00',
+  'carousel_01',
+  'carousel_1',
+];
 
 type SupabaseAdminClient = ReturnType<typeof adminClient>;
 type FeedIdRow = { id: number | string | null };
@@ -153,9 +161,7 @@ async function fetchStoredAsset(
   assetRole: string,
 ): Promise<Response | null> {
   const role = (assetRole || 'thumbnail').trim().toLowerCase();
-  const candidateRoles = role === 'thumbnail'
-    ? ['thumbnail', 'display', 'carousel_0']
-    : [role];
+  const candidateRoles = role === 'thumbnail' ? THUMBNAIL_ASSET_ROLES : [role];
   const needsVideoResponse = isVideoRole(role);
   const needsImageResponse = !needsVideoResponse;
 

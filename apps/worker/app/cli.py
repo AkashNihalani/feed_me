@@ -16,13 +16,10 @@ def main():
             "worker",
             "fingerprint_reels_once",
             "fingerprint_reels_worker",
-            "feeder_file_once",
-            "feeder_file_recent_fingerprints_once",
-            "feeder_file_package_once",
-            "feeder_file_repair_compile_once",
             "backfill_d1_media",
             "backfill_fire_day_media",
             "repair_post_visual_media",
+            "prepare_feeder_intelligence_media",
             "migrate_stored_supabase_visual_media_to_r2",
             "restore_recent_thumbnails_from_post_pages",
             "refresh_recent_visual_media_sources",
@@ -43,10 +40,9 @@ def main():
     p.add_argument("--post-key", type=str, default=None)
     p.add_argument("--feeder-id", type=int, default=None)
     p.add_argument("--handle", type=str, default=None)
-    p.add_argument("--handles", type=str, default=None)
-    p.add_argument("--pattern-limit", type=int, default=3)
-    p.add_argument("--pattern-id", type=str, default=None)
-    p.add_argument("--compile-version", type=str, default=None)
+    p.add_argument("--include-failed", action="store_true")
+    p.add_argument("--allow-private-refresh", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
     if args.mode == "enqueue_daily":
@@ -82,99 +78,6 @@ def main():
         print(f"fingerprint_reels_once={result}")
     elif args.mode == "fingerprint_reels_worker":
         run_fingerprint_worker()
-    elif args.mode == "feeder_file_once":
-        eng = PureEngine()
-        try:
-            result = eng.run_feeder_file_once(
-                feeder_id=args.feeder_id,
-                handle=args.handle,
-                limit=args.limit,
-                days=args.days,
-                pattern_limit=args.pattern_limit,
-            )
-            print(
-                f"feeder_file_once feeder_file_id={result.get('feeder_file_id')} "
-                f"handle={result.get('feeder_handle')} "
-                f"patterns={result.get('patterns', 0)} proofs={result.get('proofs', 0)}"
-            )
-        finally:
-            eng.close()
-    elif args.mode == "feeder_file_recent_fingerprints_once":
-        eng = PureEngine()
-        try:
-            handles = [
-                value.strip()
-                for value in str(args.handles or args.handle or "").split(",")
-                if value.strip()
-            ]
-            if not handles and args.feeder_id is None:
-                raise SystemExit("--handle, --handles, or --feeder-id is required")
-            targets = handles or [None]
-            recent_fingerprint_days = {}
-            if args.days != p.get_default("days"):
-                recent_fingerprint_days["days"] = args.days
-            for target_handle in targets:
-                result = eng.run_feeder_file_from_recent_fingerprints_once(
-                    feeder_id=args.feeder_id if target_handle is None else None,
-                    handle=target_handle,
-                    limit=args.limit,
-                    **recent_fingerprint_days,
-                    pattern_limit=args.pattern_limit,
-                )
-                print(
-                    f"feeder_file_recent_fingerprints_once "
-                    f"feeder_file_id={result.get('feeder_file_id')} "
-                    f"handle={result.get('feeder_handle')} "
-                    f"post_count={result.get('post_count', 0)} "
-                    f"created_breakdowns={result.get('created_breakdowns', 0)} "
-                    f"ready_breakdowns={result.get('ready_breakdowns', 0)} "
-                    f"patterns={result.get('patterns', 0)} "
-                    f"candidates={result.get('candidates', 0)} "
-                    f"proofs={result.get('proofs', 0)} "
-                    f"selected_post_keys={','.join(result.get('selected_post_keys') or [])}"
-                )
-        finally:
-            eng.close()
-    elif args.mode == "feeder_file_package_once":
-        eng = PureEngine()
-        try:
-            result = eng.package_feeder_file_once(
-                feeder_id=args.feeder_id,
-                handle=args.handle,
-                compile_version=args.compile_version,
-                pattern_id=args.pattern_id,
-                pattern_limit=args.pattern_limit,
-            )
-            print(
-                f"feeder_file_package_once feeder_file_id={result.get('feeder_file_id')} "
-                f"handle={result.get('feeder_handle')} "
-                f"patterns={result.get('patterns', 0)} "
-                f"candidates={result.get('candidates', 0)} "
-                f"proofs={result.get('proofs', 0)}"
-            )
-        finally:
-            eng.close()
-    elif args.mode == "feeder_file_repair_compile_once":
-        eng = PureEngine()
-        try:
-            result = eng.repair_feeder_file_compile_once(
-                feeder_id=args.feeder_id,
-                handle=args.handle,
-                compile_version=args.compile_version,
-                pattern_id=args.pattern_id,
-                pattern_limit=args.pattern_limit,
-            )
-            print(
-                f"feeder_file_repair_compile_once feeder_file_id={result.get('feeder_file_id')} "
-                f"compile_call_id={result.get('compile_call_id')} "
-                f"handle={result.get('feeder_handle')} "
-                f"patterns={result.get('patterns', 0)} "
-                f"candidates={result.get('candidates', 0)} "
-                f"proofs={result.get('proofs', 0)} "
-                f"post_count={result.get('post_count', 0)}"
-            )
-        finally:
-            eng.close()
     elif args.mode == "backfill_d1_media":
         eng = PureEngine()
         try:
@@ -203,6 +106,39 @@ def main():
                 f"repair_post_visual_media post_key={args.post_key} found={result.get('found', False)} "
                 f"staged={result.get('staged', 0)} captured={result.get('captured', 0)} "
                 f"failed={result.get('failed', 0)} retired={result.get('retired', 0)}"
+            )
+        finally:
+            eng.close()
+    elif args.mode == "prepare_feeder_intelligence_media":
+        eng = PureEngine()
+        try:
+            result = eng.prepare_feeder_intelligence_media(
+                feeder_id=args.feeder_id,
+                handle=args.handle,
+                limit=args.limit,
+                days=args.days,
+                batch_size=args.batch_size,
+                include_failed=args.include_failed,
+                allow_private_refresh=args.allow_private_refresh,
+                dry_run=args.dry_run,
+            )
+            print(
+                f"prepare_feeder_intelligence_media feeder_id={result.get('feeder_id')} "
+                f"selected={result.get('selected', 0)} already_ready={result.get('already_ready', 0)} "
+                f"needs_refresh={result.get('needs_refresh', 0)} "
+                f"needs_existing_source_capture={result.get('needs_existing_source_capture', 0)} "
+                f"needs_private_refresh={result.get('needs_private_refresh', 0)} "
+                f"existing_source_staged={result.get('existing_source_staged', 0)} "
+                f"existing_source_captured={result.get('existing_source_captured', 0)} "
+                f"existing_source_failed={result.get('existing_source_failed', 0)} "
+                f"refreshed={result.get('refreshed', 0)} "
+                f"staged={result.get('staged', 0)} capture_selected={result.get('capture_selected', 0)} "
+                f"captured={result.get('captured', 0)} capture_failed={result.get('capture_failed', 0)} "
+                f"ready={result.get('ready', 0)} failed={result.get('failed', 0)} "
+                f"missing_source={result.get('missing_source', 0)} "
+                f"private_refresh_allowed={result.get('private_refresh_allowed', False)} "
+                f"private_refresh_skipped={result.get('private_refresh_skipped', 0)} "
+                f"dry_run={result.get('dry_run', False)}"
             )
         finally:
             eng.close()

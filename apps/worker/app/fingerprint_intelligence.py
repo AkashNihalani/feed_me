@@ -5,11 +5,13 @@ import hashlib
 import json
 import os
 import re
+import statistics
 import subprocess
 import tempfile
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
+from urllib.parse import quote
 
 import requests
 import yaml
@@ -21,20 +23,24 @@ from .config import (
     FEEDER_INTELLIGENCE_ENABLED,
     FEEDER_INTELLIGENCE_PROVIDER,
     GEMINI_API_KEY,
-    MEDIA_PUBLIC_BASE_URL,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
-    POST_BREAKDOWN_MODEL,
     POST_CONDENSATION_MODEL,
+    R2_ACCESS_KEY_ID,
+    R2_BUCKET,
+    R2_ENDPOINT_URL,
+    R2_REGION,
+    R2_SECRET_ACCESS_KEY,
+    SUPABASE_MEDIA_BUCKET,
+    SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_URL,
 )
 from .feeder_prompts import (
     D7_READ_PROMPT_VERSION,
-    D7_READ_SYSTEM_V1,
+    D7_READ_SYSTEM_V6,
     FINGERPRINT_EXTRACTION_SYSTEM_V8,
     FINGERPRINT_PROMPT_VERSION,
     FINGERPRINT_SAMPLING_POLICY_VERSION,
-    POST_BREAKDOWN_EXTRACTION_SYSTEM_V2,
-    POST_BREAKDOWN_PROMPT_VERSION,
     POST_CONDENSATION_PROMPT_VERSION,
     POST_CONDENSATION_SYSTEM_V5,
 )
@@ -48,19 +54,25 @@ _DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 _VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 _VIDEO_INLINE_MAX_BYTES = 20 * 1024 * 1024
 _VIDEO_SAMPLE_SECONDS = 120
-_POST_BREAKDOWN_MAX_TOKENS = int(os.getenv("POST_BREAKDOWN_MAX_TOKENS", "5000"))
 _POST_CONDENSATION_MAX_TOKENS = int(os.getenv("POST_CONDENSATION_MAX_TOKENS", "2600"))
 _POST_CONDENSATION_WORD_TOLERANCE = float(os.getenv("POST_CONDENSATION_WORD_TOLERANCE", "0.15"))
 _D7_READ_MAX_TOKENS = int(os.getenv("D7_READ_MAX_TOKENS", "1800"))
-_POST_BREAKDOWN_KEYS = {
-    "post_key",
-    "works_because",
-    "opens_with",
-    "holds_attention_by",
-    "viewer_mode",
-    "lands_as",
-    "receipts",
-}
+# Active D7 read prompt + the knobs that shape
+# the feeder file the read sees.
+_D7_MIN_POOL = int(os.getenv("D7_READ_MIN_POOL", "8"))          # below this -> thin_pool
+_D7_SPIKE_UP = float(os.getenv("D7_READ_SPIKE_UP", "1.5"))      # axis moved up for this post
+_D7_SPIKE_DOWN = float(os.getenv("D7_READ_SPIKE_DOWN", "0.6"))  # axis came in soft
+_D7_RECORD_SPIKE_BAR = float(os.getenv("D7_READ_RECORD_BAR", "1.8"))  # earns a record slot
+_D7_RECORD_MAX = int(os.getenv("D7_READ_RECORD_MAX", "20"))
+_D7_RECORD_BAND_CAP = int(os.getenv("D7_READ_RECORD_BAND_CAP", "10"))  # max per 30d band
+_D7_RECENT_UP = float(os.getenv("D7_READ_RECENT_UP", "1.15"))  # last-10 vs 90d -> up
+_D7_RECENT_DOWN = float(os.getenv("D7_READ_RECENT_DOWN", "0.85"))  # -> down
+# Account-relative standing bands (lower percentile == stronger). The band sets
+# what the read's memory_match field owes; the prompt translates, never prints it.
+_D7_BAND_DEEP = float(os.getenv("D7_READ_BAND_DEEP", "5"))         # detonation
+_D7_BAND_WINNER = float(os.getenv("D7_READ_BAND_WINNER", "25"))    # clears the bar
+_D7_BAND_CONTENDER = float(os.getenv("D7_READ_BAND_CONTENDER", "50"))  # within reach
+_R2_CLIENT: Any | None = None
 _POST_CONDENSATION_KEYS = {
     "post_key",
     "meta",
@@ -69,11 +81,10 @@ _POST_CONDENSATION_KEYS = {
     "standout_details",
 }
 _D7_READ_KEYS = {
-    "post_key",
-    "headline",
-    "metric_context",
-    "read",
-    "direction",
+    "scene",
+    "recent_run",
+    "memory_match",
+    "numbers",
 }
 _FINGERPRINT_LIST_FIELDS = (
     "visible_text",
@@ -142,14 +153,23 @@ def _data_url(mime_type: str, payload: bytes) -> str:
     return f"data:{mime_type};base64,{base64.b64encode(payload).decode('ascii')}"
 
 
-def _fetch_bytes(url: str | None, *, timeout: int = 30, max_bytes: int = 0) -> tuple[bytes, str] | None:
+def _fetch_bytes(
+    url: str | None,
+    *,
+    timeout: int = 30,
+    max_bytes: int = 0,
+    headers: dict[str, str] | None = None,
+) -> tuple[bytes, str] | None:
     if not url or not str(url).startswith(("http://", "https://")):
         return None
     try:
+        request_headers = {"User-Agent": "FeedMe/1.0", "Referer": "https://www.instagram.com/"}
+        if headers:
+            request_headers.update(headers)
         resp = requests.get(
             str(url),
             timeout=timeout,
-            headers={"User-Agent": "FeedMe/1.0", "Referer": "https://www.instagram.com/"},
+            headers=request_headers,
             stream=bool(max_bytes),
         )
         resp.raise_for_status()
@@ -407,18 +427,6 @@ def _mapping_sources(text: str, root_keys: tuple[str, ...]) -> list[str]:
     return sources
 
 
-def _normalize_post_breakdown_mapping(parsed: dict[str, Any]) -> dict[str, Any]:
-    breakdown = parsed.get("post_breakdown")
-    if isinstance(breakdown, dict):
-        return parsed
-    if _POST_BREAKDOWN_KEYS.intersection(parsed.keys()):
-        return {"post_breakdown": parsed}
-    for value in parsed.values():
-        if isinstance(value, dict) and _POST_BREAKDOWN_KEYS.intersection(value.keys()):
-            return {"post_breakdown": value}
-    return parsed
-
-
 def _word_count(text: Any) -> int:
     return len(re.findall(r"\S+", str(text or "")))
 
@@ -635,25 +643,35 @@ def _d7_read_body(parsed: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _flatten_read_field(value: Any) -> str:
+    """A read field is a single line of prose (hook baked in). Tolerate a
+    legacy {headline, read} dict by folding it back into one string."""
+    if isinstance(value, dict):
+        headline = str(value.get("headline") or "").strip()
+        read = str(value.get("read") or value.get("body") or value.get("text") or "").strip()
+        return f"{headline} {read}".strip() if headline else read
+    return str(value or "").strip()
+
+
 def _normalize_d7_read_mapping(parsed: dict[str, Any], *, post_key: str) -> dict[str, Any] | None:
     body = _d7_read_body(parsed)
     if not isinstance(body, dict):
         return None
 
-    headline = str(body.get("headline") or "").strip()
-    metric_context = str(body.get("metric_context") or "").strip()
-    read = str(body.get("read") or "").strip()
-    direction = str(body.get("direction") or "").strip()
-    if not (headline or metric_context or read or direction):
+    scene = str(body.get("scene") or "").strip()
+    recent_run = _flatten_read_field(body.get("recent_run"))
+    memory_match = _flatten_read_field(body.get("memory_match"))
+    numbers = str(body.get("numbers") or "").strip()
+    if not (scene and recent_run and memory_match and numbers):
         return None
 
     return {
         "d7_read": {
             "post_key": post_key,
-            "headline": headline,
-            "metric_context": metric_context,
-            "read": read,
-            "direction": direction,
+            "scene": scene,
+            "recent_run": recent_run,
+            "memory_match": memory_match,
+            "numbers": numbers,
         }
     }
 
@@ -671,18 +689,6 @@ def _yaml_d7_read_from_text(text: str, *, post_key: str) -> dict[str, Any] | Non
                 normalized = _normalize_d7_read_mapping(parsed, post_key=post_key)
                 if normalized:
                     return normalized
-    return None
-
-
-def _yaml_mapping_from_text(text: str) -> dict[str, Any] | None:
-    for source in _mapping_sources(text, ("post_breakdown:", '"post_breakdown"', "{")):
-        parsed_json = _json_from_text(source)
-        if parsed_json is not None:
-            return _normalize_post_breakdown_mapping(parsed_json)
-        for candidate in (source, _repair_yaml_lines(source)):
-            parsed = _safe_yaml_mapping(candidate)
-            if parsed is not None:
-                return _normalize_post_breakdown_mapping(parsed)
     return None
 
 
@@ -742,7 +748,7 @@ def _call_model(
     user_text: str,
     media_parts: list[dict[str, Any]],
     *,
-    max_tokens: int = 3600,
+    max_tokens: int = 6000,
     model_override: str | None = None,
 ) -> dict[str, Any] | None:
     result = _call_fingerprint_model(user_text, media_parts, max_tokens=max_tokens, model_override=model_override)
@@ -756,7 +762,7 @@ def _call_fingerprint_model(
     user_text: str,
     media_parts: list[dict[str, Any]],
     *,
-    max_tokens: int = 3600,
+    max_tokens: int = 6000,
     model_override: str | None = None,
 ) -> tuple[str, dict[str, Any] | None, str | None] | None:
     provider = _provider()
@@ -782,7 +788,14 @@ def _call_fingerprint_model(
             if resp.status_code >= 400:
                 payload.pop("response_format", None)
                 resp = requests.post(url, headers=headers, json=payload, timeout=180)
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                if "response_format" not in payload:
+                    raise
+                payload.pop("response_format", None)
+                resp = requests.post(url, headers=headers, json=payload, timeout=180)
+                data = resp.json()
         else:
             resp = requests.post(
                 _GEMINI_API_URL.format(model=model),
@@ -816,11 +829,6 @@ def _call_fingerprint_model(
         return content, None, str(exc)
 
 
-def post_breakdown_model_version() -> str:
-    model = (POST_BREAKDOWN_MODEL or "").strip() or "none"
-    return f"openrouter:{model}:{POST_BREAKDOWN_PROMPT_VERSION}"
-
-
 def post_condensation_model_version() -> str:
     model = (POST_CONDENSATION_MODEL or "").strip() or "none"
     return f"openrouter:{model}:{POST_CONDENSATION_PROMPT_VERSION}"
@@ -829,54 +837,6 @@ def post_condensation_model_version() -> str:
 def d7_read_model_version() -> str:
     model = (D7_READ_MODEL or "").strip() or "none"
     return f"openrouter:{model}:{D7_READ_PROMPT_VERSION}"
-
-
-def _call_post_breakdown_model(fingerprint: dict[str, Any]) -> tuple[str, dict[str, Any] | None, str | None] | None:
-    if not OPENROUTER_API_KEY:
-        return None
-    model = (POST_BREAKDOWN_MODEL or "").strip()
-    if not model:
-        return None
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": POST_BREAKDOWN_EXTRACTION_SYSTEM_V2},
-            {"role": "user", "content": json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False, indent=2, default=str)},
-        ],
-        "temperature": 0.2,
-        "max_tokens": _POST_BREAKDOWN_MAX_TOKENS,
-    }
-    content = ""
-    try:
-        resp = requests.post(
-            f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://feedme.local",
-                "X-Title": "FeedMe Post Breakdown Pipeline",
-            },
-            json=payload,
-            timeout=180,
-        )
-        if resp.status_code >= 400:
-            raise RuntimeError(f"OpenRouter status {resp.status_code}: {resp.text[:1200]}")
-        data = resp.json()
-        content = _extract_text(data, "openrouter")
-        parsed = _yaml_mapping_from_text(content)
-        if parsed:
-            return _strip_fences(content), parsed, None
-        finish_reason = ""
-        choices = data.get("choices") if isinstance(data, dict) else None
-        if isinstance(choices, list) and choices:
-            finish_reason = str((choices[0] or {}).get("finish_reason") or "").strip()
-        error = "post breakdown output did not parse as YAML mapping"
-        if finish_reason:
-            error = f"{error}; finish_reason={finish_reason}"
-        return _strip_fences(content), None, error
-    except Exception as exc:
-        print(f"[post_breakdown] model call failed: {exc}")
-        return _strip_fences(content), None, str(exc)
 
 
 def _call_post_condensation_model(
@@ -944,7 +904,7 @@ def _call_d7_read_model(
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": D7_READ_SYSTEM_V1},
+            {"role": "system", "content": D7_READ_SYSTEM_V6},
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, indent=2, default=str)},
         ],
         "temperature": 0.2,
@@ -983,61 +943,6 @@ def _call_d7_read_model(
         return _strip_fences(content), None, str(exc)
 
 
-def _record_post_breakdown_model_call(
-    conn: Any,
-    *,
-    post_key: str,
-    fingerprint: dict[str, Any],
-    raw_output: str,
-    parsed_output: dict[str, Any] | None,
-    status: str,
-    error: str | None,
-) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            insert into public.feeder_file_model_calls (
-              feeder_file_id, call_key, call_type, feeder_handle, post_key,
-              model, prompt_version, system_prompt, user_payload,
-              raw_output, parsed_output, status, error, started_at, completed_at, updated_at
-            )
-            select null, %s, 'post_breakdown', lower(coalesce(f.handle, '')), %s,
-                   %s, %s, %s, %s::jsonb, %s, %s::jsonb,
-                   %s, %s, now(), now(), now()
-            from public.posts p
-            left join public.feeders f on f.id = p.feeder_id
-            where p.post_key = %s
-            on conflict (call_type, post_key, prompt_version)
-            where call_type = 'post_breakdown' and post_key is not null
-            do update set
-              feeder_handle = excluded.feeder_handle,
-              model = excluded.model,
-              system_prompt = excluded.system_prompt,
-              user_payload = excluded.user_payload,
-              raw_output = excluded.raw_output,
-              parsed_output = excluded.parsed_output,
-              status = excluded.status,
-              error = excluded.error,
-              completed_at = now(),
-              updated_at = now()
-            """,
-            (
-                f"post_breakdown:{post_key}",
-                post_key,
-                POST_BREAKDOWN_MODEL,
-                POST_BREAKDOWN_PROMPT_VERSION,
-                POST_BREAKDOWN_EXTRACTION_SYSTEM_V2,
-                json.dumps({"post_fingerprint": fingerprint}, ensure_ascii=False),
-                raw_output,
-                json.dumps(parsed_output, ensure_ascii=False) if parsed_output is not None else None,
-                status,
-                (error or "")[:1000] if error else None,
-                post_key,
-            ),
-        )
-    conn.commit()
-
-
 def _record_post_condensation_model_call(
     conn: Any,
     *,
@@ -1047,7 +952,7 @@ def _record_post_condensation_model_call(
     parsed_output: dict[str, Any] | None,
     status: str,
     error: str | None,
-) -> None:
+) -> int | None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -1075,6 +980,7 @@ def _record_post_condensation_model_call(
               error = excluded.error,
               completed_at = now(),
               updated_at = now()
+            returning id
             """,
             (
                 f"post_condensation:{post_key}",
@@ -1090,7 +996,13 @@ def _record_post_condensation_model_call(
                 post_key,
             ),
         )
+        row = cur.fetchone()
     conn.commit()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return int(row["id"])
+    return int(row[0])
 
 
 def _record_d7_read_model_call(
@@ -1136,7 +1048,7 @@ def _record_d7_read_model_call(
                 post_key,
                 D7_READ_MODEL,
                 D7_READ_PROMPT_VERSION,
-                D7_READ_SYSTEM_V1,
+                D7_READ_SYSTEM_V6,
                 json.dumps(user_payload, ensure_ascii=False, default=str),
                 raw_output,
                 json.dumps(parsed_output, ensure_ascii=False) if parsed_output is not None else None,
@@ -1148,96 +1060,62 @@ def _record_d7_read_model_call(
     conn.commit()
 
 
-def _store_post_breakdown(
+def _fingerprint_source_metadata(fingerprint: dict[str, Any]) -> tuple[str, str]:
+    fingerprint_hash = _sha(fingerprint)
+    fingerprint_status = fingerprint.get("fingerprint_status") if isinstance(fingerprint.get("fingerprint_status"), dict) else {}
+    source_fingerprint_model_version = str(fingerprint_status.get("model_version") or "")
+    return fingerprint_hash, source_fingerprint_model_version
+
+
+def _store_post_condensation(
     conn: Any,
     *,
     post_key: str,
     fingerprint: dict[str, Any],
-    raw_output: str,
-    parsed: dict[str, Any],
+    condensation: dict[str, Any],
+    model_call_id: int | None = None,
 ) -> dict[str, Any] | None:
-    breakdown = parsed.get("post_breakdown")
-    if not isinstance(breakdown, dict):
+    normalized = _normalize_post_condensation_mapping(condensation, post_key=post_key, fingerprint=fingerprint)
+    if not normalized:
         return None
 
-    breakdown["post_key"] = str(breakdown.get("post_key") or post_key)
-    fingerprint_hash = _sha(fingerprint)
-    fingerprint_status = fingerprint.get("fingerprint_status") if isinstance(fingerprint.get("fingerprint_status"), dict) else {}
-    source_fingerprint_model_version = str(fingerprint_status.get("model_version") or "")
+    fingerprint_hash, source_fingerprint_model_version = _fingerprint_source_metadata(fingerprint)
     with conn.cursor() as cur:
         cur.execute(
             """
-            insert into public.post_breakdowns (
-              post_key, breakdown, breakdown_version,
+            insert into public.post_condensations (
+              post_key, condensation, condensation_version,
               source_fingerprint_model_version, source_fingerprint_hash,
-              generated_at, updated_at
+              model_version, model_call_id, generated_at, updated_at
             )
-            values (%s, %s::jsonb, %s, %s, %s, now(), now())
+            values (%s, %s::jsonb, %s, %s, %s, %s, %s, now(), now())
             on conflict (post_key) do update set
-              breakdown = excluded.breakdown,
-              breakdown_version = excluded.breakdown_version,
+              condensation = excluded.condensation,
+              condensation_version = excluded.condensation_version,
               source_fingerprint_model_version = excluded.source_fingerprint_model_version,
               source_fingerprint_hash = excluded.source_fingerprint_hash,
+              model_version = excluded.model_version,
+              model_call_id = coalesce(excluded.model_call_id, post_condensations.model_call_id),
+              generated_at = case
+                when post_condensations.condensation_version is distinct from excluded.condensation_version
+                  or post_condensations.source_fingerprint_hash is distinct from excluded.source_fingerprint_hash
+                then now()
+                else post_condensations.generated_at
+              end,
               updated_at = now()
             """,
             (
                 post_key,
-                json.dumps({"post_breakdown": breakdown}, ensure_ascii=False),
-                POST_BREAKDOWN_PROMPT_VERSION,
+                json.dumps(normalized, ensure_ascii=False),
+                POST_CONDENSATION_PROMPT_VERSION,
                 source_fingerprint_model_version,
                 fingerprint_hash,
+                post_condensation_model_version(),
+                model_call_id,
             ),
         )
     conn.commit()
-    _record_post_breakdown_model_call(
-        conn,
-        post_key=post_key,
-        fingerprint=fingerprint,
-        raw_output=raw_output,
-        parsed_output=parsed,
-        status="complete",
-        error=None,
-    )
-    return {"post_breakdown": breakdown}
-
-
-def _recover_post_breakdown_from_stored_raw(
-    conn: Any,
-    *,
-    post_key: str,
-    fingerprint: dict[str, Any],
-) -> dict[str, Any] | None:
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(
-            """
-            select raw_output
-            from public.feeder_file_model_calls
-            where call_type = 'post_breakdown'
-              and post_key = %s
-              and prompt_version = %s
-              and coalesce(raw_output, '') <> ''
-            order by updated_at desc nulls last, id desc
-            limit 3
-            """,
-            (post_key, POST_BREAKDOWN_PROMPT_VERSION),
-        )
-        rows = cur.fetchall()
-
-    for row in rows:
-        raw_output = str(row.get("raw_output") or "")
-        parsed = _yaml_mapping_from_text(raw_output)
-        if not parsed:
-            continue
-        recovered = _store_post_breakdown(
-            conn,
-            post_key=post_key,
-            fingerprint=fingerprint,
-            raw_output=raw_output,
-            parsed=parsed,
-        )
-        if recovered:
-            return recovered
-    return None
+    return normalized
 
 
 def _recover_post_condensation_from_stored_raw(
@@ -1246,10 +1124,11 @@ def _recover_post_condensation_from_stored_raw(
     post_key: str,
     fingerprint: dict[str, Any],
 ) -> dict[str, Any] | None:
+    fingerprint_hash, _source_fingerprint_model_version = _fingerprint_source_metadata(fingerprint)
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            select raw_output
+            select id, raw_output, user_payload
             from public.feeder_file_model_calls
             where call_type = 'post_condensation'
               and post_key = %s
@@ -1263,11 +1142,15 @@ def _recover_post_condensation_from_stored_raw(
         rows = cur.fetchall()
 
     for row in rows:
+        user_payload = row.get("user_payload") if isinstance(row.get("user_payload"), dict) else {}
+        source_fingerprint = user_payload.get("post_fingerprint") if isinstance(user_payload, dict) else None
+        if isinstance(source_fingerprint, dict) and _sha(source_fingerprint) != fingerprint_hash:
+            continue
         raw_output = str(row.get("raw_output") or "")
         parsed = _yaml_post_condensation_from_text(raw_output, post_key=post_key, fingerprint=fingerprint)
         if not parsed:
             continue
-        _record_post_condensation_model_call(
+        model_call_id = _record_post_condensation_model_call(
             conn,
             post_key=post_key,
             fingerprint=fingerprint,
@@ -1276,87 +1159,14 @@ def _recover_post_condensation_from_stored_raw(
             status="complete",
             error=None,
         )
-        return parsed
+        return _store_post_condensation(
+            conn,
+            post_key=post_key,
+            fingerprint=fingerprint,
+            condensation=parsed,
+            model_call_id=model_call_id or row.get("id"),
+        )
     return None
-
-
-def ensure_post_breakdown(conn: Any, post_key: str, fingerprint: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    if not fingerprint:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                select fingerprint
-                from public.post_fingerprints
-                where post_key = %s
-                  and media_confidence = 'high'
-                limit 1
-                """,
-                (post_key,),
-            )
-            row = cur.fetchone()
-        fingerprint = row.get("fingerprint") if row else None
-    if not isinstance(fingerprint, dict):
-        return None
-
-    fingerprint_hash = _sha(fingerprint)
-    fingerprint_status = fingerprint.get("fingerprint_status") if isinstance(fingerprint.get("fingerprint_status"), dict) else {}
-    source_fingerprint_model_version = str(fingerprint_status.get("model_version") or "")
-    with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(
-            """
-            select breakdown
-            from public.post_breakdowns
-            where post_key = %s
-              and breakdown_version = %s
-              and source_fingerprint_hash = %s
-            """,
-            (post_key, POST_BREAKDOWN_PROMPT_VERSION, fingerprint_hash),
-        )
-        existing = cur.fetchone()
-        if existing and isinstance(existing.get("breakdown"), dict):
-            return existing["breakdown"]
-
-    recovered = _recover_post_breakdown_from_stored_raw(conn, post_key=post_key, fingerprint=fingerprint)
-    if recovered:
-        return recovered
-
-    result = _call_post_breakdown_model(fingerprint)
-    if not result:
-        return None
-    raw_output, parsed, call_error = result
-    if parsed is None:
-        _record_post_breakdown_model_call(
-            conn,
-            post_key=post_key,
-            fingerprint=fingerprint,
-            raw_output=raw_output,
-            parsed_output=None,
-            status="failed",
-            error=call_error or "post breakdown output did not parse",
-        )
-        if call_error:
-            print(f"[post_breakdown] model call failed: {call_error}")
-        return None
-    stored = _store_post_breakdown(
-        conn,
-        post_key=post_key,
-        fingerprint=fingerprint,
-        raw_output=raw_output,
-        parsed=parsed,
-    )
-    if not stored:
-        print(f"[post_breakdown] skipped post_key={post_key}: missing post_breakdown")
-        _record_post_breakdown_model_call(
-            conn,
-            post_key=post_key,
-            fingerprint=fingerprint,
-            raw_output=raw_output,
-            parsed_output=parsed,
-            status="failed",
-            error="missing post_breakdown",
-        )
-        return None
-    return stored
 
 
 def ensure_post_condensation(conn: Any, post_key: str, fingerprint: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -1377,10 +1187,28 @@ def ensure_post_condensation(conn: Any, post_key: str, fingerprint: dict[str, An
     if not isinstance(fingerprint, dict):
         return None
 
+    fingerprint_hash, _source_fingerprint_model_version = _fingerprint_source_metadata(fingerprint)
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            select parsed_output
+            select condensation
+            from public.post_condensations
+            where post_key = %s
+              and condensation_version = %s
+              and source_fingerprint_hash = %s
+            """,
+            (post_key, POST_CONDENSATION_PROMPT_VERSION, fingerprint_hash),
+        )
+        existing = cur.fetchone()
+        condensation = existing.get("condensation") if existing else None
+        if isinstance(condensation, dict):
+            normalized = _normalize_post_condensation_mapping(condensation, post_key=post_key, fingerprint=fingerprint)
+            if normalized:
+                return normalized
+
+        cur.execute(
+            """
+            select id, parsed_output, user_payload
             from public.feeder_file_model_calls
             where call_type = 'post_condensation'
               and post_key = %s
@@ -1395,13 +1223,26 @@ def ensure_post_condensation(conn: Any, post_key: str, fingerprint: dict[str, An
         existing = cur.fetchone()
         parsed_output = existing.get("parsed_output") if existing else None
         if isinstance(parsed_output, dict):
-            normalized = _normalize_post_condensation_mapping(parsed_output, post_key=post_key, fingerprint=fingerprint)
-            if normalized:
-                return normalized
+            user_payload = existing.get("user_payload") if isinstance(existing.get("user_payload"), dict) else {}
+            source_fingerprint = user_payload.get("post_fingerprint") if isinstance(user_payload, dict) else None
+            if not isinstance(source_fingerprint, dict) or _sha(source_fingerprint) == fingerprint_hash:
+                stored = _store_post_condensation(
+                    conn,
+                    post_key=post_key,
+                    fingerprint=fingerprint,
+                    condensation=parsed_output,
+                    model_call_id=existing.get("id"),
+                )
+                if stored:
+                    return stored
 
     recovered = _recover_post_condensation_from_stored_raw(conn, post_key=post_key, fingerprint=fingerprint)
     if recovered:
         return recovered
+    try:
+        conn.commit()
+    except Exception:
+        pass
 
     result = _call_post_condensation_model(fingerprint, post_key=post_key)
     if not result:
@@ -1421,7 +1262,7 @@ def ensure_post_condensation(conn: Any, post_key: str, fingerprint: dict[str, An
             print(f"[post_condensation] model call failed: {call_error}")
         return None
 
-    _record_post_condensation_model_call(
+    model_call_id = _record_post_condensation_model_call(
         conn,
         post_key=post_key,
         fingerprint=fingerprint,
@@ -1430,7 +1271,13 @@ def ensure_post_condensation(conn: Any, post_key: str, fingerprint: dict[str, An
         status="complete",
         error=None,
     )
-    return parsed
+    return _store_post_condensation(
+        conn,
+        post_key=post_key,
+        fingerprint=fingerprint,
+        condensation=parsed,
+        model_call_id=model_call_id,
+    )
 
 
 def _condensed_post_payload(condensation: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1455,43 +1302,172 @@ def _condensed_post_payload(condensation: dict[str, Any] | None) -> dict[str, An
     }
 
 
-def _metric_payload_for_d7_read(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "views": row.get("views"),
-        "likes": row.get("likes"),
-        "comments": row.get("comments"),
-        "percentile_performance": row.get("percentile_performance"),
-        "percentile_performance_exact": row.get("percentile_performance_exact"),
-        "ranking_metric": row.get("ranking_metric"),
-        "ranking_multiple": row.get("ranking_multiple"),
+def _d7_mult(row: dict[str, Any], axis: str) -> float | None:
+    value = row.get(f"{axis}_multiple")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _d7_posted_ts(row: dict[str, Any]) -> float:
+    value = row.get("posted_at")
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time()).timestamp()
+    return 0.0
+
+
+def _d7_posted_on(row: dict[str, Any]) -> str | None:
+    posted_at = row.get("posted_at")
+    if isinstance(posted_at, datetime):
+        return posted_at.date().isoformat()
+    if isinstance(posted_at, date):
+        return posted_at.isoformat()
+    business_date = row.get("business_date_ist")
+    if business_date is not None:
+        try:
+            return business_date.isoformat()
+        except AttributeError:
+            return str(business_date)
+    return None
+
+
+def _d7_scene_body(condensation: Any) -> dict[str, Any] | None:
+    payload = _condensed_post_payload(condensation if isinstance(condensation, dict) else None)
+    if not payload:
+        return None
+    body = payload.get("post_condensed")
+    return body if isinstance(body, dict) else None
+
+
+def _d7_metric_anomaly(trigger_multiples: dict[str, float | None], pool_n: int) -> dict[str, Any]:
+    """The one axis that broke from the account's usual on this post (server-decided)."""
+    how_many_times = {
+        axis: (round(mult, 1) if mult is not None else None)
+        for axis, mult in trigger_multiples.items()
     }
-
-
-def _standing_for_d7_read(rank: int, total: int) -> dict[str, Any]:
-    if total <= 0 or rank <= 0:
-        return {"rank_plain": "no recent comparison yet"}
-    third = "strong" if rank <= max(1, total / 3) else "middle" if rank <= max(1, (2 * total) / 3) else "weak"
-    if third == "strong":
-        rank_plain = "one of the stronger recent reels"
-    elif third == "middle":
-        rank_plain = "right in the middle of the recent run"
+    present = {axis: mult for axis, mult in trigger_multiples.items() if mult is not None}
+    if pool_n < _D7_MIN_POOL or not present:
+        primary = "thin_pool"
     else:
-        rank_plain = "behind the stronger recent reels"
+        ups = [axis for axis, mult in present.items() if mult >= _D7_SPIKE_UP]
+        downs = [axis for axis, mult in present.items() if mult <= _D7_SPIKE_DOWN]
+        if len(ups) >= 2:
+            primary = "all"
+        elif len(ups) == 1:
+            primary = ups[0]
+        elif downs:
+            primary = "soft"
+        else:
+            primary = "flat"
+    return {"primary": primary, "how-many-times": how_many_times}
+
+
+def _d7_vs_usual(row: dict[str, Any]) -> dict[str, float | None]:
+    """One post's metrics as a multiple of the account's 90-day usual, per axis."""
+    out: dict[str, float | None] = {}
+    for axis in ("views", "likes", "comments"):
+        mult = _d7_mult(row, axis)
+        out[axis] = round(mult, 1) if mult is not None else None
+    return out
+
+
+def _d7_group_vs_usual(last_10: list[dict[str, Any]]) -> dict[str, float | None]:
+    """The last-10 group's median multiple vs the 90-day usual, per axis - how
+    the recent run as a whole is holding up against the account's baseline."""
+    out: dict[str, float | None] = {}
+    for axis in ("views", "likes", "comments"):
+        vals = [m for m in (_d7_mult(row, axis) for row in last_10) if m is not None]
+        out[axis] = round(statistics.median(vals), 1) if vals else None
+    return out
+
+
+def _d7_recent_form(last_10: list[dict[str, Any]]) -> dict[str, Any]:
+    """Last 10 against the 90-day usual, per axis: up / steady / down."""
+    out: dict[str, str] = {}
+    for axis in ("views", "likes", "comments"):
+        vals = [m for m in (_d7_mult(row, axis) for row in last_10) if m is not None]
+        if not vals:
+            out[axis] = "unknown"
+            continue
+        median = statistics.median(vals)
+        if median >= _D7_RECENT_UP:
+            out[axis] = "up"
+        elif median <= _D7_RECENT_DOWN:
+            out[axis] = "down"
+        else:
+            out[axis] = "steady"
+    return out
+
+
+def _d7_recent_beats(trigger: dict[str, Any], recent_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """How this post placed against the recent run, per raw number.
+
+    The model can read raw rows, but making this deterministic prevents off-by-one
+    counting and gives the numbers field one sharp recent-placement fact.
+    """
+    axes: dict[str, dict[str, int | None]] = {}
+    for axis in ("views", "likes", "comments"):
+        trigger_value = trigger.get(axis)
+        try:
+            trigger_num = float(trigger_value)
+        except (TypeError, ValueError):
+            axes[axis] = {"beat": None, "total": 0}
+            continue
+        comparable = []
+        for row in recent_rows:
+            value = row.get(axis)
+            try:
+                comparable.append(float(value))
+            except (TypeError, ValueError):
+                continue
+        axes[axis] = {
+            "beat": sum(1 for value in comparable if trigger_num > value),
+            "total": len(comparable),
+        }
     return {
-        "rank_plain": rank_plain,
-        "band": third,
-        "rank_of_window": {"rank": rank, "total": total},
+        "basis": "previous_10_posts",
+        "axes": axes,
     }
 
 
-def _post_group_for_d7_read(rank: int, total: int) -> str:
-    if total <= 0:
-        return "what_almost_wins"
-    if rank <= max(1, total / 3):
-        return "what_wins"
-    if rank <= max(1, (2 * total) / 3):
-        return "what_almost_wins"
-    return "what_flops"
+def _d7_percentile_value(row: dict[str, Any]) -> float | None:
+    """Account-relative D7 percentile, exact preferred. Lower == stronger."""
+    for key in ("percentile_performance_exact", "percentile_performance"):
+        val = row.get(key)
+        if val is not None:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _d7_standing(trigger: dict[str, Any]) -> dict[str, Any]:
+    """The account-relative band for THIS post (server-decided, lower==stronger).
+
+    Only the bifurcation - no worker-written phrasing, no derived numbers. The
+    band sets what the read's memory_match field owes; the model reads the proof
+    itself off the raw metrics already in the feeder file.
+        deep/winner -> measure against the record
+        contender   -> name the lever to cross into the winners
+        noise        -> one line and stop
+        unknown      -> hold back on account-relative placement
+    """
+    percentile = _d7_percentile_value(trigger)
+    if percentile is None:
+        band = "unknown"
+    elif percentile <= _D7_BAND_DEEP:
+        band = "deep"
+    elif percentile <= _D7_BAND_WINNER:
+        band = "winner"
+    elif percentile <= _D7_BAND_CONTENDER:
+        band = "contender"
+    else:
+        band = "noise"
+    return {"band": band}
 
 
 def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
@@ -1505,18 +1481,17 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
               p.media_type,
               p.posted_at,
               f.handle,
-              fd.name as feed_name,
               pm.views,
               pm.likes,
               pm.comments,
+              pm.views_multiple,
+              pm.likes_multiple,
+              pm.comments_multiple,
               pm.percentile_performance,
               pm.percentile_performance_exact,
-              pm.ranking_metric,
-              pm.ranking_multiple,
               pm.business_date_ist
             from public.posts p
             join public.feeders f on f.id = p.feeder_id
-            left join public.feeds fd on fd.id = f.feed_id
             join public.post_metrics pm
               on pm.post_key = p.post_key
              and lower(pm.checkpoint) = 'd7'
@@ -1530,9 +1505,8 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
     if not trigger:
         return None
 
-    trigger_condensation = ensure_post_condensation(conn, post_key)
-    trigger_payload = _condensed_post_payload(trigger_condensation)
-    if not trigger_payload:
+    trigger_scene = _d7_scene_body(ensure_post_condensation(conn, post_key))
+    if not trigger_scene:
         return None
 
     feeder_id = int(trigger["feeder_id"])
@@ -1542,120 +1516,138 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
             """
             select
               p.post_key,
-              p.media_type,
               p.posted_at,
               pm.views,
               pm.likes,
               pm.comments,
-              pm.percentile_performance,
-              pm.percentile_performance_exact,
-              pm.ranking_metric,
-              pm.ranking_multiple,
-              fmc.parsed_output as condensation
+              pm.views_multiple,
+              pm.likes_multiple,
+              pm.comments_multiple,
+              pm.business_date_ist,
+              pc.condensation as condensation
             from public.posts p
             join public.post_metrics pm
               on pm.post_key = p.post_key
              and lower(pm.checkpoint) = 'd7'
-            left join public.feeder_file_model_calls fmc
-              on fmc.post_key = p.post_key
-             and fmc.call_type = 'post_condensation'
-             and fmc.prompt_version = %s
-             and fmc.status = 'complete'
+            left join public.post_condensations pc
+              on pc.post_key = p.post_key
+             and pc.condensation_version = %s
             where p.feeder_id = %s
               and lower(coalesce(p.media_type, '')) = %s
               and p.posted_at >= now() - interval '90 days'
-            order by
-              least(
-                coalesce(pm.percentile_performance_exact, 101),
-                coalesce(pm.percentile_performance, 101)
-              ) asc,
-              p.posted_at desc nulls last
-            limit 30
+            order by p.posted_at desc nulls last
             """,
             (POST_CONDENSATION_PROMPT_VERSION, feeder_id, media_type),
         )
-        memory_rows = [dict(row) for row in cur.fetchall()]
+        rows = [dict(row) for row in cur.fetchall()]
 
-    if not any(str(row.get("post_key") or "") == post_key for row in memory_rows):
-        memory_rows.append(dict(trigger))
+    if not any(str(row.get("post_key") or "") == post_key for row in rows):
+        rows.append(dict(trigger))
+    rows.sort(key=_d7_posted_ts, reverse=True)
 
-    def posted_ts(row: dict[str, Any]) -> float:
-        value = row.get("posted_at")
-        return value.timestamp() if isinstance(value, datetime) else 0.0
+    # This post against the account's own usual.
+    trigger_multiples = {axis: _d7_mult(trigger, axis) for axis in ("views", "likes", "comments")}
+    metric_anomaly = _d7_metric_anomaly(trigger_multiples, len(rows))
 
-    performance_rows = sorted(
-        memory_rows,
-        key=lambda row: (
-            float(row.get("percentile_performance_exact") or row.get("percentile_performance") or 101),
-            -posted_ts(row),
-        ),
-    )
-    total = len(performance_rows)
-    trigger_rank = next((idx + 1 for idx, row in enumerate(performance_rows) if str(row.get("post_key") or "") == post_key), total)
+    # Where this post stands in the account's own 90 days (drives the read's job).
+    standing = _d7_standing(trigger)
 
-    recency_rows = sorted(
-        memory_rows,
-        key=posted_ts,
-        reverse=True,
-    )
-    posts_ago_by_key = {
-        str(row.get("post_key") or ""): idx
-        for idx, row in enumerate(recency_rows)
-    }
+    trigger_ts = _d7_posted_ts(trigger)
+    previous_rows = [
+        row
+        for row in rows
+        if str(row.get("post_key") or "") != post_key and _d7_posted_ts(row) < trigger_ts
+    ]
+    last_10_rows = previous_rows[:10]
+    if len(last_10_rows) < 10:
+        return None
+    recent_form = _d7_recent_form(last_10_rows)
+    # Keep the up/steady/down labels; add the group's baseline multiple alongside.
+    recent_form["vs_usual"] = _d7_group_vs_usual(last_10_rows)
 
-    groups: dict[str, list[dict[str, Any]]] = {"what_wins": [], "what_almost_wins": [], "what_flops": []}
-    for idx, row in enumerate(performance_rows):
-        row_post_key = str(row.get("post_key") or "").strip()
-        if not row_post_key or row_post_key == post_key:
+    # The feeder file the read places this post inside: the recent run + the record.
+    last_10_keys = {str(row.get("post_key") or "") for row in last_10_rows}
+    last_10: list[dict[str, Any]] = []
+    for idx, row in enumerate(last_10_rows):
+        scene = _d7_scene_body(row.get("condensation"))
+        if not scene:
             continue
-        condensed = _condensed_post_payload(row.get("condensation") if isinstance(row.get("condensation"), dict) else None)
-        if not condensed:
+        last_10.append({
+            "post_key": row.get("post_key"),
+            "source_set": "last_10",
+            "posts_ago": idx + 1,
+            "posted_on": _d7_posted_on(row),
+            "posted_on_source": "posts.posted_at",
+            "views": row.get("views"),
+            "likes": row.get("likes"),
+            "comments": row.get("comments"),
+            "vs_usual": _d7_vs_usual(row),
+            "scene": scene,
+        })
+    if len(last_10) < 10:
+        return None
+
+    # The record: real spikes across 90 days, off the recent run, spread across time
+    # so one hot phase can't flood it.
+    candidates: list[tuple[float, dict[str, Any]]] = []
+    for row in previous_rows:
+        if str(row.get("post_key") or "") in last_10_keys:
             continue
-        bucket = _post_group_for_d7_read(idx + 1, total)
-        if len(groups[bucket]) >= 10:
+        mags = [m for m in (_d7_mult(row, a) for a in ("views", "likes", "comments")) if m is not None]
+        if not mags:
             continue
-        groups[bucket].append({
-            "post_key": row_post_key,
-            "posts_ago": posts_ago_by_key.get(row_post_key),
-            "posted_at": row.get("posted_at"),
-            "media_type": row.get("media_type"),
-            "metrics": _metric_payload_for_d7_read(row),
-            **condensed,
+        magnitude = max(mags)
+        if magnitude < _D7_RECORD_SPIKE_BAR:
+            continue
+        candidates.append((magnitude, row))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+
+    band_counts = {0: 0, 1: 0, 2: 0}
+    record: list[dict[str, Any]] = []
+    for magnitude, row in candidates:
+        if len(record) >= _D7_RECORD_MAX:
+            break
+        days_ago = int(max(0.0, (trigger_ts - _d7_posted_ts(row)) / 86400.0))
+        band = min(2, days_ago // 30)
+        if band_counts[band] >= _D7_RECORD_BAND_CAP:
+            continue
+        scene = _d7_scene_body(row.get("condensation"))
+        if not scene:
+            continue
+        band_counts[band] += 1
+        record.append({
+            "post_key": row.get("post_key"),
+            "source_set": "record",
+            "posted_on": _d7_posted_on(row),
+            "posted_on_source": "posts.posted_at",
+            "views": row.get("views"),
+            "likes": row.get("likes"),
+            "comments": row.get("comments"),
+            "vs_usual": _d7_vs_usual(row),
+            "scene": scene,
         })
 
-    recent_direction = {
-        "last_8_posts_by_recency": [
-            {
-                "post_key": str(row.get("post_key") or ""),
-                "posts_ago": idx,
-                "standing": _standing_for_d7_read(
-                    next((rank_idx + 1 for rank_idx, ranked in enumerate(performance_rows) if ranked.get("post_key") == row.get("post_key")), 0),
-                    total,
-                ).get("rank_plain"),
-                "metrics": _metric_payload_for_d7_read(row),
-            }
-            for idx, row in enumerate(recency_rows[:8])
-        ],
-        "instruction": "Use only to judge whether the trigger continues, breaks, or reverses recent execution direction.",
-    }
-
     return {
-        "account": {
-            "handle": str(trigger.get("handle") or "").strip(),
-            "feed_name": str(trigger.get("feed_name") or "").strip(),
-            "kind": "creator" if str(trigger.get("feed_name") or "").strip().lower() == "creators" else "brand",
-        },
-        "trigger_post": {
+        "account": {"handle": str(trigger.get("handle") or "").strip()},
+        "this_post": {
             "post_key": post_key,
-            "posted_at": trigger.get("posted_at"),
-            "media_type": trigger.get("media_type"),
+            "posted_on": _d7_posted_on(trigger),
+            "posted_on_source": "posts.posted_at",
             "caption": trigger.get("caption"),
-            "metrics": _metric_payload_for_d7_read(dict(trigger)),
-            "standing": _standing_for_d7_read(trigger_rank, total),
-            **trigger_payload,
+            "views": trigger.get("views"),
+            "likes": trigger.get("likes"),
+            "comments": trigger.get("comments"),
+            "vs_usual": _d7_vs_usual(trigger),
+            "scene": trigger_scene,
         },
-        "feeder_memory": groups,
-        "recent_direction": recent_direction,
+        "metric_anomaly": metric_anomaly,
+        "standing": standing,
+        "recent_form": recent_form,
+        "recent_beats": _d7_recent_beats(trigger, last_10_rows),
+        "feeder_file": {
+            "last_10": last_10,
+            "record": record,
+        },
     }
 
 
@@ -1730,15 +1722,77 @@ def _existing_high_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | Non
     return fingerprint if isinstance(fingerprint, dict) else None
 
 
-def _media_public_url(row: dict[str, Any]) -> str | None:
+def _storage_authenticated_object_url(bucket: str, path: str) -> str | None:
+    if not SUPABASE_URL or not bucket or not path:
+        return None
+    return f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/authenticated/{bucket}/{quote(path, safe='/')}"
+
+
+def _storage_read_headers() -> dict[str, str] | None:
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    return {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+    }
+
+
+def _r2_client():
+    global _R2_CLIENT
+    if _R2_CLIENT is not None:
+        return _R2_CLIENT
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise RuntimeError("R2 media reads require boto3 in the worker environment") from exc
+
+    if not (R2_ENDPOINT_URL and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY):
+        raise RuntimeError("Missing R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY")
+
+    _R2_CLIENT = boto3.client(
+        "s3",
+        endpoint_url=R2_ENDPOINT_URL,
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name=R2_REGION or "auto",
+        config=Config(signature_version="s3v4"),
+    )
+    return _R2_CLIENT
+
+
+def _r2_signed_object_url(bucket: str, path: str, expires_seconds: int = 900) -> str | None:
+    clean_bucket = (bucket or "").strip()
+    clean_path = (path or "").strip().lstrip("/")
+    if not clean_bucket or not clean_path:
+        return None
+    return _r2_client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": clean_bucket, "Key": clean_path},
+        ExpiresIn=max(60, min(3600, int(expires_seconds))),
+    )
+
+
+def _media_fetch_ref(row: dict[str, Any]) -> tuple[str | None, dict[str, str] | None]:
+    storage_provider = str(row.get("storage_provider") or "").strip().lower() or "supabase"
+    bucket = str(row.get("storage_bucket") or SUPABASE_MEDIA_BUCKET or "").strip()
+    path = str(row.get("storage_path") or "").strip().lstrip("/")
+    if storage_provider == "r2" and path:
+        url = _r2_signed_object_url(bucket or R2_BUCKET, path)
+        if url:
+            return url, None
+
     public_url = str(row.get("public_url") or "").strip()
     if public_url:
-        return public_url
-    base = (MEDIA_PUBLIC_BASE_URL or "").rstrip("/")
-    path = str(row.get("storage_path") or "").strip().lstrip("/")
-    if base and path:
-        return f"{base}/{path}"
-    return None
+        return public_url, None
+
+    if storage_provider == "supabase" and path:
+        url = _storage_authenticated_object_url(bucket, path)
+        headers = _storage_read_headers()
+        if url and headers:
+            return url, headers
+
+    return None, None
 
 
 def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
@@ -1759,7 +1813,7 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
             return None
         cur.execute(
             """
-            select asset_role, public_url, storage_path
+            select asset_role, public_url, storage_path, storage_provider, storage_bucket
             from public.post_media_assets
             where post_key = %s
               and asset_role = 'video_full'
@@ -1774,15 +1828,22 @@ def _post_media(conn: Any, post_key: str) -> dict[str, Any] | None:
 
     video_url: str | None = None
     video_asset_role: str | None = None
+    video_fetch_headers: dict[str, str] | None = None
     for asset in assets:
-        url = _media_public_url(asset)
+        url, headers = _media_fetch_ref(asset)
         if not url:
             continue
         video_url = url
+        video_fetch_headers = headers
         video_asset_role = str(asset.get("asset_role") or "").strip().lower()
         break
 
-    return {**post, "video_url": video_url, "_video_asset_role": video_asset_role}
+    return {
+        **post,
+        "video_url": video_url,
+        "_video_asset_role": video_asset_role,
+        "_video_fetch_headers": video_fetch_headers,
+    }
 
 
 def _record_fingerprint_model_call(
@@ -1957,7 +2018,12 @@ def _fingerprint_media_parts(post: dict[str, Any], provider: str) -> tuple[list[
     source_role = str(post.get("_video_asset_role") or "").strip().lower()
     if source_role != "video_full":
         return [], _sha(""), "low"
-    video_data = _fetch_bytes(post.get("video_url"), timeout=60, max_bytes=_VIDEO_UPLOAD_MAX_BYTES)
+    video_data = _fetch_bytes(
+        post.get("video_url"),
+        timeout=60,
+        max_bytes=_VIDEO_UPLOAD_MAX_BYTES,
+        headers=post.get("_video_fetch_headers") if isinstance(post.get("_video_fetch_headers"), dict) else None,
+    )
     if not video_data:
         return [], _sha(""), "low"
     video_bytes, mime_type = video_data
@@ -1977,6 +2043,10 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
     post = _post_media(conn, post_key)
     if not post:
         return None
+    try:
+        conn.commit()
+    except Exception:
+        pass
 
     caption = str(post.get("caption") or "")
     media_parts, media_hash, _confidence = _fingerprint_media_parts(post, provider)
@@ -2034,6 +2104,10 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
     )
     if recovered:
         return recovered
+    try:
+        conn.commit()
+    except Exception:
+        pass
 
     result = _call_fingerprint_model(user_text, media_parts)
     if not result:
@@ -2116,7 +2190,7 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                 ) as d7_percentile,
                 row_number() over (partition by p.feeder_id order by p.posted_at desc nulls last) as recent_rank,
                 pf_high.post_key as high_fingerprint_post_key,
-                pb.post_key as post_breakdown_post_key,
+                pc.post_key as post_condensation_post_key,
                 fmc_d7.post_key as d7_read_post_key
               from public.posts p
               join public.post_metrics pm
@@ -2125,8 +2199,9 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
               left join public.post_fingerprints pf_high
                 on pf_high.post_key = p.post_key
                and pf_high.media_confidence = 'high'
-              left join public.post_breakdowns pb
-                on pb.post_key = p.post_key
+              left join public.post_condensations pc
+                on pc.post_key = p.post_key
+               and pc.condensation_version = %s
               left join public.feeder_file_model_calls fmc_d7
                 on fmc_d7.post_key = p.post_key
                and fmc_d7.call_type = 'd7_read'
@@ -2135,16 +2210,13 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
               where lower(coalesce(p.media_type, '')) in ('reel', 'video')
                 and p.posted_at >= now() - (%s::int * interval '1 day')
                 and (%s::int is null or p.feeder_id = %s::int)
-                and (
-                  pf_high.post_key is not null
-                  or exists (
+                and exists (
                   select 1
                   from public.post_media_assets pma
                   where pma.post_key = p.post_key
                     and pma.asset_role = 'video_full'
                     and pma.status in ('active', 'purge_pending')
                     and coalesce(pma.storage_path, pma.public_url, '') <> ''
-                  )
                 )
             ),
             scored as (
@@ -2167,14 +2239,21 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
                 )
                 and (
                   high_fingerprint_post_key is null
-                  or post_breakdown_post_key is null
+                  or post_condensation_post_key is null
                   or d7_read_post_key is null
                 )
               )
             order by d7_percentile asc nulls last, posted_at desc nulls last
             limit %s
             """,
-            (D7_READ_PROMPT_VERSION, max(1, int(days)), feeder_id, feeder_id, max(1, int(limit))),
+            (
+                POST_CONDENSATION_PROMPT_VERSION,
+                D7_READ_PROMPT_VERSION,
+                max(1, int(days)),
+                feeder_id,
+                feeder_id,
+                max(1, int(limit)),
+            ),
         )
         rows = cur.fetchall()
     return [str(row["post_key"]) for row in rows if row.get("post_key")]
@@ -2183,7 +2262,6 @@ def _candidate_post_keys(conn: Any, *, feeder_id: int | None, limit: int, days: 
 def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 10, days: int = 90) -> dict[str, Any]:
     post_keys = _candidate_post_keys(conn, feeder_id=feeder_id, limit=limit, days=days)
     resolved = 0
-    breakdowns = 0
     condensations = 0
     d7_reads = 0
     missing_media = 0
@@ -2193,12 +2271,9 @@ def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 1
             fingerprint = _existing_high_fingerprint(conn, post_key) or ensure_post_fingerprint(conn, post_key)
             if fingerprint:
                 resolved += 1
-                breakdown = ensure_post_breakdown(conn, post_key, fingerprint)
-                if breakdown:
-                    breakdowns += 1
-                    condensation = ensure_post_condensation(conn, post_key, fingerprint)
-                    if condensation:
-                        condensations += 1
+                condensation = ensure_post_condensation(conn, post_key, fingerprint)
+                if condensation:
+                    condensations += 1
                     d7_read = ensure_d7_read(conn, post_key)
                     if d7_read:
                         d7_reads += 1
@@ -2216,7 +2291,6 @@ def fingerprint_reels(conn: Any, *, feeder_id: int | None = None, limit: int = 1
     return {
         "selected": len(post_keys),
         "resolved": resolved,
-        "post_breakdowns": breakdowns,
         "post_condensations": condensations,
         "d7_reads": d7_reads,
         "missing_media": missing_media,

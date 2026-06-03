@@ -35,8 +35,6 @@ from .config import (
     CHECKPOINT_BATCH_HOUR_24,
     CHECKPOINT_BATCH_MINUTE,
     CHECKPOINT_BUCKET_MINUTES,
-    FEEDER_FILE_MEMORY_DAYS,
-    FEEDER_FILE_MEMORY_LIMIT,
     FEEDER_INTELLIGENCE_AUTO_INTERVAL_SECONDS,
     FEEDER_INTELLIGENCE_AUTO_LIMIT,
     FEEDER_INTELLIGENCE_ENABLED,
@@ -58,13 +56,11 @@ from .signal_detection import (
     resolve_audience_signals_for_feed as run_audience_signals_for_feed,
     resolve_signals_for_feed as run_signals_for_feed,
 )
-from .fingerprint_intelligence import fingerprint_reels as run_fingerprint_reels
-from .feeder_file_pipeline import (
-    package_feeder_file_once as package_feeder_file_pipeline_once,
-    repair_feeder_file_compile_once as repair_feeder_file_compile_pipeline_once,
-    run_feeder_file_from_recent_fingerprints_once as run_feeder_file_recent_fingerprints_pipeline_once,
-    run_feeder_file_once as run_feeder_file_pipeline_once,
+from .fingerprint_intelligence import (
+    current_model_version as current_fingerprint_model_version,
+    fingerprint_reels as run_fingerprint_reels,
 )
+from .feeder_prompts import POST_CONDENSATION_PROMPT_VERSION
 from .retry_policy import (
     hard_skip_error as _hard_skip_error,
     is_connection_error as _is_connection_error,
@@ -83,10 +79,10 @@ _MEDIA_FETCH_HEADERS = {
     "referer": "https://www.instagram.com/",
 }
 _IMAGE_ASSET_RETENTION_DAYS = 90
-_PREVIEW_ASSET_RETENTION_DAYS = 8
+_PREVIEW_ASSET_RETENTION_DAYS = 30
 _HOT_VISUAL_ASSET_RETENTION_DAYS = 30
-_PREVIEW_CLIP_SECONDS = 5
-_PREVIEW_MAX_DURATION_SECONDS = 5.0
+_PREVIEW_CLIP_SECONDS = 10
+_PREVIEW_MAX_DURATION_SECONDS = 10.0
 _PREVIEW_DURATION_TOLERANCE_SECONDS = 0.08
 _HEAVY_ASSET_RETENTION_DAYS = 1
 _HOT_PERCENTILE_MAX = 35
@@ -1110,6 +1106,132 @@ class PureEngine:
                 (post_key, asset_role, source_url, storage_provider, storage_bucket, purge_after),
             )
 
+    def _stage_feeder_intelligence_video_full(
+        self,
+        post_key: str,
+        source_url: str | None,
+        *,
+        retention_days: int = 120,
+    ) -> bool:
+        normalized_post_key = str(post_key or "").strip().lower()
+        normalized_source_url = str(source_url or "").strip()
+        if not FIRE_MEDIA_RETENTION_ENABLED or not normalized_post_key or not _preview_enabled_for_source(normalized_source_url):
+            return False
+
+        storage_provider = _active_media_storage_provider()
+        storage_bucket = _active_media_bucket()
+        purge_after = datetime.now(timezone.utc) + timedelta(days=max(1, int(retention_days)))
+        self.conn.execute(
+            """
+            insert into public.post_media_assets (
+              post_key, asset_role, source_url, storage_provider, storage_bucket, status, attempt,
+              next_run_at, purge_after, storage_path, public_url, mime_type, byte_size,
+              captured_at, deleted_at, last_error, updated_at
+            )
+            values (
+              %s,
+              'video_full',
+              %s,
+              %s,
+              %s,
+              'pending_capture',
+              0,
+              now(),
+              %s,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              now()
+            )
+            on conflict (post_key, asset_role) do update
+            set source_url = excluded.source_url,
+                storage_provider = excluded.storage_provider,
+                storage_bucket = excluded.storage_bucket,
+                status = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then 'active'
+                  else 'pending_capture'
+                end,
+                attempt = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.attempt
+                  else 0
+                end,
+                next_run_at = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.next_run_at
+                  else now()
+                end,
+                purge_after = excluded.purge_after,
+                storage_path = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.storage_path
+                  else null
+                end,
+                public_url = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.public_url
+                  else null
+                end,
+                mime_type = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.mime_type
+                  else null
+                end,
+                byte_size = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.byte_size
+                  else null
+                end,
+                captured_at = case
+                  when public.post_media_assets.status in ('active', 'purge_pending')
+                       and coalesce(public.post_media_assets.storage_path, '') <> ''
+                       and coalesce(public.post_media_assets.source_url, '') = excluded.source_url
+                       and coalesce(public.post_media_assets.storage_provider, 'supabase') = excluded.storage_provider
+                       and coalesce(public.post_media_assets.storage_bucket, '') = coalesce(excluded.storage_bucket, '')
+                    then public.post_media_assets.captured_at
+                  else null
+                end,
+                deleted_at = null,
+                last_error = null,
+                updated_at = now()
+            """,
+            (normalized_post_key, normalized_source_url, storage_provider, storage_bucket, purge_after),
+        )
+        return True
+
     def _best_effort_refresh_post_media(
         self,
         post_key: str,
@@ -1955,7 +2077,6 @@ class PureEngine:
                 ContentType=content_type,
                 CacheControl="public, max-age=31536000, immutable",
             )
-            public_url = _public_media_url(storage_path)
         else:
             upload = requests.post(
                 _storage_object_url(storage_bucket, storage_path),
@@ -2567,74 +2688,6 @@ class PureEngine:
             feeder_id=feeder_id,
             limit=limit,
             days=days,
-        )
-
-    def run_feeder_file_once(
-        self,
-        feeder_id: int | None = None,
-        handle: str | None = None,
-        limit: int = FEEDER_FILE_MEMORY_LIMIT,
-        days: int = FEEDER_FILE_MEMORY_DAYS,
-        pattern_limit: int = 3,
-    ):
-        return run_feeder_file_pipeline_once(
-            self.conn,
-            feeder_id=feeder_id,
-            handle=handle,
-            limit=limit,
-            days=days,
-            pattern_limit=pattern_limit,
-        )
-
-    def run_feeder_file_from_recent_fingerprints_once(
-        self,
-        feeder_id: int | None = None,
-        handle: str | None = None,
-        limit: int = 10,
-        days: int = FEEDER_FILE_MEMORY_DAYS,
-        pattern_limit: int = 3,
-    ):
-        return run_feeder_file_recent_fingerprints_pipeline_once(
-            self.conn,
-            feeder_id=feeder_id,
-            handle=handle,
-            limit=limit,
-            days=days,
-            pattern_limit=pattern_limit,
-        )
-
-    def package_feeder_file_once(
-        self,
-        feeder_id: int | None = None,
-        handle: str | None = None,
-        compile_version: str | None = None,
-        pattern_id: str | None = None,
-        pattern_limit: int = 3,
-    ):
-        return package_feeder_file_pipeline_once(
-            self.conn,
-            feeder_id=feeder_id,
-            handle=handle,
-            compile_version=compile_version,
-            pattern_id=pattern_id,
-            pattern_limit=pattern_limit,
-        )
-
-    def repair_feeder_file_compile_once(
-        self,
-        feeder_id: int | None = None,
-        handle: str | None = None,
-        compile_version: str | None = None,
-        pattern_id: str | None = None,
-        pattern_limit: int = 3,
-    ):
-        return repair_feeder_file_compile_pipeline_once(
-            self.conn,
-            feeder_id=feeder_id,
-            handle=handle,
-            compile_version=compile_version,
-            pattern_id=pattern_id,
-            pattern_limit=pattern_limit,
         )
 
     def _supabase_media_url(self, post_key: str, asset_role: str) -> str | None:
@@ -3761,12 +3814,17 @@ class PureEngine:
         hot_retention_days = _HOT_VISUAL_ASSET_RETENTION_DAYS if bool(row.get("hot_d7")) else None
         carousel_retention_days = _IMAGE_ASSET_RETENTION_DAYS if media_type in {"sidecar", "carousel"} and carousel_urls else None
         full_video_retention_days = _HEAVY_ASSET_RETENTION_DAYS if _is_reel_media_type(media_type) and video_url else None
+        stage_anchor = posted_at
+        if full_video_retention_days is not None:
+            full_video_deadline = _post_media_rollover_deadline(posted_at, "video_full", full_video_retention_days)
+            if full_video_deadline <= datetime.now(timezone.utc):
+                stage_anchor = datetime.now(timezone.utc)
 
         if thumbnail_url or (allow_preview_capture and video_url) or carousel_urls:
             self._refresh_post_media(normalized_post_key, thumbnail_url, video_url, carousel_urls)
             self._stage_post_media_assets(
                 normalized_post_key,
-                posted_at,
+                stage_anchor,
                 thumbnail_url,
                 video_url if allow_preview_capture else None,
                 carousel_urls,
@@ -4585,6 +4643,410 @@ class PureEngine:
             "missing": missing,
             "valid": valid,
         }
+
+    def _resolve_feeder_id(self, *, feeder_id: int | None = None, handle: str | None = None) -> int | None:
+        if feeder_id and int(feeder_id) > 0:
+            return int(feeder_id)
+        normalized_handle = _normalize_handle(handle)
+        if not normalized_handle:
+            return None
+        row = self.conn.execute(
+            """
+            select id
+            from public.feeders
+            where lower(handle) = lower(%s)
+            limit 1
+            """,
+            (normalized_handle,),
+        ).fetchone()
+        self.conn.commit()
+        value = (row or {}).get("id")
+        try:
+            return int(value) if value is not None else None
+        except Exception:
+            return None
+
+    def _latest_video_full_asset(self, post_key: str) -> dict[str, Any] | None:
+        normalized_post_key = str(post_key or "").strip().lower()
+        if not normalized_post_key:
+            return None
+        row = self.conn.execute(
+            """
+            select *
+            from public.post_media_assets
+            where post_key = %s
+              and asset_role = 'video_full'
+              and status in ('active', 'purge_pending')
+              and coalesce(storage_path, '') <> ''
+            order by
+              case
+                when lower(coalesce(storage_provider, 'supabase')) = lower(%s) then 0
+                else 1
+              end,
+              captured_at desc nulls last,
+              updated_at desc,
+              id desc
+            limit 1
+            """,
+            (normalized_post_key, _active_media_storage_provider()),
+        ).fetchone()
+        self.conn.commit()
+        return dict(row) if row else None
+
+    def _verify_video_full_ready(self, post_key: str) -> bool:
+        asset = self._latest_video_full_asset(post_key)
+        if not asset:
+            return False
+        try:
+            data = self._fetch_stored_post_media_asset_bytes(asset)
+        except Exception:
+            return False
+        if not data:
+            return False
+        mime_type = str(asset.get("mime_type") or "").strip().lower()
+        storage_path = str(asset.get("storage_path") or "").strip().lower()
+        return (
+            mime_type.startswith("video/")
+            or storage_path.endswith((".mp4", ".mov", ".m4v", ".webm"))
+            or len(data) >= 1024 * 32
+        )
+
+    def _feeder_intelligence_media_candidates(
+        self,
+        feeder_id: int,
+        *,
+        limit: int,
+        days: int,
+        include_failed: bool,
+    ) -> list[dict[str, Any]]:
+        fingerprint_version = current_fingerprint_model_version()
+        condensation_version = POST_CONDENSATION_PROMPT_VERSION
+        rows = self.conn.execute(
+            """
+            with latest_d7 as (
+              select distinct on (post_key)
+                post_key,
+                views,
+                computed_at
+              from public.post_metrics
+              where lower(checkpoint) = 'd7'
+              order by post_key, computed_at desc nulls last
+            ),
+            base as (
+              select
+                p.post_key,
+                p.post_url,
+                p.posted_at,
+                lower(coalesce(p.media_type, '')) as media_type,
+                p.thumbnail_url,
+                p.video_url,
+                p.carousel_urls,
+                p.caption,
+                d7.views,
+                exists (
+                  select 1
+                  from public.post_fingerprints pf
+                  where pf.post_key = p.post_key
+                    and pf.model_version = %s
+                    and pf.media_confidence = 'high'
+                ) as has_current_fingerprint,
+                exists (
+                  select 1
+                  from public.post_condensations pc
+                  where pc.post_key = p.post_key
+                    and pc.condensation_version = %s
+                ) as has_current_condensation
+              from public.posts p
+              join latest_d7 d7 on d7.post_key = p.post_key
+              where p.feeder_id = %s
+                and lower(coalesce(p.media_type, '')) in ('reel', 'video')
+                and coalesce(p.post_url, '') <> ''
+                and coalesce(p.posted_at, p.created_at, now()) >= now() - (%s::text || ' days')::interval
+            ),
+            vf as (
+              select
+                a.post_key,
+                bool_or(a.status in ('active', 'purge_pending') and coalesce(a.storage_path, '') <> '') as has_stored_video_full,
+                bool_or(a.status in ('pending_capture', 'capture_failed') and coalesce(a.source_url, '') <> '') as has_source_for_capture,
+                bool_or(a.status = 'pending_capture' and coalesce(a.source_url, '') <> '') as has_pending_capture,
+                bool_or(a.status = 'capture_failed' and coalesce(a.source_url, '') <> '') as has_capture_failed,
+                max(a.source_url) filter (where coalesce(a.source_url, '') <> '') as latest_source_url,
+                string_agg(distinct coalesce(a.status, ''), ', ' order by coalesce(a.status, '')) as statuses
+              from public.post_media_assets a
+              join base b on b.post_key = a.post_key
+              where a.asset_role = 'video_full'
+              group by a.post_key
+            )
+            select
+              b.post_key,
+              b.post_url,
+              b.posted_at,
+              b.media_type,
+              b.thumbnail_url,
+              b.video_url,
+              b.carousel_urls,
+              left(coalesce(b.caption, ''), 220) as caption,
+              b.views,
+              b.has_current_fingerprint,
+              b.has_current_condensation,
+              coalesce(vf.has_stored_video_full, false) as has_stored_video_full,
+              coalesce(vf.has_source_for_capture, false) as has_source_for_capture,
+              coalesce(vf.has_pending_capture, false) as has_pending_capture,
+              coalesce(vf.has_capture_failed, false) as has_capture_failed,
+              vf.latest_source_url,
+              coalesce(vf.statuses, 'none') as statuses
+            from base b
+            left join vf on vf.post_key = b.post_key
+            where not b.has_current_condensation
+              and (
+                coalesce(vf.has_stored_video_full, false)
+                or coalesce(vf.has_source_for_capture, false)
+                or coalesce(b.video_url, '') <> ''
+              )
+              and (
+                %s
+                or not coalesce(vf.has_capture_failed, false)
+                or coalesce(vf.has_pending_capture, false)
+                or coalesce(vf.has_stored_video_full, false)
+              )
+            order by
+              case
+                when coalesce(vf.has_stored_video_full, false) then 0
+                when coalesce(vf.has_pending_capture, false) then 1
+                when coalesce(b.video_url, '') <> '' then 2
+                when coalesce(vf.has_source_for_capture, false) then 3
+                else 4
+              end,
+              b.posted_at desc nulls last
+            limit %s
+            """,
+            (fingerprint_version, condensation_version, feeder_id, max(1, days), include_failed, max(1, limit)),
+        ).fetchall()
+        self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def prepare_feeder_intelligence_media(
+        self,
+        *,
+        feeder_id: int | None = None,
+        handle: str | None = None,
+        limit: int = 31,
+        days: int = 90,
+        batch_size: int = 8,
+        include_failed: bool = False,
+        retention_days: int = 120,
+        allow_private_refresh: bool = False,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        resolved_feeder_id = self._resolve_feeder_id(feeder_id=feeder_id, handle=handle)
+        if not resolved_feeder_id:
+            return {"selected": 0, "ready": 0, "failed": 0, "error": "feeder not found"}
+
+        rows = self._feeder_intelligence_media_candidates(
+            resolved_feeder_id,
+            limit=max(1, limit),
+            days=max(1, days),
+            include_failed=include_failed,
+        )
+        if not rows:
+            return {"feeder_id": resolved_feeder_id, "selected": 0, "ready": 0, "failed": 0, "dry_run": dry_run}
+
+        ready_post_keys: list[str] = []
+        needs_refresh: list[dict[str, Any]] = []
+        for row in rows:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            if post_key and self._verify_video_full_ready(post_key):
+                ready_post_keys.append(post_key)
+            else:
+                needs_refresh.append(row)
+
+        result: dict[str, Any] = {
+            "feeder_id": resolved_feeder_id,
+            "selected": len(rows),
+            "already_ready": len(ready_post_keys),
+            "needs_existing_source_capture": 0,
+            "needs_private_refresh": 0,
+            "existing_source_staged": 0,
+            "existing_source_captured": 0,
+            "existing_source_failed": 0,
+            "refreshed": 0,
+            "staged": 0,
+            "capture_selected": 0,
+            "captured": 0,
+            "capture_failed": 0,
+            "ready": len(ready_post_keys),
+            "failed": 0,
+            "missing_source": 0,
+            "private_refresh_allowed": allow_private_refresh,
+            "private_refresh_skipped": 0,
+            "dry_run": dry_run,
+            "ready_post_keys": ready_post_keys,
+            "failed_post_keys": [],
+        }
+        if dry_run:
+            existing_source_count = 0
+            private_refresh_count = 0
+            for row in needs_refresh:
+                existing_video_url = str(row.get("video_url") or row.get("latest_source_url") or "").strip()
+                if existing_video_url:
+                    existing_source_count += 1
+                else:
+                    private_refresh_count += 1
+            result["needs_refresh"] = len(needs_refresh)
+            result["needs_existing_source_capture"] = existing_source_count
+            result["needs_private_refresh"] = private_refresh_count
+            return result
+        if not needs_refresh:
+            result["needs_refresh"] = len(needs_refresh)
+            return result
+
+        existing_source_post_keys: list[str] = []
+        remaining_refresh_rows: list[dict[str, Any]] = []
+        for row in needs_refresh:
+            post_key = str(row.get("post_key") or "").strip().lower()
+            existing_video_url = str(row.get("video_url") or row.get("latest_source_url") or "").strip()
+            if post_key and existing_video_url:
+                self._stage_feeder_intelligence_video_full(post_key, existing_video_url, retention_days=retention_days)
+                existing_source_post_keys.append(post_key)
+            else:
+                remaining_refresh_rows.append(row)
+
+        self.conn.commit()
+        existing_capture_result = self._capture_post_media_assets_for_post_keys(
+            existing_source_post_keys,
+            asset_roles=("video_full",),
+            stale_minutes=1,
+        )
+
+        verified_existing: list[str] = []
+        for post_key in existing_source_post_keys:
+            if self._verify_video_full_ready(post_key):
+                verified_existing.append(post_key)
+            else:
+                row = next((candidate for candidate in needs_refresh if str(candidate.get("post_key") or "").strip().lower() == post_key), None)
+                if row:
+                    remaining_refresh_rows.append(row)
+
+        if not allow_private_refresh:
+            all_ready = list(dict.fromkeys([*ready_post_keys, *verified_existing]))
+            failed_keys = [
+                str(row.get("post_key") or "").strip().lower()
+                for row in remaining_refresh_rows
+                if str(row.get("post_key") or "").strip()
+            ]
+            result.update(
+                {
+                    "existing_source_staged": len(existing_source_post_keys),
+                    "existing_source_captured": int(existing_capture_result.get("captured") or 0),
+                    "existing_source_failed": int(existing_capture_result.get("failed") or 0),
+                    "ready": len(all_ready),
+                    "failed": len(failed_keys),
+                    "private_refresh_skipped": len(remaining_refresh_rows),
+                    "ready_post_keys": all_ready,
+                    "failed_post_keys": failed_keys,
+                }
+            )
+            return result
+
+        rows_by_post_key = {
+            str(row.get("post_key") or "").strip().lower(): row
+            for row in remaining_refresh_rows
+            if str(row.get("post_key") or "").strip() and str(row.get("post_url") or "").strip()
+        }
+        urls_by_post_key = {
+            post_key: str(row.get("post_url") or "").strip()
+            for post_key, row in rows_by_post_key.items()
+        }
+        ordered_post_keys = list(rows_by_post_key)
+        staged_post_keys: list[str] = []
+        missing_source = 0
+        refreshed = 0
+
+        for post_key_chunk in _chunk_list(ordered_post_keys, max(1, batch_size)):
+            chunk_urls = [urls_by_post_key[post_key] for post_key in post_key_chunk]
+            items = run_actor_post_urls("", chunk_urls, mode="reel")
+
+            by_short: dict[str, dict] = {}
+            by_post_key: dict[str, dict] = {}
+            for item in items:
+                source_url = str(item.get("url") or "").strip()
+                provider_post_id = str(item.get("providerPostId") or item.get("postId") or "").strip()
+                shortcode = (
+                    str(item.get("shortCode") or item.get("shortcode") or "").strip()
+                    or shortcode_from_media_id(provider_post_id)
+                    or shortcode_from_url(source_url)
+                )
+                if shortcode:
+                    by_short[shortcode.lower()] = item
+                canonical = canonical_post_url(shortcode, source_url) or source_url
+                item_post_key = _post_key_from_url(canonical)
+                if item_post_key:
+                    by_post_key[item_post_key] = item
+
+            for post_key in post_key_chunk:
+                row = rows_by_post_key[post_key]
+                fallback_thumbnail_url = str(row.get("thumbnail_url") or "").strip() or None
+                fallback_video_url = str(row.get("video_url") or "").strip() or None
+                raw_carousel_urls = row.get("carousel_urls")
+                fallback_carousel_urls = (
+                    [str(value).strip() for value in raw_carousel_urls if str(value).strip()]
+                    if isinstance(raw_carousel_urls, list)
+                    else []
+                )
+                short = shortcode_from_url(str(row.get("post_url") or "")).lower()
+                item = by_post_key.get(post_key) or (by_short.get(short) if short else None)
+                if item:
+                    thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
+                    thumbnail_url = thumbnail_url or fallback_thumbnail_url
+                    video_url = video_url or fallback_video_url
+                    carousel_urls = carousel_urls or fallback_carousel_urls
+                    refreshed += 1
+                else:
+                    thumbnail_url = fallback_thumbnail_url
+                    video_url = fallback_video_url
+                    carousel_urls = fallback_carousel_urls
+
+                if not video_url:
+                    missing_source += 1
+                    continue
+                self._refresh_post_media(post_key, thumbnail_url, video_url, carousel_urls)
+                if self._stage_feeder_intelligence_video_full(post_key, video_url, retention_days=retention_days):
+                    staged_post_keys.append(post_key)
+
+        self.conn.commit()
+        capture_result = self._capture_post_media_assets_for_post_keys(
+            staged_post_keys,
+            asset_roles=("video_full",),
+            stale_minutes=1,
+        )
+
+        verified: list[str] = []
+        failed_keys: list[str] = []
+        for post_key in ordered_post_keys:
+            if self._verify_video_full_ready(post_key):
+                verified.append(post_key)
+            else:
+                failed_keys.append(post_key)
+
+        all_ready = list(dict.fromkeys([*ready_post_keys, *verified_existing, *verified]))
+        result.update(
+            {
+                "existing_source_staged": len(existing_source_post_keys),
+                "existing_source_captured": int(existing_capture_result.get("captured") or 0),
+                "existing_source_failed": int(existing_capture_result.get("failed") or 0),
+                "refreshed": refreshed,
+                "staged": len(staged_post_keys),
+                "capture_selected": int(capture_result.get("selected") or 0),
+                "captured": int(capture_result.get("captured") or 0),
+                "capture_failed": int(capture_result.get("failed") or 0),
+                "ready": len(all_ready),
+                "failed": len(failed_keys),
+                "missing_source": missing_source,
+                "ready_post_keys": all_ready,
+                "failed_post_keys": failed_keys,
+            }
+        )
+        return result
 
     def refresh_fire_preview_sources_from_day(
         self,

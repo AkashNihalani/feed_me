@@ -193,6 +193,8 @@ def _normalize_media_type(content_type: str, photo_count: int, video_count: int)
         return "sidecar"
     if m in ("carousel_album", "carousel", "sidecar"):
         return "sidecar"
+    if video_count > 0 and photo_count == 0:
+        return "reel"
     return "image"
 
 
@@ -238,8 +240,17 @@ def _normalized_has_profile(item: dict[str, Any]) -> bool:
 
 
 def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
-    photo_urls = _extract_media_candidates(item, "photos", "image_urls", "image_url", "display_url")
-    video_urls = _extract_media_candidates(item, "videos", "video_urls", "video_url")
+    photo_urls = _extract_media_candidates(
+        item,
+        "photos",
+        "image_urls",
+        "image_url",
+        "display_url",
+        "thumbnail",
+        "thumbnail_url",
+        "thumbnailUrl",
+    )
+    video_urls = _extract_media_candidates(item, "videos", "video_urls", "video_url", "videoUrl")
     post_url = str(item.get("url") or item.get("post_url") or "").strip()
     provider_post_id = str(item.get("post_id") or item.get("id") or "").strip() or None
     shortcode = shortcode_from_media_id(provider_post_id) or shortcode_from_url(post_url)
@@ -338,6 +349,11 @@ def _trim_recent_posts(
 def _normalize_reel_item(item: dict[str, Any]) -> dict[str, Any]:
     normalized = _normalize_item(item)
     normalized["type"] = "reel"
+    video_urls = _extract_media_candidates(item, "videos", "video_urls", "video_url", "videoUrl")
+    if video_urls and not normalized.get("videoUrl"):
+        normalized["videoUrl"] = video_urls[0]
+    if video_urls and not normalized.get("thumbnailUrl"):
+        normalized["thumbnailUrl"] = str(item.get("thumbnail") or item.get("thumbnail_url") or "").strip() or None
     video_play_count = (
         item.get("video_play_count")
         or item.get("videoPlayCount")

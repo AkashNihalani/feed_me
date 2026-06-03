@@ -3,6 +3,8 @@
 .env.*
 node_modules/
 __pycache__/
+.wrangler/
+apps/worker/scripts/out/
 *.pyc
 supabase/.temp/
 .vercel

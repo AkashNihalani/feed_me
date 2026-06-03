@@ -16,7 +16,7 @@ const WARMUP_META_PAGE_SIZE = 1000;
 const WARMUP_METRIC_CHUNK_SIZE = 250;
 const TRACKING_SIGNAL_CODE = 'TRACKING_BASE';
 const HOT_PERCENTILE_MAX = 35;
-const D7_READ_PROMPT_VERSION = 'd7_read_v1_unarguable_comment';
+const D7_READ_PROMPT_VERSION = 'd7_read_v8_recent_beats';
 const PREVIEW_CAPTURE_START_DAY = (process.env.FIRE_PREVIEW_START_DAY || '2026-04-14').trim();
 const FIRE_BOOTSTRAP_DAY_COUNT = 7;
 const FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE = 20;
@@ -27,7 +27,15 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v9';
+const FIRE_CACHE_VERSION = 'v10';
+const FIRE_THUMBNAIL_ASSET_ROLES = [
+  'thumbnail',
+  'display',
+  'carousel_0',
+  'carousel_00',
+  'carousel_01',
+  'carousel_1',
+];
 const EMPTY_MEDIA_SOURCE_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 type TrackingCheckpoint = (typeof TRACKING_CHECKPOINTS)[number];
 type DefaultTrackingCheckpoint = (typeof DEFAULT_TRACKING_CHECKPOINTS)[number];
@@ -410,22 +418,30 @@ function d7ReadBody(value: unknown): Record<string, unknown> {
 function buildD7ReadPayload(row: FireD7ReadRow | undefined): Record<string, unknown> | null {
   if (!row?.parsed_output) return null;
   const body = d7ReadBody(row.parsed_output);
-  const headline = readableText(body.headline);
+  const scene = readableText(body.scene);
+  const recentRun = readableText(body.recent_run);
+  const memoryMatch = readableText(body.memory_match);
+  const numbers = readableText(body.numbers);
+  const headline = numbers || readableText(body.headline);
   const metricContext = readableText(body.metric_context);
-  const read = readableText(body.read);
-  const direction = readableText(body.direction);
+  const read = scene || readableText(body.read);
+  const direction = [recentRun, memoryMatch].filter(Boolean).join('\n\n') || readableText(body.direction);
   if (!headline && !metricContext && !read && !direction) return null;
 
   return {
     source: 'd7_read',
     source_label: 'D7 Post Mortem',
     model_version: row.model ? `openrouter:${row.model}:${row.prompt_version || D7_READ_PROMPT_VERSION}` : row.prompt_version || D7_READ_PROMPT_VERSION,
+    scene,
+    recent_run: recentRun,
+    memory_match: memoryMatch,
+    numbers,
     headline,
     metric_context: metricContext,
     read,
     direction,
-    matches: [headline, metricContext, read].filter(Boolean),
-    deviates: direction ? [direction] : [],
+    matches: [headline, read].filter(Boolean),
+    deviates: [recentRun, memoryMatch].filter(Boolean),
     unclear: [],
     notes: [],
   };
@@ -1093,6 +1109,9 @@ async function fetchStoredMediaUrls(
     ['thumbnail', 0],
     ['display', 1],
     ['carousel_0', 2],
+    ['carousel_00', 2],
+    ['carousel_01', 2],
+    ['carousel_1', 2],
   ]);
   const chosenThumbnailPriority = new Map<string, number>();
 
@@ -1102,7 +1121,7 @@ async function fetchStoredMediaUrls(
       .from('post_media_assets')
       .select('post_key,asset_role,storage_provider,storage_path,mime_type,purge_after')
       .in('post_key', chunk)
-      .in('asset_role', ['thumbnail', 'display', 'carousel_0', 'preview_5s'])
+      .in('asset_role', [...FIRE_THUMBNAIL_ASSET_ROLES, 'preview_5s'])
       .in('status', ['active', 'purge_pending', 'pending_capture']);
 
     if (error) throw error;
