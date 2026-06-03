@@ -4905,7 +4905,8 @@ class PureEngine:
         for row in needs_refresh:
             post_key = str(row.get("post_key") or "").strip().lower()
             existing_video_url = str(row.get("video_url") or row.get("latest_source_url") or "").strip()
-            if post_key and existing_video_url:
+            stale_failed_source = bool(row.get("has_capture_failed")) and not bool(row.get("has_pending_capture"))
+            if post_key and existing_video_url and not (allow_private_refresh and stale_failed_source):
                 self._stage_feeder_intelligence_video_full(post_key, existing_video_url, retention_days=retention_days)
                 existing_source_post_keys.append(post_key)
             else:
