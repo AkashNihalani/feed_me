@@ -279,22 +279,28 @@ def _normalize_item(item: dict[str, Any]) -> dict[str, Any]:
         carousel_media = []
         media_video_url = ""
 
+    def _first_metric(*values: Any) -> Any:
+        for value in values:
+            if value is not None and value != "":
+                return value
+        return None
+
     normalized: dict[str, Any] = {
         "url": canonical_url,
         "shortCode": shortcode,
         "timestamp": _to_utc_string(item.get("datetime") or item.get("date_posted")),
         "type": media_type,
         "caption": item.get("caption") or item.get("description") or "",
-        "likesCount": item.get("likes") or item.get("likes_count") or item.get("likesCount"),
-        "commentsCount": (
-            item.get("comments")
-            or item.get("num_comments")
-            or item.get("comments_count")
-            or item.get("comment_count")
-            or item.get("commentsCount")
+        "likesCount": _first_metric(item.get("likes"), item.get("likes_count"), item.get("likesCount")),
+        "commentsCount": _first_metric(
+            item.get("comments"),
+            item.get("num_comments"),
+            item.get("comments_count"),
+            item.get("comment_count"),
+            item.get("commentsCount"),
         ),
-        "videoViewCount": (item.get("video_view_count") or item.get("videoViewCount")) if media_type == "reel" else None,
-        "videoPlayCount": (item.get("video_play_count") or item.get("videoPlayCount") or item.get("plays")) if media_type == "reel" else None,
+        "videoViewCount": _first_metric(item.get("video_view_count"), item.get("videoViewCount")) if media_type == "reel" else None,
+        "videoPlayCount": _first_metric(item.get("video_play_count"), item.get("videoPlayCount"), item.get("plays")) if media_type == "reel" else None,
         "displayUrl": media_display_url,
         "thumbnailUrl": media_thumbnail_url,
         "videoUrl": media_video_url,

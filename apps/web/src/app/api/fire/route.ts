@@ -16,7 +16,7 @@ const WARMUP_META_PAGE_SIZE = 1000;
 const WARMUP_METRIC_CHUNK_SIZE = 250;
 const TRACKING_SIGNAL_CODE = 'TRACKING_BASE';
 const HOT_PERCENTILE_MAX = 35;
-const D7_READ_PROMPT_VERSION = 'd7_read_v8_recent_beats';
+const D7_READ_PROMPT_VERSION = 'd7_read_v15_no_filler';
 const PREVIEW_CAPTURE_START_DAY = (process.env.FIRE_PREVIEW_START_DAY || '2026-04-14').trim();
 const FIRE_BOOTSTRAP_DAY_COUNT = 7;
 const FIRE_DEFAULT_BOOTSTRAP_PAGE_SIZE = 20;
@@ -420,8 +420,13 @@ function buildD7ReadPayload(row: FireD7ReadRow | undefined): Record<string, unkn
   const body = d7ReadBody(row.parsed_output);
   const scene = readableText(body.scene);
   const recentRun = readableText(body.recent_run);
-  const memoryMatch = readableText(body.memory_match);
-  const numbers = readableText(body.numbers);
+  // v11 renamed memory_match -> fit. v13 dropped the LLM metric field for a
+  // worker-computed fun_fact box ({kind, text}). Fall back to legacy keys so
+  // cards cached before these changes still render.
+  const memoryMatch = readableText(body.fit) || readableText(body.memory_match);
+  const funFact = recordValue(body.fun_fact);
+  const numbers =
+    readableText(funFact.text) || readableText(body.metric) || readableText(body.numbers);
   const headline = numbers || readableText(body.headline);
   const metricContext = readableText(body.metric_context);
   const read = scene || readableText(body.read);

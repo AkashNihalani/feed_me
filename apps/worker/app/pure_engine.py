@@ -402,22 +402,32 @@ def _clean_profile_pic_url(url: Any) -> str | None:
 
 def _extract_metrics(item: dict) -> tuple[int | None, int | None, int | None]:
     media_type = _media_type(item)
+    def first_metric(*values: Any) -> Any:
+        for value in values:
+            if value is not None and value != "":
+                return value
+        return None
+
     views = None
     if _is_reel_media_type(media_type):
         views = _to_int(
-            item.get("videoViewCount")
-            or item.get("videoPlayCount")
-            or item.get("views")
-            or item.get("viewCount")
-            or item.get("plays")
+            first_metric(
+                item.get("videoViewCount"),
+                item.get("videoPlayCount"),
+                item.get("views"),
+                item.get("viewCount"),
+                item.get("plays"),
+            )
         )
-    likes = _to_int(item.get("likesCount") or item.get("likes") or item.get("likeCount"))
+    likes = _to_int(first_metric(item.get("likesCount"), item.get("likes"), item.get("likeCount")))
     comments = _to_int(
-        item.get("commentsCount")
-        or item.get("comments")
-        or item.get("commentCount")
-        or item.get("comments_count")
-        or item.get("num_comments")
+        first_metric(
+            item.get("commentsCount"),
+            item.get("comments"),
+            item.get("commentCount"),
+            item.get("comments_count"),
+            item.get("num_comments"),
+        )
     )
     return views, likes, comments
 
@@ -624,6 +634,16 @@ def _extract_related_handles(item: dict, fallback_handle: str | None = None) -> 
         add(fallback_handle)
 
     return handles
+
+
+def _collab_post_from_handles(related_handles: list[str], owner_handle: str | None = None) -> bool:
+    owner = _normalize_handle(owner_handle)
+    distinct = {
+        handle
+        for handle in (_normalize_handle(value) for value in related_handles)
+        if handle and handle != owner
+    }
+    return bool(distinct)
 
 def _extract_owner_profile(item: dict) -> tuple[str | None, int | None]:
     owner = item.get("owner") if isinstance(item.get("owner"), dict) else {}
@@ -2269,6 +2289,8 @@ class PureEngine:
         thumbnail_url: str | None = None,
         video_url: str | None = None,
         carousel_urls: list[str] | None = None,
+        related_handles: list[str] | None = None,
+        collab_post: bool | None = None,
     ) -> tuple[str | None, bool]:
         tracking_started_at = self._feeder_tracking_started_at(feeder_id)
         if posted_at is not None and tracking_started_at is not None and posted_at < tracking_started_at:
@@ -2288,15 +2310,21 @@ class PureEngine:
             else:
                 depth_bucket = "DEPTH_UNKNOWN"
         duration_bucket = "DUR_UNKNOWN" if normalized_media == "reel" else None
+        normalized_related_handles = [
+            handle
+            for handle in (_normalize_handle(value) for value in (related_handles or []))
+            if handle
+        ]
+        related_handles_json = json.dumps(list(dict.fromkeys(normalized_related_handles)))
         row = self.conn.execute(
             """
             insert into public.posts (
               post_key, feeder_id, post_url, media_type, posted_at, caption,
               provider_post_id, thumbnail_url, video_url, carousel_urls,
-              carousel_slide_count, depth_bucket, duration_bucket,
+              carousel_slide_count, depth_bucket, duration_bucket, related_handles, collab_post,
               created_at, updated_at
             )
-            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,now(),now())
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,now(),now())
             on conflict (feeder_id, post_url)
             do update set
               post_url=excluded.post_url,
@@ -2313,6 +2341,11 @@ class PureEngine:
               carousel_slide_count=coalesce(excluded.carousel_slide_count, public.posts.carousel_slide_count),
               depth_bucket=coalesce(excluded.depth_bucket, public.posts.depth_bucket),
               duration_bucket=coalesce(excluded.duration_bucket, public.posts.duration_bucket),
+              related_handles=case
+                when excluded.related_handles = '[]'::jsonb then public.posts.related_handles
+                else excluded.related_handles
+              end,
+              collab_post=coalesce(excluded.collab_post, public.posts.collab_post),
               updated_at=now()
             returning post_key, (xmax = 0) as inserted
             """,
@@ -2330,6 +2363,8 @@ class PureEngine:
                 carousel_count,
                 depth_bucket,
                 duration_bucket,
+                related_handles_json,
+                collab_post,
             ),
         ).fetchone()
         if not row:
@@ -2882,6 +2917,8 @@ class PureEngine:
                                     thumbnail_url=thumbnail_url,
                                     video_url=video_url,
                                     carousel_urls=carousel_urls,
+                                    related_handles=related_handles,
+                                    collab_post=_collab_post_from_handles(related_handles, feeder_handle),
                                 )
                                 if not post_key:
                                     continue

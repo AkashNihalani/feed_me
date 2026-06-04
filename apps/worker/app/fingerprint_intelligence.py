@@ -57,21 +57,6 @@ _VIDEO_SAMPLE_SECONDS = int(os.getenv("FINGERPRINT_VIDEO_SAMPLE_SECONDS", "120")
 _POST_CONDENSATION_MAX_TOKENS = int(os.getenv("POST_CONDENSATION_MAX_TOKENS", "2600"))
 _POST_CONDENSATION_WORD_TOLERANCE = float(os.getenv("POST_CONDENSATION_WORD_TOLERANCE", "0.15"))
 _D7_READ_MAX_TOKENS = int(os.getenv("D7_READ_MAX_TOKENS", "1800"))
-# Active D7 read prompt + the knobs that shape
-# the feeder file the read sees.
-_D7_MIN_POOL = int(os.getenv("D7_READ_MIN_POOL", "8"))          # below this -> thin_pool
-_D7_SPIKE_UP = float(os.getenv("D7_READ_SPIKE_UP", "1.5"))      # axis moved up for this post
-_D7_SPIKE_DOWN = float(os.getenv("D7_READ_SPIKE_DOWN", "0.6"))  # axis came in soft
-_D7_RECORD_SPIKE_BAR = float(os.getenv("D7_READ_RECORD_BAR", "1.8"))  # earns a record slot
-_D7_RECORD_MAX = int(os.getenv("D7_READ_RECORD_MAX", "20"))
-_D7_RECORD_BAND_CAP = int(os.getenv("D7_READ_RECORD_BAND_CAP", "10"))  # max per 30d band
-_D7_RECENT_UP = float(os.getenv("D7_READ_RECENT_UP", "1.15"))  # last-10 vs 90d -> up
-_D7_RECENT_DOWN = float(os.getenv("D7_READ_RECENT_DOWN", "0.85"))  # -> down
-# Account-relative standing bands (lower percentile == stronger). The band sets
-# what the read's memory_match field owes; the prompt translates, never prints it.
-_D7_BAND_DEEP = float(os.getenv("D7_READ_BAND_DEEP", "5"))         # detonation
-_D7_BAND_WINNER = float(os.getenv("D7_READ_BAND_WINNER", "25"))    # clears the bar
-_D7_BAND_CONTENDER = float(os.getenv("D7_READ_BAND_CONTENDER", "50"))  # within reach
 _R2_CLIENT: Any | None = None
 _POST_CONDENSATION_KEYS = {
     "post_key",
@@ -82,9 +67,8 @@ _POST_CONDENSATION_KEYS = {
 }
 _D7_READ_KEYS = {
     "scene",
+    "fit",
     "recent_run",
-    "memory_match",
-    "numbers",
 }
 _FINGERPRINT_LIST_FIELDS = (
     "visible_text",
@@ -659,21 +643,23 @@ def _normalize_d7_read_mapping(parsed: dict[str, Any], *, post_key: str) -> dict
         return None
 
     scene = str(body.get("scene") or "").strip()
+    fit = _flatten_read_field(body.get("fit"))
     recent_run = _flatten_read_field(body.get("recent_run"))
-    memory_match = _flatten_read_field(body.get("memory_match"))
-    numbers = str(body.get("numbers") or "").strip()
-    if not (scene and recent_run and memory_match and numbers):
+    if not (scene and fit and recent_run):
         return None
 
-    return {
-        "d7_read": {
-            "post_key": post_key,
-            "scene": scene,
-            "recent_run": recent_run,
-            "memory_match": memory_match,
-            "numbers": numbers,
-        }
+    out: dict[str, Any] = {
+        "post_key": post_key,
+        "scene": scene,
+        "fit": fit,
+        "recent_run": recent_run,
     }
+    # fun_fact is worker-computed and merged into the stored output; carry it
+    # through so the cached path doesn't drop it.
+    fun_fact = body.get("fun_fact")
+    if isinstance(fun_fact, dict) and fun_fact.get("text"):
+        out["fun_fact"] = fun_fact
+    return {"d7_read": out}
 
 
 def _yaml_d7_read_from_text(text: str, *, post_key: str) -> dict[str, Any] | None:
@@ -907,7 +893,7 @@ def _call_d7_read_model(
             {"role": "system", "content": D7_READ_SYSTEM_V6},
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, indent=2, default=str)},
         ],
-        "temperature": 0.2,
+        "temperature": float(os.getenv("D7_READ_TEMPERATURE", "0.55")),
         "max_tokens": _D7_READ_MAX_TOKENS,
     }
     content = ""
@@ -1310,6 +1296,31 @@ def _d7_mult(row: dict[str, Any], axis: str) -> float | None:
         return None
 
 
+def _d7_metric(row: dict[str, Any], axis: str) -> int | float | None:
+    value = row.get(axis)
+    if value is not None:
+        return value
+    if axis == "comments" and (row.get("views") is not None or row.get("likes") is not None):
+        return 0
+    return None
+
+
+def _d7_related_handles(row: dict[str, Any]) -> list[str]:
+    value = row.get("related_handles")
+    if isinstance(value, list):
+        handles = [str(item or "").strip().lstrip("@").lower() for item in value if str(item or "").strip()]
+        return list(dict.fromkeys(handles))
+    return []
+
+
+def _d7_collab_info(row: dict[str, Any]) -> dict[str, Any]:
+    handles = _d7_related_handles(row)
+    return {
+        "collab_post": "yes" if bool(row.get("collab_post")) else "no",
+        "related_handles": handles,
+    }
+
+
 def _d7_posted_ts(row: dict[str, Any]) -> float:
     value = row.get("posted_at")
     if isinstance(value, datetime):
@@ -1342,29 +1353,6 @@ def _d7_scene_body(condensation: Any) -> dict[str, Any] | None:
     return body if isinstance(body, dict) else None
 
 
-def _d7_metric_anomaly(trigger_multiples: dict[str, float | None], pool_n: int) -> dict[str, Any]:
-    """The one axis that broke from the account's usual on this post (server-decided)."""
-    how_many_times = {
-        axis: (round(mult, 1) if mult is not None else None)
-        for axis, mult in trigger_multiples.items()
-    }
-    present = {axis: mult for axis, mult in trigger_multiples.items() if mult is not None}
-    if pool_n < _D7_MIN_POOL or not present:
-        primary = "thin_pool"
-    else:
-        ups = [axis for axis, mult in present.items() if mult >= _D7_SPIKE_UP]
-        downs = [axis for axis, mult in present.items() if mult <= _D7_SPIKE_DOWN]
-        if len(ups) >= 2:
-            primary = "all"
-        elif len(ups) == 1:
-            primary = ups[0]
-        elif downs:
-            primary = "soft"
-        else:
-            primary = "flat"
-    return {"primary": primary, "how-many-times": how_many_times}
-
-
 def _d7_vs_usual(row: dict[str, Any]) -> dict[str, float | None]:
     """One post's metrics as a multiple of the account's 90-day usual, per axis."""
     out: dict[str, float | None] = {}
@@ -1374,100 +1362,412 @@ def _d7_vs_usual(row: dict[str, Any]) -> dict[str, float | None]:
     return out
 
 
-def _d7_group_vs_usual(last_10: list[dict[str, Any]]) -> dict[str, float | None]:
-    """The last-10 group's median multiple vs the 90-day usual, per axis - how
-    the recent run as a whole is holding up against the account's baseline."""
-    out: dict[str, float | None] = {}
-    for axis in ("views", "likes", "comments"):
-        vals = [m for m in (_d7_mult(row, axis) for row in last_10) if m is not None]
-        out[axis] = round(statistics.median(vals), 1) if vals else None
-    return out
+# --- D7 read payload: the "now" card ---
+# The read sees the prior feeder file (current reality) + worker-computed
+# triggers for the post that just hit D7. The trigger stays outside the feeder
+# file, so the 31st post is compared against 30 prior posts.
+_D7_MIN_RECENT = int(os.getenv("D7_READ_MIN_RECENT", "10"))      # prior posts below this -> no read yet
+_D7_MEMORY_SIZE = int(os.getenv("D7_READ_MEMORY_SIZE", "30"))    # prior posts in the feeder file
+_D7_RECENT_RUN_SCENES = int(os.getenv("D7_READ_RUN_SCENES", "30"))  # prior condensations fed for "the now"
+_D7_CONCENTRATION_BAR = float(os.getenv("D7_READ_CONCENTRATION_BAR", "0.4"))  # one post carries the run
 
 
-def _d7_recent_form(last_10: list[dict[str, Any]]) -> dict[str, Any]:
-    """Last 10 against the 90-day usual, per axis: up / steady / down."""
-    out: dict[str, str] = {}
-    for axis in ("views", "likes", "comments"):
-        vals = [m for m in (_d7_mult(row, axis) for row in last_10) if m is not None]
-        if not vals:
-            out[axis] = "unknown"
-            continue
-        median = statistics.median(vals)
-        if median >= _D7_RECENT_UP:
-            out[axis] = "up"
-        elif median <= _D7_RECENT_DOWN:
-            out[axis] = "down"
-        else:
-            out[axis] = "steady"
-    return out
+def _d7_is_num(value: Any) -> bool:
+    try:
+        float(value)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
-def _d7_recent_beats(trigger: dict[str, Any], recent_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """How this post placed against the recent run, per raw number.
+def _d7_median_mult(rows: list[dict[str, Any]], axis: str) -> float | None:
+    vals = [m for m in (_d7_mult(r, axis) for r in rows) if m is not None]
+    return round(statistics.median(vals), 2) if vals else None
 
-    The model can read raw rows, but making this deterministic prevents off-by-one
-    counting and gives the numbers field one sharp recent-placement fact.
-    """
-    axes: dict[str, dict[str, int | None]] = {}
-    for axis in ("views", "likes", "comments"):
-        trigger_value = trigger.get(axis)
-        try:
-            trigger_num = float(trigger_value)
-        except (TypeError, ValueError):
-            axes[axis] = {"beat": None, "total": 0}
-            continue
-        comparable = []
-        for row in recent_rows:
-            value = row.get(axis)
-            try:
-                comparable.append(float(value))
-            except (TypeError, ValueError):
-                continue
-        axes[axis] = {
-            "beat": sum(1 for value in comparable if trigger_num > value),
-            "total": len(comparable),
+
+def _d7_avg(*values: float | None) -> float | None:
+    present = [v for v in values if v is not None]
+    return sum(present) / len(present) if present else None
+
+
+def _d7_momentum(recent_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Trailing windows (newest first) as median multiples of normal, per axis,
+    plus a coarse trajectory pointer the read interprets (never prints)."""
+    out: dict[str, Any] = {}
+    for window in (5, 10, 15, 30):
+        sub = recent_rows[:window]
+        out[f"last_{window}"] = {
+            axis: _d7_median_mult(sub, axis) for axis in ("views", "likes", "comments")
         }
-    return {
-        "basis": "previous_10_posts",
-        "axes": axes,
-    }
+
+    def _direction(fresh: float | None, broad: float | None) -> str:
+        if fresh is None or broad is None or broad == 0:
+            return "unknown"
+        ratio = fresh / broad
+        if ratio >= 1.15:
+            return "up"
+        if ratio <= 0.85:
+            return "down"
+        return "steady"
+
+    reach = _direction(out["last_5"]["views"], out["last_30"]["views"])
+    fresh_eng = _d7_avg(out["last_5"]["likes"], out["last_5"]["comments"])
+    broad_eng = _d7_avg(out["last_30"]["likes"], out["last_30"]["comments"])
+    out["trajectory"] = f"reach_{reach}_engagement_{_direction(fresh_eng, broad_eng)}"
+    return out
 
 
-def _d7_percentile_value(row: dict[str, Any]) -> float | None:
-    """Account-relative D7 percentile, exact preferred. Lower == stronger."""
-    for key in ("percentile_performance_exact", "percentile_performance"):
-        val = row.get(key)
-        if val is not None:
-            try:
-                return float(val)
-            except (TypeError, ValueError):
-                continue
+def _d7_concentration(recent_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """How much of the run's whole reach a single post carries."""
+    views = [float(v) for v in (_d7_metric(r, "views") for r in recent_rows) if _d7_is_num(v)]
+    total = sum(views)
+    if total <= 0 or not views:
+        return {"top_post_share_views": None, "carried_by_few": False}
+    share = round(max(views) / total, 2)
+    return {"top_post_share_views": share, "carried_by_few": share >= _D7_CONCENTRATION_BAR}
+
+
+def _d7_splits(recent_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Performance cut by collab vs organic inside the working memory."""
+    collab = [r for r in recent_rows if bool(r.get("collab_post"))]
+    organic = [r for r in recent_rows if not bool(r.get("collab_post"))]
+
+    def _cut(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "n": len(rows),
+            "views": _d7_median_mult(rows, "views"),
+            "comments": _d7_median_mult(rows, "comments"),
+        }
+
+    return {"collab": _cut(collab), "organic": _cut(organic)}
+
+
+def _d7_place_in_memory(trigger: dict[str, Any], others: list[dict[str, Any]]) -> dict[str, Any]:
+    """Where this post ranks inside the working memory, per axis. Deterministic so
+    the read never miscounts what it beat."""
+    beats: dict[str, int | None] = {}
+    for axis in ("views", "likes", "comments"):
+        trigger_value = _d7_metric(trigger, axis)
+        if not _d7_is_num(trigger_value):
+            beats[axis] = None
+            continue
+        trigger_num = float(trigger_value)
+        comparable = [float(v) for v in (_d7_metric(r, axis) for r in others) if _d7_is_num(v)]
+        beats[axis] = sum(1 for v in comparable if trigger_num > v)
+    of = len(others) + 1
+    rank_views = (of - beats["views"]) if beats.get("views") is not None else None
+    return {"of": of, "beat": beats, "rank_views": rank_views}
+
+
+# --- D7 fun_fact: one grounded, screenshot-worthy stat, worker-computed ---
+# Never LLM-invented. The worker proves it from the data, the frontend renders it.
+# Priority: rarity -> d1/d7 swing -> top record -> velocity -> record-since -> streak -> beat-last-X.
+_D7_VELOCITY_FRONTLOAD = float(os.getenv("D7_FUNFACT_FRONTLOAD", "0.85"))   # share of d7 views by d1
+_D7_VELOCITY_SLOWBURN = float(os.getenv("D7_FUNFACT_SLOWBURN", "1.12"))     # d7 / d3 still climbing
+_D7_RECORD_MIN_DAYS = int(os.getenv("D7_FUNFACT_RECORD_DAYS", "21"))        # "best in N" needs >= this
+_D7_RECORD_TOP_RANK = max(1, int(os.getenv("D7_FUNFACT_RECORD_TOP_RANK", "5")))
+_D7_STREAK_MIN = int(os.getenv("D7_FUNFACT_STREAK_MIN", "3"))
+_D7_STREAK_UP = float(os.getenv("D7_FUNFACT_STREAK_UP", "1.15"))
+_D7_STREAK_DOWN = float(os.getenv("D7_FUNFACT_STREAK_DOWN", "0.85"))
+
+_D7_AXIS_PAST = {"views": "watched", "likes": "liked", "comments": "talked-about"}
+
+
+def _d7_weeks_phrase(days: int) -> str:
+    if days >= 75:
+        return "nearly three months"
+    if days >= 55:
+        return "two months"
+    if days >= 40:
+        return "six weeks"
+    if days >= 26:
+        return "a month"
+    if days >= 18:
+        return "three weeks"
+    return f"{days} days"
+
+
+def _d7_velocity_fact(checkpoints: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    d1 = checkpoints.get("d1") or {}
+    d3 = checkpoints.get("d3") or {}
+    d7 = checkpoints.get("d7") or {}
+    v1, v3, v7 = d1.get("views"), d3.get("views"), d7.get("views")
+    if not _d7_is_num(v1) or not _d7_is_num(v7) or float(v7) <= 0:
+        return None
+    share = float(v1) / float(v7)
+    if share >= _D7_VELOCITY_FRONTLOAD:
+        pct = round(share * 100)
+        return {
+            "kind": "velocity",
+            "subtype": "front_loaded",
+            "text": f"It front-loaded hard — {pct}% of its views came in the first 24 hours, "
+                    f"and it had all but stopped climbing by day three.",
+        }
+    if _d7_is_num(v3) and float(v3) > 0 and float(v7) > float(v3) * _D7_VELOCITY_SLOWBURN:
+        return {
+            "kind": "velocity",
+            "subtype": "slow_burn",
+            "text": "A slow burn — it was still gathering views a week in, long after most posts go quiet.",
+        }
     return None
 
 
-def _d7_standing(trigger: dict[str, Any]) -> dict[str, Any]:
-    """The account-relative band for THIS post (server-decided, lower==stronger).
+_D7_RECORD_MIN_HISTORY = int(os.getenv("D7_FUNFACT_RECORD_HISTORY", "15"))
+_D7_PCT_SWING = float(os.getenv("D7_FUNFACT_PCT_SWING", "20"))  # >= this move (either way), d1 -> d7
 
-    Only the bifurcation - no worker-written phrasing, no derived numbers. The
-    band sets what the read's memory_match field owes; the model reads the proof
-    itself off the raw metrics already in the feeder file.
-        deep/winner -> measure against the record
-        contender   -> name the lever to cross into the winners
-        noise        -> one line and stop
-        unknown      -> hold back on account-relative placement
-    """
-    percentile = _d7_percentile_value(trigger)
-    if percentile is None:
-        band = "unknown"
-    elif percentile <= _D7_BAND_DEEP:
-        band = "deep"
-    elif percentile <= _D7_BAND_WINNER:
-        band = "winner"
-    elif percentile <= _D7_BAND_CONTENDER:
-        band = "contender"
+
+def _d7_pct(checkpoint: dict[str, Any]) -> float | None:
+    value = checkpoint.get("ppe")
+    if value is None:
+        value = checkpoint.get("pp")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _d7_pct_bucket(p: float) -> str:
+    if p <= 15:
+        return "the front of their pack"
+    if p <= 35:
+        return "the top third"
+    if p <= 65:
+        return "the middle of the pack"
+    return "the back of the pack"
+
+
+def _d7_percentile_swing_fact(checkpoints: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    """A large move in account-relative standing, d1 -> d7 (lower == stronger).
+    Rise = late climber; drop = opened strong then faded. No landing requirement."""
+    p1 = _d7_pct(checkpoints.get("d1") or {})
+    p7 = _d7_pct(checkpoints.get("d7") or {})
+    if p1 is None or p7 is None:
+        return None
+    delta = p1 - p7  # positive == got stronger
+    if abs(delta) < _D7_PCT_SWING:
+        return None
+    rise = delta > 0
+    sb, eb = _d7_pct_bucket(p1), _d7_pct_bucket(p7)
+    if sb == eb:
+        text = (
+            "A late surge — it kept climbing the account's order after day one, "
+            "overtaking a run of posts through the week."
+        ) if rise else (
+            "A fast fade — it slid down the account's order after day one, "
+            "passed by a run of posts through the week."
+        )
+    elif rise:
+        text = (f"A late climber — it kept gaining through the week, rising from {sb} "
+                f"to {eb} between day one and day seven.")
     else:
-        band = "noise"
-    return {"band": band}
+        text = (f"It opened strong and faded — sliding from {sb} to {eb} between day one and "
+                f"day seven. A fast burn that didn't hold.")
+    return {"kind": "percentile_swing", "subtype": "rise" if rise else "drop",
+            "from": round(p1), "to": round(p7), "text": text}
+
+
+def _d7_record_fact(trigger: dict[str, Any], rows_90d: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Top-N 90d result on any axis - needs enough history to mean it."""
+    if len(rows_90d) < _D7_RECORD_MIN_HISTORY:
+        return None
+    best: dict[str, Any] | None = None
+    best_rank = _D7_RECORD_TOP_RANK + 1
+    for axis in ("likes", "views", "comments"):
+        tv = _d7_metric(trigger, axis)
+        if not _d7_is_num(tv):
+            continue
+        tv = float(tv)
+        better = [
+            r for r in rows_90d
+            if str(r.get("post_key") or "") != str(trigger.get("post_key") or "")
+            and _d7_is_num(_d7_metric(r, axis)) and float(_d7_metric(r, axis)) > tv
+        ]
+        rank = len(better) + 1
+        if rank > _D7_RECORD_TOP_RANK or rank >= best_rank:
+            continue
+        best_rank = rank
+        if rank == 1:
+            best = {"kind": "record", "subtype": "best", "axis": axis, "rank": rank,
+                    "text": f"Their most-{_D7_AXIS_PAST[axis]} reel in three months."}
+        else:
+            best = {
+                "kind": "record",
+                "subtype": "top",
+                "axis": axis,
+                "rank": rank,
+                "top": _D7_RECORD_TOP_RANK,
+                "text": f"A top-{_D7_RECORD_TOP_RANK} {_D7_AXIS_PAST[axis]} reel in three months.",
+            }
+    return best
+
+
+def _d7_record_since_fact(trigger: dict[str, Any], rows_90d: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Best on an axis vs a gap of >= _D7_RECORD_MIN_DAYS (not an all-time record)."""
+    trigger_ts = _d7_posted_ts(trigger)
+    best: dict[str, Any] | None = None
+    best_score = -1.0
+    for axis in ("likes", "views", "comments"):
+        tv = _d7_metric(trigger, axis)
+        if not _d7_is_num(tv):
+            continue
+        tv = float(tv)
+        better = [
+            r for r in rows_90d
+            if str(r.get("post_key") or "") != str(trigger.get("post_key") or "")
+            and _d7_is_num(_d7_metric(r, axis)) and float(_d7_metric(r, axis)) > tv
+        ]
+        if not better:
+            continue  # top-record cases are handled by _d7_record_fact
+        last_beat = max(_d7_posted_ts(r) for r in better)
+        days = int(max(0.0, (trigger_ts - last_beat) / 86400.0))
+        if days < _D7_RECORD_MIN_DAYS:
+            continue
+        rank = len(better) + 1
+        score = days + max(0, 12 - rank) * 2.5
+        if score > best_score:
+            best_score = score
+            best = {"kind": "record_since", "axis": axis, "rank": rank, "days": days,
+                    "text": f"Their most-{_D7_AXIS_PAST[axis]} reel in {_d7_weeks_phrase(days)}."}
+    return best
+
+
+def _d7_streak_fact(recent_ordered: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def state(row: dict[str, Any]) -> str | None:
+        m = _d7_mult(row, "views")
+        if m is None:
+            return None
+        if m >= _D7_STREAK_UP:
+            return "up"
+        if m <= _D7_STREAK_DOWN:
+            return "down"
+        return "mid"
+    if not recent_ordered:
+        return None
+    s0 = state(recent_ordered[0])
+    if s0 not in ("up", "down"):
+        return None
+    streak = 1
+    for row in recent_ordered[1:]:
+        if state(row) == s0:
+            streak += 1
+        else:
+            break
+    if streak < _D7_STREAK_MIN:
+        return None
+    if s0 == "up":
+        text = f"{streak} reels in a row above their usual now — a genuine hot streak."
+    else:
+        text = f"{streak} in a row under their usual — a real cold stretch."
+    return {"kind": "streak", "subtype": s0, "len": streak, "text": text}
+
+
+def _d7_rarity_fact(trigger: dict[str, Any], rows_90d: list[dict[str, Any]]) -> dict[str, Any] | None:
+    tc, tl = _d7_metric(trigger, "comments"), _d7_metric(trigger, "likes")
+    if _d7_is_num(tc) and _d7_is_num(tl) and float(tc) > float(tl):
+        n = len(rows_90d)
+        cnt = sum(
+            1 for r in rows_90d
+            if _d7_is_num(_d7_metric(r, "comments")) and _d7_is_num(_d7_metric(r, "likes"))
+            and float(_d7_metric(r, "comments")) > float(_d7_metric(r, "likes"))
+        )
+        if cnt <= max(2, n * 0.1):
+            return {"kind": "rarity", "subtype": "comments_over_likes",
+                    "text": "More comments than likes — almost unheard of here. People came to talk, not just tap."}
+    return None
+
+
+def _d7_placement_fact(place: dict[str, Any]) -> dict[str, Any] | None:
+    beat = place.get("beat") or {}
+    of = max(0, int(place.get("of", 1)) - 1)
+    axis = max(("views", "likes", "comments"), key=lambda a: beat.get(a) if beat.get(a) is not None else -1)
+    b = beat.get(axis)
+    if b is None or of <= 0:
+        return None
+    return {"kind": "placement", "axis": axis, "beat": b, "of": of,
+            "text": f"Beat {b} of the last {of} on {axis}."}
+
+
+def _d7_fun_fact(conn: Any, post_key: str) -> dict[str, Any] | None:
+    """One grounded fun-fact for the card's box. Always returns at least a
+    beat-last-X placement when metrics exist."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select p.feeder_id, p.media_type, p.posted_at,
+                   pm.views, pm.likes, pm.comments,
+                   pm.views_multiple, pm.likes_multiple, pm.comments_multiple
+            from public.posts p
+            join public.post_metrics pm
+              on pm.post_key = p.post_key and lower(pm.checkpoint) = 'd7'
+            where p.post_key = %s
+            order by pm.computed_at desc nulls last
+            limit 1
+            """,
+            (post_key,),
+        )
+        trigger = cur.fetchone()
+        if not trigger:
+            return None
+        trigger = dict(trigger)
+        trigger["post_key"] = post_key
+
+        cur.execute(
+            "select lower(checkpoint) ck, views, likes, comments, "
+            "percentile_performance_exact ppe, percentile_performance pp "
+            "from public.post_metrics where post_key = %s",
+            (post_key,),
+        )
+        checkpoints = {
+            str(r["ck"]): {
+                "views": r["views"], "likes": r["likes"], "comments": r["comments"],
+                "ppe": r["ppe"], "pp": r["pp"],
+            }
+            for r in cur.fetchall()
+        }
+
+        feeder_id = int(trigger["feeder_id"])
+        media_type = str(trigger.get("media_type") or "reel").strip().lower()
+        cur.execute(
+            """
+            select p.post_key, p.posted_at,
+                   pm.views, pm.likes, pm.comments,
+                   pm.views_multiple, pm.likes_multiple, pm.comments_multiple
+            from public.posts p
+            join public.post_metrics pm
+              on pm.post_key = p.post_key and lower(pm.checkpoint) = 'd7'
+            where p.feeder_id = %s and lower(coalesce(p.media_type, '')) = %s
+              and p.posted_at >= %s::timestamptz - interval '90 days'
+              and p.posted_at <= %s::timestamptz
+            order by p.posted_at desc nulls last
+            """,
+            (feeder_id, media_type, trigger.get("posted_at"), trigger.get("posted_at")),
+        )
+        rows_90d = [dict(r) for r in cur.fetchall()]
+
+    if not any(str(r.get("post_key") or "") == post_key for r in rows_90d):
+        rows_90d.append(trigger)
+    rows_90d.sort(key=_d7_posted_ts, reverse=True)
+
+    trigger_ts = _d7_posted_ts(trigger)
+    prior_rows = [
+        r for r in rows_90d
+        if str(r.get("post_key") or "") != post_key and _d7_posted_ts(r) < trigger_ts
+    ]
+    feeder_rows = prior_rows[:_D7_MEMORY_SIZE]
+    place = _d7_place_in_memory(trigger, feeder_rows)
+    history_rows = [trigger] + prior_rows
+
+    # Fixed ladder, first that clears its bar wins:
+    # rarity -> percentile swing -> record -> velocity -> record-since -> streak -> floor.
+    return (
+        _d7_rarity_fact(trigger, history_rows)
+        or _d7_percentile_swing_fact(checkpoints)
+        or _d7_record_fact(trigger, history_rows)
+        or _d7_velocity_fact(checkpoints)
+        or _d7_record_since_fact(trigger, history_rows)
+        or _d7_streak_fact([trigger] + feeder_rows)
+        or _d7_placement_fact(place)
+    )
 
 
 def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
@@ -1480,6 +1780,8 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
               p.caption,
               p.media_type,
               p.posted_at,
+              p.related_handles,
+              p.collab_post,
               f.handle,
               pm.views,
               pm.likes,
@@ -1487,8 +1789,6 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
               pm.views_multiple,
               pm.likes_multiple,
               pm.comments_multiple,
-              pm.percentile_performance,
-              pm.percentile_performance_exact,
               pm.business_date_ist
             from public.posts p
             join public.feeders f on f.id = p.feeder_id
@@ -1516,7 +1816,10 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
             """
             select
               p.post_key,
+              p.caption,
               p.posted_at,
+              p.related_handles,
+              p.collab_post,
               pm.views,
               pm.likes,
               pm.comments,
@@ -1534,10 +1837,11 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
              and pc.condensation_version = %s
             where p.feeder_id = %s
               and lower(coalesce(p.media_type, '')) = %s
-              and p.posted_at >= now() - interval '90 days'
+              and p.posted_at >= %s::timestamptz - interval '90 days'
+              and p.posted_at <= %s::timestamptz
             order by p.posted_at desc nulls last
             """,
-            (POST_CONDENSATION_PROMPT_VERSION, feeder_id, media_type),
+            (POST_CONDENSATION_PROMPT_VERSION, feeder_id, media_type, trigger.get("posted_at"), trigger.get("posted_at")),
         )
         rows = [dict(row) for row in cur.fetchall()]
 
@@ -1545,85 +1849,34 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
         rows.append(dict(trigger))
     rows.sort(key=_d7_posted_ts, reverse=True)
 
-    # This post against the account's own usual.
-    trigger_multiples = {axis: _d7_mult(trigger, axis) for axis in ("views", "likes", "comments")}
-    metric_anomaly = _d7_metric_anomaly(trigger_multiples, len(rows))
-
-    # Where this post stands in the account's own 90 days (drives the read's job).
-    standing = _d7_standing(trigger)
-
+    # The feeder file: the N posts before the trigger. This is the account's
+    # current reality before the D7 post enters the system.
     trigger_ts = _d7_posted_ts(trigger)
-    previous_rows = [
-        row
-        for row in rows
+    feeder_rows = [
+        row for row in rows
         if str(row.get("post_key") or "") != post_key and _d7_posted_ts(row) < trigger_ts
-    ]
-    last_10_rows = previous_rows[:10]
-    if len(last_10_rows) < 10:
-        return None
-    recent_form = _d7_recent_form(last_10_rows)
-    # Keep the up/steady/down labels; add the group's baseline multiple alongside.
-    recent_form["vs_usual"] = _d7_group_vs_usual(last_10_rows)
-
-    # The feeder file the read places this post inside: the recent run + the record.
-    last_10_keys = {str(row.get("post_key") or "") for row in last_10_rows}
-    last_10: list[dict[str, Any]] = []
-    for idx, row in enumerate(last_10_rows):
-        scene = _d7_scene_body(row.get("condensation"))
-        if not scene:
-            continue
-        last_10.append({
-            "post_key": row.get("post_key"),
-            "source_set": "last_10",
-            "posts_ago": idx + 1,
-            "posted_on": _d7_posted_on(row),
-            "posted_on_source": "posts.posted_at",
-            "views": row.get("views"),
-            "likes": row.get("likes"),
-            "comments": row.get("comments"),
-            "vs_usual": _d7_vs_usual(row),
-            "scene": scene,
-        })
-    if len(last_10) < 10:
+    ][: _D7_MEMORY_SIZE]
+    if len(feeder_rows) < _D7_MIN_RECENT:
         return None
 
-    # The record: real spikes across 90 days, off the recent run, spread across time
-    # so one hot phase can't flood it.
-    candidates: list[tuple[float, dict[str, Any]]] = []
-    for row in previous_rows:
-        if str(row.get("post_key") or "") in last_10_keys:
-            continue
-        mags = [m for m in (_d7_mult(row, a) for a in ("views", "likes", "comments")) if m is not None]
-        if not mags:
-            continue
-        magnitude = max(mags)
-        if magnitude < _D7_RECORD_SPIKE_BAR:
-            continue
-        candidates.append((magnitude, row))
-    candidates.sort(key=lambda item: item[0], reverse=True)
+    # Worker-computed triggers over the feeder file (deterministic, no LLM math).
+    momentum = _d7_momentum(feeder_rows)
+    concentration = _d7_concentration(feeder_rows)
+    splits = _d7_splits(feeder_rows)
 
-    band_counts = {0: 0, 1: 0, 2: 0}
-    record: list[dict[str, Any]] = []
-    for magnitude, row in candidates:
-        if len(record) >= _D7_RECORD_MAX:
+    # "The now" content: the recent run's condensations (newest first), excluding
+    # this post. Enough to judge whether this reel fits the lane or breaks it.
+    recent_posts: list[dict[str, Any]] = []
+    for row in feeder_rows:
+        if len(recent_posts) >= _D7_RECENT_RUN_SCENES:
             break
-        days_ago = int(max(0.0, (trigger_ts - _d7_posted_ts(row)) / 86400.0))
-        band = min(2, days_ago // 30)
-        if band_counts[band] >= _D7_RECORD_BAND_CAP:
-            continue
         scene = _d7_scene_body(row.get("condensation"))
         if not scene:
             continue
-        band_counts[band] += 1
-        record.append({
-            "post_key": row.get("post_key"),
-            "source_set": "record",
+        recent_posts.append({
             "posted_on": _d7_posted_on(row),
-            "posted_on_source": "posts.posted_at",
-            "views": row.get("views"),
-            "likes": row.get("likes"),
-            "comments": row.get("comments"),
-            "vs_usual": _d7_vs_usual(row),
+            **_d7_collab_info(row),
+            "vs_90d": _d7_vs_usual(row),
             "scene": scene,
         })
 
@@ -1632,22 +1885,18 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
         "this_post": {
             "post_key": post_key,
             "posted_on": _d7_posted_on(trigger),
-            "posted_on_source": "posts.posted_at",
             "caption": trigger.get("caption"),
-            "views": trigger.get("views"),
-            "likes": trigger.get("likes"),
-            "comments": trigger.get("comments"),
-            "vs_usual": _d7_vs_usual(trigger),
+            **_d7_collab_info(trigger),
+            "views": _d7_metric(trigger, "views"),
+            "likes": _d7_metric(trigger, "likes"),
+            "comments": _d7_metric(trigger, "comments"),
+            "vs_90d": _d7_vs_usual(trigger),
             "scene": trigger_scene,
         },
-        "metric_anomaly": metric_anomaly,
-        "standing": standing,
-        "recent_form": recent_form,
-        "recent_beats": _d7_recent_beats(trigger, last_10_rows),
-        "feeder_file": {
-            "last_10": last_10,
-            "record": record,
-        },
+        "recent_posts": recent_posts,
+        "momentum": momentum,
+        "concentration": concentration,
+        "splits": splits,
     }
 
 
@@ -1692,6 +1941,16 @@ def ensure_d7_read(conn: Any, post_key: str) -> dict[str, Any] | None:
             error=call_error or "d7 read output did not parse",
         )
         return None
+
+    # The fun_fact box is worker-computed (grounded), then merged into the stored
+    # output so the frontend can render it without the LLM inventing a stat.
+    try:
+        fun_fact = _d7_fun_fact(conn, post_key)
+    except Exception as exc:  # never let the box break the read
+        print(f"[d7_read] fun_fact failed: {exc}")
+        fun_fact = None
+    if fun_fact and isinstance(parsed.get("d7_read"), dict):
+        parsed["d7_read"]["fun_fact"] = fun_fact
 
     _record_d7_read_model_call(
         conn,
