@@ -10,6 +10,21 @@
   --fm-dashboard-accent: var(--fm-accent);
   --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
   --fm-dashboard-accent-contrast: #ffffff;
+
+  /* ── ONE GLASS SYSTEM ──────────────────────────────────────────
+     Single source of truth for every frosted surface. Only the two
+     floating chrome bars (header + bottom nav) sample the backdrop;
+     panels/chips render as translucent fills (no backdrop-filter) so
+     per-frame GPU cost is bounded by chrome area, not content volume.
+     Tweak --fm-glass-blur to taste — capped low on purpose so the
+     content behind stays evident and scroll stays smooth. */
+  --fm-glass-blur: 18px;
+  --fm-glass-saturate: 145%;
+  /* Light: evidently see-through frost (content reads through) */
+  --fm-chrome-bg: rgba(255, 255, 255, 0.46);
+  --fm-chrome-border: rgba(255, 255, 255, 0.62);
+  --fm-chrome-border-top: rgba(255, 255, 255, 0.82);
+  --fm-nav-bg: rgba(255, 255, 255, 0.52);
 }
 
 /* Explicit Light Mode */
@@ -30,6 +45,12 @@ html.dark {
   --fm-dashboard-accent: var(--fm-accent);
   --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
   --fm-dashboard-accent-contrast: #ffffff;
+
+  /* Dark: keep content evident behind the frost */
+  --fm-chrome-bg: rgba(6, 6, 6, 0.44);
+  --fm-chrome-border: rgba(255, 255, 255, 0.08);
+  --fm-chrome-border-top: rgba(255, 255, 255, 0.13);
+  --fm-nav-bg: rgba(8, 8, 8, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -155,6 +176,10 @@ body {
   overflow: hidden;
   min-height: 100dvh;
   overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
 html {
@@ -165,6 +190,19 @@ html {
   min-height: 100dvh;
   width: 100%;
   overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+button,
+a,
+input,
+textarea,
+select,
+[role="button"],
+[tabindex] {
+  touch-action: manipulation;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -175,7 +213,8 @@ html {
 
 .fm-solid-panel,
 .fm-depth-glass {
-  @apply backdrop-blur-[44px] backdrop-saturate-[190%];
+  /* No backdrop-filter: panels render over the page background, never over
+     thumbnails, so a translucent fill reads identically at zero GPU cost. */
   position: relative;
   border-radius: 22px;
   background:
@@ -228,9 +267,8 @@ html {
 /* Chip: raised button/badge with own depth */
 .fm-solid-chip,
 .fm-depth-chip {
-  @apply backdrop-blur-[20px] backdrop-saturate-[160%];
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(14, 19, 28, 0.06);
   border-top-color: rgba(255, 255, 255, 0.84);
   box-shadow:
@@ -241,7 +279,7 @@ html {
 
 .dark .fm-solid-chip,
 .dark .fm-depth-chip {
-  background: rgba(16, 16, 16, 0.65);
+  background: rgba(16, 16, 16, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-top-color: rgba(255, 255, 255, 0.12);
   box-shadow:
@@ -376,6 +414,12 @@ html.fm-mobile-browser-immersive body > main {
   background-color: transparent !important;
 }
 
+html.fm-mobile-browser-immersive,
+html.fm-mobile-browser-immersive body,
+html.fm-mobile-browser-immersive body > main {
+  min-height: 100lvh;
+}
+
 html.fm-fire-root-scroll {
   overflow-y: auto !important;
   overflow-x: hidden !important;
@@ -461,45 +505,49 @@ html.fm-feed-root-scroll body {
 
 .fm-tab-header-shell,
 .fm-tab-content-shell {
-  width: 94%;
+  width: 96%;
   margin-left: auto;
   margin-right: auto;
 }
 
 .fm-solid-chrome,
 .fm-depth-chrome {
-  @apply backdrop-blur-[48px] backdrop-saturate-[200%];
+  /* The only surfaces that sample the backdrop. Blur radius is a token so
+     intensity is tunable in one place; capped low so content stays evident
+     and the filter recomputes cheaply on scroll. */
+  -webkit-backdrop-filter: blur(var(--fm-glass-blur)) saturate(var(--fm-glass-saturate));
+  backdrop-filter: blur(var(--fm-glass-blur)) saturate(var(--fm-glass-saturate));
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-top-color: rgba(255, 255, 255, 0.9);
+  background: var(--fm-chrome-bg);
+  border: 1px solid var(--fm-chrome-border);
+  border-top-color: var(--fm-chrome-border-top);
+  /* Own compositing layer so the two bars stay isolated from content paint.
+     Do not animate blur itself; chrome transitions should be opacity/transform. */
+  will-change: transform, opacity;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
     0 -1px 0 rgba(0, 0, 0, 0.03) inset,
     0 4px 8px rgba(0, 0, 0, 0.03),
     0 12px 28px -4px rgba(0, 0, 0, 0.08),
-    0 32px 64px -12px rgba(0, 0, 0, 0.1),
-    0 48px 96px -16px rgba(0, 0, 0, 0.06);
+    0 32px 64px -12px rgba(0, 0, 0, 0.1);
+  /* Only paint-cheap properties transition during shrink/expand. Padding &
+     border-radius are driven on the element directly; backdrop-filter is NOT
+     transitioned (re-rastering a transitioning blur is the classic jank). */
   transition:
-    background 320ms cubic-bezier(0.32, 0.72, 0, 1),
-    border-color 320ms cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 320ms cubic-bezier(0.32, 0.72, 0, 1),
-    padding 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    border-radius 280ms cubic-bezier(0.32, 0.72, 0, 1);
+    background 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    padding 620ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 620ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .dark .fm-solid-chrome,
 .dark .fm-depth-chrome {
-  background: rgba(6, 6, 6, 0.65);
-  border-color: rgba(255, 255, 255, 0.07);
-  border-top-color: rgba(255, 255, 255, 0.12);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
     0 -1px 0 rgba(0, 0, 0, 0.5) inset,
     0 8px 16px rgba(0, 0, 0, 0.4),
-    0 24px 48px -8px rgba(0, 0, 0, 0.6),
-    0 48px 96px -16px rgba(0, 0, 0, 0.5);
+    0 24px 48px -8px rgba(0, 0, 0, 0.55);
 }
 
 .fm-solid-chrome::before,
@@ -551,19 +599,16 @@ html.fm-feed-root-scroll body {
   border-radius: 26px;
 }
 
-.fm-depth-chrome--nav {
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.88);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  transition:
-    background 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+.fm-feed-header-morph-isolated {
+  contain: layout paint style;
 }
 
-.dark .fm-depth-chrome--nav {
-  background: rgba(6, 6, 6, 0.9);
+.fm-depth-chrome--nav {
+  border-radius: 28px;
+  /* Same frosted glass as the header so the floating bar glides over content
+     symmetrically (top + bottom). Slightly more opaque than the header for
+     tap-target legibility, but still evidently translucent. */
+  background: var(--fm-nav-bg);
 }
 
 .fm-fire-page-surface {
@@ -655,22 +700,11 @@ html.fm-feed-root-scroll body {
     background-size: 100% 100%;
   }
 
-  .fm-dashboard-mesh .fm-solid-chrome,
-  .fm-dashboard-mesh .fm-depth-chrome {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background: rgba(255, 255, 255, 0.94);
-  }
-
-  .dark .fm-dashboard-mesh .fm-solid-chrome,
-  .dark .fm-dashboard-mesh .fm-depth-chrome {
-    background: rgba(8, 8, 8, 0.9);
-  }
-
+  /* Desktop keeps the same frosted chrome as mobile (the old override that
+     killed blur here is gone — that was the "desktop feed has no glass" bug).
+     Panels stay a touch more opaque on desktop for crisp text on dense bento. */
   .fm-solid-panel,
   .fm-depth-glass {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.93)),
       rgba(255, 255, 255, 0.92);
@@ -679,18 +713,6 @@ html.fm-feed-root-scroll body {
   .dark .fm-solid-panel,
   .dark .fm-depth-glass {
     background: rgba(8, 8, 8, 0.88);
-  }
-
-  .fm-solid-chip,
-  .fm-depth-chip {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background: rgba(255, 255, 255, 0.88);
-  }
-
-  .dark .fm-solid-chip,
-  .dark .fm-depth-chip {
-    background: rgba(16, 16, 16, 0.84);
   }
 }
 

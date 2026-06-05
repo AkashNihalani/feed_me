@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
@@ -14,10 +14,16 @@ interface FluidDeckProps {
   loadingMore?: boolean;
   onLoadMore?: () => void;
   onOpenCard?: (item: FireItem) => void;
+  onStandaloneIndexChange?: (index: number, meta: StandaloneIndexMeta) => void;
   usePageScroll?: boolean;
   resetKey?: string;
   total?: number;
 }
+
+type StandaloneIndexMeta = {
+  previousIndex: number;
+  direction: -1 | 0 | 1;
+};
 
 type StandaloneDeckState = {
   activeCardId: string | null;
@@ -120,14 +126,12 @@ function writeStandaloneDeckState(
 // ─── VirtualSlot: used by non-PWA mobile only (desktop renders inline) ───────
 function VirtualSlot({
   item,
-  index,
   isActive,
   mobileAutoplayEnabled,
   onOpenDetails,
   onBeforeOpenPost,
 }: {
   item: FireItem;
-  index: number;
   isActive: boolean;
   mobileAutoplayEnabled: boolean;
   onOpenDetails: () => void;
@@ -161,7 +165,15 @@ function VirtualSlot({
             y: isActive ? -6 : 14,
             scale: isActive ? 1.02 : 0.965,
           }}
-          transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
+          transition={{
+            // Depth swap (front/back shift) follows scroll directly — no index
+            // delay, which otherwise lagged the active flip by up to 100ms. A
+            // spring settles more naturally than a fixed tween and absorbs rapid
+            // scroll interrupts by carrying velocity into the next swap.
+            opacity: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
+            y: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
+            scale: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
+          }}
           className="relative w-full"
           style={{ zIndex: isActive ? 30 : 10 }}
         >
@@ -191,7 +203,17 @@ function VirtualSlot({
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onOpenCard, usePageScroll = false, resetKey, total }: FluidDeckProps) {
+function FluidDeck({
+  cards,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  onOpenCard,
+  onStandaloneIndexChange,
+  usePageScroll = false,
+  resetKey,
+  total,
+}: FluidDeckProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(cards[0]?.id ?? null);
   const activeCardIdRef = useRef<string | null>(cards[0]?.id ?? null);
@@ -207,6 +229,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
   const restoreRafIdsRef = useRef<number[]>([]);
   const scrollToTopRafRef = useRef<number | null>(null);
   const pwaTopReturnTimeoutIdsRef = useRef<number[]>([]);
+  const reportedPwaIndexRef = useRef(0);
 
   // ── PWA-specific state ──────────────────────────────────────────────────────
   // Independent index tracked outside scroll — drives the transform-based stack
@@ -272,6 +295,15 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     currentIndexRef.current = pwaIndex;
     activeCardIdRef.current = card.id;
   }, [cards, isDesktop, pwaIndex, usePwaSnap]);
+
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop) return;
+    const previousIndex = reportedPwaIndexRef.current;
+    const delta = pwaIndex - previousIndex;
+    const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
+    reportedPwaIndexRef.current = pwaIndex;
+    onStandaloneIndexChange?.(pwaIndex, { previousIndex, direction });
+  }, [isDesktop, onStandaloneIndexChange, pwaIndex, usePwaSnap]);
 
   const clearScheduledStandaloneRestore = useCallback(() => {
     restoreTimeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
@@ -628,7 +660,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
               return (
                 <motion.div
                   key={card.id}
-                  className="absolute inset-0 flex items-center justify-center px-2"
+                  className="absolute inset-0 flex items-center justify-center px-0 sm:px-2"
                   animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
                   transition={{
                     type: 'spring',
@@ -645,7 +677,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                     pointerEvents: isCurrent ? 'auto' : 'none',
                   }}
                 >
-                  <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset }}>
+                  <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset, transition: 'margin-top 340ms cubic-bezier(0.32,0.72,0,1)' }}>
                     <div
                       className="w-full max-w-[472px]"
                       style={{
@@ -715,7 +747,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
       : enableContainerSnap
         ? 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain hide-scrollbar'
         : 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth hide-scrollbar',
-    'px-2 sm:px-3 lg:px-4',
+    'px-0 sm:px-3 lg:px-4',
     'pt-[calc(var(--fire-header-height,168px)+40px)]',
     isDesktop ? 'pb-[148px]' : 'pb-[88px]',
     'lg:snap-none',
@@ -789,7 +821,7 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                 className="flex flex-col"
               >
                 <AnimatePresence mode="popLayout">
-                  {cards.map((card, index) => {
+                  {cards.map((card) => {
                     const isActive = resolvedActive === card.id;
                     return (
                       <motion.div
@@ -810,7 +842,6 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
                         <div className="w-full max-w-[472px]">
                         <VirtualSlot
                           item={card}
-                          index={index}
                           isActive={isActive}
                           mobileAutoplayEnabled={mobileAutoplayEnabled}
                           onOpenDetails={() => undefined}
@@ -856,3 +887,5 @@ export default function FluidDeck({ cards, hasMore, loadingMore, onLoadMore, onO
     </div>
   );
 }
+
+export default memo(FluidDeck);

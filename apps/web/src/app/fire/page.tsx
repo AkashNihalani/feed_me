@@ -25,7 +25,7 @@ import {
   WarmupMediaBucket,
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
-import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
+import { HEADER_STAGGER_CONTAINER } from '@/lib/motion';
 import { getFireSignalMeta } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
@@ -43,6 +43,12 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_CHROME_PILL_SPRING = { type: 'spring', stiffness: 420, damping: 32, mass: 0.82 } as const;
+const FIRE_HEADER_LAYER_TRANSITION = { duration: 0.62, ease: APPLE_EASE } as const;
+const FIRE_HEADER_SCROLL_COMPRESS = {
+  collapseDistance: typeof window === 'undefined' ? 260 : Math.round(window.innerHeight * 0.32),
+  expandDistance: typeof window === 'undefined' ? 150 : Math.round(window.innerHeight * 0.18),
+  topGuard: 34,
+} as const;
 const FIRE_META_CACHE_KEY = 'fire:meta:v5';
 const FIRE_STATE_CACHE_KEY = 'fire:state:v12';
 const FIRE_PAGE_CACHE_PREFIX = 'fire:page:v16';
@@ -725,9 +731,22 @@ export default function FirePage() {
   const [isStandaloneMode, setIsStandaloneMode] = useState(false);
   const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const [initialDataReady, setInitialDataReady] = useState(false);
+  const [standaloneHeaderCompressed, setStandaloneHeaderCompressed] = useState(false);
+  const standaloneForwardStepsRef = useRef(0);
   const useBrowserPageScroll = !isDesktopViewport;
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
-  const headerCompressed = useCompressedOnScroll(contentRef, useBrowserPageScroll && !isDesktopViewport, 24);
+  const scrollHeaderCompressed = useCompressedOnScroll(
+    contentRef,
+    useBrowserPageScroll && !isDesktopViewport && !isStandaloneMode,
+    FIRE_HEADER_SCROLL_COMPRESS,
+  );
+  const headerCompressed = isStandaloneMode && !isDesktopViewport
+    ? standaloneHeaderCompressed
+    : scrollHeaderCompressed;
+  // Mirror of headerCompressed read inside the height-measure effect without
+  // re-subscribing it — lets us publish ONLY the expanded header height.
+  const headerCompressedRef = useRef(headerCompressed);
+  useEffect(() => { headerCompressedRef.current = headerCompressed; }, [headerCompressed]);
 
   const hasActiveFilters = filters.mediaFilter !== 'ALL'
     || filters.selectedFeedIds.length > 0
@@ -757,6 +776,18 @@ export default function FirePage() {
 
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
+  // Selected date broken into pieces for the collapsed one-row header.
+  const selectedDateParts = useMemo(() => {
+    if (!selectedDay) return null;
+    const date = new Date(`${selectedDay}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    return {
+      day: selectedDay.split('-')[2] ?? '',
+      weekday: date.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase(),
+      month: date.toLocaleDateString('en-US', { month: 'long' }).toUpperCase(),
+      year: String(date.getFullYear()),
+    };
+  }, [selectedDay]);
   const handleSelectedDayChange = useCallback((nextDay: string) => {
     startTransition(() => {
       setSelectedDay(nextDay);
@@ -776,6 +807,43 @@ export default function FirePage() {
     () => (desktopModalCard ? displayCards.findIndex((card) => card.id === desktopModalCard.id) : -1),
     [desktopModalCard, displayCards],
   );
+
+  const handleStandaloneIndexChange = useCallback((
+    index: number,
+    meta: { previousIndex: number; direction: -1 | 0 | 1 },
+  ) => {
+    if (isDesktopViewport) {
+      standaloneForwardStepsRef.current = 0;
+      setStandaloneHeaderCompressed(false);
+      return;
+    }
+
+    if (meta.direction < 0) {
+      standaloneForwardStepsRef.current = 0;
+      setStandaloneHeaderCompressed(false);
+      return;
+    }
+
+    if (meta.direction > 0) {
+      standaloneForwardStepsRef.current += Math.max(1, index - meta.previousIndex);
+      if (standaloneForwardStepsRef.current >= 2) {
+        setStandaloneHeaderCompressed(true);
+      }
+      return;
+    }
+
+    if (index === 0) {
+      standaloneForwardStepsRef.current = 0;
+      setStandaloneHeaderCompressed(false);
+    }
+  }, [isDesktopViewport]);
+
+  useEffect(() => {
+    if (isDesktopViewport || displayCards.length === 0) {
+      standaloneForwardStepsRef.current = 0;
+      setStandaloneHeaderCompressed(false);
+    }
+  }, [displayCards.length, isDesktopViewport]);
 
   useEffect(() => {
     cardsRef.current = cards;
@@ -986,17 +1054,32 @@ export default function FirePage() {
     const node = headerRef.current;
     if (!node) return;
 
-    const updateHeight = () => setHeaderHeight(Math.ceil(node.getBoundingClientRect().height));
-    updateHeight();
-
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateHeight);
-    observer?.observe(node);
-    window.addEventListener('resize', updateHeight);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', updateHeight);
+    // Publish ONLY the expanded header height to --fire-header-height (which
+    // drives the content's top offset). If we tracked the live height while the
+    // header collapses/expands, the content would reflow mid-scroll and stall
+    // momentum ("scroll catch"). Freezing the offset = the collapse is a pure
+    // overlay animation; the scroll never stutters. Commits are debounced so the
+    // expand animation's intermediate heights are never published.
+    let debounce = 0;
+    const commit = () => {
+      if (headerCompressedRef.current) return;
+      setHeaderHeight(Math.ceil(node.getBoundingClientRect().height));
     };
-  }, [headerCompressed, pickerDays, availableCheckpoints.length, filters.mediaFilter, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
+    const scheduleCommit = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(commit, 720);
+    };
+    commit();
+
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleCommit);
+    observer?.observe(node);
+    window.addEventListener('resize', scheduleCommit);
+    return () => {
+      window.clearTimeout(debounce);
+      observer?.disconnect();
+      window.removeEventListener('resize', scheduleCommit);
+    };
+  }, [pickerDays, availableCheckpoints.length, filters.mediaFilter, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
 
   useEffect(() => {
     if (!initialDataReady) return;
@@ -1419,58 +1502,110 @@ export default function FirePage() {
         initial="initial"
         animate="animate"
         className={cn(
-          'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+          'pointer-events-none inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
           useBrowserPageScroll ? 'fixed' : 'absolute',
         )}
       >
         <div className="relative fm-tab-header-shell">
-          <div className={cn('fm-depth-chrome fm-depth-chrome--header w-full', headerCompressed && 'fm-depth-chrome--header-compressed')}>
+          <motion.div
+            className={cn(
+              'fm-depth-chrome fm-depth-chrome--header pointer-events-auto w-full',
+              headerCompressed && 'fm-depth-chrome--header-compressed',
+            )}
+            initial={false}
+            animate={{ scale: headerCompressed ? 0.997 : 1 }}
+            transition={FIRE_HEADER_LAYER_TRANSITION}
+            style={{
+              transformOrigin: 'top center',
+              willChange: 'transform',
+            }}
+          >
             <div className="relative z-10 px-3.5 sm:px-4 lg:px-5">
-              <div className={cn(
-                'flex flex-col transition-[gap] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] lg:hidden',
-                headerCompressed ? 'gap-1.5' : 'gap-2.5',
-              )}>
-                <motion.div variants={HEADER_ROW} className="flex items-center justify-between gap-3">
-                  <motion.h1
+              <motion.div
+                className="grid overflow-hidden lg:hidden"
+                initial={false}
+                animate={{
+                  gridTemplateRows: headerCompressed ? '52px 0px' : '52px 60px',
+                  rowGap: headerCompressed ? 0 : 10,
+                }}
+                transition={FIRE_HEADER_LAYER_TRANSITION}
+                style={{ willChange: 'grid-template-rows' }}
+              >
+                <motion.div initial={false} animate={{ opacity: 1 }} className="relative flex h-[52px] items-center">
+                  <motion.div
+                    className="absolute inset-0 flex items-center justify-between gap-3"
+                    initial={false}
                     animate={{
-                      scale: headerCompressed ? 0.74 : 1,
-                      opacity: headerCompressed ? 0.9 : 1,
+                      opacity: headerCompressed ? 0 : 1,
+                      x: headerCompressed ? -10 : 0,
+                      scale: headerCompressed ? 0.985 : 1,
                     }}
-                    transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-                    className="origin-left shrink-0 text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title"
+                    transition={FIRE_HEADER_LAYER_TRANSITION}
+                    style={{ pointerEvents: headerCompressed ? 'none' : 'auto' }}
                   >
-                    FIRE
-                  </motion.h1>
-                  <div className="flex items-center gap-2">
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      type="button"
-                      onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
-                      className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
-                    >
-                      <ArrowUpDown size={14} />
-                      <span>{filters.sort === 'best' ? 'PCTL' : 'RECENT'}</span>
-                    </motion.button>
-                    <motion.button
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => {
-                        play('snapLock');
-                        setIsZSpaceOpen(true);
-                      }}
-                      className={cn(
-                        'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
-                        'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
-                        hasActiveFilters ? 'text-[#E11D48]' : 'text-black/58 dark:text-white/45',
-                      )}
-                    >
-                      <SlidersHorizontal size={20} />
-                    </motion.button>
-                  </div>
+                    <h1 className="shrink-0 text-[34px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">
+                      FIRE
+                    </h1>
+                    <div className="flex items-center gap-2">
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        type="button"
+                        onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
+                        className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                      >
+                        <ArrowUpDown size={14} />
+                        <span>{filters.sort === 'best' ? 'PCTL' : 'RECENT'}</span>
+                      </motion.button>
+                      <motion.button
+                        whileTap={{ scale: 0.92 }}
+                        onClick={() => {
+                          play('snapLock');
+                          setIsZSpaceOpen(true);
+                        }}
+                        className={cn(
+                          'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
+                          'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
+                          hasActiveFilters ? 'text-[#E11D48]' : 'text-black/58 dark:text-white/45',
+                        )}
+                      >
+                        <SlidersHorizontal size={20} />
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                  <motion.div
+                    className="absolute inset-0 flex items-center justify-between gap-4"
+                    initial={false}
+                    animate={{
+                      opacity: headerCompressed ? 1 : 0,
+                      x: headerCompressed ? 0 : 10,
+                      scale: headerCompressed ? 1 : 0.985,
+                    }}
+                    transition={FIRE_HEADER_LAYER_TRANSITION}
+                    style={{ pointerEvents: headerCompressed ? 'auto' : 'none' }}
+                  >
+                    <span className="text-[50px] font-black leading-[0.78] tracking-[-0.055em] text-black dark:text-white fm-depth-title">
+                      {selectedDateParts?.day ?? '--'}
+                    </span>
+                    <div className="flex min-w-0 flex-col items-end text-right leading-[1.0]">
+                      <span className="max-w-full truncate text-[18px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
+                        {selectedDateParts?.weekday ?? ''}
+                      </span>
+                      <span className="mt-0.5 text-[11px] font-black uppercase tracking-[0.28em] text-black/45 dark:text-white/40">
+                        {selectedDateParts ? `${selectedDateParts.month} ${selectedDateParts.year}` : ''}
+                      </span>
+                    </div>
+                  </motion.div>
                 </motion.div>
-                <motion.div variants={HEADER_ROW} className="min-w-0 pointer-events-auto">
+                <motion.div
+                  initial={false}
+                  className="min-w-0 overflow-hidden pointer-events-auto"
+                  animate={{ opacity: headerCompressed ? 0 : 1, y: headerCompressed ? -8 : 0 }}
+                  transition={FIRE_HEADER_LAYER_TRANSITION}
+                  style={{ pointerEvents: headerCompressed ? 'none' : 'auto' }}
+                >
                   <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} />
                 </motion.div>
-              </div>
+              </motion.div>
 
               <div className="hidden flex-col gap-2 lg:flex">
                 <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
@@ -1618,10 +1753,10 @@ export default function FirePage() {
                         );
                       })}
                     </div>
-                  </div>
                 </div>
               </div>
-          </div>
+            </div>
+          </motion.div>
         </div>
       </motion.div>
 
@@ -1652,6 +1787,7 @@ export default function FirePage() {
                   loadingMore={loadingMore}
                   onLoadMore={handleLoadMore}
                   onOpenCard={setDesktopModalCard}
+                  onStandaloneIndexChange={handleStandaloneIndexChange}
                   usePageScroll={useBrowserPageScroll}
                   resetKey={deckResetKey}
                   total={total}

@@ -63,16 +63,21 @@ function parsePostContextRead(meta: Record<string, unknown>) {
   const metricContext = text(read.metric_context).trim();
   const readText = text(read.read).trim();
   const direction = text(read.direction).trim();
+  const scene = text(read.scene).trim() || readText;
+  const fit = text(read.fit).trim() || text(read.memory_match).trim();
+  const recentRun = text(read.recent_run).trim();
+  const funFactRecord = asRec(read.fun_fact);
+  const funFact = text(funFactRecord.text).trim() || text(read.fun_fact).trim() || text(read.numbers).trim() || headline;
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 2);
   const notes = textList(read.notes, 2);
-  const isD7Read = source === 'd7_read' || Boolean(headline || metricContext || readText || direction);
+  const isD7Read = source === 'd7_read' || Boolean(headline || metricContext || readText || direction || scene || fit || recentRun || funFact);
   const sourceLabel = text(read.source_label) || (source === 'post_fingerprint' ? 'Fingerprint' : isD7Read ? 'D7 Post Mortem' : 'Context Layer');
   if (!isD7Read && matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
     return null;
   }
-  return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, isD7Read };
+  return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, scene, fit, recentRun, funFact, isD7Read };
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -216,6 +221,8 @@ export function FireCard3D({
   const value = num(bestMetricObj.value) ?? item.metricValue;
   const baseline = num(bestMetricObj.baseline);
   const multiple = num(bestMetricObj.multiple);
+  const heroBaselineLabel = baseline == null ? '-- usual' : `${compact(baseline)} usual`;
+  const heroMultipleLabel = multiple == null ? '--' : `${multiple.toFixed(2)}x`;
   const supportMetrics = orderedSupportMetricsFromPayload(
     metrics,
     bestMetric,
@@ -223,7 +230,10 @@ export function FireCard3D({
   ).map((metric) => ({
     key: metric.key,
     label: metricLabel(metric.key, 'singular'),
-    value: metric.multiple == null ? 'x--' : `${metric.multiple.toFixed(2)}x`,
+    value: metric.value,
+    multiple: metric.multiple,
+    baseline: metric.baseline,
+    multipleLabel: metric.multiple == null ? '--' : `${metric.multiple.toFixed(2)}x`,
   }));
 
   const bestInLastN = num(bestMetricObj.best_in_last_n);
@@ -851,68 +861,25 @@ export function FireCard3D({
               
               <div className="relative z-10 flex min-h-0 flex-1 flex-col">
               <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
-              {postContextRead && (
-                <div className="mb-2 sm:mb-3 rounded-[16px] border border-white/60 bg-white/50 p-2.5 sm:p-3 shadow-[0_12px_28px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/18 dark:bg-black/38 dark:shadow-[0_14px_30px_rgba(0,0,0,0.56),inset_0_1px_0_rgba(255,255,255,0.1)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
-                      {postContextRead.isD7Read ? 'Post Mortem' : 'Post Read'}
+              <div className="mb-2 sm:mb-3 overflow-hidden rounded-[16px] border border-[#E11D48]/10 bg-[#E11D48] p-2.5 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] sm:p-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(92px,auto)] items-stretch gap-2">
+                  <div className="min-w-0 py-0.5">
+                    <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-white/72">Performance</div>
+                    <div className="mt-1 truncate text-[clamp(25px,7.3vw,40px)] font-black leading-[0.86] tracking-[-0.05em] text-white drop-shadow-sm">
+                      {compact(value)} {bestMetric.toUpperCase()}
                     </div>
-                    <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/42">
-                      {postContextRead.sourceLabel}
+                    <div className="mt-1 text-[10px] sm:text-[11px] font-black uppercase leading-none tracking-[0.12em] text-white/68">
+                      {heroBaselineLabel}
                     </div>
                   </div>
-                  {postContextRead.isD7Read ? (
-                    <>
-                      {postContextRead.headline ? (
-                        <p className="mt-1.5 text-[13px] font-black leading-tight tracking-[-0.02em] text-foreground/86 dark:text-white/82">
-                          {postContextRead.headline}
-                        </p>
-                      ) : null}
-                      {postContextRead.metricContext ? (
-                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#E11D48]/82">
-                          {postContextRead.metricContext}
-                        </p>
-                      ) : null}
-                      {postContextRead.readText ? (
-                        <p className="mt-1.5 text-[10px] font-semibold leading-snug text-foreground/66 dark:text-white/58">
-                          {postContextRead.readText}
-                        </p>
-                      ) : null}
-                      {postContextRead.direction ? (
-                        <div className="mt-2 rounded-[10px] bg-white/50 px-2 py-1.5 text-[9px] font-semibold leading-snug text-foreground/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/[0.07] dark:text-white/46">
-                          {postContextRead.direction}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      {postContextRead.matches.length > 0 && (
-                        <p className="mt-1.5 text-[11px] font-semibold leading-snug text-foreground/72 dark:text-white/64">
-                          {postContextRead.matches[0]}
-                        </p>
-                      )}
-                      <div className="mt-2 grid gap-1.5">
-                        {[...postContextRead.matches.slice(1, 3), ...postContextRead.deviates.slice(0, 2), ...postContextRead.notes.slice(0, 1)].slice(0, 4).map((line) => (
-                          <div
-                            key={`${item.id}-read-${line}`}
-                            className="rounded-[10px] bg-white/50 px-2 py-1.5 text-[9px] font-semibold leading-snug text-foreground/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/[0.07] dark:text-white/46"
-                          >
-                            {line}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="mb-2 sm:mb-3 rounded-[16px] bg-[#E11D48] p-2.5 sm:p-3 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] border border-[#E11D48]/10">
-                <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-white/72">Performance</div>
-                <div className="mt-0.5 text-[clamp(28px,8.2vw,46px)] font-black leading-[0.88] tracking-[-0.04em] text-white drop-shadow-sm">
-                  {compact(value)} {bestMetric.toUpperCase()}
-                </div>
-                <div className="mt-1 flex items-end gap-2 text-[clamp(11px,3.3vw,19px)] font-black leading-none">
-                  <span className="text-white/72">{compact(baseline)} USUAL</span>
-                  <span className="text-white">{multiple == null ? '--' : multiple.toFixed(2)}× MULTIPLE</span>
+                  <div className="flex min-w-[92px] flex-col justify-center rounded-[14px] border border-white/26 bg-white/14 px-2.5 py-1.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(136,19,55,0.16)]">
+                    <div className="text-[clamp(30px,8.6vw,46px)] font-black leading-[0.82] tracking-[-0.07em] text-white drop-shadow-[0_8px_16px_rgba(136,19,55,0.22)]">
+                      {heroMultipleLabel}
+                    </div>
+                    <div className="mt-1 text-[8px] sm:text-[9px] font-black uppercase leading-none tracking-[0.18em] text-white/66">
+                      Multiple
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -924,26 +891,45 @@ export function FireCard3D({
               >
                 {/* ── Supporting Metrics (matches desktop) ── */}
                 <div className="col-span-12">
-                  <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7),inset_0_-8px_16px_rgba(255,255,255,0.12)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
+                  <div className="rounded-[14px] border border-white/70 bg-white/72 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgba(225,29,72,0.05)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)]">
                     <div className="flex items-center justify-between">
-                      <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Supporting Metrics</div>
-                      <div className="text-[7px] sm:text-[8px] font-bold uppercase tracking-[0.12em] text-foreground/40">
+                      <div className="flex items-center gap-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/72">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.45)]" />
+                        Supporting Metrics
+                      </div>
+                      <div className="rounded-full bg-[#E11D48]/10 px-2 py-0.5 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-[#E11D48]">
                         {bestInLastN == null ? 'Best in — posts' : `Best in ${Math.max(1, Math.round(bestInLastN))} posts`}
                       </div>
                     </div>
-                    <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    <div className={[
+                      'mt-2 grid gap-1.5',
+                      supportMetrics.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
+                    ].join(' ')}>
                       {supportMetrics.map((metric) => {
-                        const metricObj = asRec(metrics[metric.key]);
-                        const metricValue = num(metricObj.value);
                         return (
-                          <div key={metric.key} className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
-                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/60">{metric.label}</div>
-                            <div className="mt-0.5 flex items-end justify-between gap-1">
-                              <div className="text-[14px] sm:text-[16px] font-black leading-none text-foreground/90">
-                                {metricValue == null ? '--' : compact(metricValue)}
+                          <div
+                            key={metric.key}
+                            className="rounded-[12px] border border-black/[0.04] bg-white/86 px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.11] dark:shadow-[0_10px_22px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                          >
+                            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.15em] text-foreground/54 dark:text-white/46">
+                              {metric.label}
+                            </div>
+                            <div className="mt-1 flex items-end justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[21px] sm:text-[24px] font-black leading-none text-foreground/96 dark:text-white/92">
+                                  {metric.value == null ? '--' : compact(metric.value)}
+                                </div>
+                                <div className="mt-0.5 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38 dark:text-white/32">
+                                  {metric.baseline == null ? 'Tracked' : `${compact(metric.baseline)} usual`}
+                                </div>
                               </div>
-                              <div className="text-[16px] sm:text-[20px] font-black leading-none tracking-[-0.03em] text-foreground/95">
-                                {metric.value}
+                              <div className="text-right">
+                                <div className="text-[22px] sm:text-[26px] font-black leading-none text-[#E11D48] drop-shadow-[0_8px_16px_rgba(225,29,72,0.16)]">
+                                  {metric.multipleLabel}
+                                </div>
+                                <div className="mt-0.5 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-[#E11D48]/60">
+                                  Lift
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -957,21 +943,21 @@ export function FireCard3D({
                 {isD1 ? (
                   <>
                     <div className="col-span-12">
-                      <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
-                        <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Timing</div>
+                      <div className="rounded-[14px] border border-white/70 bg-white/70 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/18 dark:bg-black/56 dark:shadow-[0_16px_34px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                        <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/72">Timing</div>
                         <div className={`mt-1.5 grid gap-1 ${hourMult == null ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                          <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
-                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Post Time</div>
-                            <div className="mt-0.5 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
+                          <div className="rounded-[12px] border border-white/60 bg-white/80 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/12">
+                            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] text-foreground/56">Post Time</div>
+                            <div className="mt-1 text-[22px] sm:text-[26px] font-black leading-none text-foreground/96">
                               {hourDisplay}
                             </div>
                           </div>
                           {hourMult == null ? null : (
-                            <div className="rounded-[8px] bg-white/55 p-1.5 sm:p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:bg-white/14">
-                            <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60">Time Lift</div>
-                              <div className="mt-0.5 flex min-w-0 items-baseline gap-1 text-[16px] sm:text-[20px] font-black leading-none text-foreground/95">
-                                <span>{`${hourMult.toFixed(2)}x`}</span>
-                                <span className="min-w-0 truncate text-[7px] sm:text-[8px] font-medium text-foreground/40">
+                            <div className="rounded-[12px] border border-[#E11D48]/12 bg-white/80 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[#E11D48]/18 dark:bg-white/12">
+                            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] text-foreground/56">Time Lift</div>
+                              <div className="mt-1 flex min-w-0 items-end gap-1.5 font-black leading-none">
+                                <span className="text-[24px] sm:text-[28px] text-[#E11D48]">{`${hourMult.toFixed(2)}x`}</span>
+                                <span className="min-w-0 truncate pb-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.08em] text-foreground/40">
                                   vs usual {hour === null ? 'same-hour' : hourDisplay} posts
                                 </span>
                               </div>
@@ -984,34 +970,38 @@ export function FireCard3D({
                 ) : (
                   <>
                     <div className="col-span-12">
-                      <div className="rounded-[11px] border border-white/55 bg-white/45 p-2 sm:p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/22 dark:bg-black/45 dark:shadow-[0_14px_30px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.16)]">
+                      <div className="rounded-[14px] border border-white/70 bg-white/70 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/18 dark:bg-black/56 dark:shadow-[0_16px_34px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.12)]">
                         <div className="flex items-center justify-between">
-                          <div className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-foreground/70">Trajectory</div>
-                          <div className={`text-[8px] sm:text-[9px] font-bold uppercase tracking-[0.12em] ${
-                            delta != null && delta > 0 ? 'text-emerald-600 dark:text-[#E11D48]'
-                            : delta != null && delta < 0 ? 'text-orange-500 dark:text-[#ff8a65]'
-                            : 'text-foreground/40'
+                          <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/72">Trajectory</div>
+                          <div className={`rounded-full px-2 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] ${
+                            delta != null && delta > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:bg-[#E11D48]/14 dark:text-[#E11D48]'
+                            : delta != null && delta < 0 ? 'bg-orange-500/12 text-orange-500 dark:bg-[#ff8a65]/12 dark:text-[#ff8a65]'
+                            : 'bg-black/[0.04] text-foreground/40 dark:bg-white/[0.06]'
                           }`}>
                             {delta == null || Math.round(delta) === 0 ? 'Flat' : delta > 0 ? 'Improving' : 'Cooling'}
                           </div>
                         </div>
-                        <div className="mt-1.5 flex items-end justify-between gap-3">
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
                           <div>
-                            <div className={`text-[28px] sm:text-[32px] font-black leading-none tracking-[-0.04em] ${
-                              isPositiveShift ? 'text-foreground dark:text-[#E11D48]' : 'text-foreground/95'
-                            }`}>
-                              {displayDeltaStr}
-                            </div>
-                            <div className="mt-0.5 text-[8px] sm:text-[9px] font-medium text-foreground/40">
-                              Shift vs first checkpoint
+                            <div className="rounded-[12px] border border-white/60 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/12">
+                              <div className={`text-[34px] sm:text-[38px] font-black leading-none ${
+                                isPositiveShift ? 'text-[#E11D48]' : 'text-foreground/96 dark:text-white/92'
+                              }`}>
+                                {displayDeltaStr}
+                              </div>
+                              <div className="mt-1 text-[8px] sm:text-[9px] font-black uppercase leading-tight tracking-[0.1em] text-foreground/40">
+                                Shift vs first
+                              </div>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-[16px] sm:text-[18px] font-black leading-none tracking-[-0.03em] text-foreground/90">
-                              {currentTrajectory == null ? '--' : `Top ${Math.round(currentTrajectory)}%`}
-                            </div>
-                            <div className="mt-0.5 text-[8px] sm:text-[9px] font-medium text-foreground/40">
-                              Current position
+                            <div className="rounded-[12px] border border-[#E11D48]/12 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[#E11D48]/18 dark:bg-white/12">
+                              <div className="text-[24px] sm:text-[28px] font-black leading-none text-[#E11D48]">
+                                {currentTrajectory == null ? '--' : `Top ${Math.round(currentTrajectory)}%`}
+                              </div>
+                              <div className="mt-1 text-[8px] sm:text-[9px] font-black uppercase leading-tight tracking-[0.1em] text-foreground/40">
+                                Current position
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1020,6 +1010,98 @@ export function FireCard3D({
                   </>
                 )}
               </motion.div>
+              {postContextRead && (
+                <div className="mt-2 mb-2 sm:mb-3 rounded-[16px] border border-white/70 bg-white/76 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgba(225,29,72,0.04)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)] sm:p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
+                      <span className="h-2 w-2 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]" />
+                      {postContextRead.isD7Read ? 'Post Mortem' : 'Post Read'}
+                    </div>
+                    <div className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:bg-white/[0.06] dark:text-white/38">
+                      {postContextRead.sourceLabel}
+                    </div>
+                  </div>
+
+                  {postContextRead.isD7Read ? (
+                    <div className="mt-2 grid gap-2">
+                      {[
+                        { label: 'Scene', value: postContextRead.scene },
+                        { label: 'Fit', value: postContextRead.fit },
+                        { label: 'Run', value: postContextRead.recentRun },
+                      ]
+                        .filter((field) => field.value)
+                        .map((field) => (
+                          <div
+                            key={`${item.id}-d7-${field.label}`}
+                            className="rounded-[14px] border border-black/[0.04] bg-white/88 px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.1]"
+                          >
+                            <div
+                              className={
+                                field.label === 'Fit'
+                                  ? 'text-[10px] font-black uppercase tracking-[0.16em] text-[#E11D48]/72 sm:text-[11px]'
+                                  : 'text-[10px] font-black uppercase tracking-[0.16em] text-foreground/44 dark:text-white/36 sm:text-[11px]'
+                              }
+                            >
+                              {field.label}
+                            </div>
+                            <p className="mt-1.5 text-[15px] font-bold leading-[1.2] tracking-[-0.015em] text-foreground/82 dark:text-white/72 sm:text-[16px]">
+                              {field.value}
+                            </p>
+                          </div>
+                        ))}
+
+                      {postContextRead.funFact ? (
+                        <div className="relative overflow-hidden rounded-[14px] border border-[#E11D48]/16 bg-gradient-to-br from-[#E11D48]/14 via-white/86 to-white/76 px-3 py-2.5 shadow-[0_8px_18px_rgba(225,29,72,0.10),inset_0_1px_0_rgba(255,255,255,0.82)] dark:from-[#E11D48]/14 dark:via-white/[0.1] dark:to-white/[0.07]">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48] sm:text-[11px]">
+                              Record
+                            </div>
+                            <div className="h-px flex-1 bg-[#E11D48]/18" />
+                          </div>
+                          <p className="mt-1.5 text-[14px] font-black leading-[1.14] tracking-[-0.018em] text-[#E11D48] sm:text-[15px]">
+                            {postContextRead.funFact}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      {postContextRead.matches.length > 0 && (
+                        <div className="mt-2 rounded-[13px] border border-[#E11D48]/12 bg-white/86 px-2.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-[#E11D48]/18 dark:bg-white/[0.1]">
+                          <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-[#E11D48]/72">
+                            Key Read
+                          </div>
+                          <p className="mt-1 text-[15px] sm:text-[16px] font-black leading-[1.08] tracking-[-0.02em] text-foreground/88 dark:text-white/80">
+                            {postContextRead.matches[0]}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-2 grid gap-1.5">
+                        {[
+                          ...postContextRead.matches.slice(1, 3).map((line) => ({ label: 'Match', line, tone: 'text-foreground/44' })),
+                          ...postContextRead.deviates.slice(0, 2).map((line) => ({ label: 'Deviation', line, tone: 'text-[#E11D48]/68' })),
+                          ...postContextRead.notes.slice(0, 1).map((line) => ({ label: 'Note', line, tone: 'text-foreground/44' })),
+                        ]
+                          .slice(0, 4)
+                          .map((field) => (
+                            <div
+                              key={`${item.id}-read-${field.label}-${field.line}`}
+                              className="rounded-[12px] border border-black/[0.04] bg-white/74 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/[0.08]"
+                            >
+                              <div className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] ${field.tone}`}>
+                                {field.label}
+                              </div>
+                              <p className="mt-1 text-[13px] sm:text-[14px] font-semibold leading-[1.24] text-foreground/70 dark:text-white/60">
+                                {field.line}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               </div>
 
                 <div className="col-span-12 mt-1 sm:mt-2">

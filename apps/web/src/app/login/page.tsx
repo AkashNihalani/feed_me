@@ -7,10 +7,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase';
+import LiveDashboard from '@/components/login/LiveStats';
+import { useLivePlatformStats } from '@/lib/useLiveStats';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
+
+// One identity: white canvas, Feed Me red (#E11D48) punch. Palette is hardcoded
+// (not theme tokens) so the login reads white even for users with theme=dark saved.
+const INK = '#0B0B0F';
+const RED = '#E11D48';
 
 function safeInternalNextPath(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//')) {
@@ -26,15 +33,13 @@ function safeInternalNextPath(value: string | null): string {
 }
 
 /* ─────────────────────────────────────────────
-   PAC-MAN HERO — Premium conveyor-belt animation
+   PAC-MAN — conveyor-belt logo motif
 
-   Only 3 metrics: Likes, Comments, Followers
-   Circle with wedge — no eye, clean geometric shape
-   Monotone white bubbles, prominent icons
-   Previous bubble fully gone before next slides in
+   Red Pac-Man on white, eating red-ink metric bubbles.
+   Sits compact above the login card (desktop) / on top (mobile).
    ───────────────────────────────────────────── */
 
-const METRIC_LABELS = ['Likes', 'Comments', 'Followers'];
+const METRIC_LABELS = ['Likes', 'Comments', 'Views'];
 
 // Cycle duration — each bubble takes this long to travel one slot and get eaten
 const CYCLE_DUR = 1.6;
@@ -50,8 +55,8 @@ function PacManHero() {
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
     if (vw < 640) return { pacR: 34, bubbleR: 14, gap: 58, yCenter: 48 };
     if (vw < 1024) return { pacR: 46, bubbleR: 18, gap: 72, yCenter: 58 };
-    // Desktop — larger for the hero panel
-    return { pacR: 72, bubbleR: 28, gap: 108, yCenter: 90 };
+    // Desktop — compact; it sits above the login card now, not as the hero
+    return { pacR: 52, bubbleR: 20, gap: 84, yCenter: 64 };
   }, []);
 
   useEffect(() => {
@@ -131,19 +136,9 @@ function PacManHero() {
 
       const mouthRad = (mouthAngle * Math.PI) / 180;
 
-      // ─── Draw Pac-Man: clean circle + wedge ───
-
-      // Minimal glow — barely visible ambient
-      const glowGrad = ctx.createRadialGradient(pacCX, pacCY, pacR * 0.8, pacCX, pacCY, pacR * 1.3);
-      glowGrad.addColorStop(0, 'rgba(225,29,72, 0.04)');
-      glowGrad.addColorStop(1, 'rgba(225,29,72, 0)');
-      ctx.fillStyle = glowGrad;
-      ctx.beginPath();
-      ctx.arc(pacCX, pacCY, pacR * 1.3, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Body — flat lime circle with wedge cut
-      ctx.fillStyle = '#E11D48';
+      // ─── Draw Pac-Man: clean red circle + wedge ───
+      // Body — flat red circle with wedge cut
+      ctx.fillStyle = RED;
       ctx.beginPath();
       ctx.moveTo(pacCX, pacCY);
       ctx.arc(pacCX, pacCY, pacR, mouthRad, Math.PI * 2 - mouthRad);
@@ -171,7 +166,7 @@ function PacManHero() {
 
         const distToMouth = baseX - mouthTipX;
 
-        // --- THE FIX: slot -1 is ALWAYS invisible (already eaten previous cycle) ---
+        // --- slot -1 is ALWAYS invisible (already eaten previous cycle) ---
         if (slot <= -1) {
           opacity = 0;
         }
@@ -187,7 +182,7 @@ function PacManHero() {
             opacity = Math.max(0, 1 - p);
             scale = 1 - p * 0.4;
           } else {
-            // Sitting at mouth waiting to be eaten — slight scale down to show "about to be consumed"
+            // Sitting at mouth waiting to be eaten
             opacity = 1.0;
             scale = 0.95;
           }
@@ -214,37 +209,37 @@ function PacManHero() {
         ctx.translate(bx, by);
         ctx.scale(scale, scale);
 
-        // Bubble: frosted glass circle — monotone white
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+        // Bubble: soft red-tinted glass circle on white
+        ctx.fillStyle = 'rgba(225, 29, 72, 0.06)';
         ctx.beginPath();
         ctx.arc(0, 0, bubbleR, 0, Math.PI * 2);
         ctx.fill();
 
         // Border
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.strokeStyle = 'rgba(225, 29, 72, 0.22)';
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(0, 0, bubbleR, 0, Math.PI * 2);
         ctx.stroke();
 
         // Highlight — top-left specular
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+        ctx.strokeStyle = 'rgba(225, 29, 72, 0.12)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(0, 0, bubbleR - 2, -Math.PI * 0.8, -Math.PI * 0.2);
         ctx.stroke();
 
-        // Icon — large, bold, prominent white
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+        // Icon — bold red
+        ctx.strokeStyle = 'rgba(225, 29, 72, 0.95)';
+        ctx.fillStyle = 'rgba(225, 29, 72, 0.95)';
         ctx.lineWidth = 2.4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        const iconS = bubbleR * 0.55;
+        const iconS = bubbleR * (iconIdx === 0 ? 0.82 : 0.72);
         drawMetricIcon(ctx, iconIdx, iconS);
 
-        // Label — compact, well spaced
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.3 * opacity})`;
+        // Label — compact ink, well spaced
+        ctx.fillStyle = `rgba(11, 11, 15, ${0.34 * opacity})`;
         ctx.font = `800 ${Math.max(6, bubbleR * 0.36)}px "Space Grotesk", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
@@ -255,7 +250,7 @@ function PacManHero() {
       }
 
       // ─── Redraw Pac-Man on top to clip any bubble overlap ───
-      ctx.fillStyle = '#E11D48';
+      ctx.fillStyle = RED;
       ctx.beginPath();
       ctx.moveTo(pacCX, pacCY);
       ctx.arc(pacCX, pacCY, pacR, mouthRad, Math.PI * 2 - mouthRad);
@@ -274,10 +269,10 @@ function PacManHero() {
   }, [getSizes]);
 
   return (
-    <div className="relative w-full mb-2 sm:mb-4 lg:mb-8">
+    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-4">
       <canvas
         ref={canvasRef}
-        className="w-full h-[100px] sm:h-[124px] lg:h-[190px]"
+        className="h-[84px] w-full sm:h-[108px] lg:h-[136px]"
         style={{ imageRendering: 'auto' }}
       />
     </div>
@@ -289,11 +284,18 @@ function drawMetricIcon(ctx: CanvasRenderingContext2D, idx: number, s: number) {
   ctx.beginPath();
   switch (idx) {
     case 0: // Heart — filled
-      ctx.moveTo(0, s * 0.35);
-      ctx.bezierCurveTo(-s * 0.9, -s * 0.4, -s * 0.1, -s * 0.95, 0, -s * 0.35);
-      ctx.bezierCurveTo(s * 0.1, -s * 0.95, s * 0.9, -s * 0.4, 0, s * 0.35);
+      ctx.save();
+      ctx.translate(0, s * 0.1);
+      ctx.scale(1.18, 0.9);
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.48);
+      ctx.bezierCurveTo(-s * 1.0, -s * 0.12, -s * 0.72, -s * 0.8, -s * 0.2, -s * 0.62);
+      ctx.bezierCurveTo(-s * 0.06, -s * 0.57, 0, -s * 0.46, 0, -s * 0.34);
+      ctx.bezierCurveTo(0, -s * 0.46, s * 0.06, -s * 0.57, s * 0.2, -s * 0.62);
+      ctx.bezierCurveTo(s * 0.72, -s * 0.8, s * 1.0, -s * 0.12, 0, s * 0.48);
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
       break;
     case 1: // Comment bubble
       ctx.roundRect(-s * 0.65, -s * 0.5, s * 1.3, s * 0.85, s * 0.22);
@@ -304,29 +306,32 @@ function drawMetricIcon(ctx: CanvasRenderingContext2D, idx: number, s: number) {
       ctx.lineTo(s * 0.18, s * 0.35);
       ctx.stroke();
       break;
-    case 2: // Users / Followers
-      // Head
-      ctx.arc(0, -s * 0.25, s * 0.28, 0, Math.PI * 2);
+    case 2: // Eye — Views
+      ctx.ellipse(0, 0, s * 0.92, s * 0.55, 0, 0, Math.PI * 2);
       ctx.stroke();
-      // Body arc
       ctx.beginPath();
-      ctx.arc(0, s * 0.75, s * 0.5, -Math.PI * 0.85, -Math.PI * 0.15);
-      ctx.stroke();
+      ctx.arc(0, 0, s * 0.3, 0, Math.PI * 2);
+      ctx.fill();
       break;
   }
 }
 
 /* ── Ambient Particles ── */
+function particleSeed(index: number, salt: number) {
+  const x = Math.sin(index * 47.23 + salt * 19.91) * 10000;
+  return x - Math.floor(x);
+}
+
 function AmbientParticles() {
   const [particles] = useState(() =>
     Array.from({ length: 12 }, (_, i) => ({
       id: i,
-      left: `${5 + Math.random() * 90}%`,
-      top: `${5 + Math.random() * 90}%`,
-      size: 1.5 + Math.random() * 2,
-      opacity: 0.05 + Math.random() * 0.05,
-      duration: 8 + Math.random() * 10,
-      delay: Math.random() * 6,
+      left: `${5 + particleSeed(i, 1) * 90}%`,
+      top: `${5 + particleSeed(i, 2) * 90}%`,
+      size: 1.5 + particleSeed(i, 3) * 2,
+      opacity: 0.04 + particleSeed(i, 4) * 0.05,
+      duration: 8 + particleSeed(i, 5) * 10,
+      delay: particleSeed(i, 6) * 6,
     }))
   );
 
@@ -335,12 +340,13 @@ function AmbientParticles() {
       {particles.map(p => (
         <div
           key={p.id}
-          className="absolute rounded-full bg-[#E11D48]"
+          className="absolute rounded-full"
           style={{
             left: p.left,
             top: p.top,
             width: p.size,
             height: p.size,
+            background: RED,
             opacity: p.opacity,
             animation: `loginFloat ${p.duration}s ease-in-out ${p.delay}s infinite`,
           }}
@@ -364,6 +370,8 @@ export default function LoginPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  const liveStats = useLivePlatformStats();
 
   const getClient = () => getSupabase();
 
@@ -437,29 +445,29 @@ export default function LoginPage() {
   const ambientBg = (
     <div className="pointer-events-none absolute inset-0 z-0">
       <div
-        className="absolute -right-[12%] -top-[8%] h-[55vh] w-[55vh] rounded-full opacity-[0.05]"
+        className="absolute -right-[12%] -top-[8%] h-[55vh] w-[55vh] rounded-full opacity-[0.03]"
         style={{
           background: 'radial-gradient(circle, #E11D48 0%, transparent 70%)',
           animation: 'meshDrift 18s ease-in-out infinite',
         }}
       />
       <div
-        className="absolute -bottom-[12%] -left-[8%] h-[45vh] w-[45vh] rounded-full opacity-[0.03]"
+        className="absolute -bottom-[12%] -left-[8%] h-[48vh] w-[48vh] rounded-full opacity-[0.025]"
         style={{
           background: 'radial-gradient(circle, #E11D48 0%, transparent 70%)',
           animation: 'meshDrift 22s ease-in-out infinite reverse',
         }}
       />
       <div
-        className="absolute left-1/2 top-[18%] h-[320px] w-[320px] -translate-x-1/2 rounded-full border border-white/[0.02] opacity-30 sm:h-[440px] sm:w-[440px] lg:h-[520px] lg:w-[520px]"
+        className="absolute left-1/2 top-[18%] h-[320px] w-[320px] -translate-x-1/2 rounded-full border border-[#E11D48]/[0.05] opacity-40 sm:h-[440px] sm:w-[440px] lg:h-[520px] lg:w-[520px]"
         style={{
-          background: 'radial-gradient(circle, transparent 55%, rgba(225,29,72,0.015) 100%)',
+          background: 'radial-gradient(circle, transparent 55%, rgba(225,29,72,0.02) 100%)',
           animation: 'loginFloat 14s ease-in-out infinite',
         }}
       />
       <AmbientParticles />
       <div
-        className="absolute inset-0 opacity-[0.018]"
+        className="absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage:
             'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\' opacity=\'0.5\'/%3E%3C/svg%3E")',
@@ -468,45 +476,43 @@ export default function LoginPage() {
     </div>
   );
 
-  const brandMark = (isLarge: boolean) => (
-    <div className={isLarge ? 'mb-4 text-center lg:mb-6' : 'mb-6 text-center sm:mb-8'}>
+  const brandMark = (isLarge: boolean, align: 'center' | 'left' = 'center') => (
+    <div className={cn(
+      align === 'left' ? 'text-left' : 'text-center',
+      isLarge ? 'mb-6' : 'mb-4 sm:mb-6',
+    )}>
       <div className="inline-flex items-baseline gap-0.5">
         <span className={cn(
-          'font-black tracking-[-0.04em] text-white',
-          isLarge ? 'text-[64px] xl:text-[76px]' : 'text-[32px] sm:text-[44px]',
-        )}>
+          'font-black tracking-[-0.04em]',
+          isLarge ? 'text-[42px] xl:text-[50px]' : 'text-[32px] sm:text-[44px]',
+        )} style={{ color: INK }}>
           FEED
         </span>
         <span
           className={cn(
-            'font-black tracking-[-0.04em] text-[#E11D48]',
-            isLarge ? 'text-[64px] xl:text-[76px]' : 'text-[32px] sm:text-[44px]',
+            'font-black tracking-[-0.04em]',
+            isLarge ? 'text-[42px] xl:text-[50px]' : 'text-[32px] sm:text-[44px]',
           )}
-          style={{ textShadow: '0 0 40px rgba(225,29,72,0.35)' }}
+          style={{ color: RED }}
         >
           ME
         </span>
       </div>
       {isLarge && (
-        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.22em] text-white/15">
+        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.4)' }}>
           Instagram Analytics &middot; Reimagined
         </p>
       )}
     </div>
   );
 
-  const trustFooter = (
-    <div className="flex w-full flex-col items-center gap-3">
-      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/10">
-        Tracking 50M+ posts &middot; 10K feeds active
-      </p>
-      <div className="flex items-center gap-4">
-        <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-white/25">Privacy</a>
-        <span className="text-white/5">&middot;</span>
-        <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-white/25">Terms</a>
-        <span className="text-white/5">&middot;</span>
-        <Link href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-white/12 transition-colors hover:text-[#E11D48]/35">Home &rarr;</Link>
-      </div>
+  const footerLinks = (align: 'center' | 'left' = 'center') => (
+    <div className={cn('flex items-center gap-4', align === 'left' ? 'justify-start' : 'justify-center')}>
+      <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-[#0B0B0F]/35 transition-colors hover:text-[#0B0B0F]/65">Privacy</a>
+      <span className="text-[#0B0B0F]/15">&middot;</span>
+      <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-[#0B0B0F]/35 transition-colors hover:text-[#0B0B0F]/65">Terms</a>
+      <span className="text-[#0B0B0F]/15">&middot;</span>
+      <Link href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-[#0B0B0F]/35 transition-colors hover:text-[#E11D48]/70">Home &rarr;</Link>
     </div>
   );
 
@@ -517,8 +523,8 @@ export default function LoginPage() {
         100% { transform: translate(-50%, -50%) rotate(360deg); }
       }
       @keyframes cta-breathe {
-        0%, 100% { box-shadow: 0 0 0px rgba(225,29,72,0), 0 2px 8px rgba(0,0,0,0.4); }
-        50% { box-shadow: 0 0 18px rgba(225,29,72,0.06), 0 2px 8px rgba(0,0,0,0.4); }
+        0%, 100% { box-shadow: 0 8px 18px -8px rgba(15,23,42,0.35); }
+        50% { box-shadow: 0 12px 24px -8px rgba(15,23,42,0.45); }
       }
       @keyframes loginFloat {
         0%, 100% { transform: translateY(0); }
@@ -529,10 +535,12 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative flex min-h-[100svh] w-full overflow-hidden bg-[#030303] selection:bg-[#E11D48]/30 selection:text-white lg:h-[100vh] lg:min-h-0"
+      data-login-shell
+      className="relative flex h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white selection:bg-[#E11D48]/25 selection:text-[#E11D48] lg:h-[100vh] lg:min-h-0 lg:overflow-hidden"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       {ambientBg}
@@ -542,40 +550,45 @@ export default function LoginPage() {
       <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
         <Link
           href="/"
-          className="group flex items-center gap-1.5 rounded-full border border-white/[0.05] bg-white/[0.02] px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/25 backdrop-blur-sm transition-all hover:border-[#E11D48]/15 hover:text-[#E11D48]/50"
+          className="group flex items-center gap-1.5 rounded-full border border-[#0B0B0F]/[0.08] bg-white/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#0B0B0F]/35 backdrop-blur-sm transition-all hover:border-[#E11D48]/25 hover:text-[#E11D48]/70"
         >
           feedme.app
-          <ExternalLink size={10} strokeWidth={3} className="opacity-40 transition-transform group-hover:translate-x-0.5" />
+          <ExternalLink size={10} strokeWidth={3} className="opacity-50 transition-transform group-hover:translate-x-0.5" />
         </Link>
       </div>
 
       {/* ════════════════════════════════════════════
           DESKTOP: Two-panel split layout (lg+)
-          Left  = Hero animation + brand (55%)
-          Right = Login form card (45%)
+          Left  = Live dashboard hero (55%)
+          Right = Pac-Man + login form card (45%)
          ════════════════════════════════════════════ */}
 
-      {/* ── Left hero panel (desktop only) ── */}
-      <div className="hidden lg:flex lg:w-[55%] relative z-10 flex-col items-center justify-center px-12 xl:px-20">
+      {/* ── Left hero panel (desktop only): brand + live dashboard ── */}
+      <div className="hidden lg:flex lg:w-[56%] relative z-10 flex-col items-start justify-center px-16 xl:px-24">
         <motion.div
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.9, ease: APPLE_EASE, delay: 0.15 }}
-          className="flex flex-col items-center"
+          className="flex w-full max-w-[920px] flex-col items-start"
         >
-          <PacManHero />
-          {brandMark(true)}
-          <div className="mt-8">{trustFooter}</div>
+          {brandMark(true, 'left')}
+          <LiveDashboard state={liveStats} className="mt-2" />
+          <div className="mt-10">{footerLinks('left')}</div>
         </motion.div>
       </div>
 
-      {/* ── Right form panel (desktop) / Full column (mobile) ── */}
-      <div className="relative z-10 flex w-full flex-col items-center justify-center px-5 py-8 sm:py-14 lg:w-[45%] lg:py-0 lg:px-10 xl:px-16">
+      {/* ── Right panel (desktop): Pac-Man + form / Full column (mobile) ── */}
+      <div className="relative z-10 flex min-h-[100svh] w-full flex-col items-center justify-start px-5 pb-12 pt-7 sm:py-10 lg:min-h-0 lg:w-[44%] lg:justify-center lg:py-0 lg:px-10 xl:px-16">
 
         {/* Mobile only: Pac-Man + brand stacked above the card */}
         <div className="lg:hidden w-full max-w-[460px] flex flex-col items-center">
           <PacManHero />
           {brandMark(false)}
+        </div>
+
+        {/* Desktop only: compact Pac-Man above the card */}
+        <div className="hidden lg:block w-full max-w-[520px]">
+          <PacManHero />
         </div>
 
         {/* ── Form card wrapper ── */}
@@ -589,29 +602,25 @@ export default function LoginPage() {
             transition={{ duration: isSuccess ? 0.5 : 0.8, ease: APPLE_EASE }}
             className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] lg:rounded-[32px]"
             style={{
-              background: 'linear-gradient(170deg, rgba(14,14,18,0.95) 0%, rgba(8,8,10,0.98) 40%, rgba(4,4,6,1) 100%)',
-              backdropFilter: 'blur(80px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(80px) saturate(180%)',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
-              borderTopColor: 'rgba(255, 255, 255, 0.08)',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.94) 100%)',
+              border: '1px solid rgba(14,19,28,0.08)',
+              borderTopColor: 'rgba(255,255,255,0.96)',
               boxShadow: [
-                '0 2px 4px rgba(0,0,0,0.2)',
-                '0 8px 16px rgba(0,0,0,0.3)',
-                '0 24px 48px -8px rgba(0,0,0,0.6)',
-                '0 48px 96px -16px rgba(0,0,0,0.85)',
-                'inset 0 1px 0 rgba(255,255,255,0.06)',
-                'inset 0 -1px 0 rgba(0,0,0,0.6)',
+                '0 1px 0 rgba(255,255,255,0.9) inset',
+                '0 1px 2px rgba(15,23,42,0.04)',
+                '0 8px 16px rgba(15,23,42,0.06)',
+                '0 24px 48px -8px rgba(15,23,42,0.12)',
+                '0 48px 96px -16px rgba(15,23,42,0.16)',
               ].join(', '),
             }}
           >
-            {/* Liquid glass — top-left refraction + edge catch */}
+            {/* Liquid glass — top sheen + faint red catch */}
             <div
               className="pointer-events-none absolute inset-0 z-0 rounded-[inherit]"
               style={{
                 background: [
-                  'radial-gradient(ellipse 55% 30% at 12% 0%, rgba(255,255,255,0.06) 0%, transparent 70%)',
-                  'radial-gradient(ellipse 25% 50% at 100% 30%, rgba(225,29,72,0.008) 0%, transparent 50%)',
-                  'linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 20%)',
+                  'radial-gradient(ellipse 55% 30% at 12% 0%, rgba(225,29,72,0.05) 0%, transparent 70%)',
+                  'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 18%)',
                 ].join(', '),
               }}
             />
@@ -620,23 +629,23 @@ export default function LoginPage() {
             <div
               className="pointer-events-none absolute inset-[1px] z-0 rounded-[23px] sm:rounded-[27px] lg:rounded-[31px]"
               style={{
-                border: '1px solid rgba(255,255,255,0.025)',
-                borderTopColor: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(15,23,42,0.04)',
+                borderTopColor: 'rgba(255,255,255,0.9)',
               }}
             />
 
-            <div className="relative z-10 px-7 py-8 sm:px-9 sm:py-10 lg:px-11 lg:py-14">
+            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 lg:px-11 lg:py-14">
 
-            {/* ── Tab switcher — neomorphic inset well ── */}
+            {/* ── Tab switcher — light inset well ── */}
             <div
-              className="mx-auto mb-9 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5"
+              className="mx-auto mb-7 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-8 lg:mb-9"
               style={{
-                background: 'rgba(0, 0, 0, 0.7)',
-                border: '1px solid rgba(0, 0, 0, 0.9)',
+                background: 'rgba(15,23,42,0.05)',
+                border: '1px solid rgba(15,23,42,0.06)',
                 boxShadow: [
-                  'inset 0 3px 12px rgba(0,0,0,1)',
-                  'inset 0 1px 2px rgba(0,0,0,0.8)',
-                  '0 1px 0 rgba(255,255,255,0.03)',
+                  'inset 0 2px 6px rgba(15,23,42,0.08)',
+                  'inset 0 1px 1px rgba(15,23,42,0.05)',
+                  '0 1px 0 rgba(255,255,255,0.85)',
                 ].join(', '),
               }}
             >
@@ -649,7 +658,7 @@ export default function LoginPage() {
                     onClick={() => { setMode(tab); setError(null); setMessage(null); }}
                     className={cn(
                       'relative flex-1 rounded-[10px] py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition-colors duration-400',
-                      isActive ? 'text-white z-10' : 'text-white/18 z-0 hover:text-white/35',
+                      isActive ? 'text-[#E11D48] z-10' : 'text-[#0B0B0F]/35 z-0 hover:text-[#0B0B0F]/60',
                     )}
                   >
                     {isActive && (
@@ -657,14 +666,13 @@ export default function LoginPage() {
                         layoutId="login-tab-pill"
                         className="absolute inset-0 rounded-[10px]"
                         style={{
-                          background: 'linear-gradient(180deg, rgba(30,30,34,1) 0%, rgba(18,18,22,1) 100%)',
-                          border: '1px solid rgba(255,255,255,0.07)',
-                          borderTopColor: 'rgba(255,255,255,0.12)',
+                          background: 'linear-gradient(180deg, #ffffff 0%, #f4f6f8 100%)',
+                          border: '1px solid rgba(15,23,42,0.08)',
+                          borderTopColor: 'rgba(255,255,255,1)',
                           boxShadow: [
-                            'inset 0 1px 0 rgba(255,255,255,0.07)',
-                            'inset 0 -1px 0 rgba(0,0,0,0.4)',
-                            '0 4px 14px rgba(0,0,0,0.7)',
-                            '0 1px 3px rgba(0,0,0,0.4)',
+                            'inset 0 1px 0 rgba(255,255,255,1)',
+                            '0 2px 6px rgba(15,23,42,0.10)',
+                            '0 1px 2px rgba(15,23,42,0.06)',
                           ].join(', '),
                         }}
                         transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }}
@@ -677,7 +685,7 @@ export default function LoginPage() {
             </div>
 
             {/* ── Title & subtitle — glass layer z-shift ── */}
-            <div className="relative mb-7" style={{ minHeight: 56, perspective: '600px' }}>
+            <div className="relative mb-6 lg:mb-7" style={{ minHeight: 56, perspective: '600px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={mode}
@@ -689,12 +697,12 @@ export default function LoginPage() {
                   style={{ transformOrigin: 'center bottom' }}
                 >
                   <h1
-                    className="text-[24px] font-black tracking-[-0.025em] text-white sm:text-[28px] lg:text-[34px]"
-                    style={{ textShadow: '0 2px 16px rgba(0,0,0,0.7)' }}
+                    className="text-[24px] font-black tracking-[-0.025em] sm:text-[28px] lg:text-[34px]"
+                    style={{ color: INK }}
                   >
                     {titles[mode]}
                   </h1>
-                  <p className="mt-2 text-[11px] font-semibold text-white/25 tracking-wide lg:text-[12px]">
+                  <p className="mt-2 text-[11px] font-semibold tracking-wide lg:text-[12px]" style={{ color: 'rgba(11,11,15,0.45)' }}>
                     {subtitles[mode]}
                   </p>
                 </motion.div>
@@ -715,25 +723,25 @@ export default function LoginPage() {
                 >
                   {/* Email */}
                   <div>
-                    <label className="mb-2.5 block text-[9px] font-black uppercase tracking-[0.22em] text-white/30">
+                    <label className="mb-2.5 block text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.45)' }}>
                       Email Address
                     </label>
                     <motion.div
                       animate={{
                         y: focusedField === 'email' ? -2 : 0,
                         boxShadow: focusedField === 'email'
-                          ? 'inset 0 2px 12px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.04), 0 6px 20px rgba(0,0,0,0.4)'
-                          : 'inset 0 3px 16px rgba(0,0,0,1), 0 1px 0 rgba(255,255,255,0.02)',
+                          ? 'inset 0 1px 3px rgba(15,23,42,0.05), 0 1px 0 rgba(255,255,255,0.9), 0 10px 26px -6px rgba(225,29,72,0.26)'
+                          : 'inset 0 2px 5px rgba(15,23,42,0.06), 0 1px 0 rgba(255,255,255,0.8)',
                       }}
                       transition={{ duration: 0.5, ease: APPLE_EASE }}
                       className="relative overflow-hidden rounded-[14px]"
                       style={{
-                        background: 'rgba(0, 0, 0, 0.5)',
-                        border: '1px solid rgba(255,255,255,0.03)',
-                        boxShadow: 'inset 0 3px 16px rgba(0,0,0,1), 0 1px 0 rgba(255,255,255,0.02)',
+                        background: 'rgba(16,24,40,0.035)',
+                        border: '1px solid rgba(15,23,42,0.07)',
+                        boxShadow: 'inset 0 2px 5px rgba(15,23,42,0.06), 0 1px 0 rgba(255,255,255,0.8)',
                       }}
                     >
-                      {/* Shimmer border — slow, smooth, premium sweep */}
+                      {/* Shimmer border — slow, smooth red sweep on focus */}
                       <motion.div
                         initial={false}
                         animate={{ opacity: focusedField === 'email' ? 1 : 0 }}
@@ -744,7 +752,7 @@ export default function LoginPage() {
                           className="absolute left-1/2 top-1/2 h-[500px] w-[500px]"
                           style={{
                             animation: 'shimmer-sweep 3.5s linear infinite',
-                            background: 'conic-gradient(from 180deg, transparent 0deg, transparent 220deg, rgba(225,29,72,0.06) 250deg, rgba(225,29,72,0.35) 285deg, rgba(225,29,72,0.12) 320deg, transparent 350deg)',
+                            background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgba(225,29,72,0.22) 250deg, rgba(225,29,72,0.88) 285deg, rgba(225,29,72,0.34) 322deg, transparent 352deg)',
                           }}
                         />
                       </motion.div>
@@ -752,7 +760,7 @@ export default function LoginPage() {
                       {/* Inner mask — reveals only the border glow */}
                       <div
                         className="pointer-events-none absolute inset-[1.5px] z-[1] rounded-[12.5px] transition-colors duration-500"
-                        style={{ background: focusedField === 'email' ? 'rgba(6,6,8,0.97)' : 'rgba(0,0,0,0.5)' }}
+                        style={{ background: focusedField === 'email' ? 'rgba(255,255,255,1)' : 'rgba(247,248,250,1)' }}
                       />
 
                       <input
@@ -764,8 +772,8 @@ export default function LoginPage() {
                         required
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="relative z-10 h-[54px] lg:h-[58px] w-full rounded-[14px] bg-transparent px-5 text-[14px] font-semibold text-white outline-none placeholder:text-white/[0.08] focus:ring-0"
-                        style={{ caretColor: '#E11D48' }}
+                        className="relative z-10 h-[54px] lg:h-[58px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0"
+                        style={{ color: INK, caretColor: RED }}
                       />
                     </motion.div>
                   </div>
@@ -774,14 +782,14 @@ export default function LoginPage() {
                   {mode !== 'forgot' && (
                     <div>
                       <div className="mb-2.5 flex items-center justify-between">
-                        <label className="text-[9px] font-black uppercase tracking-[0.22em] text-white/30">
+                        <label className="text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.45)' }}>
                           Password
                         </label>
                         {mode === 'login' && (
                           <button
                             type="button"
                             onClick={() => { setMode('forgot'); setError(null); setMessage(null); }}
-                            className="text-[9px] font-black uppercase tracking-[0.12em] text-[#E11D48]/40 transition-colors hover:text-[#E11D48]/70"
+                            className="text-[9px] font-black uppercase tracking-[0.12em] text-[#E11D48]/60 transition-colors hover:text-[#E11D48]"
                           >
                             Forgot?
                           </button>
@@ -791,15 +799,15 @@ export default function LoginPage() {
                         animate={{
                           y: focusedField === 'password' ? -2 : 0,
                           boxShadow: focusedField === 'password'
-                            ? 'inset 0 2px 12px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.04), 0 6px 20px rgba(0,0,0,0.4)'
-                            : 'inset 0 3px 16px rgba(0,0,0,1), 0 1px 0 rgba(255,255,255,0.02)',
+                            ? 'inset 0 1px 3px rgba(15,23,42,0.05), 0 1px 0 rgba(255,255,255,0.9), 0 10px 26px -6px rgba(225,29,72,0.26)'
+                            : 'inset 0 2px 5px rgba(15,23,42,0.06), 0 1px 0 rgba(255,255,255,0.8)',
                         }}
                         transition={{ duration: 0.5, ease: APPLE_EASE }}
                         className="relative overflow-hidden rounded-[14px]"
                         style={{
-                          background: 'rgba(0, 0, 0, 0.5)',
-                          border: '1px solid rgba(255,255,255,0.03)',
-                          boxShadow: 'inset 0 3px 16px rgba(0,0,0,1), 0 1px 0 rgba(255,255,255,0.02)',
+                          background: 'rgba(16,24,40,0.035)',
+                          border: '1px solid rgba(15,23,42,0.07)',
+                          boxShadow: 'inset 0 2px 5px rgba(15,23,42,0.06), 0 1px 0 rgba(255,255,255,0.8)',
                         }}
                       >
                         {/* Shimmer border */}
@@ -813,7 +821,7 @@ export default function LoginPage() {
                             className="absolute left-1/2 top-1/2 h-[500px] w-[500px]"
                             style={{
                               animation: 'shimmer-sweep 3.5s linear infinite',
-                              background: 'conic-gradient(from 180deg, transparent 0deg, transparent 220deg, rgba(225,29,72,0.06) 250deg, rgba(225,29,72,0.35) 285deg, rgba(225,29,72,0.12) 320deg, transparent 350deg)',
+                              background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgba(225,29,72,0.22) 250deg, rgba(225,29,72,0.88) 285deg, rgba(225,29,72,0.34) 322deg, transparent 352deg)',
                             }}
                           />
                         </motion.div>
@@ -821,7 +829,7 @@ export default function LoginPage() {
                         {/* Inner mask */}
                         <div
                           className="pointer-events-none absolute inset-[1.5px] z-[1] rounded-[12.5px] transition-colors duration-500"
-                          style={{ background: focusedField === 'password' ? 'rgba(6,6,8,0.97)' : 'rgba(0,0,0,0.5)' }}
+                          style={{ background: focusedField === 'password' ? 'rgba(255,255,255,1)' : 'rgba(247,248,250,1)' }}
                         />
 
                         <input
@@ -833,13 +841,13 @@ export default function LoginPage() {
                           required
                           placeholder="••••••••"
                           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                          className="relative z-10 h-[54px] lg:h-[58px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[14px] font-semibold text-white outline-none placeholder:text-white/[0.08] focus:ring-0"
-                          style={{ caretColor: '#E11D48' }}
+                          className="relative z-10 h-[54px] lg:h-[58px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0"
+                          style={{ color: INK, caretColor: RED }}
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-[10px] p-2.5 text-white/15 transition-all hover:bg-white/[0.04] hover:text-white/35"
+                          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-[10px] p-2.5 text-[#0B0B0F]/25 transition-all hover:bg-[#0B0B0F]/[0.04] hover:text-[#0B0B0F]/55"
                         >
                           {showPassword ? <EyeOff size={16} strokeWidth={2.5} /> : <Eye size={16} strokeWidth={2.5} />}
                         </button>
@@ -860,11 +868,11 @@ export default function LoginPage() {
                     className="overflow-hidden"
                   >
                     <div
-                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-red-400/90"
+                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#b91c1c]"
                       style={{
-                        background: 'rgba(180, 30, 30, 0.06)',
-                        border: '1px solid rgba(180, 30, 30, 0.08)',
-                        boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
+                        background: 'rgba(225,29,72,0.06)',
+                        border: '1px solid rgba(225,29,72,0.16)',
+                        boxShadow: 'inset 0 1px 2px rgba(225,29,72,0.06)',
                       }}
                     >
                       {error}
@@ -884,11 +892,11 @@ export default function LoginPage() {
                     className="overflow-hidden"
                   >
                     <div
-                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#E11D48]/60"
+                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#E11D48]"
                       style={{
-                        background: 'rgba(225,29,72, 0.025)',
-                        border: '1px solid rgba(225,29,72, 0.06)',
-                        boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
+                        background: 'rgba(225,29,72,0.05)',
+                        border: '1px solid rgba(225,29,72,0.14)',
+                        boxShadow: 'inset 0 1px 2px rgba(225,29,72,0.05)',
                       }}
                     >
                       {message}
@@ -897,7 +905,7 @@ export default function LoginPage() {
                 )}
               </AnimatePresence>
 
-              {/* ── Flat CTA with periodic subtle breathe glow ── */}
+              {/* ── White-on-red CTA with periodic breathe glow ── */}
               <motion.button
                 type="submit"
                 disabled={loading || isSuccess}
@@ -905,18 +913,18 @@ export default function LoginPage() {
                 layout
                 className={cn(
                   'group relative mt-4 flex h-[56px] lg:h-[62px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] lg:rounded-[16px]',
-                  'text-[12px] lg:text-[13px] font-black uppercase tracking-[0.2em] text-[#0a0a0a]',
-                  'disabled:opacity-30 disabled:cursor-not-allowed'
+                  'text-[12px] lg:text-[13px] font-black uppercase tracking-[0.2em] text-white',
+                  'disabled:opacity-40 disabled:cursor-not-allowed'
                 )}
                 style={{
-                  background: '#E11D48',
+                  background: RED,
                   animation: loading || isSuccess ? 'none' : 'cta-breathe 4s ease-in-out infinite',
                 }}
                 transition={{ layout: { duration: 0.4, ease: APPLE_EASE } }}
               >
                 {/* Top highlight bevel */}
                 <div className="pointer-events-none absolute inset-0 z-0 rounded-[14px]"
-                  style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 40%, rgba(0,0,0,0.06) 100%)' }}
+                  style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, transparent 45%, rgba(0,0,0,0.08) 100%)' }}
                 />
 
                 <AnimatePresence mode="wait">
@@ -955,7 +963,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => { setMode('login'); setError(null); setMessage(null); }}
-                    className="text-[10px] font-black uppercase tracking-[0.12em] text-white/18 transition-colors hover:text-[#E11D48]/50"
+                    className="text-[10px] font-black uppercase tracking-[0.12em] text-[#0B0B0F]/30 transition-colors hover:text-[#E11D48]/70"
                   >
                     &larr; Back to Login
                   </button>
@@ -966,9 +974,14 @@ export default function LoginPage() {
         </motion.div>
         </div>{/* end form card wrapper */}
 
-        {/* Mobile only: trust footer */}
-        <div className="lg:hidden mt-8 sm:mt-10 w-full max-w-[460px]">
-          {trustFooter}
+        {/* Mobile only: live dashboard below the whole box */}
+        <div className="mt-7 w-full max-w-[460px] lg:hidden">
+          <LiveDashboard state={liveStats} />
+        </div>
+
+        {/* Mobile only: footer */}
+        <div className="lg:hidden mt-8 w-full max-w-[460px]">
+          {footerLinks('center')}
         </div>
       </div>{/* end right panel */}
 
@@ -984,14 +997,14 @@ export default function LoginPage() {
         )}
       </AnimatePresence>
 
-      {/* Autofill override */}
+      {/* Autofill override — keep the field white with ink text */}
       <style jsx global>{`
         input:-webkit-autofill,
         input:-webkit-autofill:hover,
         input:-webkit-autofill:focus,
         input:-webkit-autofill:active {
-          -webkit-box-shadow: 0 0 0 30px rgba(3,3,3,0.99) inset !important;
-          -webkit-text-fill-color: white !important;
+          -webkit-box-shadow: 0 0 0 30px rgba(255,255,255,1) inset !important;
+          -webkit-text-fill-color: #0B0B0F !important;
           caret-color: #E11D48 !important;
           transition: background-color 5000s ease-in-out 0s;
         }

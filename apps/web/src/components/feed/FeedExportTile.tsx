@@ -43,7 +43,7 @@ export default function FeedExportTile({
               value={from}
               max={to || undefined}
               onChange={(event) => onFromChange(event.target.value)}
-              className="bg-transparent text-[11px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
+              className="bg-transparent text-[16px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
             />
           </label>
           <label className="flex flex-col gap-0.5 rounded-[12px] border border-white/82 bg-white/74 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_3px_8px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_3px_10px_rgba(0,0,0,0.35),0_1px_0_rgba(255,255,255,0.06)_inset]">
@@ -53,7 +53,7 @@ export default function FeedExportTile({
               value={to}
               min={from || undefined}
               onChange={(event) => onToChange(event.target.value)}
-              className="bg-transparent text-[11px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
+              className="bg-transparent text-[16px] font-black tracking-[0.02em] text-black outline-none dark:text-white"
             />
           </label>
         </div>

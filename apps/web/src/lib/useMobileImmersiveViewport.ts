@@ -79,12 +79,13 @@ export function useMobileImmersiveViewport() {
     };
   }, []);
 
-  const appShellStyle = useMemo(() => (
-    {
-      minHeight: 'var(--fm-app-height, 100dvh)',
-      height: useBrowserPageScroll ? undefined : 'var(--fm-app-height, 100dvh)',
-    } satisfies CSSProperties
-  ), [useBrowserPageScroll]);
+  const appShellStyle = useMemo(() => {
+    const shellHeight = useTranslucentBrowserChrome ? '100lvh' : 'var(--fm-app-height, 100dvh)';
+    return {
+      minHeight: shellHeight,
+      height: useBrowserPageScroll ? undefined : shellHeight,
+    } satisfies CSSProperties;
+  }, [useBrowserPageScroll, useTranslucentBrowserChrome]);
 
   return {
     appShellStyle,

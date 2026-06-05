@@ -447,7 +447,7 @@ export default function FundPage() {
   const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const mobileBottomClearance = useTranslucentBrowserChrome
-    ? 'calc(18px + env(safe-area-inset-bottom))'
+    ? '0px'
     : 'calc(170px + env(safe-area-inset-bottom))';
 
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -1524,12 +1524,16 @@ export default function FundPage() {
       {/* ═══ CONTENT STAGGER GRID ═══ */}
       <div className={cn(
         'z-10 pointer-events-none',
-        useBrowserPageScroll ? 'relative min-h-[var(--fm-app-height,100dvh)]' : 'relative h-full',
+        useBrowserPageScroll
+          ? cn('relative', useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]')
+          : 'relative h-full',
       )}>
         <div
           className={cn(
             'w-full overflow-x-hidden pt-[calc(96px+env(safe-area-inset-top))] sm:pt-[calc(108px+env(safe-area-inset-top))] md:pt-[118px] pointer-events-auto',
-            useBrowserPageScroll ? 'min-h-[var(--fm-app-height,100dvh)] overflow-visible' : 'hide-scrollbar h-full overflow-y-auto',
+            useBrowserPageScroll
+              ? cn(useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]', 'overflow-visible')
+              : 'hide-scrollbar h-full overflow-y-auto',
           )}
           style={{
             WebkitOverflowScrolling: useBrowserPageScroll ? undefined : 'touch',

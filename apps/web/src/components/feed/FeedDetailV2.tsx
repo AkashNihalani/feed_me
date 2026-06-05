@@ -336,18 +336,19 @@ export default function FeedDetailV2({
       ref={scrollRef}
       className={
         usePageScroll
-          ? 'fm-feed-detail-scroll w-full min-h-[var(--fm-app-height,100dvh)] overflow-visible overflow-x-hidden scroll-smooth'
+          ? `fm-feed-detail-scroll w-full ${immersiveBrowserMode ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]'} overflow-visible overflow-x-hidden scroll-smooth`
           : 'fm-feed-detail-scroll hide-scrollbar h-full w-full snap-y snap-mandatory overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth'
       }
       style={{
         WebkitOverflowScrolling: 'touch',
+        overflowAnchor: 'none',
         scrollPaddingTop: 'calc(var(--fm-mobile-detail-header-offset) + 6px)',
         scrollPaddingBottom: bottomClearance,
         ['--fm-feed-bottom-clearance' as string]: bottomClearance,
         ...(headerOffset ? { ['--fm-mobile-detail-header-offset' as string]: headerOffset } : {}),
       }}
     >
-      <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)' }} />
+      <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)', overflowAnchor: 'none' }} />
 
       <div className="lg:hidden" style={{ paddingBottom: bottomClearance }}>
         {mobileSections.map((section, sectionIndex) => (

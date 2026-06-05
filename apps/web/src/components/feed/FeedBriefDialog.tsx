@@ -278,7 +278,7 @@ export default function FeedBriefDialog({
                         value={brief.category}
                         onChange={(event) => onBriefChange({ category: event.target.value })}
                         placeholder="e.g., premium bakeries, indie skincare, football creators"
-                        className="mt-3 w-full rounded-[14px] border border-black/10 bg-black/5 px-4 py-3 text-[15px] font-semibold text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
+                        className="mt-3 w-full rounded-[14px] border border-black/10 bg-black/5 px-4 py-3 text-[16px] font-semibold text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
                       />
                     </div>
                     <div className="mt-5">
@@ -290,7 +290,7 @@ export default function FeedBriefDialog({
                         value={brief.geography}
                         onChange={(event) => onBriefChange({ geography: event.target.value })}
                         placeholder="Global, country, or city - wherever the audience lives"
-                        className="mt-3 w-full rounded-[14px] border border-black/10 bg-black/5 px-4 py-3 text-[15px] font-semibold text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
+                        className="mt-3 w-full rounded-[14px] border border-black/10 bg-black/5 px-4 py-3 text-[16px] font-semibold text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
                       />
                     </div>
                   </motion.div>
@@ -331,7 +331,7 @@ export default function FeedBriefDialog({
                       value={brief.note}
                       onChange={(event) => onBriefChange({ note: event.target.value.slice(0, 280) })}
                       placeholder="Local slang, recurring campaigns, anchor accounts of the audience's attention, anything Feed Me wouldn't know from the handles alone."
-                      className="mt-6 min-h-[190px] w-full resize-none rounded-[16px] border border-black/10 bg-black/5 px-4 py-4 text-[15px] font-semibold leading-relaxed text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
+                      className="mt-6 min-h-[190px] w-full resize-none rounded-[16px] border border-black/10 bg-black/5 px-4 py-4 text-[16px] font-semibold leading-relaxed text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
                     />
                     <div className="mt-2 text-right text-[11px] font-black uppercase tracking-[0.12em] text-neutral-400 dark:text-white/30">{brief.note.length} / 280</div>
                   </motion.div>

@@ -172,7 +172,7 @@ function UpdatePasswordContent() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="new-password"
-                className="h-12 w-full border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition focus:border-[#E11D48]"
+                className="h-12 w-full border border-white/10 bg-white/5 px-4 text-base text-white outline-none transition focus:border-[#E11D48]"
                 placeholder="At least 8 characters"
                 disabled={submitting || state === 'success'}
               />
@@ -187,7 +187,7 @@ function UpdatePasswordContent() {
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 autoComplete="new-password"
-                className="h-12 w-full border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition focus:border-[#E11D48]"
+                className="h-12 w-full border border-white/10 bg-white/5 px-4 text-base text-white outline-none transition focus:border-[#E11D48]"
                 placeholder="Repeat your password"
                 disabled={submitting || state === 'success'}
               />

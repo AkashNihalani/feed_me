@@ -439,6 +439,8 @@ function buildD7ReadPayload(row: FireD7ReadRow | undefined): Record<string, unkn
     model_version: row.model ? `openrouter:${row.model}:${row.prompt_version || D7_READ_PROMPT_VERSION}` : row.prompt_version || D7_READ_PROMPT_VERSION,
     scene,
     recent_run: recentRun,
+    fit: memoryMatch,
+    fun_fact: Object.keys(funFact).length > 0 ? funFact : null,
     memory_match: memoryMatch,
     numbers,
     headline,
