@@ -22,7 +22,7 @@ function formatCompact(value: string | number | null | undefined): string {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[14px] border border-foreground/[0.07] bg-white/46 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.46)] backdrop-blur-[14px] dark:border-white/[0.07] dark:bg-white/[0.045]">
+    <div className="rounded-[14px] border border-foreground/[0.07] bg-white/82 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.46)] dark:border-white/[0.07] dark:bg-white/[0.07]">
       <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/34">{label}</div>
       <div className="mt-1.5 text-[19px] font-black leading-none tracking-normal text-foreground dark:text-white">{value}</div>
     </div>
@@ -66,7 +66,7 @@ export default function FeederFileTile({
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[#E11D48]/18 bg-[#E11D48]/10 text-[#BE123C] shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-[#FB7185]/20 dark:bg-[#E11D48]/16 dark:text-white">
           <BrainCircuit size={20} strokeWidth={2.6} />
         </div>
-        <div className="flex items-center gap-1.5 rounded-full border border-foreground/[0.07] bg-white/52 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/46 backdrop-blur-[14px] dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/42">
+        <div className="flex items-center gap-1.5 rounded-full border border-foreground/[0.07] bg-white/82 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/46 dark:border-white/[0.08] dark:bg-white/[0.09] dark:text-white/42">
           <Sparkles size={11} strokeWidth={2.8} />
           Intelligence
         </div>

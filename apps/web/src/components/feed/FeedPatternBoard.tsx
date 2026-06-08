@@ -672,7 +672,7 @@ function SignalInsightDialog({
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
         >
           <motion.div
-            className="absolute inset-0 bg-black/72 backdrop-blur-[8px]"
+            className="absolute inset-0 bg-black/82"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -862,9 +862,8 @@ function PatternCard({
       transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
       className={[
         'group relative min-w-0 overflow-hidden rounded-[22px] p-2.5 text-left tabular-nums outline-none transition',
-        'border border-black/[0.05] bg-white/58 ring-1 ring-inset ring-white/50',
+        'border border-black/[0.05] bg-white/85 ring-1 ring-inset ring-white/50',
         'shadow-[inset_0_1px_0_rgba(255,255,255,0.74),0_18px_36px_-26px_rgba(15,23,42,0.2)]',
-        'backdrop-blur-[38px] backdrop-saturate-[190%]',
         'dark:border-white/[0.07] dark:bg-white/[0.035] dark:ring-white/[0.045]',
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.055),0_22px_40px_-28px_rgba(0,0,0,0.68)]',
         selected ? 'ring-[rgba(225,29,72,0.32)] dark:ring-[rgba(225,29,72,0.34)]' : '',

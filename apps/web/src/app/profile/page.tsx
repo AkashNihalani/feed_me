@@ -6,7 +6,7 @@ import { getSupabase, User } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { useAppHaptics } from '@/lib/haptics';
-import { HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
+import { AppHeader, usePageReady } from '@/components/shell/AppShell';
 import {
   FUND_ALERT_THRESHOLD_KEY,
   PWA_NOTIFICATION_ENABLED_KEY,
@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 import FeedPassCard from '@/components/profile/FeedPassCard';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
+import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
+import { GRID_ITEM_EASE, HEADER_COLLAPSE_SPRING } from '@/lib/motion';
 
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
 
@@ -403,7 +405,10 @@ type BillingLineItem = {
 // Deep Hardware Toggle (Signature Deep Neumorphism - Solid Neon)
 function HardwareToggle({ active }: { active: boolean }) {
   return (
-    <div
+    <motion.div
+      initial={false}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.42, ease: APPLE_EASE }}
       className={cn(
         'relative flex h-[32px] w-[56px] shrink-0 items-center rounded-full p-[3px] transition-all duration-300',
         active
@@ -438,7 +443,7 @@ function HardwareToggle({ active }: { active: boolean }) {
               ]
         )}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -446,9 +451,15 @@ export default function FundPage() {
   const router = useRouter();
   const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
+  const contentRef = useRef<HTMLDivElement>(null);
   const mobileBottomClearance = useTranslucentBrowserChrome
     ? '0px'
     : 'calc(170px + env(safe-area-inset-bottom))';
+  const fundHeaderCompressed = useCompressedOnScroll(
+    contentRef,
+    useBrowserPageScroll,
+    { collapseDistance: 220, expandDistance: 120, topGuard: 54 },
+  );
 
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [alertThreshold, setAlertThreshold] = useState(25);
@@ -462,6 +473,7 @@ export default function FundPage() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [slots, setSlots] = useState<SlotUsage>({ used: 0 });
   const [engineStats, setEngineStats] = useState<EngineStats>(emptyStats);
+  const [, setFundDataReady] = useState(false);
   const [fireSnapshot, setFireSnapshot] = useState<FundFireSnapshot>(emptyFireSnapshot);
   const [fireSignalsLoading, setFireSignalsLoading] = useState(true);
   const refreshFireSnapshotRef = useRef<((quiet?: boolean) => void) | null>(null);
@@ -474,6 +486,9 @@ export default function FundPage() {
   const [notificationTestBusy, setNotificationTestBusy] = useState(false);
   const [notificationTestNotice, setNotificationTestNotice] = useState<string | null>(null);
   const [showManageSubscriptionModal, setShowManageSubscriptionModal] = useState(false);
+
+  // Keep tab switching immediate; Fund data hydrates inside the page instead of blocking the shell transition.
+  usePageReady(true);
 
   // Launch sequence states removed
 
@@ -811,12 +826,15 @@ export default function FundPage() {
       setFeeds(cached.feeds || []);
       setSlots(cached.slots || { used: 0 });
       setEngineStats(cached.engineStats || emptyStats);
+      setFundDataReady(true);
       if (cached.user) {
       }
     }
 
     if (!cached) {
-      fetchData().catch(() => {});
+      fetchData()
+        .catch(() => {})
+        .finally(() => setFundDataReady(true));
     }
 
     // Default to dark mode unless user explicitly set 'light'
@@ -1300,26 +1318,29 @@ export default function FundPage() {
       )}
       style={appShellStyle}
     >
-      <div
-        className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
-      />
+      {!useTranslucentBrowserChrome && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
+        />
+      )}
 
       <AnimatePresence>
         {showManageSubscriptionModal && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            initial={{ scale: 0.996 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0.996 }}
+            transition={{ type: 'spring', stiffness: 104, damping: 24, mass: 1.18 }}
             className="fixed inset-0 z-[260] flex items-end justify-center sm:items-center sm:px-4 sm:py-6"
             style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
             onClick={closeManageSubscription}
           >
             <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 30 }}
-              transition={{ duration: 0.32, ease: APPLE_EASE }}
+              initial={{ y: 40, scale: 0.985 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 30, scale: 0.985 }}
+              transition={{ type: 'spring', stiffness: 104, damping: 24, mass: 1.18 }}
               onClick={(event) => event.stopPropagation()}
               className="relative w-full max-h-[92vh] overflow-y-auto overflow-x-hidden sm:max-w-[520px] sm:rounded-[28px]"
               style={{
@@ -1499,27 +1520,63 @@ export default function FundPage() {
         />
       )}
 
-      {/* ═══ MINIMAL LOCKED HEADER ═══ */}
-      <motion.div
-        variants={HEADER_STAGGER_CONTAINER}
-        initial="initial"
-        animate="animate"
-        className={cn(
-          'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
-          useBrowserPageScroll ? 'fixed' : 'absolute',
-        )}
+      <AppHeader
+        id="fund"
+        compressed={fundHeaderCompressed}
       >
-        <div className="relative fm-tab-header-shell">
-          <div className="fm-depth-chrome fm-depth-chrome--header w-full">
-            <div className="relative z-10 px-3.5 py-3 sm:px-5 sm:py-3.5">
-              <motion.div variants={HEADER_ROW} className="flex items-center justify-between gap-3">
-                <h1 className="text-[30px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">FUND</h1>
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50">Slot Control Room</div>
-              </motion.div>
+        <div className="relative z-10 px-3.5 py-1.5 sm:px-5 sm:py-2 lg:flex lg:h-full lg:flex-col lg:justify-center lg:px-5 lg:py-0">
+          <div className="flex flex-col gap-1.5 lg:h-full lg:justify-center lg:gap-2">
+            <div className="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 lg:min-h-[64px] lg:grid-cols-[180px_minmax(0,1fr)_180px]">
+              <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FUND</span>
+              <div className="hidden min-w-0 justify-center px-0.5 lg:flex">
+                <div className="w-full max-w-[820px] rounded-[18px] border border-black/5 bg-black/[0.035] px-3 py-2 text-center text-[9px] font-black uppercase tracking-[0.16em] text-black/45 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:text-white/40 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                  Slot Control Room
+                </div>
+              </div>
+              <div className="flex min-w-0 justify-end">
+                <span className="relative inline-flex min-w-0 items-center overflow-hidden align-middle">
+                  <div className="rounded-[16px] border border-black/6 bg-white/62 px-3 py-1.5 text-right shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <div className="text-[8px] font-black uppercase tracking-[0.18em] text-black/38 dark:text-white/32">Slots</div>
+                    <div className="mt-0.5 text-[18px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">{slots.used}</div>
+                  </div>
+                </span>
+              </div>
             </div>
+            <motion.div
+              initial={false}
+              className="relative min-w-0 overflow-hidden hidden lg:block"
+              animate={{
+                opacity: fundHeaderCompressed ? 0 : 1,
+                y: fundHeaderCompressed ? -14 : 0,
+                clipPath: fundHeaderCompressed
+                  ? 'inset(0 0 100% 0 round 18px)'
+                  : 'inset(0 0 0% 0 round 18px)',
+              }}
+              transition={{
+                opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+                y: HEADER_COLLAPSE_SPRING,
+                clipPath: { duration: 0.28, ease: GRID_ITEM_EASE },
+              }}
+              style={{
+                pointerEvents: fundHeaderCompressed ? 'none' : 'auto',
+                willChange: 'transform, opacity, clip-path',
+              }}
+            >
+              <div className="flex min-h-[42px] min-w-0 items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                <div className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  {feeds.length} feeds
+                </div>
+                <div className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  ₹{slotPlanPrice}/slot
+                </div>
+                <div className="min-w-0 truncate rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  {slotPostsCap} posts included
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
-      </motion.div>
+      </AppHeader>
 
       {/* ═══ CONTENT STAGGER GRID ═══ */}
       <div className={cn(
@@ -1529,6 +1586,7 @@ export default function FundPage() {
           : 'relative h-full',
       )}>
         <div
+          ref={contentRef}
           className={cn(
             'w-full overflow-x-hidden pt-[calc(96px+env(safe-area-inset-top))] sm:pt-[calc(108px+env(safe-area-inset-top))] md:pt-[118px] pointer-events-auto',
             useBrowserPageScroll
@@ -1706,7 +1764,7 @@ export default function FundPage() {
                         <div className="mt-1.5 flex items-end gap-2.5">
                           <motion.div
                             key={`signals-${currentFireDay}-${firePulse.totalSignals}`}
-                            initial={{ y: 6, opacity: 0, scale: 0.96 }}
+                            initial={false}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             transition={{ duration: 0.32, ease: APPLE_EASE }}
                             className="bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-[44px] font-black leading-[0.85] tracking-[-0.07em] text-transparent tabular-nums dark:from-white dark:to-white/70 sm:text-[52px]"
@@ -1740,7 +1798,7 @@ export default function FundPage() {
                       <div className="shrink-0 text-right">
                         <motion.div
                           key={pulsePillText}
-                          initial={{ y: -4, opacity: 0 }}
+                          initial={false}
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ duration: 0.24, ease: APPLE_EASE }}
                           className={cn(
@@ -1805,7 +1863,7 @@ export default function FundPage() {
                         ) : (
                           <motion.div
                             key={pulseHeadline}
-                            initial={{ y: 4, opacity: 0 }}
+                            initial={false}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ duration: 0.24, ease: APPLE_EASE }}
                             className="mt-3.5 text-[26px] font-black leading-none tracking-[-0.06em] text-foreground dark:text-white sm:text-[30px]"
@@ -2148,7 +2206,7 @@ export default function FundPage() {
                       <div className="flex items-center gap-2">
                         <motion.div
                           key={`${alertThreshold}-${thresholdLocked}`}
-                          initial={{ scale: 0.85, opacity: 0.5 }}
+                          initial={false}
                           animate={{ scale: 1, opacity: 1 }}
                           transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                           className={cn(
@@ -2222,7 +2280,7 @@ export default function FundPage() {
 
                         {/* Filled portion */}
                         <motion.div
-                          initial={{ width: 0 }}
+                          initial={false}
                           animate={{ width: `${alertThreshold}%` }}
                           transition={{ duration: 0.15, ease: 'easeOut' }}
                           className={cn(
@@ -2434,9 +2492,9 @@ export default function FundPage() {
                              {/* Cylindrical Recessed Hardware Meter */}
                              <div className="relative h-3.5 w-full rounded-full bg-black/5 border border-black/5 dark:bg-black/80 dark:border-transparent dark:shadow-[inset_0_3px_6px_rgba(0,0,0,0.8),inset_0_-1px_1px_rgba(255,255,255,0.06),0_1px_1px_rgba(255,255,255,0.05)] overflow-hidden">
                                <motion.div 
-                                 initial={{ width: 0 }}
+                                 initial={false}
                                  animate={{ width: `${f.pct}%` }}
-                                 transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}
+                                 transition={{ duration: 0.18, ease: 'easeOut' }}
                                  className="absolute inset-[1.5px] rounded-full bg-[#E11D48] shadow-[0_0_12px_rgba(225,29,72,0.4),inset_0_1px_2px_rgba(255,255,255,0.7),inset_0_-1px_2px_rgba(0,0,0,0.15)]"
                                />
                              </div>

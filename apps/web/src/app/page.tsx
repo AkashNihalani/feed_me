@@ -1,9 +1,11 @@
 'use client';
 
-import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef } from 'react';
+/* eslint-disable @next/next/no-img-element -- Feeder story avatars use direct dynamic profile URLs. */
+
+import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef, type CSSProperties } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Clock, FileText, Plus, Target, Users, X } from 'lucide-react';
+import { ChevronLeft, Clock, Crown, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederFileTile from '@/components/feed/FeederFileTile';
 import FeederRow from '@/components/feed/FeederRow';
@@ -13,9 +15,10 @@ import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import FeedBriefDialog from '@/components/feed/FeedBriefDialog';
 import { FeedBrief, CREATE_FEED_LAST_STEP, defaultFeedBrief, buildFeedBriefText, normalizeFeedBrief } from '@/components/feed/feedBriefUtils';
+import { AppHeader, usePageReady } from '@/components/shell/AppShell';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
-import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_STAGGER_CONTAINER, HEADER_ROW } from '@/lib/motion';
+import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_COLLAPSE_SPRING, HEADER_ROW } from '@/lib/motion';
 import { clearCacheByPrefix, getCache, readCache, removeCache, setCache } from '@/lib/pageCache';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
@@ -49,7 +52,17 @@ type SlotUsage = {
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FEED_HEADER_MORPH_TRANSITION = { duration: 0.62, ease: APPLE_EASE } as const;
-const FEED_HEADER_HEIGHT_SETTLE_MS = 740;
+const FEED_HEADER_VIEW_TRANSITION = { duration: 0.34, ease: APPLE_EASE } as const;
+const FEED_MOBILE_LIST_HEADER_HEIGHT = 176;
+const FEED_DESKTOP_LIST_HEADER_HEIGHT = 174;
+const FEED_MOBILE_DETAIL_HEADER_HEIGHT = 260;
+const FEED_DESKTOP_DETAIL_HEADER_HEIGHT = 246;
+const FEED_DESKTOP_CONTENT_OFFSET = 258;
+const FEED_MOBILE_DETAIL_CHROME_HEIGHT = '222px';
+const FEED_DESKTOP_DETAIL_CHROME_HEIGHT = '198px';
+const FEED_HEADER_SWAP_TRANSITION = { duration: 0.24, ease: GRID_ITEM_EASE } as const;
+const FEED_PAGE_LAYER_TRANSITION = { duration: 0.24, ease: GRID_ITEM_EASE } as const;
+const FEED_MOBILE_CONTENT_OFFSET = 'calc(260px + env(safe-area-inset-top))';
 const FEED_CACHE_KEY = 'feed:bundle:v7';
 const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v12';
 const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
@@ -58,20 +71,15 @@ const FEED_TILE_ENTRY_BASE_DELAY = 0.08;
 const FEED_TILE_ENTRY_STAGGER = 0.055;
 const FEED_TILE_ENTRY_MAX_STAGGER = 0.28;
 const FEED_INTENT_GRACE_MS = 3000;
+const ACCENT = '#E11D48';
+const STORY_RING_RADIUS = 43;
+const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * STORY_RING_RADIUS;
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   '7D': '7D',
   '30D': '30D',
   '60D': '60D',
   '90D': '90D',
-};
-
-const pageVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { duration: 0.42, ease: APPLE_EASE },
-  },
 };
 
 function istDateKey(date: Date): string {
@@ -168,6 +176,250 @@ function dashboardFallbackFromFeed(feed: Feed | null | undefined, timeframe: Tim
   };
 }
 
+const STORY_GRADIENTS = [
+  ['#1f2937', '#0f172a'],
+  ['#b91c1c', '#7f1d1d'],
+  ['#1d4ed8', '#1e3a8a'],
+  ['#047857', '#064e3b'],
+  ['#b45309', '#78350f'],
+  ['#7c3aed', '#4c1d95'],
+  ['#0891b2', '#155e75'],
+  ['#475569', '#1e293b'],
+] as const;
+
+function feederInitials(handle: string | null | undefined) {
+  const clean = String(handle || '').replace(/^@+/, '').trim();
+  if (!clean) return 'FM';
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function storyGradientForHandle(handle: string | null | undefined) {
+  const clean = String(handle || '');
+  const seed = clean.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return STORY_GRADIENTS[seed % STORY_GRADIENTS.length];
+}
+
+function FeederStoryAvatar({
+  feeder,
+  className,
+  style,
+}: {
+  feeder: Pick<Feeder, 'handle' | 'profilePicUrl'>;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const [from, to] = storyGradientForHandle(feeder.handle);
+  return (
+    <span
+      className={cn(
+        'relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(150deg,var(--fm-story-grad-from),var(--fm-story-grad-to))] text-[18px] font-black leading-none text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] [text-shadow:0_1px_3px_rgba(0,0,0,0.35)]',
+        className,
+      )}
+      style={{
+        ['--fm-story-grad-from' as string]: from,
+        ['--fm-story-grad-to' as string]: to,
+        ...style,
+      }}
+    >
+      {feeder.profilePicUrl ? (
+        <img
+          src={feeder.profilePicUrl}
+          alt={`@${feeder.handle}`}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <span className="relative z-10">{feederInitials(feeder.handle)}</span>
+      )}
+    </span>
+  );
+}
+
+function ActiveStoryRingStroke() {
+  return (
+    <>
+      <motion.span
+        className="pointer-events-none absolute -inset-1 rounded-full bg-[#E11D48]/24 blur-md"
+        initial={{ opacity: 0, scale: 0.86 }}
+        animate={{ opacity: [0, 0.64, 0], scale: [0.86, 1.16, 1.02] }}
+        transition={{ duration: 0.62, ease: APPLE_EASE, times: [0, 0.38, 1] }}
+      />
+      <motion.svg
+        className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+        viewBox="0 0 100 100"
+        aria-hidden="true"
+      >
+        <g transform="rotate(-90 50 50)">
+          <circle
+            cx="50"
+            cy="50"
+            r={STORY_RING_RADIUS}
+            fill="none"
+            stroke="rgba(225,29,72,0.22)"
+            strokeWidth="7.5"
+          />
+          <motion.circle
+            cx="50"
+            cy="50"
+            r={STORY_RING_RADIUS}
+            fill="none"
+            stroke={ACCENT}
+            strokeWidth="7.5"
+            strokeLinecap="round"
+            strokeDasharray={STORY_RING_CIRCUMFERENCE}
+            initial={{ opacity: 0.9, strokeDashoffset: STORY_RING_CIRCUMFERENCE }}
+            animate={{ opacity: 1, strokeDashoffset: 0 }}
+            transition={{ duration: 0.72, ease: APPLE_EASE }}
+            style={{ filter: 'drop-shadow(0 3px 7px rgba(225,29,72,0.34))' }}
+          />
+        </g>
+      </motion.svg>
+    </>
+  );
+}
+
+function FullFeedStoryButton({
+  feeders,
+  selected,
+  onClick,
+}: {
+  feeders: Feeder[];
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const visibleFeeders = feeders.slice(0, 3);
+
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.95 }}
+      aria-pressed={selected}
+      aria-label="Show full feed"
+      onClick={onClick}
+      className="group flex w-[76px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
+    >
+      <span
+        className={cn(
+          'relative grid h-[70px] w-[70px] place-items-center rounded-full p-[5px] transition-[background,box-shadow,transform] duration-300',
+          selected
+            ? 'scale-[1.02] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
+            : 'bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+        )}
+      >
+        {selected && <ActiveStoryRingStroke />}
+        <span className="relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)]">
+          {visibleFeeders.length > 0 ? (
+            <span className="relative block h-[28px] w-[51px]" aria-hidden="true">
+              {visibleFeeders.map((feeder, index) => (
+                <FeederStoryAvatar
+                  key={`story-stack:${feeder.handle}:${index}`}
+                  feeder={feeder}
+                  className="absolute top-0 h-[28px] w-[28px] border-[1.5px] border-white text-[11px] dark:border-[#09090b]"
+                  style={{ left: index * 11, zIndex: 3 - index }}
+                />
+              ))}
+            </span>
+          ) : (
+            <span className="flex h-full w-full items-center justify-center rounded-full bg-[#E11D48] text-white">
+              <Users size={20} strokeWidth={2.8} />
+            </span>
+          )}
+        </span>
+      </span>
+      <span
+        className={cn(
+          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9.5px] font-black leading-none text-black/42 dark:text-white/44',
+          selected && 'text-[#E11D48] dark:text-[#FB7185]',
+        )}
+      >
+        Full Feed
+      </span>
+    </motion.button>
+  );
+}
+
+function FeederStoryButton({
+  feeder,
+  selected,
+  onClick,
+}: {
+  feeder: Feeder;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.95 }}
+      aria-pressed={selected}
+      aria-label={`Show @${feeder.handle}`}
+      onClick={onClick}
+      className="group flex w-[76px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
+    >
+      <span
+        className={cn(
+          'relative grid h-[70px] w-[70px] place-items-center rounded-full p-[5px] transition-[background,box-shadow,transform] duration-300',
+          selected
+            ? 'scale-[1.02] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
+            : 'bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+        )}
+      >
+        {selected && <ActiveStoryRingStroke />}
+        <span className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF]">
+          <FeederStoryAvatar feeder={feeder} />
+        </span>
+        {feeder.isAnchor && (
+          <span
+            className="absolute -bottom-0.5 left-1/2 z-30 grid h-3 w-3 -translate-x-1/2 place-items-center rounded-full border-[2px] border-white bg-[#E11D48] text-white shadow-[0_3px_8px_-2px_rgba(225,29,72,0.6)] dark:border-[#09090b]"
+            aria-label="Anchor feeder"
+          >
+            <Crown size={9} strokeWidth={3} fill="currentColor" />
+          </span>
+        )}
+      </span>
+      <span
+        className={cn(
+          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9.5px] font-black lowercase leading-none text-black/42 dark:text-white/44',
+          selected && 'text-[#E11D48] dark:text-[#FB7185]',
+        )}
+      >
+        @{feeder.handle}
+      </span>
+    </motion.button>
+  );
+}
+
+function FeederStoryRail({
+  feeders,
+  selectedHandle,
+  onSelectHandle,
+}: {
+  feeders: Feeder[];
+  selectedHandle: string;
+  onSelectHandle: (handle: string) => void;
+}) {
+  if (feeders.length === 0) return null;
+
+  return (
+    <div className="hide-scrollbar -mx-1 flex min-h-[88px] items-start gap-2 overflow-x-auto overflow-y-visible px-1 pb-1 pt-1 [-webkit-overflow-scrolling:touch] lg:min-h-[82px]">
+      <FullFeedStoryButton
+        feeders={feeders}
+        selected={selectedHandle === 'all'}
+        onClick={() => onSelectHandle('all')}
+      />
+      {feeders.map((feeder) => (
+        <FeederStoryButton
+          key={`story:${feeder.handle}`}
+          feeder={feeder}
+          selected={selectedHandle === feeder.handle}
+          onClick={() => onSelectHandle(feeder.handle)}
+        />
+      ))}
+    </div>
+  );
+}
+
 async function fetchDashboardSnapshot(feedId: string, timeframe: Timeframe, handle: string): Promise<DashboardPayload | null> {
   const cacheKey = dashboardCacheKey(feedId, timeframe, handle);
   const cached = getCache<DashboardPayload>(cacheKey, DASHBOARD_CACHE_TTL);
@@ -200,7 +452,6 @@ function FeedPageContent() {
   const router = useRouter();
   const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
-  const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const hydratedFeedCacheRef = useRef(false);
   const urlSelectedFeedId = searchParams.get('id');
@@ -211,6 +462,15 @@ function FeedPageContent() {
   const mobileListBottomClearance = useTranslucentBrowserChrome
     ? '0px'
     : 'calc(190px + env(safe-area-inset-bottom))';
+  const resetFeedScrollTop = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, []);
 
   useEffect(() => {
     try {
@@ -274,14 +534,61 @@ function FeedPageContent() {
   const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
   const [exportFrom, setExportFrom] = useState<string>(() => defaultExportRange().from);
   const [exportTo, setExportTo] = useState<string>(() => defaultExportRange().to);
-  const [headerHeight, setHeaderHeight] = useState(() => (urlSelectedFeedId ? 204 : 176));
+  const [headerHeight, setHeaderHeight] = useState(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+      return urlSelectedFeedId ? FEED_DESKTOP_DETAIL_HEADER_HEIGHT : FEED_DESKTOP_LIST_HEADER_HEIGHT;
+    }
+    return urlSelectedFeedId ? FEED_MOBILE_DETAIL_HEADER_HEIGHT : FEED_MOBILE_LIST_HEADER_HEIGHT;
+  });
   const headerCompressed = useCompressedOnScroll(
     contentRef,
     view === 'detail' && useBrowserPageScroll,
     { collapseDistance: 220, expandDistance: 120, topGuard: 54 },
   );
-  const headerCompressedRef = useRef(headerCompressed);
-  useEffect(() => { headerCompressedRef.current = headerCompressed; }, [headerCompressed]);
+  useEffect(() => {
+    if (view === 'detail') {
+      setHeaderHeight(useBrowserPageScroll ? FEED_MOBILE_DETAIL_HEADER_HEIGHT : FEED_DESKTOP_DETAIL_HEADER_HEIGHT);
+      return;
+    }
+    setHeaderHeight(useBrowserPageScroll ? FEED_MOBILE_LIST_HEADER_HEIGHT : FEED_DESKTOP_LIST_HEADER_HEIGHT);
+  }, [useBrowserPageScroll, view]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const html = document.documentElement;
+    if (view !== 'detail') {
+      html.style.removeProperty('--fm-mobile-header-chrome-height');
+      html.style.removeProperty('--fm-desktop-header-chrome-height');
+      return undefined;
+    }
+
+    html.style.setProperty('--fm-mobile-header-chrome-height', FEED_MOBILE_DETAIL_CHROME_HEIGHT);
+    html.style.setProperty('--fm-desktop-header-chrome-height', FEED_DESKTOP_DETAIL_CHROME_HEIGHT);
+
+    return () => {
+      html.style.removeProperty('--fm-mobile-header-chrome-height');
+      html.style.removeProperty('--fm-desktop-header-chrome-height');
+    };
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== 'detail' || !useBrowserPageScroll) return;
+    const resetHorizontalScroll = () => {
+      document.documentElement.scrollLeft = 0;
+      document.body.scrollLeft = 0;
+      window.scrollTo({ left: 0, top: window.scrollY, behavior: 'auto' });
+    };
+    resetHorizontalScroll();
+    const frame = window.requestAnimationFrame(resetHorizontalScroll);
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedFeedId, useBrowserPageScroll, view]);
+
+  useEffect(() => {
+    if (view !== 'detail') return;
+    resetFeedScrollTop();
+    const frame = window.requestAnimationFrame(resetFeedScrollTop);
+    return () => window.cancelAnimationFrame(frame);
+  }, [resetFeedScrollTop, selectedFeedId, view]);
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
   const dashboardFallback = useMemo(
@@ -297,16 +604,12 @@ function FeedPageContent() {
     if (sortMode === 'feeders') return list.sort((a, b) => b.feeders.length - a.feeders.length || a.title.localeCompare(b.title));
     return list;
   }, [feeds, sortMode]);
-  const handles = useMemo<string[]>(() => {
-    if (!activeFeed) return [];
-    return (activeFeed.feeders || []).map((f) => String(f.handle || '').trim()).filter(Boolean);
-  }, [activeFeed]);
   const shortTitle = String(activeFeed?.title || 'Feed').toUpperCase();
+  const expandedScopeLabel = selectedHandle === 'all' ? 'FULL FEED' : `@${selectedHandle}`;
   const compactPrimaryLabel = selectedHandle === 'all' ? shortTitle : `@${selectedHandle.toUpperCase()}`;
   const compactSecondaryLabel = selectedHandle === 'all' ? 'FULL FEED' : shortTitle;
   const compactWindowNumber = String(TIMEFRAME_TO_DAYS[timeframe]);
   const compactWindowUnitLabel = TIMEFRAME_TO_DAYS[timeframe] === 1 ? 'DAY' : 'DAYS';
-  const mobileDashboardFilterRowHeight = handles.length > 0 ? '76px' : '42px';
   const pendingDeleteFeed = useMemo(
     () => (pendingDeleteFeedId ? feeds.find((feed) => feed.id === pendingDeleteFeedId) ?? null : null),
     [feeds, pendingDeleteFeedId]
@@ -328,6 +631,8 @@ function FeedPageContent() {
   const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
   const topAveragePosts = Math.max(0, Number(effectiveDashboardData?.summary?.posts_with_metrics) || 0);
   const exportScopeLabel = selectedHandle === 'all' ? 'FULL FEED' : `@${selectedHandle.toUpperCase()}`;
+
+  usePageReady(feedDataReady);
 
   useIsomorphicLayoutEffect(() => {
     if (hydratedFeedCacheRef.current) return;
@@ -396,54 +701,6 @@ function FeedPageContent() {
     });
   }, [loadFeeds]);
   useEffect(() => { setSelectedHandle('all'); setTimeframe('30D'); }, [selectedFeedId]);
-
-  useEffect(() => {
-    const node = headerRef.current;
-    if (!node) return undefined;
-
-    let raf = 0;
-    let settleTimer = 0;
-    const commitHeight = () => {
-      if (headerCompressedRef.current) return;
-      const nextHeight = Math.ceil(node.getBoundingClientRect().height);
-      setHeaderHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
-    };
-    const commitInFrame = () => {
-      if (raf) window.cancelAnimationFrame(raf);
-      raf = window.requestAnimationFrame(() => {
-        raf = 0;
-        commitHeight();
-      });
-    };
-    const scheduleSettledHeight = () => {
-      window.clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(commitInFrame, FEED_HEADER_HEIGHT_SETTLE_MS);
-    };
-
-    commitInFrame();
-    scheduleSettledHeight();
-    window.addEventListener('resize', scheduleSettledHeight);
-
-    return () => {
-      if (raf) window.cancelAnimationFrame(raf);
-      window.clearTimeout(settleTimer);
-      window.removeEventListener('resize', scheduleSettledHeight);
-    };
-  }, [view, activeFeed?.id, handles.length, timeframe, selectedHandle, useBrowserPageScroll]);
-
-  useEffect(() => {
-    if (headerCompressed) return undefined;
-    const node = headerRef.current;
-    if (!node) return undefined;
-
-    const settleTimer = window.setTimeout(() => {
-      if (headerCompressedRef.current) return;
-      const nextHeight = Math.ceil(node.getBoundingClientRect().height);
-      setHeaderHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
-    }, FEED_HEADER_HEIGHT_SETTLE_MS);
-
-    return () => window.clearTimeout(settleTimer);
-  }, [headerCompressed]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -556,8 +813,9 @@ function FeedPageContent() {
     finally { setIsBusy(false); }
   };
 
-  const handleFeedClick = (id: string) => {
+  const handleFeedClick = useCallback((id: string) => {
     setApiError(null);
+    resetFeedScrollTop();
     setSelectedHandle('all');
     setTimeframe('30D');
     setSelectedFeedId(id);
@@ -567,13 +825,28 @@ function FeedPageContent() {
     startTransition(() => {
       router.push(`/?id=${id}`, { scroll: false });
     });
-  };
-  const handleBack = () => {
+    window.requestAnimationFrame(() => {
+      resetFeedScrollTop();
+      window.requestAnimationFrame(resetFeedScrollTop);
+    });
+  }, [preloadDashboard, resetFeedScrollTop, router]);
+  const handleBack = useCallback(() => {
+    resetFeedScrollTop();
     setSelectedFeedId(null);
     startTransition(() => {
       router.push('/', { scroll: false });
     });
-  };
+    window.requestAnimationFrame(resetFeedScrollTop);
+  }, [resetFeedScrollTop, router]);
+
+  useEffect(() => {
+    const handleFeedReselect = () => {
+      if (!selectedFeedId) return;
+      handleBack();
+    };
+    window.addEventListener('feedme:feed-tab-reselect', handleFeedReselect);
+    return () => window.removeEventListener('feedme:feed-tab-reselect', handleFeedReselect);
+  }, [handleBack, selectedFeedId]);
   const handleDownloadExport = () => {
     if (!activeFeed) return;
     if (exportFrom && exportTo && exportFrom > exportTo) {
@@ -706,65 +979,44 @@ function FeedPageContent() {
     const ok = await runFeedAction({ action: 'delete_feed', feedId: Number(pendingDeleteFeedId) });
     if (ok) setPendingDeleteFeedId(null);
   };
-
   return (
     <motion.div
-      variants={pageVariants}
       initial={false}
-      animate="visible"
       className={cn(
         'fm-dashboard-mesh relative w-full text-foreground select-none',
         useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#f4f7f9] dark:bg-[#030303]',
-        useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
+        useBrowserPageScroll ? 'overflow-x-hidden overflow-y-visible' : 'overflow-hidden',
       )}
       style={{
         ...appShellStyle,
         ['--fm-feed-header-height' as string]: `${headerHeight}px`,
       }}
     >
-      {/* Ambient bg */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
-      />
+      {!useTranslucentBrowserChrome && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
+        />
+      )}
 
-      {/* ═══ LOCKED HEADER ═══ */}
-      <motion.div
-        ref={headerRef}
-        variants={HEADER_STAGGER_CONTAINER}
-        initial="initial"
-        animate="animate"
-        className={cn(
-          'pointer-events-auto inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(18px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
-          useBrowserPageScroll ? 'fixed' : 'absolute',
-          view === 'detail' && 'fm-feed-header-morph-isolated',
-        )}
+      <AppHeader
+        id="feed"
+        compressed={view === 'detail' && headerCompressed}
       >
-        <div className="relative fm-tab-header-shell">
-          <motion.div
-            className={cn(
-              'fm-depth-chrome fm-depth-chrome--header w-full',
-              view === 'detail' && headerCompressed && 'fm-depth-chrome--header-compressed',
-              view === 'detail' && 'fm-feed-header-morph-isolated',
-            )}
-            initial={false}
-            animate={{ scale: view === 'detail' && headerCompressed ? 0.997 : 1 }}
-            transition={FEED_HEADER_MORPH_TRANSITION}
-          >
-            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2.5 lg:px-4 lg:py-2">
+            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2.5 lg:flex lg:h-full lg:flex-col lg:justify-center lg:px-5 lg:py-0">
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
               <div className="lg:hidden">
+                <AnimatePresence mode="popLayout" initial={false}>
                 {view === 'detail' ? (
                   <motion.div
-                    className="fm-feed-header-morph-isolated grid overflow-hidden"
-                    initial={false}
-                    animate={{
-                      gridTemplateRows: headerCompressed ? '52px 0px' : `58px ${mobileDashboardFilterRowHeight}`,
-                      rowGap: headerCompressed ? 0 : 5,
-                    }}
-                    transition={FEED_HEADER_MORPH_TRANSITION}
-                    style={{ willChange: 'grid-template-rows' }}
+                    key="mobile-detail-header"
+                    className="fm-feed-header-morph-isolated relative overflow-hidden"
+                    initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.99 }}
+                    transition={FEED_HEADER_VIEW_TRANSITION}
                   >
-                    <motion.div initial={false} animate={{ opacity: 1 }} className="relative flex min-h-0 items-center">
+                    <motion.div initial={false} className="relative flex h-[58px] min-h-0 items-center">
                       <motion.div
                         className="absolute inset-0 grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5"
                         initial={false}
@@ -787,11 +1039,11 @@ function FeedPageContent() {
                         </motion.button>
 
                         <div className="flex min-w-0 flex-col justify-center overflow-hidden">
-                          <h1 className="min-w-0 truncate text-[28px] font-black leading-[0.9] tracking-[-0.06em] text-black dark:text-white fm-depth-title sm:text-[32px]">
+                          <span className="fm-depth-title block min-w-0 truncate text-[28px] font-black uppercase leading-[0.9] tracking-normal text-black dark:text-white sm:text-[30px]">
                             {shortTitle}
-                          </h1>
+                          </span>
                           <span className="mt-1 block truncate text-[9px] font-black uppercase leading-none tracking-[0.22em] text-black/38 dark:text-white/34">
-                            {selectedHandle === 'all' ? 'Full feed' : `@${selectedHandle}`}
+                            {expandedScopeLabel}
                           </span>
                         </div>
 
@@ -842,10 +1094,23 @@ function FeedPageContent() {
 
                     <motion.div
                       initial={false}
-                      className="min-w-0 overflow-hidden pointer-events-auto"
-                      animate={{ opacity: headerCompressed ? 0 : 1, y: headerCompressed ? -8 : 0 }}
-                      transition={FEED_HEADER_MORPH_TRANSITION}
-                      style={{ pointerEvents: headerCompressed ? 'none' : 'auto' }}
+                      className="mt-[5px] min-w-0 overflow-hidden pointer-events-auto"
+                      animate={{
+                        opacity: headerCompressed ? 0 : 1,
+                        y: headerCompressed ? -14 : 0,
+                        clipPath: headerCompressed
+                          ? 'inset(0 0 100% 0 round 18px)'
+                          : 'inset(0 0 0% 0 round 18px)',
+                      }}
+                      transition={{
+                        opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+                        y: HEADER_COLLAPSE_SPRING,
+                        clipPath: { duration: 0.28, ease: GRID_ITEM_EASE },
+                      }}
+                      style={{
+                        pointerEvents: headerCompressed ? 'none' : 'auto',
+                        willChange: 'transform, opacity, clip-path',
+                      }}
                     >
                       <div className="flex flex-col gap-1">
                         <div className="relative grid h-[40px] grid-cols-4 items-center gap-1 rounded-[18px] border border-white/82 bg-white/70 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:border-white/[0.05] dark:bg-white/[0.03] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
@@ -867,46 +1132,29 @@ function FeedPageContent() {
                             </motion.button>
                           ))}
                         </div>
-                        {handles.length > 0 && (
-                          <div className="hide-scrollbar -mx-1 flex min-h-[32px] items-center gap-1.5 overflow-x-auto px-1 py-0.5">
-                            <motion.button whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle('all'); }}
-                              className={cn('relative flex h-[30px] shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-[9px] font-black uppercase leading-none tracking-[0.12em]',
-                                selectedHandle === 'all' ? 'z-10 text-white' : 'fm-depth-chip z-0 text-foreground/50 dark:text-foreground/38')}>
-                              {selectedHandle === 'all' && (
-                                <motion.span layoutId="handle-pill-bg"
-                                  className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
-                                  transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
-                              )}
-                              <span className="relative z-10">Full Feed</span>
-                            </motion.button>
-                            {handles.map(h => (
-                              <motion.button key={h} whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle(h); }}
-                                className={cn('relative flex h-[30px] shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-[9px] font-black uppercase leading-none tracking-[0.08em]',
-                                  selectedHandle === h
-                                    ? 'z-10 max-w-[174px] text-white'
-                                    : 'fm-depth-chip z-0 max-w-[132px] text-foreground/50 dark:text-foreground/38')}>
-                                {selectedHandle === h && (
-                                  <motion.span layoutId="handle-pill-bg"
-                                    className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
-                                    transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
-                                )}
-                                <span className="relative z-10 truncate">@{h}</span>
-                              </motion.button>
-                            ))}
-                          </div>
-                        )}
+                        <FeederStoryRail
+                          feeders={activeFeed?.feeders ?? []}
+                          selectedHandle={selectedHandle}
+                          onSelectHandle={(handle) => { play('snapLock'); setSelectedHandle(handle); }}
+                        />
                       </div>
                     </motion.div>
                   </motion.div>
                 ) : (
-                  <div className="flex flex-col gap-1.5 sm:gap-2">
-                    <motion.div initial={false} animate={{ opacity: 1 }} className="flex items-center justify-between gap-3">
+                  <motion.div
+                    key="mobile-list-header"
+                    className="flex flex-col gap-1.5 sm:gap-2"
+                    initial={{ opacity: 0, y: -6, scale: 0.99 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.985 }}
+                    transition={FEED_HEADER_VIEW_TRANSITION}
+                  >
+                    <motion.div initial={false} className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h1 className="font-extrabold leading-none text-black dark:text-white fm-depth-title transition-[font-size,letter-spacing] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] text-[22px] tracking-[0.14em] sm:text-[38px] sm:font-black">
-                          FEED
-                        </h1>
+                        <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FEED</span>
                       </div>
-                      <motion.div key="list-actions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: [0.4, 0, 0.1, 1] }} className="flex shrink-0 items-center gap-2">
+                      <span className="relative inline-flex min-w-0 shrink-0 items-center overflow-hidden align-middle">
+                        <div className="flex items-center gap-2">
                         <motion.button
                           type="button"
                           whileTap={{ scale: 0.94 }}
@@ -916,10 +1164,15 @@ function FeedPageContent() {
                         >
                           <motion.span
                             key={sortMode}
-                            initial={{ y: 8, opacity: 0, scale: 0.9 }}
-                            animate={{ y: 0, opacity: 1, scale: 1 }}
-                            transition={{ duration: 0.26, ease: [0.4, 0, 0.1, 1] }}
+                            initial={{ rotateX: 62, y: -7, scale: 0.92 }}
+                            animate={{ rotateX: 0, y: 0, scale: 1 }}
+                            transition={FEED_HEADER_SWAP_TRANSITION}
                             className="flex items-center justify-center"
+                            style={{
+                              backfaceVisibility: 'hidden',
+                              transformOrigin: '50% 50%',
+                              transformStyle: 'preserve-3d',
+                            }}
                           >
                             {sortMode === 'recent' ? (
                               <Clock size={16} strokeWidth={2.4} />
@@ -934,28 +1187,36 @@ function FeedPageContent() {
                           className="flex h-[36px] items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[11px]">
                           <Plus size={16} strokeWidth={3} /> <span className="hidden sm:inline">Add Feed</span>
                         </motion.button>
-                      </motion.div>
+                        </div>
+                      </span>
                     </motion.div>
-                    <motion.div
-                      initial={false}
-                      animate={{ opacity: 1 }}
-                      className="min-w-0 pointer-events-auto"
-                    >
+                    <div className="relative min-w-0 overflow-hidden pointer-events-auto">
                       <FlipTicker items={tickerItems} className="w-full" />
-                    </motion.div>
-                  </div>
+                    </div>
+                  </motion.div>
                 )}
+                </AnimatePresence>
 
                 {apiError && <div className="mt-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-red-600 dark:text-red-400">{apiError}</div>}
               </div>
 
               {/* ═══ DESKTOP HEADER (≥ lg) — Mirrors Fire tab ═══ */}
-              <motion.div variants={HEADER_ROW} className="hidden flex-col gap-1.5 lg:flex">
-                <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div variants={HEADER_ROW} className="hidden flex-col gap-1.5 lg:flex lg:h-full lg:justify-center" style={{ perspective: 1200 }}>
                   {view === 'detail' ? (
-                    <motion.div key="desktop-detail-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-1.5">
+                    <motion.div
+                      key="desktop-detail-header"
+                      initial={{ rotateX: 7, y: 12, scale: 0.985 }}
+                      animate={{ rotateX: 0, y: 0, scale: 1 }}
+                      transition={FEED_HEADER_SWAP_TRANSITION}
+                      className="flex flex-col gap-1.5"
+                      style={{
+                        backfaceVisibility: 'hidden',
+                        transformOrigin: '50% 50%',
+                        transformStyle: 'preserve-3d',
+                      }}
+                    >
                       {/* Row 1: Back + Name | Timeframe pills | performance summary */}
-                      <div className="grid grid-cols-[minmax(132px,auto)_minmax(0,1fr)_auto] items-center gap-2">
+                      <div className="grid min-h-[64px] grid-cols-[180px_minmax(0,1fr)_180px] items-center gap-2">
                         <div className="flex items-center gap-2">
                           <motion.button
                             whileTap={{ scale: 0.92 }}
@@ -964,11 +1225,16 @@ function FeedPageContent() {
                           >
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                           </motion.button>
-                          <h1 className="truncate text-[26px] font-black tracking-[-0.04em] text-black dark:text-white fm-depth-title">
-                            {shortTitle}
-                          </h1>
+                          <div className="flex min-w-0 flex-col justify-center overflow-hidden">
+                            <span className="fm-depth-title block truncate text-[27px] font-black uppercase leading-none tracking-normal text-black dark:text-white">
+                              {shortTitle}
+                            </span>
+                            <span className="mt-1 block truncate text-[9px] font-black uppercase leading-none tracking-[0.2em] text-black/38 dark:text-white/34">
+                              {expandedScopeLabel}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex justify-center px-0.5">
+                        <div className="flex min-w-0 justify-center px-0.5">
                           <div className="relative flex items-center gap-1.5 rounded-[18px] border border-white/82 bg-white/74 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
                             {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
                               <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
@@ -989,7 +1255,7 @@ function FeedPageContent() {
                             ))}
                           </div>
                         </div>
-                        <div className="flex items-center justify-end">
+                        <div className="flex min-w-0 items-center justify-end">
                           <div className="rounded-[14px] border border-black/6 bg-white/68 px-3 py-1.5 text-right shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_8px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
                             <div className="text-[7px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/30">Avg perf</div>
                             <div className="flex items-baseline justify-end gap-1.5">
@@ -1003,44 +1269,34 @@ function FeedPageContent() {
                       </div>
 
                       {/* Row 2: Recessed filter tray with handle pills */}
-                      {handles.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2 py-1.5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
-                          <motion.button whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle('all'); }}
-                            className={cn('relative whitespace-nowrap rounded-full px-3.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em]',
-                              selectedHandle === 'all' ? 'z-10 text-white' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
-                            {selectedHandle === 'all' && (
-                              <motion.span layoutId="handle-pill-bg-desk"
-                                className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
-                                transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
-                            )}
-                            <span className="relative z-10">Full Feed</span>
-                          </motion.button>
-                          {handles.map(h => (
-                            <motion.button key={h} whileTap={{ scale: 0.97 }} onClick={() => { play('snapLock'); setSelectedHandle(h); }}
-                              className={cn('relative whitespace-nowrap rounded-full px-3.5 py-1.25 text-[9px] font-black uppercase tracking-[0.08em]',
-                                selectedHandle === h ? 'z-10 text-white' : 'text-foreground/52 dark:text-foreground/40 z-0')}>
-                              {selectedHandle === h && (
-                                <motion.span layoutId="handle-pill-bg-desk"
-                                  className="absolute inset-0 rounded-full border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_5px_12px_rgba(225,29,72,0.28)]"
-                                  transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }} />
-                              )}
-                              <span className="relative z-10">@{h}</span>
-                            </motion.button>
-                          ))}
-                        </div>
-                      )}
+                      <FeederStoryRail
+                        feeders={activeFeed?.feeders ?? []}
+                        selectedHandle={selectedHandle}
+                        onSelectHandle={(handle) => { play('snapLock'); setSelectedHandle(handle); }}
+                      />
                     </motion.div>
                   ) : (
-                    <motion.div key="desktop-list-header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: APPLE_EASE }} className="flex flex-col gap-2">
+                    <motion.div
+                      key="desktop-list-header"
+                      initial={{ rotateX: 7, y: 12, scale: 0.985 }}
+                      animate={{ rotateX: 0, y: 0, scale: 1 }}
+                      transition={FEED_HEADER_SWAP_TRANSITION}
+                      className="flex flex-col gap-2"
+                      style={{
+                        backfaceVisibility: 'hidden',
+                        transformOrigin: '50% 50%',
+                        transformStyle: 'preserve-3d',
+                      }}
+                    >
                       {/* Row 1: FEED title | FlipTicker | + Add Feed */}
-                      <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
-                        <div className="text-[28px] font-black uppercase tracking-[0.18em] text-black dark:text-white fm-depth-title">
-                          FEED
-                        </div>
+                      <div className="grid min-h-[64px] grid-cols-[180px_minmax(0,1fr)_180px] items-center gap-2.5">
+                        <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FEED</span>
                         <div className="flex justify-center px-0.5 min-w-0">
-                          <FlipTicker items={tickerItems} className="w-full" />
+                          <div className="relative min-w-0 overflow-hidden w-full">
+                            <FlipTicker items={tickerItems} className="w-full" />
+                          </div>
                         </div>
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex min-w-0 items-center justify-end gap-2">
                           <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
                             className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
                             <Plus size={15} strokeWidth={3} /> Add Feed
@@ -1049,7 +1305,7 @@ function FeedPageContent() {
                       </div>
 
                       {/* Row 2: Recessed filter tray with sort + feed count */}
-                      <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                      <div className="flex min-h-[42px] flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
                         <div className="flex items-center gap-1 rounded-[14px] border border-black/5 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
                           {(['recent', 'name', 'feeders'] as SortMode[]).map(mode => {
                             const isActive = sortMode === mode;
@@ -1078,15 +1334,12 @@ function FeedPageContent() {
                       </div>
                     </motion.div>
                   )}
-                </AnimatePresence>
 
                 {apiError && <div className="text-[10px] font-black uppercase tracking-[0.14em] text-red-600 dark:text-red-400">{apiError}</div>}
               </motion.div>
             </div>
 
-          </motion.div>
-        </div>
-      </motion.div>
+      </AppHeader>
 
       {/* ═══ CONTENT ═══ */}
       <AnimatePresence mode="wait" initial={false}>
@@ -1104,7 +1357,7 @@ function FeedPageContent() {
             )}>
             <div
               className={cn(
-                'w-full overflow-x-hidden pt-[calc(178px+env(safe-area-inset-top))] sm:pt-[calc(184px+env(safe-area-inset-top))] md:pt-[214px]',
+                'w-full overflow-x-hidden pt-[calc(132px+env(safe-area-inset-top))] sm:pt-[calc(140px+env(safe-area-inset-top))] md:pt-[174px]',
                 useBrowserPageScroll
                   ? cn(useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]', 'overflow-visible')
                   : 'hide-scrollbar h-full overflow-y-auto',
@@ -1144,6 +1397,7 @@ function FeedPageContent() {
                             ease: GRID_ITEM_EASE,
                           },
                         }}
+                        style={{ willChange: 'transform, opacity' }}
                       >
                         <FeedTile title={feed.title} count={feed.feeders.length} anchor={feed.feeders.find(f => f.isAnchor)?.handle} feeders={feed.feeders}
                           metrics={feed.metrics} onClick={() => handleFeedClick(feed.id)} onPreview={() => preloadDashboard(feed.id)} onDelete={() => handleDeleteFeed(feed.id)} index={i} enableEntranceAnimation={false} />
@@ -1183,14 +1437,14 @@ function FeedPageContent() {
               usePageScroll={useBrowserPageScroll}
               mobileSnapSections={isStandaloneMode}
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
-              headerOffset={useBrowserPageScroll ? undefined : `${headerHeight + 16}px`}
-              immersiveBrowserMode={useTranslucentBrowserChrome}
-              exportScopeLabel={exportScopeLabel}
-              exportFrom={exportFrom}
-              exportTo={exportTo}
-              onExportFromChange={setExportFrom}
-              onExportToChange={setExportTo}
-              onExport={() => { play('snapLock'); handleDownloadExport(); }}
+	              headerOffset={useBrowserPageScroll ? FEED_MOBILE_CONTENT_OFFSET : `${FEED_DESKTOP_CONTENT_OFFSET}px`}
+	              immersiveBrowserMode={useTranslucentBrowserChrome}
+	              exportScopeLabel={exportScopeLabel}
+	              exportFrom={exportFrom}
+	              exportTo={exportTo}
+	              onExportFromChange={setExportFrom}
+	              onExportToChange={setExportTo}
+	              onExport={() => { play('snapLock'); handleDownloadExport(); }}
             >
               {activeFeed && (
                 <FeederFileTile
@@ -1217,6 +1471,7 @@ function FeedPageContent() {
                   type="button"
                   onClick={openFeedContextEditor}
                   className="fm-depth-glass flex min-h-[180px] flex-col justify-between rounded-[22px] p-4 text-left"
+                  style={{ willChange: 'transform' }}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-black/6 bg-white/68 text-foreground/56 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/48">
@@ -1259,6 +1514,7 @@ function FeedPageContent() {
               )}
               <motion.div layout initial={{ scale: 0.95 }} animate={{ scale: 1 }} whileTap={{ scale: 0.98 }}
                 className={cn("fm-depth-glass rounded-[22px] p-4 min-h-[180px] flex flex-col justify-center items-center group cursor-pointer", isAddingFeeder ? "ring-1 ring-black/10 dark:ring-[#E11D48]/45" : "")}
+                style={{ willChange: 'transform' }}
                 onClick={() => !isAddingFeeder && setIsAddingFeeder(true)}>
                 {!isAddingFeeder ? (
                   <div className="flex flex-col items-center gap-2">
@@ -1329,17 +1585,17 @@ function FeedPageContent() {
       <AnimatePresence>
         {pendingDeleteFeed && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.22, ease: APPLE_EASE }}
+            initial={{ scale: 0.996 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0.996 }}
+            transition={FEED_PAGE_LAYER_TRANSITION}
             className="fixed inset-0 z-[125] flex items-center justify-center bg-[rgba(244,247,249,0.54)] px-4 dark:bg-[rgba(3,3,3,0.68)]"
           >
             <motion.div
-              initial={{ y: 18, opacity: 0, scale: 0.985 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 14, opacity: 0, scale: 0.985 }}
-              transition={{ duration: 0.26, ease: APPLE_EASE }}
+              initial={{ y: 22, scale: 0.985 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 18, scale: 0.985 }}
+              transition={FEED_PAGE_LAYER_TRANSITION}
               className="fm-depth-glass relative w-full max-w-[500px] overflow-hidden rounded-[30px] border border-white/85 p-6 dark:border-white/10"
             >
               <div className="pointer-events-none absolute inset-0 rounded-[30px] dark:opacity-0"

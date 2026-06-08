@@ -170,7 +170,7 @@ export default function FeedBriefDialog({
         >
           {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm dark:bg-black/60"
+            className="absolute inset-0 bg-black/55 dark:bg-black/70"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -188,7 +188,7 @@ export default function FeedBriefDialog({
             animate={{ y: 0, scale: 1 }}
             exit={{ y: '100%', scale: 0.98 }}
             transition={GRID_LAYOUT_SPRING}
-            className="relative flex h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-[32px] border border-black/10 bg-white/80 text-black shadow-[0_-12px_40px_rgba(0,0,0,0.12)] backdrop-blur-2xl md:h-auto md:max-h-[min(700px,calc(100vh-4rem))] md:w-[540px] md:rounded-[32px] md:border-black/10 md:shadow-[0_24px_60px_rgba(0,0,0,0.16)] dark:border-white/10 dark:bg-[#07080a]/80 dark:text-white dark:shadow-[0_-12px_40px_rgba(0,0,0,0.4)] md:dark:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
+            className="relative flex h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-[32px] border border-black/10 bg-white/95 text-black shadow-[0_-12px_40px_rgba(0,0,0,0.12)] md:h-auto md:max-h-[min(700px,calc(100vh-4rem))] md:w-[540px] md:rounded-[32px] md:border-black/10 md:shadow-[0_24px_60px_rgba(0,0,0,0.16)] dark:border-white/10 dark:bg-[#07080a]/95 dark:text-white dark:shadow-[0_-12px_40px_rgba(0,0,0,0.4)] md:dark:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
           >
             <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-black/10 dark:bg-white/18 md:hidden" />
             <div className="border-b border-black/10 px-5 pb-4 pt-4 dark:border-white/8 md:px-6 md:pt-6">

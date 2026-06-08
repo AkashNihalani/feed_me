@@ -481,21 +481,33 @@ export default function LoginPage() {
       align === 'left' ? 'text-left' : 'text-center',
       isLarge ? 'mb-6' : 'mb-4 sm:mb-6',
     )}>
-      <div className="inline-flex items-baseline gap-0.5">
-        <span className={cn(
-          'font-black tracking-[-0.04em]',
-          isLarge ? 'text-[42px] xl:text-[50px]' : 'text-[32px] sm:text-[44px]',
-        )} style={{ color: INK }}>
-          FEED
-        </span>
-        <span
+      <div className={cn('inline-flex items-center', isLarge ? 'gap-4 xl:gap-5' : 'gap-3 sm:gap-3.5')}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- static brand logo from /public */}
+        <img
+          src="/icon.svg"
+          alt="Feed Me"
+          draggable={false}
           className={cn(
+            'shrink-0 select-none',
+            isLarge ? 'h-[84px] w-[84px] xl:h-[104px] xl:w-[104px]' : 'h-[60px] w-[60px] sm:h-[76px] sm:w-[76px]',
+          )}
+        />
+        <span className="inline-flex items-baseline gap-0.5">
+          <span className={cn(
             'font-black tracking-[-0.04em]',
             isLarge ? 'text-[42px] xl:text-[50px]' : 'text-[32px] sm:text-[44px]',
-          )}
-          style={{ color: RED }}
-        >
-          ME
+          )} style={{ color: INK }}>
+            FEED
+          </span>
+          <span
+            className={cn(
+              'font-black tracking-[-0.04em]',
+              isLarge ? 'text-[42px] xl:text-[50px]' : 'text-[32px] sm:text-[44px]',
+            )}
+            style={{ color: RED }}
+          >
+            ME
+          </span>
         </span>
       </div>
       {isLarge && (
@@ -550,7 +562,7 @@ export default function LoginPage() {
       <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
         <Link
           href="/"
-          className="group flex items-center gap-1.5 rounded-full border border-[#0B0B0F]/[0.08] bg-white/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#0B0B0F]/35 backdrop-blur-sm transition-all hover:border-[#E11D48]/25 hover:text-[#E11D48]/70"
+          className="group flex items-center gap-1.5 rounded-full border border-[#0B0B0F]/[0.08] bg-white/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#0B0B0F]/35 transition-colors hover:border-[#E11D48]/25 hover:text-[#E11D48]/70"
         >
           feedme.app
           <ExternalLink size={10} strokeWidth={3} className="opacity-50 transition-transform group-hover:translate-x-0.5" />

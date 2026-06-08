@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
-import { Lock, Pause, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Pause, Play } from 'lucide-react';
 import { FireItem } from './types';
 import { compact } from '@/components/fire/fireLogicHelpers';
 import {
@@ -26,6 +26,7 @@ export type FireCard3DProps = {
   onOpenDetails?: () => void;
   onToggleMobileAutoplay?: (next: boolean) => void;
   onBeforeOpenPost?: (itemId: string) => void;
+  onOpenStateChange?: (itemId: string, isOpen: boolean) => void;
 };
 
 function asRec(v: unknown): Record<string, unknown> {
@@ -78,6 +79,176 @@ function parsePostContextRead(meta: Record<string, unknown>) {
     return null;
   }
   return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, scene, fit, recentRun, funFact, isD7Read };
+}
+
+type PostContextRead = NonNullable<ReturnType<typeof parsePostContextRead>>;
+
+function d7ReadSections(read: PostContextRead) {
+  const directionFallback = !read.recentRun && !read.fit ? read.direction : '';
+  return [
+    {
+      label: 'Trigger',
+      eyebrow: 'post condensation',
+      value: read.scene || read.readText,
+    },
+    {
+      label: 'Fit',
+      eyebrow: '30-post feeder file',
+      value: read.fit || read.metricContext,
+    },
+    {
+      label: 'Run',
+      eyebrow: 'recent proof',
+      value: read.recentRun || directionFallback,
+    },
+  ].filter((section) => section.value.trim());
+}
+
+function D7VerdictBar({
+  read,
+  onOpen,
+}: {
+  read: PostContextRead;
+  onOpen: () => void;
+}) {
+  const verdict = read.funFact || read.headline || read.metricContext;
+  if (!verdict) return null;
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      className="relative mt-2 mb-2 block w-full overflow-hidden rounded-[16px] border border-[#E11D48]/22 bg-[#17060b] px-3 py-2.5 text-left shadow-[0_14px_30px_rgba(225,29,72,0.16),inset_0_1px_0_rgba(255,255,255,0.16)] transition-transform active:scale-[0.99] dark:border-[#E11D48]/24 dark:bg-[#120408] sm:mb-3"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.42),transparent_50%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_44%)]" />
+      <div className="relative flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/56 sm:text-[9px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#fb7185] shadow-[0_0_10px_rgba(225,29,72,0.5)]" />
+          Post Mortem
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-white/14 bg-white/10 px-2 py-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-white/70 sm:text-[8px]">
+          Read
+          <ChevronRight size={10} strokeWidth={3} />
+        </span>
+      </div>
+      <p className="relative mt-1.5 line-clamp-2 text-[17px] font-black leading-[1.08] text-white sm:text-[19px]">
+        {verdict}
+      </p>
+    </button>
+  );
+}
+
+function D7ReadView({
+  itemId,
+  read,
+  sourceLabel,
+  onBack,
+}: {
+  itemId: string;
+  read: PostContextRead;
+  sourceLabel: string;
+  onBack: () => void;
+}) {
+  const verdict = read.funFact || read.headline || read.metricContext;
+  const sections = d7ReadSections(read);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeIndex = sections.length === 0 ? 0 : Math.min(activeIndex, sections.length - 1);
+  const active = sections[safeIndex];
+
+  return (
+    <motion.div
+      className="flex min-h-0 flex-1 flex-col"
+      initial={{ opacity: 0, x: 14 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onBack();
+          }}
+          className="inline-flex items-center gap-0.5 rounded-full border border-black/[0.06] bg-black/[0.03] py-1 pl-1.5 pr-2.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/56 transition-colors dark:border-white/10 dark:bg-white/[0.05] dark:text-white/52 sm:text-[9px]"
+        >
+          <ChevronLeft size={12} strokeWidth={3} />
+          Stats
+        </button>
+        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-[#E11D48] sm:text-[9px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]" />
+          {sourceLabel}
+        </div>
+      </div>
+
+      {verdict ? (
+        <div className="relative mt-2 overflow-hidden rounded-[16px] border border-[#E11D48]/22 bg-[#17060b] px-3 py-2.5 shadow-[0_14px_30px_rgba(225,29,72,0.16),inset_0_1px_0_rgba(255,255,255,0.16)] dark:border-[#E11D48]/24 dark:bg-[#120408]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.42),transparent_48%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_42%)]" />
+          <div className="relative text-[8px] font-black uppercase tracking-[0.18em] text-white/54 sm:text-[9px]">
+            Trigger vs recent 30
+          </div>
+          <p className="relative mt-1.5 text-[20px] font-black leading-[1.04] text-white sm:text-[23px]">
+            {verdict}
+          </p>
+          {read.metricContext ? (
+            <div className="relative mt-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-[#fb7185] sm:text-[10px]">
+              {read.metricContext}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {active ? (
+        <>
+          <div
+            role="tablist"
+            aria-label="Post mortem reads"
+            className="mt-2 flex gap-1 rounded-full border border-black/[0.05] bg-black/[0.03] p-1 dark:border-white/10 dark:bg-white/[0.05]"
+          >
+            {sections.map((section, index) => {
+              const isActive = index === safeIndex;
+              return (
+                <button
+                  key={`${itemId}-readview-tab-${section.label}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActiveIndex(index);
+                  }}
+                  className={
+                    isActive
+                      ? 'flex-1 rounded-full bg-[#E11D48] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.26)] transition-colors sm:text-[10px]'
+                      : 'flex-1 rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/46 transition-colors dark:text-white/42 sm:text-[10px]'
+                  }
+                >
+                  {section.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="hide-scrollbar mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[14px] border border-black/[0.05] bg-white/88 px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.1]">
+            <motion.div
+              key={`${itemId}-readview-pane-${safeIndex}`}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48]/72 sm:text-[9px]">
+                {active.eyebrow}
+              </div>
+              <p className="mt-1.5 text-[13.5px] font-semibold leading-[1.34] text-foreground/78 dark:text-white/68 sm:text-[14.5px]">
+                {active.value}
+              </p>
+            </motion.div>
+          </div>
+        </>
+      ) : null}
+    </motion.div>
+  );
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -163,11 +334,13 @@ export function FireCard3D({
   onOpenDetails,
   onToggleMobileAutoplay,
   onBeforeOpenPost,
+  onOpenStateChange,
 }: FireCard3DProps) {
   const { play } = useAppHaptics();
   const thumbnailFailureKey = item.postKey || item.id;
   const initialThumbnailFailed = isThumbnailFailureCached(thumbnailFailureKey);
   const [openLocal, setOpenLocal] = useState(false);
+  const [expandedPostMortemId, setExpandedPostMortemId] = useState<string | null>(null);
   const [imgDead, setImgDead] = useState(initialThumbnailFailed);
   const [previewReady, setPreviewReady] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -287,6 +460,7 @@ export function FireCard3D({
   const hideSignalChrome = item.hideSignalChrome === true;
   const postContextRead = parsePostContextRead(meta);
   const showPostMortemStreak = postContextRead?.isD7Read === true;
+  const readOpen = showPostMortemStreak && expandedPostMortemId === item.id;
 
   const handleCardActivate = () => {
     if (isLocked) {
@@ -302,7 +476,9 @@ export function FireCard3D({
       onOpenDetails?.();
       return;
     }
-    setOpenLocal((v) => !v);
+    const nextOpen = !openLocal;
+    setOpenLocal(nextOpen);
+    onOpenStateChange?.(item.id, nextOpen);
   };
 
   const applyPreviewProgress = (progress: number) => {
@@ -767,10 +943,10 @@ export function FireCard3D({
               className={[
                 'w-full max-w-[240px] rounded-[24px] border px-4 py-4 text-center',
                 /* Light: frosted white glass — image bleeds through softly */
-                'border-white/60 bg-white/52 backdrop-blur-[16px] backdrop-saturate-[160%]',
+                'border-white/60 bg-white/85',
                 'shadow-[0_18px_40px_rgba(0,0,0,0.10),0_1px_0_rgba(255,255,255,0.88)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
                 /* Dark: deep translucent black — image bleeds through with depth */
-                'dark:border-white/[0.08] dark:bg-[rgba(6,6,6,0.52)] dark:backdrop-blur-[16px] dark:backdrop-saturate-[140%]',
+                'dark:border-white/[0.08] dark:bg-[rgba(8,8,10,0.88)]',
                 'dark:shadow-[0_20px_48px_rgba(0,0,0,0.52),0_1px_0_rgba(255,255,255,0.06)_inset,0_-1px_0_rgba(0,0,0,0.5)_inset]',
               ].join(' ')}
             >
@@ -855,12 +1031,20 @@ export function FireCard3D({
             transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.58 }}
             style={{ willChange: 'transform, opacity' }}
           >
-            <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] border border-white/80 bg-white/70 p-2 sm:p-3 shadow-[0_32px_80px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-16px_32px_rgba(255,255,255,0.1)] backdrop-blur-[48px] backdrop-saturate-[220%] dark:border-white/[0.08] dark:bg-[rgba(10,10,10,0.75)] dark:shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-1px_0_rgba(0,0,0,0.5)]">
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] border border-white/80 bg-white/92 p-2 sm:p-3 shadow-[0_32px_80px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-16px_32px_rgba(255,255,255,0.1)] dark:border-white/[0.08] dark:bg-[rgba(10,10,10,0.93)] dark:shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-1px_0_rgba(0,0,0,0.5)]">
               <div className="pointer-events-none absolute inset-0 rounded-[24px] bg-gradient-to-br from-white/90 via-white/40 to-transparent dark:from-white/10 dark:via-white/[0.02] dark:to-transparent" />
               <div className="pointer-events-none absolute inset-[1px] rounded-[23px] z-0 dark:hidden" style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }} />
               
               <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-              <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
+              {readOpen && postContextRead ? (
+                <D7ReadView
+                  itemId={item.id}
+                  read={postContextRead}
+                  sourceLabel={postContextRead.sourceLabel}
+                  onBack={() => setExpandedPostMortemId(null)}
+                />
+              ) : (
+              <div className="hide-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain pr-0.5">
               <div className="mb-2 sm:mb-3 overflow-hidden rounded-[16px] border border-[#E11D48]/10 bg-[#E11D48] p-2.5 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] sm:p-3">
                 <div className="grid grid-cols-[minmax(0,1fr)_minmax(92px,auto)] items-stretch gap-2">
                   <div className="min-w-0 py-0.5">
@@ -1011,98 +1195,60 @@ export function FireCard3D({
                 )}
               </motion.div>
               {postContextRead && (
+                postContextRead.isD7Read ? (
+                  <D7VerdictBar
+                    read={postContextRead}
+                    onOpen={() => setExpandedPostMortemId(item.id)}
+                  />
+                ) : (
                 <div className="mt-2 mb-2 sm:mb-3 rounded-[16px] border border-white/70 bg-white/76 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgba(225,29,72,0.04)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)] sm:p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
                       <span className="h-2 w-2 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]" />
-                      {postContextRead.isD7Read ? 'Post Mortem' : 'Post Read'}
+                      Post Read
                     </div>
                     <div className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:bg-white/[0.06] dark:text-white/38">
                       {postContextRead.sourceLabel}
                     </div>
                   </div>
 
-                  {postContextRead.isD7Read ? (
-                    <div className="mt-2 grid gap-2">
-                      {[
-                        { label: 'Scene', value: postContextRead.scene },
-                        { label: 'Fit', value: postContextRead.fit },
-                        { label: 'Run', value: postContextRead.recentRun },
-                      ]
-                        .filter((field) => field.value)
-                        .map((field) => (
-                          <div
-                            key={`${item.id}-d7-${field.label}`}
-                            className="rounded-[14px] border border-black/[0.04] bg-white/88 px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.1]"
-                          >
-                            <div
-                              className={
-                                field.label === 'Fit'
-                                  ? 'text-[10px] font-black uppercase tracking-[0.16em] text-[#E11D48]/72 sm:text-[11px]'
-                                  : 'text-[10px] font-black uppercase tracking-[0.16em] text-foreground/44 dark:text-white/36 sm:text-[11px]'
-                              }
-                            >
-                              {field.label}
-                            </div>
-                            <p className="mt-1.5 text-[15px] font-bold leading-[1.2] tracking-[-0.015em] text-foreground/82 dark:text-white/72 sm:text-[16px]">
-                              {field.value}
-                            </p>
-                          </div>
-                        ))}
-
-                      {postContextRead.funFact ? (
-                        <div className="relative overflow-hidden rounded-[14px] border border-[#E11D48]/16 bg-gradient-to-br from-[#E11D48]/14 via-white/86 to-white/76 px-3 py-2.5 shadow-[0_8px_18px_rgba(225,29,72,0.10),inset_0_1px_0_rgba(255,255,255,0.82)] dark:from-[#E11D48]/14 dark:via-white/[0.1] dark:to-white/[0.07]">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48] sm:text-[11px]">
-                              Record
-                            </div>
-                            <div className="h-px flex-1 bg-[#E11D48]/18" />
-                          </div>
-                          <p className="mt-1.5 text-[14px] font-black leading-[1.14] tracking-[-0.018em] text-[#E11D48] sm:text-[15px]">
-                            {postContextRead.funFact}
-                          </p>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <>
-                      {postContextRead.matches.length > 0 && (
-                        <div className="mt-2 rounded-[13px] border border-[#E11D48]/12 bg-white/86 px-2.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-[#E11D48]/18 dark:bg-white/[0.1]">
-                          <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-[#E11D48]/72">
-                            Key Read
-                          </div>
-                          <p className="mt-1 text-[15px] sm:text-[16px] font-black leading-[1.08] tracking-[-0.02em] text-foreground/88 dark:text-white/80">
-                            {postContextRead.matches[0]}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="mt-2 grid gap-1.5">
-                        {[
-                          ...postContextRead.matches.slice(1, 3).map((line) => ({ label: 'Match', line, tone: 'text-foreground/44' })),
-                          ...postContextRead.deviates.slice(0, 2).map((line) => ({ label: 'Deviation', line, tone: 'text-[#E11D48]/68' })),
-                          ...postContextRead.notes.slice(0, 1).map((line) => ({ label: 'Note', line, tone: 'text-foreground/44' })),
-                        ]
-                          .slice(0, 4)
-                          .map((field) => (
-                            <div
-                              key={`${item.id}-read-${field.label}-${field.line}`}
-                              className="rounded-[12px] border border-black/[0.04] bg-white/74 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/[0.08]"
-                            >
-                              <div className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] ${field.tone}`}>
-                                {field.label}
-                              </div>
-                              <p className="mt-1 text-[13px] sm:text-[14px] font-semibold leading-[1.24] text-foreground/70 dark:text-white/60">
-                                {field.line}
-                              </p>
-                            </div>
-                          ))}
+                  {postContextRead.matches.length > 0 && (
+                    <div className="mt-2 rounded-[13px] border border-[#E11D48]/12 bg-white/86 px-2.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-[#E11D48]/18 dark:bg-white/[0.1]">
+                      <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-[#E11D48]/72">
+                        Key Read
                       </div>
-                    </>
+                      <p className="mt-1 text-[15px] sm:text-[16px] font-black leading-[1.08] tracking-[-0.02em] text-foreground/88 dark:text-white/80">
+                        {postContextRead.matches[0]}
+                      </p>
+                    </div>
                   )}
+
+                  <div className="mt-2 grid gap-1.5">
+                    {[
+                      ...postContextRead.matches.slice(1, 3).map((line) => ({ label: 'Match', line, tone: 'text-foreground/44' })),
+                      ...postContextRead.deviates.slice(0, 2).map((line) => ({ label: 'Deviation', line, tone: 'text-[#E11D48]/68' })),
+                      ...postContextRead.notes.slice(0, 1).map((line) => ({ label: 'Note', line, tone: 'text-foreground/44' })),
+                    ]
+                      .slice(0, 4)
+                      .map((field) => (
+                        <div
+                          key={`${item.id}-read-${field.label}-${field.line}`}
+                          className="rounded-[12px] border border-black/[0.04] bg-white/74 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/[0.08]"
+                        >
+                          <div className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] ${field.tone}`}>
+                            {field.label}
+                          </div>
+                          <p className="mt-1 text-[13px] sm:text-[14px] font-semibold leading-[1.24] text-foreground/70 dark:text-white/60">
+                            {field.line}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
                 </div>
+                )
               )}
               </div>
+              )}
 
                 <div className="col-span-12 mt-1 sm:mt-2">
                   <div

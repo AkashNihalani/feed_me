@@ -58,16 +58,190 @@ function parsePostContextRead(meta: Record<string, unknown>) {
   const metricContext = text(read.metric_context).trim();
   const readText = text(read.read).trim();
   const direction = text(read.direction).trim();
+  const scene = text(read.scene).trim() || readText;
+  const fit = text(read.fit).trim() || text(read.memory_match).trim();
+  const recentRun = text(read.recent_run).trim();
+  const funFactRecord = asRecord(read.fun_fact);
+  const funFact = text(funFactRecord.text).trim() || text(read.fun_fact).trim() || text(read.numbers).trim() || headline;
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 3);
   const notes = textList(read.notes, 3);
-  const isD7Read = source === 'd7_read' || Boolean(headline || metricContext || readText || direction);
+  const isD7Read = source === 'd7_read' || Boolean(headline || metricContext || readText || direction || scene || fit || recentRun || funFact);
   const sourceLabel = text(read.source_label) || (source === 'post_fingerprint' ? 'Fingerprint' : isD7Read ? 'D7 Post Mortem' : 'Context Layer');
   if (!isD7Read && matches.length === 0 && deviates.length === 0 && unclear.length === 0 && notes.length === 0) {
     return null;
   }
-  return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, isD7Read };
+  return { matches, deviates, unclear, notes, sourceLabel, source, headline, metricContext, readText, direction, scene, fit, recentRun, funFact, isD7Read };
+}
+
+type PostContextRead = NonNullable<ReturnType<typeof parsePostContextRead>>;
+
+function d7ReadSections(read: PostContextRead) {
+  const directionFallback = !read.recentRun && !read.fit ? read.direction : '';
+  return [
+    {
+      label: 'Trigger',
+      eyebrow: 'post condensation',
+      value: read.scene || read.readText,
+    },
+    {
+      label: 'Fit',
+      eyebrow: '30-post feeder file',
+      value: read.fit || read.metricContext,
+    },
+    {
+      label: 'Run',
+      eyebrow: 'recent proof',
+      value: read.recentRun || directionFallback,
+    },
+  ].filter((section) => section.value.trim());
+}
+
+function D7VerdictBar({
+  read,
+  onOpen,
+}: {
+  read: PostContextRead;
+  onOpen: () => void;
+}) {
+  const verdict = read.funFact || read.headline || read.metricContext;
+  if (!verdict) return null;
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      className="relative mt-2.5 block w-full overflow-hidden rounded-2xl border border-[#E11D48]/18 bg-[#17060b] px-4 py-3.5 text-left shadow-[0_18px_42px_rgba(225,29,72,0.14),inset_0_1px_0_rgba(255,255,255,0.14)] transition-transform active:scale-[0.99] dark:border-[#E11D48]/22 dark:bg-[#120408]"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.40),transparent_46%),linear-gradient(135deg,rgba(255,255,255,0.11),transparent_46%)]" />
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/54">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#fb7185] shadow-[0_0_10px_rgba(225,29,72,0.5)]" />
+          Post Mortem
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/12 bg-white/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/64">
+          Open Read
+          <ChevronRight size={12} strokeWidth={3} />
+        </span>
+      </div>
+      <p className="relative mt-2 line-clamp-2 text-[22px] font-black leading-[1.06] text-white">
+        {verdict}
+      </p>
+    </button>
+  );
+}
+
+function D7ReadView({
+  itemId,
+  read,
+  sourceLabel,
+  onBack,
+}: {
+  itemId: string;
+  read: PostContextRead;
+  sourceLabel: string;
+  onBack: () => void;
+}) {
+  const verdict = read.funFact || read.headline || read.metricContext;
+  const sections = d7ReadSections(read);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeIndex = sections.length === 0 ? 0 : Math.min(activeIndex, sections.length - 1);
+  const active = sections[safeIndex];
+
+  return (
+    <motion.div
+      className="flex min-h-0 flex-1 flex-col"
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onBack();
+          }}
+          className="inline-flex items-center gap-1 rounded-full border border-neutral-200/80 bg-white/70 py-1 pl-1.5 pr-3 text-[9px] font-black uppercase tracking-[0.14em] text-neutral-600 transition hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/62"
+        >
+          <ChevronLeft size={13} strokeWidth={3} />
+          Stats
+        </button>
+        <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
+          {sourceLabel}
+        </div>
+      </div>
+
+      {verdict ? (
+        <div className="relative mt-3 overflow-hidden rounded-2xl border border-[#E11D48]/18 bg-[#17060b] px-4 py-3.5 shadow-[0_18px_42px_rgba(225,29,72,0.14),inset_0_1px_0_rgba(255,255,255,0.14)] dark:border-[#E11D48]/22 dark:bg-[#120408]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.40),transparent_44%),linear-gradient(135deg,rgba(255,255,255,0.11),transparent_46%)]" />
+          <div className="relative text-[9px] font-black uppercase tracking-[0.2em] text-white/52">
+            Trigger vs recent 30
+          </div>
+          <p className="relative mt-2 text-[26px] font-black leading-[1.04] text-white">
+            {verdict}
+          </p>
+          {read.metricContext ? (
+            <p className="relative mt-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#fb7185]">
+              {read.metricContext}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {active ? (
+        <>
+          <div
+            role="tablist"
+            aria-label="Post mortem reads"
+            className="mt-3 flex gap-1.5 rounded-full border border-neutral-200/80 bg-neutral-100/70 p-1 dark:border-white/[0.08] dark:bg-white/[0.05]"
+          >
+            {sections.map((section, index) => {
+              const isActive = index === safeIndex;
+              return (
+                <button
+                  key={`${itemId}-dialog-readview-tab-${section.label}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActiveIndex(index);
+                  }}
+                  className={
+                    isActive
+                      ? 'flex-1 rounded-full bg-[#E11D48] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_16px_rgba(225,29,72,0.24)] transition-colors'
+                      : 'flex-1 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500 transition-colors hover:text-neutral-700 dark:text-white/42 dark:hover:text-white/64'
+                  }
+                >
+                  {section.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-neutral-200/80 bg-neutral-50/74 px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-white/[0.07] dark:bg-white/[0.04]">
+            <motion.div
+              key={`${itemId}-dialog-readview-pane-${safeIndex}`}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="text-[9px] font-black uppercase tracking-[0.16em] text-[#E11D48]/80">
+                {active.eyebrow}
+              </div>
+              <p className="mt-2 text-[14px] font-semibold leading-relaxed text-neutral-800 dark:text-white/68">
+                {active.value}
+              </p>
+            </motion.div>
+          </div>
+        </>
+      ) : null}
+    </motion.div>
+  );
 }
 
 function mediaProxyUrl(postKey: string, role = 'thumbnail'): string {
@@ -278,6 +452,7 @@ export default function FireIntelligenceDialog({
   const [thumbnailRetrySeed, setThumbnailRetrySeed] = useState(0);
   const [usePreviewFallback, setUsePreviewFallback] = useState(false);
   const [previewRetrySeed, setPreviewRetrySeed] = useState(0);
+  const [expandedPostMortemId, setExpandedPostMortemId] = useState<string | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const previewSessionRef = useRef(0);
   const previewRetryTimeoutRef = useRef<number | null>(null);
@@ -367,9 +542,13 @@ export default function FireIntelligenceDialog({
     };
   }, [item]);
 
-  const dialogStyle = { width: 'min(800px, calc(100vw - 4rem))', maxHeight: 'min(600px, calc(100vh - 4rem))' };
-  const dialogGridClass = 'grid h-full min-h-[520px] grid-cols-[320px_minmax(0,1fr)]';
-  const dialogPanelMinHeightClass = 'min-h-[520px]';
+  const dialogStyle = {
+    width: 'min(800px, calc(100vw - 4rem))',
+    height: 'min(680px, calc(100vh - 4rem))',
+    maxHeight: 'calc(100vh - 4rem)',
+  };
+  const dialogGridClass = 'grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)]';
+  const dialogPanelMinHeightClass = 'min-h-0';
 
   const previewUrl = (item?.previewUrl || '').trim();
   const directThumbnailUrl = (item?.thumbnailUrl || '').trim();
@@ -403,6 +582,9 @@ export default function FireIntelligenceDialog({
   );
   const shouldRenderPreview = canPreview && !previewFailed;
   const trackingArchiveHref = useMemo(() => buildFeederArchiveHref(item), [item]);
+  const postMortemReadOpen = Boolean(
+    item && stats?.postContextRead?.isD7Read && expandedPostMortemId === item.id,
+  );
 
   useEffect(() => {
     if (previewRetryTimeoutRef.current) clearTimeout(previewRetryTimeoutRef.current);
@@ -674,65 +856,18 @@ export default function FireIntelligenceDialog({
                   )}
                 </div>
 
-                <div className="relative flex flex-1 flex-col overflow-y-auto p-6">
-                  {stats.postContextRead && (
-                    <div>
-                      <div className="flex items-center justify-between gap-3">
-                        <SectionTag>{stats.postContextRead.isD7Read ? 'Post Mortem' : 'Post Read'}</SectionTag>
-                        <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
-                          {stats.postContextRead.sourceLabel}
-                        </div>
-                      </div>
-                      <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
-                        {stats.postContextRead.isD7Read ? (
-                          <>
-                            {stats.postContextRead.headline ? (
-                              <p className="text-[20px] font-black leading-tight tracking-[-0.03em] text-neutral-950 dark:text-white">
-                                {stats.postContextRead.headline}
-                              </p>
-                            ) : null}
-                            {stats.postContextRead.metricContext ? (
-                              <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#E11D48]">
-                                {stats.postContextRead.metricContext}
-                              </p>
-                            ) : null}
-                            {stats.postContextRead.readText ? (
-                              <p className="mt-3 text-[14px] font-semibold leading-relaxed text-neutral-800 dark:text-white/72">
-                                {stats.postContextRead.readText}
-                              </p>
-                            ) : null}
-                            {stats.postContextRead.direction ? (
-                              <div className="mt-3 rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52">
-                                {stats.postContextRead.direction}
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <>
-                            {stats.postContextRead.matches[0] ? (
-                              <p className="text-[15px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
-                                {stats.postContextRead.matches[0]}
-                              </p>
-                            ) : null}
-                            <div className="mt-3 grid gap-2">
-                              {[...stats.postContextRead.matches.slice(1, 4), ...stats.postContextRead.deviates.slice(0, 3), ...stats.postContextRead.notes.slice(0, 2)].slice(0, 5).map((line) => (
-                                <div
-                                  key={`${item.id}-post-read-${line}`}
-                                  className="rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52"
-                                >
-                                  {line}
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {(
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+                  {postMortemReadOpen && stats.postContextRead ? (
+                    <D7ReadView
+                      itemId={item.id}
+                      read={stats.postContextRead}
+                      sourceLabel={stats.postContextRead.sourceLabel}
+                      onBack={() => setExpandedPostMortemId(null)}
+                    />
+                  ) : (
+                    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
                     <>
-                      <div className={`${stats.postContextRead ? 'mt-4 ' : ''}mb-3 flex min-w-0 flex-wrap items-center gap-2`}>
+                      <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
                         <TrackingArchivePill href={trackingArchiveHref} label={stats.handle} />
                         <TrackingInfoBadge value={stats.mediaType} />
                         <TrackingInfoBadge value={stats.checkpoint} />
@@ -830,11 +965,49 @@ export default function FireIntelligenceDialog({
                           </div>
                         </div>
                       )}
+
+                      {stats.postContextRead && (
+                        stats.postContextRead.isD7Read ? (
+                          <div className="mt-4">
+                            <D7VerdictBar
+                              read={stats.postContextRead}
+                              onOpen={() => setExpandedPostMortemId(item.id)}
+                            />
+                          </div>
+                        ) : (
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <SectionTag>Post Read</SectionTag>
+                              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
+                                {stats.postContextRead.sourceLabel}
+                              </div>
+                            </div>
+                            <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
+                              {stats.postContextRead.matches[0] ? (
+                                <p className="text-[15px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
+                                  {stats.postContextRead.matches[0]}
+                                </p>
+                              ) : null}
+                              <div className="mt-3 grid gap-2">
+                                {[...stats.postContextRead.matches.slice(1, 4), ...stats.postContextRead.deviates.slice(0, 3), ...stats.postContextRead.notes.slice(0, 2)].slice(0, 5).map((line) => (
+                                  <div
+                                    key={`${item.id}-post-read-${line}`}
+                                    className="rounded-xl bg-white/64 px-3 py-2 text-[12px] font-medium leading-relaxed text-neutral-600 dark:bg-white/[0.04] dark:text-white/52"
+                                  >
+                                    {line}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )}
                     </>
+                    </div>
                   )}
 
                   {/* CTA */}
-                  <div className="mt-auto pt-5">
+                  <div className="pt-5">
                     <button
                       type="button"
                       onClick={(event) => {

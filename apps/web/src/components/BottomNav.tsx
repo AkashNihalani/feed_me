@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { LayoutGrid, Flame } from 'lucide-react';
-import { LayoutGroup, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
+import { PILL_SPRING } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 type NavIconProps = {
@@ -36,6 +37,51 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { play } = useAppHaptics();
+  const trackRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [pillBounds, setPillBounds] = useState({ x: 0, width: 86 });
+  const activeIndex = useMemo(
+    () => NAV_ITEMS.findIndex((item) => pathname === item.href),
+    [pathname],
+  );
+
+  useLayoutEffect(() => {
+    if (activeIndex < 0) return;
+    const track = trackRef.current;
+    const item = itemRefs.current[activeIndex];
+    if (!track || !item) return;
+
+    let raf = 0;
+    const measure = () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const trackRect = track.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        setPillBounds((current) => {
+          const next = {
+            x: Math.round((itemRect.left - trackRect.left) * 100) / 100,
+            width: Math.round(itemRect.width * 100) / 100,
+          };
+          return Math.abs(current.x - next.x) < 0.5 && Math.abs(current.width - next.width) < 0.5
+            ? current
+            : next;
+        });
+      });
+    };
+
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(track);
+    observer?.observe(item);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [activeIndex]);
 
   useEffect(() => {
     try {
@@ -61,13 +107,34 @@ export default function BottomNav() {
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
       <div className="fm-depth-chrome fm-depth-chrome--nav pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[26px]">
-        <LayoutGroup id="feedme-bottom-nav">
-          {NAV_ITEMS.map((item) => {
+        <div ref={trackRef} className="relative grid grid-cols-3 gap-0.5">
+          {activeIndex >= 0 && (
+            <motion.span
+              aria-hidden="true"
+              className="absolute inset-y-0 left-0 rounded-[22px] bg-[#E11D48] shadow-[0_4px_16px_rgba(225,29,72,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(225,29,72,0.25),0_8px_24px_rgba(0,0,0,0.4)]"
+              initial={false}
+              animate={{ x: pillBounds.x, width: pillBounds.width }}
+              transition={PILL_SPRING}
+            />
+          )}
+          {NAV_ITEMS.map((item, index) => {
             const isActive = pathname === item.href;
             return (
-              <Link key={item.label} href={item.href} prefetch className="group relative z-10"
-                onClick={() => {
+              <Link
+                key={item.label}
+                ref={(node) => {
+                  itemRefs.current[index] = node;
+                }}
+                href={item.href}
+                prefetch
+                scroll={false}
+                className="group relative z-10"
+                onClick={(event) => {
                   play(isActive ? 'navReselect' : 'navSwitch');
+                  if (isActive && item.href === '/' && typeof window !== 'undefined' && window.location.search.includes('id=')) {
+                    event.preventDefault();
+                    window.dispatchEvent(new CustomEvent('feedme:feed-tab-reselect'));
+                  }
                   if (isActive && item.href === '/fire' && typeof window !== 'undefined') {
                     window.dispatchEvent(new CustomEvent('feedme:fire-tab-reselect'));
                   }
@@ -75,19 +142,12 @@ export default function BottomNav() {
                     sessionStorage.setItem('feedme:intent', item.href);
                     sessionStorage.setItem('feedme:intent-ts', String(Date.now()));
                   } catch {}
-                }}>
+                }}
+              >
                 <motion.div whileTap={{ scale: 0.92 }} transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                   className={cn(
                     'relative flex min-w-[86px] flex-col items-center justify-center rounded-[22px] px-3 py-2.5 lg:min-w-[78px] lg:px-3 lg:py-2',
                     isActive ? 'text-white' : 'text-[#8f6b75] dark:text-[#a3828b]')}>
-                  {isActive && (
-                    <motion.span
-                      layoutId="nav-active-pill"
-                      initial={false}
-                      className="absolute inset-0 rounded-[22px] bg-[#E11D48] shadow-[0_4px_16px_rgba(225,29,72,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(225,29,72,0.25),0_8px_24px_rgba(0,0,0,0.4)]"
-                      transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
-                    />
-                  )}
                   <span className="relative z-10">
                     <item.icon size={20} strokeWidth={2.75} />
                   </span>
@@ -98,7 +158,7 @@ export default function BottomNav() {
               </Link>
             );
           })}
-        </LayoutGroup>
+        </div>
       </div>
     </div>
   );

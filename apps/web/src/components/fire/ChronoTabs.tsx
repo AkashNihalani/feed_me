@@ -22,7 +22,7 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false,
   }, [activeDay]);
 
   return (
-    <div className={compact ? 'pointer-events-auto w-full max-w-[520px]' : 'pointer-events-auto w-full max-w-[560px]'}>
+    <div className={compact ? 'pointer-events-auto w-full max-w-[940px]' : 'pointer-events-auto w-full max-w-[560px]'}>
       {/* Recessed pill track — matches dashboard timeframe selector */}
       <LayoutGroup id={activePillLayoutId}>
         <div className={[

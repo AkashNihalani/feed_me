@@ -118,7 +118,7 @@ function UpdatePasswordContent() {
   return (
     <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[#030303] px-6 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#E11D4814,transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_42%)]" />
-      <div className="relative w-full max-w-md border border-white/10 bg-black/80 p-8 shadow-[0_0_80px_rgba(225,29,72,0.08)] backdrop-blur">
+      <div className="relative w-full max-w-md border border-white/10 bg-black/80 p-8 shadow-[0_0_80px_rgba(225,29,72,0.08)]">
         <div className="mb-8">
           <p className="text-xs font-black uppercase tracking-[0.35em] text-[#E11D48]">FeedMe</p>
           <h1 className="mt-4 text-4xl font-black uppercase tracking-[-0.06em]">

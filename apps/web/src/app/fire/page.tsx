@@ -3,11 +3,12 @@
 import { CSSProperties, startTransition, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowUpDown, Loader2, SlidersHorizontal } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import ChronoTabs from '@/components/fire/ChronoTabs';
 import FluidDeck from '@/components/fire/FluidDeck';
 import FireIntelligenceDialog from '@/components/fire/FireIntelligenceDialog';
 import ZSpaceFilter from '@/components/fire/ZSpaceFilter';
+import { AppHeader, usePageReady } from '@/components/shell/AppShell';
 import {
   metricMultipleFromPayload,
   metricValueFromPayload,
@@ -25,7 +26,7 @@ import {
   WarmupMediaBucket,
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
-import { HEADER_STAGGER_CONTAINER } from '@/lib/motion';
+import { GRID_ITEM_EASE, HEADER_COLLAPSE_SPRING } from '@/lib/motion';
 import { getFireSignalMeta } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
@@ -42,8 +43,9 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
   { label: 'RECENT', value: 'recent' },
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FIRE_CHROME_PILL_SPRING = { type: 'spring', stiffness: 420, damping: 32, mass: 0.82 } as const;
 const FIRE_HEADER_LAYER_TRANSITION = { duration: 0.62, ease: APPLE_EASE } as const;
+const FIRE_MOBILE_HEADER_OFFSET = 190;
+const FIRE_DESKTOP_HEADER_OFFSET = 174;
 const FIRE_HEADER_SCROLL_COMPRESS = {
   collapseDistance: typeof window === 'undefined' ? 260 : Math.round(window.innerHeight * 0.32),
   expandDistance: typeof window === 'undefined' ? 150 : Math.round(window.innerHeight * 0.18),
@@ -663,6 +665,43 @@ function prewarmThumbnails(payloads: FirePagePayload[], visibleCount: number) {
   });
 }
 
+function decodeFireThumbnails(items: FireAlertItem[], visibleCount: number, timeoutMs = 650): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+
+  const urls = Array.from(
+    new Set(
+      items
+        .slice(0, visibleCount)
+        .map((item) => item.thumbnailUrl?.trim() || '')
+        .filter(Boolean),
+    ),
+  );
+
+  if (urls.length === 0) return Promise.resolve();
+
+  const decodeAll = Promise.all(
+    urls.map((url) => new Promise<void>((resolve) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = () => {
+        if (typeof image.decode === 'function') {
+          image.decode().then(() => resolve()).catch(() => resolve());
+          return;
+        }
+        resolve();
+      };
+      image.onerror = () => resolve();
+      image.src = url;
+    })),
+  ).then(() => undefined);
+
+  const timeout = new Promise<void>((resolve) => {
+    window.setTimeout(resolve, timeoutMs);
+  });
+
+  return Promise.race([decodeAll, timeout]);
+}
+
 async function fetchPage(
   day: string,
   filters: FireFilterState,
@@ -703,7 +742,6 @@ async function fetchPage(
 export default function FirePage() {
   const router = useRouter();
   const { play } = useAppHaptics();
-  const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const fetchKeyRef = useRef('');
@@ -718,6 +756,9 @@ export default function FirePage() {
   const [warmupSummary, setWarmupSummary] = useState<WarmupSummary>({});
   const [cards, setCards] = useState<FireAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deckMediaReady, setDeckMediaReady] = useState(false);
+  const [cardsHydratedFromCache, setCardsHydratedFromCache] = useState(false);
+  const [hasShownDeck, setHasShownDeck] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -726,13 +767,16 @@ export default function FirePage() {
   const [selectedDay, setSelectedDay] = useState('');
   const [isZSpaceOpen, setIsZSpaceOpen] = useState(false);
   const [filters, setFilters] = useState<FireFilterState>(() => createDefaultFireFilters());
-  const [headerHeight, setHeaderHeight] = useState(168);
+  const [headerHeight, setHeaderHeight] = useState(() => {
+    if (typeof window === 'undefined') return FIRE_MOBILE_HEADER_OFFSET;
+    return window.matchMedia('(min-width: 1024px)').matches ? FIRE_DESKTOP_HEADER_OFFSET : FIRE_MOBILE_HEADER_OFFSET;
+  });
   const [desktopModalCard, setDesktopModalCard] = useState<FireAlertItem | null>(null);
-  const [isStandaloneMode, setIsStandaloneMode] = useState(false);
-  const [isDesktopViewport, setIsDesktopViewport] = useState(false);
+  const [isStandaloneMode, setIsStandaloneMode] = useState(() => isStandaloneDisplayMode());
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  ));
   const [initialDataReady, setInitialDataReady] = useState(false);
-  const [standaloneHeaderCompressed, setStandaloneHeaderCompressed] = useState(false);
-  const standaloneForwardStepsRef = useRef(0);
   const useBrowserPageScroll = !isDesktopViewport;
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
   const scrollHeaderCompressed = useCompressedOnScroll(
@@ -740,13 +784,10 @@ export default function FirePage() {
     useBrowserPageScroll && !isDesktopViewport && !isStandaloneMode,
     FIRE_HEADER_SCROLL_COMPRESS,
   );
-  const headerCompressed = isStandaloneMode && !isDesktopViewport
-    ? standaloneHeaderCompressed
-    : scrollHeaderCompressed;
-  // Mirror of headerCompressed read inside the height-measure effect without
-  // re-subscribing it — lets us publish ONLY the expanded header height.
-  const headerCompressedRef = useRef(headerCompressed);
-  useEffect(() => { headerCompressedRef.current = headerCompressed; }, [headerCompressed]);
+  const headerCompressed = scrollHeaderCompressed;
+  useEffect(() => {
+    setHeaderHeight(isDesktopViewport ? FIRE_DESKTOP_HEADER_OFFSET : FIRE_MOBILE_HEADER_OFFSET);
+  }, [isDesktopViewport]);
 
   const hasActiveFilters = filters.mediaFilter !== 'ALL'
     || filters.selectedFeedIds.length > 0
@@ -776,6 +817,8 @@ export default function FirePage() {
 
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
+  const deckMediaReadyRequestRef = useRef(0);
+  const bootstrapCachedPageKeyRef = useRef<string | null>(null);
   // Selected date broken into pieces for the collapsed one-row header.
   const selectedDateParts = useMemo(() => {
     if (!selectedDay) return null;
@@ -803,47 +846,44 @@ export default function FirePage() {
     ),
     [cards, filters, warmupSummary],
   );
+  const firePickerReady = pickerDays.length > 0 && Boolean(selectedDay);
+  // Let the shell switch into Fire immediately. The page owns its data-loading
+  // state with the centered spinner below; waiting for cards here makes the
+  // entire route/header flash in late.
+  usePageReady(true);
+
+  useEffect(() => {
+    deckMediaReadyRequestRef.current += 1;
+    const requestId = deckMediaReadyRequestRef.current;
+
+    if (loading || displayCards.length === 0) {
+      setDeckMediaReady(false);
+      return;
+    }
+
+    if (cardsHydratedFromCache) {
+      setDeckMediaReady(true);
+      return;
+    }
+
+    setDeckMediaReady(false);
+    const visibleCount = isDesktopViewport ? 8 : 3;
+    decodeFireThumbnails(displayCards, visibleCount).then(() => {
+      if (deckMediaReadyRequestRef.current === requestId) {
+        setDeckMediaReady(true);
+      }
+    });
+  }, [cardsHydratedFromCache, deckResetKey, displayCards, isDesktopViewport, loading]);
+
+  useEffect(() => {
+    if (displayCards.length > 0 && deckMediaReady) {
+      setHasShownDeck(true);
+    }
+  }, [deckMediaReady, displayCards.length]);
   const desktopModalIndex = useMemo(
     () => (desktopModalCard ? displayCards.findIndex((card) => card.id === desktopModalCard.id) : -1),
     [desktopModalCard, displayCards],
   );
-
-  const handleStandaloneIndexChange = useCallback((
-    index: number,
-    meta: { previousIndex: number; direction: -1 | 0 | 1 },
-  ) => {
-    if (isDesktopViewport) {
-      standaloneForwardStepsRef.current = 0;
-      setStandaloneHeaderCompressed(false);
-      return;
-    }
-
-    if (meta.direction < 0) {
-      standaloneForwardStepsRef.current = 0;
-      setStandaloneHeaderCompressed(false);
-      return;
-    }
-
-    if (meta.direction > 0) {
-      standaloneForwardStepsRef.current += Math.max(1, index - meta.previousIndex);
-      if (standaloneForwardStepsRef.current >= 2) {
-        setStandaloneHeaderCompressed(true);
-      }
-      return;
-    }
-
-    if (index === 0) {
-      standaloneForwardStepsRef.current = 0;
-      setStandaloneHeaderCompressed(false);
-    }
-  }, [isDesktopViewport]);
-
-  useEffect(() => {
-    if (isDesktopViewport || displayCards.length === 0) {
-      standaloneForwardStepsRef.current = 0;
-      setStandaloneHeaderCompressed(false);
-    }
-  }, [displayCards.length, isDesktopViewport]);
 
   useEffect(() => {
     cardsRef.current = cards;
@@ -878,6 +918,7 @@ export default function FirePage() {
       setSelectedDay(cachedState.selectedDay || '');
       setFilters(pruneFilters(cachedState.filters || createDefaultFireFilters(), cachedState.availableFeeds || []));
       setCards(cachedCards);
+      setCardsHydratedFromCache(true);
       setAvailableCheckpoints(sortCheckpointList(cachedState.availableCheckpoints || []));
       setWarmupSummary(cachedState.warmupSummary || {});
       setHasMore(Boolean(cachedState.hasMore));
@@ -926,7 +967,8 @@ export default function FirePage() {
             snapshotToken: entry.payload.snapshotToken,
           });
         }
-        setCache(`${FIRE_PAGE_CACHE_PREFIX}:${initialDay}:${serializeFilters(defaultFilters)}`, {
+        const initialPageCacheKey = `${FIRE_PAGE_CACHE_PREFIX}:${initialDay}:${serializeFilters(defaultFilters)}`;
+        setCache(initialPageCacheKey, {
           items: initialPayload.items,
           hasMore: initialPayload.hasMore,
           total: initialPayload.total,
@@ -934,6 +976,7 @@ export default function FirePage() {
           availableCheckpoints: initialPayload.availableCheckpoints,
           snapshotToken: initialPayload.snapshotToken,
         });
+        bootstrapCachedPageKeyRef.current = initialPageCacheKey;
         prewarmThumbnails(
           prefetchedPages.length > 0 ? prefetchedPages.map((entry) => entry.payload) : [initialPayload],
           initialViewportIsDesktop ? FIRE_PREFETCH_VISIBLE_THUMBNAILS_DESKTOP : FIRE_PREFETCH_VISIBLE_THUMBNAILS_MOBILE,
@@ -945,12 +988,13 @@ export default function FirePage() {
         setSelectedDay(initialDay);
         setFilters(defaultFilters);
         setCards(initialPayload.items);
+        setCardsHydratedFromCache(false);
         setAvailableCheckpoints(initialPayload.availableCheckpoints);
         setHasMore(initialPayload.hasMore);
         setTotal(initialPayload.total);
         cursorRef.current = initialPayload.items.length;
         snapshotTokenRef.current = initialPayload.snapshotToken;
-        setError(null);
+        setError(nextDays.length > 0 ? null : 'No fire days available');
       } catch (err) {
         if (!mounted) return;
         if (isUnauthorizedError(err)) {
@@ -958,6 +1002,7 @@ export default function FirePage() {
           return;
         }
         console.error('[FirePage] Bootstrap fetch error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load fire data');
       } finally {
         if (mounted) {
           setLoading(false);
@@ -1049,37 +1094,6 @@ export default function FirePage() {
       }
     };
   }, [initialDataReady, isDesktopViewport, pickerDays, selectedDay]);
-
-  useEffect(() => {
-    const node = headerRef.current;
-    if (!node) return;
-
-    // Publish ONLY the expanded header height to --fire-header-height (which
-    // drives the content's top offset). If we tracked the live height while the
-    // header collapses/expands, the content would reflow mid-scroll and stall
-    // momentum ("scroll catch"). Freezing the offset = the collapse is a pure
-    // overlay animation; the scroll never stutters. Commits are debounced so the
-    // expand animation's intermediate heights are never published.
-    let debounce = 0;
-    const commit = () => {
-      if (headerCompressedRef.current) return;
-      setHeaderHeight(Math.ceil(node.getBoundingClientRect().height));
-    };
-    const scheduleCommit = () => {
-      window.clearTimeout(debounce);
-      debounce = window.setTimeout(commit, 720);
-    };
-    commit();
-
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleCommit);
-    observer?.observe(node);
-    window.addEventListener('resize', scheduleCommit);
-    return () => {
-      window.clearTimeout(debounce);
-      observer?.disconnect();
-      window.removeEventListener('resize', scheduleCommit);
-    };
-  }, [pickerDays, availableCheckpoints.length, filters.mediaFilter, filters.selectedFeedIds.length, filters.selectedCheckpoints.length]);
 
   useEffect(() => {
     if (!initialDataReady) return;
@@ -1335,6 +1349,7 @@ export default function FirePage() {
     if (cached) {
       const cachedItems = dedupeFireAlertItems(cached.items || []);
       setCards(cachedItems);
+      setCardsHydratedFromCache(cacheKey !== bootstrapCachedPageKeyRef.current);
       setHasMore(cached.hasMore);
       setTotal(cached.total);
       setAvailableCheckpoints((prev) => {
@@ -1359,6 +1374,7 @@ export default function FirePage() {
     } else {
       setLoading(true);
       setCards([]);
+      setCardsHydratedFromCache(false);
       setHasMore(false);
     }
     setError(null);
@@ -1368,6 +1384,7 @@ export default function FirePage() {
         const result = await fetchPage(selectedDay, normalizedFilters, 0, null, FIRE_INITIAL_BATCH_SIZE);
         if (!mounted || fetchKeyRef.current !== key) return;
         setCards(result.items);
+        setCardsHydratedFromCache(false);
         setHasMore(result.hasMore);
         setTotal(result.total);
         setAvailableCheckpoints((prev) => {
@@ -1474,6 +1491,19 @@ export default function FirePage() {
     height: useBrowserPageScroll ? undefined : 'var(--fire-app-height, 100dvh)',
     minHeight: useBrowserPageScroll ? '100dvh' : undefined,
   } as CSSProperties;
+  const firePickerPlaceholder = (
+    <div
+      aria-hidden={!error}
+      className={cn(
+        'flex min-h-[42px] w-full items-center justify-center rounded-[16px] px-3 text-[9px] font-black uppercase tracking-[0.18em]',
+        error
+          ? 'border border-black/[0.04] bg-black/[0.03] text-black/38 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06),inset_0_-1px_0_rgba(255,255,255,0.5)] dark:border-white/[0.05] dark:bg-white/[0.03] dark:text-white/34 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]'
+          : 'opacity-0',
+      )}
+    >
+      {error ? 'Fire data unavailable' : null}
+    </div>
+  );
 
   return (
     <motion.div
@@ -1496,42 +1526,16 @@ export default function FirePage() {
         onChange={updateFilters}
       />
 
-      <motion.div
-        ref={headerRef}
-        variants={HEADER_STAGGER_CONTAINER}
-        initial="initial"
-        animate="animate"
-        className={cn(
-          'pointer-events-none inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
-          useBrowserPageScroll ? 'fixed' : 'absolute',
-        )}
+      <AppHeader
+        id="fire"
+        compressed={headerCompressed}
       >
-        <div className="relative fm-tab-header-shell">
-          <motion.div
-            className={cn(
-              'fm-depth-chrome fm-depth-chrome--header pointer-events-auto w-full',
-              headerCompressed && 'fm-depth-chrome--header-compressed',
-            )}
-            initial={false}
-            animate={{ scale: headerCompressed ? 0.997 : 1 }}
-            transition={FIRE_HEADER_LAYER_TRANSITION}
-            style={{
-              transformOrigin: 'top center',
-              willChange: 'transform',
-            }}
-          >
-            <div className="relative z-10 px-3.5 sm:px-4 lg:px-5">
+            <div className="relative z-10 px-3.5 sm:px-4 lg:flex lg:h-full lg:flex-col lg:justify-center lg:px-5">
               <motion.div
-                className="grid overflow-hidden lg:hidden"
+                className="relative overflow-hidden lg:hidden"
                 initial={false}
-                animate={{
-                  gridTemplateRows: headerCompressed ? '52px 0px' : '52px 60px',
-                  rowGap: headerCompressed ? 0 : 10,
-                }}
-                transition={FIRE_HEADER_LAYER_TRANSITION}
-                style={{ willChange: 'grid-template-rows' }}
               >
-                <motion.div initial={false} animate={{ opacity: 1 }} className="relative flex h-[52px] items-center">
+                <motion.div initial={false} className="relative flex h-[52px] items-center">
                   <motion.div
                     className="absolute inset-0 flex items-center justify-between gap-3"
                     initial={false}
@@ -1543,10 +1547,9 @@ export default function FirePage() {
                     transition={FIRE_HEADER_LAYER_TRANSITION}
                     style={{ pointerEvents: headerCompressed ? 'none' : 'auto' }}
                   >
-                    <h1 className="shrink-0 text-[34px] font-black leading-none tracking-[0.14em] text-black sm:text-[38px] dark:text-white fm-depth-title">
-                      FIRE
-                    </h1>
-                    <div className="flex items-center gap-2">
+                    <span className="fm-app-header-title shrink-0 text-black dark:text-white fm-depth-title">FIRE</span>
+                    <span className="relative inline-flex min-w-0 items-center overflow-hidden align-middle">
+                      <div className="flex items-center gap-2">
                       <motion.button
                         whileTap={{ scale: 0.95 }}
                         type="button"
@@ -1570,7 +1573,8 @@ export default function FirePage() {
                       >
                         <SlidersHorizontal size={20} />
                       </motion.button>
-                    </div>
+                      </div>
+                    </span>
                   </motion.div>
                   <motion.div
                     className="absolute inset-0 flex items-center justify-between gap-4"
@@ -1578,6 +1582,7 @@ export default function FirePage() {
                     animate={{
                       opacity: headerCompressed ? 1 : 0,
                       x: headerCompressed ? 0 : 10,
+                      y: headerCompressed ? 13 : 0,
                       scale: headerCompressed ? 1 : 0.985,
                     }}
                     transition={FIRE_HEADER_LAYER_TRANSITION}
@@ -1586,7 +1591,7 @@ export default function FirePage() {
                     <span className="text-[50px] font-black leading-[0.78] tracking-[-0.055em] text-black dark:text-white fm-depth-title">
                       {selectedDateParts?.day ?? '--'}
                     </span>
-                    <div className="flex min-w-0 flex-col items-end text-right leading-[1.0]">
+                    <div className="flex min-w-0 flex-col items-end text-right leading-none">
                       <span className="max-w-full truncate text-[18px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
                         {selectedDateParts?.weekday ?? ''}
                       </span>
@@ -1598,24 +1603,44 @@ export default function FirePage() {
                 </motion.div>
                 <motion.div
                   initial={false}
-                  className="min-w-0 overflow-hidden pointer-events-auto"
-                  animate={{ opacity: headerCompressed ? 0 : 1, y: headerCompressed ? -8 : 0 }}
-                  transition={FIRE_HEADER_LAYER_TRANSITION}
-                  style={{ pointerEvents: headerCompressed ? 'none' : 'auto' }}
-                >
-                  <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} />
-                </motion.div>
+                  className="mt-2 min-w-0 overflow-hidden pointer-events-auto"
+                  animate={{
+                    opacity: headerCompressed ? 0 : 1,
+                    y: headerCompressed ? -14 : 0,
+                    clipPath: headerCompressed
+                      ? 'inset(0 0 100% 0 round 18px)'
+                      : 'inset(0 0 0% 0 round 18px)',
+                  }}
+                  transition={{
+                    opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
+                    y: HEADER_COLLAPSE_SPRING,
+                    clipPath: { duration: 0.28, ease: GRID_ITEM_EASE },
+                  }}
+                  style={{
+                    pointerEvents: headerCompressed ? 'none' : 'auto',
+                    willChange: 'transform, opacity, clip-path',
+                  }}
+	                >
+	                  <div className="relative min-w-0 overflow-hidden">
+	                    {firePickerReady
+                      ? <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} />
+                      : firePickerPlaceholder}
+	                  </div>
+	                </motion.div>
               </motion.div>
 
-              <div className="hidden flex-col gap-2 lg:flex">
-                <div className="grid grid-cols-[minmax(148px,auto)_minmax(0,1fr)_auto] items-center gap-2.5">
-                  <div className="text-[28px] font-black uppercase tracking-[0.18em] text-black dark:text-white fm-depth-title">
-                    FIRE
-                  </div>
-                  <div className="flex justify-center px-0.5">
-                    <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} compact />
-                  </div>
-                  <div className="flex items-center justify-end">
+              <div className="hidden flex-col gap-2 lg:flex lg:h-full lg:justify-center">
+                <div className="grid min-h-[64px] grid-cols-[180px_minmax(0,1fr)_180px] items-center gap-2.5">
+                    <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FIRE</span>
+	                  <div className="flex min-w-0 justify-center px-0.5">
+	                    <div className="relative min-w-0 overflow-hidden w-full max-w-[940px]">
+	                      {firePickerReady
+                        ? <ChronoTabs days={pickerDays} activeDay={selectedDay} onChange={handleSelectedDayChange} compact />
+                        : firePickerPlaceholder}
+	                    </div>
+	                  </div>
+                  <span className="relative inline-flex min-w-0 items-center justify-end overflow-hidden align-middle">
+                    <div className="flex items-center justify-end">
                       <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
                       <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">
                         Post Type
@@ -1632,10 +1657,11 @@ export default function FirePage() {
                         {selectedDay || '--'}
                       </div>
                     </div>
-                  </div>
+                    </div>
+                  </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
+                <div className="flex min-h-[42px] flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
                   <div className="flex items-center gap-1 rounded-[14px] border border-black/5 bg-white/58 p-1 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]">
                     {FIRE_MEDIA_FILTER_OPTIONS.map((option) => {
                       const isActive = filters.mediaFilter === option.value;
@@ -1653,10 +1679,9 @@ export default function FirePage() {
                             )}
                           >
                             {isActive && (
-                              <motion.span
-                                layoutId="fire-media-filter-pill-bg"
+                              <span
+                                aria-hidden="true"
                                 className="absolute inset-0 rounded-[11px] bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgba(225,29,72,0.22),0_10px_24px_rgba(0,0,0,0.26)]"
-                                transition={FIRE_CHROME_PILL_SPRING}
                               />
                             )}
                             <span className="relative z-10">{option.label}</span>
@@ -1691,10 +1716,9 @@ export default function FirePage() {
                             )}
                           >
                             {isActive && (
-                              <motion.span
-                                layoutId="fire-sort-pill-bg"
+                              <span
+                                aria-hidden="true"
                                 className="absolute inset-0 rounded-[11px] bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgba(225,29,72,0.22),0_10px_24px_rgba(0,0,0,0.26)]"
-                                transition={FIRE_CHROME_PILL_SPRING}
                               />
                             )}
                             <span className="relative z-10">{option.label}</span>
@@ -1756,46 +1780,74 @@ export default function FirePage() {
                 </div>
               </div>
             </div>
-          </motion.div>
-        </div>
-      </motion.div>
+      </AppHeader>
 
       <div ref={contentRef} className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
-        {loading ? (
-          <div className="flex w-full items-center justify-center" style={fireStateShellStyle()}>
-            <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
-          </div>
-        ) : error ? (
-          <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
-            <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-6 py-5 text-sm font-semibold tracking-wide text-red-600 dark:text-red-300">
-              FIRE DATA UNAVAILABLE: {error}
-            </div>
-          </div>
-        ) : (
-          <div className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}>
-            <div className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}>
-              {displayCards.length === 0 ? (
-                <div className="flex w-full items-center justify-center px-6 text-center" style={fireStateShellStyle()}>
-                  <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
-                    {isRefreshing ? 'Updating fire view' : 'No alerts for this selection'}
-                  </div>
-                </div>
-              ) : (
+        <AnimatePresence mode="wait" initial={false}>
+          {loading || (!hasShownDeck && !error && displayCards.length > 0 && !deckMediaReady) ? (
+            <motion.div
+              key="fire-loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: GRID_ITEM_EASE }}
+              className="flex w-full items-center justify-center"
+              style={fireStateShellStyle()}
+            >
+              <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
+            </motion.div>
+          ) : error ? (
+            <motion.div
+              key="fire-error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: GRID_ITEM_EASE }}
+              className="flex w-full items-center justify-center px-6 text-center"
+              style={fireStateShellStyle()}
+            >
+              <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-6 py-5 text-sm font-semibold tracking-wide text-red-600 dark:text-red-300">
+                FIRE DATA UNAVAILABLE: {error}
+              </div>
+            </motion.div>
+          ) : displayCards.length === 0 ? (
+            <motion.div
+              key="fire-empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: GRID_ITEM_EASE }}
+              className="flex w-full items-center justify-center px-6 text-center"
+              style={fireStateShellStyle()}
+            >
+              <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
+                {isRefreshing ? 'Updating fire view' : 'No alerts for this selection'}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="fire-deck"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: GRID_ITEM_EASE }}
+              className={cn('mx-auto w-full', useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full')}
+            >
+              <div className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}>
                 <FluidDeck
                   cards={displayCards}
                   hasMore={hasMore}
                   loadingMore={loadingMore}
                   onLoadMore={handleLoadMore}
                   onOpenCard={setDesktopModalCard}
-                  onStandaloneIndexChange={handleStandaloneIndexChange}
                   usePageScroll={useBrowserPageScroll}
                   resetKey={deckResetKey}
                   total={total}
                 />
-              )}
-            </div>
-          </div>
-        )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <FireIntelligenceDialog

@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, ReactNode, RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
@@ -114,15 +114,13 @@ function DeferredMobileSection({
   reduceMotion: boolean;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
-  const renderImmediately = eager || usePageScroll || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function');
   const [isReady, setIsReady] = useState(() => (
-    renderImmediately
+    eager || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function')
   ));
-  const isSectionReady = isReady || renderImmediately;
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
 
   useEffect(() => {
-    if (renderImmediately || isReady || typeof window === 'undefined') return;
+    if (eager || isReady || typeof window === 'undefined') return;
 
     const node = sectionRef.current;
     if (!node) return;
@@ -142,24 +140,26 @@ function DeferredMobileSection({
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [isReady, renderImmediately, scrollRootRef, usePageScroll]);
+  }, [eager, isReady, scrollRootRef, usePageScroll]);
 
   return (
     <section
       ref={sectionRef}
       className={
         mobileSnapSections
-          ? 'snap-start snap-always flex min-h-[var(--fm-feed-mobile-section-height)] items-center px-2 py-2 sm:px-3'
-          : 'px-2 py-2 sm:px-3'
+          ? 'snap-start snap-always flex min-h-[var(--fm-feed-mobile-section-height)] w-full max-w-full items-center overflow-x-hidden px-4 py-2 sm:px-5'
+          : 'w-full max-w-full overflow-x-hidden px-4 py-2 sm:px-5'
       }
       style={{
         scrollMarginTop: mobileSnapSections ? 'calc(var(--fm-mobile-detail-header-offset) + 10px)' : undefined,
+        contentVisibility: 'auto',
+        containIntrinsicSize: '420px',
       }}
     >
-      <div className="fm-tab-canvas-shell mx-auto flex w-full">
-        <div className={`mx-auto flex w-full max-w-[760px] flex-col gap-3 ${mobileSnapSections ? 'justify-center' : ''}`}>
+      <div className="mx-auto flex w-full max-w-[min(430px,calc(100vw-32px))] overflow-x-hidden">
+        <div className={`mx-auto flex w-full max-w-full min-w-0 flex-col gap-3 overflow-x-hidden ${mobileSnapSections ? 'justify-center' : ''}`}>
           {section.items.map((item, itemIndex) => (
-            isSectionReady ? (
+            isReady ? (
               <motion.div
                 key={item.key}
                 variants={tileVariant}
@@ -209,14 +209,6 @@ export default function FeedDetailV2({
   const reduceMotion = Boolean(prefersReducedMotion);
   const staggerContainer = useMemo(() => createStaggerContainer(reduceMotion), [reduceMotion]);
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
-  const activeFeedId = activeFeed?.id ?? null;
-
-  useLayoutEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-    if (usePageScroll && typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-  }, [activeFeedId, usePageScroll]);
 
   if (!activeFeed) return null;
 
@@ -336,8 +328,8 @@ export default function FeedDetailV2({
       ref={scrollRef}
       className={
         usePageScroll
-          ? `fm-feed-detail-scroll w-full ${immersiveBrowserMode ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]'} overflow-visible overflow-x-hidden scroll-smooth`
-          : 'fm-feed-detail-scroll hide-scrollbar h-full w-full snap-y snap-mandatory overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth'
+          ? `fm-feed-detail-scroll w-full max-w-[100vw] ${immersiveBrowserMode ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]'} overflow-x-hidden overflow-y-visible scroll-smooth transform-gpu`
+          : 'fm-feed-detail-scroll hide-scrollbar h-full w-full snap-y snap-mandatory overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth transform-gpu'
       }
       style={{
         WebkitOverflowScrolling: 'touch',
@@ -350,7 +342,7 @@ export default function FeedDetailV2({
     >
       <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)', overflowAnchor: 'none' }} />
 
-      <div className="lg:hidden" style={{ paddingBottom: bottomClearance }}>
+      <div className="w-full max-w-full overflow-x-hidden lg:hidden" style={{ paddingBottom: bottomClearance }}>
         {mobileSections.map((section, sectionIndex) => (
           <DeferredMobileSection
             key={section.id}
@@ -359,13 +351,16 @@ export default function FeedDetailV2({
             scrollRootRef={scrollRef}
             usePageScroll={usePageScroll}
             mobileSnapSections={mobileSnapSections}
-            eager={sectionIndex === 0 || usePageScroll}
+            eager={section.id === 'performance'}
             reduceMotion={reduceMotion}
           />
         ))}
 
-        <div className="mt-2 px-2 pb-1 sm:px-3">
-          <div className="fm-tab-canvas-shell mx-auto">
+        <div
+          className="mt-2 w-full max-w-full overflow-x-hidden px-4 pb-1 sm:px-5"
+          style={{ contentVisibility: 'auto', containIntrinsicSize: '860px' }}
+        >
+          <div className="mx-auto w-full max-w-[min(430px,calc(100vw-32px))] overflow-x-hidden">
             <div className="w-full pt-1 pb-4">
               <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
               <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -382,56 +377,56 @@ export default function FeedDetailV2({
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
-        className="fm-tab-canvas-shell mx-auto hidden w-full px-2 sm:px-0 lg:block"
+        className="fm-tab-canvas-shell mx-auto hidden w-full px-2 sm:px-0 transform-gpu lg:block"
         style={{ paddingBottom: bottomClearance }}
       >
         <div className="bento-feed-grid grid gap-2.5 sm:gap-3 lg:gap-3.5">
-          <motion.div data-lock-id="ascent" variants={tileVariant} style={{ gridArea: 'ascent' }} className="fm-feed-mobile-panel min-w-0 min-h-[260px] xl:min-h-[272px]">
-            {ascentTile}
-          </motion.div>
+            <motion.div data-lock-id="ascent" variants={tileVariant} style={{ gridArea: 'ascent' }} className="fm-feed-mobile-panel min-w-0 min-h-[260px] xl:min-h-[272px]">
+              {ascentTile}
+            </motion.div>
 
-          <motion.div data-lock-id="pulse" variants={tileVariant} style={{ gridArea: 'pulse' }} className="fm-feed-mobile-panel min-w-0 min-h-[260px] xl:min-h-[272px]">
-            {velocityTile}
-          </motion.div>
+            <motion.div data-lock-id="pulse" variants={tileVariant} style={{ gridArea: 'pulse' }} className="fm-feed-mobile-panel min-w-0 min-h-[260px] xl:min-h-[272px]">
+              {velocityTile}
+            </motion.div>
 
-          <motion.div data-lock-id="export" variants={tileVariant} style={{ gridArea: 'export' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
-            {exportTile}
-          </motion.div>
+            <motion.div data-lock-id="export" variants={tileVariant} style={{ gridArea: 'export' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
+              {exportTile}
+            </motion.div>
 
-          <motion.div data-lock-id="apex" variants={tileVariant} style={{ gridArea: 'apex' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
-            {apexTile}
-          </motion.div>
+            <motion.div data-lock-id="apex" variants={tileVariant} style={{ gridArea: 'apex' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
+              {apexTile}
+            </motion.div>
 
-          <motion.div data-lock-id="kill" variants={tileVariant} style={{ gridArea: 'kill' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
-            {killZoneTile}
-          </motion.div>
+            <motion.div data-lock-id="kill" variants={tileVariant} style={{ gridArea: 'kill' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
+              {killZoneTile}
+            </motion.div>
 
-          <motion.div data-lock-id="scatter" variants={tileVariant} style={{ gridArea: 'scatter' }} className="fm-feed-mobile-panel min-w-0 min-h-[232px] xl:min-h-[240px]">
-            {scatterTile}
-          </motion.div>
+            <motion.div data-lock-id="scatter" variants={tileVariant} style={{ gridArea: 'scatter' }} className="fm-feed-mobile-panel min-w-0 min-h-[232px] xl:min-h-[240px]">
+              {scatterTile}
+            </motion.div>
 
-          <motion.div data-lock-id="engagement" variants={tileVariant} style={{ gridArea: 'engagement' }} className="fm-feed-mobile-panel min-w-0 min-h-[232px] xl:min-h-[240px]">
-            {engagementTile}
-          </motion.div>
+            <motion.div data-lock-id="engagement" variants={tileVariant} style={{ gridArea: 'engagement' }} className="fm-feed-mobile-panel min-w-0 min-h-[232px] xl:min-h-[240px]">
+              {engagementTile}
+            </motion.div>
 
-          <motion.div data-lock-id="pattern" variants={tileVariant} style={{ gridArea: 'pattern' }} className="fm-feed-mobile-panel min-w-0 min-h-[252px] xl:min-h-[264px]">
-            {postingPatternTile}
-          </motion.div>
+            <motion.div data-lock-id="pattern" variants={tileVariant} style={{ gridArea: 'pattern' }} className="fm-feed-mobile-panel min-w-0 min-h-[252px] xl:min-h-[264px]">
+              {postingPatternTile}
+            </motion.div>
 
-          <motion.div data-lock-id="heatmap" variants={tileVariant} style={{ gridArea: 'heatmap' }} className="min-w-0 min-h-[252px] xl:min-h-[264px]">
-            {heatmapTile}
-          </motion.div>
+            <motion.div data-lock-id="heatmap" variants={tileVariant} style={{ gridArea: 'heatmap' }} className="min-w-0 min-h-[252px] xl:min-h-[264px]">
+              {heatmapTile}
+            </motion.div>
 
-          <motion.div data-lock-id="targets" variants={tileVariant} style={{ gridArea: 'targets' }}>
-            <div className="w-full pt-1 pb-4 lg:pt-2">
-              <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
-              <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
-                <AnimatePresence mode="popLayout">
-                  {children}
-                </AnimatePresence>
-              </motion.div>
-            </div>
-          </motion.div>
+            <motion.div data-lock-id="targets" variants={tileVariant} style={{ gridArea: 'targets' }}>
+              <div className="w-full pt-1 pb-4 lg:pt-2">
+                <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
+                <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
+                  <AnimatePresence mode="popLayout">
+                    {children}
+                  </AnimatePresence>
+                </motion.div>
+              </div>
+            </motion.div>
         </div>
       </motion.div>
     </div>

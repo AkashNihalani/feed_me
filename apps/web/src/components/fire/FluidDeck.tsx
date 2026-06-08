@@ -126,12 +126,14 @@ function writeStandaloneDeckState(
 // ─── VirtualSlot: used by non-PWA mobile only (desktop renders inline) ───────
 function VirtualSlot({
   item,
+  index,
   isActive,
   mobileAutoplayEnabled,
   onOpenDetails,
   onBeforeOpenPost,
 }: {
   item: FireItem;
+  index: number;
   isActive: boolean;
   mobileAutoplayEnabled: boolean;
   onOpenDetails: () => void;
@@ -165,15 +167,7 @@ function VirtualSlot({
             y: isActive ? -6 : 14,
             scale: isActive ? 1.02 : 0.965,
           }}
-          transition={{
-            // Depth swap (front/back shift) follows scroll directly — no index
-            // delay, which otherwise lagged the active flip by up to 100ms. A
-            // spring settles more naturally than a fixed tween and absorbs rapid
-            // scroll interrupts by carrying velocity into the next swap.
-            opacity: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
-            y: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
-            scale: { type: 'spring', stiffness: 260, damping: 32, mass: 0.85 },
-          }}
+          transition={{ duration: 0.22, delay: Math.min(index * 0.016, 0.1), ease: [0.22, 1, 0.36, 1] }}
           className="relative w-full"
           style={{ zIndex: isActive ? 30 : 10 }}
         >
@@ -241,11 +235,9 @@ function FluidDeck({
     return getPwaViewportSlotHeight();
   });
 
-  // Shift the center point of the card stack so the active card sits between
-  // header and bottom nav instead of the raw viewport center.
-  // Uses CSS calc() so values are always live — no stale measurements on tab switch.
-  const pwaCenterOffset = 'calc((var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 86px)) / 2)';
-  const pwaCardMaxHExpr = 'calc(var(--fire-app-height, 100dvh) - var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 86px) - 32px)';
+  const pwaDeckTopExpr = 'calc(env(safe-area-inset-top) + var(--fire-header-height, 168px) + 44px)';
+  const pwaDeckBottomExpr = 'calc(var(--fire-bottom-clearance, 86px) + env(safe-area-inset-bottom) + 12px)';
+  const pwaCardMaxHExpr = 'calc(var(--fire-app-height, 100dvh) - var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 86px) - env(safe-area-inset-bottom) - 28px)';
 
   useEffect(() => {
     activeCardIdRef.current = activeCardId;
@@ -604,14 +596,6 @@ function FluidDeck({
     if (hasMore && !loadingMore && onLoadMore) onLoadMore();
   }, [hasMore, loadingMore, onLoadMore]);
 
-  const mobileDeckTransitionKey = useMemo(() => {
-    const signature = cards
-      .slice(0, 3)
-      .map((card) => card.id)
-      .join('|');
-    return signature || 'empty';
-  }, [cards]);
-
   if (!cards || cards.length === 0) {
     return (
       <div className="mt-16 flex h-64 items-center justify-center font-mono text-sm tracking-widest text-neutral-500">
@@ -634,7 +618,6 @@ function FluidDeck({
   const showStandaloneLoadDock = usePwaSnap
     && Boolean(hasMore)
     && pwaIndex >= Math.max(0, cards.length - 2);
-
   // ── PWA render: fixed-position transform stack (TikTok/Reels style) ─────────
   if (usePwaSnap) {
     return (
@@ -642,7 +625,7 @@ function FluidDeck({
         {/* Full-canvas PWA deck so cards pass under floating chrome. */}
         <AnimatePresence mode="sync">
           <motion.div
-            key={mobileDeckTransitionKey}
+            key="pwa-fire-deck"
             initial={{ opacity: 0, y: 24, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.992 }}
@@ -660,7 +643,7 @@ function FluidDeck({
               return (
                 <motion.div
                   key={card.id}
-                  className="absolute inset-0 flex items-center justify-center px-0 sm:px-2"
+                  className="absolute inset-x-0 flex items-center justify-center px-0 sm:px-2"
                   animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
                   transition={{
                     type: 'spring',
@@ -673,11 +656,15 @@ function FluidDeck({
                   dragElastic={0.08}
                   onDragEnd={handlePwaDragEnd}
                   style={{
+                    top: pwaDeckTopExpr,
+                    bottom: pwaDeckBottomExpr,
                     zIndex: style.zIndex,
                     pointerEvents: isCurrent ? 'auto' : 'none',
+                    willChange: 'transform',
+                    backfaceVisibility: 'hidden',
                   }}
                 >
-                  <div className="flex h-full w-full items-center justify-center" style={{ marginTop: pwaCenterOffset, transition: 'margin-top 340ms cubic-bezier(0.32,0.72,0,1)' }}>
+                  <div className="flex h-full w-full items-start justify-center">
                     <div
                       className="w-full max-w-[472px]"
                       style={{
@@ -748,7 +735,7 @@ function FluidDeck({
         ? 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain hide-scrollbar'
         : 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth hide-scrollbar',
     'px-0 sm:px-3 lg:px-4',
-    'pt-[calc(var(--fire-header-height,168px)+40px)]',
+    usePageScroll && !isDesktop ? 'pt-[calc(var(--fire-header-height,190px)+16px)]' : 'pt-[calc(var(--fire-header-height,168px)+40px)]',
     isDesktop ? 'pb-[148px]' : 'pb-[88px]',
     'lg:snap-none',
   ].join(' ');
@@ -810,18 +797,19 @@ function FluidDeck({
             </AnimatePresence>
           </motion.div>
         ) : (
-          <div className="flex flex-col">
-            <AnimatePresence mode="sync">
-              <motion.div
-                key={mobileDeckTransitionKey}
-                initial={{ opacity: 0, y: 22, scale: 0.985 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -14, scale: 0.992 }}
-                transition={MOBILE_DECK_SWAP_SPRING}
-                className="flex flex-col"
-              >
+          <AnimatePresence mode="sync">
+            <motion.div
+              key="mobile-fire-deck"
+              initial={{ opacity: 0, y: 22, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -14, scale: 0.992 }}
+              transition={MOBILE_DECK_SWAP_SPRING}
+              className="flex flex-col"
+              style={{ willChange: 'transform,opacity', backfaceVisibility: 'hidden' }}
+            >
+              <div className="flex flex-col">
                 <AnimatePresence mode="popLayout">
-                  {cards.map((card) => {
+                  {cards.map((card, index) => {
                     const isActive = resolvedActive === card.id;
                     return (
                       <motion.div
@@ -839,22 +827,23 @@ function FluidDeck({
                         className={mobileStackClass}
                         style={{ zIndex: isActive ? 40 : 10 }}
                       >
-                        <div className="w-full max-w-[472px]">
+                      <div className="w-full max-w-[472px]">
                         <VirtualSlot
                           item={card}
+                          index={index}
                           isActive={isActive}
                           mobileAutoplayEnabled={mobileAutoplayEnabled}
                           onOpenDetails={() => undefined}
                           onBeforeOpenPost={persistStandaloneDeckState}
                         />
-                        </div>
+                      </div>
                       </motion.div>
                     );
                   })}
                 </AnimatePresence>
-              </motion.div>
-            </AnimatePresence>
-          </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
         )}
 
         {hasMore ? (

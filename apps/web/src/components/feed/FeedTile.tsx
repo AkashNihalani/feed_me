@@ -104,7 +104,7 @@ export default function FeedTile({
 }: FeedTileProps) {
   const prefersReducedMotion = useReducedMotion();
   const shouldAnimateEntrance = enableEntranceAnimation && !prefersReducedMotion;
-  const enterDelay = Math.min(index * 0.055, 0.28);
+  const enterDelay = Math.min(index * 0.026, 0.2);
 
   return (
     <motion.div
@@ -120,16 +120,15 @@ export default function FeedTile({
         }
       }}
       className="fm-depth-glass group relative flex min-h-[220px] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-[28px] p-4 text-left shadow-[0_12px_30px_-10px_rgba(15,23,42,0.22),0_24px_54px_-18px_rgba(15,23,42,0.16)] sm:min-h-[240px] sm:p-5 lg:min-h-[200px] dark:shadow-[0_16px_36px_-14px_rgba(0,0,0,0.62),0_34px_70px_-22px_rgba(0,0,0,0.5)]"
-      initial={shouldAnimateEntrance ? { y: 22, scale: 0.985, opacity: 0 } : false}
-      animate={{ y: 0, scale: 1, opacity: 1 }}
+      initial={shouldAnimateEntrance ? { y: 18, scale: 0.975 } : false}
+      animate={{ y: 0, scale: 1 }}
       transition={shouldAnimateEntrance
         ? {
-            opacity: { duration: 0.22, delay: 0.06 + enterDelay, ease: GRID_ITEM_EASE },
-            y: { type: 'spring', stiffness: 270, damping: 30, mass: 0.9, delay: 0.06 + enterDelay },
-            scale: { duration: 0.34, delay: 0.06 + enterDelay, ease: GRID_ITEM_EASE },
+            y: { duration: 0.24, delay: enterDelay, ease: GRID_ITEM_EASE },
+            scale: { duration: 0.24, delay: enterDelay, ease: GRID_ITEM_EASE },
           }
         : { duration: 0.01 }}
-      whileTap={{ scale: 0.985 }}
+      whileTap={{ scale: 0.996 }}
     >
       <div className="relative z-10 flex h-full flex-col justify-between">
         <div className="flex items-start justify-between gap-3">
@@ -181,11 +180,9 @@ export default function FeedTile({
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <motion.span
-              animate={{ opacity: [0.55, 1, 0.55] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            <span
               className={cn(
-                'h-2.5 w-2.5 rounded-full',
+                'fm-live-dot h-2.5 w-2.5 rounded-full',
                 count > 0 ? 'bg-[#E11D48] shadow-[0_6px_12px_-8px_rgba(225,29,72,0.32)]' : 'bg-red-500 shadow-[0_6px_12px_-8px_rgba(239,68,68,0.35)]'
               )}
             />

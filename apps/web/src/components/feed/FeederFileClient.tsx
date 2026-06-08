@@ -907,7 +907,7 @@ function MobilePopup({
   return (
     <motion.div
       ref={assignScrollContainer}
-      className="fixed inset-0 z-[1000] overflow-y-auto overflow-x-hidden bg-[#FAF9F6]/94 text-[#111111] backdrop-blur-xl transition-colors duration-300 dark:bg-[#09090b]/94 dark:text-white"
+      className="fixed inset-0 z-[1000] overflow-y-auto overflow-x-hidden bg-[#FAF9F6] text-[#111111] transition-colors duration-300 dark:bg-[#09090b] dark:text-white"
       initial={{ opacity: 0, y: 28, scale: 0.982, filter: 'blur(14px)' }}
       animate={isClosing
         ? { opacity: 0, y: 34, scale: 0.976, filter: 'blur(16px)' }
@@ -1241,7 +1241,7 @@ function DesktopPopup({
 
   return (
     <motion.div
-      className="fixed inset-0 z-[1000] flex flex-col bg-[#FAF9F6]/96 text-[#111111] backdrop-blur-xl transition-colors duration-300 dark:bg-[#09090b]/96 dark:text-[#f4f4f5]"
+      className="fixed inset-0 z-[1000] flex flex-col bg-[#FAF9F6] text-[#111111] transition-colors duration-300 dark:bg-[#09090b] dark:text-[#f4f4f5]"
       initial={{ opacity: 0, y: 18, scale: 0.982, filter: 'blur(12px)' }}
       animate={isClosing
         ? { opacity: 0, y: 24, scale: 0.98, filter: 'blur(14px)' }
