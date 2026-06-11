@@ -68,7 +68,9 @@ function parsePostContextRead(meta: Record<string, unknown>) {
   const fit = text(read.fit).trim() || text(read.memory_match).trim();
   const recentRun = text(read.recent_run).trim();
   const funFactRecord = asRec(read.fun_fact);
-  const funFact = text(funFactRecord.text).trim() || text(read.fun_fact).trim() || text(read.numbers).trim() || headline;
+  // The worker-computed stat. Kept distinct from the LLM headline (v16+) — they
+  // are two different things now: the stat is its own section in the read.
+  const funFact = text(funFactRecord.text).trim() || text(read.fun_fact).trim() || text(read.numbers).trim();
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 2);
@@ -87,18 +89,18 @@ function d7ReadSections(read: PostContextRead) {
   const directionFallback = !read.recentRun && !read.fit ? read.direction : '';
   return [
     {
-      label: 'Trigger',
-      eyebrow: 'post condensation',
+      label: 'Scene',
+      eyebrow: 'the reel itself',
       value: read.scene || read.readText,
     },
     {
       label: 'Fit',
-      eyebrow: '30-post feeder file',
+      eyebrow: 'this post vs the account',
       value: read.fit || read.metricContext,
     },
     {
       label: 'Run',
-      eyebrow: 'recent proof',
+      eyebrow: 'the account lately',
       value: read.recentRun || directionFallback,
     },
   ].filter((section) => section.value.trim());
@@ -111,7 +113,7 @@ function D7VerdictBar({
   read: PostContextRead;
   onOpen: () => void;
 }) {
-  const verdict = read.funFact || read.headline || read.metricContext;
+  const verdict = read.headline || read.funFact || read.metricContext;
   if (!verdict) return null;
   return (
     <button
@@ -133,7 +135,7 @@ function D7VerdictBar({
           <ChevronRight size={10} strokeWidth={3} />
         </span>
       </div>
-      <p className="relative mt-1.5 line-clamp-2 text-[17px] font-black leading-[1.08] text-white sm:text-[19px]">
+      <p className="relative mt-1.5 line-clamp-2 text-[19px] font-black leading-[1.06] tracking-[-0.01em] text-white sm:text-[22px]">
         {verdict}
       </p>
     </button>
@@ -151,102 +153,136 @@ function D7ReadView({
   sourceLabel: string;
   onBack: () => void;
 }) {
-  const verdict = read.funFact || read.headline || read.metricContext;
+  const hero = read.headline || read.funFact || read.metricContext;
+  const showStat = Boolean(read.funFact && read.headline);
   const sections = d7ReadSections(read);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const safeIndex = sections.length === 0 ? 0 : Math.min(activeIndex, sections.length - 1);
-  const active = sections[safeIndex];
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const width = el.clientWidth || 1;
+    const next = Math.max(0, Math.round(el.scrollLeft / width));
+    setActiveIndex((prev) => (prev === next ? prev : next));
+  };
+
+  const scrollToIndex = (index: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ left: index * el.clientWidth, behavior: 'smooth' });
+  };
 
   return (
-    <motion.div
-      className="flex min-h-0 flex-1 flex-col"
-      initial={{ opacity: 0, x: 14 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-    >
+    <motion.div className="flex min-h-0 flex-1 flex-col">
+      {/* Eyebrow */}
       <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onBack();
-          }}
-          className="inline-flex items-center gap-0.5 rounded-full border border-black/[0.06] bg-black/[0.03] py-1 pl-1.5 pr-2.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/56 transition-colors dark:border-white/10 dark:bg-white/[0.05] dark:text-white/52 sm:text-[9px]"
-        >
-          <ChevronLeft size={12} strokeWidth={3} />
-          Stats
-        </button>
-        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-[#E11D48] sm:text-[9px]">
+        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.18em] text-[#E11D48] sm:text-[9px]">
           <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]" />
           {sourceLabel}
         </div>
+        {sections.length > 1 ? (
+          <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.16em] text-foreground/32 dark:text-white/30 sm:text-[9px]">
+            Swipe
+            <ChevronRight size={11} strokeWidth={3} />
+          </div>
+        ) : null}
       </div>
 
-      {verdict ? (
-        <div className="relative mt-2 overflow-hidden rounded-[16px] border border-[#E11D48]/22 bg-[#17060b] px-3 py-2.5 shadow-[0_14px_30px_rgba(225,29,72,0.16),inset_0_1px_0_rgba(255,255,255,0.16)] dark:border-[#E11D48]/24 dark:bg-[#120408]">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.42),transparent_48%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_42%)]" />
-          <div className="relative text-[8px] font-black uppercase tracking-[0.18em] text-white/54 sm:text-[9px]">
-            Trigger vs recent 30
+      {/* Headline hero — bold Feed Me red */}
+      {hero ? (
+        <div className="relative mt-2 shrink-0 overflow-hidden rounded-[18px] bg-[#E11D48] px-3.5 py-3.5 shadow-[0_16px_34px_rgba(225,29,72,0.32),inset_0_2px_4px_rgba(255,255,255,0.34),inset_0_-3px_8px_rgba(136,19,55,0.4)] sm:px-4 sm:py-4">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_54%)]" />
+          <div className="relative text-[8px] font-black uppercase tracking-[0.2em] text-white/68 sm:text-[9px]">
+            The Verdict
           </div>
-          <p className="relative mt-1.5 text-[20px] font-black leading-[1.04] text-white sm:text-[23px]">
-            {verdict}
+          <p className="relative mt-1 text-[24px] font-black leading-[0.98] tracking-[-0.03em] text-white drop-shadow-sm sm:text-[28px]">
+            {hero}
           </p>
-          {read.metricContext ? (
-            <div className="relative mt-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-[#fb7185] sm:text-[10px]">
-              {read.metricContext}
-            </div>
-          ) : null}
         </div>
       ) : null}
 
-      {active ? (
-        <>
-          <div
-            role="tablist"
-            aria-label="Post mortem reads"
-            className="mt-2 flex gap-1 rounded-full border border-black/[0.05] bg-black/[0.03] p-1 dark:border-white/10 dark:bg-white/[0.05]"
-          >
-            {sections.map((section, index) => {
-              const isActive = index === safeIndex;
-              return (
-                <button
-                  key={`${itemId}-readview-tab-${section.label}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setActiveIndex(index);
-                  }}
-                  className={
-                    isActive
-                      ? 'flex-1 rounded-full bg-[#E11D48] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.26)] transition-colors sm:text-[10px]'
-                      : 'flex-1 rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/46 transition-colors dark:text-white/42 sm:text-[10px]'
-                  }
-                >
-                  {section.label}
-                </button>
-              );
-            })}
+      {/* fun_fact — grounded stat as its own section */}
+      {showStat ? (
+        <div className="mt-2 shrink-0 rounded-[14px] border border-[#E11D48]/14 bg-white/82 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-[#E11D48]/22 dark:bg-white/[0.06]">
+          <div className="text-[8px] font-black uppercase tracking-[0.16em] text-[#E11D48]/72 sm:text-[9px]">
+            By the numbers
           </div>
-
-          <div className="hide-scrollbar mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[14px] border border-black/[0.05] bg-white/88 px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.1]">
-            <motion.div
-              key={`${itemId}-readview-pane-${safeIndex}`}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <div className="text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48]/72 sm:text-[9px]">
-                {active.eyebrow}
-              </div>
-              <p className="mt-1.5 text-[13.5px] font-semibold leading-[1.34] text-foreground/78 dark:text-white/68 sm:text-[14.5px]">
-                {active.value}
-              </p>
-            </motion.div>
-          </div>
-        </>
+          <p className="mt-1 text-[12.5px] font-semibold leading-[1.32] text-foreground/74 dark:text-white/64 sm:text-[13.5px]">
+            {read.funFact}
+          </p>
+        </div>
       ) : null}
+
+      {/* Swipe pager — Trigger / Fit / Run */}
+      {sections.length > 0 ? (
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="hide-scrollbar mt-2 flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth"
+        >
+          {sections.map((section) => (
+            <div
+              key={`${itemId}-readpane-${section.label}`}
+              className="flex h-full w-full shrink-0 snap-center flex-col px-0.5"
+            >
+              <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[16px] border border-black/[0.05] bg-white/90 px-3.5 py-3 shadow-[0_10px_22px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/10 dark:bg-white/[0.1]">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[13px] font-black uppercase tracking-[0.02em] text-[#E11D48] sm:text-[14px]">
+                    {section.label}
+                  </span>
+                  <span className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/32 sm:text-[9px]">
+                    {section.eyebrow}
+                  </span>
+                </div>
+                <p className="mt-2 text-[13.5px] font-semibold leading-[1.36] text-foreground/80 dark:text-white/70 sm:text-[14.5px]">
+                  {section.value}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Animated pagination */}
+      {sections.length > 1 ? (
+        <div className="mt-2.5 flex shrink-0 items-center justify-center gap-1.5">
+          {sections.map((section, index) => {
+            const isActive = index === safeIndex;
+            return (
+              <button
+                key={`${itemId}-dot-${section.label}`}
+                type="button"
+                aria-label={`Go to ${section.label}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  scrollToIndex(index);
+                }}
+                className={[
+                  'h-1.5 rounded-full transition-all duration-300 ease-out',
+                  isActive
+                    ? 'w-6 bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]'
+                    : 'w-1.5 bg-foreground/16 dark:bg-white/20',
+                ].join(' ')}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* Back to Stats — bottom */}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onBack();
+        }}
+        className="mt-2.5 inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-[14px] border border-black/[0.06] bg-black/[0.03] py-2.5 text-[9px] font-black uppercase tracking-[0.16em] text-foreground/56 transition-transform active:scale-[0.99] dark:border-white/10 dark:bg-white/[0.05] dark:text-white/56 sm:text-[10px]"
+      >
+        <ChevronLeft size={13} strokeWidth={3} />
+        Back to Stats
+      </button>
     </motion.div>
   );
 }
@@ -1036,14 +1072,34 @@ export function FireCard3D({
               <div className="pointer-events-none absolute inset-[1px] rounded-[23px] z-0 dark:hidden" style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }} />
               
               <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+              <AnimatePresence mode="wait" initial={false}>
               {readOpen && postContextRead ? (
+                <motion.div
+                  key="d7-read"
+                  className="flex min-h-0 flex-1 flex-col"
+                  initial={{ opacity: 0, y: 12, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.985 }}
+                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ willChange: 'transform, opacity' }}
+                >
                 <D7ReadView
                   itemId={item.id}
                   read={postContextRead}
                   sourceLabel={postContextRead.sourceLabel}
                   onBack={() => setExpandedPostMortemId(null)}
                 />
+                </motion.div>
               ) : (
+                <motion.div
+                  key="d7-stats"
+                  className="flex min-h-0 flex-1 flex-col"
+                  initial={{ opacity: 0, y: 12, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.985 }}
+                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ willChange: 'transform, opacity' }}
+                >
               <div className="hide-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain pr-0.5">
               <div className="mb-2 sm:mb-3 overflow-hidden rounded-[16px] border border-[#E11D48]/10 bg-[#E11D48] p-2.5 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] sm:p-3">
                 <div className="grid grid-cols-[minmax(0,1fr)_minmax(92px,auto)] items-stretch gap-2">
@@ -1248,7 +1304,9 @@ export function FireCard3D({
                 )
               )}
               </div>
+                </motion.div>
               )}
+              </AnimatePresence>
 
                 <div className="col-span-12 mt-1 sm:mt-2">
                   <div

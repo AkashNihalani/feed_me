@@ -2,7 +2,7 @@
 
 import { memo, startTransition, useDeferredValue, useEffect, useId, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Film, Grid2X2, Image as ImageIcon, Layers } from 'lucide-react';
+import { Eye, Film, Grid2X2, Heart, Image as ImageIcon, Layers, MessageCircle } from 'lucide-react';
 import { ScatterPoint } from './dashboardTypes';
 
 type Blip = {
@@ -14,6 +14,8 @@ type Blip = {
   handle: string;
   date: string;
   views: number;
+  likes: number | null;
+  comments: number | null;
   mediaType: PointMediaType;
   daysAgo: number;
   postIndex: number; // 0 = most recent
@@ -26,11 +28,10 @@ function formatPointDate(value: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-const POST_COUNTS = [5, 15, 25] as const;
-type PostCount = typeof POST_COUNTS[number];
+const VISIBLE_POST_LIMIT = 15;
 type MediaFilter = 'all' | 'reel' | 'image' | 'carousel';
 type PointMediaType = Exclude<MediaFilter, 'all'> | 'unknown';
-const TOP_ZONE_PERCENT = 35;
+const TOP_ZONE_PERCENT = 50;
 
 const MEDIA_FILTERS = [
   { key: 'all', label: 'All', Icon: Grid2X2 },
@@ -59,8 +60,30 @@ function mediaLabel(value: PointMediaType): string {
   return 'Post';
 }
 
+function formatCompactMetric(value: number | null | undefined): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '--';
+  if (numeric >= 1_000_000) return `${(numeric / 1_000_000).toFixed(numeric >= 10_000_000 ? 0 : 1)}M`;
+  if (numeric >= 1_000) return `${(numeric / 1_000).toFixed(numeric >= 100_000 ? 0 : 1)}K`;
+  return `${Math.round(numeric)}`;
+}
+
+function tooltipMetrics(point: Blip) {
+  const base = [
+    { key: 'likes', label: 'Likes', value: point.likes, Icon: Heart },
+    { key: 'comments', label: 'Comms', value: point.comments, Icon: MessageCircle },
+  ];
+  if (point.mediaType === 'reel') {
+    return [
+      { key: 'views', label: 'Views', value: point.views, Icon: Eye },
+      ...base,
+    ];
+  }
+  return base;
+}
+
 function layoutPointX(index: number, count: number, compact: boolean) {
-  const edgePadding = compact ? 7.5 : 6;
+  const edgePadding = compact ? 10 : 8;
   if (count <= 1) return 100 - edgePadding;
   const latestToOlderRatio = 1 - index / Math.max(1, count - 1);
   return edgePadding + latestToOlderRatio * (100 - edgePadding * 2);
@@ -68,11 +91,9 @@ function layoutPointX(index: number, count: number, compact: boolean) {
 
 function FeedScatterField({ points }: { points: ScatterPoint[] }) {
   const instanceId = useId().replace(/[:]/g, '');
-  const [activeCount, setActiveCount] = useState<PostCount>(15);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
   const [hoveredPoint, setHoveredPoint] = useState<Blip | null>(null);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
-  const deferredActiveCount = useDeferredValue(activeCount);
   const deferredMediaFilter = useDeferredValue(mediaFilter);
 
   useEffect(() => {
@@ -106,12 +127,14 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
       return {
         id: p.post_key || `${p.handle}-${p.days_ago}`,
         x: 50,
-        y: percentile === null ? 48 : clamp(100 - percentile, 6, 96),
+        y: percentile === null ? 48 : clamp(100 - percentile, 9, 91),
         isCompetitor: false,
         percentile,
         handle: p.handle || 'unknown',
         date: formatPointDate(p.posted_at_ist),
         views: Math.max(0, Number(p.views) || 0),
+        likes: p.likes == null ? null : Math.max(0, Number(p.likes) || 0),
+        comments: p.comments == null ? null : Math.max(0, Number(p.comments) || 0),
         mediaType: normalizePointMediaType(p.media_type),
         daysAgo,
         postIndex: index,
@@ -131,14 +154,16 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
   const visiblePoints = useMemo(
     () => (
       filteredPoints
-        .slice(0, Math.min(deferredActiveCount, filteredPoints.length))
+        .slice(0, Math.min(VISIBLE_POST_LIMIT, filteredPoints.length))
         .map((point, index, selectedPoints) => ({
           ...point,
           x: layoutPointX(index, selectedPoints.length, isCompactViewport),
         }))
     ),
-    [deferredActiveCount, filteredPoints, isCompactViewport],
+    [filteredPoints, isCompactViewport],
   );
+
+  const filterLabel = MEDIA_FILTERS.find((item) => item.key === mediaFilter)?.label ?? 'Posts';
 
   const activeHoveredPoint = useMemo(() => {
     if (!hoveredPoint) return null;
@@ -149,39 +174,32 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
     <motion.div
       className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4"
     >
-      <div className="relative z-10 mb-2 flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-2">
+      <div className="relative z-10 mb-2.5 flex flex-col gap-2.5">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <span className="fm-label fm-depth-title">Percentage Map</span>
-            <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34">
-              Latest {visiblePoints.length} of {filteredPoints.length} {mediaFilter === 'all' ? 'posts' : MEDIA_FILTERS.find((item) => item.key === mediaFilter)?.label}
+            <span className="fm-depth-title text-[11px] font-black uppercase leading-none tracking-[0.16em] text-foreground/55 dark:text-white/46 sm:text-[12px]">
+              Percentage Map
+            </span>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className="text-[16px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white sm:text-[19px]">
+                Latest {VISIBLE_POST_LIMIT}
+              </span>
+              <span className="text-[8px] font-black uppercase tracking-[0.13em] text-foreground/36 dark:text-white/30">
+                {mediaFilter === 'all' ? 'posts' : filterLabel}
+              </span>
             </div>
           </div>
-          <div className="hide-scrollbar flex shrink-0 items-center gap-0.5 overflow-x-auto rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
-            {POST_COUNTS.map(count => (
-              <motion.button
-                key={count}
-                type="button"
-                onClick={() => {
-                  startTransition(() => setActiveCount(count));
-                }}
-                whileTap={{ scale: 0.95 }}
-                className={`relative rounded-full px-3 py-1.25 text-[10px] font-black uppercase tracking-[0.12em] sm:px-3.5 sm:py-1.5 ${activeCount === count ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
-              >
-                {activeCount === count && (
-                  <motion.span
-                    layoutId={`scatter-count-pill-bg-${instanceId}`}
-                    className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
-                    transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
-                  />
-                )}
-                <span className="relative z-10">{count}</span>
-              </motion.button>
-            ))}
+          <div className="rounded-full border border-black/6 bg-white/60 px-2.5 py-1 text-right shadow-[0_5px_14px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/8 dark:bg-white/[0.05]">
+            <div className="text-[8px] font-black uppercase leading-none tracking-[0.12em] text-foreground/34 dark:text-white/28">
+              showing
+            </div>
+            <div className="mt-0.5 text-[12px] font-black leading-none tabular-nums text-[#E11D48]">
+              {visiblePoints.length}/{filteredPoints.length}
+            </div>
           </div>
         </div>
 
-        <div className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-full border border-black/6 bg-black/[0.025] p-[3px] dark:border-white/8 dark:bg-white/[0.04]">
+        <div className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-[15px] border border-black/6 bg-black/[0.025] p-[3px] shadow-[inset_0_1px_3px_rgba(15,23,42,0.035)] dark:border-white/8 dark:bg-white/[0.04]">
           {MEDIA_FILTERS.map(({ key, label, Icon }) => (
             <motion.button
               key={key}
@@ -192,12 +210,12 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
                 startTransition(() => setMediaFilter(key));
               }}
               whileTap={{ scale: 0.96 }}
-              className={`relative inline-flex min-w-fit items-center gap-1.5 rounded-full px-2.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em] sm:px-3 sm:py-1.5 ${mediaFilter === key ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
+              className={`relative inline-flex min-w-fit items-center gap-1.5 rounded-[12px] px-2.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em] sm:px-3 sm:py-1.5 ${mediaFilter === key ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
             >
               {mediaFilter === key && (
                 <motion.span
                   layoutId={`scatter-media-pill-bg-${instanceId}`}
-                  className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
+                  className="absolute inset-0 rounded-[12px] bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                 />
               )}
@@ -209,17 +227,17 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
       </div>
 
       {/* Chart area */}
-      <div className="relative min-h-[208px] w-full flex-1 rounded-[14px] fm-depth-inner sm:min-h-[228px]">
+      <div className="relative min-h-[208px] w-full flex-1 overflow-hidden rounded-[14px] fm-depth-inner sm:min-h-[228px]">
         <div
-          className="absolute inset-x-0 border-t border-black/12 dark:border-white/12"
+          className="absolute inset-x-0 border-t border-black/14 dark:border-white/12"
           style={{ top: `${TOP_ZONE_PERCENT}%` }}
         >
-          <span className="absolute -top-3.5 right-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/32 dark:text-white/30">
-            Top 35%
+          <span className="absolute -top-3.5 right-1.5 rounded-full bg-white/72 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38 shadow-[0_3px_10px_rgba(15,23,42,0.04)] dark:bg-black/35 dark:text-white/32">
+            Top 50%
           </span>
         </div>
 
-        <div className="absolute inset-x-1.5 inset-y-4 sm:inset-x-3 sm:inset-y-4 lg:inset-x-4">
+        <div className="absolute inset-x-4 inset-y-6 sm:inset-x-5 sm:inset-y-6 lg:inset-x-6">
           {visiblePoints.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center px-5 text-center text-[10px] font-black uppercase tracking-[0.14em] text-foreground/32 dark:text-white/28">
               No posts in this filter
@@ -228,8 +246,8 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
           {visiblePoints.map((blip, selectionIndex) => {
             const isTop = (blip.percentile ?? 100) <= TOP_ZONE_PERCENT;
             const dotSize = isCompactViewport
-              ? (isTop ? 15 : 13)
-              : (isTop ? 16.5 : 14);
+              ? (isTop ? 14 : 12)
+              : (isTop ? 15.5 : 13.5);
             const targetLeft = `${blip.x}%`;
             const targetBottom = `${blip.y}%`;
             const shouldPulse = selectionIndex < Math.min(3, visiblePoints.length);
@@ -253,7 +271,7 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
                 onClick={() => setHoveredPoint(blip)}
                 onMouseEnter={() => setHoveredPoint(blip)}
                 onMouseLeave={() => setHoveredPoint(null)}
-                className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-500 hover:scale-125 hover:z-50 focus:outline-none"
+                className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-500 hover:scale-110 hover:z-50 focus:outline-none"
                 style={{
                   zIndex: isTop ? 30 : 20,
                 }}
@@ -303,8 +321,24 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
                 <span className="text-[12px] font-black text-black/62 dark:text-white/72">{activeHoveredPoint.percentile === null ? '--' : `${Math.round(activeHoveredPoint.percentile)}%`}</span>
               </div>
               <div className="text-[16px] font-black tracking-normal text-black dark:text-white">@{activeHoveredPoint.handle}</div>
-              <div className="mt-1 text-[11px] font-bold text-black/60 dark:text-white/60">
-                {mediaLabel(activeHoveredPoint.mediaType)} · {(activeHoveredPoint.views / 1000).toFixed(1)}k Views
+              <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-black/42 dark:text-white/36">
+                {mediaLabel(activeHoveredPoint.mediaType)}
+              </div>
+              <div className="mt-2 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${tooltipMetrics(activeHoveredPoint).length}, minmax(0, 1fr))` }}>
+                {tooltipMetrics(activeHoveredPoint).map(({ key, label, value, Icon }) => (
+                  <div
+                    key={key}
+                    className="rounded-[9px] border border-black/[0.06] bg-black/[0.025] px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/[0.05]"
+                  >
+                    <div className="flex items-center justify-center gap-1 text-[8px] font-black uppercase tracking-[0.1em] text-black/38 dark:text-white/34">
+                      <Icon className="h-2.5 w-2.5" strokeWidth={2.5} />
+                      {label}
+                    </div>
+                    <div className="mt-1 text-[12px] font-black leading-none tabular-nums text-black dark:text-white">
+                      {formatCompactMetric(value)}
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}

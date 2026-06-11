@@ -163,6 +163,7 @@ export async function GET(request: NextRequest) {
 
     const feedId = Number(request.nextUrl.searchParams.get('feedId') || 0);
     const handle = normalizeHandle(request.nextUrl.searchParams.get('handle'));
+    const groupScope = handle === 'all';
 
     if (!feedId || !handle) {
       return NextResponse.json({ error: 'feedId and handle are required' }, { status: 400 });
@@ -180,23 +181,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Feed not found' }, { status: 404 });
     }
 
-    const { data: feederRow, error: feederError } = await sb
+    const feederQuery = sb
       .from('feeders')
       .select('id,feed_id,handle,profile_pic_url,follower_count,status')
       .eq('feed_id', feedId)
-      .eq('status', 'active')
-      .eq('handle', handle)
-      .single<FeederRow>();
+      .eq('status', 'active');
 
-    if (feederError || !feederRow) {
+    const { data: feederRowsData, error: feederError } = groupScope
+      ? await feederQuery.order('handle', { ascending: true })
+      : await feederQuery.eq('handle', handle);
+
+    if (feederError) throw feederError;
+
+    const feederRows = (feederRowsData || []) as FeederRow[];
+    const feederRow = feederRows[0] || null;
+    if (!groupScope && !feederRow) {
       return NextResponse.json({ error: 'Feeder not found' }, { status: 404 });
     }
+    if (groupScope && feederRows.length === 0) {
+      return NextResponse.json({ error: 'No active feeders found' }, { status: 404 });
+    }
 
-    const { data: postsData, error: postsError } = await sb
+    const feederIds = feederRows.map((row) => row.id);
+    const feederById = new Map(feederRows.map((row) => [row.id, row]));
+
+    const postsQuery = sb
       .from('posts')
       .select('post_key,feeder_id,media_type,posted_at,post_url,thumbnail_url')
-      .eq('feeder_id', feederRow.id)
       .order('posted_at', { ascending: false });
+    const { data: postsData, error: postsError } = groupScope
+      ? await postsQuery.in('feeder_id', feederIds)
+      : await postsQuery.eq('feeder_id', feederRow.id);
 
     if (postsError) throw postsError;
 
@@ -238,6 +253,7 @@ export async function GET(request: NextRequest) {
           thumbnailUrl: buildMediaProxyUrl(postKey, nullableString(post.thumbnail_url)),
           mediaType: normalizeMediaType(post.media_type),
           postedAt: nullableString(post.posted_at),
+          handle: post.feeder_id != null ? feederById.get(post.feeder_id)?.handle ?? null : null,
           latestCheckpoint: normalizeTrackingCheckpoint(latestMetric.checkpoint).toUpperCase(),
           latestBusinessDayIst: nullableString(latestMetric.business_date_ist),
           latestPercentile: nullableNumber(latestMetric.percentile_performance),
@@ -257,11 +273,13 @@ export async function GET(request: NextRequest) {
       feeder: {
         feedId: feedRow.id,
         feedName: feedRow.name,
-        handle: feederRow.handle,
-        profilePicUrl: buildProfileImageProxyUrl(feederRow.profile_pic_url),
-        followerCount: nullableNumber(feederRow.follower_count),
+        handle: groupScope ? 'all' : feederRow.handle,
+        profilePicUrl: groupScope ? null : buildProfileImageProxyUrl(feederRow.profile_pic_url),
+        followerCount: groupScope ? null : nullableNumber(feederRow.follower_count),
         trackedPosts: trackedPosts.length,
         topPercentile: percentileValues.length > 0 ? Math.min(...percentileValues) : null,
+        groupScope,
+        feederCount: feederRows.length,
       },
       posts: trackedPosts,
     });

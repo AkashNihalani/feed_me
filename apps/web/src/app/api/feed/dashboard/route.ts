@@ -618,16 +618,17 @@ async function fetchEngagementBreakdown(
 ) {
   const emptyBuckets = ENGAGEMENT_MEDIA_ORDER.map((type) => serializeEngagementBucket(createEngagementBucket(type)));
   const mediaTypeByPostKey = new Map<string, Exclude<DashboardMediaType, 'all'>>();
+  const emptyLatestMetricByPost = new Map<string, EngagementLatestMetric>();
 
   if (!windowStartIst || !windowEndIst || feederIds.length === 0) {
-    return { averages: emptyBuckets, mediaTypeByPostKey };
+    return { averages: emptyBuckets, mediaTypeByPostKey, latestMetricByPost: emptyLatestMetricByPost };
   }
 
   const startIso = istDayStartUtcIso(windowStartIst);
   const endDate = parseIstDateKey(windowEndIst);
   const endExclusiveIso = endDate ? istDayStartUtcIso(formatIstDateKey(addUtcDays(endDate, 1))) : null;
   if (!startIso || !endExclusiveIso) {
-    return { averages: emptyBuckets, mediaTypeByPostKey };
+    return { averages: emptyBuckets, mediaTypeByPostKey, latestMetricByPost: emptyLatestMetricByPost };
   }
 
   const posts: EngagementPostRow[] = [];
@@ -713,6 +714,7 @@ async function fetchEngagementBreakdown(
   return {
     averages: ENGAGEMENT_MEDIA_ORDER.map((type) => serializeEngagementBucket(buckets.get(type) || createEngagementBucket(type))),
     mediaTypeByPostKey,
+    latestMetricByPost,
   };
 }
 
@@ -1337,6 +1339,9 @@ export async function GET(request: NextRequest) {
           return {
             ...row,
             media_type: mediaType,
+            views: postKey ? engagementBreakdown.latestMetricByPost.get(postKey)?.views ?? nullableNumber(row.views) : nullableNumber(row.views),
+            likes: postKey ? engagementBreakdown.latestMetricByPost.get(postKey)?.likes ?? nullableNumber(row.likes) : nullableNumber(row.likes),
+            comments: postKey ? engagementBreakdown.latestMetricByPost.get(postKey)?.comments ?? nullableNumber(row.comments) : nullableNumber(row.comments),
           };
         });
         const apexMix = buildApexMixFromPostingPattern(postingPattern) ?? arrayValue(dashboard.apex_mix);

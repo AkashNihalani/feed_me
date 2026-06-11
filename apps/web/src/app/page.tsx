@@ -71,6 +71,7 @@ const FEED_TILE_ENTRY_BASE_DELAY = 0.08;
 const FEED_TILE_ENTRY_STAGGER = 0.055;
 const FEED_TILE_ENTRY_MAX_STAGGER = 0.28;
 const FEED_INTENT_GRACE_MS = 3000;
+const FEED_DETAIL_SCROLL_RESTORE_PREFIX = 'feedme:feed-detail-scroll:';
 const ACCENT = '#E11D48';
 const STORY_RING_RADIUS = 43;
 const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * STORY_RING_RADIUS;
@@ -297,14 +298,14 @@ function FullFeedStoryButton({
       aria-pressed={selected}
       aria-label="Show full feed"
       onClick={onClick}
-      className="group flex w-[76px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
+      className="group flex w-[82px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
     >
       <span
         className={cn(
-          'relative grid h-[70px] w-[70px] place-items-center rounded-full p-[5px] transition-[background,box-shadow,transform] duration-300',
+          'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-300',
           selected
-            ? 'scale-[1.02] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
-            : 'bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
+            : 'h-[70px] w-[70px] bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
         )}
       >
         {selected && <ActiveStoryRingStroke />}
@@ -355,14 +356,14 @@ function FeederStoryButton({
       aria-pressed={selected}
       aria-label={`Show @${feeder.handle}`}
       onClick={onClick}
-      className="group flex w-[76px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
+      className="group flex w-[82px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
     >
       <span
         className={cn(
-          'relative grid h-[70px] w-[70px] place-items-center rounded-full p-[5px] transition-[background,box-shadow,transform] duration-300',
+          'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-300',
           selected
-            ? 'scale-[1.02] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
-            : 'bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
+            : 'h-[70px] w-[70px] bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
         )}
       >
         {selected && <ActiveStoryRingStroke />}
@@ -402,7 +403,7 @@ function FeederStoryRail({
   if (feeders.length === 0) return null;
 
   return (
-    <div className="hide-scrollbar -mx-1 flex min-h-[88px] items-start gap-2 overflow-x-auto overflow-y-visible px-1 pb-1 pt-1 [-webkit-overflow-scrolling:touch] lg:min-h-[82px]">
+    <div className="hide-scrollbar -mx-1 flex min-h-[94px] items-start gap-2 overflow-x-auto overflow-y-visible px-1 pb-1 pt-1 [-webkit-overflow-scrolling:touch] lg:min-h-[90px]">
       <FullFeedStoryButton
         feeders={feeders}
         selected={selectedHandle === 'all'}
@@ -460,8 +461,12 @@ function FeedPageContent() {
     ? '0px'
     : 'calc(120px + env(safe-area-inset-bottom))';
   const mobileListBottomClearance = useTranslucentBrowserChrome
-    ? '0px'
-    : 'calc(190px + env(safe-area-inset-bottom))';
+    ? 'calc(132px + env(safe-area-inset-bottom))'
+    : 'calc(164px + env(safe-area-inset-bottom))';
+  const currentFeedDetailScrollTop = useCallback(() => {
+    if (typeof window === 'undefined') return 0;
+    return Math.max(0, Math.round(useBrowserPageScroll ? window.scrollY : contentRef.current?.scrollTop || 0));
+  }, [useBrowserPageScroll]);
   const resetFeedScrollTop = useCallback(() => {
     if (typeof window === 'undefined') return;
     document.documentElement.scrollLeft = 0;
@@ -470,6 +475,39 @@ function FeedPageContent() {
     document.body.scrollTop = 0;
     contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, []);
+  const restoreFeedDetailScrollTop = useCallback((feedId: string) => {
+    if (typeof window === 'undefined') return false;
+
+    const key = `${FEED_DETAIL_SCROLL_RESTORE_PREFIX}${feedId}`;
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return false;
+    window.sessionStorage.removeItem(key);
+
+    let top = Number(raw);
+    try {
+      const parsed = JSON.parse(raw) as { top?: unknown; ts?: unknown };
+      const parsedTop = Number(parsed.top);
+      const ts = Number(parsed.ts || 0);
+      if (Number.isFinite(ts) && Date.now() - ts > 120_000) return false;
+      top = parsedTop;
+    } catch {}
+
+    if (!Number.isFinite(top) || top < 1) return false;
+
+    const applyTop = () => {
+      document.documentElement.scrollLeft = 0;
+      document.body.scrollLeft = 0;
+      contentRef.current?.scrollTo({ top, left: 0, behavior: 'auto' });
+      window.scrollTo({ top, left: 0, behavior: 'auto' });
+    };
+
+    applyTop();
+    window.requestAnimationFrame(applyTop);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(applyTop));
+    window.setTimeout(applyTop, 120);
+    window.setTimeout(applyTop, 320);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -584,11 +622,12 @@ function FeedPageContent() {
   }, [selectedFeedId, useBrowserPageScroll, view]);
 
   useEffect(() => {
-    if (view !== 'detail') return;
+    if (view !== 'detail' || !selectedFeedId) return;
+    if (restoreFeedDetailScrollTop(selectedFeedId)) return;
     resetFeedScrollTop();
     const frame = window.requestAnimationFrame(resetFeedScrollTop);
     return () => window.cancelAnimationFrame(frame);
-  }, [resetFeedScrollTop, selectedFeedId, view]);
+  }, [resetFeedScrollTop, restoreFeedDetailScrollTop, selectedFeedId, view]);
 
   const activeFeed = feeds.find(f => f.id === selectedFeedId);
   const dashboardFallback = useMemo(
@@ -1216,7 +1255,7 @@ function FeedPageContent() {
                       }}
                     >
                       {/* Row 1: Back + Name | Timeframe pills | performance summary */}
-                      <div className="grid min-h-[64px] grid-cols-[180px_minmax(0,1fr)_180px] items-center gap-2">
+                      <div className="grid min-h-[64px] grid-cols-[minmax(270px,0.8fr)_minmax(360px,1fr)_minmax(180px,0.55fr)] items-center gap-3">
                         <div className="flex items-center gap-2">
                           <motion.button
                             whileTap={{ scale: 0.92 }}
@@ -1226,7 +1265,7 @@ function FeedPageContent() {
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                           </motion.button>
                           <div className="flex min-w-0 flex-col justify-center overflow-hidden">
-                            <span className="fm-depth-title block truncate text-[27px] font-black uppercase leading-none tracking-normal text-black dark:text-white">
+                            <span className="fm-depth-title block truncate text-[27px] font-black uppercase leading-none tracking-normal text-black dark:text-white xl:text-[29px]">
                               {shortTitle}
                             </span>
                             <span className="mt-1 block truncate text-[9px] font-black uppercase leading-none tracking-[0.2em] text-black/38 dark:text-white/34">
@@ -1364,7 +1403,7 @@ function FeedPageContent() {
               )}
               style={{
                 WebkitOverflowScrolling: useBrowserPageScroll ? undefined : 'touch',
-                paddingBottom: isStandaloneMode ? 'calc(190px + env(safe-area-inset-bottom))' : mobileListBottomClearance,
+                paddingBottom: isStandaloneMode ? 'calc(164px + env(safe-area-inset-bottom))' : mobileListBottomClearance,
               }}
             >
               <div className="w-full px-2 sm:px-3 lg:px-4">
@@ -1494,6 +1533,66 @@ function FeedPageContent() {
                   </div>
                 </motion.button>
               )}
+              {activeFeed && (
+                <motion.button
+                  key="all-posts"
+                  layout
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    play('snapLock');
+                    try {
+                      window.sessionStorage.setItem(
+                        `${FEED_DETAIL_SCROLL_RESTORE_PREFIX}${activeFeed.id}`,
+                        JSON.stringify({ top: currentFeedDetailScrollTop(), ts: Date.now() }),
+                      );
+                    } catch {}
+                    router.push(`/feed/${activeFeed.id}/feeder/all`);
+                  }}
+                  className="fm-depth-glass group relative flex min-h-[180px] flex-col justify-between overflow-hidden rounded-[22px] p-4 text-left"
+                  style={{ willChange: 'transform' }}
+                >
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 opacity-80"
+                    style={{
+                      background: 'radial-gradient(ellipse 70% 70% at 8% 0%, rgba(225,29,72,0.12), transparent 58%)',
+                    }}
+                  />
+                  <div className="relative z-10 flex items-start justify-between gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[#FB7185]/45 bg-[#E11D48] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.68),0_8px_18px_-8px_rgba(225,29,72,0.34)]">
+                      <Users size={20} strokeWidth={2.8} />
+                    </div>
+                    <span className="rounded-full bg-[#E11D48] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_14px_-8px_rgba(225,29,72,0.45)]">
+                      Ranking
+                    </span>
+                  </div>
+                  <div className="relative z-10">
+                    <div className="text-[20px] font-black leading-none tracking-[-0.03em] text-foreground dark:text-white">
+                      All Posts
+                    </div>
+                    <div className="mt-1.5 text-[11px] font-bold leading-relaxed text-foreground/50 dark:text-white/40">
+                      Best performers across every feeder in {activeFeed.title}.
+                    </div>
+                  </div>
+                  <div className="relative z-10 grid grid-cols-2 gap-2">
+                    <div className="fm-depth-chip rounded-[10px] px-3 py-2">
+                      <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38">Feeders</div>
+                      <div className="mt-1 text-[17px] font-black leading-none tabular-nums text-foreground dark:text-white">
+                        {activeFeed.feeders.length}
+                      </div>
+                    </div>
+                    <div className="fm-depth-chip rounded-[10px] px-3 py-2">
+                      <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38">Posts</div>
+                      <div className="mt-1 text-[17px] font-black leading-none tabular-nums text-foreground dark:text-white">
+                        {activeFeed.metrics?.postsTracked || '0'}
+                      </div>
+                    </div>
+                  </div>
+                </motion.button>
+              )}
               {addingFeeder && <ScanningCard key="scanning" handle={addingFeeder} />}
               {activeFeed?.feeders.length === 0 && !addingFeeder ? (
                 <div className="col-span-full fm-depth-glass flex flex-col items-center justify-center py-20">
@@ -1508,7 +1607,13 @@ function FeedPageContent() {
                     onOpenFeed={() => {
                       if (!activeFeed) return;
                       play('snapLock');
-                      router.push(`/feed/${activeFeed.id}/feeder/${encodeURIComponent(feeder.handle)}`, { scroll: false });
+                      try {
+                        window.sessionStorage.setItem(
+                          `${FEED_DETAIL_SCROLL_RESTORE_PREFIX}${activeFeed.id}`,
+                          JSON.stringify({ top: currentFeedDetailScrollTop(), ts: Date.now() }),
+                        );
+                      } catch {}
+                      router.push(`/feed/${activeFeed.id}/feeder/${encodeURIComponent(feeder.handle)}`);
                     }} />
                 ))
               )}

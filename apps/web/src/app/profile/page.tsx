@@ -40,7 +40,6 @@ import {
 import FeedPassCard from '@/components/profile/FeedPassCard';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
-import { GRID_ITEM_EASE, HEADER_COLLAPSE_SPRING } from '@/lib/motion';
 
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
 
@@ -101,6 +100,7 @@ type EngineStats = {
   recentJobs: EngineJob[];
   totalFeeders: number;
   totalPosts: number;
+  totalCheckpointSurfaces: number;
   jobStats: { done: number; failed: number; pending: number; running: number };
   queuedBatches: EngineRunBatch[];
   completedBatches: EngineRunBatch[];
@@ -136,10 +136,19 @@ type FundFireSnapshot = {
   rows: FundFireRow[];
 };
 
+type FundAccountSnapshot = {
+  id?: string;
+  name?: string;
+  email?: string;
+  email_notifications?: boolean;
+  created_at?: string;
+};
+
 const emptyStats: EngineStats = {
   recentJobs: [],
   totalFeeders: 0,
   totalPosts: 0,
+  totalCheckpointSurfaces: 0,
   jobStats: { done: 0, failed: 0, pending: 0, running: 0 },
   queuedBatches: [],
   completedBatches: [],
@@ -154,7 +163,7 @@ const emptyFireSnapshot: FundFireSnapshot = {
 };
 
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FUND_CACHE_KEY = 'fund:bundle:v1';
+const FUND_CACHE_KEY = 'fund:bundle:v2';
 const FUND_CACHE_TTL = 2 * 60 * 1000;
 const FIRE_DROP_WATCH_WINDOW_MS = 4 * 60 * 1000;
 const FIRE_DROP_WATCH_REFRESH_MS = 5 * 1000;
@@ -287,6 +296,28 @@ function parseMetric(value: string | number | undefined) {
   const raw = String(value).replace(/,/g, '');
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.max(0, value));
+}
+
+function formatFullNumber(value: number) {
+  return new Intl.NumberFormat('en-US').format(Math.max(0, Math.round(value)));
+}
+
+function formatFeedingSince(value: string | null | undefined) {
+  if (!value) return { dateLabel: 'Since launch', days: 1 };
+  const created = new Date(value);
+  if (Number.isNaN(created.getTime())) return { dateLabel: 'Since launch', days: 1 };
+  const now = Date.now();
+  const days = Math.max(1, Math.floor((now - created.getTime()) / 86_400_000) + 1);
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(created);
+  return { dateLabel, days };
 }
 
 function nullableNumber(value: unknown): number | null {
@@ -474,6 +505,7 @@ export default function FundPage() {
   const [slots, setSlots] = useState<SlotUsage>({ used: 0 });
   const [engineStats, setEngineStats] = useState<EngineStats>(emptyStats);
   const [, setFundDataReady] = useState(false);
+  const [accountSnapshot, setAccountSnapshot] = useState<FundAccountSnapshot | null>(null);
   const [fireSnapshot, setFireSnapshot] = useState<FundFireSnapshot>(emptyFireSnapshot);
   const [fireSignalsLoading, setFireSignalsLoading] = useState(true);
   const refreshFireSnapshotRef = useRef<((quiet?: boolean) => void) | null>(null);
@@ -693,7 +725,7 @@ export default function FundPage() {
           feeds: Feed[];
           slots: SlotUsage;
           engineStats: EngineStats;
-          user: Partial<User> | null;
+          user: FundAccountSnapshot | null;
         }>(FUND_CACHE_KEY, FUND_CACHE_TTL);
 
         setCache(FUND_CACHE_KEY, {
@@ -769,14 +801,16 @@ export default function FundPage() {
         userData = newUser as User;
       }
 
-      let userSnapshot: Partial<User> | null = null;
+      let userSnapshot: FundAccountSnapshot | null = null;
       if (userData) {
         userSnapshot = {
           id: userData.id,
           name: userData.name,
           email: userData.email,
           email_notifications: userData.email_notifications ?? true,
+          created_at: userData.created_at ?? authUser.created_at,
         };
+        setAccountSnapshot(userSnapshot);
       }
 
       let nextFeeds: Feed[] = [];
@@ -819,7 +853,7 @@ export default function FundPage() {
       feeds: Feed[];
       slots: SlotUsage;
       engineStats: EngineStats;
-      user: Partial<User> | null;
+      user: FundAccountSnapshot | null;
     }>(FUND_CACHE_KEY, FUND_CACHE_TTL);
 
     if (cached) {
@@ -828,6 +862,7 @@ export default function FundPage() {
       setEngineStats(cached.engineStats || emptyStats);
       setFundDataReady(true);
       if (cached.user) {
+        setAccountSnapshot(cached.user);
       }
     }
 
@@ -871,6 +906,28 @@ export default function FundPage() {
 
   const slotPlanPrice = slots.plan?.price ?? 499;
   const slotPostsCap = slots.plan?.postsCap ?? 30;
+  const totalTrackedPosts = useMemo(() => {
+    const fromFeeds = feeds.reduce((feedSum, feed) => (
+      feedSum + (feed.feeders || []).reduce((sum, feeder) => sum + parseMetric(feeder.metrics?.postsTracked), 0)
+    ), 0);
+    return fromFeeds > 0 ? fromFeeds : Math.max(0, Number(engineStats.totalPosts || 0));
+  }, [engineStats.totalPosts, feeds]);
+  const feedingSince = useMemo(
+    () => formatFeedingSince(accountSnapshot?.created_at),
+    [accountSnapshot?.created_at],
+  );
+  const totalCheckpointSurfaces = useMemo(() => {
+    const exactTotal = Math.max(0, Number(engineStats.totalCheckpointSurfaces || 0));
+    if (exactTotal > 0) return exactTotal;
+
+    const checkpointRuns = new Set<string>();
+    for (const run of [...engineStats.queuedRuns, ...engineStats.completedRuns]) {
+      const checkpoint = String(run.checkpoint || run.label || '').toUpperCase();
+      if (checkpoint !== 'D1' && checkpoint !== 'D3' && checkpoint !== 'D7' && checkpoint !== 'D21') continue;
+      checkpointRuns.add(`${run.id}:${checkpoint}`);
+    }
+    return checkpointRuns.size;
+  }, [engineStats.completedRuns, engineStats.queuedRuns, engineStats.totalCheckpointSurfaces]);
   const billingSummary = useMemo(() => {
     const allFeeders = feeds.flatMap((feed) => feed.feeders || []);
     const feederCount = allFeeders.length;
@@ -1525,55 +1582,39 @@ export default function FundPage() {
         compressed={fundHeaderCompressed}
       >
         <div className="relative z-10 px-3.5 py-1.5 sm:px-5 sm:py-2 lg:flex lg:h-full lg:flex-col lg:justify-center lg:px-5 lg:py-0">
-          <div className="flex flex-col gap-1.5 lg:h-full lg:justify-center lg:gap-2">
-            <div className="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 lg:min-h-[64px] lg:grid-cols-[180px_minmax(0,1fr)_180px]">
+          <div className="flex min-h-[52px] items-center lg:h-full lg:min-h-[64px]">
+            <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:grid-cols-[180px_minmax(0,1fr)_180px]">
               <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FUND</span>
-              <div className="hidden min-w-0 justify-center px-0.5 lg:flex">
-                <div className="w-full max-w-[820px] rounded-[18px] border border-black/5 bg-black/[0.035] px-3 py-2 text-center text-[9px] font-black uppercase tracking-[0.16em] text-black/45 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:text-white/40 dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
-                  Slot Control Room
-                </div>
-              </div>
+              <div className="hidden min-w-0 lg:block" />
               <div className="flex min-w-0 justify-end">
-                <span className="relative inline-flex min-w-0 items-center overflow-hidden align-middle">
-                  <div className="rounded-[16px] border border-black/6 bg-white/62 px-3 py-1.5 text-right shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    <div className="text-[8px] font-black uppercase tracking-[0.18em] text-black/38 dark:text-white/32">Slots</div>
-                    <div className="mt-0.5 text-[18px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">{slots.used}</div>
+                <div className="flex flex-col items-end text-right lg:hidden">
+                  <div className="text-[7px] font-black uppercase leading-none tracking-[0.18em] text-black/34 dark:text-white/30">
+                    Feeding Since
                   </div>
-                </span>
+                  <div className="mt-0.5 flex items-baseline justify-end gap-1.5">
+                    <div className="text-[30px] font-black leading-none tracking-[-0.06em] text-black dark:text-white tabular-nums fm-depth-title">
+                      {feedingSince.days}
+                    </div>
+                    <div className="pb-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/32">
+                      Days
+                    </div>
+                  </div>
+                </div>
+                <div className="hidden flex-col items-end text-right lg:flex">
+                  <div className="text-[8px] font-black uppercase leading-none tracking-[0.2em] text-black/36 dark:text-white/32">
+                    Feeding Since
+                  </div>
+                  <div className="mt-1 flex items-baseline justify-end gap-1.5">
+                    <div className="text-[36px] font-black leading-none tracking-[-0.07em] text-black dark:text-white tabular-nums fm-depth-title">
+                      {feedingSince.days}
+                    </div>
+                    <div className="pb-1 text-[8px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/32">
+                      Days
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <motion.div
-              initial={false}
-              className="relative min-w-0 overflow-hidden hidden lg:block"
-              animate={{
-                opacity: fundHeaderCompressed ? 0 : 1,
-                y: fundHeaderCompressed ? -14 : 0,
-                clipPath: fundHeaderCompressed
-                  ? 'inset(0 0 100% 0 round 18px)'
-                  : 'inset(0 0 0% 0 round 18px)',
-              }}
-              transition={{
-                opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
-                y: HEADER_COLLAPSE_SPRING,
-                clipPath: { duration: 0.28, ease: GRID_ITEM_EASE },
-              }}
-              style={{
-                pointerEvents: fundHeaderCompressed ? 'none' : 'auto',
-                willChange: 'transform, opacity, clip-path',
-              }}
-            >
-              <div className="flex min-h-[42px] min-w-0 items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
-                <div className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  {feeds.length} feeds
-                </div>
-                <div className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  ₹{slotPlanPrice}/slot
-                </div>
-                <div className="min-w-0 truncate rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  {slotPostsCap} posts included
-                </div>
-              </div>
-            </motion.div>
           </div>
         </div>
       </AppHeader>
@@ -1615,6 +1656,60 @@ export default function FundPage() {
                   manageBusy={manageSubscriptionBusy}
                 />
 
+                <div className={cn(
+                  'fm-depth-glass relative flex flex-1 flex-col overflow-hidden rounded-[32px] p-5 lg:p-6',
+                  'border border-white/80 bg-white/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_34px_-18px_rgba(15,23,42,0.2)]',
+                  'dark:border-white/[0.06] dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045),0_22px_46px_-28px_rgba(0,0,0,0.7)]',
+                )}>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/40 to-transparent" />
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-foreground/42 dark:text-white/36">
+                        Feeding History
+                      </div>
+                      <div className="mt-2 flex items-end gap-2">
+                        <div className="text-[58px] font-black leading-[0.82] tracking-[-0.08em] text-foreground tabular-nums dark:text-white sm:text-[68px]">
+                          {formatCompactNumber(totalTrackedPosts)}
+                        </div>
+                        <div className="pb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/34">
+                          Posts
+                        </div>
+                      </div>
+                    </div>
+                    <div className="shrink-0 rounded-[18px] border border-black/5 bg-black/[0.035] px-3 py-2 text-right shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.035] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.32)]">
+                      <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/34 dark:text-white/30">Checkpoint Surfaced</div>
+                      <div className="mt-1 text-[22px] font-black leading-none tracking-[-0.05em] text-foreground tabular-nums dark:text-white">{formatCompactNumber(totalCheckpointSurfaces)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 text-[10px] font-bold uppercase tracking-[0.14em] leading-relaxed text-foreground/38 dark:text-white/32">
+                    Intelligence is watching {formatFullNumber(totalTrackedPosts)} tracked posts across {feeds.length} feed {feeds.length === 1 ? 'bundle' : 'bundles'} right now.
+                  </div>
+                  <div className="mt-5 flex-1 space-y-3">
+                    {feedWiseUsage.slice(0, 4).map((feed) => {
+                      const pct = totalTrackedPosts > 0 ? Math.min(100, (feed.totalPosts / totalTrackedPosts) * 100) : 0;
+                      return (
+                        <div key={`history:${feed.id}`} className="grid grid-cols-[minmax(74px,108px)_1fr_auto] items-center gap-3">
+                          <div className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-foreground/62 dark:text-white/58">{feed.title}</div>
+                          <div className="relative h-2.5 overflow-hidden rounded-full border border-black/5 bg-black/[0.055] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] dark:border-white/[0.04] dark:bg-black/55 dark:shadow-[inset_0_3px_6px_rgba(0,0,0,0.65)]">
+                            <motion.div
+                              initial={false}
+                              animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.32, ease: APPLE_EASE }}
+                              className="absolute inset-y-[1.5px] left-[1.5px] rounded-full bg-[#E11D48] shadow-[0_0_12px_rgba(225,29,72,0.34),inset_0_1px_1px_rgba(255,255,255,0.58)]"
+                            />
+                          </div>
+                          <div className="text-right text-[10px] font-black text-foreground/50 tabular-nums dark:text-white/45">{formatCompactNumber(feed.totalPosts)}</div>
+                        </div>
+                      );
+                    })}
+                    {feedWiseUsage.length === 0 && (
+                      <div className="rounded-[18px] border border-black/5 bg-black/[0.025] px-4 py-5 text-center text-[10px] font-black uppercase tracking-[0.16em] text-foreground/30 dark:border-white/[0.05] dark:bg-white/[0.025] dark:text-white/28">
+                        No tracked posts yet
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Compact Support & Policy Row */}
                 <div className={cn(
                   'fm-depth-chip rounded-[20px] px-3.5 py-3 sm:px-5 sm:py-3.5',
@@ -1645,9 +1740,6 @@ export default function FundPage() {
                     </a>
                   </div>
                 </div>
-
-                {/* Spacer to push left column flush with right column bottom */}
-                <div className="hidden xl:block xl:flex-1" />
               </motion.div>
 
               {/* Right Column: Unified Control Center */}

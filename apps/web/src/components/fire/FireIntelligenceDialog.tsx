@@ -62,7 +62,8 @@ function parsePostContextRead(meta: Record<string, unknown>) {
   const fit = text(read.fit).trim() || text(read.memory_match).trim();
   const recentRun = text(read.recent_run).trim();
   const funFactRecord = asRecord(read.fun_fact);
-  const funFact = text(funFactRecord.text).trim() || text(read.fun_fact).trim() || text(read.numbers).trim() || headline;
+  // Worker-computed stat, kept distinct from the LLM headline (v16+).
+  const funFact = text(funFactRecord.text).trim() || text(read.fun_fact).trim() || text(read.numbers).trim();
   const matches = textList(read.matches);
   const deviates = textList(read.deviates);
   const unclear = textList(read.unclear, 3);
@@ -81,18 +82,18 @@ function d7ReadSections(read: PostContextRead) {
   const directionFallback = !read.recentRun && !read.fit ? read.direction : '';
   return [
     {
-      label: 'Trigger',
-      eyebrow: 'post condensation',
+      label: 'Scene',
+      eyebrow: 'the reel itself',
       value: read.scene || read.readText,
     },
     {
       label: 'Fit',
-      eyebrow: '30-post feeder file',
+      eyebrow: 'this post vs the account',
       value: read.fit || read.metricContext,
     },
     {
       label: 'Run',
-      eyebrow: 'recent proof',
+      eyebrow: 'the account lately',
       value: read.recentRun || directionFallback,
     },
   ].filter((section) => section.value.trim());
@@ -105,7 +106,7 @@ function D7VerdictBar({
   read: PostContextRead;
   onOpen: () => void;
 }) {
-  const verdict = read.funFact || read.headline || read.metricContext;
+  const verdict = read.headline || read.funFact || read.metricContext;
   if (!verdict) return null;
   return (
     <button
@@ -145,7 +146,7 @@ function D7ReadView({
   sourceLabel: string;
   onBack: () => void;
 }) {
-  const verdict = read.funFact || read.headline || read.metricContext;
+  const verdict = read.headline || read.funFact || read.metricContext;
   const sections = d7ReadSections(read);
   const [activeIndex, setActiveIndex] = useState(0);
   const safeIndex = sections.length === 0 ? 0 : Math.min(activeIndex, sections.length - 1);

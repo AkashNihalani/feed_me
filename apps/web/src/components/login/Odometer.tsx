@@ -13,9 +13,19 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { usePrefersReducedMotion } from '@/lib/useLiveStats';
 
-const MIN_UPDATE_MS = 6200;
-const MAX_UPDATE_MS = 10_000;
-const easeInOut = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+const MIN_UPDATE_MS = 10_000;
+const MAX_UPDATE_MS = 16_000;
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
+
+function glideEase(t: number) {
+  const x = clamp01(t);
+  // Quintic smootherstep makes the low-speed launch and final settle visible,
+  // while the middle section still feels like it reaches full power.
+  const shaped = x < 0.5
+    ? 0.5 * Math.pow(2 * x, 1.45)
+    : 1 - 0.5 * Math.pow(2 * (1 - x), 1.7);
+  return shaped * shaped * shaped * (shaped * (shaped * 6 - 15) + 10);
+}
 const numberFormat = new Intl.NumberFormat('en-US');
 
 function formatNumber(value: number) {
@@ -24,7 +34,7 @@ function formatNumber(value: number) {
 
 function durationForShift(delta: number) {
   if (delta <= 0) return MIN_UPDATE_MS;
-  const scaled = MIN_UPDATE_MS + Math.log10(delta + 1) * 720;
+  const scaled = MIN_UPDATE_MS + Math.log10(delta + 1) * 980;
   return Math.min(MAX_UPDATE_MS, Math.max(MIN_UPDATE_MS, scaled));
 }
 
@@ -79,7 +89,7 @@ export default function Odometer({
 
     const frame = (now: number) => {
       const t = Math.min(1, (now - startT) / duration);
-      const e = easeInOut(t);
+      const e = glideEase(t);
       currentRef.current = from + (target - from) * e;
       setDisplayValue(currentRef.current);
 

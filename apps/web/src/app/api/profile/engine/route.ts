@@ -111,6 +111,7 @@ export async function GET() {
         recentJobs: [],
         totalFeeders: 0,
         totalPosts: 0,
+        totalCheckpointSurfaces: 0,
         jobStats: { done: 0, failed: 0, pending: 0, running: 0 },
         queuedBatches: [],
         completedBatches: [],
@@ -131,6 +132,7 @@ export async function GET() {
 
     // Total posts tracked
     let totalPosts = 0;
+    let totalCheckpointSurfaces = 0;
     if (feederIds.length > 0) {
       const { count } = await sb
         .from('posts')
@@ -391,6 +393,15 @@ export async function GET() {
       let recentFireAlerts: FireAlertRow[] = [];
 
       if (postKeys.length > 0) {
+        for (let start = 0; start < postKeys.length; start += 500) {
+          const { count } = await sb
+            .from('post_metrics')
+            .select('*', { count: 'exact', head: true })
+            .in('post_key', postKeys.slice(start, start + 500))
+            .in('checkpoint', ['d1', 'd3', 'd7', 'd21']);
+          totalCheckpointSurfaces += count || 0;
+        }
+
         const { data: qCp } = await sb
           .from('checkpoint_jobs')
           .select('id,post_key,checkpoint,status,next_run_at,updated_at')
@@ -461,6 +472,7 @@ export async function GET() {
       recentJobs,
       totalFeeders: activeFeeders.length,
       totalPosts,
+      totalCheckpointSurfaces,
       jobStats,
       queuedBatches,
       completedBatches,

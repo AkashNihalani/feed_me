@@ -1,8 +1,8 @@
 'use client';
 
-import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUpRight, Image as ImageIcon, LayoutGrid, PlaySquare } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
@@ -14,6 +14,7 @@ type FeederPostItem = {
   thumbnailUrl: string | null;
   mediaType: 'image' | 'carousel' | 'reel' | 'unknown';
   postedAt: string | null;
+  handle?: string | null;
   latestCheckpoint: string;
   latestBusinessDayIst: string | null;
   latestPercentile: number | null;
@@ -30,6 +31,8 @@ type FeederPayload = {
   followerCount: number | null;
   trackedPosts: number;
   topPercentile: number | null;
+  groupScope?: boolean;
+  feederCount?: number;
 };
 
 type SortMode = 'percentile' | 'newest' | 'oldest';
@@ -102,8 +105,8 @@ export default function FeederPostsClient({
   feedId: string;
   handle: string;
 }) {
-  const router = useRouter();
   const { appShellStyle, isStandaloneMode, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
+  const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const normalizedHandle = decodeURIComponent(handle).replace(/^@+/, '').toLowerCase();
   const [data, setData] = useState<{ feeder: FeederPayload; posts: FeederPostItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +130,36 @@ export default function FeederPostsClient({
       setMediaFilter(next);
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const resetTop = () => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      pageScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    };
+
+    const previousRestoration = 'scrollRestoration' in window.history
+      ? window.history.scrollRestoration
+      : null;
+    if (previousRestoration != null) {
+      window.history.scrollRestoration = 'manual';
+    }
+
+    resetTop();
+    const firstFrame = window.requestAnimationFrame(resetTop);
+    const secondFrame = window.requestAnimationFrame(() => window.requestAnimationFrame(resetTop));
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      if (previousRestoration != null) {
+        window.history.scrollRestoration = previousRestoration;
+      }
+    };
+  }, [feedId, normalizedHandle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,28 +207,33 @@ export default function FeederPostsClient({
   }, [data?.posts, mediaFilter, sortMode]);
 
   const feeder = data?.feeder || null;
+  const isGroupScope = Boolean(feeder?.groupScope || normalizedHandle === 'all');
+  const titleLabel = isGroupScope ? 'All Posts' : `@${feeder?.handle || normalizedHandle}`;
 
   return (
     <div
-      className="relative min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-background text-foreground"
+      ref={pageScrollRef}
+      className="relative min-h-[100dvh] max-w-[100vw] overflow-x-hidden overflow-y-auto bg-background text-foreground"
       style={{ ...appShellStyle, paddingBottom: bottomClearance }}
     >
       <div className="pointer-events-none fixed inset-0 z-0 bg-white dark:bg-[#030303]" />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-[1360px] flex-col px-3 pb-10 pt-[calc(16px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 lg:px-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-[min(430px,calc(100vw-24px))] flex-col px-0 pb-10 pt-[calc(16px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:max-w-[720px] sm:px-4 lg:max-w-[1360px] lg:px-6">
         {/* ═══ IDENTITY ROW ═══ */}
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push(`/?id=${feedId}`, { scroll: false })}
+          <Link
+            href={`/?id=${encodeURIComponent(feedId)}`}
+            scroll={false}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] fm-depth-chip text-foreground/56 dark:text-white/50"
             aria-label="Back to feed dashboard"
           >
             <ArrowLeft size={20} strokeWidth={2.6} />
-          </button>
+          </Link>
 
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white/78 bg-[linear-gradient(135deg,rgba(225,29,72,0.18),rgba(255,255,255,0.92))] text-[13px] font-black uppercase tracking-[0.06em] text-[#881337] shadow-[0_4px_12px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.84)] dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(225,29,72,0.6),rgba(24,24,27,0.96))] dark:text-white">
-            {feeder?.profilePicUrl ? (
+            {isGroupScope ? (
+              <LayoutGrid size={21} strokeWidth={2.8} />
+            ) : feeder?.profilePicUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={feeder.profilePicUrl} alt={`@${feeder.handle || normalizedHandle}`} className="h-full w-full object-cover" />
             ) : (
@@ -205,10 +243,10 @@ export default function FeederPostsClient({
 
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[24px] font-black leading-none tracking-[-0.04em] text-black dark:text-white sm:text-[28px]">
-              @{feeder?.handle || normalizedHandle}
+              {titleLabel}
             </h1>
             <div className="mt-1 flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.12em] text-foreground/40 dark:text-white/36">
-              <span>{formatFollowers(feeder?.followerCount ?? null)} followers</span>
+              <span>{isGroupScope ? `${feeder?.feederCount ?? 0} feeders` : `${formatFollowers(feeder?.followerCount ?? null)} followers`}</span>
               <span className="text-foreground/16 dark:text-white/14">|</span>
               <span>{String(feeder?.trackedPosts ?? '--')} posts</span>
             </div>
@@ -224,7 +262,7 @@ export default function FeederPostsClient({
         </div>
 
         {/* ═══ FILTER BAR ═══ */}
-        <div className="mt-3 flex items-center gap-3 overflow-x-auto">
+        <div className="mt-3 flex max-w-full items-center gap-3 overflow-x-auto overflow-y-visible">
           {/* Sort pills */}
           <div className="hide-scrollbar flex shrink-0 items-center gap-1.5">
             {([
@@ -288,7 +326,7 @@ export default function FeederPostsClient({
           </div>
         </div>
 
-        <div className="relative z-10 mt-4">
+        <div className="relative z-10 mt-4 w-full max-w-full overflow-x-hidden">
           {loading ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {Array.from({ length: 6 }).map((_, index) => (
@@ -306,10 +344,10 @@ export default function FeederPostsClient({
               <div className="mt-2 text-[14px] font-bold text-foreground/58">Try another sort or media filter.</div>
             </div>
           ) : (
-            <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <motion.div layout className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               <AnimatePresence initial={false} mode="popLayout">
                 {filteredPosts.map((post) => (
-                  <FeederPostCard key={post.postKey} post={post} />
+                  <FeederPostCard key={post.postKey} post={post} showHandle={isGroupScope} />
                 ))}
               </AnimatePresence>
             </motion.div>
@@ -320,7 +358,7 @@ export default function FeederPostsClient({
   );
 }
 
-function FeederPostCard({ post }: { post: FeederPostItem }) {
+function FeederPostCard({ post, showHandle = false }: { post: FeederPostItem; showHandle?: boolean }) {
   const postHref = instagramPostUrl(post.postKey, post.postUrl);
 
   return (
@@ -363,6 +401,11 @@ function FeederPostCard({ post }: { post: FeederPostItem }) {
         <div className="absolute bottom-3 left-3 right-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
+              {showHandle && post.handle ? (
+                <div className="mb-1 max-w-[13rem] truncate text-[10px] font-black uppercase tracking-[0.12em] text-white/82">
+                  @{post.handle}
+                </div>
+              ) : null}
               <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/65">
                 {formatDate(post.postedAt)}
               </div>

@@ -50,6 +50,8 @@ export type ScatterPoint = {
   days_ago: number;
   percentile_performance: number | null;
   views: number | null;
+  likes?: number | null;
+  comments?: number | null;
   media_type?: string | null;
   handle: string;
   posted_at_ist: string | null;

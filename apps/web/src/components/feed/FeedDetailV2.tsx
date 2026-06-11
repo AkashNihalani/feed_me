@@ -92,7 +92,7 @@ const MOBILE_TILE_HEIGHTS = {
   scatter: { minHeight: 'clamp(248px, calc(var(--fm-feed-mobile-section-height) - 14px), 420px)' },
   scatterPair: { minHeight: 'clamp(226px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) * 0.56), 340px)' },
   engagement: { minHeight: 'clamp(192px, calc((var(--fm-feed-mobile-section-height) - var(--fm-feed-stack-gap)) * 0.44), 258px)' },
-  pattern: { minHeight: 'clamp(276px, calc(var(--fm-feed-mobile-section-height) - 14px), 450px)' },
+  pattern: { minHeight: 'clamp(340px, calc(var(--fm-feed-mobile-section-height) - 14px), 520px)' },
   heatmap: { minHeight: 'clamp(252px, calc(var(--fm-feed-mobile-section-height) - 14px), 430px)' },
 } as const;
 
@@ -409,7 +409,7 @@ export default function FeedDetailV2({
               {engagementTile}
             </motion.div>
 
-            <motion.div data-lock-id="pattern" variants={tileVariant} style={{ gridArea: 'pattern' }} className="fm-feed-mobile-panel min-w-0 min-h-[252px] xl:min-h-[264px]">
+            <motion.div data-lock-id="pattern" variants={tileVariant} style={{ gridArea: 'pattern' }} className="fm-feed-mobile-panel min-w-0 min-h-[312px] xl:min-h-[328px]">
               {postingPatternTile}
             </motion.div>
 

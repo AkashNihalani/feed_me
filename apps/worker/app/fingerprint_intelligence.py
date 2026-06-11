@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -38,6 +39,7 @@ from .config import (
 from .feeder_prompts import (
     D7_READ_PROMPT_VERSION,
     D7_READ_SYSTEM_V6,
+    FEEDER_FILE_COLD_START_PROMPT_VERSION,
     FINGERPRINT_EXTRACTION_SYSTEM_V8,
     FINGERPRINT_PROMPT_VERSION,
     FINGERPRINT_SAMPLING_POLICY_VERSION,
@@ -66,6 +68,7 @@ _POST_CONDENSATION_KEYS = {
     "standout_details",
 }
 _D7_READ_KEYS = {
+    "read",
     "scene",
     "fit",
     "recent_run",
@@ -74,6 +77,7 @@ _FINGERPRINT_LIST_FIELDS = (
     "visible_text",
     "visual_sequence",
     "audio_behavior",
+    "cultural_references",
     "edit_and_pacing",
     "environment_and_entities",
     "observed_alignments",
@@ -365,6 +369,7 @@ def _normalize_fingerprint_mapping(parsed: dict[str, Any], *, post_key: str, cap
         or normalized.get("visible_text")
         or normalized.get("visual_sequence")
         or normalized.get("audio_behavior")
+        or normalized.get("cultural_references")
         or normalized.get("edit_and_pacing")
         or normalized.get("environment_and_entities")
         or normalized.get("observed_alignments")
@@ -642,9 +647,20 @@ def _normalize_d7_read_mapping(parsed: dict[str, Any], *, post_key: str) -> dict
     if not isinstance(body, dict):
         return None
 
+    read = str(body.get("read") or "").strip()
     scene = str(body.get("scene") or "").strip()
     fit = _flatten_read_field(body.get("fit"))
     recent_run = _flatten_read_field(body.get("recent_run"))
+    if read:
+        out: dict[str, Any] = {
+            "post_key": post_key,
+            "read": read,
+        }
+        fun_fact = body.get("fun_fact")
+        if isinstance(fun_fact, dict) and fun_fact.get("text"):
+            out["fun_fact"] = fun_fact
+        return {"d7_read": out}
+
     if not (scene and fit and recent_run):
         return None
 
@@ -654,6 +670,11 @@ def _normalize_d7_read_mapping(parsed: dict[str, Any], *, post_key: str) -> dict
         "fit": fit,
         "recent_run": recent_run,
     }
+    # headline is the LLM's 3-6 word teaser (v16+); carry it when present so the
+    # cached path keeps it. Older reads have no headline and render without one.
+    headline = str(body.get("headline") or "").strip()
+    if headline:
+        out["headline"] = headline
     # fun_fact is worker-computed and merged into the stored output; carry it
     # through so the cached path doesn't drop it.
     fun_fact = body.get("fun_fact")
@@ -1461,8 +1482,11 @@ def _d7_place_in_memory(trigger: dict[str, Any], others: list[dict[str, Any]]) -
 
 # --- D7 fun_fact: one grounded, screenshot-worthy stat, worker-computed ---
 # Never LLM-invented. The worker proves it from the data, the frontend renders it.
-# Priority: rarity -> d1/d7 swing -> top record -> velocity -> record-since -> streak -> beat-last-X.
-_D7_VELOCITY_FRONTLOAD = float(os.getenv("D7_FUNFACT_FRONTLOAD", "0.85"))   # share of d7 views by d1
+# Priority: rarity -> d1/d7 swing -> top record -> record-since -> streak -> velocity -> beat-last-X.
+# Account-specific facts (records, streaks) outrank velocity: front-loading is
+# near-universal for reels, so it only earns the box when it's genuinely extreme
+# AND nothing account-grounded cleared. Otherwise it reads as generic trivia.
+_D7_VELOCITY_FRONTLOAD = float(os.getenv("D7_FUNFACT_FRONTLOAD", "0.93"))   # share of d7 views by d1
 _D7_VELOCITY_SLOWBURN = float(os.getenv("D7_FUNFACT_SLOWBURN", "1.12"))     # d7 / d3 still climbing
 _D7_RECORD_MIN_DAYS = int(os.getenv("D7_FUNFACT_RECORD_DAYS", "21"))        # "best in N" needs >= this
 _D7_RECORD_TOP_RANK = max(1, int(os.getenv("D7_FUNFACT_RECORD_TOP_RANK", "5")))
@@ -1757,17 +1781,181 @@ def _d7_fun_fact(conn: Any, post_key: str) -> dict[str, Any] | None:
     place = _d7_place_in_memory(trigger, feeder_rows)
     history_rows = [trigger] + prior_rows
 
-    # Fixed ladder, first that clears its bar wins:
-    # rarity -> percentile swing -> record -> velocity -> record-since -> streak -> floor.
+    # Fixed ladder, first that clears its bar wins. Account-specific facts come
+    # before velocity (front-load): a record or streak is more screenshot-worthy
+    # than near-universal front-loading, which now only wins when extreme.
+    # rarity -> percentile swing -> record -> record-since -> streak -> velocity -> floor.
     return (
         _d7_rarity_fact(trigger, history_rows)
         or _d7_percentile_swing_fact(checkpoints)
         or _d7_record_fact(trigger, history_rows)
-        or _d7_velocity_fact(checkpoints)
         or _d7_record_since_fact(trigger, history_rows)
         or _d7_streak_fact([trigger] + feeder_rows)
+        or _d7_velocity_fact(checkpoints)
         or _d7_placement_fact(place)
     )
+
+
+def _d7_metric_shape(views: Any, likes: Any, comments: Any) -> str:
+    v = _d7_float(views) or 0.0
+    l = _d7_float(likes) or 0.0
+    c = _d7_float(comments) or 0.0
+    vals = [v, l, c]
+    if max(vals) < 0.9:
+        return "soft across the board"
+    if min(vals) >= 1.2 and max(vals) <= min(vals) * 1.35:
+        return "balanced lift"
+    if c >= max(v, l) * 1.3 and c >= 1.2:
+        return "comments over-indexed"
+    if l >= max(v, c) * 1.3 and l >= 1.2:
+        return "likes over-indexed"
+    if v >= max(l, c) * 1.3 and v >= 1.2:
+        return "views carried it, engagement flat"
+    if v >= 1.2 and l < 1.0:
+        return "views carried it, likes flat"
+    if max(vals) >= 1.2:
+        return "uneven lift"
+    return "dead normal"
+
+
+def _d7_band_from_percentile(value: Any) -> str:
+    pct = _d7_float(value)
+    if pct is None:
+        return "normal"
+    if pct <= 25:
+        return "hot"
+    if pct >= 75:
+        return "cold"
+    return "normal"
+
+
+def _d7_text_blob(*values: Any) -> str:
+    parts: list[str] = []
+
+    def add(value: Any) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                add(child)
+        elif isinstance(value, list):
+            for child in value:
+                add(child)
+        elif value is not None:
+            parts.append(str(value))
+
+    for value in values:
+        add(value)
+    return " ".join(parts).lower()
+
+
+def _active_cold_start_feeder_file(conn: Any, *, feeder_id: int, handle: str) -> dict[str, Any] | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            select feed_file
+            from public.feeder_files
+            where feeder_id = %s
+              and lower(feeder_handle) = lower(%s)
+              and compile_version = %s
+              and status = 'active'
+            order by updated_at desc nulls last, id desc
+            limit 1
+            """,
+            (feeder_id, handle, FEEDER_FILE_COLD_START_PROMPT_VERSION),
+        )
+        row = cur.fetchone()
+    feed_file = row.get("feed_file") if row else None
+    return feed_file if isinstance(feed_file, dict) else None
+
+
+def _d7_feeder_file_without_target(feed_file: dict[str, Any], post_key: str) -> dict[str, Any]:
+    """Avoid self-reference when a target post is already present in memory."""
+    out = copy.deepcopy(feed_file)
+    alias_map = out.get("source_alias_map") if isinstance(out.get("source_alias_map"), dict) else {}
+    target_aliases = {alias for alias, key in alias_map.items() if str(key) == post_key}
+    if not target_aliases:
+        return out
+    for bite in out.get("bites", []) if isinstance(out.get("bites"), list) else []:
+        receipts = bite.get("receipts")
+        if not isinstance(receipts, list):
+            continue
+        bite["receipts"] = [r for r in receipts if str((r or {}).get("post")) not in target_aliases]
+        bite["n_current_window"] = len(bite["receipts"])
+    return out
+
+
+def _d7_bite_match_context(feed_file: dict[str, Any], fingerprint: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    bites = feed_file.get("bites") if isinstance(feed_file.get("bites"), list) else []
+    blob = _d7_text_blob(
+        fingerprint.get("caption"),
+        fingerprint.get("visible_text"),
+        fingerprint.get("visual_sequence"),
+        fingerprint.get("audio_behavior"),
+        fingerprint.get("cultural_references"),
+        fingerprint.get("edit_and_pacing"),
+        fingerprint.get("environment_and_entities"),
+        fingerprint.get("observed_alignments"),
+        fingerprint.get("notable_observed_details"),
+    )
+
+    matched_ids: set[str] = set()
+    clipped_ids: set[str] = set()
+    role: dict[str, str] = {}
+
+    if ("clubhouse" in blob or "audio-room" in blob or "profile bubble" in blob) and ("red arrow" in blob or "speaker" in blob):
+        matched_ids.add("b_clubhouse_ui_debate")
+        role["b_clubhouse_ui_debate"] = "Simulated audio-room UI and speaker switching are central to the reel."
+    if ("black-and-white" in blob or "b&w" in blob or "monochrome" in blob) and any(term in blob for term in ("sad", "dramatic", "parody", "melancholic", "violin")):
+        matched_ids.add("b_bw_filter_dramatic_beat")
+        role["b_bw_filter_dramatic_beat"] = "Black-and-white treatment marks the dramatic or parody beat."
+    elif "black-and-white" in blob or "b&w" in blob or "monochrome" in blob:
+        clipped_ids.add("b_bw_filter_dramatic_beat")
+        role["b_bw_filter_dramatic_beat"] = "Black-and-white appears, but not as the full dramatic/parody carrier from prior examples."
+    if ("abrupt" in blob or "hard cut" in blob or "cuts to black" in blob) and any(term in blob for term in ("final word", "final line", "no outro", "no cta", "cuts abruptly")):
+        matched_ids.add("b_abrupt_hard_cut_close")
+        role["b_abrupt_hard_cut_close"] = "The reel exits on a hard final-word/no-outro cut."
+    elif "logo" in blob and ("ends" in blob or "outro" in blob):
+        clipped_ids.add("b_abrupt_hard_cut_close")
+        role["b_abrupt_hard_cut_close"] = "The reel closes on a logo/outro instead of the usual hard final-word cut."
+    if ("top text" in blob or "text overlay" in blob or "visible_text" in blob) and any(term in blob for term in ("0:00", "first frame", "opens", "premise", "pov")):
+        matched_ids.add("b_cold_start_text_premise")
+        role["b_cold_start_text_premise"] = "A cold opening text/premise frames the reel before the first real beat."
+    if any(term in blob for term in ("single take", "gaze", "two characters", "both characters", "plays both", "dual character")):
+        matched_ids.add("b_single_take_dual_character")
+        role["b_single_take_dual_character"] = "One continuous-feel performance distinguishes characters through gaze, voice, or body language."
+    if any(term in blob for term in ("bollywood", "sarabhai", "ta ra rum pum", "jab we met", "bombay (1995)", "film", "movie")):
+        matched_ids.add("b_bollywood_trope_reference")
+        role["b_bollywood_trope_reference"] = "A named film/show/Bollywood cue carries the joke or tonal turn."
+    if any(term in blob for term in ("bmw", "versace", "cash", "balcony", "wine toast", "luxury")) and "montage" in blob:
+        matched_ids.add("b_lifestyle_flex_montage")
+        role["b_lifestyle_flex_montage"] = "A fast-cut luxury/flex montage is central to the reel."
+    if "versace" in blob and "bathrobe" in blob:
+        matched_ids.add("b_versace_bathrobe_persona")
+        role["b_versace_bathrobe_persona"] = "The black Versace bathrobe persona is present in the execution."
+    if "logo" in blob and "opens" in blob and "ends" in blob:
+        matched_ids.add("b_brand_logo_bookend")
+        role["b_brand_logo_bookend"] = "A brand/logo card bookends the execution."
+    elif "logo" in blob or "outro" in blob:
+        clipped_ids.add("b_brand_logo_bookend")
+        role["b_brand_logo_bookend"] = "A logo/outro appears, but not as a full brand-bookend execution."
+
+    matched: list[dict[str, Any]] = []
+    clipped: list[dict[str, Any]] = []
+    absent: list[dict[str, Any]] = []
+    for bite in bites:
+        if not isinstance(bite, dict):
+            continue
+        bite_id = str(bite.get("bite_id") or "")
+        entry = copy.deepcopy(bite)
+        if bite_id in matched_ids:
+            entry["role_in_post"] = role.get(bite_id, "")
+            matched.append(entry)
+        elif bite_id in clipped_ids:
+            entry["role_in_post"] = role.get(bite_id, "")
+            clipped.append(entry)
+        elif str(bite.get("bite_status") or "") != "baseline":
+            entry["role_in_post"] = "Not present in this reel's observed format."
+            absent.append(entry)
+    return {"matched_bites": matched, "clipped_bites": clipped, "absent_bites": absent[:6]}
 
 
 def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
@@ -1782,6 +1970,7 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
               p.posted_at,
               p.related_handles,
               p.collab_post,
+              p.post_url,
               f.handle,
               pm.views,
               pm.likes,
@@ -1789,6 +1978,8 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
               pm.views_multiple,
               pm.likes_multiple,
               pm.comments_multiple,
+              pm.percentile_performance_exact,
+              pm.percentile_performance,
               pm.business_date_ist
             from public.posts p
             join public.feeders f on f.id = p.feeder_id
@@ -1805,43 +1996,46 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
     if not trigger:
         return None
 
-    trigger_scene = _d7_scene_body(ensure_post_condensation(conn, post_key))
-    if not trigger_scene:
+    trigger = dict(trigger)
+    fingerprint = ensure_post_fingerprint(conn, post_key)
+    if not fingerprint:
         return None
 
     feeder_id = int(trigger["feeder_id"])
+    handle = str(trigger.get("handle") or "").strip()
+    feed_file = _active_cold_start_feeder_file(conn, feeder_id=feeder_id, handle=handle)
+    if not feed_file:
+        return None
+    feed_file = _d7_feeder_file_without_target(feed_file, post_key)
+
     media_type = str(trigger.get("media_type") or "reel").strip().lower()
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             select
               p.post_key,
-              p.caption,
               p.posted_at,
-              p.related_handles,
-              p.collab_post,
               pm.views,
               pm.likes,
               pm.comments,
               pm.views_multiple,
               pm.likes_multiple,
               pm.comments_multiple,
+              pm.percentile_performance_exact,
+              pm.percentile_performance,
               pm.business_date_ist,
-              pc.condensation as condensation
+              pm.computed_at
             from public.posts p
             join public.post_metrics pm
               on pm.post_key = p.post_key
              and lower(pm.checkpoint) = 'd7'
-            left join public.post_condensations pc
-              on pc.post_key = p.post_key
-             and pc.condensation_version = %s
             where p.feeder_id = %s
               and lower(coalesce(p.media_type, '')) = %s
               and p.posted_at >= %s::timestamptz - interval '90 days'
               and p.posted_at <= %s::timestamptz
             order by p.posted_at desc nulls last
             """,
-            (POST_CONDENSATION_PROMPT_VERSION, feeder_id, media_type, trigger.get("posted_at"), trigger.get("posted_at")),
+            (feeder_id, media_type, trigger.get("posted_at"), trigger.get("posted_at")),
         )
         rows = [dict(row) for row in cur.fetchall()]
 
@@ -1849,54 +2043,79 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
         rows.append(dict(trigger))
     rows.sort(key=_d7_posted_ts, reverse=True)
 
-    # The feeder file: the N posts before the trigger. This is the account's
-    # current reality before the D7 post enters the system.
-    trigger_ts = _d7_posted_ts(trigger)
-    feeder_rows = [
-        row for row in rows
-        if str(row.get("post_key") or "") != post_key and _d7_posted_ts(row) < trigger_ts
-    ][: _D7_MEMORY_SIZE]
-    if len(feeder_rows) < _D7_MIN_RECENT:
-        return None
+    ranked_rows = sorted(
+        rows,
+        key=lambda row: (
+            _d7_float(row.get("percentile_performance_exact")) is None,
+            _d7_float(row.get("percentile_performance_exact"))
+            if _d7_float(row.get("percentile_performance_exact")) is not None
+            else 10_000.0,
+            -(_d7_float(_d7_metric(row, "views")) or 0.0),
+        ),
+    )
+    rank_lookup = {str(row.get("post_key") or ""): index + 1 for index, row in enumerate(ranked_rows)}
+    rank = f"{rank_lookup.get(post_key, len(ranked_rows))}/{max(1, len(ranked_rows))}"
 
-    # Worker-computed triggers over the feeder file (deterministic, no LLM math).
-    momentum = _d7_momentum(feeder_rows)
-    concentration = _d7_concentration(feeder_rows)
-    splits = _d7_splits(feeder_rows)
-
-    # "The now" content: the recent run's condensations (newest first), excluding
-    # this post. Enough to judge whether this reel fits the lane or breaks it.
-    recent_posts: list[dict[str, Any]] = []
-    for row in feeder_rows:
-        if len(recent_posts) >= _D7_RECENT_RUN_SCENES:
-            break
-        scene = _d7_scene_body(row.get("condensation"))
-        if not scene:
-            continue
-        recent_posts.append({
-            "posted_on": _d7_posted_on(row),
-            **_d7_collab_info(row),
-            "vs_90d": _d7_vs_usual(row),
-            "scene": scene,
-        })
+    recent_rows = rows[: min(10, len(rows))]
+    hot = sum(1 for row in recent_rows if _d7_band_from_percentile(row.get("percentile_performance_exact")) == "hot")
+    cold = sum(1 for row in recent_rows if _d7_band_from_percentile(row.get("percentile_performance_exact")) == "cold")
+    comment_heavy = sum(
+        1
+        for row in recent_rows
+        if (_d7_float(_d7_metric(row, "comments")) or 0.0)
+        > max((_d7_float(_d7_metric(row, "views")) or 0.0), (_d7_float(_d7_metric(row, "likes")) or 0.0)) * 1.2
+    )
+    if hot >= 3:
+        run_summary = f"hot stretch: {hot} of the last {len(recent_rows)} D7 reels landed near the top of the recent pool"
+    elif cold >= 3:
+        run_summary = f"cooling stretch: {cold} of the last {len(recent_rows)} D7 reels sat near the bottom of recent posts"
+    elif comment_heavy >= 2:
+        run_summary = f"conversation-heavy stretch: {comment_heavy} of the last {len(recent_rows)} D7 reels leaned harder on comments than reach"
+    else:
+        run_summary = f"mixed recent form across the last {len(recent_rows)} D7 reels"
 
     return {
-        "account": {"handle": str(trigger.get("handle") or "").strip()},
+        "account": {"handle": handle},
         "this_post": {
             "post_key": post_key,
+            "post_url": trigger.get("post_url"),
             "posted_on": _d7_posted_on(trigger),
             "caption": trigger.get("caption"),
             **_d7_collab_info(trigger),
+            "fingerprint": fingerprint,
+            "band": _d7_band_from_percentile(trigger.get("percentile_performance_exact") or trigger.get("percentile_performance")),
+            "rank": rank,
+            "metric_shape": _d7_metric_shape(
+                trigger.get("views_multiple"),
+                trigger.get("likes_multiple"),
+                trigger.get("comments_multiple"),
+            ),
             "views": _d7_metric(trigger, "views"),
             "likes": _d7_metric(trigger, "likes"),
             "comments": _d7_metric(trigger, "comments"),
-            "vs_90d": _d7_vs_usual(trigger),
-            "scene": trigger_scene,
+            "views_vs_90d": _d7_float(trigger.get("views_multiple")),
+            "likes_vs_90d": _d7_float(trigger.get("likes_multiple")),
+            "comments_vs_90d": _d7_float(trigger.get("comments_multiple")),
+            **_d7_bite_match_context(feed_file, fingerprint),
         },
-        "recent_posts": recent_posts,
-        "momentum": momentum,
-        "concentration": concentration,
-        "splits": splits,
+        "feeder_file": feed_file,
+        "recent_run": {
+            "last_N_summary": run_summary,
+            "last_10_posts": [
+                {
+                    "post_key": str(row.get("post_key") or ""),
+                    "posted_on": _d7_posted_on(row),
+                    "band": _d7_band_from_percentile(row.get("percentile_performance_exact") or row.get("percentile_performance")),
+                    "rank": f"{rank_lookup.get(str(row.get('post_key') or ''), len(ranked_rows))}/{max(1, len(ranked_rows))}",
+                    "metric_shape": _d7_metric_shape(
+                        row.get("views_multiple"),
+                        row.get("likes_multiple"),
+                        row.get("comments_multiple"),
+                    ),
+                }
+                for row in recent_rows
+            ],
+        },
     }
 
 

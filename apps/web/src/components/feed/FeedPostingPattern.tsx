@@ -350,8 +350,8 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
   const windowDays = timeframeDays(timeframe);
 
   return (
-    <motion.div layout className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
-      <motion.div layout className="relative z-10 flex h-full min-h-0 flex-col">
+    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
+      <div className="relative z-10 flex h-full min-h-0 flex-col">
 
         {/* ── Label ── */}
         <span className="fm-label fm-depth-title">Posting Pulse</span>
@@ -522,26 +522,23 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
         </motion.div>
 
         {/* ── Lower Section ── */}
-        <motion.div
-          layout
-          className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden border-t border-black/6 pt-3 dark:border-white/[0.06]"
-          transition={{ layout: LAYOUT_SPRING }}
-        >
-          <AnimatePresence initial={false} mode="popLayout">
+        <div className="relative mt-3 flex min-h-[158px] flex-1 flex-col overflow-hidden border-t border-black/6 pt-3 dark:border-white/[0.06] sm:min-h-[166px] lg:min-h-[172px]">
+          <AnimatePresence initial={false}>
             {singleScope ? (
               /* POSTING FINGERPRINT — single feeder or no breakdown */
               <motion.div
                 key="fingerprint"
-                layout
-                {...(reduceMotion ? {} : ENTRY_EXIT)}
-                transition={{ ...SPRING, layout: LAYOUT_SPRING }}
-                className="flex h-full min-h-0 flex-col"
+                initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.985 }}
+                transition={SPRING}
+                className="absolute inset-x-0 top-3 bottom-0 flex min-h-0 flex-col"
               >
                 <div className="flex items-center gap-1.5">
                   <Sparkles className="h-3 w-3 text-foreground/40 dark:text-white/32" strokeWidth={2.8} />
                   <span className={SECTION_LABEL}>Posting fingerprint</span>
                 </div>
-                <motion.div layout className="mt-2 grid flex-1 grid-cols-2 gap-1.5 sm:gap-2" transition={{ layout: LAYOUT_SPRING }}>
+                <div className="mt-2 grid flex-1 grid-cols-2 gap-1.5 sm:gap-2">
                   <AnimatePresence initial={false} mode="popLayout">
                     <FingerprintCell
                       key={`peak-day:${peakDay ?? 'none'}`}
@@ -575,16 +572,17 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                       tabular
                     />
                   </AnimatePresence>
-                </motion.div>
+                </div>
               </motion.div>
             ) : (
               /* TOP CONTRIBUTORS — multiple feeders */
               <motion.div
                 key="contributors"
-                layout
-                {...(reduceMotion ? {} : ENTRY_EXIT)}
-                transition={{ ...SPRING, layout: LAYOUT_SPRING }}
-                className="flex h-full min-h-0 flex-col"
+                initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.985 }}
+                transition={SPRING}
+                className="absolute inset-x-0 top-3 bottom-0 flex min-h-0 flex-col"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className={SECTION_LABEL}>Top contributors</span>
@@ -592,7 +590,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                     posts / week
                   </span>
                 </div>
-                <motion.div layout className="mt-2 space-y-2" transition={{ layout: LAYOUT_SPRING }}>
+                <div className="mt-2 space-y-2">
                   <AnimatePresence initial={false} mode="popLayout">
                     {rows.map((row, ri) => {
                       const barPct =
@@ -675,13 +673,13 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                       );
                     })}
                   </AnimatePresence>
-                </motion.div>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
-      </motion.div>
-    </motion.div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -712,14 +710,14 @@ function FingerprintCell({
         y: { duration: 0.22, ease: EASE },
       }}
       className={cn(
-        'relative flex min-h-[82px] items-center gap-3 rounded-[14px] px-3 py-3 sm:min-h-[78px] sm:gap-2.5 sm:rounded-[12px] sm:px-2.5 sm:py-2.5',
+        'relative flex min-h-[62px] items-center gap-2 rounded-[13px] px-2.5 py-2 sm:min-h-[64px] sm:gap-2.5 sm:rounded-[12px] sm:px-2.5 sm:py-2.5 lg:min-h-[66px]',
         'bg-black/[0.02] border border-black/[0.04]',
         'dark:bg-white/[0.02] dark:border-white/[0.04]',
       )}
     >
       <span
         className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] sm:h-7 sm:w-7 sm:rounded-[9px]',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] sm:h-7 sm:w-7 sm:rounded-[9px]',
           accent
             ? 'bg-[#E11D48]/10 text-[#E11D48] dark:bg-[#E11D48]/15'
             : 'bg-black/[0.04] text-foreground/55 dark:bg-white/[0.06] dark:text-white/45',
@@ -728,13 +726,13 @@ function FingerprintCell({
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/34 sm:text-[8px]">
+        <div className="text-[8px] font-black uppercase tracking-[0.13em] text-foreground/42 dark:text-white/34 sm:text-[8px]">
           {label}
         </div>
         <AnimatedValue
           value={value}
           className={cn(
-            'mt-1 text-[17px] font-black leading-[1.02] tracking-[-0.025em] text-foreground dark:text-white sm:text-[15px]',
+            'mt-0.5 text-[14px] font-black leading-[1.05] tracking-[-0.025em] text-foreground dark:text-white sm:text-[15px] lg:text-[16px]',
             tabular && 'tabular-nums',
           )}
         />

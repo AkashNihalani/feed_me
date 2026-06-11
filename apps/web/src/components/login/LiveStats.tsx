@@ -29,8 +29,8 @@ const METRICS: Array<{ key: MetricKey; label: string }> = [
   { key: 'comments', label: 'Comments tracked' },
 ];
 const FLAGSHIP: MetricKey = 'accounts';
-const DASHBOARD_SHIFT_MS = 9_000;
-const DASHBOARD_REST_MS = 15_000;
+const DASHBOARD_SHIFT_MS = 14_000;
+const DASHBOARD_REST_MS = 5_500;
 
 const WHITE_TILE: React.CSSProperties = {
   background: '#ffffff',
@@ -78,7 +78,7 @@ function StatTile({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: APPLE_EASE, delay }}
-      className="relative flex min-h-[116px] flex-col justify-between overflow-hidden rounded-[18px] p-[22px] sm:min-h-[136px] sm:p-6 lg:min-h-[158px] lg:rounded-[20px] lg:p-7 xl:min-h-[178px]"
+      className="relative flex min-h-[116px] flex-col justify-between overflow-hidden rounded-[18px] p-[22px] sm:min-h-[136px] sm:p-6 lg:min-h-[168px] lg:rounded-[20px] lg:p-7 xl:min-h-[202px] xl:p-8 2xl:min-h-[236px] 2xl:p-9"
       style={flagship ? RED_TILE : WHITE_TILE}
     >
       {flagship && (
@@ -90,17 +90,17 @@ function StatTile({
 
       <div className="relative flex items-center justify-between">
         <span
-          className="text-[9px] font-black uppercase tracking-[0.2em] lg:text-[10px]"
+          className="text-[9px] font-black uppercase tracking-[0.2em] lg:text-[10px] xl:text-[11px]"
           style={{ color: flagship ? 'rgba(255,255,255,0.82)' : 'rgba(11,11,15,0.42)' }}
         >
           {label}
         </span>
         {climbing && (
-          <TrendingUp size={13} strokeWidth={3} style={{ color: flagship ? 'rgba(255,255,255,0.85)' : RED }} />
+          <TrendingUp className="h-3.5 w-3.5 xl:h-4 xl:w-4" strokeWidth={3} style={{ color: flagship ? 'rgba(255,255,255,0.85)' : RED }} />
         )}
       </div>
 
-      <div className="relative mt-4 font-black tracking-[-0.02em] text-[28px] sm:text-[34px] lg:text-[42px] xl:text-[52px]">
+      <div className="relative mt-4 font-black tracking-[-0.02em] text-[28px] sm:text-[34px] lg:text-[50px] xl:text-[64px] 2xl:text-[76px]">
         <Odometer value={value} color={flagship ? '#ffffff' : INK} durationMs={DASHBOARD_SHIFT_MS} />
       </div>
     </motion.div>
@@ -150,18 +150,18 @@ export default function LiveDashboard({ state, className }: { state: LivePlatfor
 
   return (
     <div className={cn('w-full', className)} data-login-live-dashboard>
-      <div className="mb-4 flex items-center gap-2.5">
+      <div className="mb-3.5 flex items-center gap-2.5 lg:mb-4 xl:mb-5 2xl:mb-6">
         <span className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-70" style={{ background: RED }} />
           <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: RED }} />
         </span>
-        <h2 className="text-[22px] font-black leading-none tracking-[-0.045em] sm:text-[25px] lg:text-[28px]" style={{ color: INK }}>
+        <h2 className="text-[22px] font-black leading-none tracking-[-0.045em] sm:text-[25px] lg:text-[32px] xl:text-[38px] 2xl:text-[44px]" style={{ color: INK }}>
           Currently <span style={{ color: RED }}>feeding</span> on
         </h2>
       </div>
 
       {/* The dashboard — equal bento tiles, exact rolling odometers */}
-      <div className="grid grid-cols-2 gap-3.5 sm:gap-4 lg:gap-5">
+      <div className="grid grid-cols-2 gap-3.5 sm:gap-4 lg:gap-6 xl:gap-7 2xl:gap-8">
         {METRICS.map((metric, index) => (
           <StatTile
             key={metric.key}
