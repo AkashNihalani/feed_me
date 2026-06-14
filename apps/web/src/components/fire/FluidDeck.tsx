@@ -5,7 +5,6 @@ import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { FireItem } from './types';
 import { FireCard3D } from './FireCard3D';
-import { getVisualViewportEventTarget } from '@/lib/visualViewport';
 import { GRID_LAYOUT_SPRING, GRID_ITEM_EASE } from '@/lib/motion';
 
 interface FluidDeckProps {
@@ -34,9 +33,16 @@ type StandaloneDeckState = {
 
 const STANDALONE_DECK_STATE_PREFIX = 'fire:pwa-deck:v1';
 const STANDALONE_RESTORE_STEPS_MS = [0, 120, 280, 520, 860] as const;
-const PWA_NEIGHBOUR_OFFSET_RATIO = 0.56;
-const PWA_OFFSCREEN_OFFSET_RATIO = 1.16;
+// Cards in the PWA strip overlap slightly: stride = cardHeight − overlap, so
+// each card's edge tucks under its neighbour (active card sits on top via
+// z-index). No background is ever visible between cards — the strip reads as
+// one continuous deck, not individual cards scrolling past.
+const PWA_CARD_OVERLAP_PX = 12;
+const PWA_CARD_MAX_WIDTH_PX = 560;
 const PWA_RENDER_RADIUS = 2;
+// Flick velocity (px/s) that advances the deck even on a short drag.
+const PWA_FLICK_VELOCITY = 420;
+const PWA_STRIP_SPRING = { type: 'spring', stiffness: 300, damping: 30, mass: 0.9 } as const;
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
 const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
 const MOBILE_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
@@ -50,18 +56,6 @@ function isStandaloneDisplayMode(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(display-mode: standalone)').matches
     || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
-}
-
-function readRootCssPx(name: string, fallback: number): number {
-  if (typeof window === 'undefined') return fallback;
-  const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name);
-  const value = Number.parseFloat(raw);
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function getPwaViewportSlotHeight(): number {
-  if (typeof window === 'undefined') return 600;
-  return Math.max(420, readRootCssPx('--fire-app-height', window.innerHeight));
 }
 
 function getScrollContainer(root: HTMLDivElement | null, usePageScroll: boolean): HTMLElement | null {
@@ -229,15 +223,53 @@ function FluidDeck({
   // Independent index tracked outside scroll — drives the transform-based stack
   const [pwaIndex, setPwaIndex] = useState(0);
   const pwaLastNavRef = useRef(0);
-  // Height of one full-canvas card slot (used for PWA y offsets).
-  const [pwaSlotH, setPwaSlotH] = useState(() => {
-    if (typeof window === 'undefined') return 600;
-    return getPwaViewportSlotHeight();
-  });
+  // First commit renders ONLY the active card; neighbours mount a frame later.
+  // Five FireCard3D mounts in one commit was the main-thread spike that made
+  // switching to the fire tab hitch in PWA mode.
+  const [pwaNeighboursReady, setPwaNeighboursReady] = useState(false);
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop || pwaNeighboursReady) return;
+    const frame = window.requestAnimationFrame(() => setPwaNeighboursReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [isDesktop, pwaNeighboursReady, usePwaSnap]);
 
-  const pwaDeckTopExpr = 'calc(env(safe-area-inset-top) + var(--fire-header-height, 168px) + 44px)';
-  const pwaDeckBottomExpr = 'calc(var(--fire-bottom-clearance, 86px) + env(safe-area-inset-bottom) + 12px)';
-  const pwaCardMaxHExpr = 'calc(var(--fire-app-height, 100dvh) - var(--fire-header-height, 168px) - var(--fire-bottom-clearance, 86px) - env(safe-area-inset-bottom) - 28px)';
+  // The band the deck lives in: from just under the header glass to just above
+  // the nav glass. Paddings are minimal on purpose — PWA has no browser chrome,
+  // so the card claims as much of the canvas as the viewport allows.
+  const pwaDeckTopExpr = 'calc(env(safe-area-inset-top) + var(--fm-tab-mobile-content-offset))';
+  const pwaDeckBottomExpr = 'calc(var(--fire-bottom-clearance, 86px) + env(safe-area-inset-bottom) + 10px)';
+  // Card cap mirrors the band EXACTLY so the active card always fits between
+  // the chrome bars; neighbours overflow the band and peek under the glass.
+  const pwaCardMaxHExpr = `calc(var(--fire-app-height, 100dvh) - ${pwaDeckTopExpr} - ${pwaDeckBottomExpr})`;
+
+  // Measured band rect → real card height → strip stride (cardHeight − overlap),
+  // so consecutive cards always touch/tuck with zero background between them.
+  const pwaBandRef = useRef<HTMLDivElement | null>(null);
+  const [pwaBandSize, setPwaBandSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    if (!usePwaSnap || isDesktop) return;
+    const node = pwaBandRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect || rect.height < 1) return;
+      setPwaBandSize((current) => (
+        current && Math.abs(current.w - rect.width) < 1 && Math.abs(current.h - rect.height) < 1
+          ? current
+          : { w: rect.width, h: rect.height }
+      ));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isDesktop, usePwaSnap]);
+
+  const pwaCardW = pwaBandSize
+    ? Math.min(pwaBandSize.w, PWA_CARD_MAX_WIDTH_PX)
+    : 0;
+  const pwaCardH = pwaBandSize ? pwaBandSize.h : 0;
+  const pwaStride = pwaCardH > 0
+    ? pwaCardH - PWA_CARD_OVERLAP_PX
+    : (typeof window === 'undefined' ? 600 : Math.max(420, window.innerHeight - 300));
 
   useEffect(() => {
     activeCardIdRef.current = activeCardId;
@@ -260,24 +292,6 @@ function FluidDeck({
     mql.addEventListener?.('change', handler as (event: MediaQueryListEvent) => void);
     return () => mql.removeEventListener?.('change', handler as (event: MediaQueryListEvent) => void);
   }, []);
-
-  // ── PWA: measure container slot height from CSS variables ──────────────────
-  useEffect(() => {
-    if (!usePwaSnap || isDesktop) return;
-    const update = () => {
-      setPwaSlotH(getPwaViewportSlotHeight());
-    };
-    const viewport = getVisualViewportEventTarget();
-    update();
-    window.addEventListener('resize', update);
-    viewport?.addEventListener('resize', update);
-    viewport?.addEventListener('scroll', update);
-    return () => {
-      window.removeEventListener('resize', update);
-      viewport?.removeEventListener('resize', update);
-      viewport?.removeEventListener('scroll', update);
-    };
-  }, [isDesktop, usePwaSnap]);
 
   // ── PWA: pwaIndex → activeCardId + currentIndexRef ────────────────────────
   useEffect(() => {
@@ -455,18 +469,10 @@ function FluidDeck({
   }, [cards.length, clearPwaTopReturn]);
 
   const handlePwaDragEnd = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (info.offset.y < -50) navigatePwa(1);       // swipe up → next card
-    else if (info.offset.y > 50) navigatePwa(-1);  // swipe down → prev card
+    // Distance commits a deliberate drag; velocity commits a quick flick.
+    if (info.offset.y < -50 || info.velocity.y < -PWA_FLICK_VELOCITY) navigatePwa(1);
+    else if (info.offset.y > 50 || info.velocity.y > PWA_FLICK_VELOCITY) navigatePwa(-1);
   }, [navigatePwa]);
-
-  // Returns the animate target for a card at cards[index] relative to pwaIndex
-  const getPwaCardStyle = useCallback((index: number) => {
-    const diff = index - pwaIndex;
-    if (diff === 0) return { y: 0,           scale: 1,    opacity: 1, zIndex: 10 };
-    if (diff === 1) return { y: pwaSlotH * PWA_NEIGHBOUR_OFFSET_RATIO,    scale: 1,    opacity: 1, zIndex: 8  };
-    if (diff === -1) return { y: -pwaSlotH * PWA_NEIGHBOUR_OFFSET_RATIO,  scale: 1,    opacity: 1, zIndex: 8  };
-    return { y: diff > 0 ? pwaSlotH * PWA_OFFSCREEN_OFFSET_RATIO : -pwaSlotH * PWA_OFFSCREEN_OFFSET_RATIO, scale: 1, opacity: 1, zIndex: 2 };
-  }, [pwaIndex, pwaSlotH]);
 
   // Reset pwaIndex when filter/day changes
   const prevResetKeyRef = useRef(resetKey);
@@ -618,58 +624,67 @@ function FluidDeck({
   const showStandaloneLoadDock = usePwaSnap
     && Boolean(hasMore)
     && pwaIndex >= Math.max(0, cards.length - 2);
-  // ── PWA render: fixed-position transform stack (TikTok/Reels style) ─────────
+  // ── PWA render: one continuous card strip (TikTok/Reels style) ──────────────
+  // The band is the rect between the chrome bars; the strip inside holds every
+  // card at index × stride, and a single transform moves them all together —
+  // the finger drags the whole strip 1:1 and one spring slots it per swipe.
   if (usePwaSnap) {
+    const restY = -pwaIndex * pwaStride;
+    const canPrev = pwaIndex > 0;
+    const canNext = pwaIndex < cards.length - 1;
+
     return (
       <>
-        {/* Full-canvas PWA deck so cards pass under floating chrome. */}
         <AnimatePresence mode="sync">
           <motion.div
             key="pwa-fire-deck"
+            ref={pwaBandRef}
             initial={{ opacity: 0, y: 24, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.992 }}
             transition={MOBILE_DECK_SWAP_SPRING}
-            className="fixed inset-0 z-10 overflow-hidden"
+            className="fixed inset-x-0 z-10"
+            style={{ top: pwaDeckTopExpr, bottom: pwaDeckBottomExpr }}
           >
-            {cards.map((card, index) => {
-              const diff = index - pwaIndex;
-              // Keep one offscreen buffer so neighbours glide out instead of popping away.
-              if (Math.abs(diff) > PWA_RENDER_RADIUS) return null;
-              const style = getPwaCardStyle(index);
-              const isCurrent = index === pwaIndex;
-              const isOffscreenBuffer = Math.abs(diff) === PWA_RENDER_RADIUS;
+            <motion.div
+              className="absolute inset-0"
+              drag="y"
+              dragDirectionLock
+              dragMomentum={false}
+              dragElastic={0.14}
+              dragConstraints={{
+                top: restY - (canNext ? pwaStride : 0),
+                bottom: restY + (canPrev ? pwaStride : 0),
+              }}
+              onDragEnd={handlePwaDragEnd}
+              animate={{ y: restY }}
+              transition={PWA_STRIP_SPRING}
+              style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}
+            >
+              {cards.map((card, index) => {
+                const diff = index - pwaIndex;
+                // Keep one offscreen buffer so neighbours glide out instead of popping away.
+                if (Math.abs(diff) > PWA_RENDER_RADIUS) return null;
+                if (!pwaNeighboursReady && diff !== 0) return null;
+                const isCurrent = diff === 0;
 
-              return (
-                <motion.div
-                  key={card.id}
-                  className="absolute inset-x-0 flex items-center justify-center px-0 sm:px-2"
-                  animate={{ y: style.y, scale: style.scale, opacity: style.opacity }}
-                  transition={{
-                    type: 'spring',
-                    stiffness: isOffscreenBuffer ? 250 : 300,
-                    damping: isOffscreenBuffer ? 34 : 30,
-                    mass: isOffscreenBuffer ? 1 : 0.9,
-                  }}
-                  drag={isCurrent ? 'y' : false}
-                  dragConstraints={{ top: 0, bottom: 0 }}
-                  dragElastic={0.08}
-                  onDragEnd={handlePwaDragEnd}
-                  style={{
-                    top: pwaDeckTopExpr,
-                    bottom: pwaDeckBottomExpr,
-                    zIndex: style.zIndex,
-                    pointerEvents: isCurrent ? 'auto' : 'none',
-                    willChange: 'transform',
-                    backfaceVisibility: 'hidden',
-                  }}
-                >
-                  <div className="flex h-full w-full items-start justify-center">
+                return (
+                  <div
+                    key={card.id}
+                    className="absolute inset-x-0 flex h-full items-start justify-center px-0 sm:px-2"
+                    style={{
+                      top: index * pwaStride,
+                      zIndex: isCurrent ? 10 : 8,
+                      pointerEvents: isCurrent ? 'auto' : 'none',
+                    }}
+                  >
                     <div
-                      className="w-full max-w-[472px]"
+                      className="w-full"
                       style={{
-                        ['--fire-card-max-height' as string]: pwaCardMaxHExpr,
-                        ['--fire-card-aspect' as string]: '9 / 14',
+                        width: pwaCardW > 0 ? `${pwaCardW}px` : '100%',
+                        maxWidth: `${PWA_CARD_MAX_WIDTH_PX}px`,
+                        ['--fire-card-max-height' as string]: pwaCardH > 0 ? `${pwaCardH}px` : pwaCardMaxHExpr,
+                        ['--fire-card-aspect' as string]: pwaCardW > 0 && pwaCardH > 0 ? `${pwaCardW} / ${pwaCardH}` : '9 / 14',
                       }}
                     >
                       <FireCard3D
@@ -684,9 +699,9 @@ function FluidDeck({
                       />
                     </div>
                   </div>
-                </motion.div>
-              );
-            })}
+                );
+              })}
+            </motion.div>
           </motion.div>
         </AnimatePresence>
 
@@ -735,7 +750,7 @@ function FluidDeck({
         ? 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain hide-scrollbar'
         : 'relative h-full w-full overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth hide-scrollbar',
     'px-0 sm:px-3 lg:px-4',
-    usePageScroll && !isDesktop ? 'pt-[calc(var(--fire-header-height,190px)+16px)]' : 'pt-[calc(var(--fire-header-height,168px)+40px)]',
+    usePageScroll && !isDesktop ? 'pt-[calc(var(--fm-tab-mobile-content-offset)+env(safe-area-inset-top))]' : 'pt-[var(--fm-tab-desktop-content-offset)]',
     isDesktop ? 'pb-[148px]' : 'pb-[88px]',
     'lg:snap-none',
   ].join(' ');

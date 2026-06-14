@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Load Premium Google Fonts for clients that support web fonts (Apple Mail, iOS, Outlook web) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <style>
+      /* Base variables for modern email clients */
+      :root {
+        --color-brand: #e11d48;
+        --color-brand-glow: rgba(225, 29, 72, 0.15);
+      }
+
+      /* Core typography & rendering reset */
+      body, table, td, a {
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+      }
+      table, td {
+        mso-table-lspace: 0pt;
+        mso-table-rspace: 0pt;
+      }
+      img {
+        -ms-interpolation-mode: bicubic;
+        border: 0;
+        height: auto;
+        line-height: 100%;
+        outline: none;
+        text-decoration: none;
+      }
+
+      /* Premium visual theme settings */
+      .fm-bg { 
+        background: linear-gradient(180deg, #fbfbfa 0%, #f4f4f2 100%) !important; 
+      }
+      .fm-card { 
+        background: #ffffff !important; 
+        border: 1px solid #efefea !important;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.03) !important;
+      }
+      .fm-rule-gradient {
+        background: linear-gradient(90deg, transparent 0%, #e11d48 50%, transparent 100%) !important;
+        height: 2px !important;
+        opacity: 0.8;
+      }
+      .fm-brand { 
+        color: #8a8a8a !important; 
+        font-family: 'Outfit', -apple-system, sans-serif !important;
+      }
+      .fm-headline { 
+        color: #0b0b0a !important; 
+        font-family: 'Outfit', -apple-system, sans-serif !important;
+      }
+      .fm-copy { 
+        color: #64748b !important; 
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+      }
+      .fm-micro { 
+        color: #94a3b8 !important; 
+        font-family: 'Outfit', -apple-system, sans-serif !important;
+      }
+      .fm-link { 
+        color: #e11d48 !important; 
+      }
+      
+      /* Premium Button Styling with CSS Hover Effects */
+      .fm-button-cell {
+        background: #e11d48 !important;
+        border-radius: 999px !important;
+        transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        box-shadow: 0 10px 20px rgba(225, 29, 72, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+      }
+      .fm-button-cell:hover {
+        background: #be123c !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 14px 28px rgba(225, 29, 72, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+      }
+      .fm-button-link {
+        display: inline-block !important;
+        padding: 18px 36px !important;
+        font-family: 'Outfit', -apple-system, sans-serif !important;
+        font-size: 14px !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.12em !important;
+        text-transform: uppercase !important;
+        text-decoration: none !important;
+        color: #ffffff !important;
+        border-radius: 999px !important;
+      }
+
+      /* Double-sticker rendering toggles */
+      .fm-badge-light { display: block !important; }
+      .fm-badge-dark { display: none !important; max-height: 0; overflow: hidden; mso-hide: all; }
+      .fm-card-cell { padding: 80px 64px 48px 64px !important; }
+      .fm-badge-frame { width: 174px !important; height: 174px !important; }
+
+      /* Responsive rules */
+      @media screen and (max-width: 520px) {
+        .fm-card-cell { padding: 48px 24px 32px 24px !important; }
+        .fm-headline { font-size: 42px !important; }
+        .fm-badge-frame { width: 132px !important; height: 132px !important; }
+        .fm-badge-light, .fm-badge-dark { width: 132px !important; height: 132px !important; }
+      }
+
+      /* Enhanced Dark Mode Styles - Clean & Premium Glassmorphism */
+      @media (prefers-color-scheme: dark) {
+        .fm-bg { 
+          background: #030303 !important; 
+        }
+        .fm-card { 
+          background: #09090b !important; 
+          border-color: #1e1e24 !important; 
+          border-top: 3px solid #e11d48 !important; /* Top border accent line */
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+        }
+        .fm-brand { color: #94a3b8 !important; }
+        .fm-headline { color: #f8fafc !important; }
+        .fm-copy { color: #cbd5e1 !important; }
+        .fm-micro { color: #64748b !important; }
+        .fm-link { color: #fb7185 !important; }
+        
+        .fm-badge-light { display: none !important; max-height: 0 !important; overflow: hidden !important; }
+        .fm-badge-dark { display: block !important; max-height: none !important; overflow: visible !important; }
+        
+        .fm-button-cell {
+          background: #e11d48 !important;
+          box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+        }
+        .fm-button-cell:hover {
+          background: #f43f5e !important;
+          box-shadow: 0 14px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+        }
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f5f3;color:#0b0b0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="fm-bg" style="background:#f5f5f3;padding:0;">
+      <tr>
+        <td align="center" style="padding:40px 16px 60px 16px;">
+          <!-- Centered Container Card -->
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="fm-card" style="width:100%;max-width:560px;background:#ffffff;border-radius:24px;border:1px solid #efefea;overflow:hidden;">
+            <tr>
+              <td align="center" class="fm-card-cell" style="padding:80px 64px 48px 64px;">
+                
+                <!-- Premium Multi-stop Gradient Divider -->
+                <div class="fm-rule-gradient" style="width:56px;height:2px;background:#e11d48;margin:0 auto 36px auto;border-radius:999px;"></div>
+                
+                <!-- Badge/Logo Frame with soft shadow -->
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto 32px auto;">
+                  <tr>
+                    <td align="center" valign="middle" width="174" height="174" class="fm-badge-frame" style="width:174px;height:174px;">
+                      <img
+                        class="fm-badge-light"
+                        src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide.png"
+                        alt="FeedMe confirmation badge"
+                        width="132"
+                        height="132"
+                        style="display:block;margin:0 auto;border:0;filter:drop-shadow(0 10px 20px rgba(0,0,0,0.04));"
+                      />
+                      <img
+                        class="fm-badge-dark"
+                        src="https://worqtdkvicuhmdgoncru.supabase.co/storage/v1/object/public/email-assets/feedme-confirm-badge-red-sticker-wide-dark.png"
+                        alt="FeedMe confirmation badge"
+                        width="132"
+                        height="132"
+                        style="display:none;max-height:0;overflow:hidden;mso-hide:all;margin:0 auto;border:0;filter:drop-shadow(0 10px 25px rgba(0,0,0,0.35));"
+                      />
+                    </td>
+                  </tr>
+                </table>
+                
+                <!-- Brand Title -->
+                <div class="fm-brand" style="font-size:12px;line-height:1;letter-spacing:0.32em;font-weight:700;color:#8a8a8a;text-transform:uppercase;font-family:-apple-system,sans-serif;">
+                  FeedMe
+                </div>
+                
+                <!-- Heavy Uppercase Header (Refined Outfit style) -->
+                <h1 class="fm-headline" style="margin:20px 0 0 0;font-size:54px;line-height:0.95;letter-spacing:-0.02em;font-weight:900;color:#0b0b0a;text-transform:uppercase;font-family:-apple-system,sans-serif;">
+                  Account<br />
+                  Activated
+                </h1>
+                
+                <!-- Bounded Body Text -->
+                <p class="fm-copy" style="margin:28px auto 0 auto;max-width:420px;font-size:16px;line-height:1.6;color:#64748b;font-weight:500;font-family:-apple-system,sans-serif;">
+                  Your feed is ready.<br />
+                  Assign your first feeder and start tracking handles.
+                </p>
+                
+                <!-- Enhanced CSS interactive button -->
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:36px auto 0 auto;">
+                  <tr>
+                    <td align="center" class="fm-button-cell" style="border-radius:999px;background:#e11d48;">
+                      <a href="{{ .ConfirmationURL }}" class="fm-button-link" style="display:inline-block;padding:18px 36px;font-size:14px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;text-decoration:none;color:#ffffff;border-radius:999px;font-family:-apple-system,sans-serif;">
+                        Begin Feeding
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                
+                <!-- Micro slogan -->
+                <p class="fm-micro" style="margin:32px auto 0 auto;max-width:360px;font-size:10px;line-height:1.7;color:#94a3b8;letter-spacing:0.28em;text-transform:uppercase;font-weight:700;font-family:-apple-system,sans-serif;">
+                  From tracking to ranking
+                </p>
+                
+                <!-- Fallback Link Details -->
+                <p class="fm-copy" style="margin:40px 0 0 0;font-size:11px;line-height:1.7;color:#8a8a8a;font-family:-apple-system,sans-serif;">
+                  If the button does not open, use this secure link:
+                </p>
+                <p style="margin:8px auto 0 auto;max-width:440px;font-size:11px;line-height:1.6;word-break:break-all;">
+                  <a href="{{ .ConfirmationURL }}" class="fm-link" style="color:#e11d48;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+                </p>
+                
+                <!-- Notice details -->
+                <p class="fm-copy" style="margin:32px auto 0 auto;max-width:440px;font-size:11px;line-height:1.6;color:#8a8a8a;font-family:-apple-system,sans-serif;">
+                  This message was sent to {{ .Email }} because a FeedMe account was created using this address. If this was not you, you can safely ignore it.
+                </p>
+              </td>
+            </tr>
+          </table>
+          
+          <!-- Outer footer -->
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;">
+            <tr>
+              <td class="fm-micro" style="padding:24px 8px 0 8px;text-align:center;font-size:11px;line-height:1.7;color:#94a3b8;font-weight:500;font-family:-apple-system,sans-serif;">
+                FeedMe, Only Allai Inc.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

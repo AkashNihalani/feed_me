@@ -4748,6 +4748,9 @@ class PureEngine:
             or len(data) >= 1024 * 32
         )
 
+    def _video_full_metadata_ready(self, post_key: str) -> bool:
+        return self._latest_video_full_asset(post_key) is not None
+
     def _feeder_intelligence_media_candidates(
         self,
         feeder_id: int,
@@ -4892,7 +4895,7 @@ class PureEngine:
         needs_refresh: list[dict[str, Any]] = []
         for row in rows:
             post_key = str(row.get("post_key") or "").strip().lower()
-            if post_key and self._verify_video_full_ready(post_key):
+            if post_key and self._video_full_metadata_ready(post_key):
                 ready_post_keys.append(post_key)
             else:
                 needs_refresh.append(row)
@@ -4958,7 +4961,7 @@ class PureEngine:
 
         verified_existing: list[str] = []
         for post_key in existing_source_post_keys:
-            if self._verify_video_full_ready(post_key):
+            if self._video_full_metadata_ready(post_key):
                 verified_existing.append(post_key)
             else:
                 row = next((candidate for candidate in needs_refresh if str(candidate.get("post_key") or "").strip().lower() == post_key), None)
@@ -5061,7 +5064,7 @@ class PureEngine:
         verified: list[str] = []
         failed_keys: list[str] = []
         for post_key in ordered_post_keys:
-            if self._verify_video_full_ready(post_key):
+            if self._video_full_metadata_ready(post_key):
                 verified.append(post_key)
             else:
                 failed_keys.append(post_key)

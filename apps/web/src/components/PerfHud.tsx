@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 
 export default function PerfHud() {
+  const [mounted, setMounted] = useState(false);
   const [enabled] = useState(() => {
     if (typeof window === 'undefined') return false;
     return process.env.NODE_ENV === 'development'
@@ -19,7 +20,29 @@ export default function PerfHud() {
   const [worstMs, setWorstMs] = useState(0);
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    const raf = window.requestAnimationFrame(() => setMounted(true));
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+  // Perf A/B harness: ?noblur / ?noshadow / ?nopanelfx (and ?flat = blur+shadow)
+  // strip a GPU feature via globals.css so its cost can be measured in isolation
+  // on the iPhone sim. Diagnostic only.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flat = params.has('flat');
+    const root = document.documentElement;
+    root.toggleAttribute('data-perf-noblur', flat || params.has('noblur'));
+    root.toggleAttribute('data-perf-noshadow', flat || params.has('noshadow'));
+    root.toggleAttribute('data-perf-nopanelfx', params.has('nopanelfx'));
+    return () => {
+      root.removeAttribute('data-perf-noblur');
+      root.removeAttribute('data-perf-noshadow');
+      root.removeAttribute('data-perf-nopanelfx');
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !enabled) return undefined;
 
     let raf = 0;
     let frames = 0;
@@ -52,9 +75,9 @@ export default function PerfHud() {
       window.cancelAnimationFrame(raf);
       observer?.disconnect();
     };
-  }, [enabled]);
+  }, [enabled, mounted]);
 
-  if (!enabled) return null;
+  if (!mounted || !enabled) return null;
 
   const fpsColor = fps >= 58 ? '#22c55e' : fps >= 45 ? '#eab308' : '#ef4444';
   return (

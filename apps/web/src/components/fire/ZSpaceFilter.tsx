@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppHaptics } from '@/lib/haptics';
@@ -98,15 +99,18 @@ export default function ZSpaceFilter({
     });
   };
 
-  return (
+  const portalTarget = typeof document === 'undefined' ? null : document.body;
+  if (!portalTarget) return null;
+
+  return createPortal((
     <AnimatePresence>
       {isOpen && (
         <motion.div
           initial={false}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0.999 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 z-[200] flex items-end justify-center pointer-events-auto sm:items-center"
+          className="fm-chrome-safe-overlay fixed inset-0 z-[420] flex items-end justify-center pointer-events-auto sm:items-center"
           onClick={() => {
             play('navReselect');
             onClose();
@@ -118,8 +122,9 @@ export default function ZSpaceFilter({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              'absolute inset-0 bg-black/50 dark:bg-black/65',
+              'fm-chrome-safe-backdrop',
             )}
+            style={{ '--fm-overlay-bg': 'rgba(0,0,0,0.54)' } as CSSProperties}
           />
 
           <motion.div
@@ -128,7 +133,7 @@ export default function ZSpaceFilter({
             exit={{ opacity: 0, scale: 0.982, y: 22 }}
             transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.92 }}
             className={cn(
-              'relative mb-0 flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[36px] sm:mb-12 sm:rounded-[36px]',
+              'relative z-10 mb-0 flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[36px] sm:mb-12 sm:rounded-[36px]',
               'border border-white/80 border-t-white/90 bg-white/92',
               'shadow-[0_1px_0_rgba(255,255,255,0.95)_inset,0_-1px_0_rgba(0,0,0,0.03)_inset,0_24px_64px_-16px_rgba(0,0,0,0.15)]',
               'dark:border-white/[0.08] dark:border-t-white/[0.12] dark:bg-[rgba(10,10,12,0.94)]',
@@ -370,5 +375,5 @@ export default function ZSpaceFilter({
         </motion.div>
       )}
     </AnimatePresence>
-  );
+  ), portalTarget);
 }

@@ -24,6 +24,7 @@ from .config import (
     FEEDER_INTELLIGENCE_ENABLED,
     FEEDER_INTELLIGENCE_PROVIDER,
     GEMINI_API_KEY,
+    MEDIA_PUBLIC_BASE_URL,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     POST_CONDENSATION_MODEL,
@@ -37,6 +38,7 @@ from .config import (
     SUPABASE_URL,
 )
 from .feeder_prompts import (
+    ACTIVE_COLD_START_COMPILE_VERSIONS,
     D7_READ_PROMPT_VERSION,
     D7_READ_SYSTEM_V6,
     FEEDER_FILE_COLD_START_PROMPT_VERSION,
@@ -1401,6 +1403,13 @@ def _d7_is_num(value: Any) -> bool:
         return False
 
 
+def _d7_float(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _d7_median_mult(rows: list[dict[str, Any]], axis: str) -> float | None:
     vals = [m for m in (_d7_mult(r, axis) for r in rows) if m is not None]
     return round(statistics.median(vals), 2) if vals else None
@@ -1855,12 +1864,12 @@ def _active_cold_start_feeder_file(conn: Any, *, feeder_id: int, handle: str) ->
             from public.feeder_files
             where feeder_id = %s
               and lower(feeder_handle) = lower(%s)
-              and compile_version = %s
+              and compile_version = any(%s)
               and status = 'active'
             order by updated_at desc nulls last, id desc
             limit 1
             """,
-            (feeder_id, handle, FEEDER_FILE_COLD_START_PROMPT_VERSION),
+            (feeder_id, handle, list(ACTIVE_COLD_START_COMPILE_VERSIONS)),
         )
         row = cur.fetchone()
     feed_file = row.get("feed_file") if row else None
@@ -1885,6 +1894,7 @@ def _d7_feeder_file_without_target(feed_file: dict[str, Any], post_key: str) -> 
 
 def _d7_bite_match_context(feed_file: dict[str, Any], fingerprint: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     bites = feed_file.get("bites") if isinstance(feed_file.get("bites"), list) else []
+    available_ids = {str(bite.get("bite_id") or "") for bite in bites if isinstance(bite, dict)}
     blob = _d7_text_blob(
         fingerprint.get("caption"),
         fingerprint.get("visible_text"),
@@ -1900,6 +1910,9 @@ def _d7_bite_match_context(feed_file: dict[str, Any], fingerprint: dict[str, Any
     matched_ids: set[str] = set()
     clipped_ids: set[str] = set()
     role: dict[str, str] = {}
+
+    def has_bite(bite_id: str) -> bool:
+        return bite_id in available_ids
 
     if ("clubhouse" in blob or "audio-room" in blob or "profile bubble" in blob) and ("red arrow" in blob or "speaker" in blob):
         matched_ids.add("b_clubhouse_ui_debate")
@@ -1937,6 +1950,104 @@ def _d7_bite_match_context(feed_file: dict[str, Any], fingerprint: dict[str, Any
     elif "logo" in blob or "outro" in blob:
         clipped_ids.add("b_brand_logo_bookend")
         role["b_brand_logo_bookend"] = "A logo/outro appears, but not as a full brand-bookend execution."
+
+    # Lakme cold-start v7 bite memory.
+    eyeconic_terms = any(
+        term in blob
+        for term in ("eyeconic", "lakme 9to5", "lakmē 9to5", "9to5", "eyeliner", "sharp wings", "kajal")
+    )
+    sorbet_terms = any(
+        term in blob
+        for term in ("sorbet", "lakme skin", "lakmē skin", "icy", "peach milk", "ice dunk")
+    )
+    teal_card = (
+        any(term in blob for term in ("teal metallic card", "solid teal", "teal screen", "teal card", "metallic background"))
+        and any(term in blob for term in ("logo", "end card", "hard cut", "sweeps in"))
+    ) or ("female vo" in blob and ("lakme 9to5" in blob or "lakmē 9to5" in blob))
+    if has_bite("b_teal_metallic_end_card"):
+        if teal_card:
+            matched_ids.add("b_teal_metallic_end_card")
+            role["b_teal_metallic_end_card"] = "The Eyeconic/9to5 reel uses the teal metallic logo card as the closing brand stamp."
+        elif eyeconic_terms:
+            clipped_ids.add("b_teal_metallic_end_card")
+            role["b_teal_metallic_end_card"] = "The Eyeconic/9to5 product is present, but the usual teal metallic logo-card close is missing."
+
+    no_voiceover = any(term in blob for term in ("no spoken dialogue", "no voiceover", "no spoken voiceover"))
+    if has_bite("b_brand_name_vo_signoff"):
+        if (
+            not no_voiceover
+            and ("female vo" in blob or "voiceover" in blob)
+            and ("lakme 9to5" in blob or "lakmē 9to5" in blob)
+        ):
+            matched_ids.add("b_brand_name_vo_signoff")
+            role["b_brand_name_vo_signoff"] = "A minimal female voiceover speaks the Lakme 9to5 name over the sign-off."
+        elif eyeconic_terms:
+            clipped_ids.add("b_brand_name_vo_signoff")
+            role["b_brand_name_vo_signoff"] = "The Eyeconic/9to5 product appears without the usual spoken Lakme 9to5 sign-off."
+
+    if has_bite("b_white_logo_end_card") and (
+        ("hard cut" in blob and "white screen" in blob and "lakm" in blob and "logo" in blob)
+        or "white lakmē" in blob
+        or "white lakme" in blob
+    ):
+        matched_ids.add("b_white_logo_end_card")
+        role["b_white_logo_end_card"] = "The reel closes on the clean white LAKMĒ logo card."
+
+    if has_bite("b_claim_proved_by_demo") and any(
+        term in blob
+        for term in (
+            "smudgeproof",
+            "waterproof",
+            "transferproof",
+            "water spray",
+            "tissue press",
+            "cotton pad",
+            "finger rub",
+            "swipe on hand",
+            "swatched on hand",
+            "visible-tissue",
+        )
+    ):
+        matched_ids.add("b_claim_proved_by_demo")
+        role["b_claim_proved_by_demo"] = "A product claim is shown through a physical application, comparison, or stress-test demo."
+
+    if has_bite("b_static_claim_text_list") and any(
+        term in blob
+        for term in ("it does not", "12-item", "claim cards", "typed letter-by-letter", "typewriter", "stacked on-screen text")
+    ):
+        matched_ids.add("b_static_claim_text_list")
+        role["b_static_claim_text_list"] = "On-screen claim text carries the product benefits rather than a spoken explanation."
+
+    if has_bite("b_cold_start_top_text_premise") and any(fingerprint.get("visible_text") or []):
+        first_visual = _d7_text_blob((fingerprint.get("visual_sequence") or [])[:1])
+        if "0:00" in first_visual or "opens" in blob or "cold open" in blob or "split-screen" in first_visual:
+            matched_ids.add("b_cold_start_top_text_premise")
+            role["b_cold_start_top_text_premise"] = "The reel opens straight into action with visible text framing the product premise."
+
+    if has_bite("b_holographic_sorbet_jar") and "sorbet" in blob and any(
+        term in blob for term in ("holographic", "reflective silver", "silver finish", "jar")
+    ):
+        matched_ids.add("b_holographic_sorbet_jar")
+        role["b_holographic_sorbet_jar"] = "The holographic sorbet jar is a central product hero, tied to the cooling/sorbet visual."
+
+    if has_bite("b_one_swipe_glow_up_claim") and any(
+        term in blob for term in ("one swipe", "single swipe", "single product pass", "instant glow", "instantly hydrated")
+    ):
+        matched_ids.add("b_one_swipe_glow_up_claim")
+        role["b_one_swipe_glow_up_claim"] = "A single application gesture carries the instant result claim."
+
+    if has_bite("b_heatwave_spf_occasion_hook") and any(
+        term in blob for term in ("heatwave", "el niño", "uv index", "national sunscreen day", "weather app", "spf reminder")
+    ):
+        matched_ids.add("b_heatwave_spf_occasion_hook")
+        role["b_heatwave_spf_occasion_hook"] = "A real-world weather or SPF occasion frames the product need."
+
+    if has_bite("b_mock_phone_ui_overlay") and any(
+        term in blob
+        for term in ("weather app", "ios", "notification", "calendar", "schedule", "mock ig", "instagram widget", "digital calendar")
+    ):
+        matched_ids.add("b_mock_phone_ui_overlay")
+        role["b_mock_phone_ui_overlay"] = "A familiar phone or calendar-style interface frames the product moment."
 
     matched: list[dict[str, Any]] = []
     clipped: list[dict[str, Any]] = []
@@ -2259,6 +2370,9 @@ def _media_fetch_ref(row: dict[str, Any]) -> tuple[str | None, dict[str, str] | 
         url = _r2_signed_object_url(bucket or R2_BUCKET, path)
         if url:
             return url, None
+        public_base = str(MEDIA_PUBLIC_BASE_URL or "").strip().rstrip("/")
+        if public_base:
+            return f"{public_base}/{path}", None
 
     public_url = str(row.get("public_url") or "").strip()
     if public_url:

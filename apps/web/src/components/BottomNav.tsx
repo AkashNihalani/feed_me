@@ -39,11 +39,15 @@ export default function BottomNav() {
   const { play } = useAppHaptics();
   const trackRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const pendingResetTimerRef = useRef<number | null>(null);
   const [pillBounds, setPillBounds] = useState({ x: 0, width: 86 });
-  const activeIndex = useMemo(
-    () => NAV_ITEMS.findIndex((item) => pathname === item.href),
-    [pathname],
-  );
+  // Optimistic target: the pill + tint move the instant a tab is tapped,
+  // instead of waiting for the route commit (which can be many frames later).
+  const [pendingHref, setPendingHref] = useState<{ href: string; fromPathname: string } | null>(null);
+  const activeIndex = useMemo(() => {
+    const target = pendingHref?.fromPathname === pathname ? pendingHref.href : pathname;
+    return NAV_ITEMS.findIndex((item) => target === item.href);
+  }, [pendingHref, pathname]);
 
   useLayoutEffect(() => {
     if (activeIndex < 0) return;
@@ -102,6 +106,10 @@ export default function BottomNav() {
     router.prefetch('/profile');
   }, [router]);
 
+  useEffect(() => () => {
+    if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
+  }, []);
+
   if (pathname === '/login') return null;
 
   return (
@@ -119,6 +127,7 @@ export default function BottomNav() {
           )}
           {NAV_ITEMS.map((item, index) => {
             const isActive = pathname === item.href;
+            const isHighlighted = index === activeIndex;
             return (
               <Link
                 key={item.label}
@@ -131,6 +140,7 @@ export default function BottomNav() {
                 className="group relative z-10"
                 onClick={(event) => {
                   play(isActive ? 'navReselect' : 'navSwitch');
+                  const isModifiedClick = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
                   if (isActive && item.href === '/' && typeof window !== 'undefined' && window.location.search.includes('id=')) {
                     event.preventDefault();
                     window.dispatchEvent(new CustomEvent('feedme:feed-tab-reselect'));
@@ -142,12 +152,20 @@ export default function BottomNav() {
                     sessionStorage.setItem('feedme:intent', item.href);
                     sessionStorage.setItem('feedme:intent-ts', String(Date.now()));
                   } catch {}
+                  if (!isActive && !isModifiedClick) {
+                    setPendingHref({ href: item.href, fromPathname: pathname });
+                    if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
+                    pendingResetTimerRef.current = window.setTimeout(() => {
+                      pendingResetTimerRef.current = null;
+                      setPendingHref(null);
+                    }, 1200);
+                  }
                 }}
               >
-                <motion.div whileTap={{ scale: 0.92 }} transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                <motion.div whileTap={{ scale: 0.95 }} transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.82 }}
                   className={cn(
-                    'relative flex min-w-[86px] flex-col items-center justify-center rounded-[22px] px-3 py-2.5 lg:min-w-[78px] lg:px-3 lg:py-2',
-                    isActive ? 'text-white' : 'text-[#8f6b75] dark:text-[#a3828b]')}>
+                    'relative flex min-w-[86px] flex-col items-center justify-center rounded-[22px] px-3 py-2.5 transition-colors duration-300 lg:min-w-[78px] lg:px-3 lg:py-2',
+                    isHighlighted ? 'text-white' : 'text-[#8f6b75] dark:text-[#a3828b]')}>
                   <span className="relative z-10">
                     <item.icon size={20} strokeWidth={2.75} />
                   </span>

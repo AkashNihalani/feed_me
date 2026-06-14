@@ -49,14 +49,14 @@ type MobileSection = {
   items: MobileSectionItem[];
 };
 
-const DASHBOARD_TILE_BASE_DELAY = 0.08;
-const DASHBOARD_TILE_STAGGER = 0.055;
+const DASHBOARD_TILE_BASE_DELAY = 0.035;
+const DASHBOARD_TILE_STAGGER = 0.03;
 
 function createDashboardTileTransition(delay = 0) {
   return {
-    opacity: { duration: 0.22, delay, ease: GRID_ITEM_EASE },
-    y: { type: 'spring', stiffness: 270, damping: 30, mass: 0.9, delay },
-    scale: { duration: 0.34, delay, ease: GRID_ITEM_EASE },
+    opacity: { duration: 0.16, delay, ease: GRID_ITEM_EASE },
+    y: { type: 'spring', stiffness: 340, damping: 34, mass: 0.86, delay },
+    scale: { duration: 0.22, delay, ease: GRID_ITEM_EASE },
   } as const;
 }
 
@@ -114,13 +114,14 @@ function DeferredMobileSection({
   reduceMotion: boolean;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
+  const shouldDefer = mobileSnapSections;
   const [isReady, setIsReady] = useState(() => (
-    eager || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function')
+    !shouldDefer || eager || (typeof window !== 'undefined' && typeof window.IntersectionObserver !== 'function')
   ));
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
 
   useEffect(() => {
-    if (eager || isReady || typeof window === 'undefined') return;
+    if (!shouldDefer || eager || isReady || typeof window === 'undefined') return;
 
     const node = sectionRef.current;
     if (!node) return;
@@ -140,7 +141,7 @@ function DeferredMobileSection({
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [eager, isReady, scrollRootRef, usePageScroll]);
+  }, [eager, isReady, scrollRootRef, shouldDefer, usePageScroll]);
 
   return (
     <section
@@ -152,8 +153,8 @@ function DeferredMobileSection({
       }
       style={{
         scrollMarginTop: mobileSnapSections ? 'calc(var(--fm-mobile-detail-header-offset) + 10px)' : undefined,
-        contentVisibility: 'auto',
-        containIntrinsicSize: '420px',
+        contentVisibility: shouldDefer ? 'auto' : undefined,
+        containIntrinsicSize: shouldDefer ? '420px' : undefined,
       }}
     >
       <div className="mx-auto flex w-full max-w-[min(430px,calc(100vw-32px))] overflow-x-hidden">

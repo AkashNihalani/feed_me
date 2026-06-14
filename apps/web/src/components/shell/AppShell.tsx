@@ -12,8 +12,9 @@ import {
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { motion, useReducedMotion } from 'framer-motion';
-import { PAGE_DISSOLVE } from '@/lib/motion';
+import { HEADER_ROUTE_MORPH, PAGE_SURFACE_MOTION, ROUTE_CONTENT_SETTLE } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import AppTabHost from './AppTabHost';
 
 type PageReadyContextValue = {
   isRoutePresent: boolean;
@@ -29,11 +30,19 @@ type AppHeaderProps = {
 
 const PageReadyContext = createContext<PageReadyContextValue | null>(null);
 const HeaderLayerContext = createContext<{
+  currentId: string | null;
   element: HTMLDivElement | null;
   setCompressed: (compressed: boolean) => void;
 } | null>(null);
 function isTabRoute(pathname: string) {
   return pathname === '/' || pathname === '/fire' || pathname === '/profile';
+}
+
+function headerIdForPathname(pathname: string) {
+  if (pathname === '/') return 'feed';
+  if (pathname === '/fire') return 'fire';
+  if (pathname === '/profile') return 'fund';
+  return null;
 }
 
 function usePageReadyContext() {
@@ -52,11 +61,12 @@ export function usePageReady(ready: boolean) {
   }, [ready, reportReady]);
 }
 
-export function AppHeader({ children, compressed }: AppHeaderProps) {
+export function AppHeader({ id, children, compressed }: AppHeaderProps) {
   const headerLayer = useContext(HeaderLayerContext);
   const { isRoutePresent, isRouteReady } = usePageReadyContext();
   const reduceMotion = Boolean(useReducedMotion());
-  const visible = isRoutePresent && isRouteReady;
+  const isCurrentHeader = !id || headerLayer?.currentId === id;
+  const visible = isCurrentHeader && isRoutePresent && isRouteReady;
   const headerLayerElement = headerLayer?.element ?? null;
 
   useEffect(() => {
@@ -64,19 +74,26 @@ export function AppHeader({ children, compressed }: AppHeaderProps) {
     if (visible) headerLayer.setCompressed(Boolean(compressed));
   }, [compressed, headerLayer, visible]);
 
+  if (id && !isCurrentHeader) return null;
+
   return headerLayerElement
     ? createPortal(
       <motion.div
-        initial={false}
-        animate={{ opacity: visible ? 1 : 0 }}
-        transition={reduceMotion ? { duration: 0.01 } : PAGE_DISSOLVE.animate.transition}
+        initial={reduceMotion ? false : HEADER_ROUTE_MORPH.initial}
+        animate={reduceMotion
+          ? { opacity: visible ? 1 : 0, transition: { duration: 0.01 } }
+          : visible
+            ? HEADER_ROUTE_MORPH.animate
+            : HEADER_ROUTE_MORPH.exit}
+        exit={reduceMotion ? { opacity: 0, transition: { duration: 0.01 } } : HEADER_ROUTE_MORPH.exit}
         className={cn(
           'w-full overflow-hidden',
           isRoutePresent ? 'relative' : 'absolute inset-x-0 top-0',
         )}
         style={{
           pointerEvents: visible ? 'auto' : 'none',
-          willChange: reduceMotion ? undefined : 'opacity',
+          transformOrigin: '50% 0%',
+          willChange: reduceMotion ? undefined : 'transform, opacity',
         }}
       >
         {children}
@@ -89,10 +106,9 @@ export function AppHeader({ children, compressed }: AppHeaderProps) {
 function RouteTransitionLayer({
   children,
 }: {
-  autoReady: boolean;
   children: ReactNode;
-  routeKey: string;
 }) {
+  const reduceMotion = Boolean(useReducedMotion());
   const reportReady = useCallback(() => {}, []);
 
   const pageReadyValue = useMemo<PageReadyContextValue>(() => ({
@@ -103,9 +119,28 @@ function RouteTransitionLayer({
 
   return (
     <PageReadyContext.Provider value={pageReadyValue}>
-      <div className="col-start-1 row-start-1 h-full min-h-[100dvh] w-full">
-        {children}
-      </div>
+      <motion.div
+        data-route-surface="true"
+        initial={reduceMotion ? false : PAGE_SURFACE_MOTION.initial}
+        animate={reduceMotion
+          ? { opacity: 1, transition: { duration: 0.01 } }
+          : PAGE_SURFACE_MOTION.animate}
+        className="col-start-1 row-start-1 h-full min-h-[100dvh] w-full bg-[#f4f7f9] dark:bg-[#030303]"
+        style={{
+          willChange: reduceMotion ? undefined : 'opacity',
+          pointerEvents: 'auto',
+        }}
+      >
+        <motion.div
+          data-route-content="true"
+          initial={reduceMotion ? false : ROUTE_CONTENT_SETTLE.initial}
+          animate={reduceMotion ? { opacity: 1, y: 0, transition: { duration: 0.01 } } : ROUTE_CONTENT_SETTLE.animate}
+          className="h-full min-h-[100dvh] w-full"
+          style={{ willChange: reduceMotion ? undefined : 'opacity, transform' }}
+        >
+          {children}
+        </motion.div>
+      </motion.div>
     </PageReadyContext.Provider>
   );
 }
@@ -113,6 +148,8 @@ function RouteTransitionLayer({
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const hasTabChrome = isTabRoute(pathname);
+  const currentHeaderId = headerIdForPathname(pathname);
+  const routeLayerKey = hasTabChrome ? 'tabs' : pathname;
   const [headerLayerElement, setHeaderLayerElement] = useState<HTMLDivElement | null>(null);
   const [headerCompression, setHeaderCompression] = useState({ pathname: '', compressed: false });
   const setHeaderCompressed = useCallback((compressed: boolean) => {
@@ -120,9 +157,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
   const headerCompressed = headerCompression.pathname === pathname && headerCompression.compressed;
   const headerLayerValue = useMemo(() => ({
+    currentId: currentHeaderId,
     element: headerLayerElement,
     setCompressed: setHeaderCompressed,
-  }), [headerLayerElement, setHeaderCompressed]);
+  }), [currentHeaderId, headerLayerElement, setHeaderCompressed]);
 
   return (
     <HeaderLayerContext.Provider value={headerLayerValue}>
@@ -145,8 +183,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="grid h-full min-h-[100dvh] w-full">
-          <RouteTransitionLayer key={pathname} routeKey={pathname} autoReady={true}>
-            {children}
+          <RouteTransitionLayer key={routeLayerKey}>
+            {hasTabChrome ? <AppTabHost pathname={pathname} /> : children}
           </RouteTransitionLayer>
         </div>
       </div>

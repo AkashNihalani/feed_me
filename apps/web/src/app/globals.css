@@ -18,8 +18,11 @@
      per-frame GPU cost is bounded by chrome area, not content volume.
      Tweak --fm-glass-blur to taste — capped low on purpose so the
      content behind stays evident and scroll stays smooth. */
-  --fm-glass-blur: 18px;
-  --fm-glass-saturate: 145%;
+  /* Blur radius dominates iOS scroll cost (the chrome bars re-raster their
+     backdrop every frame). Capped low: 12px still reads as glass but the
+     filter recomputes ~2x cheaper than 18px on WebKit. */
+  --fm-glass-blur: 12px;
+  --fm-glass-saturate: 125%;
   /* Light: evidently see-through frost (content reads through) */
   --fm-chrome-bg: rgba(255, 255, 255, 0.46);
   --fm-chrome-border: rgba(255, 255, 255, 0.62);
@@ -28,6 +31,9 @@
   --fm-mobile-header-chrome-height: 128px;
   --fm-desktop-header-chrome-height: 128px;
   --fm-mobile-header-chrome-compressed-height: 78px;
+  --fm-tab-content-gap: 20px;
+  --fm-tab-mobile-content-offset: calc(var(--fm-mobile-header-chrome-height, 128px) + var(--fm-tab-content-gap));
+  --fm-tab-desktop-content-offset: 174px;
 }
 
 /* Explicit Light Mode */
@@ -242,13 +248,14 @@ select,
     rgba(255, 255, 255, 0.80);
   border: 1px solid rgba(12, 18, 28, 0.07);
   border-top-color: rgba(255, 255, 255, 0.92);
+  /* Two drop layers instead of four, max blur 40px instead of 78px. iOS paints
+     box-shadow over an area ~ blur² , so this is ~4x cheaper per panel with a
+     near-identical soft-depth read. */
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.96) inset,
     0 -1px 0 rgba(9, 14, 22, 0.04) inset,
-    0 1px 2px rgba(15, 23, 42, 0.03),
-    0 8px 18px rgba(15, 23, 42, 0.05),
-    0 22px 46px -14px rgba(15, 23, 42, 0.08),
-    0 42px 78px -26px rgba(15, 23, 42, 0.08);
+    0 2px 6px rgba(15, 23, 42, 0.05),
+    0 18px 40px -16px rgba(15, 23, 42, 0.13);
 }
 
 .dark .fm-solid-panel,
@@ -257,13 +264,13 @@ select,
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-top-color: rgba(255, 255, 255, 0.10);
   border-bottom-color: rgba(0, 0, 0, 0.3);
+  /* See light-mode note: collapsed to one contact + one ambient layer, max
+     blur 40px instead of 80px. */
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.05) inset,
     0 -1px 0 rgba(0, 0, 0, 0.6) inset,
-    0 2px 4px rgba(0, 0, 0, 0.3),
-    0 8px 16px rgba(0, 0, 0, 0.4),
-    0 24px 48px -8px rgba(0, 0, 0, 0.5),
-    0 48px 80px -16px rgba(0, 0, 0, 0.4);
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 20px 40px -14px rgba(0, 0, 0, 0.6);
 }
 
 /* Neumorphic top-bevel gradient overlay */
@@ -437,13 +444,122 @@ html.fm-mobile-browser-immersive body > main {
 html.fm-mobile-browser-immersive,
 html.fm-mobile-browser-immersive body,
 html.fm-mobile-browser-immersive body > main,
+html.fm-fire-immersive .fm-app-shell-root,
 html.fm-mobile-browser-immersive .fm-app-shell-root {
   min-height: 100lvh;
 }
 
+html.fm-fire-immersive .fm-app-shell-root,
 html.fm-mobile-browser-immersive .fm-app-shell-root {
   background: transparent !important;
   background-color: transparent !important;
+}
+
+.fm-chrome-safe-overlay {
+  background: transparent;
+}
+
+.fm-chrome-safe-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--fm-overlay-bg, rgba(0, 0, 0, 0.54));
+}
+
+.fm-dark-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.fm-dark-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.fm-dark-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fm-dark-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.fm-dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+  background-clip: padding-box;
+}
+
+@media (min-width: 1024px) {
+  .fm-fund-breakdown-dialog {
+    display: grid;
+    grid-template-columns: minmax(340px, 0.86fr) minmax(420px, 1.14fr);
+    max-width: 960px;
+    max-height: 82vh;
+    overflow: hidden;
+  }
+
+  .fm-fund-breakdown-summary {
+    grid-column: 1;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+
+  .fm-fund-breakdown-header {
+    padding-top: 2rem;
+  }
+
+  .fm-fund-breakdown-ledger {
+    box-sizing: border-box;
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    display: flex;
+    height: 100%;
+    max-height: 82vh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border-left: 1px solid rgba(255, 255, 255, 0.07);
+    padding: 2rem 1.75rem;
+  }
+
+  .fm-fund-breakdown-ledger-list {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+
+  .fm-fund-breakdown-cta {
+    grid-column: 1;
+    padding: 2rem 2rem 2rem;
+  }
+
+  .fm-fund-breakdown-mobile-safe {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  html.fm-fire-immersive .fm-chrome-safe-backdrop,
+  html.fm-mobile-browser-immersive .fm-chrome-safe-backdrop {
+    inset: 0;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 calc(env(safe-area-inset-top) + 16px),
+      #000 calc(100% - env(safe-area-inset-bottom) - 34px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 calc(env(safe-area-inset-top) + 16px),
+      #000 calc(100% - env(safe-area-inset-bottom) - 34px),
+      transparent 100%
+    );
+  }
 }
 
 html.fm-fire-root-scroll {
@@ -504,6 +620,10 @@ html.fm-feed-root-scroll body {
   --fm-feed-mobile-section-height: calc(var(--fm-app-height, 100dvh) - var(--fm-mobile-detail-header-offset) - var(--fm-feed-bottom-clearance, 120px) - env(safe-area-inset-bottom) - 8px);
 }
 
+.fm-mobile-browser-immersive .fm-feed-detail-scroll {
+  --fm-feed-mobile-section-height: calc(100lvh - var(--fm-mobile-detail-header-offset) - var(--fm-feed-bottom-clearance, 120px) - env(safe-area-inset-bottom) - 8px);
+}
+
 @media (min-width: 640px) {
   .fm-feed-detail-scroll {
     --fm-feed-stack-gap: 14px;
@@ -555,8 +675,7 @@ html.fm-feed-root-scroll body {
     0 1px 0 rgba(255, 255, 255, 0.55) inset,
     0 -1px 0 rgba(0, 0, 0, 0.03) inset,
     0 4px 8px rgba(0, 0, 0, 0.03),
-    0 12px 28px -4px rgba(0, 0, 0, 0.08),
-    0 32px 64px -12px rgba(0, 0, 0, 0.1);
+    0 16px 34px -10px rgba(0, 0, 0, 0.12);
   /* Only paint-cheap properties transition during shrink/expand. Padding &
      border-radius are driven on the element directly; backdrop-filter is NOT
      transitioned (re-rastering a transitioning blur is the classic jank). */
@@ -571,7 +690,7 @@ html.fm-feed-root-scroll body {
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
     0 -1px 0 rgba(0, 0, 0, 0.5) inset,
     0 8px 16px rgba(0, 0, 0, 0.4),
-    0 24px 48px -8px rgba(0, 0, 0, 0.55);
+    0 18px 34px -10px rgba(0, 0, 0, 0.58);
 }
 
 .fm-solid-chrome::before,
@@ -665,7 +784,14 @@ html.fm-feed-root-scroll body {
   }
 }
 
+.fm-app-header-row {
+  height: 52px;
+  min-height: 52px;
+  align-items: center;
+}
+
 .fm-app-header-title {
+  display: block !important;
   font-size: 36px !important;
   line-height: 0.88 !important;
   font-weight: 900;
@@ -674,6 +800,11 @@ html.fm-feed-root-scroll body {
 }
 
 @media (min-width: 1024px) {
+  .fm-app-header-row {
+    height: 64px;
+    min-height: 64px;
+  }
+
   .fm-app-header-title {
     font-size: 34px !important;
   }
@@ -771,6 +902,43 @@ html.fm-feed-root-scroll body {
   .dark .fm-depth-chrome {
     background: rgba(4, 4, 6, 0.94);
   }
+}
+
+/* ── Dev-only perf A/B toggles ──────────────────────────────────────────────
+   Set by PerfHud from URL params so the iPhone-sim cost of each GPU feature can
+   be isolated:  ?noblur  ?noshadow  ?noflat (both)  ?nopanelfx (all glass fx).
+   Strip one at a time, watch the PerfHud fps while scrolling — whichever toggle
+   recovers fps is the dominant cost. Purely diagnostic; remove before launch. */
+html[data-perf-noblur] .fm-depth-chrome,
+html[data-perf-noblur] .fm-solid-chrome {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(248, 250, 252, 0.94) !important;
+}
+html.dark[data-perf-noblur] .fm-depth-chrome,
+html.dark[data-perf-noblur] .fm-solid-chrome {
+  background: rgba(10, 10, 12, 0.95) !important;
+}
+
+html[data-perf-noshadow] .fm-depth-glass,
+html[data-perf-noshadow] .fm-depth-chrome,
+html[data-perf-noshadow] .fm-depth-chip,
+html[data-perf-noshadow] .fm-solid-panel,
+html[data-perf-noshadow] .fm-solid-chrome {
+  box-shadow: none !important;
+}
+
+/* nopanelfx = strip every glass extra at once (shadows + bevel ::before + any
+   filter/blend), leaving flat fills — the GPU floor for the panel system. */
+html[data-perf-nopanelfx] .fm-depth-glass,
+html[data-perf-nopanelfx] .fm-depth-chip,
+html[data-perf-nopanelfx] .fm-solid-panel {
+  box-shadow: none !important;
+  filter: none !important;
+}
+html[data-perf-nopanelfx] .fm-depth-glass::before,
+html[data-perf-nopanelfx] .fm-solid-panel::before {
+  display: none !important;
 }
 
 @media (min-width: 1024px) {
