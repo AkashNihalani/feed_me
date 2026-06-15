@@ -21,6 +21,7 @@ type ActiveFeed = {
 interface FeedDetailV2Props {
   activeFeed: ActiveFeed | null | undefined;
   children: ReactNode;
+  signalFeed?: ReactNode;
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
   baselineDashboardData?: DashboardPayload | null;
@@ -189,6 +190,7 @@ function DeferredMobileSection({
 export default function FeedDetailV2({
   activeFeed,
   children,
+  signalFeed,
   timeframe,
   dashboardData,
   baselineDashboardData = null,
@@ -430,6 +432,14 @@ export default function FeedDetailV2({
             </motion.div>
         </div>
       </motion.div>
+
+      {signalFeed && (
+        <div className="w-full px-4 sm:px-5 lg:px-2">
+          <div className="fm-tab-canvas-shell mx-auto w-full max-w-[min(430px,calc(100vw-32px))] lg:max-w-none">
+            {signalFeed}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,152 @@
+{
+  "run_stats": {
+    "beat_usual_count": 7,
+    "of": 10,
+    "peak_placed": "top 2%",
+    "typical_placed": "top 40%",
+    "views_vs_usual_median": 1.7,
+    "comments_vs_usual_median": 0.8,
+    "followers_net": -436,
+    "posts_with_legs": 2,
+    "best_hours_ist": [
+      15,
+      16,
+      19
+    ],
+    "posts_in_best_hours": 6,
+    "per_post": [
+      {
+        "post": "so i guess u wanted another one😋🍝",
+        "placed": "top 9%",
+        "views_vs_usual": 5.0,
+        "collab": false,
+        "hour_ist": 15,
+        "legs": false,
+        "carried_by": ""
+      },
+      {
+        "post": "im a little creeped out by my flirting s",
+        "placed": "top 70%",
+        "views_vs_usual": 0.9,
+        "collab": false,
+        "hour_ist": 12,
+        "legs": true,
+        "carried_by": "direct to camera persona riff"
+      },
+      {
+        "post": "My best friend was this 🤏🏻 close to stay",
+        "placed": "top 2%",
+        "views_vs_usual": 20.1,
+        "collab": false,
+        "hour_ist": 16,
+        "legs": true,
+        "carried_by": "friend setup then real world test"
+      },
+      {
+        "post": "one quick min before i serve",
+        "placed": "top 75%",
+        "views_vs_usual": 0.9,
+        "collab": false,
+        "hour_ist": 16,
+        "legs": false,
+        "carried_by": "fashion pose cut montage"
+      },
+      {
+        "post": "the boy was clearly the problem\n\n#obsess",
+        "placed": "top 68%",
+        "views_vs_usual": 0.9,
+        "collab": false,
+        "hour_ist": 16,
+        "legs": false,
+        "carried_by": "direct to camera persona riff"
+      },
+      {
+        "post": "we will just avoid the unclean transitio",
+        "placed": "top 45%",
+        "views_vs_usual": 1.5,
+        "collab": false,
+        "hour_ist": 11,
+        "legs": false,
+        "carried_by": "gesture matched transition chain"
+      },
+      {
+        "post": "sawatdee kha⭐️",
+        "placed": "top 36%",
+        "views_vs_usual": 1.9,
+        "collab": false,
+        "hour_ist": 10,
+        "legs": false,
+        "carried_by": "direct to camera persona riff"
+      },
+      {
+        "post": "eid fit check⭐️ (i have nowhere to go pl",
+        "placed": "top 43%",
+        "views_vs_usual": 1.4,
+        "collab": false,
+        "hour_ist": 17,
+        "legs": false,
+        "carried_by": "direct to camera persona riff"
+      },
+      {
+        "post": "brb asking my friends to invite me for b",
+        "placed": "top 20%",
+        "views_vs_usual": 2.8,
+        "collab": false,
+        "hour_ist": 16,
+        "legs": false,
+        "carried_by": "fashion pose cut montage"
+      },
+      {
+        "post": "its so difficult being outdoors these da",
+        "placed": "top 7%",
+        "views_vs_usual": 7.0,
+        "collab": false,
+        "hour_ist": 16,
+        "legs": false,
+        "carried_by": ""
+      }
+    ]
+  },
+  "run_bites": [
+    {
+      "kind": "trend",
+      "headline": "Friend test format is the standout",
+      "explainer": "The clearest winner here is the friend setup then real world test. \"My best friend was this 🤏🏻 close to stay\" hit top 2% and pulled 20.1x her usual views, easily the biggest post in the run. Nothing else with a named recurring format came close, so that one has real signal, not just a nice day out.",
+      "evidence": [
+        "My best friend was this 🤏🏻 close to stay",
+        "brb asking my friends to invite me for b",
+        "im a little creeped out by my flirting s"
+      ]
+    },
+    {
+      "kind": "watch",
+      "headline": "Views are up, conversation is not",
+      "explainer": "This was a reachy run, not a chatty one. 7 of 10 beat her usual and median views were 1.7x, but comments were only 0.8x and the run still lost 436 followers. Translation: people are watching, but a lot of them are passing through rather than sticking around.",
+      "evidence": [
+        "My best friend was this 🤏🏻 close to stay",
+        "its so difficult being outdoors these da",
+        "so i guess u wanted another one😋🍝"
+      ]
+    },
+    {
+      "kind": "easy_win",
+      "headline": "Best hours helped, weak formats didn’t",
+      "explainer": "Timing is not the problem here. She posted 6 of 10 in her best window, but some of those still sank because the format itself was soft — \"one quick min before i serve\" landed top 75% at 16:00, and \"the boy was clearly the problem\" hit top 68% at the same hour. So yes, keep the 3 to 4 pm habit, but you do not need to force more direct-to-camera riffs and pose montages just because the clock is right.",
+      "evidence": [
+        "one quick min before i serve",
+        "the boy was clearly the problem\n\n#obsess",
+        "My best friend was this 🤏🏻 close to stay"
+      ]
+    },
+    {
+      "kind": "durability",
+      "headline": "Only two posts kept climbing later",
+      "explainer": "Most of this run popped fast or fizzled, with only 2 posts showing legs. One is the huge winner, \"My best friend was this 🤏🏻 close to stay,\" which makes sense. The sneaky one is \"im a little creeped out by my flirting s\" — not a big rank at top 70%, but it kept moving, which usually means the idea had more staying power than the first-day reaction showed.",
+      "evidence": [
+        "My best friend was this 🤏🏻 close to stay",
+        "im a little creeped out by my flirting s",
+        "its so difficult being outdoors these da"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "run_stats": {
+    "beat_usual_count": 10,
+    "of": 10,
+    "peak_placed": "top 10%",
+    "typical_placed": "top 40%",
+    "views_vs_usual_median": 2.0,
+    "comments_vs_usual_median": 0.4,
+    "followers_net": 24147,
+    "posts_with_legs": 3,
+    "best_hours_ist": [],
+    "posts_in_best_hours": 0,
+    "per_post": [
+      {
+        "post": "The council of makeup lovers has been su",
+        "placed": "top 24%",
+        "views_vs_usual": 2.3,
+        "collab": false,
+        "hour_ist": 21,
+        "legs": false,
+        "carried_by": "gesture triggered product appearance"
+      },
+      {
+        "post": "Downloading in progress ⏳\n\nBecause your ",
+        "placed": "top 31%",
+        "views_vs_usual": 2.1,
+        "collab": false,
+        "hour_ist": 12,
+        "legs": true,
+        "carried_by": "ui overlay insert"
+      },
+      {
+        "post": "Wearing the golden hour on my lips just ",
+        "placed": "top 18%",
+        "views_vs_usual": 2.8,
+        "collab": false,
+        "hour_ist": 18,
+        "legs": false,
+        "carried_by": "physical claim test"
+      },
+      {
+        "post": "When your eyeliner does it all, looking ",
+        "placed": "top 59%",
+        "views_vs_usual": 1.1,
+        "collab": false,
+        "hour_ist": 21,
+        "legs": false,
+        "carried_by": "product only packshot"
+      },
+      {
+        "post": "TLDR: Your lashes finally got the main c",
+        "placed": "top 56%",
+        "views_vs_usual": 1.4,
+        "collab": false,
+        "hour_ist": 18,
+        "legs": false,
+        "carried_by": "physical claim test"
+      },
+      {
+        "post": "We celebrate your skin and skincare ever",
+        "placed": "top 39%",
+        "views_vs_usual": 2.0,
+        "collab": false,
+        "hour_ist": 17,
+        "legs": false,
+        "carried_by": "ui overlay insert"
+      },
+      {
+        "post": "TLDR: This wand came to work. 💅🏼\n\nWith a",
+        "placed": "top 55%",
+        "views_vs_usual": 1.4,
+        "collab": false,
+        "hour_ist": 21,
+        "legs": true,
+        "carried_by": "product only packshot"
+      },
+      {
+        "post": "Her day’s packed, but a refreshing Ice D",
+        "placed": "top 10%",
+        "views_vs_usual": 3.7,
+        "collab": false,
+        "hour_ist": 17,
+        "legs": false,
+        "carried_by": "ui overlay insert"
+      },
+      {
+        "post": "First job-এর confusion আর corporate-এর c",
+        "placed": "top 41%",
+        "views_vs_usual": 2.0,
+        "collab": false,
+        "hour_ist": 21,
+        "legs": false,
+        "carried_by": "physical claim test"
+      },
+      {
+        "post": "Only posting instants that look Eyeconic",
+        "placed": "top 61%",
+        "views_vs_usual": 1.0,
+        "collab": false,
+        "hour_ist": 21,
+        "legs": true,
+        "carried_by": "ui overlay insert"
+      }
+    ]
+  },
+  "run_bites": [
+    {
+      "kind": "trend",
+      "headline": "UI overlays are carrying the run",
+      "explainer": "This run leaned hard into screen-like overlays, and that is where the strongest posts sat. The biggest post, \"Her day’s packed, but a refreshing Ice D,\" hit top 10% at 3.7x usual, and \"Downloading in progress ⏳\\n\\nBecause your \" also had legs at 2.1x. Even the weaker overlay post still doubled usual views, so this is looking like a real house style, not a one-off trick.",
+      "evidence": [
+        "Her day’s packed, but a refreshing Ice D",
+        "Downloading in progress ⏳\n\nBecause your ",
+        "We celebrate your skin and skincare ever"
+      ]
+    },
+    {
+      "kind": "watch",
+      "headline": "Views flew, conversation did not",
+      "explainer": "This was a reach-heavy run: all 10 beat usual and median views were 2x, but comments fell to 0.4x usual. So people are watching, not really stopping to talk. The account still banked +24,147 followers, but the engagement mix says these posts are better at pull than chatter right now.",
+      "evidence": [
+        "Her day’s packed, but a refreshing Ice D",
+        "Wearing the golden hour on my lips just ",
+        "We celebrate your skin and skincare ever"
+      ]
+    },
+    {
+      "kind": "easy_win",
+      "headline": "Packshots are still the sleepy lane",
+      "explainer": "The clean product-only reels are the obvious weak spot. \"When your eyeliner does it all, looking \" landed top 59%, \"TLDR: This wand came to work. 💅🏼\\n\\nWith a\" hit top 55%, and \"Only posting instants that look Eyeconic\" was worst at top 61% despite having legs. If you want a cheap lift, give these posts a human moment or demo instead of asking the product to perform solo.",
+      "evidence": [
+        "When your eyeliner does it all, looking ",
+        "TLDR: This wand came to work. 💅🏼\n\nWith a",
+        "Only posting instants that look Eyeconic"
+      ]
+    },
+    {
+      "kind": "durability",
+      "headline": "Legs showed up in mixed places",
+      "explainer": "Only 3 posts kept climbing, and they were not the obvious winners. \"Downloading in progress ⏳\\n\\nBecause your \" had both lift and legs, but \"TLDR: This wand came to work. 💅🏼\\n\\nWith a\" and \"Only posting instants that look Eyeconic\" kept going even from weaker placements. That is a useful split: some posts spike fast, while others age better than their first-day ranking suggests.",
+      "evidence": [
+        "Downloading in progress ⏳\n\nBecause your ",
+        "TLDR: This wand came to work. 💅🏼\n\nWith a",
+        "Only posting instants that look Eyeconic"
+      ]
+    }
+  ]
+}

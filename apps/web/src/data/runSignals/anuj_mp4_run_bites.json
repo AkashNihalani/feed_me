@@ -1,0 +1,162 @@
+{
+  "run_stats": {
+    "beat_usual_count": 5,
+    "of": 10,
+    "peak_placed": "top 17%",
+    "typical_placed": "top 48%",
+    "views_vs_usual_median": 1.1,
+    "comments_vs_usual_median": 0.8,
+    "followers_net": 8747,
+    "posts_with_legs": 2,
+    "best_hours_ist": [
+      20,
+      12,
+      23
+    ],
+    "posts_in_best_hours": 2,
+    "per_post": [
+      {
+        "post": "🏇O Pedro, Mumbai\n\nBro this restaurant wa",
+        "placed": "top 17%",
+        "views_vs_usual": 3.5,
+        "collab": false,
+        "hour_ist": 13,
+        "legs": false,
+        "carried_by": ""
+      },
+      {
+        "post": "We went to Baskin Robbins, and bhai, the",
+        "placed": "top 21%",
+        "views_vs_usual": 1.9,
+        "collab": false,
+        "hour_ist": 17,
+        "legs": true,
+        "carried_by": ""
+      },
+      {
+        "post": "comics when they get hired to act but su",
+        "placed": "top 54%",
+        "views_vs_usual": 1.2,
+        "collab": false,
+        "hour_ist": 12,
+        "legs": false,
+        "carried_by": ""
+      },
+      {
+        "post": "Shots were definitely taken. The spots? ",
+        "placed": "top 27%",
+        "views_vs_usual": 1.7,
+        "collab": false,
+        "hour_ist": 18,
+        "legs": true,
+        "carried_by": ""
+      },
+      {
+        "post": "oh my god it says molly",
+        "placed": "top 80%",
+        "views_vs_usual": 0.6,
+        "collab": false,
+        "hour_ist": 23,
+        "legs": false,
+        "carried_by": "micro reveal closeup"
+      },
+      {
+        "post": "@anuj.mp4 reviews glasses so he drinks m",
+        "placed": "top 50%",
+        "views_vs_usual": 0.9,
+        "collab": false,
+        "hour_ist": 18,
+        "legs": false,
+        "carried_by": "single premise absurdity run"
+      },
+      {
+        "post": "Lotto H&M coming in hot for the season 👀",
+        "placed": "top 90%",
+        "views_vs_usual": 0.2,
+        "collab": false,
+        "hour_ist": 16,
+        "legs": false,
+        "carried_by": "product glamour montage"
+      },
+      {
+        "post": "when ur rich friend says he comes from h",
+        "placed": "top 46%",
+        "views_vs_usual": 1.3,
+        "collab": false,
+        "hour_ist": 22,
+        "legs": false,
+        "carried_by": "single take character shift"
+      },
+      {
+        "post": "anuj.mp4 and krish sing for men in clubh",
+        "placed": "top 81%",
+        "views_vs_usual": 0.4,
+        "collab": false,
+        "hour_ist": 19,
+        "legs": false,
+        "carried_by": "dramatic reference overlay"
+      },
+      {
+        "post": "Mbappe watching PSG win back 2 back UCLs",
+        "placed": "top 47%",
+        "views_vs_usual": 1.0,
+        "collab": false,
+        "hour_ist": 1,
+        "legs": false,
+        "carried_by": "slow hold reaction"
+      }
+    ]
+  },
+  "run_bites": [
+    {
+      "kind": "trend",
+      "headline": "Real-world hangouts are carrying this run",
+      "explainer": "The strongest posts here are not the concept edits, they are out-in-the-world hangs. O Pedro landed top 17% at 3.5x usual views, Baskin Robbins hit top 21% and kept going, and the spots/shots post reached top 27% with legs too. Right now, real-life outing energy looks hotter than the more constructed bits.",
+      "evidence": [
+        "🏇O Pedro, Mumbai\n\nBro this restaurant wa",
+        "We went to Baskin Robbins, and bhai, the",
+        "Shots were definitely taken. The spots? "
+      ]
+    },
+    {
+      "kind": "watch",
+      "headline": "Reach is up, chatter is softer",
+      "explainer": "This run pulled in more people than usual, but they were quieter once they got there. Views were up 1.1x at the middle, yet comments sat at 0.8x, so the account is getting seen more than it is getting discussed. Good for spread, less good if the goal is posts people need to yap under.",
+      "evidence": [
+        "🏇O Pedro, Mumbai\n\nBro this restaurant wa",
+        "We went to Baskin Robbins, and bhai, the",
+        "Shots were definitely taken. The spots? "
+      ]
+    },
+    {
+      "kind": "easy_win",
+      "headline": "The best hours are being ignored",
+      "explainer": "Only 2 of 10 posts went out in the account's best windows, which is leaving easy juice on the table. Weirdly, one of the misses was at 23:00, a strong hour, but the bigger pattern is that most posts still went elsewhere. You do not need a new format first — just put more of the stronger stuff at 20:00, 12:00, or 23:00.",
+      "evidence": [
+        "comics when they get hired to act but su",
+        "oh my god it says molly",
+        "Mbappe watching PSG win back 2 back UCLs"
+      ]
+    },
+    {
+      "kind": "what_changed",
+      "headline": "Less skit machinery, more casual world",
+      "explainer": "Compared with the account's usual playbook, this run leaned away from the recognizable comedy formats and toward looser social, food, and hanging-out posts. The recurring bits still showed up, but the breakout posts were O Pedro, Baskin Robbins, and the spots/shots one rather than the single-premise or reference-heavy edits. It feels like the account loosened the tie and the audience liked the version that just walks into places.",
+      "evidence": [
+        "🏇O Pedro, Mumbai\n\nBro this restaurant wa",
+        "We went to Baskin Robbins, and bhai, the",
+        "Shots were definitely taken. The spots? "
+      ]
+    },
+    {
+      "kind": "durability",
+      "headline": "Only two posts actually kept climbing",
+      "explainer": "This was a good run, but not a sticky one across the board. Only two posts showed real legs, and both were the casual outing-style entries rather than the quick visual jokes or stylized concepts. That is a useful tell: some ideas spike fast, but the world-facing posts are the ones that keep finding people after day one.",
+      "evidence": [
+        "We went to Baskin Robbins, and bhai, the",
+        "Shots were definitely taken. The spots? ",
+        "oh my god it says molly"
+      ]
+    }
+  ]
+}

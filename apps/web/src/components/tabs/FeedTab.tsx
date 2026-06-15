@@ -7,10 +7,10 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { ChevronLeft, Clock, Crown, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
-import FeederFileTile from '@/components/feed/FeederFileTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
+import RunSignalFeed from '@/components/feed/RunSignalFeed';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import FeedBriefDialog from '@/components/feed/FeedBriefDialog';
@@ -1513,22 +1513,8 @@ function FeedPageContent() {
 	              onExportFromChange={setExportFrom}
 	              onExportToChange={setExportTo}
 	              onExport={() => { play('snapLock'); handleDownloadExport(); }}
+              signalFeed={activeFeed ? <RunSignalFeed feedId={activeFeed.id} selectedHandle={selectedHandle} /> : null}
             >
-              {activeFeed && (
-                <FeederFileTile
-                  key="feeder-file"
-                  feedTitle={activeFeed.title}
-                  feederCount={activeFeed.feeders.length}
-                  trackedPosts={activeFeed.metrics?.postsTracked || '0'}
-                  onOpen={() => {
-                    const params = new URLSearchParams();
-                    if (selectedHandle !== 'all') params.set('handle', selectedHandle);
-                    const query = params.toString();
-                    play('snapLock');
-                    router.push(`/feed/${activeFeed.id}/feeder-file${query ? `?${query}` : ''}`, { scroll: false });
-                  }}
-                />
-              )}
               {activeFeed && (
                 <motion.button
                   key="brief"
