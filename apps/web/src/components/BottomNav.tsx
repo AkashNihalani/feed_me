@@ -110,7 +110,7 @@ export default function BottomNav() {
     if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
   }, []);
 
-  if (pathname === '/login') return null;
+  if (pathname === '/login' || pathname?.startsWith('/command')) return null;
 
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">

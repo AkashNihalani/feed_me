@@ -193,6 +193,97 @@ html.dark {
   .fm-live-dot { animation: none; opacity: 1; }
 }
 
+/* Login dashboard slot-number: discrete weighted glyph shifts, then rest. */
+.fm-login-slot-number {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: pre;
+}
+
+.fm-login-slot-number__slot {
+  position: relative;
+  display: inline-flex;
+  height: 1em;
+  flex: none;
+  justify-content: center;
+  overflow: hidden;
+  line-height: 1;
+  vertical-align: bottom;
+}
+
+.fm-login-slot-number__slot--digit {
+  width: 0.62em;
+}
+
+.fm-login-slot-number__slot--mark {
+  width: 0.29em;
+}
+
+.fm-login-slot-number__slot--empty {
+  width: 0;
+}
+
+.fm-login-slot-number__sizer {
+  visibility: hidden;
+  white-space: pre;
+}
+
+.fm-login-slot-number__face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: pre;
+}
+
+.fm-login-slot-number__face--old {
+  display: none;
+  opacity: 0;
+}
+
+.fm-login-slot-number__face--new {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.fm-login-slot-number__slot--changed .fm-login-slot-number__face {
+  will-change: transform, opacity;
+}
+
+.fm-login-slot-number__slot--changed .fm-login-slot-number__face--old {
+  display: flex;
+  animation: fm-login-slot-number-old 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: var(--slot-delay, 0ms);
+}
+
+.fm-login-slot-number__slot--changed .fm-login-slot-number__face--new {
+  animation: fm-login-slot-number-new 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--slot-delay, 0ms) + 34ms);
+}
+
+@keyframes fm-login-slot-number-old {
+  0% { opacity: 1; transform: translateY(0) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(118%) rotate(1.6deg); }
+}
+
+@keyframes fm-login-slot-number-new {
+  0% { opacity: 0; transform: translateY(-118%) rotate(-1.6deg); }
+  68% { opacity: 1; transform: translateY(7%) rotate(0.35deg); }
+  100% { opacity: 1; transform: translateY(0) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-login-slot-number__slot--changed .fm-login-slot-number__face {
+    animation: none;
+    transform: translateY(0);
+  }
+
+  .fm-login-slot-number__face--old {
+    display: none;
+  }
+}
+
 body {
   margin: 0;
   background: var(--background);
@@ -453,6 +544,16 @@ html.fm-fire-immersive .fm-app-shell-root,
 html.fm-mobile-browser-immersive .fm-app-shell-root {
   background: transparent !important;
   background-color: transparent !important;
+}
+
+:root:has([data-login-shell]),
+:root:has([data-login-shell]) body,
+:root:has([data-login-shell]) body > main,
+:root:has([data-login-shell]) .fm-app-shell-root,
+:root:has([data-login-shell]) [data-route-surface="true"],
+:root:has([data-login-shell]) [data-route-content="true"] {
+  background: #fff !important;
+  background-color: #fff !important;
 }
 
 .fm-chrome-safe-overlay {

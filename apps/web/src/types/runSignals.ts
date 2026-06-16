@@ -12,6 +12,9 @@ export type RunSignalEvidence = {
   post_url: string | null;
   thumbnail_url: string | null;
   title: string;
+  source?: 'current' | 'memory';
+  move_name?: string | null;
+  receipt_read?: string | null;
   placed: string | null;
   views_vs_usual: number | null;
   comments_vs_usual: number | null;
@@ -31,4 +34,6 @@ export type RunSignal = {
   runLabel: string;
   metrics: RunSignalMetric[];
   evidence: RunSignalEvidence[];
+  memory_evidence?: RunSignalEvidence[];
+  memory_moves?: string[];
 };

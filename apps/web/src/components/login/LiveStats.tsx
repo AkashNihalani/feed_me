@@ -3,15 +3,13 @@
 /* ─────────────────────────────────────────────
    LIVE DASHBOARD — pre-login platform telemetry
 
-   Real totals from /api/stats/public, shown as one synchronized dashboard
-   shift: all tiles update together, settle together, then rest.
-   One identity: white ground, ink numbers, ONE solid-red flagship tile.
-   Bold red used sparingly — no washed glows. Alive on mobile (no hover).
+   Real totals from /api/stats/public, shown as a ranked number pyramid:
+   smallest count at the top, largest count at the bottom, left edge aligned.
+   Values update discretely every 5-7s with slot-number motion, then rest.
    ───────────────────────────────────────────── */
 
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Odometer from './Odometer';
 import { type LiveMetrics, type LivePlatformState, type MetricAnchor, type MetricKey } from '@/lib/useLiveStats';
@@ -28,19 +26,9 @@ const METRICS: Array<{ key: MetricKey; label: string }> = [
   { key: 'views', label: 'Views tracked' },
   { key: 'comments', label: 'Comments tracked' },
 ];
-const FLAGSHIP: MetricKey = 'accounts';
-const DASHBOARD_SHIFT_MS = 14_000;
-const DASHBOARD_REST_MS = 5_500;
-
-const WHITE_TILE: React.CSSProperties = {
-  background: '#ffffff',
-  border: '1px solid rgba(14,19,28,0.09)',
-  boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 14px 30px -18px rgba(15,23,42,0.22)',
-};
-const RED_TILE: React.CSSProperties = {
-  background: RED,
-  boxShadow: '0 16px 32px -16px rgba(15,23,42,0.42)', // neutral depth, NOT a red glow
-};
+const DASHBOARD_MIN_UPDATE_MS = 5_000;
+const DASHBOARD_MAX_UPDATE_MS = 7_000;
+const ROW_NUMBER_CLASS = 'text-[clamp(40px,3vw,50px)]';
 
 type DashboardValues = Partial<Record<MetricKey, number | null>>;
 
@@ -60,48 +48,52 @@ function snapshotValues(metrics: LiveMetrics | null, fetchedAt: number): Dashboa
   return next;
 }
 
-function StatTile({
+function nextDashboardUpdateDelay() {
+  return DASHBOARD_MIN_UPDATE_MS + Math.round(Math.random() * (DASHBOARD_MAX_UPDATE_MS - DASHBOARD_MIN_UPDATE_MS));
+}
+
+function StatRow({
   value,
-  climbing,
   label,
-  flagship,
-  delay,
+  rank,
+  total,
 }: {
   value: number | null;
-  climbing: boolean;
   label: string;
-  flagship: boolean;
-  delay: number;
+  rank: number;
+  total: number;
 }) {
+  const isBottom = rank === total - 1;
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      layout
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: APPLE_EASE, delay }}
-      className="relative flex min-h-[116px] flex-col justify-between overflow-hidden rounded-[18px] p-[22px] sm:min-h-[136px] sm:p-6 lg:min-h-[168px] lg:rounded-[20px] lg:p-7 xl:min-h-[202px] xl:p-8 2xl:min-h-[236px] 2xl:p-9"
-      style={flagship ? RED_TILE : WHITE_TILE}
-    >
-      {flagship && (
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.20) 0%, transparent 40%, rgba(0,0,0,0.10) 100%)' }}
-        />
+      transition={{ layout: { duration: 0.55, ease: APPLE_EASE }, opacity: { duration: 0.4, ease: APPLE_EASE }, y: { duration: 0.5, ease: APPLE_EASE } }}
+      className={cn(
+        'group relative grid min-h-[clamp(58px,7.5vh,74px)] grid-cols-1 items-end overflow-hidden border-t border-black/[0.07] py-[clamp(6px,0.8vh,10px)]',
+        isBottom && 'border-b border-black/[0.07]',
       )}
+    >
+      <div
+        className="pointer-events-none absolute left-0 top-0 h-px transition-all duration-500"
+        style={{
+          width: `${Math.max(14, Math.round(((rank + 1) / total) * 100))}%`,
+          background: isBottom ? RED : 'rgba(225,29,72,0.34)',
+        }}
+      />
 
-      <div className="relative flex items-center justify-between">
-        <span
-          className="text-[9px] font-black uppercase tracking-[0.2em] lg:text-[10px] xl:text-[11px]"
-          style={{ color: flagship ? 'rgba(255,255,255,0.82)' : 'rgba(11,11,15,0.42)' }}
-        >
-          {label}
-        </span>
-        {climbing && (
-          <TrendingUp className="h-3.5 w-3.5 xl:h-4 xl:w-4" strokeWidth={3} style={{ color: flagship ? 'rgba(255,255,255,0.85)' : RED }} />
-        )}
-      </div>
+      <div className="relative min-w-0">
+        <div className="mb-1 flex items-center sm:mb-1.5">
+          <span className="text-[9px] font-black uppercase tracking-[0.22em] text-black/42 lg:text-[10px] xl:text-[11px]">
+            {label}
+          </span>
+        </div>
 
-      <div className="relative mt-4 font-black tracking-[-0.02em] text-[28px] sm:text-[34px] lg:text-[50px] xl:text-[64px] 2xl:text-[76px]">
-        <Odometer value={value} color={flagship ? '#ffffff' : INK} durationMs={DASHBOARD_SHIFT_MS} />
+        <div className={cn('font-black leading-none tracking-[-0.045em] text-black', ROW_NUMBER_CLASS)}>
+          <Odometer value={value} color={INK} animateOnMount revealDelayMs={140 + rank * 70} />
+        </div>
       </div>
     </motion.div>
   );
@@ -112,6 +104,17 @@ export default function LiveDashboard({ state, className }: { state: LivePlatfor
   const metricsRef = useRef(metrics);
   const fetchedAtRef = useRef(fetchedAt);
   const [dashboardValues, setDashboardValues] = useState<DashboardValues>(() => snapshotValues(metrics, fetchedAt));
+  const rankedMetrics = METRICS
+    .map((metric, index) => ({
+      ...metric,
+      index,
+      value: dashboardValues[metric.key] ?? null,
+    }))
+    .sort((a, b) => {
+      const av = a.value ?? Number.POSITIVE_INFINITY;
+      const bv = b.value ?? Number.POSITIVE_INFINITY;
+      return av === bv ? a.index - b.index : av - bv;
+    });
 
   useEffect(() => {
     metricsRef.current = metrics;
@@ -133,10 +136,8 @@ export default function LiveDashboard({ state, className }: { state: LivePlatfor
       timeout = setTimeout(() => {
         if (cancelled) return;
         setDashboardValues(snapshotValues(metricsRef.current, fetchedAtRef.current));
-        timeout = setTimeout(() => {
-          if (!cancelled) scheduleRest();
-        }, DASHBOARD_SHIFT_MS);
-      }, DASHBOARD_REST_MS);
+        if (!cancelled) scheduleRest();
+      }, nextDashboardUpdateDelay());
     };
 
     scheduleRest();
@@ -150,26 +151,26 @@ export default function LiveDashboard({ state, className }: { state: LivePlatfor
 
   return (
     <div className={cn('w-full', className)} data-login-live-dashboard>
-      <div className="mb-3.5 flex items-center gap-2.5 lg:mb-4 xl:mb-5 2xl:mb-6">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-70" style={{ background: RED }} />
-          <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: RED }} />
+      <div className="mb-2.5 flex items-center gap-3 xl:mb-3 2xl:mb-4">
+        <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-80" style={{ background: RED }} />
+          <span className="absolute h-3.5 w-3.5 rounded-full opacity-20" style={{ background: RED, boxShadow: '0 0 18px rgba(225,29,72,0.75)' }} />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-[#E11D48]/20" style={{ background: RED, boxShadow: '0 0 10px rgba(225,29,72,0.45)' }} />
         </span>
-        <h2 className="text-[22px] font-black leading-none tracking-[-0.045em] sm:text-[25px] lg:text-[32px] xl:text-[38px] 2xl:text-[44px]" style={{ color: INK }}>
+        <h2 className="text-[clamp(22px,1.8vw,32px)] font-black leading-none tracking-[-0.045em]" style={{ color: INK }}>
           Currently <span style={{ color: RED }}>feeding</span> on
         </h2>
       </div>
 
-      {/* The dashboard — equal bento tiles, exact rolling odometers */}
-      <div className="grid grid-cols-2 gap-3.5 sm:gap-4 lg:gap-6 xl:gap-7 2xl:gap-8">
-        {METRICS.map((metric, index) => (
-          <StatTile
+      {/* Ranked number pyramid — left edge fixed, value magnitude grows downward. */}
+      <div className="relative">
+        {rankedMetrics.map((metric, index) => (
+          <StatRow
             key={metric.key}
-            value={dashboardValues[metric.key] ?? null}
-            climbing={(metrics?.[metric.key]?.ratePerSec ?? 0) > 0}
+            value={metric.value}
             label={metric.label}
-            flagship={metric.key === FLAGSHIP}
-            delay={0.06 + index * 0.05}
+            rank={index}
+            total={rankedMetrics.length}
           />
         ))}
       </div>

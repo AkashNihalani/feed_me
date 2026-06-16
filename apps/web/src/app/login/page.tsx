@@ -56,7 +56,8 @@ function PacManHero() {
     if (vw < 640) return { pacR: 34, bubbleR: 14, gap: 58, yCenter: 48 };
     if (vw < 1024) return { pacR: 46, bubbleR: 18, gap: 72, yCenter: 58 };
     if (vw >= 1800) return { pacR: 66, bubbleR: 24, gap: 106, yCenter: 82 };
-    if (vw >= 1440) return { pacR: 60, bubbleR: 22, gap: 96, yCenter: 74 };
+    if (vw >= 1536) return { pacR: 60, bubbleR: 22, gap: 96, yCenter: 74 };
+    if (vw >= 1280) return { pacR: 52, bubbleR: 20, gap: 84, yCenter: 58 };
     return { pacR: 52, bubbleR: 20, gap: 84, yCenter: 64 };
   }, []);
 
@@ -270,10 +271,10 @@ function PacManHero() {
   }, [getSizes]);
 
   return (
-    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-5 xl:mb-6">
+    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-5 xl:mb-4 2xl:mb-6">
       <canvas
         ref={canvasRef}
-        className="h-[84px] w-full sm:h-[108px] lg:h-[136px] xl:h-[156px] 2xl:h-[176px]"
+        className="h-[84px] w-full sm:h-[108px] lg:h-[136px] xl:h-[118px] 2xl:h-[176px]"
         style={{ imageRendering: 'auto' }}
       />
     </div>
@@ -327,12 +328,12 @@ function AmbientParticles() {
   const [particles] = useState(() =>
     Array.from({ length: 12 }, (_, i) => ({
       id: i,
-      left: `${5 + particleSeed(i, 1) * 90}%`,
-      top: `${5 + particleSeed(i, 2) * 90}%`,
-      size: 1.5 + particleSeed(i, 3) * 2,
-      opacity: 0.04 + particleSeed(i, 4) * 0.05,
-      duration: 8 + particleSeed(i, 5) * 10,
-      delay: particleSeed(i, 6) * 6,
+      left: `${(5 + particleSeed(i, 1) * 90).toFixed(4)}%`,
+      top: `${(5 + particleSeed(i, 2) * 90).toFixed(4)}%`,
+      size: `${(1.5 + particleSeed(i, 3) * 2).toFixed(3)}px`,
+      opacity: (0.04 + particleSeed(i, 4) * 0.05).toFixed(4),
+      duration: (8 + particleSeed(i, 5) * 10).toFixed(3),
+      delay: (particleSeed(i, 6) * 6).toFixed(3),
     }))
   );
 
@@ -490,20 +491,20 @@ export default function LoginPage() {
           draggable={false}
           className={cn(
             'shrink-0 select-none',
-            isLarge ? 'h-[84px] w-[84px] xl:h-[104px] xl:w-[104px] 2xl:h-[116px] 2xl:w-[116px]' : 'h-[60px] w-[60px] sm:h-[76px] sm:w-[76px]',
+            isLarge ? 'h-[72px] w-[72px] xl:h-[86px] xl:w-[86px] 2xl:h-[96px] 2xl:w-[96px]' : 'h-[60px] w-[60px] sm:h-[76px] sm:w-[76px]',
           )}
         />
         <span className="inline-flex items-baseline gap-0.5">
           <span className={cn(
             'font-black tracking-[-0.04em]',
-            isLarge ? 'text-[42px] xl:text-[50px] 2xl:text-[58px]' : 'text-[32px] sm:text-[44px]',
+            isLarge ? 'text-[36px] xl:text-[42px] 2xl:text-[48px]' : 'text-[32px] sm:text-[44px]',
           )} style={{ color: INK }}>
             FEED
           </span>
           <span
             className={cn(
               'font-black tracking-[-0.04em]',
-              isLarge ? 'text-[42px] xl:text-[50px] 2xl:text-[58px]' : 'text-[32px] sm:text-[44px]',
+              isLarge ? 'text-[36px] xl:text-[42px] 2xl:text-[48px]' : 'text-[32px] sm:text-[44px]',
             )}
             style={{ color: RED }}
           >
@@ -549,10 +550,8 @@ export default function LoginPage() {
   return (
     <div
       data-login-shell
-      className="relative flex h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white selection:bg-[#E11D48]/25 selection:text-[#E11D48] lg:h-[100vh] lg:min-h-0 lg:items-center lg:justify-center lg:gap-[clamp(72px,6vw,148px)] lg:overflow-hidden lg:pr-[clamp(28px,3vw,76px)]"
+      className="relative flex h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white selection:bg-[#E11D48]/25 selection:text-[#E11D48] xl:h-[100vh] xl:min-h-0 xl:items-center xl:justify-center xl:gap-[clamp(34px,3.8vw,104px)] xl:overflow-hidden xl:pr-[clamp(16px,1.8vw,52px)]"
       style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         WebkitOverflowScrolling: 'touch',
       }}
     >
@@ -560,7 +559,7 @@ export default function LoginPage() {
       {keyframes}
 
       {/* ── Top nav ── */}
-      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+      <div className="absolute right-4 top-[calc(16px+env(safe-area-inset-top))] z-20 sm:right-6 sm:top-[calc(24px+env(safe-area-inset-top))] xl:top-6">
         <Link
           href="/"
           className="group flex items-center gap-1.5 rounded-full border border-[#0B0B0F]/[0.08] bg-white/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#0B0B0F]/35 transition-colors hover:border-[#E11D48]/25 hover:text-[#E11D48]/70"
@@ -571,41 +570,46 @@ export default function LoginPage() {
       </div>
 
       {/* ════════════════════════════════════════════
-          DESKTOP: Two-panel split layout (lg+)
+          DESKTOP: Two-panel split layout (xl+)
           Left  = Live dashboard hero (55%)
           Right = Pac-Man + login form card (45%)
          ════════════════════════════════════════════ */}
 
       {/* ── Left hero panel (desktop only): brand + live dashboard ── */}
-      <div className="hidden lg:flex lg:w-auto lg:basis-[clamp(760px,49vw,1120px)] relative z-10 min-w-0 flex-col items-start justify-center">
+      <div className="relative z-10 hidden min-w-0 flex-col items-start justify-center xl:flex xl:w-auto xl:basis-[clamp(560px,49vw,920px)]">
         <motion.div
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.9, ease: APPLE_EASE, delay: 0.15 }}
           className="flex w-full max-w-none flex-col items-start"
         >
-          {brandMark(true, 'left')}
+          <div className="hidden 2xl:block">
+            {brandMark(true, 'left')}
+          </div>
+          <p className="mb-4 text-[9px] font-bold uppercase tracking-[0.22em] xl:mb-5 xl:text-[10px] 2xl:hidden" style={{ color: 'rgba(11,11,15,0.4)' }}>
+            Instagram Analytics &middot; Reimagined
+          </p>
           <LiveDashboard state={liveStats} className="mt-2" />
-          <div className="mt-8 xl:mt-10">{footerLinks('left')}</div>
+          <div className="mt-5 hidden 2xl:block">{footerLinks('left')}</div>
         </motion.div>
       </div>
 
       {/* ── Right panel (desktop): Pac-Man + form / Full column (mobile) ── */}
-      <div className="relative z-10 flex min-h-[100svh] w-full flex-col items-center justify-start px-5 pb-12 pt-7 sm:py-10 lg:min-h-0 lg:w-auto lg:basis-[clamp(500px,30vw,660px)] lg:items-start lg:justify-center lg:px-0 lg:py-0">
+      <div className="relative z-10 flex min-h-[100lvh] w-full flex-col items-center justify-start px-5 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] sm:py-10 xl:min-h-0 xl:w-auto xl:basis-[clamp(390px,30vw,540px)] xl:items-start xl:justify-center xl:px-0 xl:py-0">
 
-        {/* Mobile only: Pac-Man + brand stacked above the card */}
-        <div className="lg:hidden w-full max-w-[460px] flex flex-col items-center">
+        {/* Stacked screens: Pac-Man + brand above the card */}
+        <div className="flex w-full max-w-[460px] flex-col items-center xl:hidden">
           <PacManHero />
           {brandMark(false)}
         </div>
 
         {/* Desktop only: compact Pac-Man above the card */}
-        <div className="hidden w-full lg:block">
+        <div className="hidden w-full xl:block">
           <PacManHero />
         </div>
 
         {/* ── Form card wrapper ── */}
-        <div className="w-full max-w-[460px] lg:max-w-none">
+        <div className="w-full max-w-[460px] xl:max-w-none">
           <motion.div
             initial={{ opacity: 0, y: 32, scale: 0.94 }}
             animate={isSuccess
@@ -613,7 +617,7 @@ export default function LoginPage() {
               : { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }
             }
             transition={{ duration: isSuccess ? 0.5 : 0.8, ease: APPLE_EASE }}
-            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] lg:rounded-[32px]"
+            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] xl:rounded-[32px]"
             style={{
               background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.94) 100%)',
               border: '1px solid rgba(14,19,28,0.08)',
@@ -640,18 +644,18 @@ export default function LoginPage() {
 
             {/* Inner depth ring */}
             <div
-              className="pointer-events-none absolute inset-[1px] z-0 rounded-[23px] sm:rounded-[27px] lg:rounded-[31px]"
+              className="pointer-events-none absolute inset-[1px] z-0 rounded-[23px] sm:rounded-[27px] xl:rounded-[31px]"
               style={{
                 border: '1px solid rgba(15,23,42,0.04)',
                 borderTopColor: 'rgba(255,255,255,0.9)',
               }}
             />
 
-            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 lg:px-11 lg:py-14 xl:px-12 xl:py-[60px] 2xl:px-14 2xl:py-16">
+            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 xl:px-10 xl:py-11 2xl:px-14 2xl:py-16">
 
             {/* ── Tab switcher — light inset well ── */}
             <div
-              className="mx-auto mb-7 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-8 lg:mb-9 xl:max-w-[330px] xl:p-2"
+              className="mx-auto mb-7 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-8 xl:mb-7 xl:max-w-[310px] xl:p-1.5 2xl:mb-9 2xl:max-w-[330px] 2xl:p-2"
               style={{
                 background: 'rgba(15,23,42,0.05)',
                 border: '1px solid rgba(15,23,42,0.06)',
@@ -670,7 +674,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setMode(tab); setError(null); setMessage(null); }}
                     className={cn(
-                      'relative flex-1 rounded-[10px] py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition-colors duration-400 xl:py-3.5 xl:text-[11px]',
+                      'relative flex-1 rounded-[10px] py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition-colors duration-400 2xl:py-3.5 2xl:text-[11px]',
                       isActive ? 'text-[#E11D48] z-10' : 'text-[#0B0B0F]/35 z-0 hover:text-[#0B0B0F]/60',
                     )}
                   >
@@ -698,7 +702,7 @@ export default function LoginPage() {
             </div>
 
             {/* ── Title & subtitle — glass layer z-shift ── */}
-            <div className="relative mb-6 lg:mb-7 xl:mb-8" style={{ minHeight: 56, perspective: '600px' }}>
+            <div className="relative mb-6 xl:mb-7 2xl:mb-8" style={{ minHeight: 56, perspective: '600px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={mode}
@@ -710,12 +714,12 @@ export default function LoginPage() {
                   style={{ transformOrigin: 'center bottom' }}
                 >
                   <h1
-                    className="text-[24px] font-black tracking-[-0.025em] sm:text-[28px] lg:text-[34px] xl:text-[38px] 2xl:text-[42px]"
+                    className="text-[24px] font-black tracking-[-0.025em] sm:text-[28px] xl:text-[34px] 2xl:text-[42px]"
                     style={{ color: INK }}
                   >
                     {titles[mode]}
                   </h1>
-                  <p className="mt-2 text-[11px] font-semibold tracking-wide lg:text-[12px] xl:text-[13px]" style={{ color: 'rgba(11,11,15,0.45)' }}>
+                  <p className="mt-2 text-[11px] font-semibold tracking-wide xl:text-[12px] 2xl:text-[13px]" style={{ color: 'rgba(11,11,15,0.45)' }}>
                     {subtitles[mode]}
                   </p>
                 </motion.div>
@@ -723,7 +727,7 @@ export default function LoginPage() {
             </div>
 
             {/* ── Form ── */}
-            <form onSubmit={handleAuth} className="mx-auto w-full max-w-[500px] space-y-5 xl:max-w-[520px] xl:space-y-6" style={{ perspective: '800px' }}>
+            <form onSubmit={handleAuth} className="mx-auto w-full max-w-[500px] space-y-5 2xl:max-w-[520px] 2xl:space-y-6" style={{ perspective: '800px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={mode}
@@ -731,7 +735,7 @@ export default function LoginPage() {
                   animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, y: -16, scale: 0.96, rotateX: -5, filter: 'blur(3px)' }}
                   transition={{ duration: 0.45, ease: APPLE_EASE, delay: 0.04 }}
-                  className="space-y-5 xl:space-y-6"
+                  className="space-y-5 2xl:space-y-6"
                   style={{ transformOrigin: 'center top' }}
                 >
                   {/* Email */}
@@ -762,7 +766,7 @@ export default function LoginPage() {
                         className="pointer-events-none absolute inset-0 z-0"
                       >
                         <div
-                          className="absolute left-1/2 top-1/2 h-[560px] w-[560px] xl:h-[680px] xl:w-[680px]"
+                          className="absolute left-1/2 top-1/2 h-[560px] w-[560px] 2xl:h-[680px] 2xl:w-[680px]"
                           style={{
                             animation: 'shimmer-sweep 3.5s linear infinite',
                             background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgba(225,29,72,0.22) 250deg, rgba(225,29,72,0.88) 285deg, rgba(225,29,72,0.34) 322deg, transparent 352deg)',
@@ -785,7 +789,7 @@ export default function LoginPage() {
                         required
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 lg:h-[58px] xl:h-[64px] xl:px-6 xl:text-[17px]"
+                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[56px] 2xl:h-[64px] 2xl:px-6 2xl:text-[17px]"
                         style={{ color: INK, caretColor: RED }}
                       />
                     </motion.div>
@@ -831,7 +835,7 @@ export default function LoginPage() {
                           className="pointer-events-none absolute inset-0 z-0"
                         >
                           <div
-                            className="absolute left-1/2 top-1/2 h-[560px] w-[560px] xl:h-[680px] xl:w-[680px]"
+                            className="absolute left-1/2 top-1/2 h-[560px] w-[560px] 2xl:h-[680px] 2xl:w-[680px]"
                             style={{
                               animation: 'shimmer-sweep 3.5s linear infinite',
                               background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgba(225,29,72,0.22) 250deg, rgba(225,29,72,0.88) 285deg, rgba(225,29,72,0.34) 322deg, transparent 352deg)',
@@ -854,7 +858,7 @@ export default function LoginPage() {
                           required
                           placeholder="••••••••"
                           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 lg:h-[58px] xl:h-[64px] xl:px-6 xl:pr-14 xl:text-[17px]"
+                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[56px] 2xl:h-[64px] 2xl:px-6 2xl:pr-14 2xl:text-[17px]"
                           style={{ color: INK, caretColor: RED }}
                         />
                         <button
@@ -925,8 +929,8 @@ export default function LoginPage() {
                 whileTap={{ scale: 0.97 }}
                 layout
                 className={cn(
-                  'group relative mt-4 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] lg:h-[62px] lg:rounded-[16px] xl:h-[68px]',
-                  'text-[12px] font-black uppercase tracking-[0.2em] text-white lg:text-[13px] xl:text-[14px]',
+                  'group relative mt-4 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] xl:h-[58px] xl:rounded-[16px] 2xl:h-[68px]',
+                  'text-[12px] font-black uppercase tracking-[0.2em] text-white xl:text-[13px] 2xl:text-[14px]',
                   'disabled:opacity-40 disabled:cursor-not-allowed'
                 )}
                 style={{
@@ -987,13 +991,13 @@ export default function LoginPage() {
         </motion.div>
         </div>{/* end form card wrapper */}
 
-        {/* Mobile only: live dashboard below the whole box */}
-        <div className="mt-7 w-full max-w-[460px] lg:hidden">
+        {/* Stacked screens: live dashboard below the whole box */}
+        <div className="mt-7 w-full max-w-[460px] xl:hidden">
           <LiveDashboard state={liveStats} />
         </div>
 
-        {/* Mobile only: footer */}
-        <div className="lg:hidden mt-8 w-full max-w-[460px]">
+        {/* Stacked screens: footer */}
+        <div className="mt-8 w-full max-w-[460px] xl:hidden">
           {footerLinks('center')}
         </div>
       </div>{/* end right panel */}

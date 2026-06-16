@@ -5,16 +5,24 @@
 // otherwise (cheap to ship). Used to verify the 60fps / no-jitter work — watch
 // for FPS dipping below ~58 and any long task > 50ms during scroll / tab switch
 // / dialog open / filter.
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function PerfHud() {
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  const [enabled] = useState(() => {
+  const [perfMode] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return process.env.NODE_ENV === 'development'
-      || new URLSearchParams(window.location.search).has('perf')
+    const forced = new URLSearchParams(window.location.search).has('perf')
       || window.localStorage.getItem('fm:perf') === '1';
+    return {
+      enabled: process.env.NODE_ENV === 'development' || forced,
+      forced,
+    };
   });
+  const active = typeof perfMode === 'object'
+    && perfMode.enabled
+    && (!pathname?.startsWith('/command') || perfMode.forced);
   const [fps, setFps] = useState(0);
   const [longTasks, setLongTasks] = useState(0);
   const [worstMs, setWorstMs] = useState(0);
@@ -42,7 +50,7 @@ export default function PerfHud() {
   }, []);
 
   useEffect(() => {
-    if (!mounted || !enabled) return undefined;
+    if (!mounted || !active) return undefined;
 
     let raf = 0;
     let frames = 0;
@@ -75,9 +83,9 @@ export default function PerfHud() {
       window.cancelAnimationFrame(raf);
       observer?.disconnect();
     };
-  }, [enabled, mounted]);
+  }, [active, mounted]);
 
-  if (!mounted || !enabled) return null;
+  if (!mounted || !active) return null;
 
   const fpsColor = fps >= 58 ? '#22c55e' : fps >= 45 ? '#eab308' : '#ef4444';
   return (

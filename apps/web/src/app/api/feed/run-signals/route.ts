@@ -34,6 +34,17 @@ type MetricRow = {
   percentile_performance_exact?: number | string | null;
 };
 
+type RunPostStat = {
+  post?: string;
+  placed?: string;
+  views_vs_usual?: number;
+  comments_vs_usual?: number;
+  collab?: boolean;
+  hour_ist?: number;
+  legs?: boolean;
+  carried_by?: string;
+};
+
 type RunBiteFixture = {
   run_stats?: {
     beat_usual_count?: number;
@@ -44,16 +55,7 @@ type RunBiteFixture = {
     comments_vs_usual_median?: number;
     followers_net?: number;
     posts_with_legs?: number;
-    per_post?: Array<{
-      post?: string;
-      placed?: string;
-      views_vs_usual?: number;
-      comments_vs_usual?: number;
-      collab?: boolean;
-      hour_ist?: number;
-      legs?: boolean;
-      carried_by?: string;
-    }>;
+    per_post?: RunPostStat[];
   };
   run_bites?: Array<{
     kind?: string;
@@ -61,6 +63,26 @@ type RunBiteFixture = {
     explainer?: string;
     evidence?: string[];
   }>;
+};
+
+type FeederFileReceipt = {
+  post?: string;
+  post_key?: string;
+  weight?: string;
+  how_it_shows_up?: string;
+  rank_context?: {
+    overall?: string;
+    read?: string;
+  };
+};
+
+type FeederFileBite = {
+  name?: string;
+  receipts?: FeederFileReceipt[];
+};
+
+type FeederFileMemory = {
+  bites?: FeederFileBite[];
 };
 
 const RUN_SIGNAL_KINDS = new Set(['trend', 'watch', 'easy_win', 'what_changed', 'durability']);
@@ -116,6 +138,39 @@ function fixtureCandidates(): string[] {
   ];
 }
 
+function feederFileNames(handle: string): string[] {
+  const slug = fixtureSlug(handle);
+  const candidates: Record<string, string[]> = {
+    anuj_mp4: [
+      'anuj_mp4_merged_gpt54_20post_from_10chunk_v1.json',
+      'anuj_mp4_feeder_file_cold_start_v8_1_gpt54.json',
+    ],
+    lakmeindia: [
+      'lakmeindia_merged_gpt54_20post_from_10chunk_v1.json',
+      'lakmeindia_feeder_file_cold_start_v8_1_gpt54.json',
+    ],
+    srishtigargg: [
+      'srishtigargg_merged_srishti_gpt54_merge_next10_retry.json',
+      'srishtigargg_merged_srishti_flash_merge_next10.json',
+    ],
+  };
+  return candidates[slug] || [`${slug}_merged_gpt54_20post_from_10chunk_v1.json`];
+}
+
+async function readFeederMemory(handle: string): Promise<FeederFileMemory | null> {
+  if (process.env.NODE_ENV === 'production') return null;
+
+  for (const dir of fixtureCandidates()) {
+    for (const fileName of feederFileNames(handle)) {
+      try {
+        const raw = await fs.readFile(path.join(dir, fileName), 'utf8');
+        return JSON.parse(raw) as FeederFileMemory;
+      } catch {}
+    }
+  }
+  return null;
+}
+
 async function readFixture(handle: string): Promise<RunBiteFixture | null> {
   const staticFixture = STATIC_RUN_BITE_FIXTURES[fixtureSlug(handle)] || null;
   if (process.env.NODE_ENV === 'production') return staticFixture;
@@ -155,6 +210,18 @@ function normText(value: string | null | undefined): string {
 
 function evidenceKey(value: string | null | undefined): string {
   return normText(value).slice(0, 34);
+}
+
+function moveKey(value: string | null | undefined): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function displayMoveName(value: string | null | undefined): string | null {
+  const key = moveKey(value);
+  return key ? key.replace(/_/g, ' ') : null;
 }
 
 function compactNumber(value: number | null): string {
@@ -212,6 +279,33 @@ function latestMetricRows(rows: MetricRow[]): Map<string, MetricRow> {
   return new Map(Array.from(latest.entries()).map(([key, value]) => [key, value]));
 }
 
+function parseRankFraction(value: string | null | undefined): number {
+  const match = String(value || '').match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const numerator = Number(match[1]);
+  const denominator = Number(match[2]);
+  return Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0
+    ? numerator / denominator
+    : Number.POSITIVE_INFINITY;
+}
+
+function receiptWeightRank(value: string | null | undefined): number {
+  const normalized = normalizeHandle(value);
+  if (normalized === 'core') return 0;
+  if (normalized === 'supporting') return 1;
+  if (normalized === 'standby') return 2;
+  return 3;
+}
+
+function memoryByMove(feederMemory: FeederFileMemory | null): Map<string, FeederFileBite> {
+  const byMove = new Map<string, FeederFileBite>();
+  for (const bite of feederMemory?.bites || []) {
+    const key = moveKey(bite.name);
+    if (key && !byMove.has(key)) byMove.set(key, bite);
+  }
+  return byMove;
+}
+
 async function fetchPostsAndMetrics(
   sb: ReturnType<typeof adminClient>,
   feeders: FeederRow[],
@@ -266,6 +360,11 @@ function buildEvidenceResolver(
 ) {
   const postStats = fixture.run_stats?.per_post || [];
   const handlePosts = postsByHandle.get(normalizeHandle(handle)) || [];
+  const postByKey = new Map<string, PostRow>();
+  for (const post of handlePosts) {
+    const key = nullableString(post.post_key);
+    if (key && !postByKey.has(key)) postByKey.set(key, post);
+  }
 
   const byCaptionKey = new Map<string, PostRow>();
   for (const post of handlePosts) {
@@ -284,22 +383,40 @@ function buildEvidenceResolver(
     }) || null;
   }
 
-  return (label: string): RunSignalEvidence => {
-    const stat = postStats.find((item) => evidenceKey(item.post) === evidenceKey(label))
-      || postStats.find((item) => normText(item.post).startsWith(normText(label).slice(0, 28)));
-    const post = matchPost(label);
-    const postKey = nullableString(post?.post_key) || '';
-    const metric = postKey ? metricsByPost.get(postKey) || null : null;
+  function evidenceFromParts({
+    label,
+    post,
+    postKey,
+    stat,
+    source = 'current',
+    moveName = null,
+    receiptRead = null,
+    placedOverride = null,
+  }: {
+    label: string;
+    post?: PostRow | null;
+    postKey?: string | null;
+    stat?: RunPostStat | null;
+    source?: 'current' | 'memory';
+    moveName?: string | null;
+    receiptRead?: string | null;
+    placedOverride?: string | null;
+  }): RunSignalEvidence {
+    const key = nullableString(postKey) || nullableString(post?.post_key) || '';
+    const metric = key ? metricsByPost.get(key) || null : null;
     const viewsMultiple = nullableNumber(stat?.views_vs_usual) ?? nullableNumber(metric?.views_multiple);
     const commentsMultiple = nullableNumber(stat?.comments_vs_usual) ?? nullableNumber(metric?.comments_multiple);
     const percentile = nullableNumber(metric?.percentile_performance_exact) ?? nullableNumber(metric?.percentile_performance);
-    const placed = stat?.placed || (percentile != null ? `top ${Math.round(percentile)}%` : null);
+    const placed = placedOverride || stat?.placed || (percentile != null ? `top ${Math.round(percentile)}%` : null);
 
     return {
-      post_key: postKey,
-      post_url: instagramPostUrl(postKey, post?.post_url),
-      thumbnail_url: mediaProxyUrl(postKey) || nullableString(post?.thumbnail_url),
+      post_key: key,
+      post_url: instagramPostUrl(key, post?.post_url),
+      thumbnail_url: mediaProxyUrl(key) || nullableString(post?.thumbnail_url),
       title: nullableString(label) || nullableString(post?.caption) || 'Evidence post',
+      source,
+      move_name: moveName,
+      receipt_read: receiptRead,
       placed,
       views_vs_usual: viewsMultiple,
       comments_vs_usual: commentsMultiple,
@@ -307,7 +424,71 @@ function buildEvidenceResolver(
       carried_by: nullableString(stat?.carried_by),
       hour_ist: nullableNumber(stat?.hour_ist),
     };
+  }
+
+  return {
+    current(label: string): RunSignalEvidence {
+      const stat = postStats.find((item) => evidenceKey(item.post) === evidenceKey(label))
+        || postStats.find((item) => normText(item.post).startsWith(normText(label).slice(0, 28)));
+      const post = matchPost(label);
+      return evidenceFromParts({ label, post, postKey: post?.post_key, stat, source: 'current' });
+    },
+    memory(receipt: FeederFileReceipt, moveName: string): RunSignalEvidence {
+      const postKey = nullableString(receipt.post_key) || '';
+      const post = postKey ? postByKey.get(postKey) || null : null;
+      return evidenceFromParts({
+        label: nullableString(receipt.post) || nullableString(post?.caption) || moveName,
+        post,
+        postKey,
+        source: 'memory',
+        moveName,
+        receiptRead: nullableString(receipt.how_it_shows_up),
+        placedOverride: nullableString(receipt.rank_context?.overall),
+      });
+    },
   };
+}
+
+function memoryEvidenceForMoves({
+  moveNames,
+  moveMemory,
+  resolveMemory,
+  currentPostKeys,
+}: {
+  moveNames: string[];
+  moveMemory: Map<string, FeederFileBite>;
+  resolveMemory: (receipt: FeederFileReceipt, moveName: string) => RunSignalEvidence;
+  currentPostKeys: Set<string>;
+}): RunSignalEvidence[] {
+  const selected: RunSignalEvidence[] = [];
+  const seen = new Set<string>();
+
+  for (const rawMove of moveNames) {
+    const key = moveKey(rawMove);
+    const bite = moveMemory.get(key);
+    const moveName = displayMoveName(bite?.name || rawMove);
+    if (!bite || !moveName) continue;
+
+    const receipts = (bite.receipts || [])
+      .filter((receipt) => nullableString(receipt.post_key) && !currentPostKeys.has(nullableString(receipt.post_key) || ''))
+      .sort((a, b) => {
+        const weightDelta = receiptWeightRank(a.weight) - receiptWeightRank(b.weight);
+        if (weightDelta !== 0) return weightDelta;
+        return parseRankFraction(a.rank_context?.overall) - parseRankFraction(b.rank_context?.overall);
+      });
+
+    for (const receipt of receipts.slice(0, 2)) {
+      const evidence = resolveMemory(receipt, moveName);
+      const evidenceKeyValue = evidence.post_key || `${moveName}:${evidence.title}`;
+      if (!seen.has(evidenceKeyValue)) {
+        selected.push(evidence);
+        seen.add(evidenceKeyValue);
+      }
+      if (selected.length >= 3) return selected;
+    }
+  }
+
+  return selected;
 }
 
 function buildSignalsForHandle(
@@ -315,8 +496,10 @@ function buildSignalsForHandle(
   fixture: RunBiteFixture,
   postsByHandle: Map<string, PostRow[]>,
   metricsByPost: Map<string, MetricRow>,
+  feederMemory: FeederFileMemory | null,
 ): RunSignal[] {
-  const resolveEvidence = buildEvidenceResolver(handle, fixture, postsByHandle, metricsByPost);
+  const evidenceResolver = buildEvidenceResolver(handle, fixture, postsByHandle, metricsByPost);
+  const moveMemory = memoryByMove(feederMemory);
   const account = accountForHandle(handle);
   const sharedMetrics = metricList(fixture);
   const stats = fixture.run_stats || {};
@@ -326,7 +509,19 @@ function buildSignalsForHandle(
     .map((bite, index) => {
       const normalizedKind = normalizeHandle(bite.kind) as RunSignalKind;
       const kind = RUN_SIGNAL_KINDS.has(normalizedKind) ? normalizedKind : 'trend';
-      const evidence = (bite.evidence || []).slice(0, 3).map(resolveEvidence);
+      const evidence = (bite.evidence || []).slice(0, 3).map(evidenceResolver.current);
+      const memoryMoves = Array.from(new Set(
+        evidence
+          .map((item) => displayMoveName(item.carried_by))
+          .filter((item): item is string => Boolean(item)),
+      ));
+      const currentPostKeys = new Set(evidence.map((item) => item.post_key).filter(Boolean));
+      const memoryEvidence = memoryEvidenceForMoves({
+        moveNames: memoryMoves,
+        moveMemory,
+        resolveMemory: evidenceResolver.memory,
+        currentPostKeys,
+      });
       return {
         id: `${fixtureSlug(handle)}:${kind}:${index}`,
         account,
@@ -338,6 +533,8 @@ function buildSignalsForHandle(
         runLabel,
         metrics: sharedMetrics,
         evidence,
+        memory_evidence: memoryEvidence,
+        memory_moves: memoryMoves,
       };
     })
     .filter((signal) => signal.headline && signal.explainer);
@@ -387,9 +584,20 @@ export async function GET(req: NextRequest) {
 
     if (fixtures.size === 0) return privateJsonResponse(req, { signals: [] });
 
+    const feederMemories = new Map<string, FeederFileMemory | null>();
+    await Promise.all(Array.from(fixtures.keys()).map(async (handle) => {
+      feederMemories.set(handle, await readFeederMemory(handle));
+    }));
+
     const { postsByHandle, metricsByPost } = await fetchPostsAndMetrics(admin, feeders);
     const signals = Array.from(fixtures.entries())
-      .flatMap(([handle, fixture]) => buildSignalsForHandle(handle, fixture, postsByHandle, metricsByPost))
+      .flatMap(([handle, fixture]) => buildSignalsForHandle(
+        handle,
+        fixture,
+        postsByHandle,
+        metricsByPost,
+        feederMemories.get(handle) || null,
+      ))
       .slice(0, limit);
 
     return privateJsonResponse(req, { signals });

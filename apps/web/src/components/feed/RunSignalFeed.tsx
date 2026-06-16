@@ -37,6 +37,7 @@ function formatMultiple(value: number | null): string | null {
 }
 
 function evidenceStat(post: RunSignalEvidence): string {
+  if (post.source === 'memory') return 'Memory';
   if (post.placed) return post.placed.replace(/^top\s+/i, 'Top ');
   const multiple = formatMultiple(post.views_vs_usual);
   if (multiple) return `${multiple} usual`;
@@ -253,6 +254,7 @@ function SignalCard({
   const meta = kindMeta(signal.kind);
   const Icon = meta.icon;
   const delay = Math.min(index * 0.035, 0.18);
+  const memoryCount = signal.memory_evidence?.length || 0;
 
   return (
     <motion.button
@@ -293,6 +295,11 @@ function SignalCard({
           <span className="text-[8px] font-black uppercase tracking-[0.16em] text-black/30 dark:text-white/24">
             {signal.runLabel}
           </span>
+          {memoryCount > 0 && (
+            <span className="rounded-full border border-[#E11D48]/12 bg-[#E11D48]/[0.075] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48] dark:text-[#FB7185]">
+              {memoryCount} memory
+            </span>
+          )}
         </div>
 
         <h3 className="mt-3 max-w-[760px] text-[25px] font-black leading-[0.98] tracking-normal text-black dark:text-white sm:text-[30px] lg:text-[34px]">
@@ -341,6 +348,7 @@ function SignalPopup({
   }, [onClose, signal]);
 
   if (typeof document === 'undefined') return null;
+  const memoryEvidence = signal?.memory_evidence || [];
 
   return createPortal(
     <AnimatePresence>
@@ -436,6 +444,58 @@ function SignalPopup({
                   ))}
                 </div>
               </div>
+
+              {memoryEvidence.length > 0 && (
+                <div className="mt-7 border-t border-black/[0.08] pt-5 dark:border-white/[0.08]">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E11D48] dark:text-[#FB7185]">Feeder memory</div>
+                    {signal.memory_moves?.slice(0, 3).map((move) => (
+                      <span
+                        key={`${signal.id}:memory-move:${move}`}
+                        className="rounded-full border border-black/[0.06] bg-white/70 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-black/38 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/34"
+                      >
+                        {move}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mb-3 max-w-[760px] text-[11px] font-bold leading-relaxed text-black/46 dark:text-white/38">
+                    Older examples appear only when this read points back to feeder memory.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {memoryEvidence.map((post, index) => (
+                      <div key={`popup-memory:${signal.id}:${post.post_key || post.title}:${index}`} className="min-w-0">
+                        <EvidenceThumb post={post} index={index} showTitle={false} />
+                        <div className="mt-2.5 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="line-clamp-2 break-words text-[11px] font-black uppercase leading-snug tracking-[0.08em] text-black/72 dark:text-white/72">
+                              {trimTitle(post.title)}
+                            </div>
+                            <div className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/34 dark:text-white/28">
+                              {[post.move_name, post.placed ? `past post ${post.placed}` : null].filter(Boolean).join(' · ') || 'older example'}
+                            </div>
+                            {post.receipt_read && (
+                              <div className="mt-2 line-clamp-3 text-[11px] font-bold leading-relaxed text-black/46 dark:text-white/38">
+                                {post.receipt_read}
+                              </div>
+                            )}
+                          </div>
+                          {post.post_url && (
+                            <a
+                              href={post.post_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/82 text-white shadow-[0_10px_22px_-14px_rgba(0,0,0,0.8)] transition hover:scale-105 active:scale-95 dark:bg-white/16"
+                              aria-label="Open memory post"
+                            >
+                              <ArrowUpRight size={14} strokeWidth={3} />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <aside className="hidden min-h-0 border-l border-black/[0.08] bg-white/72 p-5 dark:border-white/[0.08] dark:bg-white/[0.03] sm:block">
