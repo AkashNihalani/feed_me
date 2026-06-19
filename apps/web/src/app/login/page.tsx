@@ -53,12 +53,14 @@ function PacManHero() {
 
   const getSizes = useCallback(() => {
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
-    if (vw < 640) return { pacR: 34, bubbleR: 14, gap: 58, yCenter: 48 };
-    if (vw < 1024) return { pacR: 46, bubbleR: 18, gap: 72, yCenter: 58 };
-    if (vw >= 1800) return { pacR: 66, bubbleR: 24, gap: 106, yCenter: 82 };
-    if (vw >= 1536) return { pacR: 60, bubbleR: 22, gap: 96, yCenter: 74 };
-    if (vw >= 1280) return { pacR: 52, bubbleR: 20, gap: 84, yCenter: 58 };
-    return { pacR: 52, bubbleR: 20, gap: 84, yCenter: 64 };
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
+    if (vw >= 1024 && vh <= 700) return { pacR: 42, bubbleR: 16, gap: 78, yCenter: 46 };
+    if (vw < 640) return { pacR: 28, bubbleR: 12, gap: 52, yCenter: 34 };
+    if (vw < 1024) return { pacR: 40, bubbleR: 16, gap: 68, yCenter: 44 };
+    if (vw >= 1800) return { pacR: 58, bubbleR: 22, gap: 104, yCenter: 62 };
+    if (vw >= 1536) return { pacR: 54, bubbleR: 20, gap: 92, yCenter: 58 };
+    if (vw >= 1280) return { pacR: 50, bubbleR: 19, gap: 84, yCenter: 54 };
+    return { pacR: 44, bubbleR: 18, gap: 76, yCenter: 46 };
   }, []);
 
   useEffect(() => {
@@ -271,10 +273,10 @@ function PacManHero() {
   }, [getSizes]);
 
   return (
-    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-5 xl:mb-4 2xl:mb-6">
+    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-3 xl:mb-4 2xl:mb-5">
       <canvas
         ref={canvasRef}
-        className="h-[84px] w-full sm:h-[108px] lg:h-[136px] xl:h-[118px] 2xl:h-[176px]"
+        className="h-[86px] w-full sm:h-[96px] lg:h-[92px] xl:h-[112px] 2xl:h-[132px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[104px]"
         style={{ imageRendering: 'auto' }}
       />
     </div>
@@ -481,7 +483,7 @@ export default function LoginPage() {
   const brandMark = (isLarge: boolean, align: 'center' | 'left' = 'center') => (
     <div className={cn(
       align === 'left' ? 'text-left' : 'text-center',
-      isLarge ? 'mb-6' : 'mb-4 sm:mb-6',
+      isLarge ? 'mb-5 2xl:mb-6' : 'mb-4 sm:mb-5',
     )}>
       <div className={cn('inline-flex items-center', isLarge ? 'gap-4 xl:gap-5 2xl:gap-6' : 'gap-3 sm:gap-3.5')}>
         {/* eslint-disable-next-line @next/next/no-img-element -- static brand logo from /public */}
@@ -491,20 +493,20 @@ export default function LoginPage() {
           draggable={false}
           className={cn(
             'shrink-0 select-none',
-            isLarge ? 'h-[72px] w-[72px] xl:h-[86px] xl:w-[86px] 2xl:h-[96px] 2xl:w-[96px]' : 'h-[60px] w-[60px] sm:h-[76px] sm:w-[76px]',
+            isLarge ? 'h-[70px] w-[70px] 2xl:h-[84px] 2xl:w-[84px]' : 'h-[56px] w-[56px] sm:h-[68px] sm:w-[68px]',
           )}
         />
         <span className="inline-flex items-baseline gap-0.5">
           <span className={cn(
             'font-black tracking-[-0.04em]',
-            isLarge ? 'text-[36px] xl:text-[42px] 2xl:text-[48px]' : 'text-[32px] sm:text-[44px]',
+            isLarge ? 'text-[36px] 2xl:text-[44px]' : 'text-[30px] sm:text-[40px]',
           )} style={{ color: INK }}>
             FEED
           </span>
           <span
             className={cn(
               'font-black tracking-[-0.04em]',
-              isLarge ? 'text-[36px] xl:text-[42px] 2xl:text-[48px]' : 'text-[32px] sm:text-[44px]',
+              isLarge ? 'text-[36px] 2xl:text-[44px]' : 'text-[30px] sm:text-[40px]',
             )}
             style={{ color: RED }}
           >
@@ -550,7 +552,7 @@ export default function LoginPage() {
   return (
     <div
       data-login-shell
-      className="relative flex h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white selection:bg-[#E11D48]/25 selection:text-[#E11D48] xl:h-[100vh] xl:min-h-0 xl:items-center xl:justify-center xl:gap-[clamp(34px,3.8vw,104px)] xl:overflow-hidden xl:pr-[clamp(16px,1.8vw,52px)]"
+      className="relative grid h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white px-5 pb-[calc(180px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] selection:bg-[#E11D48]/25 selection:text-[#E11D48] sm:px-8 sm:pb-[calc(188px+env(safe-area-inset-bottom))] sm:pt-10 lg:min-h-0 lg:grid-cols-[minmax(430px,1fr)_minmax(360px,460px)] lg:items-center lg:gap-[36px] lg:overflow-hidden lg:px-[44px] lg:py-[30px] xl:grid-cols-[minmax(470px,1fr)_minmax(390px,500px)] xl:gap-[52px] xl:px-[72px] xl:py-[36px] 2xl:grid-cols-[minmax(640px,900px)_minmax(430px,540px)] 2xl:gap-[72px] 2xl:px-[92px] 2xl:py-[44px] [@media_(min-width:1024px)_and_(max-height:700px)]:gap-[28px] [@media_(min-width:1024px)_and_(max-height:700px)]:px-[36px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-[22px]"
       style={{
         WebkitOverflowScrolling: 'touch',
       }}
@@ -576,7 +578,7 @@ export default function LoginPage() {
          ════════════════════════════════════════════ */}
 
       {/* ── Left hero panel (desktop only): brand + live dashboard ── */}
-      <div className="relative z-10 hidden min-w-0 flex-col items-start justify-center xl:flex xl:w-auto xl:basis-[clamp(560px,49vw,920px)]">
+      <div className="relative z-10 hidden min-w-0 flex-col items-start justify-center lg:flex lg:w-full">
         <motion.div
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
@@ -586,25 +588,25 @@ export default function LoginPage() {
           <div className="hidden 2xl:block">
             {brandMark(true, 'left')}
           </div>
-          <p className="mb-4 text-[9px] font-bold uppercase tracking-[0.22em] xl:mb-5 xl:text-[10px] 2xl:hidden" style={{ color: 'rgba(11,11,15,0.4)' }}>
+          <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.22em] xl:mb-4 xl:text-[10px] 2xl:hidden [@media_(min-width:1024px)_and_(max-height:700px)]:mb-2" style={{ color: 'rgba(11,11,15,0.4)' }}>
             Instagram Analytics &middot; Reimagined
           </p>
-          <LiveDashboard state={liveStats} className="mt-2" />
+          <LiveDashboard state={liveStats} className="mt-1" />
           <div className="mt-5 hidden 2xl:block">{footerLinks('left')}</div>
         </motion.div>
       </div>
 
       {/* ── Right panel (desktop): Pac-Man + form / Full column (mobile) ── */}
-      <div className="relative z-10 flex min-h-[100lvh] w-full flex-col items-center justify-start px-5 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] sm:py-10 xl:min-h-0 xl:w-auto xl:basis-[clamp(390px,30vw,540px)] xl:items-start xl:justify-center xl:px-0 xl:py-0">
+      <div className="relative z-10 flex w-full min-w-0 flex-col items-center justify-start lg:min-h-0 lg:items-stretch lg:justify-center">
 
         {/* Stacked screens: Pac-Man + brand above the card */}
-        <div className="flex w-full max-w-[460px] flex-col items-center xl:hidden">
+        <div className="flex w-full max-w-[460px] flex-col items-center lg:hidden">
           <PacManHero />
           {brandMark(false)}
         </div>
 
         {/* Desktop only: compact Pac-Man above the card */}
-        <div className="hidden w-full xl:block">
+        <div className="hidden w-full lg:block">
           <PacManHero />
         </div>
 
@@ -617,7 +619,7 @@ export default function LoginPage() {
               : { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }
             }
             transition={{ duration: isSuccess ? 0.5 : 0.8, ease: APPLE_EASE }}
-            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] xl:rounded-[32px]"
+            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] xl:rounded-[30px]"
             style={{
               background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.94) 100%)',
               border: '1px solid rgba(14,19,28,0.08)',
@@ -651,11 +653,11 @@ export default function LoginPage() {
               }}
             />
 
-            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 xl:px-10 xl:py-11 2xl:px-14 2xl:py-16">
+            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 xl:px-9 xl:py-9 2xl:px-11 2xl:py-11 [@media_(min-width:1024px)_and_(max-height:700px)]:px-7 [@media_(min-width:1024px)_and_(max-height:700px)]:py-6">
 
             {/* ── Tab switcher — light inset well ── */}
             <div
-              className="mx-auto mb-7 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-8 xl:mb-7 xl:max-w-[310px] xl:p-1.5 2xl:mb-9 2xl:max-w-[330px] 2xl:p-2"
+              className="mx-auto mb-6 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-7 xl:mb-6 xl:max-w-[292px] 2xl:mb-7 2xl:max-w-[310px] 2xl:p-1.5 [@media_(min-width:1024px)_and_(max-height:700px)]:mb-4 [@media_(min-width:1024px)_and_(max-height:700px)]:max-w-[260px] [@media_(min-width:1024px)_and_(max-height:700px)]:p-1"
               style={{
                 background: 'rgba(15,23,42,0.05)',
                 border: '1px solid rgba(15,23,42,0.06)',
@@ -674,7 +676,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setMode(tab); setError(null); setMessage(null); }}
                     className={cn(
-                      'relative flex-1 rounded-[10px] py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition-colors duration-400 2xl:py-3.5 2xl:text-[11px]',
+                      'relative flex-1 rounded-[10px] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.16em] outline-none transition-colors duration-400 focus-visible:ring-2 focus-visible:ring-[#E11D48]/25 2xl:py-3 2xl:text-[11px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-2',
                       isActive ? 'text-[#E11D48] z-10' : 'text-[#0B0B0F]/35 z-0 hover:text-[#0B0B0F]/60',
                     )}
                   >
@@ -702,7 +704,7 @@ export default function LoginPage() {
             </div>
 
             {/* ── Title & subtitle — glass layer z-shift ── */}
-            <div className="relative mb-6 xl:mb-7 2xl:mb-8" style={{ minHeight: 56, perspective: '600px' }}>
+            <div className="relative mb-5 xl:mb-6 2xl:mb-7 [@media_(min-width:1024px)_and_(max-height:700px)]:mb-4" style={{ minHeight: 56, perspective: '600px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={mode}
@@ -714,12 +716,12 @@ export default function LoginPage() {
                   style={{ transformOrigin: 'center bottom' }}
                 >
                   <h1
-                    className="text-[24px] font-black tracking-[-0.025em] sm:text-[28px] xl:text-[34px] 2xl:text-[42px]"
+                    className="text-[24px] font-black tracking-normal sm:text-[28px] xl:text-[32px] 2xl:text-[38px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]"
                     style={{ color: INK }}
                   >
                     {titles[mode]}
                   </h1>
-                  <p className="mt-2 text-[11px] font-semibold tracking-wide xl:text-[12px] 2xl:text-[13px]" style={{ color: 'rgba(11,11,15,0.45)' }}>
+                  <p className="mt-2 text-[11px] font-semibold tracking-wide xl:text-[12px] 2xl:text-[13px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-1.5" style={{ color: 'rgba(11,11,15,0.45)' }}>
                     {subtitles[mode]}
                   </p>
                 </motion.div>
@@ -727,7 +729,7 @@ export default function LoginPage() {
             </div>
 
             {/* ── Form ── */}
-            <form onSubmit={handleAuth} className="mx-auto w-full max-w-[500px] space-y-5 2xl:max-w-[520px] 2xl:space-y-6" style={{ perspective: '800px' }}>
+            <form onSubmit={handleAuth} className="mx-auto w-full max-w-[500px] space-y-4 2xl:max-w-[520px] 2xl:space-y-5 [@media_(min-width:1024px)_and_(max-height:700px)]:space-y-3" style={{ perspective: '800px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={mode}
@@ -735,12 +737,12 @@ export default function LoginPage() {
                   animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, y: -16, scale: 0.96, rotateX: -5, filter: 'blur(3px)' }}
                   transition={{ duration: 0.45, ease: APPLE_EASE, delay: 0.04 }}
-                  className="space-y-5 2xl:space-y-6"
+                  className="space-y-4 2xl:space-y-5 [@media_(min-width:1024px)_and_(max-height:700px)]:space-y-3"
                   style={{ transformOrigin: 'center top' }}
                 >
                   {/* Email */}
                   <div>
-                    <label className="mb-2.5 block text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.45)' }}>
+                    <label className="mb-2.5 block text-[9px] font-black uppercase tracking-[0.22em] [@media_(min-width:1024px)_and_(max-height:700px)]:mb-1.5" style={{ color: 'rgba(11,11,15,0.45)' }}>
                       Email Address
                     </label>
                     <motion.div
@@ -789,7 +791,7 @@ export default function LoginPage() {
                         required
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[56px] 2xl:h-[64px] 2xl:px-6 2xl:text-[17px]"
+                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:text-[17px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
                         style={{ color: INK, caretColor: RED }}
                       />
                     </motion.div>
@@ -798,7 +800,7 @@ export default function LoginPage() {
                   {/* Password */}
                   {mode !== 'forgot' && (
                     <div>
-                      <div className="mb-2.5 flex items-center justify-between">
+                      <div className="mb-2.5 flex items-center justify-between [@media_(min-width:1024px)_and_(max-height:700px)]:mb-1.5">
                         <label className="text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.45)' }}>
                           Password
                         </label>
@@ -806,7 +808,7 @@ export default function LoginPage() {
                           <button
                             type="button"
                             onClick={() => { setMode('forgot'); setError(null); setMessage(null); }}
-                            className="text-[9px] font-black uppercase tracking-[0.12em] text-[#E11D48]/60 transition-colors hover:text-[#E11D48]"
+                            className="rounded-md text-[9px] font-black uppercase tracking-[0.12em] text-[#E11D48]/60 outline-none transition-colors hover:text-[#E11D48] focus-visible:ring-2 focus-visible:ring-[#E11D48]/20"
                           >
                             Forgot?
                           </button>
@@ -858,13 +860,14 @@ export default function LoginPage() {
                           required
                           placeholder="••••••••"
                           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[56px] 2xl:h-[64px] 2xl:px-6 2xl:pr-14 2xl:text-[17px]"
+                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:pr-14 2xl:text-[17px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
                           style={{ color: INK, caretColor: RED }}
                         />
                         <button
                           type="button"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-[10px] p-2.5 text-[#0B0B0F]/25 transition-all hover:bg-[#0B0B0F]/[0.04] hover:text-[#0B0B0F]/55"
+                          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-[10px] p-2.5 text-[#0B0B0F]/25 outline-none transition-all hover:bg-[#0B0B0F]/[0.04] hover:text-[#0B0B0F]/55 focus-visible:ring-2 focus-visible:ring-[#E11D48]/20"
                         >
                           {showPassword ? <EyeOff size={16} strokeWidth={2.5} /> : <Eye size={16} strokeWidth={2.5} />}
                         </button>
@@ -929,7 +932,7 @@ export default function LoginPage() {
                 whileTap={{ scale: 0.97 }}
                 layout
                 className={cn(
-                  'group relative mt-4 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] xl:h-[58px] xl:rounded-[16px] 2xl:h-[68px]',
+                  'group relative mt-3 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] outline-none focus-visible:ring-4 focus-visible:ring-[#E11D48]/20 xl:h-[56px] xl:rounded-[16px] 2xl:h-[60px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-2 [@media_(min-width:1024px)_and_(max-height:700px)]:h-[50px]',
                   'text-[12px] font-black uppercase tracking-[0.2em] text-white xl:text-[13px] 2xl:text-[14px]',
                   'disabled:opacity-40 disabled:cursor-not-allowed'
                 )}
@@ -980,7 +983,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => { setMode('login'); setError(null); setMessage(null); }}
-                    className="text-[10px] font-black uppercase tracking-[0.12em] text-[#0B0B0F]/30 transition-colors hover:text-[#E11D48]/70"
+                    className="rounded-md text-[10px] font-black uppercase tracking-[0.12em] text-[#0B0B0F]/30 outline-none transition-colors hover:text-[#E11D48]/70 focus-visible:ring-2 focus-visible:ring-[#E11D48]/20"
                   >
                     &larr; Back to Login
                   </button>
@@ -992,12 +995,12 @@ export default function LoginPage() {
         </div>{/* end form card wrapper */}
 
         {/* Stacked screens: live dashboard below the whole box */}
-        <div className="mt-7 w-full max-w-[460px] xl:hidden">
+        <div className="mt-7 w-full max-w-[460px] lg:hidden">
           <LiveDashboard state={liveStats} />
         </div>
 
         {/* Stacked screens: footer */}
-        <div className="mt-8 w-full max-w-[460px] xl:hidden">
+        <div className="mt-8 w-full max-w-[460px] lg:hidden">
           {footerLinks('center')}
         </div>
       </div>{/* end right panel */}

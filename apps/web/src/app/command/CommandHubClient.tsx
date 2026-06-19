@@ -69,6 +69,11 @@ type CommandPayload = {
   instrumentationGaps?: Dict[];
 };
 
+type LoadFailure = {
+  status: number;
+  message: string;
+};
+
 const navItems: NavItem[] = [
   { id: 'overview', label: 'Dashboard', icon: Gauge, group: 'main' },
   { id: 'account', label: 'Account graph', icon: Network, group: 'main' },
@@ -635,7 +640,7 @@ function FinanceRail({ payload, selected }: { payload: CommandPayload; selected:
 
 export default function CommandHubClient() {
   const [payload, setPayload] = useState<CommandPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadFailure | null>(null);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<DomainId>('overview');
   const [query, setQuery] = useState('');
@@ -654,7 +659,10 @@ export default function CommandHubClient() {
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(str((body as Dict).error, `Command hub failed with ${response.status}`));
+          throw {
+            status: response.status,
+            message: str((body as Dict).error, `Command hub failed with ${response.status}`),
+          };
         }
         if (!cancelled) {
           setPayload(body as CommandPayload);
@@ -662,7 +670,13 @@ export default function CommandHubClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to load command hub');
+          const failure = dict(loadError);
+          setError({
+            status: num(failure.status) || 500,
+            message: loadError instanceof Error
+              ? loadError.message
+              : str(failure.message, 'Failed to load command hub'),
+          });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -703,6 +717,7 @@ export default function CommandHubClient() {
   const mediaTotals = dict(dict(payload?.media).totals);
   const access = dict(payload?.access);
   const activeNav = navItems.find((item) => item.id === active);
+  const isAuthError = error?.status === 401;
 
   return (
     <div className="cmd-stage" data-command-shell>
@@ -779,10 +794,19 @@ export default function CommandHubClient() {
               {Array.from({ length: 8 }).map((_, index) => <span key={index} />)}
             </div>
           ) : error ? (
-            <section className="cmd-card cmd-error">
-              <AlertTriangle size={28} />
-              <strong>Command hub unavailable</strong>
-              <span>{error}</span>
+            <section className={`cmd-card cmd-error ${isAuthError ? 'cmd-auth-error' : ''}`}>
+              {isAuthError ? <ShieldCheck size={28} /> : <AlertTriangle size={28} />}
+              <strong>{isAuthError ? 'Sign in required' : 'Command hub unavailable'}</strong>
+              <span>
+                {isAuthError
+                  ? 'The command hub is read-only, but it still needs your FeedMe session before it can load account data.'
+                  : error.message}
+              </span>
+              {isAuthError ? (
+                <a className="cmd-primary-link" href="/login?next=%2Fcommand">
+                  Sign in to Command Hub
+                </a>
+              ) : null}
             </section>
           ) : payload ? (
             <>

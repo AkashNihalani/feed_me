@@ -46,6 +46,7 @@ const PWA_STRIP_SPRING = { type: 'spring', stiffness: 300, damping: 30, mass: 0.
 const FIRE_TAB_RESELECT_EVENT = 'feedme:fire-tab-reselect';
 const MOBILE_STACK_LAYOUT_SPRING = { type: 'spring', stiffness: 250, damping: 30, mass: 0.92 } as const;
 const MOBILE_DECK_SWAP_SPRING = { type: 'spring', stiffness: 250, damping: 28, mass: 0.94 } as const;
+const FIRE_DIALOG_SHARED_SPRING = { type: 'spring', stiffness: 420, damping: 42, mass: 0.9 } as const;
 // Do not add `contain: layout paint style` or `content-visibility: auto` to
 // the desktop card slots — both create a paint-containment boundary that
 // breaks the sticky header's `backdrop-filter` (flat chrome, no frosted
@@ -789,7 +790,9 @@ function FluidDeck({
                     className="flex w-full items-center justify-center"
                     style={{ zIndex: isActive ? 30 : 10 }}
                   >
-                    <div
+                    <motion.div
+                      layoutId={`fire-card-dialog-${card.id}`}
+                      transition={{ layout: FIRE_DIALOG_SHARED_SPRING }}
                       className={[
                         'relative w-full rounded-[22px] transition-shadow duration-250',
                         isActive
@@ -805,7 +808,7 @@ function FluidDeck({
                         onOpenDetails={() => onOpenCard?.(card)}
                         onBeforeOpenPost={persistStandaloneDeckState}
                       />
-                    </div>
+                    </motion.div>
                   </motion.div>
                 );
               })}

@@ -20,7 +20,7 @@ const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 
 const METRICS: Array<{ key: MetricKey; label: string }> = [
   { key: 'accounts', label: 'Accounts tracked' },
-  { key: 'signals', label: 'Signals surfaced' },
+  { key: 'signals', label: 'Checkpoints surfaced' },
   { key: 'posts', label: 'Posts analyzed' },
   { key: 'likes', label: 'Likes tracked' },
   { key: 'views', label: 'Views tracked' },
@@ -28,7 +28,7 @@ const METRICS: Array<{ key: MetricKey; label: string }> = [
 ];
 const DASHBOARD_MIN_UPDATE_MS = 5_000;
 const DASHBOARD_MAX_UPDATE_MS = 7_000;
-const ROW_NUMBER_CLASS = 'text-[clamp(40px,3vw,50px)]';
+const ROW_NUMBER_CLASS = 'text-[36px] sm:text-[42px] xl:text-[50px] 2xl:text-[54px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[38px]';
 
 type DashboardValues = Partial<Record<MetricKey, number | null>>;
 
@@ -72,7 +72,7 @@ function StatRow({
       animate={{ opacity: 1, y: 0 }}
       transition={{ layout: { duration: 0.55, ease: APPLE_EASE }, opacity: { duration: 0.4, ease: APPLE_EASE }, y: { duration: 0.5, ease: APPLE_EASE } }}
       className={cn(
-        'group relative grid min-h-[clamp(58px,7.5vh,74px)] grid-cols-1 items-end overflow-hidden border-t border-black/[0.07] py-[clamp(6px,0.8vh,10px)]',
+        'group relative grid min-h-[58px] grid-cols-1 items-end overflow-hidden border-t border-black/[0.07] py-2 sm:min-h-[66px] sm:py-2.5 xl:min-h-[72px] xl:py-2.5 2xl:min-h-[78px] 2xl:py-2.5 [@media_(min-width:1024px)_and_(max-height:700px)]:min-h-[58px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-1.5',
         isBottom && 'border-b border-black/[0.07]',
       )}
     >
@@ -84,14 +84,14 @@ function StatRow({
         }}
       />
 
-      <div className="relative min-w-0">
-        <div className="mb-1 flex items-center sm:mb-1.5">
-          <span className="text-[9px] font-black uppercase tracking-[0.22em] text-black/42 lg:text-[10px] xl:text-[11px]">
+      <div className="relative min-w-0 pl-3 sm:pl-4 xl:pl-5 [@media_(min-width:1024px)_and_(max-height:700px)]:pl-3">
+        <div className="mb-1 flex items-center sm:mb-1.5 [@media_(min-width:1024px)_and_(max-height:700px)]:mb-0.5">
+          <span className="text-[9px] font-black uppercase tracking-[0.18em] text-black/42 lg:text-[10px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[8px]">
             {label}
           </span>
         </div>
 
-        <div className={cn('font-black leading-none tracking-[-0.045em] text-black', ROW_NUMBER_CLASS)}>
+        <div className={cn('font-black leading-none tracking-normal text-black', ROW_NUMBER_CLASS)}>
           <Odometer value={value} color={INK} animateOnMount revealDelayMs={140 + rank * 70} />
         </div>
       </div>
@@ -151,19 +151,20 @@ export default function LiveDashboard({ state, className }: { state: LivePlatfor
 
   return (
     <div className={cn('w-full', className)} data-login-live-dashboard>
-      <div className="mb-2.5 flex items-center gap-3 xl:mb-3 2xl:mb-4">
+      <div className="mb-2.5 flex items-center gap-3 xl:mb-3 [@media_(min-width:1024px)_and_(max-height:700px)]:mb-1.5">
         <span className="relative flex h-3.5 w-3.5 items-center justify-center">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-80" style={{ background: RED }} />
           <span className="absolute h-3.5 w-3.5 rounded-full opacity-20" style={{ background: RED, boxShadow: '0 0 18px rgba(225,29,72,0.75)' }} />
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-[#E11D48]/20" style={{ background: RED, boxShadow: '0 0 10px rgba(225,29,72,0.45)' }} />
         </span>
-        <h2 className="text-[clamp(22px,1.8vw,32px)] font-black leading-none tracking-[-0.045em]" style={{ color: INK }}>
+        <h2 className="text-[24px] font-black leading-none tracking-normal sm:text-[28px] xl:text-[34px] 2xl:text-[38px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]" style={{ color: INK }}>
           Currently <span style={{ color: RED }}>feeding</span> on
         </h2>
       </div>
 
       {/* Ranked number pyramid — left edge fixed, value magnitude grows downward. */}
-      <div className="relative">
+      <div className="relative max-w-[680px] xl:max-w-none">
+        <div className="pointer-events-none absolute bottom-0 left-0 top-0 w-px bg-gradient-to-b from-[#E11D48]/55 via-[#E11D48]/18 to-black/10" />
         {rankedMetrics.map((metric, index) => (
           <StatRow
             key={metric.key}

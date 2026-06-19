@@ -4,6 +4,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { FireItem } from './types';
@@ -22,6 +23,9 @@ type FireIntelligenceDialogProps = {
   canPrevious?: boolean;
   canNext?: boolean;
 };
+
+const FIRE_DIALOG_SHARED_SPRING = { type: 'spring', stiffness: 420, damping: 42, mass: 0.9 } as const;
+const FIRE_BACKDROP_EASE = [0.25, 0.1, 0.25, 1] as const;
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -544,11 +548,11 @@ export default function FireIntelligenceDialog({
   }, [item]);
 
   const dialogStyle = {
-    width: 'min(800px, calc(100vw - 4rem))',
-    height: 'min(680px, calc(100vh - 4rem))',
-    maxHeight: 'calc(100vh - 4rem)',
+    width: 'min(700px, calc(100vw - 6rem))',
+    height: 'min(560px, calc(100dvh - 11rem))',
+    maxHeight: 'calc(100dvh - 11rem)',
   };
-  const dialogGridClass = 'grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)]';
+  const dialogGridClass = 'grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)]';
   const dialogPanelMinHeightClass = 'min-h-0';
 
   const previewUrl = (item?.previewUrl || '').trim();
@@ -689,24 +693,25 @@ export default function FireIntelligenceDialog({
     };
   }, [canPreview, canSwitchToPreviewFallback, item, previewFailed, previewReady, previewRetrySeed, resolvedPreviewUrl, usePreviewFallback]);
 
-  return (
+  const dialog = (
     <AnimatePresence>
       {item && stats && (
         <motion.div
-          className="fixed inset-0 z-[260] hidden items-center justify-center px-8 py-8 lg:flex"
-          initial={{ opacity: 0 }}
+          className="fixed inset-0 hidden items-center justify-center px-10 py-20 lg:flex"
+          style={{ zIndex: 2147483000 }}
+          initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          exit={{ opacity: 1 }}
+          transition={{ duration: 0.34, ease: FIRE_BACKDROP_EASE }}
           onClick={onClose}
         >
-          {/* Backdrop — dark overlay only, no blur */}
+          {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/60 dark:bg-black/72"
+            className="absolute inset-0 bg-white/44 backdrop-blur-lg will-change-opacity dark:bg-black/72"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.46, ease: FIRE_BACKDROP_EASE }}
           />
 
           {canPrevious ? (
@@ -738,17 +743,14 @@ export default function FireIntelligenceDialog({
           ) : null}
 
           {/* Dialog */}
-          <AnimatePresence initial={false} mode="wait">
-            <motion.div
-              key={item.id}
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              onClick={(event) => event.stopPropagation()}
-              className="relative z-10 overflow-hidden rounded-3xl border border-neutral-200/60 shadow-2xl dark:border-white/[0.08] dark:shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
-              style={dialogStyle}
-            >
+          <motion.div
+            key={item.id}
+            layoutId={`fire-card-dialog-${item.id}`}
+            transition={{ layout: FIRE_DIALOG_SHARED_SPRING }}
+            onClick={(event) => event.stopPropagation()}
+            className="relative z-10 overflow-hidden rounded-[22px] border border-neutral-200/60 shadow-2xl dark:border-white/[0.08] dark:shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
+            style={dialogStyle}
+          >
             <div className={dialogGridClass}>
               {/* ── Left: Thumbnail Panel (clear view) ── */}
               <div className={`relative ${dialogPanelMinHeightClass} overflow-hidden bg-black`}>
@@ -1024,10 +1026,12 @@ export default function FireIntelligenceDialog({
                 </div>
               </div>
             </div>
-            </motion.div>
-          </AnimatePresence>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
   );
+
+  const portalTarget = typeof document === 'undefined' ? null : document.body;
+  return portalTarget ? createPortal(dialog, portalTarget) : null;
 }
