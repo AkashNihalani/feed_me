@@ -3,6 +3,7 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Download } from 'lucide-react';
 import { HeatmapPoint } from './dashboardTypes';
 
 interface TooltipData {
@@ -21,6 +22,12 @@ interface DayCell {
   count: number;
   level: number;
 }
+
+export type PostingCalendarExportControl = {
+  open: boolean;
+  isExporting: boolean;
+  onOpen: () => void;
+};
 
 const DAYS_PER_WEEK = 7;
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -105,7 +112,15 @@ function levelClassName(level: number) {
   return 'bg-[#E11D48] border-[#BE123C] dark:bg-[#E11D48] dark:border-[#FB7185]/75';
 }
 
-function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; weeks: number }) {
+function PostingHeatmap({
+  days,
+  weeks,
+  exportControl,
+}: {
+  days: HeatmapPoint[];
+  weeks: number;
+  exportControl?: PostingCalendarExportControl;
+}) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const mounted = typeof document !== 'undefined';
   const rootRef = useRef<HTMLDivElement>(null);
@@ -145,6 +160,11 @@ function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; weeks: number }
     return generateHeatmapData(normalized, weeks).reverse();
   }, [days, weeks]);
 
+  const openExport = () => {
+    setTooltip(null);
+    exportControl?.onOpen();
+  };
+
   const clampedTooltipX = useMemo(() => {
     if (!tooltip || typeof window === 'undefined') return tooltip?.x ?? 0;
     return clamp(tooltip.x, 110, window.innerWidth - 110);
@@ -179,9 +199,26 @@ function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; weeks: number }
       <div className="relative z-10 flex h-full justify-between flex-col">
         <div className="mb-1 flex items-center justify-between gap-3">
           <span className="fm-label fm-depth-title">Posting Calendar</span>
-          <span className="rounded-full bg-[#E11D48] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white shadow-[0_4px_10px_rgba(225,29,72,0.2)]">
-            Rolling 90D
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {exportControl ? (
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.96 }}
+                onClick={openExport}
+                disabled={exportControl.isExporting}
+                className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#E11D48]/24 bg-[#E11D48]/10 px-2.5 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] shadow-[0_4px_10px_rgba(225,29,72,0.08)] outline-none transition hover:bg-[#E11D48]/14 focus-visible:ring-2 focus-visible:ring-[#E11D48]/24 disabled:cursor-not-allowed disabled:opacity-55 dark:border-[#E11D48]/28 dark:bg-[#E11D48]/16 dark:text-[#FDA4AF]"
+                aria-label="Export posting calendar workbook"
+                aria-haspopup="dialog"
+                aria-expanded={exportControl.open}
+              >
+                <Download size={12} strokeWidth={2.8} />
+                <span>Export</span>
+              </motion.button>
+            ) : null}
+            <span className="rounded-full bg-[#E11D48] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white shadow-[0_4px_10px_rgba(225,29,72,0.2)]">
+              Rolling 90D
+            </span>
+          </div>
         </div>
         
         <div className="min-w-0 w-full pt-2 pb-1">
@@ -319,6 +356,7 @@ function PostingHeatmap({ days, weeks }: { days: HeatmapPoint[]; weeks: number }
         </AnimatePresence>,
         document.body
       )}
+
     </div>
   );
 }

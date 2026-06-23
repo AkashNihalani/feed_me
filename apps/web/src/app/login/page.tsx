@@ -273,10 +273,10 @@ function PacManHero() {
   }, [getSizes]);
 
   return (
-    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-3 xl:mb-4 2xl:mb-5">
+    <div className="relative mb-1.5 w-full sm:mb-3 lg:mb-3 xl:mb-4 2xl:mb-5 [@media_(min-width:1800px)]:mb-6">
       <canvas
         ref={canvasRef}
-        className="h-[86px] w-full sm:h-[96px] lg:h-[92px] xl:h-[112px] 2xl:h-[132px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[104px]"
+        className="h-[86px] w-full sm:h-[96px] lg:h-[92px] xl:h-[112px] 2xl:h-[124px] [@media_(min-width:1800px)]:h-[138px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[104px]"
         style={{ imageRendering: 'auto' }}
       />
     </div>
@@ -552,7 +552,7 @@ export default function LoginPage() {
   return (
     <div
       data-login-shell
-      className="relative grid h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white px-5 pb-[calc(180px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] selection:bg-[#E11D48]/25 selection:text-[#E11D48] sm:px-8 sm:pb-[calc(188px+env(safe-area-inset-bottom))] sm:pt-10 lg:min-h-0 lg:grid-cols-[minmax(430px,1fr)_minmax(360px,460px)] lg:items-center lg:gap-[36px] lg:overflow-hidden lg:px-[44px] lg:py-[30px] xl:grid-cols-[minmax(470px,1fr)_minmax(390px,500px)] xl:gap-[52px] xl:px-[72px] xl:py-[36px] 2xl:grid-cols-[minmax(640px,900px)_minmax(430px,540px)] 2xl:gap-[72px] 2xl:px-[92px] 2xl:py-[44px] [@media_(min-width:1024px)_and_(max-height:700px)]:gap-[28px] [@media_(min-width:1024px)_and_(max-height:700px)]:px-[36px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-[22px]"
+      className="relative grid h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white px-5 pb-[calc(180px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] selection:bg-[#E11D48]/25 selection:text-[#E11D48] sm:px-8 sm:pb-[calc(188px+env(safe-area-inset-bottom))] sm:pt-10 lg:min-h-0 lg:grid-cols-[minmax(430px,1fr)_minmax(360px,460px)] lg:items-center lg:gap-[36px] lg:overflow-hidden lg:px-[44px] lg:py-[30px] xl:grid-cols-[minmax(520px,1fr)_minmax(430px,500px)] xl:gap-[56px] xl:px-[72px] xl:py-[36px] 2xl:grid-cols-[minmax(620px,1fr)_minmax(500px,600px)] 2xl:gap-[76px] 2xl:px-[88px] 2xl:py-[44px] [@media_(min-width:1800px)]:grid-cols-[minmax(760px,1fr)_minmax(580px,680px)] [@media_(min-width:1800px)]:gap-[104px] [@media_(min-width:1800px)]:px-[112px] [@media_(min-width:1800px)]:py-[52px] [@media_(min-width:1024px)_and_(max-height:700px)]:gap-[28px] [@media_(min-width:1024px)_and_(max-height:700px)]:px-[36px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-[22px]"
       style={{
         WebkitOverflowScrolling: 'touch',
       }}
@@ -619,7 +619,7 @@ export default function LoginPage() {
               : { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }
             }
             transition={{ duration: isSuccess ? 0.5 : 0.8, ease: APPLE_EASE }}
-            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] xl:rounded-[30px]"
+            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] xl:rounded-[30px] [@media_(min-width:1800px)]:rounded-[34px]"
             style={{
               background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.94) 100%)',
               border: '1px solid rgba(14,19,28,0.08)',
@@ -653,11 +653,11 @@ export default function LoginPage() {
               }}
             />
 
-            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 xl:px-9 xl:py-9 2xl:px-11 2xl:py-11 [@media_(min-width:1024px)_and_(max-height:700px)]:px-7 [@media_(min-width:1024px)_and_(max-height:700px)]:py-6">
+            <div className="relative z-10 px-7 py-7 sm:px-9 sm:py-9 xl:px-9 xl:py-9 2xl:px-11 2xl:py-11 [@media_(min-width:1800px)]:px-12 [@media_(min-width:1800px)]:py-12 [@media_(min-width:1024px)_and_(max-height:700px)]:px-7 [@media_(min-width:1024px)_and_(max-height:700px)]:py-6">
 
             {/* ── Tab switcher — light inset well ── */}
             <div
-              className="mx-auto mb-6 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-7 xl:mb-6 xl:max-w-[292px] 2xl:mb-7 2xl:max-w-[310px] 2xl:p-1.5 [@media_(min-width:1024px)_and_(max-height:700px)]:mb-4 [@media_(min-width:1024px)_and_(max-height:700px)]:max-w-[260px] [@media_(min-width:1024px)_and_(max-height:700px)]:p-1"
+              className="mx-auto mb-6 flex max-w-[280px] items-center gap-1 rounded-[14px] p-1.5 sm:mb-7 xl:mb-6 xl:max-w-[292px] 2xl:mb-7 2xl:max-w-[320px] 2xl:p-1.5 [@media_(min-width:1800px)]:max-w-[360px] [@media_(min-width:1024px)_and_(max-height:700px)]:mb-4 [@media_(min-width:1024px)_and_(max-height:700px)]:max-w-[260px] [@media_(min-width:1024px)_and_(max-height:700px)]:p-1"
               style={{
                 background: 'rgba(15,23,42,0.05)',
                 border: '1px solid rgba(15,23,42,0.06)',
@@ -676,7 +676,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setMode(tab); setError(null); setMessage(null); }}
                     className={cn(
-                      'relative flex-1 rounded-[10px] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.16em] outline-none transition-colors duration-400 focus-visible:ring-2 focus-visible:ring-[#E11D48]/25 2xl:py-3 2xl:text-[11px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-2',
+                      'relative flex-1 rounded-[10px] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.16em] outline-none transition-colors duration-400 focus-visible:ring-2 focus-visible:ring-[#E11D48]/25 2xl:py-3 2xl:text-[11px] [@media_(min-width:1800px)]:py-3.5 [@media_(min-width:1024px)_and_(max-height:700px)]:py-2',
                       isActive ? 'text-[#E11D48] z-10' : 'text-[#0B0B0F]/35 z-0 hover:text-[#0B0B0F]/60',
                     )}
                   >
@@ -716,7 +716,7 @@ export default function LoginPage() {
                   style={{ transformOrigin: 'center bottom' }}
                 >
                   <h1
-                    className="text-[24px] font-black tracking-normal sm:text-[28px] xl:text-[32px] 2xl:text-[38px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]"
+                    className="text-[24px] font-black tracking-normal sm:text-[28px] xl:text-[32px] 2xl:text-[38px] [@media_(min-width:1800px)]:text-[42px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]"
                     style={{ color: INK }}
                   >
                     {titles[mode]}
@@ -729,7 +729,7 @@ export default function LoginPage() {
             </div>
 
             {/* ── Form ── */}
-            <form onSubmit={handleAuth} className="mx-auto w-full max-w-[500px] space-y-4 2xl:max-w-[520px] 2xl:space-y-5 [@media_(min-width:1024px)_and_(max-height:700px)]:space-y-3" style={{ perspective: '800px' }}>
+            <form onSubmit={handleAuth} className="mx-auto w-full max-w-[500px] space-y-4 2xl:max-w-[540px] 2xl:space-y-5 [@media_(min-width:1800px)]:max-w-[590px] [@media_(min-width:1024px)_and_(max-height:700px)]:space-y-3" style={{ perspective: '800px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={mode}
@@ -791,7 +791,7 @@ export default function LoginPage() {
                         required
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:text-[17px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
+                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:text-[17px] [@media_(min-width:1800px)]:h-[62px] [@media_(min-width:1800px)]:text-[18px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
                         style={{ color: INK, caretColor: RED }}
                       />
                     </motion.div>
@@ -860,7 +860,7 @@ export default function LoginPage() {
                           required
                           placeholder="••••••••"
                           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:pr-14 2xl:text-[17px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
+                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:pr-14 2xl:text-[17px] [@media_(min-width:1800px)]:h-[62px] [@media_(min-width:1800px)]:text-[18px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
                           style={{ color: INK, caretColor: RED }}
                         />
                         <button
@@ -932,7 +932,7 @@ export default function LoginPage() {
                 whileTap={{ scale: 0.97 }}
                 layout
                 className={cn(
-                  'group relative mt-3 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] outline-none focus-visible:ring-4 focus-visible:ring-[#E11D48]/20 xl:h-[56px] xl:rounded-[16px] 2xl:h-[60px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-2 [@media_(min-width:1024px)_and_(max-height:700px)]:h-[50px]',
+                  'group relative mt-3 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] outline-none focus-visible:ring-4 focus-visible:ring-[#E11D48]/20 xl:h-[56px] xl:rounded-[16px] 2xl:h-[60px] [@media_(min-width:1800px)]:h-[64px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-2 [@media_(min-width:1024px)_and_(max-height:700px)]:h-[50px]',
                   'text-[12px] font-black uppercase tracking-[0.2em] text-white xl:text-[13px] 2xl:text-[14px]',
                   'disabled:opacity-40 disabled:cursor-not-allowed'
                 )}

@@ -28,7 +28,7 @@ const METRICS: Array<{ key: MetricKey; label: string }> = [
 ];
 const DASHBOARD_MIN_UPDATE_MS = 5_000;
 const DASHBOARD_MAX_UPDATE_MS = 7_000;
-const ROW_NUMBER_CLASS = 'text-[36px] sm:text-[42px] xl:text-[50px] 2xl:text-[54px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[38px]';
+const ROW_NUMBER_CLASS = 'text-[36px] sm:text-[42px] xl:text-[50px] 2xl:text-[54px] [@media_(min-width:1800px)]:text-[62px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[38px]';
 
 type DashboardValues = Partial<Record<MetricKey, number | null>>;
 
@@ -72,7 +72,7 @@ function StatRow({
       animate={{ opacity: 1, y: 0 }}
       transition={{ layout: { duration: 0.55, ease: APPLE_EASE }, opacity: { duration: 0.4, ease: APPLE_EASE }, y: { duration: 0.5, ease: APPLE_EASE } }}
       className={cn(
-        'group relative grid min-h-[58px] grid-cols-1 items-end overflow-hidden border-t border-black/[0.07] py-2 sm:min-h-[66px] sm:py-2.5 xl:min-h-[72px] xl:py-2.5 2xl:min-h-[78px] 2xl:py-2.5 [@media_(min-width:1024px)_and_(max-height:700px)]:min-h-[58px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-1.5',
+        'group relative grid min-h-[58px] grid-cols-1 items-end overflow-hidden border-t border-black/[0.07] py-2 sm:min-h-[66px] sm:py-2.5 xl:min-h-[72px] xl:py-2.5 2xl:min-h-[78px] 2xl:py-2.5 [@media_(min-width:1800px)]:min-h-[88px] [@media_(min-width:1800px)]:py-3 [@media_(min-width:1024px)_and_(max-height:700px)]:min-h-[58px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-1.5',
         isBottom && 'border-b border-black/[0.07]',
       )}
     >
@@ -86,7 +86,7 @@ function StatRow({
 
       <div className="relative min-w-0 pl-3 sm:pl-4 xl:pl-5 [@media_(min-width:1024px)_and_(max-height:700px)]:pl-3">
         <div className="mb-1 flex items-center sm:mb-1.5 [@media_(min-width:1024px)_and_(max-height:700px)]:mb-0.5">
-          <span className="text-[9px] font-black uppercase tracking-[0.18em] text-black/42 lg:text-[10px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[8px]">
+          <span className="text-[9px] font-black uppercase tracking-[0.18em] text-black/42 lg:text-[10px] [@media_(min-width:1800px)]:text-[11px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[8px]">
             {label}
           </span>
         </div>
@@ -157,7 +157,7 @@ export default function LiveDashboard({ state, className }: { state: LivePlatfor
           <span className="absolute h-3.5 w-3.5 rounded-full opacity-20" style={{ background: RED, boxShadow: '0 0 18px rgba(225,29,72,0.75)' }} />
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-[#E11D48]/20" style={{ background: RED, boxShadow: '0 0 10px rgba(225,29,72,0.45)' }} />
         </span>
-        <h2 className="text-[24px] font-black leading-none tracking-normal sm:text-[28px] xl:text-[34px] 2xl:text-[38px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]" style={{ color: INK }}>
+        <h2 className="text-[24px] font-black leading-none tracking-normal sm:text-[28px] xl:text-[34px] 2xl:text-[38px] [@media_(min-width:1800px)]:text-[44px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]" style={{ color: INK }}>
           Currently <span style={{ color: RED }}>feeding</span> on
         </h2>
       </div>

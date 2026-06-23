@@ -5,11 +5,10 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
 import FeedApexArch from './FeedApexArch';
-import FeedExportTile from './FeedExportTile';
 import FeedKillZone from './FeedKillZone';
 import FeedScatterField from './FeedScatterField';
 import FeedPostingPattern from './FeedPostingPattern';
-import PostingHeatmap from './PostingHeatmap';
+import PostingHeatmap, { type PostingCalendarExportControl } from './PostingHeatmap';
 import FeedEngagementAverages from './FeedEngagementAverages';
 import { DashboardPayload, Timeframe } from './dashboardTypes';
 import { GRID_ITEM_EASE } from '@/lib/motion';
@@ -22,6 +21,7 @@ interface FeedDetailV2Props {
   activeFeed: ActiveFeed | null | undefined;
   children: ReactNode;
   signalFeed?: ReactNode;
+  readerCover?: ReactNode;
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
   baselineDashboardData?: DashboardPayload | null;
@@ -30,12 +30,7 @@ interface FeedDetailV2Props {
   bottomClearance?: string;
   headerOffset?: string;
   immersiveBrowserMode?: boolean;
-  exportScopeLabel: string;
-  exportFrom: string;
-  exportTo: string;
-  onExportFromChange: (value: string) => void;
-  onExportToChange: (value: string) => void;
-  onExport: () => void;
+  exportControl?: PostingCalendarExportControl;
 }
 
 type MobileSectionItem = {
@@ -191,6 +186,7 @@ export default function FeedDetailV2({
   activeFeed,
   children,
   signalFeed,
+  readerCover,
   timeframe,
   dashboardData,
   baselineDashboardData = null,
@@ -199,12 +195,7 @@ export default function FeedDetailV2({
   bottomClearance = 'calc(120px + env(safe-area-inset-bottom))',
   headerOffset,
   immersiveBrowserMode = false,
-  exportScopeLabel,
-  exportFrom,
-  exportTo,
-  onExportFromChange,
-  onExportToChange,
-  onExport,
+  exportControl,
 }: FeedDetailV2Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const heatmapWeeks = 13;
@@ -227,17 +218,7 @@ export default function FeedDetailV2({
   const scatterTile = <FeedScatterField points={dashboardData?.scatter_points ?? []} />;
   const engagementTile = <FeedEngagementAverages rows={dashboardData?.engagement_averages ?? []} />;
   const postingPatternTile = <FeedPostingPattern pattern={dashboardData?.posting_pattern ?? null} timeframe={timeframe} />;
-  const heatmapTile = <PostingHeatmap days={dashboardData?.heatmap_daily ?? []} weeks={heatmapWeeks} />;
-  const exportTile = (
-    <FeedExportTile
-      scopeLabel={exportScopeLabel}
-      from={exportFrom}
-      to={exportTo}
-      onFromChange={onExportFromChange}
-      onToChange={onExportToChange}
-      onExport={onExport}
-    />
-  );
+  const heatmapTile = <PostingHeatmap days={dashboardData?.heatmap_daily ?? []} weeks={heatmapWeeks} exportControl={exportControl} />;
 
   const mobileSections: MobileSection[] = [
     {
@@ -269,19 +250,13 @@ export default function FeedDetailV2({
       ],
     },
     {
-      id: 'mix-export',
+      id: 'mix',
       items: [
         {
           key: 'apex',
           node: apexTile,
           className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
           style: MOBILE_TILE_HEIGHTS.standard,
-        },
-        {
-          key: 'export',
-          node: exportTile,
-          className: immersiveBrowserMode ? 'fm-feed-immersive-panel' : '',
-          style: MOBILE_TILE_HEIGHTS.compact,
         },
       ],
     },
@@ -345,6 +320,14 @@ export default function FeedDetailV2({
     >
       <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)', overflowAnchor: 'none' }} />
 
+      {readerCover && (
+        <div className="w-full px-4 pb-3 sm:px-5 lg:px-2 lg:pb-4">
+          <div className="fm-tab-canvas-shell mx-auto w-full max-w-[min(430px,calc(100vw-32px))] lg:max-w-none">
+            {readerCover}
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-full overflow-x-hidden lg:hidden" style={{ paddingBottom: bottomClearance }}>
         {mobileSections.map((section, sectionIndex) => (
           <DeferredMobileSection
@@ -390,10 +373,6 @@ export default function FeedDetailV2({
 
             <motion.div data-lock-id="pulse" variants={tileVariant} style={{ gridArea: 'pulse' }} className="fm-feed-mobile-panel min-w-0 min-h-[260px] xl:min-h-[272px]">
               {velocityTile}
-            </motion.div>
-
-            <motion.div data-lock-id="export" variants={tileVariant} style={{ gridArea: 'export' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">
-              {exportTile}
             </motion.div>
 
             <motion.div data-lock-id="apex" variants={tileVariant} style={{ gridArea: 'apex' }} className="fm-feed-mobile-panel min-w-0 min-h-[188px] xl:min-h-[196px]">

@@ -10,6 +10,9 @@ import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
+import FeedExportDialog from '@/components/feed/FeedExportDialog';
+import FeederReaderCover from '@/components/feed/FeederReaderCover';
+import FeederReaderPage from '@/components/feed/FeederReaderPage';
 import RunSignalFeed from '@/components/feed/RunSignalFeed';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
@@ -22,6 +25,7 @@ import { GRID_ITEM_EASE, GRID_LAYOUT_SPRING, HEADER_COLLAPSE_SPRING, HEADER_ROW,
 import { clearCacheByPrefix, getCache, readCache, removeCache, setCache } from '@/lib/pageCache';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
+import { DEFAULT_EXPORT_FIELD_IDS, ExportFieldId } from '@/lib/feedExportConfig';
 
 /* ── Types ── */
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
@@ -60,6 +64,11 @@ const FEED_DESKTOP_DETAIL_HEADER_HEIGHT = 246;
 const FEED_DESKTOP_CONTENT_OFFSET = 258;
 const FEED_MOBILE_DETAIL_CHROME_HEIGHT = '222px';
 const FEED_DESKTOP_DETAIL_CHROME_HEIGHT = '198px';
+const FEED_MOBILE_READER_HEADER_HEIGHT = 218;
+const FEED_DESKTOP_READER_HEADER_HEIGHT = 206;
+const FEED_DESKTOP_READER_CONTENT_OFFSET = 214;
+const FEED_MOBILE_READER_CHROME_HEIGHT = '190px';
+const FEED_DESKTOP_READER_CHROME_HEIGHT = '164px';
 const FEED_HEADER_SWAP_TRANSITION = { duration: 0.24, ease: GRID_ITEM_EASE } as const;
 const FEED_PAGE_LAYER_TRANSITION = { duration: 0.24, ease: GRID_ITEM_EASE } as const;
 const FEED_VIEW_DISSOLVE = {
@@ -74,6 +83,7 @@ const FEED_VIEW_DISSOLVE = {
   },
 } as const;
 const FEED_MOBILE_CONTENT_OFFSET = 'calc(260px + env(safe-area-inset-top))';
+const FEED_MOBILE_READER_CONTENT_OFFSET = 'calc(218px + env(safe-area-inset-top))';
 const FEED_CACHE_KEY = 'feed:bundle:v7';
 const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v12';
 const DASHBOARD_CACHE_TTL = 10 * 60 * 1000;
@@ -119,6 +129,17 @@ function shiftIsoDate(isoDate: string, days: number): string {
 function defaultExportRange() {
   const to = istDateKey(new Date());
   return { from: shiftIsoDate(to, -89), to };
+}
+
+function downloadFilenameFromDisposition(value: string | null): string {
+  if (!value) return 'feed_export.xlsx';
+  const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (utfMatch?.[1]) return decodeURIComponent(utfMatch[1].trim().replace(/^"|"$/g, ''));
+  const quotedMatch = /filename="([^"]+)"/i.exec(value);
+  if (quotedMatch?.[1]) return quotedMatch[1].trim();
+  const plainMatch = /filename=([^;]+)/i.exec(value);
+  if (plainMatch?.[1]) return plainMatch[1].trim().replace(/^"|"$/g, '');
+  return 'feed_export.xlsx';
 }
 
 function feedDashboardTitleStyle(label: string, surface: 'mobile' | 'desktop'): CSSProperties {
@@ -569,6 +590,9 @@ function FeedPageContent() {
     setSelectedFeedId(urlSelectedFeedId);
   }
   const view = selectedFeedId ? 'detail' : 'list';
+  // Feeder Reader is a sub-view of detail, toggled by the `read` URL param so it
+  // keeps the app shell and the browser back button works.
+  const reading = view === 'detail' && searchParams.get('read') === '1';
 
   const [feeds, setFeeds] = useState<Feed[]>(INITIAL_FEEDS);
   const [feedDataReady, setFeedDataReady] = useState(false);
@@ -599,8 +623,13 @@ function FeedPageContent() {
   const [slotUsage, setSlotUsage] = useState<SlotUsage>({ used: 0 });
   const [exportFrom, setExportFrom] = useState<string>(() => defaultExportRange().from);
   const [exportTo, setExportTo] = useState<string>(() => defaultExportRange().to);
+  const [exportFields, setExportFields] = useState<ExportFieldId[]>(() => [...DEFAULT_EXPORT_FIELD_IDS]);
+  const [includeExportSummary, setIncludeExportSummary] = useState(true);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(
-    urlSelectedFeedId ? FEED_MOBILE_DETAIL_HEADER_HEIGHT : FEED_MOBILE_LIST_HEADER_HEIGHT,
+    urlSelectedFeedId ? (reading ? FEED_MOBILE_READER_HEADER_HEIGHT : FEED_MOBILE_DETAIL_HEADER_HEIGHT) : FEED_MOBILE_LIST_HEADER_HEIGHT,
   );
   const headerCompressed = useCompressedOnScroll(
     contentRef,
@@ -609,11 +638,15 @@ function FeedPageContent() {
   );
   useEffect(() => {
     if (view === 'detail') {
-      setHeaderHeight(useBrowserPageScroll ? FEED_MOBILE_DETAIL_HEADER_HEIGHT : FEED_DESKTOP_DETAIL_HEADER_HEIGHT);
+      setHeaderHeight(
+        reading
+          ? (useBrowserPageScroll ? FEED_MOBILE_READER_HEADER_HEIGHT : FEED_DESKTOP_READER_HEADER_HEIGHT)
+          : (useBrowserPageScroll ? FEED_MOBILE_DETAIL_HEADER_HEIGHT : FEED_DESKTOP_DETAIL_HEADER_HEIGHT),
+      );
       return;
     }
     setHeaderHeight(useBrowserPageScroll ? FEED_MOBILE_LIST_HEADER_HEIGHT : FEED_DESKTOP_LIST_HEADER_HEIGHT);
-  }, [useBrowserPageScroll, view]);
+  }, [reading, useBrowserPageScroll, view]);
 
   useIsomorphicLayoutEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -624,14 +657,14 @@ function FeedPageContent() {
       return undefined;
     }
 
-    html.style.setProperty('--fm-mobile-header-chrome-height', FEED_MOBILE_DETAIL_CHROME_HEIGHT);
-    html.style.setProperty('--fm-desktop-header-chrome-height', FEED_DESKTOP_DETAIL_CHROME_HEIGHT);
+    html.style.setProperty('--fm-mobile-header-chrome-height', reading ? FEED_MOBILE_READER_CHROME_HEIGHT : FEED_MOBILE_DETAIL_CHROME_HEIGHT);
+    html.style.setProperty('--fm-desktop-header-chrome-height', reading ? FEED_DESKTOP_READER_CHROME_HEIGHT : FEED_DESKTOP_DETAIL_CHROME_HEIGHT);
 
     return () => {
       html.style.removeProperty('--fm-mobile-header-chrome-height');
       html.style.removeProperty('--fm-desktop-header-chrome-height');
     };
-  }, [view]);
+  }, [reading, view]);
 
   useEffect(() => {
     if (view !== 'detail' || !useBrowserPageScroll) return;
@@ -692,6 +725,13 @@ function FeedPageContent() {
   }, [effectiveDashboardData]);
   const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
   const topAveragePosts = Math.max(0, Number(effectiveDashboardData?.summary?.posts_with_metrics) || 0);
+  const readerAnchorHandle = activeFeed?.feeders.find((feeder) => feeder.isAnchor)?.handle
+    || activeFeed?.feeders[0]?.handle
+    || activeFeed?.title
+    || 'Feeder';
+  const readerFeederLabel = selectedHandle === 'all'
+    ? `@${String(readerAnchorHandle).replace(/^@+/, '').toUpperCase()}`
+    : `@${selectedHandle.replace(/^@+/, '').toUpperCase()}`;
   const exportScopeLabel = selectedHandle === 'all' ? 'FULL FEED' : `@${selectedHandle.toUpperCase()}`;
 
   usePageReady(feedDataReady);
@@ -759,7 +799,12 @@ function FeedPageContent() {
       setApiError(err instanceof Error ? err.message : 'Failed to load feeds');
     });
   }, [loadFeeds]);
-  useEffect(() => { setSelectedHandle('all'); setTimeframe('30D'); }, [selectedFeedId]);
+  useEffect(() => {
+    setSelectedHandle('all');
+    setTimeframe('30D');
+    setIsExportDialogOpen(false);
+    setExportError(null);
+  }, [selectedFeedId]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -897,6 +942,22 @@ function FeedPageContent() {
     });
     window.requestAnimationFrame(resetFeedScrollTop);
   }, [resetFeedScrollTop, router]);
+  const openReader = useCallback(() => {
+    if (!selectedFeedId) return;
+    resetFeedScrollTop();
+    startTransition(() => {
+      router.push(`/?id=${selectedFeedId}&read=1`, { scroll: false });
+    });
+    window.requestAnimationFrame(resetFeedScrollTop);
+  }, [resetFeedScrollTop, router, selectedFeedId]);
+  const closeReader = useCallback(() => {
+    if (!selectedFeedId) return;
+    resetFeedScrollTop();
+    startTransition(() => {
+      router.push(`/?id=${selectedFeedId}`, { scroll: false });
+    });
+    window.requestAnimationFrame(resetFeedScrollTop);
+  }, [resetFeedScrollTop, router, selectedFeedId]);
 
   useEffect(() => {
     const handleFeedReselect = () => {
@@ -906,19 +967,53 @@ function FeedPageContent() {
     window.addEventListener('feedme:feed-tab-reselect', handleFeedReselect);
     return () => window.removeEventListener('feedme:feed-tab-reselect', handleFeedReselect);
   }, [handleBack, selectedFeedId]);
-  const handleDownloadExport = () => {
+  const handleDownloadExport = async () => {
     if (!activeFeed) return;
     if (exportFrom && exportTo && exportFrom > exportTo) {
-      setApiError('Export start date must be before end date');
+      setExportError('Export start date must be before end date');
       return;
     }
-    setApiError(null);
+    if (exportFields.length === 0) {
+      setExportError('Select at least one field');
+      return;
+    }
+    setExportError(null);
+    setIsExporting(true);
     const params = new URLSearchParams();
     if (selectedHandle !== 'all') params.set('handle', selectedHandle);
     if (exportFrom) params.set('from', exportFrom);
     if (exportTo) params.set('to', exportTo);
+    params.set('fields', exportFields.join(','));
+    params.set('sheets', includeExportSummary ? 'summary,posts' : 'posts');
     const query = params.toString();
-    window.location.assign(`/api/download/${activeFeed.id}${query ? `?${query}` : ''}`);
+    try {
+      const res = await fetch(`/api/download/${activeFeed.id}${query ? `?${query}` : ''}`);
+      if (!res.ok) {
+        let message = 'Failed to generate export';
+        try {
+          const json = await res.json();
+          if (json?.error) message = String(json.error);
+        } catch {
+          message = res.statusText || message;
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const filename = downloadFilenameFromDisposition(res.headers.get('Content-Disposition'));
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setIsExportDialogOpen(false);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to generate export');
+    } finally {
+      setIsExporting(false);
+    }
   };
   const handleMakeAnchor = async (feedId: string, handle: string) => runFeedAction({ action: 'make_anchor', feedId: Number(feedId), handle });
   const handleAddFeeder = async (feedId: string, handle: string) => {
@@ -1093,8 +1188,12 @@ function FeedPageContent() {
                         <motion.button
                           key="back-btn"
                           whileTap={{ scale: 0.92 }}
-                          onClick={() => { play('snapLock'); handleBack(); }}
-                          aria-label="Back to feeds"
+                          onClick={() => {
+                            play('snapLock');
+                            if (reading) closeReader();
+                            else handleBack();
+                          }}
+                          aria-label={reading ? 'Back to feed dashboard' : 'Back to feeds'}
                           className="relative flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[15px] border border-white/76 bg-white/68 text-black/58 shadow-[0_5px_14px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.92)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/45 dark:shadow-[0_7px_18px_rgba(0,0,0,0.42),0_1px_0_rgba(255,255,255,0.06)_inset]"
                         >
                           <ChevronLeft size={21} strokeWidth={2.7} />
@@ -1294,7 +1393,12 @@ function FeedPageContent() {
                         <div className="flex items-center gap-2">
                           <motion.button
                             whileTap={{ scale: 0.92 }}
-                            onClick={() => { play('snapLock'); handleBack(); }}
+                            onClick={() => {
+                              play('snapLock');
+                              if (reading) closeReader();
+                              else handleBack();
+                            }}
+                            aria-label={reading ? 'Back to feed dashboard' : 'Back to feeds'}
                             className="relative flex shrink-0 items-center justify-center rounded-[14px] p-2 text-black/58 dark:text-white/45 bg-white/60 border border-white/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:bg-white/[0.06] dark:border-white/10 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
                           >
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
@@ -1497,6 +1601,44 @@ function FeedPageContent() {
                 ? cn('relative', useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]')
                 : 'relative h-full',
             )}>
+            {reading && activeFeed ? (
+              <div
+                ref={contentRef}
+                className={cn(
+                  'fm-feed-detail-scroll w-full max-w-[100vw] overflow-x-hidden scroll-smooth transform-gpu',
+                  useBrowserPageScroll
+                    ? cn(useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]', 'overflow-y-visible')
+                    : 'hide-scrollbar h-full overflow-y-auto overscroll-y-contain',
+                )}
+                style={{
+                  WebkitOverflowScrolling: 'touch',
+                  overflowAnchor: 'none',
+                  scrollPaddingTop: 'calc(var(--fm-mobile-detail-header-offset) + 6px)',
+                  scrollPaddingBottom: isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance,
+                  ['--fm-feed-bottom-clearance' as string]: isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance,
+                  ['--fm-mobile-detail-header-offset' as string]: useBrowserPageScroll ? FEED_MOBILE_READER_CONTENT_OFFSET : `${FEED_DESKTOP_READER_CONTENT_OFFSET}px`,
+                  ['--fm-reader-desktop-offset' as string]: `${FEED_DESKTOP_READER_CONTENT_OFFSET}px`,
+                }}
+              >
+                <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)', overflowAnchor: 'none' }} />
+                <div
+                  className="w-full px-3 pb-[calc(132px+env(safe-area-inset-bottom))] sm:px-5 lg:px-6"
+                  style={{ paddingBottom: isStandaloneMode ? 'calc(132px + env(safe-area-inset-bottom))' : mobileBottomClearance }}
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={selectedHandle}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.3, ease: GRID_ITEM_EASE }}
+                    >
+                      <FeederReaderPage showHeader={false} feederLabel={readerFeederLabel} />
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </div>
+            ) : (
             <FeedDetailV2
               activeFeed={activeFeed}
               timeframe={timeframe}
@@ -1507,13 +1649,17 @@ function FeedPageContent() {
               bottomClearance={isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance}
 	              headerOffset={useBrowserPageScroll ? FEED_MOBILE_CONTENT_OFFSET : `${FEED_DESKTOP_CONTENT_OFFSET}px`}
 	              immersiveBrowserMode={useTranslucentBrowserChrome}
-	              exportScopeLabel={exportScopeLabel}
-	              exportFrom={exportFrom}
-	              exportTo={exportTo}
-	              onExportFromChange={setExportFrom}
-	              onExportToChange={setExportTo}
-	              onExport={() => { play('snapLock'); handleDownloadExport(); }}
+	              exportControl={{
+                open: isExportDialogOpen && Boolean(activeFeed),
+                isExporting,
+                onOpen: () => {
+                  play('snapLock');
+                  setExportError(null);
+                  setIsExportDialogOpen(true);
+                },
+              }}
               signalFeed={activeFeed ? <RunSignalFeed feedId={activeFeed.id} selectedHandle={selectedHandle} /> : null}
+              readerCover={activeFeed ? <FeederReaderCover onOpen={openReader} /> : null}
             >
               {activeFeed && (
                 <motion.button
@@ -1657,9 +1803,31 @@ function FeedPageContent() {
                 )}
               </motion.div>
             </FeedDetailV2>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
+
+      <FeedExportDialog
+        open={isExportDialogOpen && Boolean(activeFeed)}
+        scopeLabel={exportScopeLabel}
+        from={exportFrom}
+        to={exportTo}
+        fields={exportFields}
+        includeSummary={includeExportSummary}
+        isExporting={isExporting}
+        error={exportError}
+        onFromChange={setExportFrom}
+        onToChange={setExportTo}
+        onFieldsChange={setExportFields}
+        onIncludeSummaryChange={setIncludeExportSummary}
+        onClose={() => {
+          if (isExporting) return;
+          setIsExportDialogOpen(false);
+          setExportError(null);
+        }}
+        onExport={handleDownloadExport}
+      />
 
       <FeedBriefDialog
         open={isCreatingFeed}

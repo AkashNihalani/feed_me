@@ -102,6 +102,74 @@ html.dark {
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes fm-live-chunk-border-spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.fm-live-chunk-slot {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 120% at 50% -20%, rgba(225, 29, 72, 0.13), transparent 58%),
+    linear-gradient(180deg, #0b0b0d 0%, #060607 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.07) inset,
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 10px 24px -16px rgba(225, 29, 72, 0.74),
+    0 0 28px -18px rgba(225, 29, 72, 0.9);
+}
+
+.fm-live-chunk-slot__sweep {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  width: 260px;
+  height: 260px;
+  pointer-events: none;
+  background: conic-gradient(
+    from 180deg,
+    transparent 0deg,
+    transparent 188deg,
+    rgba(127, 16, 39, 0.12) 216deg,
+    rgba(225, 29, 72, 0.42) 252deg,
+    rgba(255, 92, 132, 0.95) 286deg,
+    rgba(225, 29, 72, 0.34) 322deg,
+    transparent 352deg,
+    transparent 360deg
+  );
+  animation: fm-live-chunk-border-spin 5.8s linear infinite;
+  transform: translate(-50%, -50%) translateZ(0);
+  will-change: transform;
+}
+
+.fm-live-chunk-slot__mask {
+  position: absolute;
+  inset: 2px;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 90% at 50% 0%, rgba(225, 29, 72, 0.18), transparent 64%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 38%),
+    #08080a;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.045) inset,
+    0 1px 0 rgba(255, 255, 255, 0.055) inset;
+}
+
+.fm-live-chunk-slot__content {
+  position: relative;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-live-chunk-slot__sweep {
+    animation: none;
+  }
+}
+
 /* AI insight shimmer — conic gradient rotates along card border once per 10s */
 @property --shimmer-angle {
   syntax: "<angle>";
@@ -1301,7 +1369,6 @@ html.fm-fire-root-scroll body::-webkit-scrollbar {
     "engagement"
     "pattern"
     "heatmap"
-    "export"
     "targets";
 }
 
@@ -1311,7 +1378,7 @@ html.fm-fire-root-scroll body::-webkit-scrollbar {
     grid-template-areas:
       "ascent ascent"
       "pulse  kill"
-      "apex   export"
+      "apex   apex"
       "scatter scatter"
       "engagement engagement"
       "pattern pattern"
@@ -1326,7 +1393,7 @@ html.fm-fire-root-scroll body::-webkit-scrollbar {
     grid-template-areas:
       "ascent ascent ascent pulse  pulse  pulse"
       "scatter scatter scatter engagement engagement engagement"
-      "kill   kill   apex   apex   export export"
+      "kill   kill   kill   apex   apex   apex"
       "pattern pattern pattern heatmap heatmap heatmap"
       "targets targets targets targets targets targets";
   }
@@ -1338,7 +1405,7 @@ html.fm-fire-root-scroll body::-webkit-scrollbar {
     grid-template-areas:
       "ascent  ascent  ascent  ascent  ascent  ascent  ascent  pulse   pulse   pulse   pulse   pulse"
       "scatter scatter scatter scatter scatter scatter engagement engagement engagement engagement engagement engagement"
-      "kill    kill    kill    kill    apex    apex    apex    apex    export  export  export  export"
+      "kill    kill    kill    kill    kill    kill    apex    apex    apex    apex    apex    apex"
       "pattern pattern pattern pattern pattern pattern heatmap heatmap heatmap heatmap heatmap heatmap"
       "targets targets targets targets targets targets targets targets targets targets targets targets";
   }

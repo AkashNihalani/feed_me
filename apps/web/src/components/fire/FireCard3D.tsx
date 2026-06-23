@@ -1108,7 +1108,7 @@ export function FireCard3D({
                     <div className="mt-1 truncate text-[clamp(25px,7.3vw,40px)] font-black leading-[0.86] tracking-[-0.05em] text-white drop-shadow-sm">
                       {compact(value)} {bestMetric.toUpperCase()}
                     </div>
-                    <div className="mt-1 text-[10px] sm:text-[11px] font-black uppercase leading-none tracking-[0.12em] text-white/68">
+                    <div className="mt-1 text-[11px] font-black uppercase leading-none tracking-[0.12em] text-white opacity-75 sm:text-[12px]">
                       {heroBaselineLabel}
                     </div>
                   </div>
@@ -1159,7 +1159,7 @@ export function FireCard3D({
                                 <div className="text-[21px] sm:text-[24px] font-black leading-none text-foreground/96 dark:text-white/92">
                                   {metric.value == null ? '--' : compact(metric.value)}
                                 </div>
-                                <div className="mt-0.5 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38 dark:text-white/32">
+                                <div className="mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.11em] text-foreground/48 dark:text-white/42">
                                   {metric.baseline == null ? 'Tracked' : `${compact(metric.baseline)} usual`}
                                 </div>
                               </div>
@@ -1197,7 +1197,7 @@ export function FireCard3D({
                             <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] text-foreground/56">Time Lift</div>
                               <div className="mt-1 flex min-w-0 items-end gap-1.5 font-black leading-none">
                                 <span className="text-[24px] sm:text-[28px] text-[#E11D48]">{`${hourMult.toFixed(2)}x`}</span>
-                                <span className="min-w-0 truncate pb-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.08em] text-foreground/40">
+                                <span className="min-w-0 truncate pb-0.5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.07em] text-foreground/48">
                                   vs usual {hour === null ? 'same-hour' : hourDisplay} posts
                                 </span>
                               </div>

@@ -4,7 +4,7 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 
 export const dynamic = 'force-dynamic';
 
-const CACHE_KEY = 'stats:public:v4';
+const CACHE_KEY = 'stats:public:v5';
 const CACHE_TTL_MS = 5 * 60_000;
 
 const METRIC_KEYS = ['views', 'likes', 'comments', 'posts', 'signals', 'accounts', 'feeds', 'creators'] as const;
@@ -66,11 +66,11 @@ const CHECKPOINT_RANK: Record<string, number> = { d1: 1, d3: 2, d7: 3, d21: 4 };
 
 // Direct compute (current scale is small): every real platform total in one pass.
 async function computeDirect(sb: AdminClient): Promise<Values> {
-  const [accountsRes, postsRes, feedsRes, signalsRes] = await Promise.all([
+  const [accountsRes, postsRes, feedsRes, checkpointSurfacesRes] = await Promise.all([
     sb.from('feeders').select('*', { count: 'exact', head: true }).eq('status', 'active'),
     sb.from('posts').select('*', { count: 'exact', head: true }),
     sb.from('feeds').select('user_id'),
-    sb.from('signals').select('*', { count: 'exact', head: true }),
+    sb.from('post_metrics').select('*', { count: 'exact', head: true }),
   ]);
 
   const feedRows = (feedsRes.data ?? []) as Array<{ user_id: string | null }>;
@@ -125,7 +125,9 @@ async function computeDirect(sb: AdminClient): Promise<Values> {
     views: metricsOk ? views : null,
     feeds: feedsRes.error ? null : feedRows.length,
     creators: feedsRes.error ? null : new Set(feedRows.map((row) => row.user_id).filter(Boolean)).size,
-    signals: signalsRes.error ? null : signalsRes.count ?? null,
+    // Public dashboard copy calls this "Checkpoints surfaced": each captured
+    // post_metrics row is one post observed at one checkpoint.
+    signals: checkpointSurfacesRes.error ? null : checkpointSurfacesRes.count ?? null,
   };
 }
 

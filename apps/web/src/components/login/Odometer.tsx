@@ -91,7 +91,7 @@ function SlotGlyph({
   );
 }
 
-function SlotNumber({
+export function SlotNumber({
   text,
   animateOnMount,
   revealDelayMs,

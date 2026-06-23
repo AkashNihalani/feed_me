@@ -364,11 +364,13 @@ function SupportMetricRow({
   label,
   value,
   multiple,
+  baseline,
   accent = false,
 }: {
   label: string;
   value: string;
   multiple: string;
+  baseline: string;
   accent?: boolean;
 }) {
   return (
@@ -381,14 +383,21 @@ function SupportMetricRow({
           {value}
         </div>
       </div>
-      <div
-        className={
-          accent
-            ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-[#E11D48]'
-            : 'text-[26px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
-        }
-      >
-        {multiple}
+      <div className="shrink-0 text-right">
+        <div
+          className={
+            accent
+              ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-[#E11D48]'
+              : 'text-[26px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
+          }
+        >
+          {multiple}
+        </div>
+        {baseline !== '--' ? (
+          <div className="mt-1 text-[12px] font-semibold leading-none text-neutral-400 dark:text-white/42">
+            {baseline} usual
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -419,7 +428,7 @@ function CompactStat({
       >
         <span>{value}</span>
         {detail ? (
-          <span className="min-w-0 truncate text-[9px] font-medium tracking-normal text-neutral-400 dark:text-white/36">
+          <span className="min-w-0 truncate text-[11px] font-semibold tracking-normal text-neutral-400 dark:text-white/42">
             {detail}
           </span>
         ) : null}
@@ -519,6 +528,7 @@ export default function FireIntelligenceDialog({
       label: metricLabel(metric.key),
       multiple: multipleOrDash(metric.multiple),
       value: compactOrDash(metric.value),
+      baseline: compactOrDash(metric.baseline),
     }));
     const postContextRead = parsePostContextRead(meta);
 
@@ -548,11 +558,11 @@ export default function FireIntelligenceDialog({
   }, [item]);
 
   const dialogStyle = {
-    width: 'min(700px, calc(100vw - 6rem))',
-    height: 'min(560px, calc(100dvh - 11rem))',
-    maxHeight: 'calc(100dvh - 11rem)',
+    width: 'min(clamp(700px, 52vw, 980px), calc(100vw - 6rem))',
+    height: 'min(clamp(560px, 62dvh, 740px), calc(100dvh - 8rem))',
+    maxHeight: 'calc(100dvh - 8rem)',
   };
-  const dialogGridClass = 'grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)]';
+  const dialogGridClass = 'grid h-full min-h-0 grid-cols-[clamp(300px,23vw,430px)_minmax(0,1fr)]';
   const dialogPanelMinHeightClass = 'min-h-0';
 
   const previewUrl = (item?.previewUrl || '').trim();
@@ -697,7 +707,7 @@ export default function FireIntelligenceDialog({
     <AnimatePresence>
       {item && stats && (
         <motion.div
-          className="fixed inset-0 hidden items-center justify-center px-10 py-20 lg:flex"
+          className="fixed inset-0 hidden items-center justify-center px-12 py-16 lg:flex"
           style={{ zIndex: 2147483000 }}
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
@@ -894,7 +904,7 @@ export default function FireIntelligenceDialog({
                             <div className="text-[28px] font-black leading-none tracking-[-0.04em] text-white">
                               {multipleOrDash(stats.multiple)}
                             </div>
-                            <div className="mt-1 text-[11px] font-medium text-white/70">
+                            <div className="mt-1 text-[13px] font-semibold text-white/76">
                               {compactOrDash(stats.baseline)} usual
                             </div>
                           </div>
@@ -916,6 +926,7 @@ export default function FireIntelligenceDialog({
                               label={metric.label}
                               value={metric.value}
                               multiple={metric.multiple}
+                              baseline={metric.baseline}
                               accent={index === 0}
                             />
                           ))}
