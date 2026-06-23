@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-FINGERPRINT_PROMPT_VERSION = "fingerprint_v12_1_schema_locked"
-FINGERPRINT_SAMPLING_POLICY_VERSION = "media_sample_v2_120s_all_slides"
+from .bite_prompts import (
+    FINGERPRINT_EXTRACTION_SYSTEM_V8,
+    FINGERPRINT_PROMPT_VERSION,
+    FINGERPRINT_SAMPLING_POLICY_VERSION,
+)
+
 POST_CONDENSATION_PROMPT_VERSION = "post_condensation_v5_character_transfer"
 D7_READ_PROMPT_VERSION = "d7_read_v16"
 FEEDER_FILE_COLD_START_PROMPT_VERSION = "feeder_file_cold_start_v8_1"
@@ -18,154 +22,94 @@ FEEDER_FILE_CHUNK_PROMPT_VERSION = "feeder_file_chunk_v1"
 FEEDER_FILE_MERGE_PROMPT_VERSION = "feeder_file_merge_decision_v1"
 
 
-FINGERPRINT_EXTRACTION_SYSTEM_V8 = """REEL FINGERPRINT EXTRACTION
+REEL_CONTEXT_EXTRACTOR_PROMPT_VERSION = "reel_context_extractor_v6"
+REEL_CONTEXT_EXTRACTOR_SYSTEM_V1 = """REEL CONTEXT EXTRACTOR
 
-You will receive one Instagram Reel with its caption and available media.
+You turn 10 reel fingerprints into 10 Bite Cards.
 
-Your job:
-create a neutral observation fingerprint.
+Read all 10 fingerprints first. Then write one standalone card per reel, in input order.
 
-This is the raw observation layer. Do not interpret strategy, classify content, infer audience psychology,
-or decide what pattern it belongs to. Capture only what can be seen, heard, read, or directly aligned
-between caption, visuals, transcript, edit, and audio.
+Each input has an id from p01 to p10. Output exactly those ids, in order.
 
-Return valid JSON only.
+No real post keys. No invented ids.
 
-OUTPUT
+Keep the three ideas separate:
+
+- aim: what the reel wanted the viewer to feel, think, want, laugh at, believe,
+  understand, save, share, or do
+- proof: the exact line, shot, action, edit, caption, reveal, comparison,
+  before/after, sequence, or final frame doing the work
+- package: the form of the reel, like product demo, hosted visit, skit, montage,
+  testimonial, meme edit, product test, or talking-head explainer
+
+AIM SHARPNESS
+Aim must name the exact job of the reel, not a generic action.
+
+Bad:
+"Make the viewer laugh at the skit."
+
+Good:
+"Make the viewer laugh at a sad confession being answered as a location joke."
+
+Bad:
+"Convince viewers the product works."
+
+Good:
+"Make viewers trust the liner because the tissue comes away clean after rubbing and water."
+
+Bad:
+"Make the viewer enjoy the food."
+
+Good:
+"Make the restaurant feel craveable through dish-by-dish hype and close-up tasting reactions."
+
+BOUNDARY
+Use only the fingerprints. Do not mention views, likes, comments, rank, account
+history, feeder memory, engines, patterns, or what the creator should do next.
+
+CARD FIELDS
+- summary: main event only, 18-28 words
+- aim: direct read of what the reel wants, 16-26 words
+- aim_receipt: detail proving the aim, 14-28 words
+- proof: sharpest thing inside the reel doing the work, 18-30 words
+- proof_receipt: exact line, shot, edit, caption, reference, before/after, or
+  sequence proving the proof, 18-36 words
+- open: how it starts or stops the scroll, 12-22 words
+- close: where it leaves the viewer, 12-22 words
+- package: what kind of reel it is visually or structurally, 12-24 words
+- package_receipt: format evidence: camera, pacing, captions, montage, UI,
+  product shots, voiceover, or edit pattern, 16-32 words
+
+Rules:
+- Every field is a plain string.
+- Do not use nested objects.
+- Do not use dotted keys like aim.receipt.
+- Do not hedge with "appears to," "seems to," or "tries to."
+- Do not create engines, tags, lanes, clusters, pattern names, or lazy labels.
+- If aim, proof, and package sound the same, rewrite them.
+- Use exact details when present: time, object, place, line, named reference,
+  before/after, final shot, or sequence.
+
+OUTPUT ONLY JSON
+Return exactly 10 cards, one per input fingerprint, in input order. Copy each id
+exactly. First character "{", last character "}". No markdown.
 
 {
-  "post_key": "",
-  "media_type": "reel",
-  "duration_seconds": null,
-  "media_truncated": false,
-  "observed_window": "",
-  "caption": "",
-  "transcript": "",
-  "visible_text": [],
-  "visual_sequence": [
+  "cards": [
     {
-      "timestamp_range": "",
-      "description": ""
+      "id": "p01",
+      "summary": "",
+      "aim": "",
+      "aim_receipt": "",
+      "proof": "",
+      "proof_receipt": "",
+      "open": "",
+      "close": "",
+      "package": "",
+      "package_receipt": ""
     }
-  ],
-  "audio_behavior": [
-    {
-      "timestamp_range": "",
-      "description": ""
-    }
-  ],
-  "cultural_references": [
-    {
-      "reference": "",
-      "channel": "",
-      "timestamp": "",
-      "co_occurring": ""
-    }
-  ],
-  "edit_and_pacing": [],
-  "environment_and_entities": [],
-  "observed_alignments": [],
-  "notable_observed_details": [],
-  "uncertainties": [],
-  "media_confidence": "high"
+  ]
 }
-
-FIELD RULES
-
-duration_seconds:
-Copy the supplied original duration exactly when present. If no duration is
-supplied, leave it null and note the gap in uncertainties. NEVER estimate a
-duration from the visual sequence.
-
-media_truncated:
-true only when the supplied duration is above 120 seconds and you are observing
-only the sampled first 120 seconds. Otherwise false.
-
-observed_window:
-If media_truncated is true, use "0:00-2:00". Otherwise use the observed duration
-span if clear, or leave empty.
-
-caption:
-Copy the caption text as supplied. Preserve code-switching, slang, punctuation, mentions, and hashtags.
-
-transcript:
-Write spoken words as completely as possible. Preserve Hinglish, slang, names, and repeated phrases.
-
-visible_text:
-Exact on-screen text strings only.
-
-visual_sequence:
-Describe what happens on screen in order. Use compact timestamp ranges. Each description should include
-framing, subject, action, visible objects, and any visible text if relevant.
-
-Describe what a viewer would actually remember, not just what is technically in frame:
-- body language, facial expressions, delivery, character work, parody cues
-- interaction dynamics: who leads, who reacts, who performs for whom
-- product/food/place details when the object or environment is the content
-- transitions that carry meaning: hard cut, slow zoom, reveal, repetition
-
-audio_behavior:
-Describe music, spoken delivery, silence, sound effects, beat drops, audio-text sync, and tonal changes.
-Capture how things sound, not just what plays.
-
-MUSIC IDENTIFICATION applies to every track that plays. When a track is
-recognizable, name it. When it is not, quote any audible hook lyric verbatim and
-describe its sound signature precisely enough to recognize the same track in a
-future reel. If a track or sound is identified anywhere in this fingerprint,
-including cultural_references, name it identically everywhere it is mentioned.
-Never describe a track generically in audio_behavior while naming it elsewhere.
-
-cultural_references:
-Recognizable nods to something outside the reel itself that a viewer is meant
-to clock: a film, song-as-reference, show, news beat, meme, trend, internet
-moment, public figure, brand cameo, or current event. Each entry has exactly
-four fields:
-  reference    - named as exactly as possible; films get (year)
-  channel      - exactly one of "audio", "visual", "caption", "cross-modal"
-  timestamp    - timestamp/range, or "caption"
-  co_occurring - what is being said, shown, or written at that beat
-
-If a cue is just mood music, keep it in audio_behavior, not here. A trend or
-aesthetic qualifies only when specific observable markers carry it; name those
-markers in co_occurring. Empty cultural_references is valid.
-
-edit_and_pacing:
-Observable editing only: jump cuts, snap cuts, zooms, overlays, filters, slow motion, repeated loops,
-hard cuts, split screens, or changes in shot duration.
-
-environment_and_entities:
-People, products, props, locations, brands, objects, wardrobe, devices, UI elements, screens.
-
-observed_alignments:
-An array of PLAIN STRINGS only. Use this when two or more observable elements
-line up or contradict each other. Never return objects or key-value structures.
-Examples:
-- voiceover claims skill while visuals show failure
-- caption reframes the visual as sarcasm
-- lyric hits exactly when facial expression changes
-- tissue comes away clean after product contact
-Limit to the 3-5 strongest alignments.
-
-notable_observed_details:
-Concrete facts another model could use as receipts. Do not explain why they matter.
-
-IMPORTANT
-
-- Reels only. If non-reel media is supplied, set media_type to "reel" and put the uncertainty in uncertainties.
-- Do not mention views, likes, comments, ranking, account history, or alerts.
-- Do not use clustering language.
-- Do not create pattern names.
-- Field shapes are a contract: arrays of strings stay arrays of strings, and
-  objects keep exactly the keys shown. Never add keys or substitute objects
-  where strings are specified.
-- Do not call anything "proof," "payoff," "viewer psychology," or "strategy" unless those exact words appear in the post.
-- If the post is sarcastic, ironic, performative, or fictional, capture the observable cues that reveal that.
-
-WORD BUDGET
-
-Total fingerprint body excluding caption, transcript, and visible_text: 340-950 words.
-Simple product reels should land around 400. Dense multi-character skits around 800-900.
-Let content dictate length within the budget.
 """
 
 

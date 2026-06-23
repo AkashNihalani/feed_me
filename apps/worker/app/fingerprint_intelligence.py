@@ -58,6 +58,7 @@ _DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 _VIDEO_UPLOAD_MAX_BYTES = int(os.getenv("FINGERPRINT_VIDEO_UPLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
 _VIDEO_INLINE_MAX_BYTES = int(os.getenv("FINGERPRINT_VIDEO_INLINE_MAX_BYTES", str(20 * 1024 * 1024)))
 _VIDEO_SAMPLE_SECONDS = int(os.getenv("FINGERPRINT_VIDEO_SAMPLE_SECONDS", "120"))
+_FINGERPRINT_MAX_TOKENS = int(os.getenv("FINGERPRINT_MAX_TOKENS", "9000"))
 _POST_CONDENSATION_MAX_TOKENS = int(os.getenv("POST_CONDENSATION_MAX_TOKENS", "2600"))
 _POST_CONDENSATION_WORD_TOLERANCE = float(os.getenv("POST_CONDENSATION_WORD_TOLERANCE", "0.15"))
 _D7_READ_MAX_TOKENS = int(os.getenv("D7_READ_MAX_TOKENS", "1800"))
@@ -158,7 +159,7 @@ def _fetch_bytes(
             request_headers.update(headers)
         resp = requests.get(
             str(url),
-            timeout=timeout,
+            timeout=(min(10, timeout), timeout),
             headers=request_headers,
             stream=bool(max_bytes),
         )
@@ -346,7 +347,9 @@ def _normalize_fingerprint_mapping(parsed: dict[str, Any], *, post_key: str, cap
             fingerprint = value
             break
     if isinstance(fingerprint.get("pool_clustering_fields"), dict):
-        fingerprint = fingerprint["pool_clustering_fields"]
+        parent = dict(fingerprint)
+        cluster_fields = dict(fingerprint["pool_clustering_fields"])
+        fingerprint = {**parent, **cluster_fields}
     if not isinstance(fingerprint, dict):
         return None
 
@@ -366,9 +369,8 @@ def _normalize_fingerprint_mapping(parsed: dict[str, Any], *, post_key: str, cap
         else:
             normalized[key] = [value]
 
-    has_observation = bool(
-        normalized.get("transcript")
-        or normalized.get("visible_text")
+    has_structured_observation = bool(
+        normalized.get("visible_text")
         or normalized.get("visual_sequence")
         or normalized.get("audio_behavior")
         or normalized.get("cultural_references")
@@ -377,7 +379,7 @@ def _normalize_fingerprint_mapping(parsed: dict[str, Any], *, post_key: str, cap
         or normalized.get("observed_alignments")
         or normalized.get("notable_observed_details")
     )
-    return normalized if has_observation else None
+    return normalized if has_structured_observation else None
 
 
 def _strip_fences(value: str) -> str:
@@ -757,7 +759,7 @@ def _call_model(
     user_text: str,
     media_parts: list[dict[str, Any]],
     *,
-    max_tokens: int = 6000,
+    max_tokens: int | None = None,
     model_override: str | None = None,
 ) -> dict[str, Any] | None:
     result = _call_fingerprint_model(user_text, media_parts, max_tokens=max_tokens, model_override=model_override)
@@ -771,13 +773,15 @@ def _call_fingerprint_model(
     user_text: str,
     media_parts: list[dict[str, Any]],
     *,
-    max_tokens: int = 6000,
+    max_tokens: int | None = None,
     model_override: str | None = None,
+    _compact_retry: bool = False,
 ) -> tuple[str, dict[str, Any] | None, str | None] | None:
     provider = _provider()
     if not provider:
         return None
     model = _model(provider, model_override)
+    token_budget = max_tokens or _FINGERPRINT_MAX_TOKENS
     content = ""
     try:
         if provider == "openrouter":
@@ -788,7 +792,7 @@ def _call_fingerprint_model(
                     {"role": "user", "content": [*media_parts, {"type": "text", "text": user_text}]},
                 ],
                 "temperature": 0.1,
-                "max_tokens": max_tokens,
+                "max_tokens": token_budget,
                 "response_format": {"type": "json_object"},
             }
             url = f"{OPENROUTER_BASE_URL.rstrip('/')}{_OPENROUTER_CHAT_URL}"
@@ -813,7 +817,7 @@ def _call_fingerprint_model(
                     "contents": [{"parts": [{"text": FINGERPRINT_EXTRACTION_SYSTEM_V8}, *media_parts, {"text": user_text}]}],
                     "generationConfig": {
                         "temperature": 0.1,
-                        "maxOutputTokens": max_tokens,
+                        "maxOutputTokens": token_budget,
                         "responseMimeType": "application/json",
                     },
                 },
@@ -832,6 +836,27 @@ def _call_fingerprint_model(
         error = "fingerprint output did not parse as JSON/YAML mapping"
         if finish_reason:
             error = f"{error}; finish_reason={finish_reason}"
+        if finish_reason == "length" and not _compact_retry:
+            compact_user_text = "\n".join([
+                user_text,
+                "",
+                "LONG_REEL_RECOVERY_MODE:",
+                "The previous output was too long. Return the same fingerprint schema, but compact.",
+                "Do not include a full transcript. Keep transcript under 120 words.",
+                "Use arrays with only the strongest observable visual/audio/edit/details.",
+                "The JSON must be complete and valid. First character {, last character }.",
+            ])
+            retry = _call_fingerprint_model(
+                compact_user_text,
+                media_parts,
+                max_tokens=token_budget,
+                model_override=model_override,
+                _compact_retry=True,
+            )
+            if retry:
+                retry_content, retry_parsed, retry_error = retry
+                joined = "\n\n--- COMPACT RETRY ---\n\n".join([content, retry_content]).strip()
+                return joined, retry_parsed, retry_error
         return content, None, error
     except Exception as exc:
         print(f"[fingerprint] model call failed: {exc}")
@@ -2641,13 +2666,47 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         pass
 
     caption = str(post.get("caption") or "")
+    caption_hash = _sha(caption)
+    user_text = "\n".join([
+        f"POST_KEY: {post_key}",
+        f"MEDIA_TYPE: reel",
+        f"DURATION_SECONDS: {post.get('duration_seconds') or ''}",
+        f"DURATION_BUCKET: {post.get('duration_bucket') or ''}",
+        f"POSTED_AT: {post.get('posted_at') or ''}",
+        f"CAPTION: {caption[:6000] or '(no caption)'}",
+    ])
+    user_payload = {
+        "post_key": post_key,
+        "media_source_hash": _sha(""),
+        "caption_hash": caption_hash,
+        "sampling_policy_version": FINGERPRINT_SAMPLING_POLICY_VERSION,
+        "user_text": user_text,
+    }
     media_parts, media_hash, _confidence = _fingerprint_media_parts(post, provider)
     if not media_parts or media_hash == _sha(""):
-        print(f"[fingerprint] skipped post_key={post_key}: missing active video_full media")
+        model_version = current_model_version()
+        user_payload = {
+            "post_key": post_key,
+            "media_source_hash": media_hash,
+            "caption_hash": caption_hash,
+            "sampling_policy_version": FINGERPRINT_SAMPLING_POLICY_VERSION,
+            "user_text": user_text,
+        }
+        _record_fingerprint_model_call(
+            conn,
+            post_key=post_key,
+            model_version=model_version,
+            user_payload=user_payload,
+            raw_output="",
+            parsed_output=None,
+            status="failed",
+            error="video_full media unavailable, too large, or fetch timed out",
+        )
+        print(f"[fingerprint] skipped post_key={post_key}: video_full media unavailable or fetch failed")
         return None
 
-    caption_hash = _sha(caption)
     model_version = current_model_version()
+    user_payload["media_source_hash"] = media_hash
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -2669,22 +2728,6 @@ def ensure_post_fingerprint(conn: Any, post_key: str) -> dict[str, Any] | None:
         conn.commit()
     except Exception:
         pass
-
-    user_text = "\n".join([
-        f"POST_KEY: {post_key}",
-        f"MEDIA_TYPE: reel",
-        f"DURATION_SECONDS: {post.get('duration_seconds') or ''}",
-        f"DURATION_BUCKET: {post.get('duration_bucket') or ''}",
-        f"POSTED_AT: {post.get('posted_at') or ''}",
-        f"CAPTION: {caption[:6000] or '(no caption)'}",
-    ])
-    user_payload = {
-        "post_key": post_key,
-        "media_source_hash": media_hash,
-        "caption_hash": caption_hash,
-        "sampling_policy_version": FINGERPRINT_SAMPLING_POLICY_VERSION,
-        "user_text": user_text,
-    }
     recovered = _recover_fingerprint_from_stored_raw(
         conn,
         post_key=post_key,
