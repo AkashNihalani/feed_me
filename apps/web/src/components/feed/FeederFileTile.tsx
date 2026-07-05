@@ -23,8 +23,8 @@ function formatCompact(value: string | number | null | undefined): string {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[14px] border border-foreground/[0.07] bg-white/82 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.46)] dark:border-white/[0.07] dark:bg-white/[0.07]">
-      <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/34">{label}</div>
-      <div className="mt-1.5 text-[19px] font-black leading-none tracking-normal text-foreground dark:text-white">{value}</div>
+      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/34">{label}</div>
+      <div className="mt-1.5 text-[18px] font-black leading-none tracking-normal text-foreground dark:text-white">{value}</div>
     </div>
   );
 }
@@ -58,12 +58,12 @@ export default function FeederFileTile({
       aria-label={`Open Feeder File for ${feedTitle}`}
     >
       <div className="pointer-events-none absolute inset-0 z-0">
-        <div className="absolute right-[-26%] top-[-42%] h-52 w-52 rounded-full bg-[radial-gradient(circle,rgba(225,29,72,0.28),transparent_68%)] blur-[6px]" />
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(225,29,72,0.1),transparent_46%,rgba(255,255,255,0.12))] dark:bg-[linear-gradient(135deg,rgba(225,29,72,0.16),transparent_50%,rgba(255,255,255,0.04))]" />
+        <div className="absolute right-[-26%] top-[-42%] h-52 w-52 rounded-full bg-[radial-gradient(circle,rgb(var(--fm-accent-rgb)/0.28),transparent_68%)] blur-[6px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgb(var(--fm-accent-rgb)/0.1),transparent_46%,rgba(255,255,255,0.12))] dark:bg-[linear-gradient(135deg,rgb(var(--fm-accent-rgb)/0.16),transparent_50%,rgba(255,255,255,0.04))]" />
       </div>
 
       <div className="relative z-10 flex items-start justify-between gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[#E11D48]/18 bg-[#E11D48]/10 text-[#BE123C] shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-[#FB7185]/20 dark:bg-[#E11D48]/16 dark:text-white">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[var(--fm-accent)]/18 bg-[var(--fm-accent)]/10 text-[var(--fm-accent-deep)] shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-[var(--fm-accent-bright)]/20 dark:bg-[var(--fm-accent)]/16 dark:text-white">
           <BrainCircuit size={20} strokeWidth={2.6} />
         </div>
         <div className="flex items-center gap-1.5 rounded-full border border-foreground/[0.07] bg-white/82 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/46 dark:border-white/[0.08] dark:bg-white/[0.09] dark:text-white/42">
@@ -73,14 +73,14 @@ export default function FeederFileTile({
       </div>
 
       <div className="relative z-10 mt-5">
-        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-foreground/42 dark:text-white/36">
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">
           <LayoutGrid size={12} strokeWidth={2.8} />
           Feeder File
         </div>
-        <h3 className="mt-1.5 text-[25px] font-black leading-[0.92] tracking-normal text-foreground dark:text-white">
+        <h3 className="mt-1.5 text-[22px] font-black leading-[0.92] tracking-normal text-foreground dark:text-white">
           Content intelligence
         </h3>
-        <p className="mt-2 line-clamp-2 text-[11px] font-bold leading-relaxed text-foreground/50 dark:text-white/42">
+        <p className="mt-2 line-clamp-2 text-[12px] font-bold leading-relaxed text-foreground/50 dark:text-white/42">
           Fresh 90D pools for the posts and patterns working inside {feedTitle}.
         </p>
       </div>
@@ -88,7 +88,7 @@ export default function FeederFileTile({
       <div className="relative z-10 mt-5 grid grid-cols-[1fr_1fr_auto] gap-2">
         <MiniStat label="Feeders" value={String(feederCount)} />
         <MiniStat label="Posts" value={formatCompact(trackedPosts)} />
-        <span className="flex h-full min-h-[54px] w-12 items-center justify-center rounded-[14px] bg-[#E11D48] text-white shadow-[0_12px_24px_-16px_rgba(225,29,72,0.92)] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
+        <span className="flex h-full min-h-[54px] w-12 items-center justify-center rounded-[14px] bg-[var(--fm-accent)] text-white shadow-[0_12px_24px_-16px_rgb(var(--fm-accent-rgb)/0.92)] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
           <ArrowUpRight size={18} strokeWidth={2.8} />
         </span>
       </div>

@@ -2,10 +2,11 @@
 
 /* eslint-disable @next/next/no-img-element -- Feeder story avatars use direct dynamic profile URLs. */
 
-import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef, type CSSProperties } from 'react';
+import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { ChevronLeft, Clock, Crown, FileText, Plus, Target, Users, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, ChevronLeft, Clock, Crown, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
@@ -15,6 +16,7 @@ import FeederReaderCover from '@/components/feed/FeederReaderCover';
 import FeederReaderPage from '@/components/feed/FeederReaderPage';
 import RunSignalFeed from '@/components/feed/RunSignalFeed';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
+import Odometer from '@/components/login/Odometer';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import FeedBriefDialog from '@/components/feed/FeedBriefDialog';
 import { FeedBrief, CREATE_FEED_LAST_STEP, defaultFeedBrief, buildFeedBriefText, normalizeFeedBrief } from '@/components/feed/feedBriefUtils';
@@ -26,6 +28,7 @@ import { clearCacheByPrefix, getCache, readCache, removeCache, setCache } from '
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { DEFAULT_EXPORT_FIELD_IDS, ExportFieldId } from '@/lib/feedExportConfig';
+import { acquireDocumentClass, acquireRootPageScroll } from '@/lib/rootScrollMode';
 
 /* ── Types ── */
 type Metrics = { likes: string; comments: string; views: string; postsTracked: string };
@@ -58,17 +61,17 @@ const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FEED_HEADER_MORPH_TRANSITION = { duration: 0.46, ease: APPLE_EASE } as const;
 const FEED_HEADER_VIEW_TRANSITION = { duration: 0.32, ease: APPLE_EASE } as const;
 const FEED_MOBILE_LIST_HEADER_HEIGHT = 176;
-const FEED_DESKTOP_LIST_HEADER_HEIGHT = 174;
+const FEED_DESKTOP_LIST_HEADER_HEIGHT = 128;
 const FEED_MOBILE_DETAIL_HEADER_HEIGHT = 260;
-const FEED_DESKTOP_DETAIL_HEADER_HEIGHT = 246;
-const FEED_DESKTOP_CONTENT_OFFSET = 258;
+const FEED_DESKTOP_DETAIL_HEADER_HEIGHT = 122;
+const FEED_DESKTOP_CONTENT_OFFSET = 130;
 const FEED_MOBILE_DETAIL_CHROME_HEIGHT = '222px';
-const FEED_DESKTOP_DETAIL_CHROME_HEIGHT = '198px';
+const FEED_DESKTOP_DETAIL_CHROME_HEIGHT = '92px';
 const FEED_MOBILE_READER_HEADER_HEIGHT = 218;
-const FEED_DESKTOP_READER_HEADER_HEIGHT = 206;
-const FEED_DESKTOP_READER_CONTENT_OFFSET = 214;
+const FEED_DESKTOP_READER_HEADER_HEIGHT = 116;
+const FEED_DESKTOP_READER_CONTENT_OFFSET = 124;
 const FEED_MOBILE_READER_CHROME_HEIGHT = '190px';
-const FEED_DESKTOP_READER_CHROME_HEIGHT = '164px';
+const FEED_DESKTOP_READER_CHROME_HEIGHT = '88px';
 const FEED_HEADER_SWAP_TRANSITION = { duration: 0.24, ease: GRID_ITEM_EASE } as const;
 const FEED_PAGE_LAYER_TRANSITION = { duration: 0.24, ease: GRID_ITEM_EASE } as const;
 const FEED_VIEW_DISSOLVE = {
@@ -280,10 +283,10 @@ function ActiveStoryRingStroke() {
   return (
     <>
       <motion.span
-        className="pointer-events-none absolute -inset-1 rounded-full bg-[#E11D48]/24 blur-md"
+        className="pointer-events-none absolute -inset-1 rounded-full bg-[var(--fm-accent)]/24 blur-md"
         initial={{ opacity: 0, scale: 0.86 }}
         animate={{ opacity: [0, 0.64, 0], scale: [0.86, 1.16, 1.02] }}
-        transition={{ duration: 0.62, ease: APPLE_EASE, times: [0, 0.38, 1] }}
+        transition={{ duration: 0.9, ease: APPLE_EASE, times: [0, 0.42, 1] }}
       />
       <motion.svg
         className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
@@ -296,7 +299,7 @@ function ActiveStoryRingStroke() {
             cy="50"
             r={STORY_RING_RADIUS}
             fill="none"
-            stroke="rgba(225,29,72,0.22)"
+            stroke="rgb(var(--fm-accent-rgb)/0.22)"
             strokeWidth="7.5"
           />
           <motion.circle
@@ -310,8 +313,8 @@ function ActiveStoryRingStroke() {
             strokeDasharray={STORY_RING_CIRCUMFERENCE}
             initial={{ opacity: 0.9, strokeDashoffset: STORY_RING_CIRCUMFERENCE }}
             animate={{ opacity: 1, strokeDashoffset: 0 }}
-            transition={{ duration: 0.72, ease: APPLE_EASE }}
-            style={{ filter: 'drop-shadow(0 3px 7px rgba(225,29,72,0.34))' }}
+            transition={{ duration: 1.08, ease: APPLE_EASE }}
+            style={{ filter: 'drop-shadow(0 3px 7px rgb(var(--fm-accent-rgb)/0.34))' }}
           />
         </g>
       </motion.svg>
@@ -341,27 +344,27 @@ function FullFeedStoryButton({
     >
       <span
         className={cn(
-          'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-300',
+          'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-500 ease-out',
           selected
-            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
+            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]'
             : 'h-[70px] w-[70px] bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
         )}
       >
         {selected && <ActiveStoryRingStroke />}
-        <span className="relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)]">
+        <span className="relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)]">
           {visibleFeeders.length > 0 ? (
             <span className="relative block h-[28px] w-[51px]" aria-hidden="true">
               {visibleFeeders.map((feeder, index) => (
                 <FeederStoryAvatar
                   key={`story-stack:${feeder.handle}:${index}`}
                   feeder={feeder}
-                  className="absolute top-0 h-[28px] w-[28px] border-[1.5px] border-white text-[11px] dark:border-[#09090b]"
+                  className="absolute top-0 h-[28px] w-[28px] border-[1.5px] border-white text-[12px] dark:border-[var(--fm-ink)]"
                   style={{ left: index * 11, zIndex: 3 - index }}
                 />
               ))}
             </span>
           ) : (
-            <span className="flex h-full w-full items-center justify-center rounded-full bg-[#E11D48] text-white">
+            <span className="flex h-full w-full items-center justify-center rounded-full bg-[var(--fm-accent)] text-white">
               <Users size={20} strokeWidth={2.8} />
             </span>
           )}
@@ -369,8 +372,8 @@ function FullFeedStoryButton({
       </span>
       <span
         className={cn(
-          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9.5px] font-black leading-none text-black/42 dark:text-white/44',
-          selected && 'text-[#E11D48] dark:text-[#FB7185]',
+          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-black leading-none text-black/42 dark:text-white/44',
+          selected && 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]',
         )}
       >
         Full Feed
@@ -399,19 +402,19 @@ function FeederStoryButton({
     >
       <span
         className={cn(
-          'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-300',
+          'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-500 ease-out',
           selected
-            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgba(225,29,72,0.85)] dark:bg-[#3F0F1B]'
+            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]'
             : 'h-[70px] w-[70px] bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
         )}
       >
         {selected && <ActiveStoryRingStroke />}
-        <span className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF]">
+        <span className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[var(--fm-accent-deeper)] dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[var(--fm-accent-soft)]">
           <FeederStoryAvatar feeder={feeder} />
         </span>
         {feeder.isAnchor && (
           <span
-            className="absolute -bottom-0.5 left-1/2 z-30 grid h-3 w-3 -translate-x-1/2 place-items-center rounded-full border-[2px] border-white bg-[#E11D48] text-white shadow-[0_3px_8px_-2px_rgba(225,29,72,0.6)] dark:border-[#09090b]"
+            className="absolute -bottom-0.5 left-1/2 z-30 grid h-3 w-3 -translate-x-1/2 place-items-center rounded-full border-[2px] border-white bg-[var(--fm-accent)] text-white shadow-[0_3px_8px_-2px_rgb(var(--fm-accent-rgb)/0.6)] dark:border-[var(--fm-ink)]"
             aria-label="Anchor feeder"
           >
             <Crown size={9} strokeWidth={3} fill="currentColor" />
@@ -420,8 +423,8 @@ function FeederStoryButton({
       </span>
       <span
         className={cn(
-          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9.5px] font-black lowercase leading-none text-black/42 dark:text-white/44',
-          selected && 'text-[#E11D48] dark:text-[#FB7185]',
+          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-black lowercase leading-none text-black/42 dark:text-white/44',
+          selected && 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]',
         )}
       >
         @{feeder.handle}
@@ -456,6 +459,170 @@ function FeederStoryRail({
           onClick={() => onSelectHandle(feeder.handle)}
         />
       ))}
+    </div>
+  );
+}
+
+function SelectorSlotText({
+  value,
+  className,
+  style,
+}: {
+  value: string;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <span className={cn('relative block h-[1em] overflow-hidden', className)} style={style}>
+      <span className="invisible block truncate">{value}</span>
+      <AnimatePresence initial={false}>
+        <motion.span
+          key={value}
+          className="absolute inset-x-0 top-0 block truncate"
+          initial={{ opacity: 0, y: '-118%', rotate: -1.6 }}
+          animate={{ opacity: 1, y: '0%', rotate: 0 }}
+          exit={{ opacity: 0, y: '118%', rotate: 1.6 }}
+          transition={{ duration: 0.42, ease: [0.34, 1.56, 0.64, 1] }}
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+function DesktopFeederSelector({
+  feeders,
+  feedTitle,
+  selectedHandle,
+  onSelectHandle,
+}: {
+  feeders: Feeder[];
+  feedTitle: string;
+  selectedHandle: string;
+  onSelectHandle: (handle: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const [popoverRect, setPopoverRect] = useState({ top: 0, left: 0, width: 0 });
+  const selectedFeeder = selectedHandle === 'all'
+    ? null
+    : feeders.find((feeder) => feeder.handle === selectedHandle) ?? null;
+  const label = selectedHandle === 'all' ? feedTitle : `@${selectedHandle}`;
+  const sublabel = selectedHandle === 'all' ? 'Full feed' : feedTitle;
+  const visibleFeeders = feeders.slice(0, 3);
+  const labelSize = `clamp(16px, calc(100cqi / ${Math.max(label.length, 1)} * 1.9), 25px)`;
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      if (popoverRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const closeOnResize = () => setOpen(false);
+    document.addEventListener('pointerdown', closeOnOutside);
+    window.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('resize', closeOnResize);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('resize', closeOnResize);
+    };
+  }, [open]);
+
+  const toggleOpen = (event: MouseEvent<HTMLButtonElement>) => {
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const gutter = 24;
+    const width = Math.min(760, window.innerWidth - gutter * 2);
+    setPopoverRect({
+      top: rect.bottom + 8,
+      left: Math.min(Math.max(gutter, rect.left), window.innerWidth - gutter - width),
+      width,
+    });
+    setOpen((current) => !current);
+  };
+
+  return (
+    <div ref={rootRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={toggleOpen}
+        className="flex h-[58px] w-full min-w-0 items-center gap-2.5 rounded-[22px] border border-white/76 bg-white/68 px-3 text-left shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]"
+      >
+        <span className="grid h-12 w-14 shrink-0 place-items-center">
+          {selectedFeeder ? (
+            <FeederStoryAvatar feeder={selectedFeeder} className="h-12 w-12 border-2 border-white text-[14px] dark:border-[var(--fm-ink)]" />
+          ) : visibleFeeders.length > 0 ? (
+            <span className="relative block h-12 w-14" aria-hidden="true">
+              {visibleFeeders.map((feeder, index) => (
+                <FeederStoryAvatar
+                  key={`desktop-selector:${feeder.handle}:${index}`}
+                  feeder={feeder}
+                  className="absolute top-0 h-12 w-12 border-2 border-white text-[14px] dark:border-[var(--fm-ink)]"
+                  style={{ left: index * 7, zIndex: 3 - index }}
+                />
+              ))}
+            </span>
+          ) : (
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-[var(--fm-accent)] text-white">
+              <Users size={19} strokeWidth={2.8} />
+            </span>
+          )}
+        </span>
+        <span className="min-w-0 flex-1 [container-type:inline-size]">
+          <SelectorSlotText
+            value={label}
+            className="font-black uppercase leading-none tracking-normal text-black dark:text-white"
+            style={{ fontSize: labelSize }}
+          />
+          <SelectorSlotText
+            value={sublabel}
+            className="mt-1 text-[10px] font-black uppercase leading-none tracking-[0.14em] text-black/42 dark:text-white/36"
+          />
+        </span>
+        <ChevronDown size={16} strokeWidth={2.8} className={cn('shrink-0 text-black/42 transition-transform dark:text-white/36', open && 'rotate-180')} />
+      </button>
+
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              ref={popoverRef}
+              initial={{ opacity: 0, y: -18, scale: 0.982 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -18, scale: 0.982 }}
+              transition={{ duration: 0.42, ease: APPLE_EASE }}
+              className="fixed z-[220] overflow-hidden rounded-[22px] border border-white/76 bg-white/88 p-3 shadow-[0_24px_54px_-28px_rgba(15,23,42,0.42),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl dark:border-white/10 dark:bg-[var(--fm-ink)]/90 dark:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.78),inset_0_1px_0_rgba(255,255,255,0.08)]"
+              style={{ top: popoverRect.top, left: popoverRect.left, width: popoverRect.width }}
+            >
+              <FeederStoryRail
+                feeders={feeders}
+                selectedHandle={selectedHandle}
+                onSelectHandle={(handle) => {
+                  onSelectHandle(handle);
+                  if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+                  closeTimerRef.current = window.setTimeout(() => setOpen(false), 980);
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -503,8 +670,8 @@ function FeedPageContent() {
     : 'calc(164px + env(safe-area-inset-bottom))';
   const currentFeedDetailScrollTop = useCallback(() => {
     if (typeof window === 'undefined') return 0;
-    return Math.max(0, Math.round(useBrowserPageScroll ? window.scrollY : contentRef.current?.scrollTop || 0));
-  }, [useBrowserPageScroll]);
+    return Math.max(0, Math.round(window.scrollY || contentRef.current?.scrollTop || 0));
+  }, []);
   const resetFeedScrollTop = useCallback(() => {
     if (typeof window === 'undefined') return;
     document.documentElement.scrollLeft = 0;
@@ -593,6 +760,7 @@ function FeedPageContent() {
   // Feeder Reader is a sub-view of detail, toggled by the `read` URL param so it
   // keeps the app shell and the browser back button works.
   const reading = view === 'detail' && searchParams.get('read') === '1';
+  const useReaderPageScroll = reading || useBrowserPageScroll;
 
   const [feeds, setFeeds] = useState<Feed[]>(INITIAL_FEEDS);
   const [feedDataReady, setFeedDataReady] = useState(false);
@@ -633,9 +801,10 @@ function FeedPageContent() {
   );
   const headerCompressed = useCompressedOnScroll(
     contentRef,
-    view === 'detail' && useBrowserPageScroll,
+    view === 'detail' && useReaderPageScroll,
     { collapseDistance: 220, expandDistance: 120, topGuard: 54 },
   );
+  const detailHeaderCompressed = !reading && headerCompressed;
   useEffect(() => {
     if (view === 'detail') {
       setHeaderHeight(
@@ -679,6 +848,16 @@ function FeedPageContent() {
   }, [selectedFeedId, useBrowserPageScroll, view]);
 
   useEffect(() => {
+    if (!reading || useBrowserPageScroll) return undefined;
+    const releaseScroll = acquireRootPageScroll();
+    const releaseClass = acquireDocumentClass('fm-reader-root-scroll');
+    return () => {
+      releaseClass();
+      releaseScroll();
+    };
+  }, [reading, useBrowserPageScroll]);
+
+  useEffect(() => {
     if (view !== 'detail' || !selectedFeedId) return;
     if (restoreFeedDetailScrollTop(selectedFeedId)) return;
     resetFeedScrollTop();
@@ -693,7 +872,7 @@ function FeedPageContent() {
   );
   const effectiveDashboardData = dashboardData ?? dashboardFallback;
   const effectiveBaselineDashboardData = baselineDashboardData ?? effectiveDashboardData;
-  const useFeedRootSnap = view === 'detail' && useBrowserPageScroll && isStandaloneMode;
+  const useFeedRootSnap = view === 'detail' && !reading && useBrowserPageScroll && isStandaloneMode;
   const sortedFeeds = useMemo(() => {
     const list = [...feeds];
     if (sortMode === 'name') return list.sort((a, b) => a.title.localeCompare(b.title));
@@ -723,7 +902,6 @@ function FeedPageContent() {
     if (!Number.isFinite(raw) || raw <= 0) return null;
     return Math.max(1, Math.min(100, Math.round(raw)));
   }, [effectiveDashboardData]);
-  const topAverageLabel = topAveragePercentile == null ? '--' : `Top ${topAveragePercentile}%`;
   const topAveragePosts = Math.max(0, Number(effectiveDashboardData?.summary?.posts_with_metrics) || 0);
   const readerAnchorHandle = activeFeed?.feeders.find((feeder) => feeder.isAnchor)?.handle
     || activeFeed?.feeders[0]?.handle
@@ -1138,8 +1316,8 @@ function FeedPageContent() {
       initial={false}
       className={cn(
         'fm-dashboard-mesh relative w-full text-foreground select-none',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#f4f7f9] dark:bg-[#030303]',
-        useBrowserPageScroll ? 'overflow-x-hidden overflow-y-visible' : 'overflow-hidden',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[var(--fm-page)]',
+        useReaderPageScroll ? 'overflow-x-hidden overflow-y-visible' : 'overflow-hidden',
       )}
       style={{
         ...appShellStyle,
@@ -1149,13 +1327,13 @@ function FeedPageContent() {
       {!useTranslucentBrowserChrome && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
+          className="pointer-events-none fixed inset-0 z-0 bg-[var(--fm-page)]"
         />
       )}
 
       <AppHeader
         id="feed"
-        compressed={view === 'detail' && headerCompressed}
+        compressed={view === 'detail' && detailHeaderCompressed}
       >
             <div className="relative z-10 px-3.5 sm:px-4 lg:flex lg:h-full lg:flex-col lg:justify-center lg:px-5">
               {/* ═══ MOBILE HEADER (< lg) ═══ */}
@@ -1178,12 +1356,12 @@ function FeedPageContent() {
                         className="absolute inset-0 grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5"
                         initial={false}
                         animate={{
-                          opacity: headerCompressed ? 0 : 1,
-                          x: headerCompressed ? -10 : 0,
-                          scale: headerCompressed ? 0.985 : 1,
+                          opacity: detailHeaderCompressed ? 0 : 1,
+                          x: detailHeaderCompressed ? -10 : 0,
+                          scale: detailHeaderCompressed ? 0.985 : 1,
                         }}
                         transition={FEED_HEADER_MORPH_TRANSITION}
-                        style={{ pointerEvents: headerCompressed ? 'none' : 'auto' }}
+                        style={{ pointerEvents: detailHeaderCompressed ? 'none' : 'auto' }}
                       >
                         <motion.button
                           key="back-btn"
@@ -1194,7 +1372,7 @@ function FeedPageContent() {
                             else handleBack();
                           }}
                           aria-label={reading ? 'Back to feed dashboard' : 'Back to feeds'}
-                          className="relative flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[15px] border border-white/76 bg-white/68 text-black/58 shadow-[0_5px_14px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.92)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/45 dark:shadow-[0_7px_18px_rgba(0,0,0,0.42),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                          className="relative flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[14px] border border-white/76 bg-white/68 text-black/58 shadow-[0_5px_14px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.92)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/45 dark:shadow-[0_7px_18px_rgba(0,0,0,0.42),0_1px_0_rgba(255,255,255,0.06)_inset]"
                         >
                           <ChevronLeft size={21} strokeWidth={2.7} />
                         </motion.button>
@@ -1207,21 +1385,24 @@ function FeedPageContent() {
                           >
                             {compactPrimaryLabel}
                           </motion.span>
-                          <span className="mt-1 block truncate text-[9px] font-black uppercase leading-none tracking-[0.22em] text-black/38 dark:text-white/34">
+                          <span className="mt-1 block truncate text-[10px] font-black uppercase leading-none tracking-[0.22em] text-black/38 dark:text-white/34">
                             {compactSecondaryLabel}
                           </span>
                         </div>
 
-                        <div className="min-w-[92px] rounded-[17px] border border-white/82 bg-white/76 px-3 py-2 text-right text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_7px_18px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_20px_rgba(0,0,0,0.38),0_1px_0_rgba(255,255,255,0.06)_inset]">
+                        <div className="min-w-[92px] rounded-[18px] border border-white/82 bg-white/76 px-3 py-2 text-right text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_7px_18px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_20px_rgba(0,0,0,0.38),0_1px_0_rgba(255,255,255,0.06)_inset]">
                           {topAveragePercentile == null ? (
-                            <div className="text-[19px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">--</div>
+                            <div className="text-[18px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">--</div>
                           ) : (
                             <div className="flex items-baseline justify-end gap-0.5 whitespace-nowrap">
-                              <span className="text-[13px] font-black leading-none tracking-[-0.02em] text-black/72 dark:text-white/72">Top</span>
-                              <span className="text-[22px] font-black leading-none tracking-[-0.06em] text-[#E11D48]">{topAveragePercentile}%</span>
+                              <span className="text-[14px] font-black leading-none tracking-[-0.04em] text-black/72 dark:text-white/72">Top</span>
+                              <span className="inline-flex items-baseline text-[22px] font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]">
+                                <Odometer value={topAveragePercentile} className="inline-flex min-w-[1.1em] overflow-visible" />
+                                <span>%</span>
+                              </span>
                             </div>
                           )}
-                          <div className="mt-1 truncate text-[8px] font-black uppercase leading-none tracking-[0.18em] text-black/38 dark:text-white/32">
+                          <div className="mt-1 truncate text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/38 dark:text-white/32">
                             {topAveragePosts > 0 ? `${topAveragePosts} posts` : 'Avg rank'}
                           </div>
                         </div>
@@ -1231,26 +1412,26 @@ function FeedPageContent() {
                         className="absolute inset-0 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-3"
                         initial={false}
                         animate={{
-                          opacity: headerCompressed ? 1 : 0,
-                          x: headerCompressed ? 0 : 10,
-                          scale: headerCompressed ? 1 : 0.985,
+                          opacity: detailHeaderCompressed ? 1 : 0,
+                          x: detailHeaderCompressed ? 0 : 10,
+                          scale: detailHeaderCompressed ? 1 : 0.985,
                         }}
                         transition={FEED_HEADER_MORPH_TRANSITION}
-                        style={{ pointerEvents: headerCompressed ? 'auto' : 'none' }}
+                        style={{ pointerEvents: detailHeaderCompressed ? 'auto' : 'none' }}
                       >
                         <div className="flex min-w-0 items-end gap-1.5 justify-self-start">
-                          <span className="text-[48px] font-black leading-[0.78] tracking-[-0.06em] text-black dark:text-white fm-depth-title">
+                          <span className="text-[48px] font-black leading-[0.78] tracking-[-0.04em] text-black dark:text-white fm-depth-title">
                             {compactWindowNumber}
                           </span>
-                          <span className="mb-1.5 text-[10px] font-black uppercase leading-none tracking-[0.2em] text-black/44 dark:text-white/38">
+                          <span className="mb-1.5 text-[10px] font-black uppercase leading-none tracking-[0.22em] text-black/44 dark:text-white/38">
                             {compactWindowUnitLabel}
                           </span>
                         </div>
                         <div className="flex w-full min-w-0 flex-col items-end overflow-hidden text-right leading-none">
-                          <span className="block max-w-full truncate text-[16px] font-black uppercase tracking-[0.04em] text-[#E11D48] drop-shadow-[0_8px_18px_rgba(225,29,72,0.16)]">
+                          <span className="block max-w-full truncate text-[16px] font-black uppercase tracking-[0.06em] text-[var(--fm-accent)] drop-shadow-[0_8px_18px_rgb(var(--fm-accent-rgb)/0.16)]">
                             {compactPrimaryLabel}
                           </span>
-                          <span className="mt-1 block max-w-full truncate text-[9px] font-black uppercase tracking-[0.24em] text-black/42 dark:text-white/36">
+                          <span className="mt-1 block max-w-full truncate text-[10px] font-black uppercase tracking-[0.22em] text-black/42 dark:text-white/36">
                             {compactSecondaryLabel}
                           </span>
                         </div>
@@ -1261,9 +1442,9 @@ function FeedPageContent() {
                       initial={false}
                       className="mt-[5px] min-w-0 overflow-hidden pointer-events-auto"
                       animate={{
-                        opacity: headerCompressed ? 0 : 1,
-                        y: headerCompressed ? -14 : 0,
-                        clipPath: headerCompressed
+                        opacity: detailHeaderCompressed ? 0 : 1,
+                        y: detailHeaderCompressed ? -14 : 0,
+                        clipPath: detailHeaderCompressed
                           ? 'inset(0 0 100% 0 round 18px)'
                           : 'inset(0 0 0% 0 round 18px)',
                       }}
@@ -1273,7 +1454,7 @@ function FeedPageContent() {
                         clipPath: { duration: 0.22, ease: GRID_ITEM_EASE },
                       }}
                       style={{
-                        pointerEvents: headerCompressed ? 'none' : 'auto',
+                        pointerEvents: detailHeaderCompressed ? 'none' : 'auto',
                         willChange: 'transform, opacity, clip-path',
                       }}
                     >
@@ -1283,13 +1464,13 @@ function FeedPageContent() {
                             <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
                               className={cn('relative h-full rounded-[14px] text-center font-black',
                                 tf === timeframe
-                                  ? 'z-10 text-[15px] tracking-[-0.02em] text-white sm:text-[16px]'
-                                  : 'z-0 text-[11px] tracking-[0.04em] text-black/42 sm:text-[12px] dark:text-white/38'
+                                  ? 'z-10 text-[16px] tracking-[-0.04em] text-white sm:text-[16px]'
+                                  : 'z-0 text-[12px] tracking-[0.06em] text-black/42 sm:text-[12px] dark:text-white/38'
                               )} style={{ WebkitTapHighlightColor: 'transparent' }}>
                               {tf === timeframe && (
                                 <motion.span
                                   layoutId="timeframe-pill-bg"
-                                  className="absolute inset-0 rounded-[14px] border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgba(225,29,72,0.26)] dark:border-[#FDA4AF]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
+                                  className="absolute inset-0 rounded-[14px] border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgb(var(--fm-accent-rgb)/0.26)] dark:border-[var(--fm-accent-soft)]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgb(var(--fm-accent-rgb)/0.2),0_12px_28px_rgba(0,0,0,0.5)]"
                                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                                 />
                               )}
@@ -1349,14 +1530,14 @@ function FeedPageContent() {
                             {sortMode === 'recent' ? (
                               <Clock size={16} strokeWidth={2.4} />
                             ) : sortMode === 'name' ? (
-                              <span className="text-[12px] font-black leading-none tracking-[-0.02em]">Aa</span>
+                              <span className="text-[12px] font-black leading-none tracking-[-0.04em]">Aa</span>
                             ) : (
                               <Users size={16} strokeWidth={2.4} />
                             )}
                           </motion.span>
                         </motion.button>
                         <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)} aria-label="Add feed"
-                          className="flex h-[36px] items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[11px]">
+                          className="flex h-[36px] items-center justify-center gap-1.5 rounded-[14px] bg-[var(--fm-accent)] px-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgb(var(--fm-accent-rgb)/0.35)] dark:shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.15),0_8px_24px_-4px_rgb(var(--fm-accent-rgb)/0.25),0_1px_0_rgba(255,255,255,0.3)_inset] sm:px-3.5 sm:text-[12px]">
                           <Plus size={16} strokeWidth={3} /> <span className="hidden sm:inline">Add Feed</span>
                         </motion.button>
                         </div>
@@ -1389,8 +1570,8 @@ function FeedPageContent() {
                       }}
                     >
                       {/* Row 1: Back + Name | Timeframe pills | performance summary */}
-                      <div className="grid min-h-[64px] grid-cols-[minmax(270px,0.8fr)_minmax(360px,1fr)_minmax(180px,0.55fr)] items-center gap-3">
-                        <div className="flex items-center gap-2">
+                      <div className="grid min-h-[58px] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4">
+                        <div className="flex min-w-0 items-center gap-2">
                           <motion.button
                             whileTap={{ scale: 0.92 }}
                             onClick={() => {
@@ -1403,31 +1584,26 @@ function FeedPageContent() {
                           >
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                           </motion.button>
-                          <div className="flex min-w-0 flex-col justify-center overflow-hidden [container-type:inline-size]">
-                            <span
-                              className="fm-depth-title block truncate font-black uppercase leading-none text-black dark:text-white"
-                              style={feedDashboardTitleStyle(compactPrimaryLabel, 'desktop')}
-                            >
-                              {compactPrimaryLabel}
-                            </span>
-                            <span className="mt-1 block truncate text-[9px] font-black uppercase leading-none tracking-[0.2em] text-black/38 dark:text-white/34">
-                              {compactSecondaryLabel}
-                            </span>
-                          </div>
+                          <DesktopFeederSelector
+                            feeders={activeFeed?.feeders ?? []}
+                            feedTitle={shortTitle}
+                            selectedHandle={selectedHandle}
+                            onSelectHandle={(handle) => { play('snapLock'); setSelectedHandle(handle); }}
+                          />
                         </div>
-                        <div className="flex min-w-0 justify-center px-0.5">
-                          <div className="relative flex items-center gap-1.5 rounded-[18px] border border-white/82 bg-white/74 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+                        <div className="flex min-w-0 justify-center">
+                          <div className="relative flex min-h-[46px] items-center gap-1.5 rounded-[22px] border border-white/82 bg-white/74 p-1.5 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:bg-white/[0.03] dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
                             {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
                               <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
-                                className={cn('relative rounded-[14px] px-4 py-1.75 text-center font-black',
+                                className={cn('relative rounded-[14px] px-5 py-2 text-center font-black leading-none',
                                   tf === timeframe
-                                    ? 'z-10 text-[17px] tracking-[-0.02em] text-white'
-                                    : 'z-0 text-[13px] tracking-[0.04em] text-black/45 dark:text-white/40'
+                                    ? 'z-10 text-[18px] tracking-[-0.04em] text-white'
+                                    : 'z-0 text-[14px] tracking-[0.06em] text-black/45 dark:text-white/40'
                                 )} style={{ WebkitTapHighlightColor: 'transparent' }}>
                                 {tf === timeframe && (
                                   <motion.span
                                     layoutId="timeframe-pill-bg-desk"
-                                    className="absolute inset-0 rounded-[14px] border border-[#FB7185] bg-[#E11D48] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgba(225,29,72,0.26)] dark:border-[#FDA4AF]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]"
+                                    className="absolute inset-0 rounded-[14px] border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgb(var(--fm-accent-rgb)/0.26)] dark:border-[var(--fm-accent-soft)]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgb(var(--fm-accent-rgb)/0.2),0_12px_28px_rgba(0,0,0,0.5)]"
                                     transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                                   />
                                 )}
@@ -1436,25 +1612,26 @@ function FeedPageContent() {
                             ))}
                           </div>
                         </div>
-                        <div className="flex min-w-0 items-center justify-end">
-                          <div className="rounded-[14px] border border-black/6 bg-white/68 px-3 py-1.5 text-right shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_8px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                            <div className="text-[7px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/30">Avg perf</div>
+                        <div className="flex w-[150px] shrink-0 items-center justify-end">
+                          <div className="w-full rounded-[14px] border border-black/6 bg-white/68 px-3 py-1.5 text-right shadow-[0_6px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_8px_18px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                            <div className="text-[8px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/30">Avg perf</div>
                             <div className="flex items-baseline justify-end gap-1.5">
-                              <span className="text-[22px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">{topAverageLabel}</span>
-                              <span className="text-[8px] font-black uppercase tracking-[0.1em] text-black/36 dark:text-white/30">
+                              {topAveragePercentile == null ? (
+                                <span className="text-[22px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">--</span>
+                              ) : (
+                                <span className="inline-flex items-baseline text-[22px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">
+                                  <span>Top&nbsp;</span>
+                                  <Odometer value={topAveragePercentile} className="inline-flex min-w-[1.1em] overflow-visible" />
+                                  <span>%</span>
+                                </span>
+                              )}
+                              <span className="inline-block min-w-[32px] text-[8px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/30">
                                 {topAveragePosts > 0 ? `${topAveragePosts}p` : ''}
                               </span>
                             </div>
                           </div>
                         </div>
                       </div>
-
-                      {/* Row 2: Recessed filter tray with handle pills */}
-                      <FeederStoryRail
-                        feeders={activeFeed?.feeders ?? []}
-                        selectedHandle={selectedHandle}
-                        onSelectHandle={(handle) => { play('snapLock'); setSelectedHandle(handle); }}
-                      />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -1479,7 +1656,7 @@ function FeedPageContent() {
                         </div>
                         <div className="flex min-w-0 items-center justify-end gap-2">
                           <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
-                            className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[#E11D48] px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgba(225,29,72,0.35)] dark:shadow-[0_2px_4px_rgba(225,29,72,0.15),0_8px_24px_-4px_rgba(225,29,72,0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
+                            className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[var(--fm-accent)] px-3.5 py-2 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgb(var(--fm-accent-rgb)/0.35)] dark:shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.15),0_8px_24px_-4px_rgb(var(--fm-accent-rgb)/0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
                             <Plus size={15} strokeWidth={3} /> Add Feed
                           </motion.button>
                         </div>
@@ -1497,9 +1674,9 @@ function FeedPageContent() {
                                 whileTap={{ scale: 0.95 }}
                                 onClick={() => { play('snapLock'); setSortMode(mode); }}
                                 className={cn(
-                                  'rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                                  'rounded-[10px] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                                   isActive
-                                    ? 'bg-[#E11D48] text-white shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
+                                    ? 'bg-[var(--fm-accent)] text-white shadow-[0_6px_14px_rgb(var(--fm-accent-rgb)/0.22),inset_0_1px_0_rgba(255,255,255,0.75)]'
                                     : 'text-black/55 dark:text-white/45',
                                 )}
                               >
@@ -1509,7 +1686,7 @@ function FeedPageContent() {
                           })}
                         </div>
 
-                        <div className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                        <div className="rounded-[14px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]">
                           {feeds.length} {feeds.length === 1 ? 'FEED' : 'FEEDS'}
                         </div>
                       </div>
@@ -1531,7 +1708,7 @@ function FeedPageContent() {
             exit={FEED_VIEW_DISSOLVE.exit}
             className={cn(
               'z-10',
-              useBrowserPageScroll
+              useReaderPageScroll
                 ? cn('relative', useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]')
                 : 'relative h-full',
             )}>
@@ -1548,7 +1725,7 @@ function FeedPageContent() {
               }}
             >
               <div className="w-full px-2 sm:px-3 lg:px-4">
-                <motion.div layout className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-5 xl:grid-cols-3">
+                <motion.div layout className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-6 xl:gap-7 xl:!max-w-[1400px]">
                   <AnimatePresence mode="popLayout">
                     {sortedFeeds.map((feed, i) => {
                       // Per-tile entrance — animates on its OWN mount, so async
@@ -1582,8 +1759,8 @@ function FeedPageContent() {
                       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] fm-depth-chip">
                         <Target size={26} className="text-foreground/48 dark:text-white/42" />
                       </div>
-                      <div className="mt-4 text-[18px] font-black uppercase tracking-[0.14em] text-foreground/72 dark:text-white/66">No feeds yet</div>
-                      <p className="mt-2 text-[12px] font-black uppercase tracking-[0.1em] text-foreground/42 dark:text-white/34">Create a feed to start tracking feeder-level momentum</p>
+                      <div className="mt-4 text-[18px] font-black tracking-[-0.04em] text-foreground dark:text-white">No feeds yet</div>
+                      <p className="mt-2 text-[12px] font-medium text-foreground/65 dark:text-white/60">Create a feed to start tracking feeder-level momentum</p>
                     </div>
                   )}
                 </motion.div>
@@ -1597,18 +1774,23 @@ function FeedPageContent() {
             exit={FEED_VIEW_DISSOLVE.exit}
             className={cn(
               'z-10',
-              useBrowserPageScroll
+              useReaderPageScroll
                 ? cn('relative', useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]')
                 : 'relative h-full',
             )}>
+            <AnimatePresence mode="wait" initial={false}>
             {reading && activeFeed ? (
-              <div
+              <motion.div
+                key="reader"
                 ref={contentRef}
+                initial={FEED_VIEW_DISSOLVE.initial}
+                animate={FEED_VIEW_DISSOLVE.animate}
+                exit={FEED_VIEW_DISSOLVE.exit}
                 className={cn(
-                  'fm-feed-detail-scroll w-full max-w-[100vw] overflow-x-hidden scroll-smooth transform-gpu',
-                  useBrowserPageScroll
+                  'fm-feed-detail-scroll hide-scrollbar w-full max-w-[100vw] overflow-x-hidden',
+                  useReaderPageScroll
                     ? cn(useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]', 'overflow-y-visible')
-                    : 'hide-scrollbar h-full overflow-y-auto overscroll-y-contain',
+                    : 'hide-scrollbar h-full overflow-y-auto overscroll-y-contain transform-gpu',
                 )}
                 style={{
                   WebkitOverflowScrolling: 'touch',
@@ -1616,7 +1798,7 @@ function FeedPageContent() {
                   scrollPaddingTop: 'calc(var(--fm-mobile-detail-header-offset) + 6px)',
                   scrollPaddingBottom: isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance,
                   ['--fm-feed-bottom-clearance' as string]: isStandaloneMode ? 'calc(120px + env(safe-area-inset-bottom))' : mobileBottomClearance,
-                  ['--fm-mobile-detail-header-offset' as string]: useBrowserPageScroll ? FEED_MOBILE_READER_CONTENT_OFFSET : `${FEED_DESKTOP_READER_CONTENT_OFFSET}px`,
+                  ['--fm-mobile-detail-header-offset' as string]: useReaderPageScroll ? FEED_MOBILE_READER_CONTENT_OFFSET : `${FEED_DESKTOP_READER_CONTENT_OFFSET}px`,
                   ['--fm-reader-desktop-offset' as string]: `${FEED_DESKTOP_READER_CONTENT_OFFSET}px`,
                 }}
               >
@@ -1637,8 +1819,15 @@ function FeedPageContent() {
                     </motion.div>
                   </AnimatePresence>
                 </div>
-              </div>
+              </motion.div>
             ) : (
+            <motion.div
+              key="dashboard"
+              initial={FEED_VIEW_DISSOLVE.initial}
+              animate={FEED_VIEW_DISSOLVE.animate}
+              exit={FEED_VIEW_DISSOLVE.exit}
+              className={cn(useBrowserPageScroll ? (useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]') : 'h-full')}
+            >
             <FeedDetailV2
               activeFeed={activeFeed}
               timeframe={timeframe}
@@ -1680,7 +1869,7 @@ function FeedPageContent() {
                     <span className={cn(
                       'rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em]',
                       activeFeed.feedBriefText || activeFeed.contextBible
-                        ? 'bg-[#E11D48] text-white'
+                        ? 'bg-[var(--fm-accent)] text-white'
                         : 'bg-black/6 text-foreground/42 dark:bg-white/8 dark:text-white/36',
                     )}>
                       {activeFeed.feedBriefText || activeFeed.contextBible ? 'Saved' : 'Add'}
@@ -1688,7 +1877,7 @@ function FeedPageContent() {
                   </div>
                   <div>
                     <div className="text-[18px] font-black tracking-normal text-foreground dark:text-white">Brief</div>
-                    <div className="mt-1 line-clamp-2 text-[11px] font-semibold leading-relaxed text-foreground/48 dark:text-white/38">
+                    <div className="mt-1 line-clamp-2 text-[12px] font-semibold leading-relaxed text-foreground/48 dark:text-white/38">
                       {activeFeed.feedBriefText || activeFeed.contextBible || 'Add the niche, audience, and tracking priorities before intelligence cards run.'}
                     </div>
                   </div>
@@ -1719,35 +1908,35 @@ function FeedPageContent() {
                     aria-hidden
                     className="pointer-events-none absolute inset-0 opacity-80"
                     style={{
-                      background: 'radial-gradient(ellipse 70% 70% at 8% 0%, rgba(225,29,72,0.12), transparent 58%)',
+                      background: 'radial-gradient(ellipse 70% 70% at 8% 0%, rgb(var(--fm-accent-rgb)/0.12), transparent 58%)',
                     }}
                   />
                   <div className="relative z-10 flex items-start justify-between gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[#FB7185]/45 bg-[#E11D48] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.68),0_8px_18px_-8px_rgba(225,29,72,0.34)]">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[var(--fm-accent-bright)]/45 bg-[var(--fm-accent)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.68),0_8px_18px_-8px_rgb(var(--fm-accent-rgb)/0.34)]">
                       <Users size={20} strokeWidth={2.8} />
                     </div>
-                    <span className="rounded-full bg-[#E11D48] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_14px_-8px_rgba(225,29,72,0.45)]">
+                    <span className="rounded-full bg-[var(--fm-accent)] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_14px_-8px_rgb(var(--fm-accent-rgb)/0.45)]">
                       Ranking
                     </span>
                   </div>
                   <div className="relative z-10">
-                    <div className="text-[20px] font-black leading-none tracking-[-0.03em] text-foreground dark:text-white">
+                    <div className="text-[22px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white">
                       All Posts
                     </div>
-                    <div className="mt-1.5 text-[11px] font-bold leading-relaxed text-foreground/50 dark:text-white/40">
+                    <div className="mt-1.5 text-[12px] font-bold leading-relaxed text-foreground/50 dark:text-white/40">
                       Best performers across every feeder in {activeFeed.title}.
                     </div>
                   </div>
                   <div className="relative z-10 grid grid-cols-2 gap-2">
                     <div className="fm-depth-chip rounded-[10px] px-3 py-2">
-                      <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38">Feeders</div>
-                      <div className="mt-1 text-[17px] font-black leading-none tabular-nums text-foreground dark:text-white">
+                      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38">Feeders</div>
+                      <div className="mt-1 text-[18px] font-black leading-none tabular-nums text-foreground dark:text-white">
                         {activeFeed.feeders.length}
                       </div>
                     </div>
                     <div className="fm-depth-chip rounded-[10px] px-3 py-2">
-                      <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38">Posts</div>
-                      <div className="mt-1 text-[17px] font-black leading-none tabular-nums text-foreground dark:text-white">
+                      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38">Posts</div>
+                      <div className="mt-1 text-[18px] font-black leading-none tabular-nums text-foreground dark:text-white">
                         {activeFeed.metrics?.postsTracked || '0'}
                       </div>
                     </div>
@@ -1779,31 +1968,33 @@ function FeedPageContent() {
                 ))
               )}
               <motion.div layout initial={{ scale: 0.95 }} animate={{ scale: 1 }} whileTap={{ scale: 0.98 }}
-                className={cn("fm-depth-glass rounded-[22px] p-4 min-h-[180px] flex flex-col justify-center items-center group cursor-pointer", isAddingFeeder ? "ring-1 ring-black/10 dark:ring-[#E11D48]/45" : "")}
+                className={cn("fm-depth-glass rounded-[22px] p-4 min-h-[180px] flex flex-col justify-center items-center group cursor-pointer", isAddingFeeder ? "ring-1 ring-black/10 dark:ring-[var(--fm-accent)]/45" : "")}
                 style={{ willChange: 'transform' }}
                 onClick={() => !isAddingFeeder && setIsAddingFeeder(true)}>
                 {!isAddingFeeder ? (
                   <div className="flex flex-col items-center gap-2">
                     <Plus size={48} strokeWidth={2} className="text-foreground/30" />
-                    <span className="font-black uppercase tracking-[0.2em] text-[10px] text-foreground/40">ADD FEEDER</span>
-                    <span className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/30">Uses 1 slot · {slotUsage.used ?? 0} used</span>
+                    <span className="font-black uppercase tracking-[0.22em] text-[10px] text-foreground/40">ADD FEEDER</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/30">Uses 1 slot · {slotUsage.used ?? 0} used</span>
                   </div>
                 ) : (
                     <div className="w-full h-full flex flex-col justify-between" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-3 w-full">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] border border-[#FB7185] bg-[#E11D48] text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_18px_-8px_rgba(225,29,72,0.34)]">@</div>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)] text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_18px_-8px_rgb(var(--fm-accent-rgb)/0.34)]">@</div>
                       <input autoFocus placeholder="HANDLE" className="bg-transparent text-2xl font-black uppercase w-full focus:outline-none placeholder:text-foreground/20 text-foreground h-12"
                         onKeyDown={e => { if (e.key === 'Enter') { handleAddFeeder(activeFeed!.id, e.currentTarget.value); setIsAddingFeeder(false); } if (e.key === 'Escape') setIsAddingFeeder(false); }} />
                     </div>
                     <div className="flex items-center justify-between mt-auto pt-3 border-t border-black/6 dark:border-white/8">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-foreground/40">PRESS ENTER</span>
-                      <button onClick={() => setIsAddingFeeder(false)} className="text-[9px] font-black uppercase tracking-widest text-foreground/60">CANCEL</button>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-foreground/40">PRESS ENTER</span>
+                      <button onClick={() => setIsAddingFeeder(false)} className="text-[10px] font-black uppercase tracking-widest text-foreground/60">CANCEL</button>
                     </div>
                   </div>
                 )}
               </motion.div>
             </FeedDetailV2>
+            </motion.div>
             )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1884,19 +2075,19 @@ function FeedPageContent() {
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 18, scale: 0.985 }}
               transition={FEED_PAGE_LAYER_TRANSITION}
-              className="fm-depth-glass relative w-full max-w-[500px] overflow-hidden rounded-[30px] border border-white/85 p-6 dark:border-white/10"
+              className="fm-depth-glass relative w-full max-w-[500px] overflow-hidden rounded-[28px] border border-white/85 p-6 dark:border-white/10"
             >
-              <div className="pointer-events-none absolute inset-0 rounded-[30px] dark:opacity-0"
+              <div className="pointer-events-none absolute inset-0 rounded-[28px] dark:opacity-0"
                 style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0) 34%, rgba(0,0,0,0.02) 100%)' }}
               />
               <div className="relative z-10">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-red-500 dark:text-red-400">Delete Feed</div>
-                    <div className="mt-2 text-[26px] font-black uppercase tracking-[-0.05em] text-foreground dark:text-white">
+                    <div className="text-[12px] font-black uppercase tracking-[0.14em] text-red-500 dark:text-red-400">Delete Feed</div>
+                    <div className="mt-2 text-[28px] font-black uppercase tracking-[-0.04em] text-foreground dark:text-white">
                       Remove {pendingDeleteFeed.title}?
                     </div>
-                    <p className="mt-2 max-w-[360px] text-[11px] font-black uppercase tracking-[0.1em] text-foreground/38 dark:text-white/32">
+                    <p className="mt-2 max-w-[360px] text-[12px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32">
                       This permanently removes the bundle and its tracked backend data.
                     </p>
                   </div>
@@ -1912,7 +2103,7 @@ function FeedPageContent() {
                   <button
                     type="button"
                     onClick={() => setPendingDeleteFeedId(null)}
-                    className="fm-depth-chip rounded-[16px] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-foreground/70 dark:text-white/60"
+                    className="fm-depth-chip rounded-[18px] px-4 py-2.5 text-[12px] font-black uppercase tracking-[0.14em] text-foreground/70 dark:text-white/60"
                   >
                     Cancel
                   </button>
@@ -1921,7 +2112,7 @@ function FeedPageContent() {
                     whileTap={{ scale: 0.95 }}
                     onClick={confirmDeleteFeed}
                     disabled={isBusy}
-                    className="rounded-[16px] bg-[#ff5b66] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_12px_28px_-12px_rgba(255,91,102,0.6)] disabled:opacity-40"
+                    className="rounded-[18px] bg-[#ff5b66] px-4 py-2.5 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_12px_28px_-12px_rgba(255,91,102,0.6)] disabled:opacity-40"
                   >
                     {isBusy ? 'Deleting' : 'Delete Feed'}
                   </motion.button>
