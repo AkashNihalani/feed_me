@@ -119,12 +119,12 @@ function D7VerdictBar({
         event.stopPropagation();
         onOpen();
       }}
-      className="relative mt-2.5 block w-full overflow-hidden rounded-2xl border border-[#E11D48]/18 bg-[#17060b] px-4 py-3.5 text-left shadow-[0_18px_42px_rgba(225,29,72,0.14),inset_0_1px_0_rgba(255,255,255,0.14)] transition-transform active:scale-[0.99] dark:border-[#E11D48]/22 dark:bg-[#120408]"
+      className="relative mt-2.5 block w-full overflow-hidden rounded-2xl border border-[var(--fm-accent)]/18 bg-[#17060b] px-4 py-3.5 text-left shadow-[0_18px_42px_rgb(var(--fm-accent-rgb)/0.14),inset_0_1px_0_rgba(255,255,255,0.14)] transition-transform active:scale-[0.99] dark:border-[var(--fm-accent)]/22 dark:bg-[#120408]"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.40),transparent_46%),linear-gradient(135deg,rgba(255,255,255,0.11),transparent_46%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgb(var(--fm-accent-rgb)/0.40),transparent_46%),linear-gradient(135deg,rgba(255,255,255,0.11),transparent_46%)]" />
       <div className="relative flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/54">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#fb7185] shadow-[0_0_10px_rgba(225,29,72,0.5)]" />
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-white/54">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent-bright)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.5)]" />
           Post Mortem
         </div>
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/12 bg-white/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/64">
@@ -170,27 +170,27 @@ function D7ReadView({
             event.stopPropagation();
             onBack();
           }}
-          className="inline-flex items-center gap-1 rounded-full border border-neutral-200/80 bg-white/70 py-1 pl-1.5 pr-3 text-[9px] font-black uppercase tracking-[0.14em] text-neutral-600 transition hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/62"
+          className="inline-flex items-center gap-1 rounded-full border border-neutral-200/80 bg-white/70 py-1 pl-1.5 pr-3 text-[10px] font-black uppercase tracking-[0.14em] text-neutral-600 transition hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/62"
         >
           <ChevronLeft size={13} strokeWidth={3} />
           Stats
         </button>
-        <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
+        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--fm-accent)]/80">
           {sourceLabel}
         </div>
       </div>
 
       {verdict ? (
-        <div className="relative mt-3 overflow-hidden rounded-2xl border border-[#E11D48]/18 bg-[#17060b] px-4 py-3.5 shadow-[0_18px_42px_rgba(225,29,72,0.14),inset_0_1px_0_rgba(255,255,255,0.14)] dark:border-[#E11D48]/22 dark:bg-[#120408]">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.40),transparent_44%),linear-gradient(135deg,rgba(255,255,255,0.11),transparent_46%)]" />
-          <div className="relative text-[9px] font-black uppercase tracking-[0.2em] text-white/52">
+        <div className="relative mt-3 overflow-hidden rounded-2xl border border-[var(--fm-accent)]/18 bg-[#17060b] px-4 py-3.5 shadow-[0_18px_42px_rgb(var(--fm-accent-rgb)/0.14),inset_0_1px_0_rgba(255,255,255,0.14)] dark:border-[var(--fm-accent)]/22 dark:bg-[#120408]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgb(var(--fm-accent-rgb)/0.40),transparent_44%),linear-gradient(135deg,rgba(255,255,255,0.11),transparent_46%)]" />
+          <div className="relative text-[10px] font-black uppercase tracking-[0.22em] text-white/52">
             Trigger vs recent 30
           </div>
-          <p className="relative mt-2 text-[26px] font-black leading-[1.04] text-white">
+          <p className="relative mt-2 text-[28px] font-black leading-[1.04] text-white">
             {verdict}
           </p>
           {read.metricContext ? (
-            <p className="relative mt-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#fb7185]">
+            <p className="relative mt-2 text-[12px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent-bright)]">
               {read.metricContext}
             </p>
           ) : null}
@@ -218,7 +218,7 @@ function D7ReadView({
                   }}
                   className={
                     isActive
-                      ? 'flex-1 rounded-full bg-[#E11D48] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_16px_rgba(225,29,72,0.24)] transition-colors'
+                      ? 'flex-1 rounded-full bg-[var(--fm-accent)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_16px_rgb(var(--fm-accent-rgb)/0.24)] transition-colors'
                       : 'flex-1 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500 transition-colors hover:text-neutral-700 dark:text-white/42 dark:hover:text-white/64'
                   }
                 >
@@ -235,7 +235,7 @@ function D7ReadView({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             >
-              <div className="text-[9px] font-black uppercase tracking-[0.16em] text-[#E11D48]/80">
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/80">
                 {active.eyebrow}
               </div>
               <p className="mt-2 text-[14px] font-semibold leading-relaxed text-neutral-800 dark:text-white/68">
@@ -336,7 +336,7 @@ function TrackingArchivePill({
   label: string;
 }) {
   const content = (
-    <span className="fm-dialog-handle-pill inline-flex max-w-full items-center rounded-full border border-white/[0.18] bg-black/46 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white shadow-[0_12px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-[20px] dark:border-white/[0.16] dark:bg-black/52">
+    <span className="fm-dialog-handle-pill inline-flex max-w-full items-center rounded-full border border-white/[0.18] bg-black/46 px-4 py-2 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[0_12px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-[20px] dark:border-white/[0.16] dark:bg-black/52">
       <span className="relative z-10 block max-w-[180px] truncate sm:max-w-[220px]">
         {label}
       </span>
@@ -354,7 +354,7 @@ function TrackingArchivePill({
 
 function SectionTag({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400 dark:text-white/36">
+    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-neutral-400 dark:text-white/36">
       {children}
     </div>
   );
@@ -376,10 +376,10 @@ function SupportMetricRow({
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]">
       <div className="min-w-0">
-        <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-neutral-400 dark:text-white/36">
+        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
           {label}
         </div>
-        <div className="mt-0.5 text-[13px] font-semibold tabular-nums text-neutral-600 dark:text-white/60">
+        <div className="mt-0.5 text-[14px] font-semibold tabular-nums text-neutral-600 dark:text-white/60">
           {value}
         </div>
       </div>
@@ -387,8 +387,8 @@ function SupportMetricRow({
         <div
           className={
             accent
-              ? 'text-[26px] font-black leading-none tracking-[-0.04em] text-[#E11D48]'
-              : 'text-[26px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
+              ? 'text-[28px] font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]'
+              : 'text-[28px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
           }
         >
           {multiple}
@@ -416,19 +416,19 @@ function CompactStat({
 }) {
   return (
     <div className="rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-3.5 py-3 dark:border-white/[0.06] dark:bg-white/[0.025]">
-      <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-neutral-400 dark:text-white/36">
+      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">
         {label}
       </div>
       <div
         className={
           accent
-            ? 'mt-1.5 flex min-w-0 items-baseline gap-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-black dark:text-[#E11D48]'
-            : 'mt-1.5 flex min-w-0 items-baseline gap-1.5 text-[20px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90'
+            ? 'mt-1.5 flex min-w-0 items-baseline gap-1.5 text-[22px] font-black leading-none tracking-[-0.04em] text-black dark:text-[var(--fm-accent)]'
+            : 'mt-1.5 flex min-w-0 items-baseline gap-1.5 text-[22px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90'
         }
       >
         <span>{value}</span>
         {detail ? (
-          <span className="min-w-0 truncate text-[11px] font-semibold tracking-normal text-neutral-400 dark:text-white/42">
+          <span className="min-w-0 truncate text-[12px] font-semibold tracking-normal text-neutral-400 dark:text-white/42">
             {detail}
           </span>
         ) : null}
@@ -445,7 +445,7 @@ function TrajectoryBadge({ delta }: { delta: number | null }) {
   }
   // Improving
   if (delta > 0) {
-    return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-[#E11D48]">{tone.label}</span>;
+    return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-[var(--fm-accent)]">{tone.label}</span>;
   }
   // Cooling
   return <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-500 dark:text-[#ff8a65]">{tone.label}</span>;
@@ -731,7 +731,7 @@ export default function FireIntelligenceDialog({
                 event.stopPropagation();
                 onPrevious?.();
               }}
-              className="absolute left-5 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-[8px] border border-white/12 bg-black/42 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:bg-black/58"
+              className="absolute left-5 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-[10px] border border-white/12 bg-black/42 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:bg-black/58"
               aria-label="Previous post"
             >
               <ChevronLeft size={18} />
@@ -745,7 +745,7 @@ export default function FireIntelligenceDialog({
                 event.stopPropagation();
                 onNext?.();
               }}
-              className="absolute right-5 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-[8px] border border-white/12 bg-black/42 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:bg-black/58"
+              className="absolute right-5 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-[10px] border border-white/12 bg-black/42 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:bg-black/58"
               aria-label="Next post"
             >
               <ChevronRight size={18} />
@@ -783,7 +783,7 @@ export default function FireIntelligenceDialog({
                     }}
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(225,29,72,0.14),transparent_50%),linear-gradient(180deg,#161616_0%,#050505_100%)]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgb(var(--fm-accent-rgb)/0.14),transparent_50%),linear-gradient(180deg,#161616_0%,#050505_100%)]" />
                 )}
                 {shouldRenderPreview ? (
                   <video
@@ -887,16 +887,16 @@ export default function FireIntelligenceDialog({
                       </div>
 
                       {/* Hero Metric — accent base, white text */}
-                      <div className="rounded-2xl bg-[#E11D48] px-4 py-3.5">
-                        <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/68">
+                      <div className="rounded-2xl bg-[var(--fm-accent)] px-4 py-3.5">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/68">
                           Hero Metric
                         </div>
                         <div className="mt-2.5 flex items-end justify-between gap-4">
                           <div>
-                            <div className="text-[38px] font-black leading-none tracking-[-0.05em] text-white">
+                            <div className="text-[34px] font-black leading-none tracking-[-0.04em] text-white">
                               {compactOrDash(stats.value)}
                             </div>
-                            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
+                            <div className="mt-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/70">
                               {stats.bestMetric}
                             </div>
                           </div>
@@ -904,7 +904,7 @@ export default function FireIntelligenceDialog({
                             <div className="text-[28px] font-black leading-none tracking-[-0.04em] text-white">
                               {multipleOrDash(stats.multiple)}
                             </div>
-                            <div className="mt-1 text-[13px] font-semibold text-white/76">
+                            <div className="mt-1 text-[14px] font-semibold text-white/76">
                               {compactOrDash(stats.baseline)} usual
                             </div>
                           </div>
@@ -915,7 +915,7 @@ export default function FireIntelligenceDialog({
                       <div className="mt-3.5">
                         <div className="flex items-center justify-between gap-3">
                           <SectionTag>Supporting Metrics</SectionTag>
-                          <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
+                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-300 dark:text-white/24">
                             {stats.bestInLastN == null ? 'Best in -- posts' : `Best in ${Math.max(1, Math.round(stats.bestInLastN))} posts`}
                           </div>
                         </div>
@@ -960,18 +960,18 @@ export default function FireIntelligenceDialog({
                           <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/60 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
                             <div className="flex items-end justify-between gap-4">
                               <div>
-                                <div className="text-[36px] font-black leading-none tracking-[-0.05em] text-neutral-900 dark:text-white">
+                                <div className="text-[34px] font-black leading-none tracking-[-0.04em] text-neutral-900 dark:text-white">
                                   {signedShift(stats.delta)}
                                 </div>
-                                <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
+                                <div className="mt-1 text-[12px] font-medium text-neutral-400 dark:text-white/36">
                                   Shift vs first checkpoint
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className="text-[17px] font-black leading-none tracking-[-0.03em] text-neutral-800 dark:text-white/90">
+                                <div className="text-[18px] font-black leading-none tracking-[-0.04em] text-neutral-800 dark:text-white/90">
                                   {topPercentOrDash(stats.currentTrajectory)}
                                 </div>
-                                <div className="mt-1 text-[11px] font-medium text-neutral-400 dark:text-white/36">
+                                <div className="mt-1 text-[12px] font-medium text-neutral-400 dark:text-white/36">
                                   {stats.firstTrajectory == null || stats.currentTrajectory == null ? 'Awaiting data' : 'Current position'}
                                 </div>
                               </div>
@@ -992,13 +992,13 @@ export default function FireIntelligenceDialog({
                           <div className="mt-4">
                             <div className="flex items-center justify-between gap-3">
                               <SectionTag>Post Read</SectionTag>
-                              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#E11D48]/80">
+                              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--fm-accent)]/80">
                                 {stats.postContextRead.sourceLabel}
                               </div>
                             </div>
                             <div className="mt-2.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/62 px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.025]">
                               {stats.postContextRead.matches[0] ? (
-                                <p className="text-[15px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
+                                <p className="text-[16px] font-semibold leading-relaxed text-neutral-800 dark:text-white/74">
                                   {stats.postContextRead.matches[0]}
                                 </p>
                               ) : null}
@@ -1028,7 +1028,7 @@ export default function FireIntelligenceDialog({
                         event.stopPropagation();
                         if (item.postUrl) window.open(item.postUrl, '_blank', 'noreferrer');
                       }}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E11D48] px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_24px_rgba(225,29,72,0.12)] transition-all hover:shadow-[0_12px_32px_rgba(225,29,72,0.2)] active:scale-[0.995]"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--fm-accent)] px-5 py-3 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgb(var(--fm-accent-rgb)/0.12)] transition-all hover:shadow-[0_12px_32px_rgb(var(--fm-accent-rgb)/0.2)] active:scale-[0.995]"
                     >
                       Open Post
                       <ExternalLink size={14} />

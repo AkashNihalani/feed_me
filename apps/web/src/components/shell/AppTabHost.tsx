@@ -48,7 +48,7 @@ function scheduleIdle(callback: () => void) {
 }
 
 function TabFallback() {
-  return <div className="min-h-[100dvh] w-full bg-[#f4f7f9] dark:bg-[#030303]" />;
+  return <div className="min-h-[100dvh] w-full bg-[var(--fm-page)]" />;
 }
 
 export default function AppTabHost({ pathname }: { pathname: string }) {

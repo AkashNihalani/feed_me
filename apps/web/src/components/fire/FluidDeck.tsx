@@ -721,7 +721,7 @@ function FluidDeck({
                   type="button"
                   onClick={handleLoadMore}
                   disabled={loadingMore}
-                  className="inline-flex w-full items-center justify-center rounded-[16px] border border-white/78 bg-white/88 px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] shadow-[0_10px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.86)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 dark:border-transparent dark:bg-[#E11D48] dark:text-white dark:shadow-[0_12px_26px_rgba(225,29,72,0.18)]"
+                  className="inline-flex w-full items-center justify-center rounded-[18px] border border-white/78 bg-white/88 px-5 py-3 text-[12px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] shadow-[0_10px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.86)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 dark:border-transparent dark:bg-[var(--fm-accent)] dark:text-white dark:shadow-[0_12px_26px_rgb(var(--fm-accent-rgb)/0.18)]"
                 >
                   {loadingMore ? (
                     <span className="inline-flex items-center gap-2">
@@ -732,7 +732,7 @@ function FluidDeck({
                     'Continue feeding'
                   )}
                 </button>
-                <div className="pt-2 text-center text-[10px] font-black uppercase tracking-[0.16em] text-black/42 dark:text-white/34">
+                <div className="pt-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/34">
                   {remainingCount > 0 ? `${remainingCount} more signals waiting` : 'Loads the next batch of signals'}
                 </div>
               </div>
@@ -871,7 +871,7 @@ function FluidDeck({
                 type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="inline-flex min-w-[220px] items-center justify-center rounded-[18px] border border-white/35 bg-white/55 px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] shadow-[0_18px_40px_rgba(0,0,0,0.14),inset_0_1px_0_rgba(255,255,255,0.86)] transition hover:-translate-y-0.5 hover:bg-white/72 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:border-white/16 dark:bg-black/38 dark:text-[#E11D48] dark:shadow-[0_18px_36px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-black/52"
+                className="inline-flex min-w-[220px] items-center justify-center rounded-[18px] border border-white/35 bg-white/55 px-5 py-3 text-[12px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] shadow-[0_18px_40px_rgba(0,0,0,0.14),inset_0_1px_0_rgba(255,255,255,0.86)] transition hover:-translate-y-0.5 hover:bg-white/72 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:border-white/16 dark:bg-black/38 dark:text-[var(--fm-accent)] dark:shadow-[0_18px_36px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-black/52"
               >
                 {loadingMore ? (
                   <span className="inline-flex items-center gap-2">
@@ -882,7 +882,7 @@ function FluidDeck({
                   'Continue feeding'
                 )}
               </button>
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/40 dark:text-white/34">
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-black/40 dark:text-white/34">
                 {remainingCount > 0 ? `${remainingCount} more signals waiting` : 'Loads the next batch of signals'}
               </div>
             </div>

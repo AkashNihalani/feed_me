@@ -159,7 +159,7 @@ function TypebackText({ value }: { value: string }) {
       <span>{displayValue}</span>
       <motion.span
         aria-hidden="true"
-        className="ml-1 inline-block h-[0.82em] w-[0.08em] rounded-full bg-[#E11D48]"
+        className="ml-1 inline-block h-[0.82em] w-[0.08em] rounded-full bg-[var(--fm-accent)]"
         animate={{ opacity: typing ? [0.25, 1, 0.35] : 0 }}
         transition={{ duration: 0.58, repeat: typing ? Infinity : 0, ease: 'easeInOut' }}
       />
@@ -231,25 +231,25 @@ function Thumb({
           }}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_28%_20%,rgba(225,29,72,0.16),transparent_42%),linear-gradient(135deg,#fff,#f9eef2)] px-5 text-center text-[11px] font-black uppercase tracking-[0.14em] text-[#E11D48]/42 dark:bg-[radial-gradient(circle_at_28%_20%,rgba(251,113,133,0.22),transparent_42%),linear-gradient(135deg,#171717,#09090b)] dark:text-[#FDA4AF]/54">
+        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_28%_20%,rgb(var(--fm-accent-rgb)/0.16),transparent_42%),linear-gradient(135deg,#fff,#f9eef2)] px-5 text-center text-[12px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/42 dark:bg-[radial-gradient(circle_at_28%_20%,rgb(var(--fm-accent-bright-rgb)/0.22),transparent_42%),linear-gradient(135deg,#171717,#09090b)] dark:text-[var(--fm-accent-soft)]/54">
           {post.proof_label}
         </div>
       )}
 
       {showCaption && index !== undefined && total !== undefined && (
-        <div className="pointer-events-none absolute right-2.5 top-2.5 z-10 flex h-6 items-center justify-center rounded-full bg-black/64 px-2 text-[9.5px] font-black tracking-wider text-white">
+        <div className="pointer-events-none absolute right-2.5 top-2.5 z-10 flex h-6 items-center justify-center rounded-full bg-black/64 px-2 text-[10px] font-black tracking-wider text-white">
           {index}/{total}
         </div>
       )}
 
       {showCaption && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-[linear-gradient(0deg,rgba(0,0,0,0.74),transparent_82%)] px-3 pb-3 pt-12">
-          <div className="line-clamp-2 min-w-0 text-[9px] font-black uppercase leading-snug tracking-[0.16em] text-white">
+          <div className="line-clamp-2 min-w-0 text-[10px] font-black uppercase leading-snug tracking-[0.14em] text-white">
             {index !== undefined && <span className="opacity-66">{String(index).padStart(2, '0')} / </span>}
             {post.proof_label}
           </div>
           {microMetric && (
-            <div className="shrink-0 rounded-full bg-white/24 px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white">
+            <div className="shrink-0 rounded-full bg-white/24 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
               {microMetric.value}
             </div>
           )}
@@ -381,14 +381,14 @@ function StoryRing({
             className={[
               'absolute inset-0 rounded-full transition-colors duration-300',
               active
-                ? 'bg-[#FFE4EA] shadow-[0_10px_26px_-18px_rgba(225,29,72,0.9)] dark:bg-[#3F0F1B]'
+                ? 'bg-[#FFE4EA] shadow-[0_10px_26px_-18px_rgb(var(--fm-accent-rgb)/0.9)] dark:bg-[#3F0F1B]'
                 : 'bg-black/[0.08] dark:bg-white/[0.12]',
             ].join(' ')}
           />
           {active && (
             <>
               <motion.span
-                className="pointer-events-none absolute -inset-1 rounded-full bg-[#E11D48]/28 blur-md"
+                className="pointer-events-none absolute -inset-1 rounded-full bg-[var(--fm-accent)]/28 blur-md"
                 initial={{ opacity: 0, scale: 0.86 }}
                 animate={{ opacity: [0, 0.72, 0], scale: [0.86, 1.18, 1.02] }}
                 transition={{ duration: 0.62, ease: APPLE_EASE, times: [0, 0.38, 1] }}
@@ -404,7 +404,7 @@ function StoryRing({
                     cy="50"
                     r={STORY_RING_RADIUS}
                     fill="none"
-                    stroke="rgba(225,29,72,0.24)"
+                    stroke="rgb(var(--fm-accent-rgb)/0.24)"
                     strokeWidth="8"
                   />
                   <motion.circle
@@ -419,13 +419,13 @@ function StoryRing({
                     initial={{ opacity: 0.92, strokeDashoffset: STORY_RING_CIRCUMFERENCE }}
                     animate={{ opacity: 1, strokeDashoffset: 0 }}
                     transition={{ duration: 0.72, ease: APPLE_EASE }}
-                    style={{ filter: 'drop-shadow(0 3px 8px rgba(225,29,72,0.42))' }}
+                    style={{ filter: 'drop-shadow(0 3px 8px rgb(var(--fm-accent-rgb)/0.42))' }}
                   />
                 </g>
               </motion.svg>
             </>
           )}
-          <div className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[26px] font-black text-[#9F1239] dark:border-[#09090b] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[#FDA4AF] sm:text-[28px]">
+          <div className="relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[28px] font-black text-[var(--fm-accent-deeper)] dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[var(--fm-accent-soft)] sm:text-[28px]">
             {showProfilePic ? (
               // eslint-disable-next-line @next/next/no-img-element -- feeder avatars are proxied dynamic profile images
               <img
@@ -444,15 +444,15 @@ function StoryRing({
 
         {/* anchor dot */}
         {isAnchor && (
-          <span className="absolute -bottom-0.5 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full border-[2px] border-white bg-[#E11D48] dark:border-[#09090b]" />
+          <span className="absolute -bottom-0.5 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full border-[2px] border-white bg-[var(--fm-accent)] dark:border-[var(--fm-ink)]" />
         )}
       </div>
 
       {/* handle label */}
       <span
         className={[
-          'text-[10px] font-black uppercase tracking-[0.12em] transition-colors duration-200',
-          active ? 'text-[#E11D48] dark:text-[#FB7185]' : 'text-black/38 dark:text-white/34',
+          'text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
+          active ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]' : 'text-black/38 dark:text-white/34',
         ].join(' ')}
         style={{ fontFamily: 'monospace' }}
       >
@@ -546,7 +546,7 @@ function PatternCard({
       layout
       type="button"
       onClick={() => onOpen(pattern)}
-      className="group/card relative overflow-hidden rounded-[24px] border border-black/[0.06] bg-[linear-gradient(135deg,#ffffff,#fff3f7)] p-5 text-left shadow-[0_12px_36px_-28px_rgba(15,23,42,0.5),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.08] dark:bg-[linear-gradient(135deg,#18181b,#09090b)] dark:shadow-[0_14px_44px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.08)] sm:rounded-[26px] sm:p-6 md:p-7 lg:p-8"
+      className="group/card relative overflow-hidden rounded-[22px] border border-black/[0.06] bg-[linear-gradient(135deg,#ffffff,#fff3f7)] p-5 text-left shadow-[0_12px_36px_-28px_rgba(15,23,42,0.5),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.08] dark:bg-[linear-gradient(135deg,#18181b,#09090b)] dark:shadow-[0_14px_44px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.08)] sm:rounded-[28px] sm:p-6 md:p-7 lg:p-8"
       initial={{ opacity: 0, y: 24, scale: 0.982, filter: 'blur(10px)' }}
       animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
       exit={{ opacity: 0, y: -14, scale: 0.976, filter: 'blur(8px)' }}
@@ -563,7 +563,7 @@ function PatternCard({
     >
       {/* rank badge */}
       {rankMetric && (
-        <div className="absolute right-5 top-5 z-10 hidden rounded-full bg-[#E11D48] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[0_8px_20px_-10px_rgba(225,29,72,0.7)] sm:block sm:right-6 sm:top-6 md:right-7 md:top-7 lg:right-8 lg:top-8">
+        <div className="absolute right-5 top-5 z-10 hidden rounded-full bg-[var(--fm-accent)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_-10px_rgb(var(--fm-accent-rgb)/0.7)] sm:block sm:right-6 sm:top-6 md:right-7 md:top-7 lg:right-8 lg:top-8">
           {rankMetric.value}
         </div>
       )}
@@ -571,7 +571,7 @@ function PatternCard({
       {activeProof && coverSlots.length > 0 && (
         <div
           data-pattern-hero="mobile"
-          className="relative -mx-5 -mt-5 mb-8 overflow-hidden rounded-t-[24px] sm:hidden"
+          className="relative -mx-5 -mt-5 mb-8 overflow-hidden rounded-t-[22px] sm:hidden"
         >
           <div className="relative z-10">
             <AnimatePresence initial={false}>
@@ -630,12 +630,12 @@ function PatternCard({
                       <div className="pointer-events-none absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">
                         <div
                           data-pattern-proof-chip="true"
-                          className="rounded-full bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-[0_8px_22px_-16px_rgba(0,0,0,0.76)] backdrop-blur-md"
+                          className="rounded-full bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_8px_22px_-16px_rgba(0,0,0,0.76)] backdrop-blur-md"
                         >
                           {proofIndex + 1}/{pattern.proofs.length}
                         </div>
 
-                        <div className="flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-[0_8px_22px_-16px_rgba(0,0,0,0.76)] backdrop-blur-md">
+                        <div className="flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_8px_22px_-16px_rgba(0,0,0,0.76)] backdrop-blur-md">
                           <span className="flex -space-x-1">
                             {Array.from({ length: Math.min(totalProofs, 4) }, (_, dot) => (
                               <span
@@ -671,18 +671,18 @@ function PatternCard({
         {/* Left Column: Text detail + metrics */}
         <div className="flex flex-col h-full justify-between min-w-0">
           <div>
-            <div className="hidden items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-black/38 dark:text-white/34 sm:flex" style={{ fontFamily: 'monospace' }}>
-              <span className="text-[#E11D48]">PATTERN {String(patternIndex + 1).padStart(2, '0')}</span>
+            <div className="hidden items-center gap-2 text-[12px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/34 sm:flex" style={{ fontFamily: 'monospace' }}>
+              <span className="text-[var(--fm-accent)]">PATTERN {String(patternIndex + 1).padStart(2, '0')}</span>
             </div>
 
-            <h2 className="max-w-[560px] text-[29px] font-black leading-[1.01] tracking-normal text-black dark:text-white sm:mt-5 sm:pr-4 sm:text-[34px] md:text-[38px] lg:text-[42px]">
+            <h2 className="max-w-[560px] text-[28px] font-black leading-[1.01] tracking-normal text-black dark:text-white sm:mt-5 sm:pr-4 sm:text-[34px] md:text-[34px] lg:text-[42px]">
               {pattern.pattern.tile_headline}
             </h2>
           </div>
 
           {/* bottom: metrics + open cue */}
           <div className="mt-4 flex items-center justify-between gap-4 border-t border-black/[0.04] pt-3 dark:border-white/[0.04] sm:mt-5 sm:pt-4">
-            <div className="flex flex-wrap items-center gap-x-1.5 sm:gap-x-3 gap-y-1 text-[9px] sm:text-[10px] md:text-[11px] font-black uppercase tracking-[0.03em] sm:tracking-[0.14em]">
+            <div className="flex flex-wrap items-center gap-x-1.5 sm:gap-x-3 gap-y-1 text-[10px] sm:text-[10px] md:text-[12px] font-black uppercase tracking-[0.06em] sm:tracking-[0.14em]">
               {pattern.patternMetrics.slice(1).map((m) => (
                 <div key={`${pattern.pattern_id}:${m.label}`} className="flex items-center gap-1">
                   <span className="text-black/64 dark:text-white/58">{m.value}</span>
@@ -691,7 +691,7 @@ function PatternCard({
               ))}
             </div>
 
-            <div className="flex shrink-0 items-center gap-1 text-[10.5px] sm:text-[11.5px] font-black uppercase tracking-[0.14em] text-black/36 transition group-hover/card:text-[#E11D48] dark:text-white/30 dark:group-hover/card:text-[#FB7185]">
+            <div className="flex shrink-0 items-center gap-1 text-[10px] sm:text-[12px] font-black uppercase tracking-[0.14em] text-black/36 transition group-hover/card:text-[var(--fm-accent)] dark:text-white/30 dark:group-hover/card:text-[var(--fm-accent-bright)]">
               <span>Open</span>
               <ArrowUpRight size={12} strokeWidth={3} />
             </div>
@@ -745,7 +745,7 @@ function PatternCard({
                   />
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.03),transparent_36%,rgba(0,0,0,0.76))]" />
                   {position === 'center' && <CornerTicks color={ACCENT} size={10} inset={8} />}
-                  <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-[0_10px_24px_-18px_rgba(0,0,0,0.9)] backdrop-blur-md">
+                  <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_-18px_rgba(0,0,0,0.9)] backdrop-blur-md">
                     {i + 1}/{pattern.proofs.length}
                   </div>
                 </div>
@@ -804,11 +804,11 @@ function MobileBreakdownStepCard({
   return (
     <div
       ref={cardRef}
-      className="relative overflow-hidden rounded-[16px] border border-black/[0.05] bg-black/[0.015] p-5 transition-colors duration-300 dark:border-white/[0.05] dark:bg-white/[0.015]"
+      className="relative overflow-hidden rounded-[18px] border border-black/[0.05] bg-black/[0.015] p-5 transition-colors duration-300 dark:border-white/[0.05] dark:bg-white/[0.015]"
     >
       {/* Centered massive background step number watermark with buttery spring scrolling */}
       <motion.div
-        className="absolute inset-0 flex items-center justify-center font-mono font-black text-[#E11D48] dark:text-[#FB7185] select-none pointer-events-none z-0"
+        className="absolute inset-0 flex items-center justify-center font-mono font-black text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] select-none pointer-events-none z-0"
         style={{
           fontSize: 'min(170px, 38vw)',
           lineHeight: 1,
@@ -820,7 +820,7 @@ function MobileBreakdownStepCard({
         {String(index + 1).padStart(2, '0')}
       </motion.div>
       {/* Bigger and clearer full-width foreground text */}
-      <p className="relative z-10 w-full text-[15.5px] font-extrabold leading-[1.52] text-black/88 dark:text-zinc-100">
+      <p className="relative z-10 w-full text-[16px] font-extrabold leading-[1.52] text-black/88 dark:text-zinc-100">
         {item}
       </p>
     </div>
@@ -907,7 +907,7 @@ function MobilePopup({
   return (
     <motion.div
       ref={assignScrollContainer}
-      className="fixed inset-0 z-[1000] overflow-y-auto overflow-x-hidden bg-[#FAF9F6] text-[#111111] transition-colors duration-300 dark:bg-[#09090b] dark:text-white"
+      className="fixed inset-0 z-[1000] overflow-y-auto overflow-x-hidden bg-[#FAF9F6] text-[#111111] transition-colors duration-300 dark:bg-[var(--fm-ink)] dark:text-white"
       initial={{ opacity: 0, y: 28, scale: 0.982, filter: 'blur(14px)' }}
       animate={isClosing
         ? { opacity: 0, y: 34, scale: 0.976, filter: 'blur(16px)' }
@@ -928,7 +928,7 @@ function MobilePopup({
           onClick={onClose}
           data-mobile-popup-close="true"
           className={[
-            'flex h-12 w-12 items-center justify-center rounded-full border border-white/18 bg-[#E11D48] text-white shadow-[0_18px_38px_-16px_rgba(225,29,72,0.95),0_0_0_1px_rgba(255,255,255,0.14)_inset] backdrop-blur-xl transition-colors hover:bg-[#BE123C] active:scale-95 dark:border-white/16 dark:bg-[#E11D48] dark:shadow-[0_18px_42px_-14px_rgba(225,29,72,0.8),0_0_0_1px_rgba(255,255,255,0.12)_inset]',
+            'flex h-12 w-12 items-center justify-center rounded-full border border-white/18 bg-[var(--fm-accent)] text-white shadow-[0_18px_38px_-16px_rgb(var(--fm-accent-rgb)/0.95),0_0_0_1px_rgba(255,255,255,0.14)_inset] backdrop-blur-xl transition-colors hover:bg-[var(--fm-accent-deep)] active:scale-95 dark:border-white/16 dark:bg-[var(--fm-accent)] dark:shadow-[0_18px_42px_-14px_rgb(var(--fm-accent-rgb)/0.8),0_0_0_1px_rgba(255,255,255,0.12)_inset]',
             closeVisible ? 'pointer-events-auto' : 'pointer-events-none',
           ].join(' ')}
           aria-label="Close"
@@ -956,7 +956,7 @@ function MobilePopup({
 
         {/* ── SECTION 1: Pattern Overview ── */}
         <section className="border-y border-x-0 border-black/[0.06] bg-white/90 px-5 py-6 shadow-sm dark:border-white/[0.06] dark:bg-zinc-900/60 sm:backdrop-blur-md lg:backdrop-blur-none">
-          <div className="text-[11.5px] font-black uppercase tracking-[0.22em] text-[#E11D48] dark:text-[#FB7185] font-mono">
+          <div className="text-[12px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">
             Pattern overview
           </div>
 
@@ -964,7 +964,7 @@ function MobilePopup({
             {pattern.pattern.modal_headline}
           </h3>
 
-          <p className="mt-4 text-[15px] font-black leading-[1.38] text-black/80 dark:text-white/76 border-l-4 border-[#E11D48] pl-3.5 italic">
+          <p className="mt-4 text-[16px] font-black leading-[1.38] text-black/80 dark:text-white/76 border-l-4 border-[var(--fm-accent)] pl-3.5 italic">
             {pattern.pattern.the_hook}
           </p>
 
@@ -972,10 +972,10 @@ function MobilePopup({
           <div className="mt-5 grid grid-cols-3 gap-3 border-t border-black/[0.08] dark:border-white/[0.07] pt-4">
             {pattern.patternMetrics.map((metric) => (
               <div key={`mf:${metric.label}`} className="min-w-0">
-                <div className={['text-[17px] font-mono font-black leading-none', metric.accent ? 'text-[#E11D48] dark:text-[#FB7185]' : 'text-black dark:text-white'].join(' ')}>
+                <div className={['text-[18px] font-mono font-black leading-none', metric.accent ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]' : 'text-black dark:text-white'].join(' ')}>
                   {metric.value}
                 </div>
-                <div className="mt-1 text-[7.5px] font-black uppercase tracking-[0.06em] leading-tight text-black/40 dark:text-white/30">
+                <div className="mt-1 text-[8px] font-black uppercase tracking-[0.06em] leading-tight text-black/40 dark:text-white/30">
                   {metric.detail || metric.label}
                 </div>
               </div>
@@ -989,17 +989,17 @@ function MobilePopup({
             className="mt-5 flex w-full items-center justify-between rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 px-4.5 py-3.5 shadow-[0_4px_12px_rgba(0,0,0,0.03)] active:scale-[0.99] transition-all duration-200"
           >
             <div className="flex items-center gap-2.5">
-              <span className="flex h-2 w-2 rounded-full bg-[#E11D48] dark:bg-[#FB7185]" />
-              <span className="text-[11.5px] font-black uppercase tracking-[0.18em] text-black dark:text-white font-mono">Pattern breakdown</span>
+              <span className="flex h-2 w-2 rounded-full bg-[var(--fm-accent)] dark:bg-[var(--fm-accent-bright)]" />
+              <span className="text-[12px] font-black uppercase tracking-[0.14em] text-black dark:text-white font-mono">Pattern breakdown</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-black/40 dark:text-white/40 font-mono">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-black/40 dark:text-white/40 font-mono">
                 {showBreakdown ? 'Hide' : 'Expand'}
               </span>
               <ChevronRight
                 size={14}
                 strokeWidth={3}
-                className={['text-[#E11D48] dark:text-[#FB7185] transition-transform duration-300', showBreakdown ? 'rotate-90' : ''].join(' ')}
+                className={['text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] transition-transform duration-300', showBreakdown ? 'rotate-90' : ''].join(' ')}
               />
             </div>
           </button>
@@ -1023,29 +1023,29 @@ function MobilePopup({
                   ))}
                 </div>
 
-                <p className="mt-4 text-[13px] font-semibold leading-[1.52] text-black/50 dark:text-white/42">
+                <p className="mt-4 text-[14px] font-semibold leading-[1.52] text-black/50 dark:text-white/42">
                   {pattern.pattern.why_it_works}
                 </p>
 
                 <div className="mt-4 grid gap-3">
                   <div className="rounded-[14px] border border-black/[0.05] dark:border-white/[0.05] bg-black/[0.01] dark:bg-white/[0.025] p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] dark:text-[#FB7185] font-mono">Keep</div>
+                    <div className="text-[12px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">Keep</div>
                     <ul className="mt-2.5 space-y-3">
                       {pattern.pattern.what_to_keep.map((item, i) => (
                         <li key={`mk:${i}`} className="flex gap-3 items-center">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#E11D48] text-[11px] font-black text-white shadow-sm">+</span>
-                          <span className="text-[13.5px] font-bold leading-[1.3] text-black dark:text-zinc-100">{item}</span>
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--fm-accent)] text-[12px] font-black text-white shadow-sm">+</span>
+                          <span className="text-[14px] font-bold leading-[1.3] text-black dark:text-zinc-100">{item}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
                   <div className="rounded-[14px] border border-black/[0.05] dark:border-white/[0.05] bg-black/[0.005] dark:bg-white/[0.02] p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-black dark:text-white font-mono">Kills</div>
+                    <div className="text-[12px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Kills</div>
                     <ul className="mt-2.5 space-y-3">
                       {pattern.pattern.what_kills_it.map((item, i) => (
                         <li key={`mki:${i}`} className="flex gap-3 items-center">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 text-[11px] font-black text-black/50 dark:text-white/40">-</span>
-                          <span className="text-[13.5px] font-semibold leading-[1.3] text-black/80 dark:text-zinc-300">{item}</span>
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 text-[12px] font-black text-black/50 dark:text-white/40">-</span>
+                          <span className="text-[14px] font-semibold leading-[1.3] text-black/80 dark:text-zinc-300">{item}</span>
                         </li>
                       ))}
                     </ul>
@@ -1057,7 +1057,7 @@ function MobilePopup({
         </section>
 
         {/* ── SECTION 2: Evidence ── */}
-        <div className="mt-5 flex items-center gap-2 px-5 text-[13px] font-black uppercase tracking-[0.2em] text-black dark:text-white font-mono">
+        <div className="mt-5 flex items-center gap-2 px-5 text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">
           Evidence · {total} proofs
         </div>
         <section className="mt-2 border-y border-x-0 border-black/[0.06] dark:border-white/[0.06] bg-white/90 dark:bg-zinc-900/60 px-5 py-4 shadow-sm">
@@ -1074,21 +1074,21 @@ function MobilePopup({
                   className={[
                     'group/card w-[152px] shrink-0 overflow-hidden rounded-[14px] border text-left transition-all duration-200 active:scale-[0.98]',
                     active
-                      ? 'border-[#E11D48]/56 bg-black/[0.02] dark:bg-white/[0.05] shadow-[0_4px_12px_rgba(225,29,72,0.1)]'
+                      ? 'border-[var(--fm-accent)]/56 bg-black/[0.02] dark:bg-white/[0.05] shadow-[0_4px_12px_rgb(var(--fm-accent-rgb)/0.1)]'
                       : 'border-black/[0.05] dark:border-white/[0.05] opacity-50 hover:opacity-75',
                   ].join(' ')}
                 >
                   <div className="relative aspect-[4/5] overflow-hidden">
                     <Thumb post={post} className={['h-full w-full object-cover transition-all duration-300', active ? '' : 'grayscale opacity-60 contrast-[1.1]'].join(' ')} />
-                    <div className="absolute left-1.5 top-1.5 rounded-full bg-[#E11D48] px-2 py-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-white">
+                    <div className="absolute left-1.5 top-1.5 rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white">
                       {metric.value}
                     </div>
                   </div>
                   <div className="px-3 py-2.5">
-                    <div className="text-[10.5px] font-black uppercase leading-[1.1] tracking-[0.05em] text-black/80 dark:text-white/70">
+                    <div className="text-[10px] font-black uppercase leading-[1.1] tracking-[0.06em] text-black/80 dark:text-white/70">
                       {post.proof_label}
                     </div>
-                    <div className="mt-1 text-[8.5px] font-black uppercase tracking-[0.12em] text-black/80 dark:text-zinc-200 font-mono">
+                    <div className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/80 dark:text-zinc-200 font-mono">
                       Proof {i + 1}/{total}
                     </div>
                   </div>
@@ -1099,7 +1099,7 @@ function MobilePopup({
         </section>
 
         {/* ── SECTION 3: Proof Read ── */}
-        <div className="mt-5 flex items-center gap-2 px-5 text-[13px] font-black uppercase tracking-[0.2em] text-black dark:text-white font-mono">
+        <div className="mt-5 flex items-center gap-2 px-5 text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">
           Proof read
         </div>
         <section
@@ -1107,7 +1107,7 @@ function MobilePopup({
           style={{ scrollMarginTop: 'calc(120px + env(safe-area-inset-top))' }}
           className="mt-2 border-y border-x-0 border-black/[0.06] dark:border-white/[0.06] bg-white/90 dark:bg-zinc-900/60 px-5 py-6 shadow-sm"
         >
-          <h4 className="text-[25px] font-serif font-extrabold leading-[1.1] tracking-tight text-black dark:text-white">
+          <h4 className="text-[22px] font-serif font-extrabold leading-[1.1] tracking-tight text-black dark:text-white">
             {proof.proof_headline}
           </h4>
 
@@ -1115,16 +1115,16 @@ function MobilePopup({
             href={instagramPostUrl(proof.post_key, proof.post_url)}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-flex h-11 items-center gap-2 rounded-full bg-[#E11D48] px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_-16px_rgba(225,29,72,0.8)] active:scale-[0.98]"
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-full bg-[var(--fm-accent)] px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_-16px_rgb(var(--fm-accent-rgb)/0.8)] active:scale-[0.98]"
             aria-label="Open selected proof on Instagram"
           >
             <span>Open on Instagram</span>
             <ArrowUpRight size={13} strokeWidth={3} />
           </a>
 
-          <div className="mt-5 border-t-2 border-[#E11D48] pt-3.5">
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#E11D48] dark:text-[#FB7185] font-mono">What clicked</div>
-            <p className="mt-2 text-[clamp(16px,4.2vw,20px)] font-black leading-[1.3] text-[#E11D48] dark:text-[#FB7185] italic pl-3 border-l-2 border-[#E11D48]/30">
+          <div className="mt-5 border-t-2 border-[var(--fm-accent)] pt-3.5">
+            <div className="text-[12px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">What clicked</div>
+            <p className="mt-2 text-[clamp(16px,4.2vw,20px)] font-black leading-[1.3] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] italic pl-3 border-l-2 border-[var(--fm-accent)]/30">
               &ldquo;{proof.what_clicked}&rdquo;
             </p>
           </div>
@@ -1137,15 +1137,15 @@ function MobilePopup({
                 className={[
                   'relative min-w-0 rounded-xl border pl-3.5 pr-2 py-2.5 overflow-hidden',
                   metric.accent
-                    ? 'border-[#E11D48]/20 bg-[#E11D48]/[0.02] dark:bg-[#E11D48]/[0.05]'
+                    ? 'border-[var(--fm-accent)]/20 bg-[var(--fm-accent)]/[0.02] dark:bg-[var(--fm-accent)]/[0.05]'
                     : 'border-black/[0.05] dark:border-white/[0.05] bg-black/[0.015] dark:bg-white/[0.015]',
                 ].join(' ')}
               >
-                <span className={['absolute left-0 top-0 bottom-0 w-[2.5px]', metric.accent ? 'bg-[#E11D48]' : 'bg-black/10 dark:bg-white/10'].join(' ')} />
-                <div className={['text-[20px] font-mono font-black leading-none', metric.accent ? 'text-[#E11D48] dark:text-[#FB7185]' : 'text-black dark:text-white'].join(' ')}>
+                <span className={['absolute left-0 top-0 bottom-0 w-[2.5px]', metric.accent ? 'bg-[var(--fm-accent)]' : 'bg-black/10 dark:bg-white/10'].join(' ')} />
+                <div className={['text-[22px] font-mono font-black leading-none', metric.accent ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]' : 'text-black dark:text-white'].join(' ')}>
                   {metric.value}
                 </div>
-                <div className="mt-1 text-[7.5px] font-black uppercase tracking-[0.06em] leading-tight text-black/64 dark:text-zinc-400 font-mono">
+                <div className="mt-1 text-[8px] font-black uppercase tracking-[0.06em] leading-tight text-black/64 dark:text-zinc-400 font-mono">
                   {metric.label} {metric.detail ? `· ${metric.detail}` : ''}
                 </div>
               </div>
@@ -1156,11 +1156,11 @@ function MobilePopup({
           <div className="mt-4 space-y-3.5">
             {proofReadParagraphs.map((paragraph, i) => (
               <div key={`mpr:${proof.post_key}:${i}`} className="relative flex flex-col rounded-[18px] border border-black/[0.045] dark:border-white/[0.05] bg-black/[0.015] dark:bg-white/[0.015] p-4">
-                <div className="flex items-center justify-between mb-3 text-[11.5px] font-black uppercase tracking-[0.18em] text-[#E11D48] dark:text-[#FB7185] font-mono border-b border-black/[0.05] dark:border-white/[0.05] pb-2">
+                <div className="flex items-center justify-between mb-3 text-[12px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono border-b border-black/[0.05] dark:border-white/[0.05] pb-2">
                   <span>{['THE BUILD', 'THE MOVE', 'THE HOLD'][i] ?? `PHASE ${String(i + 1).padStart(2, '0')}`}</span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] animate-pulse" />
                 </div>
-                <p className="text-[13.5px] font-semibold leading-relaxed text-black/68 dark:text-zinc-300">
+                <p className="text-[14px] font-semibold leading-relaxed text-black/68 dark:text-zinc-300">
                   {paragraph}
                 </p>
               </div>
@@ -1168,11 +1168,11 @@ function MobilePopup({
           </div>
 
           <div className="mt-5 rounded-[14px] border border-black/[0.05] dark:border-white/[0.05] bg-black/[0.01] dark:bg-white/[0.025] p-4">
-            <div className="text-[11.5px] font-black uppercase tracking-[0.2em] text-black dark:text-white font-mono">Evidence</div>
+            <div className="text-[12px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Evidence</div>
             <ul className="mt-2.5 space-y-2 text-[12px] font-bold leading-[1.42] text-black/60 dark:text-white/46">
               {proof.evidence.map((e, i) => (
                 <li key={`mev:${i}`} className="flex gap-2.5">
-                  <span className="mt-[0.4em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#E11D48]" />
+                  <span className="mt-[0.4em] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]" />
                   <span>{e}</span>
                 </li>
               ))}
@@ -1241,7 +1241,7 @@ function DesktopPopup({
 
   return (
     <motion.div
-      className="fixed inset-0 z-[1000] flex flex-col bg-[#FAF9F6] text-[#111111] transition-colors duration-300 dark:bg-[#09090b] dark:text-[#f4f4f5]"
+      className="fixed inset-0 z-[1000] flex flex-col bg-[#FAF9F6] text-[#111111] transition-colors duration-300 dark:bg-[var(--fm-ink)] dark:text-[#f4f4f5]"
       initial={{ opacity: 0, y: 18, scale: 0.982, filter: 'blur(12px)' }}
       animate={isClosing
         ? { opacity: 0, y: 24, scale: 0.98, filter: 'blur(14px)' }
@@ -1259,7 +1259,7 @@ function DesktopPopup({
       <button
         type="button"
         onClick={onClose}
-        className="fixed right-[clamp(20px,4vw,80px)] top-[clamp(20px,3.2vh,42px)] z-[1020] flex h-13 w-13 cursor-pointer items-center justify-center rounded-full border border-black/10 bg-white/90 text-black shadow-[0_8px_32px_-12px_rgba(0,0,0,0.3)] transition duration-200 hover:scale-108 hover:bg-[#E11D48] hover:text-white hover:border-[#E11D48] active:scale-95 dark:border-white/10 dark:bg-zinc-900/90 dark:text-white dark:hover:bg-[#E11D48] dark:hover:border-[#E11D48] sm:backdrop-blur-md lg:backdrop-blur-none"
+        className="fixed right-[clamp(20px,4vw,80px)] top-[clamp(20px,3.2vh,42px)] z-[1020] flex h-13 w-13 cursor-pointer items-center justify-center rounded-full border border-black/10 bg-white/90 text-black shadow-[0_8px_32px_-12px_rgba(0,0,0,0.3)] transition duration-200 hover:scale-108 hover:bg-[var(--fm-accent)] hover:text-white hover:border-[var(--fm-accent)] active:scale-95 dark:border-white/10 dark:bg-zinc-900/90 dark:text-white dark:hover:bg-[var(--fm-accent)] dark:hover:border-[var(--fm-accent)] sm:backdrop-blur-md lg:backdrop-blur-none"
         aria-label="Close"
       >
         <X size={22} strokeWidth={3} />
@@ -1268,19 +1268,19 @@ function DesktopPopup({
       {/* ── HERO: full-width headline zone ── */}
       <div className="shrink-0 px-[clamp(20px,4vw,80px)] pb-6 pt-[clamp(22px,2.8vh,40px)]">
         {/* breadcrumb */}
-        <div className="mb-5 flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.25em] text-black/40 dark:text-white/34 font-mono">
-          <span className="rounded-md border border-[#E11D48]/18 bg-[#E11D48]/10 px-3 py-1.5 text-[10.5px] font-black uppercase tracking-[0.14em] text-[#E11D48] dark:text-[#FB7185] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+        <div className="mb-5 flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.22em] text-black/40 dark:text-white/34 font-mono">
+          <span className="rounded-md border border-[var(--fm-accent)]/18 bg-[var(--fm-accent)]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
             {pattern.pattern.tile_label}
           </span>
-          <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] animate-pulse" />
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] animate-pulse" />
           <span>Pattern {String(proofIndex + 1).padStart(2, '0')}</span>
-          <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48]" />
-          <span className="text-[#E11D48] dark:text-[#FB7185] font-black">{pattern.account}</span>
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)]" />
+          <span className="text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-black">{pattern.account}</span>
         </div>
 
         {/* massive headline */}
         <h2
-          className="max-w-[min(100%,1680px)] text-left text-[clamp(38px,3.5vw,62px)] font-serif font-semibold leading-[1.05] tracking-tight text-[#08080a] dark:text-zinc-50"
+          className="max-w-[min(100%,1680px)] text-left text-[clamp(38px,3.5vw,62px)] font-serif font-semibold leading-[1.05] tracking-tight text-[var(--fm-ink)] dark:text-zinc-50"
           style={{ textWrap: 'balance' }}
         >
           {pattern.pattern.modal_headline}
@@ -1288,7 +1288,7 @@ function DesktopPopup({
 
         {/* accent divider */}
         <div className="relative mt-8 h-[1px] w-full bg-black/[0.08] dark:bg-white/[0.08]">
-          <div className="absolute left-0 top-0 h-[3px] -translate-y-1/3 w-[clamp(180px,24vw,400px)] bg-[#E11D48] shadow-[0_2px_10px_rgba(225,29,72,0.4)]" />
+          <div className="absolute left-0 top-0 h-[3px] -translate-y-1/3 w-[clamp(180px,24vw,400px)] bg-[var(--fm-accent)] shadow-[0_2px_10px_rgb(var(--fm-accent-rgb)/0.4)]" />
         </div>
       </div>
 
@@ -1302,13 +1302,13 @@ function DesktopPopup({
             {/* TOP SECTION: PATTERN READ + BREAKDOWN (Side-by-Side) */}
             <div className="grid items-stretch gap-[clamp(16px,1.8vw,28px)] grid-cols-1 xl:grid-cols-2">
               {/* Pattern Read */}
-              <div className="relative flex h-full min-w-0 flex-col justify-between gap-6 overflow-hidden rounded-[24px] border border-black/[0.055] bg-white/88 p-[clamp(20px,2vw,32px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] transition-all duration-300 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-900/82">
+              <div className="relative flex h-full min-w-0 flex-col justify-between gap-6 overflow-hidden rounded-[22px] border border-black/[0.055] bg-white/88 p-[clamp(20px,2vw,32px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] transition-all duration-300 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-900/82">
                 <div className="flex flex-col gap-6">
-                  <div className="flex items-center gap-2.5 text-[14px] font-black uppercase tracking-[0.25em] text-[#E11D48] dark:text-[#FB7185] font-mono">
-                    <span className="h-2 w-2 rounded-full bg-[#E11D48] animate-pulse" />
+                  <div className="flex items-center gap-2.5 text-[14px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">
+                    <span className="h-2 w-2 rounded-full bg-[var(--fm-accent)] animate-pulse" />
                     Pattern read
                   </div>
-                  <p className="text-[clamp(28px,2.2vw,36px)] font-black leading-[1.08] text-[#E11D48] dark:text-[#FB7185] border-l-4 border-[#E11D48] pl-4 italic tracking-tight">
+                  <p className="text-[clamp(28px,2.2vw,36px)] font-black leading-[1.08] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] border-l-4 border-[var(--fm-accent)] pl-4 italic tracking-tight">
                     {pattern.pattern.the_hook}
                   </p>
                   <p className="text-[clamp(15px,1.05vw,18px)] font-bold leading-relaxed text-black/76 dark:text-zinc-200">
@@ -1317,19 +1317,19 @@ function DesktopPopup({
                 </div>
                 
                 {/* Telemetry Footer */}
-                <div className="pt-5 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06] text-[8.5px] font-mono uppercase tracking-[0.15em] text-black/32 dark:text-zinc-500">
+                <div className="pt-5 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06] text-[8px] font-mono uppercase tracking-[0.14em] text-black/32 dark:text-zinc-500">
                   <span>Core Mechanic</span>
                   <span>{pattern.accountMeta || 'Pattern Lift'}</span>
                 </div>
               </div>
 
               {/* Breakdown */}
-              <div className="flex h-full min-w-0 flex-col rounded-[24px] border border-black/[0.055] bg-white/88 p-[clamp(18px,1.7vw,28px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] transition-all duration-300 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-900/82">
-                <div className="mb-5 font-mono text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white">Breakdown</div>
+              <div className="flex h-full min-w-0 flex-col rounded-[22px] border border-black/[0.055] bg-white/88 p-[clamp(18px,1.7vw,28px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] transition-all duration-300 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-900/82">
+                <div className="mb-5 font-mono text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white">Breakdown</div>
                 <div className="flex flex-col gap-3.5 w-full items-stretch">
                   {pattern.pattern.the_breakdown.map((item, i) => (
-                    <div key={`dbd:${i}`} className="flex w-full min-h-0 items-center gap-[clamp(16px,1.5vw,26px)] rounded-[16px] border border-black/[0.03] bg-black/[0.015] p-[clamp(14px,1.2vw,20px)] transition-colors duration-300 hover:border-[#E11D48]/18 dark:border-white/[0.03] dark:bg-white/[0.015]">
-                      <div className="shrink-0 font-mono text-[clamp(36px,2.4vw,48px)] font-black leading-none text-[#E11D48] dark:text-[#FB7185] drop-shadow-[0_2px_4px_rgba(225,29,72,0.15)]">
+                    <div key={`dbd:${i}`} className="flex w-full min-h-0 items-center gap-[clamp(16px,1.5vw,26px)] rounded-[18px] border border-black/[0.03] bg-black/[0.015] p-[clamp(14px,1.2vw,20px)] transition-colors duration-300 hover:border-[var(--fm-accent)]/18 dark:border-white/[0.03] dark:bg-white/[0.015]">
+                      <div className="shrink-0 font-mono text-[clamp(36px,2.4vw,48px)] font-black leading-none text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] drop-shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.15)]">
                         {String(i + 1).padStart(2, '0')}
                       </div>
                       <p className="flex-1 min-w-0 text-[clamp(14.5px,0.92vw,17px)] font-extrabold leading-[1.38] text-black/76 dark:text-zinc-200">
@@ -1340,7 +1340,7 @@ function DesktopPopup({
                 </div>
 
                 {/* Telemetry Footer */}
-                <div className="mt-auto pt-5 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06] text-[8.5px] font-mono uppercase tracking-[0.15em] text-black/32 dark:text-zinc-500">
+                <div className="mt-auto pt-5 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06] text-[8px] font-mono uppercase tracking-[0.14em] text-black/32 dark:text-zinc-500">
                   <span>Sequence Steps</span>
                   <span>Verified Signal</span>
                 </div>
@@ -1350,17 +1350,17 @@ function DesktopPopup({
             {/* BOTTOM SECTION: GUARDRAILS (Full-Width with Keep & Kills Side-by-Side) */}
             <div className="mt-[clamp(16px,1.8vw,28px)]">
               {/* Guardrails */}
-              <div className="relative flex min-w-0 flex-col justify-between gap-6 rounded-[24px] border border-black/[0.055] bg-white/88 p-[clamp(20px,2vw,32px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] dark:border-white/[0.06] dark:bg-zinc-900/82">
+              <div className="relative flex min-w-0 flex-col justify-between gap-6 rounded-[22px] border border-black/[0.055] bg-white/88 p-[clamp(20px,2vw,32px)] shadow-[0_18px_42px_-36px_rgba(15,23,42,0.18)] dark:border-white/[0.06] dark:bg-zinc-900/82">
                 <div>
-                  <div className="mb-6 text-[14px] font-black uppercase tracking-[0.25em] text-[#E11D48] dark:text-[#FB7185] font-mono">Guardrails</div>
+                  <div className="mb-6 text-[14px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">Guardrails</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
                     {pattern.pattern.what_to_keep.length > 0 && (
                       <div className="flex flex-col gap-3">
-                        <div className="text-[13px] font-black uppercase tracking-[0.22em] text-[#E11D48] dark:text-[#FB7185] font-mono">Keep</div>
+                        <div className="text-[14px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">Keep</div>
                         <ul className="space-y-4">
                           {pattern.pattern.what_to_keep.map((item, i) => (
                             <li key={`desktop-pattern-keep:${i}`} className="flex gap-4 items-center">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#E11D48] text-[13px] font-black text-white shadow-[0_2px_8px_rgba(225,29,72,0.3)]">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--fm-accent)] text-[14px] font-black text-white shadow-[0_2px_8px_rgb(var(--fm-accent-rgb)/0.3)]">
                                 +
                               </span>
                               <span className="text-[clamp(14.5px,0.95vw,16.5px)] font-bold leading-[1.35] text-black dark:text-zinc-100">{item}</span>
@@ -1371,11 +1371,11 @@ function DesktopPopup({
                     )}
                     {pattern.pattern.what_kills_it.length > 0 && (
                       <div className={pattern.pattern.what_to_keep.length > 0 ? "border-t md:border-t-0 md:border-l border-black/[0.06] dark:border-white/[0.06] pt-5 md:pt-0 md:pl-8 flex flex-col gap-3" : "flex flex-col gap-3"}>
-                        <div className="text-[13px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Kills</div>
+                        <div className="text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Kills</div>
                         <ul className="space-y-4">
                           {pattern.pattern.what_kills_it.map((item, i) => (
                             <li key={`desktop-pattern-kill:${i}`} className="flex gap-4 items-center">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 text-[13px] font-black text-black/60 dark:text-white/60">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10 text-[14px] font-black text-black/60 dark:text-white/60">
                                 -
                               </span>
                               <span className="text-[clamp(14.5px,0.9vw,16px)] font-bold leading-[1.35] text-black/80 dark:text-zinc-300">{item}</span>
@@ -1388,7 +1388,7 @@ function DesktopPopup({
                 </div>
 
                 {/* Telemetry Footer */}
-                <div className="pt-5 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06] text-[8.5px] font-mono uppercase tracking-[0.15em] text-black/32 dark:text-zinc-500">
+                <div className="pt-5 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06] text-[8px] font-mono uppercase tracking-[0.14em] text-black/32 dark:text-zinc-500">
                   <span>Guardrail Limits</span>
                   <span>Atmospheric Constraint</span>
                 </div>
@@ -1397,7 +1397,7 @@ function DesktopPopup({
 
             {/* ── EVIDENCE CARDS (sleek video-cover horizontal filmstrip) ── */}
             <div className="mt-8 border-t border-black/[0.08] dark:border-white/[0.08] pt-6">
-                  <div className="mb-5 font-mono text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white">
+                  <div className="mb-5 font-mono text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white">
                 Evidence · {total} proofs — click to read
               </div>
               <div className="grid gap-4 lg:grid-cols-3">
@@ -1413,7 +1413,7 @@ function DesktopPopup({
                       className={[
                         'group/card relative w-full aspect-[16/10] overflow-hidden rounded-[22px] border text-left transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl',
                         active
-                          ? 'border-[#E11D48] ring-2 ring-[#E11D48]/30 dark:ring-[#E11D48]/40 shadow-[0_20px_40px_-20px_rgba(225,29,72,0.2)]'
+                          ? 'border-[var(--fm-accent)] ring-2 ring-[var(--fm-accent)]/30 dark:ring-[var(--fm-accent)]/40 shadow-[0_20px_40px_-20px_rgb(var(--fm-accent-rgb)/0.2)]'
                           : 'border-black/[0.08] dark:border-white/[0.08] bg-[#FAF9F6] dark:bg-[#141416]/20 opacity-75 hover:opacity-100'
                       ].join(' ')}
                     >
@@ -1423,25 +1423,25 @@ function DesktopPopup({
 
                       {/* Active Top Bezel Accent */}
                       {active && (
-                        <span className="absolute top-0 inset-x-0 h-[3px] bg-[#E11D48] z-20 shadow-[0_2px_10px_rgba(225,29,72,0.6)]" />
+                        <span className="absolute top-0 inset-x-0 h-[3px] bg-[var(--fm-accent)] z-20 shadow-[0_2px_10px_rgb(var(--fm-accent-rgb)/0.6)]" />
                       )}
 
                       {/* Monospaced Index Tag */}
-                      <div className="absolute left-4 top-4 z-20 rounded-md border border-white/10 bg-black/72 px-2 py-0.5 font-mono text-[8px] font-black uppercase tracking-[0.08em] text-white">
+                      <div className="absolute left-4 top-4 z-20 rounded-md border border-white/10 bg-black/72 px-2 py-0.5 font-mono text-[8px] font-black uppercase tracking-[0.14em] text-white">
                         {String(i + 1).padStart(2, '0')}
                       </div>
 
                       {/* Editorial Content Overlay inside Thumbnail */}
                       <div className="absolute inset-x-0 bottom-0 z-20 p-5 flex flex-col justify-end">
-                        <div className="text-[8px] font-black uppercase tracking-[0.2em] text-[#FB7185] font-mono leading-none">
+                        <div className="text-[8px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent-bright)] font-mono leading-none">
                           {post.proof_label}
                         </div>
-                        <h4 className="mt-2 text-[clamp(14px,1.15vw,17px)] font-black leading-[1.28] text-white transition-colors group-hover/card:text-[#FDA4AF]">
+                        <h4 className="mt-2 text-[clamp(14px,1.15vw,17px)] font-black leading-[1.28] text-white transition-colors group-hover/card:text-[var(--fm-accent-soft)]">
                           {post.proof_headline}
                         </h4>
                         <div className="mt-3 flex items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-white/50 opacity-0 transition-all duration-300 translate-y-1 group-hover/card:opacity-100 group-hover/card:translate-y-0">
                           <span>View proof details</span>
-                          <ChevronRight size={8} strokeWidth={3} className="transition-transform group-hover/card:translate-x-0.5 text-[#FB7185]" />
+                          <ChevronRight size={8} strokeWidth={3} className="transition-transform group-hover/card:translate-x-0.5 text-[var(--fm-accent-bright)]" />
                         </div>
                       </div>
                     </motion.button>
@@ -1453,10 +1453,10 @@ function DesktopPopup({
             {/* ── PROOF READ ── */}
             <section ref={proofReadRef} className="mt-8 scroll-mt-4 border-t border-black/[0.08] dark:border-white/[0.08] pt-6">
               <div className="flex items-center justify-between gap-4">
-                <div className="text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white font-mono">
+                <div className="text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">
                   Current read · Proof {proofIndex + 1}/{total}
                 </div>
-                <div className="rounded-full border border-[#E11D48]/20 bg-[#E11D48]/[0.05] px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48] dark:text-[#FB7185] font-mono">
+                <div className="rounded-full border border-[var(--fm-accent)]/20 bg-[var(--fm-accent)]/[0.05] px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">
                   Selected proof
                 </div>
               </div>
@@ -1470,35 +1470,35 @@ function DesktopPopup({
                   transition={{ duration: 0.28, ease: APPLE_EASE }}
                 >
                   <h3
-                    className="mt-4 max-w-none text-[clamp(30px,2.4vw,44px)] font-serif font-semibold leading-[1.1] tracking-tight text-[#08080a] dark:text-zinc-50"
+                    className="mt-4 max-w-none text-[clamp(30px,2.4vw,44px)] font-serif font-semibold leading-[1.1] tracking-tight text-[var(--fm-ink)] dark:text-zinc-50"
                     style={{ textWrap: 'balance' }}
                   >
                     {proof.proof_headline}
                   </h3>
 
                   {/* What Clicked: Full-Width Callout quote */}
-                  <div className="relative mt-6 overflow-hidden rounded-[22px] border border-black/[0.055] dark:border-white/[0.06] bg-white/80 dark:bg-zinc-900/70 p-6 shadow-[0_18px_48px_-30px_rgba(225,29,72,0.15)] hover:shadow-md transition-shadow duration-300">
+                  <div className="relative mt-6 overflow-hidden rounded-[22px] border border-black/[0.055] dark:border-white/[0.06] bg-white/80 dark:bg-zinc-900/70 p-6 shadow-[0_18px_48px_-30px_rgb(var(--fm-accent-rgb)/0.15)] hover:shadow-md transition-shadow duration-300">
                     {/* top indicator bar */}
-                    <span className="absolute top-0 inset-x-0 h-[3px] bg-[#E11D48] shadow-[0_1px_8px_rgba(225,29,72,0.4)]" />
-                    <div className="text-[13.5px] font-black uppercase tracking-[0.25em] text-[#E11D48] dark:text-[#FB7185] font-mono mb-3.5">What clicked</div>
-                    <p className="text-[clamp(22px,1.6vw,28px)] font-black leading-[1.25] text-[#E11D48] dark:text-[#FB7185] italic pl-5 border-l-4 border-[#E11D48] tracking-tight">
+                    <span className="absolute top-0 inset-x-0 h-[3px] bg-[var(--fm-accent)] shadow-[0_1px_8px_rgb(var(--fm-accent-rgb)/0.4)]" />
+                    <div className="text-[14px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono mb-3.5">What clicked</div>
+                    <p className="text-[clamp(22px,1.6vw,28px)] font-black leading-[1.25] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] italic pl-5 border-l-4 border-[var(--fm-accent)] tracking-tight">
                       &ldquo;{proof.what_clicked}&rdquo;
                     </p>
                   </div>
 
                   {/* Post Read: Full-Width Editorial Block with dynamic phase columns */}
                   <div className="mt-4 rounded-[22px] border border-black/[0.06] dark:border-white/[0.07] bg-white/80 dark:bg-zinc-900/70 p-[clamp(20px,2vw,32px)] shadow-lg hover:shadow-xl transition-shadow duration-300">
-                    <div className="text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white font-mono mb-4.5">Post read</div>
+                    <div className="text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono mb-4.5">Post read</div>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                       {proofReadParagraphs.map((paragraph, i) => (
                         <div 
                           key={`dpr:${proof.post_key}:${i}`} 
-                          className="relative flex flex-col rounded-[20px] border border-black/[0.05] bg-white/90 p-[clamp(16px,1.5vw,24px)] shadow-[0_8px_30px_rgb(0,0,0,0.03)] transition-all duration-300 hover:border-[#E11D48]/30 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-950/70 dark:shadow-none"
+                          className="relative flex flex-col rounded-[22px] border border-black/[0.05] bg-white/90 p-[clamp(16px,1.5vw,24px)] shadow-[0_8px_30px_rgb(0,0,0,0.03)] transition-all duration-300 hover:border-[var(--fm-accent)]/30 hover:shadow-lg dark:border-white/[0.06] dark:bg-zinc-950/70 dark:shadow-none"
                         >
                           {/* Phase Indicator */}
-                          <div className="flex items-center justify-between mb-4 text-[clamp(13px,0.95vw,14.5px)] font-black uppercase tracking-widest text-[#E11D48] dark:text-[#FB7185] font-mono border-b border-black/[0.05] dark:border-white/[0.05] pb-2.5">
+                          <div className="flex items-center justify-between mb-4 text-[clamp(13px,0.95vw,14.5px)] font-black uppercase tracking-widest text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono border-b border-black/[0.05] dark:border-white/[0.05] pb-2.5">
                             <span>{['THE BUILD', 'THE MOVE', 'THE HOLD'][i] ?? `PHASE ${String(i + 1).padStart(2, '0')}`}</span>
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] animate-pulse" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] animate-pulse" />
                           </div>
                           <p className="text-[clamp(15px,1.05vw,17.5px)] font-extrabold leading-[1.58] text-black/80 dark:text-zinc-200">
                             {paragraph}
@@ -1519,7 +1519,7 @@ function DesktopPopup({
 
             {/* Feeder weight (pattern context before selected proof) */}
             <div>
-              <div className="mb-4 text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white font-mono">Feeder weight</div>
+              <div className="mb-4 text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Feeder weight</div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 {patternPerformanceStats.map((metric, index) => {
                   const val = metric.value || '';
@@ -1529,10 +1529,10 @@ function DesktopPopup({
                     : 'text-[clamp(26px,1.9vw,36px)] font-mono font-black leading-none';
                   return (
                     <div key={`dps:${metric.label}:${index}`} className="min-w-0 border-b border-black/[0.06] dark:border-white/[0.06] pb-2.5">
-                      <div className={[sizeClass, metric.accent ? 'text-[#E11D48] dark:text-[#FB7185]' : 'text-[#060607] dark:text-zinc-100'].join(' ')}>
+                      <div className={[sizeClass, metric.accent ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]' : 'text-[#060607] dark:text-zinc-100'].join(' ')}>
                         {metric.value}
                       </div>
-                      <div className="mt-1.5 text-[8.5px] font-black uppercase tracking-[0.16em] text-black/32 dark:text-zinc-500">
+                      <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-black/32 dark:text-zinc-500">
                         {metric.label} · {metric.detail || 'signal'}
                       </div>
                     </div>
@@ -1563,19 +1563,19 @@ function DesktopPopup({
                 {/* Diagnostic Central Reticle */}
                 <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-30">
                   <div className="h-14 w-14 border border-dashed border-white/20 rounded-full flex items-center justify-center">
-                    <div className="h-2 w-2 bg-[#E11D48] rounded-full animate-ping" />
-                    <div className="h-1.5 w-1.5 bg-[#E11D48] rounded-full absolute" />
+                    <div className="h-2 w-2 bg-[var(--fm-accent)] rounded-full animate-ping" />
+                    <div className="h-1.5 w-1.5 bg-[var(--fm-accent)] rounded-full absolute" />
                   </div>
                 </div>
 
                 <CornerTicks color={ACCENT} size={9} inset={7} />
 
                 {/* Live Diagnostic Header Labels */}
-                <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-2 rounded-md border border-white/10 bg-black/78 px-2 py-0.5 font-mono text-[8.5px] uppercase tracking-wider text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] animate-pulse" />
+                <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-2 rounded-md border border-white/10 bg-black/78 px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider text-white">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] animate-pulse" />
                   <span>[ANALYZER FEED // LIVE]</span>
                 </div>
-                <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-white/10 bg-black/78 px-2 py-0.5 font-mono text-[8.5px] uppercase tracking-wider text-white">
+                <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-white/10 bg-black/78 px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider text-white">
                   <span>FPS: 30 // HD // {proofIndex + 1}/{total}</span>
                 </div>
 
@@ -1592,7 +1592,7 @@ function DesktopPopup({
                 </button>
 
                 {/* Telemetry bottom line */}
-                <div className="pointer-events-none absolute bottom-14 left-4 z-20 flex items-center gap-2.5 rounded border border-white/5 bg-black/58 px-2 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-white/50">
+                <div className="pointer-events-none absolute bottom-14 left-4 z-20 flex items-center gap-2.5 rounded border border-white/5 bg-black/58 px-2 py-0.5 font-mono text-[8px] uppercase tracking-[0.14em] text-white/50">
                   <span>RATIO: 3:4</span>
                   <span className="h-1 w-1 rounded-full bg-white/20" />
                   <span>BITRATE: 4.8MB/S</span>
@@ -1605,7 +1605,7 @@ function DesktopPopup({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(event) => event.stopPropagation()}
-                  className="absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-black/68 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_-16px_rgba(0,0,0,0.8)] transition hover:border-[#FB7185]/60 hover:bg-[#E11D48] hover:text-white active:scale-95"
+                  className="absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-black/68 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_-16px_rgba(0,0,0,0.8)] transition hover:border-[var(--fm-accent-bright)]/60 hover:bg-[var(--fm-accent)] hover:text-white active:scale-95"
                   aria-label="Open selected proof on Instagram"
                 >
                   <span>Instagram</span>
@@ -1613,14 +1613,14 @@ function DesktopPopup({
                 </a>
 
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-[linear-gradient(0deg,rgba(0,0,0,0.78),transparent_72%)] px-4 pb-3.5 pt-14">
-                  <div className="text-[19px] font-black leading-[1] text-white">{proof.proof_label}</div>
+                  <div className="text-[18px] font-black leading-[1] text-white">{proof.proof_label}</div>
                 </div>
               </div>
             </div>
 
             {/* Signal Bites (selected proof context below thumbnail) */}
             <div className="mt-5 border-t border-black/[0.08] dark:border-white/[0.08] pt-4">
-              <div className="mb-3.5 text-[14px] font-black uppercase tracking-[0.25em] text-black dark:text-white font-mono">Signal bites</div>
+              <div className="mb-3.5 text-[14px] font-black uppercase tracking-[0.22em] text-black dark:text-white font-mono">Signal bites</div>
               <div className="grid grid-cols-2 gap-2.5">
                 {proofSignalCards.map((metric) => {
                   const val = metric.value || '';
@@ -1633,17 +1633,17 @@ function DesktopPopup({
                       className={[
                         'relative min-w-0 rounded-xl border pl-4 pr-3 py-3 overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-md',
                         metric.accent
-                          ? 'border-[#E11D48]/20 bg-[#E11D48]/[0.02] dark:bg-[#E11D48]/[0.05]'
+                          ? 'border-[var(--fm-accent)]/20 bg-[var(--fm-accent)]/[0.02] dark:bg-[var(--fm-accent)]/[0.05]'
                           : 'border-black/[0.06] dark:border-white/[0.06] bg-white dark:bg-zinc-900/60'
                       ].join(' ')}
                     >
                       {/* status accent strip */}
-                      <span className={['absolute left-0 top-0 bottom-0 w-[3px]', metric.accent ? 'bg-[#E11D48]' : 'bg-black/10 dark:bg-white/10'].join(' ')} />
+                      <span className={['absolute left-0 top-0 bottom-0 w-[3px]', metric.accent ? 'bg-[var(--fm-accent)]' : 'bg-black/10 dark:bg-white/10'].join(' ')} />
 
-                      <div className={[sizeClass, 'font-mono tracking-tight', metric.accent ? 'text-[#E11D48] dark:text-[#FB7185] drop-shadow-[0_2px_4px_rgba(225,29,72,0.15)]' : 'text-[#060607] dark:text-zinc-100'].join(' ')}>
+                      <div className={[sizeClass, 'font-mono tracking-tight', metric.accent ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] drop-shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.15)]' : 'text-[#060607] dark:text-zinc-100'].join(' ')}>
                         {metric.value}
                       </div>
-                      <div className="mt-1.5 text-[8.5px] font-black uppercase tracking-[0.14em] text-black/40 dark:text-zinc-500">
+                      <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-black/40 dark:text-zinc-500">
                         {metric.label}{metric.detail ? ` · ${metric.detail}` : ''}
                       </div>
                     </div>
@@ -1653,12 +1653,12 @@ function DesktopPopup({
             </div>
 
             {/* Post evidence list */}
-            <div className="mt-6 border-t-2 border-[#E11D48]/20 dark:border-[#E11D48]/30 pt-5">
-              <div className="mb-4 text-[14px] font-black uppercase tracking-[0.25em] text-[#E11D48] dark:text-[#FB7185] font-mono">Post evidence</div>
+            <div className="mt-6 border-t-2 border-[var(--fm-accent)]/20 dark:border-[var(--fm-accent)]/30 pt-5">
+              <div className="mb-4 text-[14px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">Post evidence</div>
               <div className="grid gap-2.5">
                 {proof.evidence.map((item, i) => (
                   <div key={`desktop-rail-evidence:${proof.post_key}:${i}`} className="grid grid-cols-[30px_minmax(0,1fr)] gap-3 rounded-[14px] border border-black/[0.06] dark:border-white/[0.06] bg-white/70 dark:bg-zinc-900/40 p-3.5 shadow-sm hover:scale-[1.01] transition-transform duration-300">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#E11D48]/10 text-[10px] font-black text-[#E11D48] dark:text-[#FB7185] font-mono">{i + 1}</span>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--fm-accent)]/10 text-[10px] font-black text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)] font-mono">{i + 1}</span>
                     <span className="text-[clamp(13px,0.86vw,16px)] font-semibold leading-[1.38] text-black/70 dark:text-zinc-300 self-center">{item}</span>
                   </div>
                 ))}
@@ -1913,7 +1913,7 @@ export default function FeederFileClient({
 
         {/* ── masthead + rings ── */}
         <div className="-mx-3 overflow-hidden sm:mx-0">
-          <div className="flex items-center gap-3 rounded-none bg-white/96 px-5 pb-4 pt-3 dark:bg-[#08080a]/96 sm:gap-2 sm:rounded-b-[18px] sm:px-0 sm:pb-3 sm:pt-0 sm:backdrop-blur-xl lg:bg-white/96 lg:backdrop-blur-none lg:dark:bg-[#08080a]/96">
+          <div className="flex items-center gap-3 rounded-none bg-white/96 px-5 pb-4 pt-3 dark:bg-[var(--fm-ink)]/96 sm:gap-2 sm:rounded-b-[18px] sm:px-0 sm:pb-3 sm:pt-0 sm:backdrop-blur-xl lg:bg-white/96 lg:backdrop-blur-none lg:dark:bg-[var(--fm-ink)]/96">
             <button
               type="button"
               onClick={() => router.push(`/?id=${feedId}`, { scroll: false })}
@@ -1924,16 +1924,16 @@ export default function FeederFileClient({
             </button>
 
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 sm:gap-0.5">
-              <h1 className="truncate font-mono text-[33px] font-black uppercase leading-none tracking-[0.02em] text-black dark:text-white sm:text-[22px] sm:leading-none sm:tracking-[0.04em]">
+              <h1 className="truncate font-mono text-[34px] font-black uppercase leading-none tracking-[0.06em] text-black dark:text-white sm:text-[22px] sm:leading-none sm:tracking-[0.06em]">
                 Feeder File
               </h1>
-              <span className="font-mono text-[9px] font-black uppercase tracking-[0.24em] text-black/34 dark:text-white/30 sm:text-[8px] sm:tracking-[0.14em] sm:text-black/26 sm:dark:text-white/24">
+              <span className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-black/34 dark:text-white/30 sm:text-[8px] sm:tracking-[0.14em] sm:text-black/26 sm:dark:text-white/24">
                 Content intelligence
               </span>
             </div>
           </div>
 
-          <div className="rounded-none bg-white/94 px-0 pb-5 pt-2 dark:bg-[#08080a]/94 sm:rounded-b-[22px] sm:px-4 sm:pb-4 sm:backdrop-blur-xl lg:bg-white/94 lg:backdrop-blur-none lg:dark:bg-[#08080a]/94">
+          <div className="rounded-none bg-white/94 px-0 pb-5 pt-2 dark:bg-[var(--fm-ink)]/94 sm:rounded-b-[22px] sm:px-4 sm:pb-4 sm:backdrop-blur-xl lg:bg-white/94 lg:backdrop-blur-none lg:dark:bg-[var(--fm-ink)]/94">
             <StoryStrip
               accounts={accounts}
               activeAccount={selectedAccount}
@@ -1956,14 +1956,14 @@ export default function FeederFileClient({
             }}
             style={{ willChange: 'opacity, transform, filter' }}
           >
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48]">
-              <span className="h-2 w-2 rounded-full bg-[#E11D48]" />
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--fm-accent)]" />
               Feeding on
             </div>
-            <h2 className="mt-2 min-h-[1em] text-[36px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[48px] lg:text-[54px]">
+            <h2 className="mt-2 min-h-[1em] text-[34px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[48px] lg:text-[54px]">
               <TypebackText value={activeAccountLabel} />
             </h2>
-            <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em] text-black/34 dark:text-white/28">
+            <p className="mt-2 text-[12px] font-black uppercase tracking-[0.14em] text-black/34 dark:text-white/28">
               {activeAccountMeta}
             </p>
           </motion.div>

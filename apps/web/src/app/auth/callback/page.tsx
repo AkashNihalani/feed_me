@@ -51,7 +51,7 @@ function AuthCallbackContent() {
   return (
     <div className="h-screen w-screen flex items-center justify-center bg-black text-white">
       <div className="text-center">
-        <Loader2 className="mx-auto mb-6 h-16 w-16 animate-spin text-[#E11D48]" />
+        <Loader2 className="mx-auto mb-6 h-16 w-16 animate-spin text-[var(--fm-accent)]" />
         <h1 className="text-4xl font-black uppercase tracking-tighter italic">
           Verifying...
         </h1>
@@ -67,7 +67,7 @@ export default function AuthCallbackPage() {
   return (
     <Suspense fallback={
       <div className="h-screen w-screen flex items-center justify-center bg-black text-white">
-        <Loader2 className="h-16 w-16 animate-spin text-[#E11D48]" />
+        <Loader2 className="h-16 w-16 animate-spin text-[var(--fm-accent)]" />
       </div>
     }>
       <AuthCallbackContent />

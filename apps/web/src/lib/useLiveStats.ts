@@ -16,8 +16,8 @@ export type LivePlatformState = {
   loading: boolean;
 };
 
-// Re-anchor to the true totals about every 45 min; between fetches we extrapolate.
-const DEFAULT_REFRESH_MS = 45 * 60_000;
+// Re-anchor hourly; the dashboard fills the gap with client-side steps.
+const DEFAULT_REFRESH_MS = 60 * 60_000;
 
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);

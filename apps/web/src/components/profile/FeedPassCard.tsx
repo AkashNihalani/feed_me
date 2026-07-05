@@ -130,21 +130,21 @@ export default function FeedPassCard({
 
             <div className="relative z-10 flex h-full flex-col justify-between p-5 sm:p-6 lg:p-6 xl:p-7">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[13px] font-black uppercase tracking-[0.16em] text-[#FFE4E6] sm:text-[15px] lg:text-[17px] xl:text-[18px]">
+                <span className="text-[14px] font-black uppercase tracking-[0.14em] text-[#FFE4E6] sm:text-[16px] lg:text-[18px] xl:text-[18px]">
                   Feed Pass
                 </span>
                 <div className="flex items-center gap-1.5 rounded-full border border-white/16 bg-white/[0.14] px-3 py-1.5">
                   <div className="h-[7px] w-[7px] rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.72)]" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/90 sm:text-[11px]">Active</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/90 sm:text-[12px]">Active</span>
                 </div>
               </div>
 
               <div className="flex flex-1 items-end justify-end">
                 <div className="text-right">
-                  <div className="text-[88px] font-black leading-none tracking-[-0.05em] text-white sm:text-[110px] lg:text-[140px] xl:text-[160px]">
+                  <div className="text-[88px] font-black leading-none tracking-[-0.04em] text-white sm:text-[110px] lg:text-[140px] xl:text-[160px]">
                     {feederCount}
                   </div>
-                  <div className="mt-1 text-[11px] font-black uppercase tracking-[0.15em] text-white/68 sm:text-[13px] lg:text-[14px] xl:text-[15px]">
+                  <div className="mt-1 text-[12px] font-black uppercase tracking-[0.14em] text-white/68 sm:text-[14px] lg:text-[14px] xl:text-[16px]">
                     Active Feeders
                   </div>
                 </div>
@@ -153,7 +153,7 @@ export default function FeedPassCard({
               <div className="flex items-end justify-between gap-4">
                 <FeedMeLogo className="h-[52px] w-[52px] drop-shadow-[0_0_12px_rgba(255,255,255,0.14)] sm:h-[60px] sm:w-[60px] lg:h-[68px] lg:w-[68px] xl:h-[74px] xl:w-[74px]" />
                 <div className="text-right">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/34 sm:text-[10px] lg:text-[11px]">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/34 sm:text-[10px] lg:text-[12px]">
                     tap to view billing
                   </div>
                 </div>
@@ -166,52 +166,52 @@ export default function FeedPassCard({
 
             <div className="relative z-10 flex h-full flex-col justify-between p-5 sm:p-6 lg:p-7">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-white/56 sm:text-[12px]">
+                <span className="text-[12px] font-black uppercase tracking-[0.14em] text-white/56 sm:text-[12px]">
                   Billing summary
                 </span>
-                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/42 sm:text-[11px]">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/42 sm:text-[12px]">
                   {feederCount} feeder{feederCount === 1 ? '' : 's'} active
                 </span>
               </div>
 
               <div className="flex flex-col gap-3.5 sm:gap-4.5">
                 <div className="flex items-baseline justify-between">
-                  <div className="text-[11px] font-black uppercase tracking-[0.14em] text-white/54 sm:text-[12px]">Base cost</div>
+                  <div className="text-[12px] font-black uppercase tracking-[0.14em] text-white/54 sm:text-[12px]">Base cost</div>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-[20px] font-black tracking-[-0.03em] text-white/92 sm:text-[24px]">
+                    <span className="text-[22px] font-black tracking-[-0.04em] text-white/92 sm:text-[22px]">
                       ₹{billing.baseCost.toLocaleString('en-IN')}
                     </span>
-                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/38 sm:text-[10px]">
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/38 sm:text-[10px]">
                       {billing.feederCount}×₹{slotPlanPrice}
                     </span>
                   </div>
                 </div>
                 <div className="h-px bg-white/[0.1]" />
                 <div className="flex items-baseline justify-between">
-                  <div className="text-[11px] font-black uppercase tracking-[0.14em] text-white/54 sm:text-[12px]">Overages</div>
+                  <div className="text-[12px] font-black uppercase tracking-[0.14em] text-white/54 sm:text-[12px]">Overages</div>
                   <div className="flex items-baseline gap-1.5">
                     <span className={billing.overageCost > 0
-                      ? 'text-[20px] font-black tracking-[-0.03em] text-[#FB7185] sm:text-[24px]'
-                      : 'text-[20px] font-black tracking-[-0.03em] text-white/92 sm:text-[24px]'}>
+                      ? 'text-[22px] font-black tracking-[-0.04em] text-[var(--fm-accent-bright)] sm:text-[22px]'
+                      : 'text-[22px] font-black tracking-[-0.04em] text-white/92 sm:text-[22px]'}>
                       {billing.overageCost > 0 ? `₹${billing.overageCost.toLocaleString('en-IN')}` : '₹0'}
                     </span>
-                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/38 sm:text-[10px]">
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/38 sm:text-[10px]">
                       {overageCount > 0 ? `${overageCount} over cap` : 'none'}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-[16px] border border-[#FDA4AF]/18 bg-[#E11D48] px-4 py-3.5 shadow-[0_10px_32px_rgba(225,29,72,0.2)] sm:rounded-[18px] sm:py-4">
+              <div className="flex items-center justify-between rounded-[18px] border border-[var(--fm-accent-soft)]/18 bg-[var(--fm-accent)] px-4 py-3.5 shadow-[0_10px_32px_rgb(var(--fm-accent-rgb)/0.2)] sm:rounded-[18px] sm:py-4">
                 <div>
-                  <div className="text-[9px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[10px]">Total this cycle</div>
-                  <div className="text-[30px] font-black leading-none tracking-[-0.05em] text-white sm:text-[36px]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[10px]">Total this cycle</div>
+                  <div className="text-[28px] font-black leading-none tracking-[-0.04em] text-white sm:text-[34px]">
                     ₹{billing.total.toLocaleString('en-IN')}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[9px] font-black uppercase tracking-[0.12em] text-white/68 sm:text-[10px]">{slotPostsCap} posts</div>
-                  <div className="text-[8px] font-black uppercase tracking-[0.1em] text-white/54 sm:text-[9px]">incl. per feeder</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/68 sm:text-[10px]">{slotPostsCap} posts</div>
+                  <div className="text-[8px] font-black uppercase tracking-[0.14em] text-white/54 sm:text-[10px]">incl. per feeder</div>
                 </div>
               </div>
 
@@ -231,11 +231,11 @@ export default function FeedPassCard({
                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.12] sm:h-7 sm:w-7">
                     <ArrowUpRight size={12} className="text-white/72" />
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.12em] text-white/58 sm:text-[11px]">
+                  <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/58 sm:text-[12px]">
                     Full breakdown
                   </span>
                 </button>
-                <span className="text-[8px] font-black uppercase tracking-[0.12em] text-white/28 sm:text-[9px]">tap to flip</span>
+                <span className="text-[8px] font-black uppercase tracking-[0.14em] text-white/28 sm:text-[10px]">tap to flip</span>
               </div>
             </div>
           </div>
@@ -269,7 +269,7 @@ export default function FeedPassCard({
           overflow: hidden;
           border-radius: 30px;
           box-shadow:
-            0 22px 54px rgba(225, 29, 72, 0.12),
+            0 22px 54px rgb(var(--fm-accent-rgb)/0.12),
             0 8px 24px rgba(0, 0, 0, 0.32);
         }
         .feedpass-back {

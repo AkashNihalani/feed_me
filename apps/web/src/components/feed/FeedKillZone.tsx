@@ -131,7 +131,7 @@ export default function FeedKillZone({
 
   return (
     <div
-      className="fm-depth-glass group/killzone relative flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-[22px] p-3 outline-none transition-transform duration-300 ease-out focus-visible:ring-2 focus-visible:ring-[#E11D48]/45 sm:p-3.5 lg:p-4"
+      className="fm-depth-glass group/killzone relative flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-[22px] p-3 outline-none transition-transform duration-300 ease-out focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)]/45 sm:p-3.5 lg:p-4"
       role="button"
       tabIndex={0}
       aria-pressed={dayMode}
@@ -157,7 +157,7 @@ export default function FeedKillZone({
         <div className="mb-2 flex items-center justify-between">
           <span className="fm-label fm-depth-title">Kill Zone</span>
           <motion.span
-            className="rounded-full border border-[#FB7185]/55 bg-[#E11D48]/12 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] dark:border-[#FB7185]/30 dark:bg-[#E11D48]/16 dark:text-white/78"
+            className="rounded-full border border-[var(--fm-accent-bright)]/55 bg-[var(--fm-accent)]/12 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent-deep)] dark:border-[var(--fm-accent-bright)]/30 dark:bg-[var(--fm-accent)]/16 dark:text-white/78"
             animate={{ scale: dayMode ? 1.03 : 1 }}
             transition={{ type: 'spring', stiffness: 360, damping: 26 }}
           >
@@ -172,11 +172,11 @@ export default function FeedKillZone({
               initial={{ y: 6, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="text-[20px] font-black leading-none tracking-[-0.04em] text-foreground fm-depth-title dark:text-white sm:text-[22px]"
+              className="text-[22px] font-black leading-none tracking-[-0.04em] text-foreground fm-depth-title dark:text-white sm:text-[22px]"
             >
               {primaryLabel}
             </motion.span>
-            <span className="text-[10px] font-black uppercase tracking-[0.08em] text-foreground/28 dark:text-white/28">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/28 dark:text-white/28">
               {dayMode ? 'at' : 'to'}
             </span>
             <motion.span
@@ -184,23 +184,23 @@ export default function FeedKillZone({
               initial={{ y: 6, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="truncate text-[20px] font-black leading-none tracking-[-0.04em] text-foreground fm-depth-title dark:text-white sm:text-[22px]"
+              className="truncate text-[22px] font-black leading-none tracking-[-0.04em] text-foreground fm-depth-title dark:text-white sm:text-[22px]"
             >
               {secondaryLabel}
             </motion.span>
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
-            <div className="fm-depth-chip rounded-[8px] px-2 py-1 text-right">
-              <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:text-white/30">
+            <div className="fm-depth-chip rounded-[10px] px-2 py-1 text-right">
+              <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/30">
                 {dayMode ? 'Best' : 'Share'}
               </div>
-              <div className="text-[14px] font-black leading-none text-[#E11D48] fm-depth-title dark:text-[#FB7185]">
+              <div className="text-[14px] font-black leading-none text-[var(--fm-accent)] fm-depth-title dark:text-[var(--fm-accent-bright)]">
                 {dayMode ? topLabel(dayTopPercentile) : arcShare == null ? '--' : `${arcShare}%`}
               </div>
             </div>
-            <div className="fm-depth-chip rounded-[8px] px-2 py-1 text-right">
-              <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34 dark:text-white/30">Posts</div>
+            <div className="fm-depth-chip rounded-[10px] px-2 py-1 text-right">
+              <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/30">Posts</div>
               <div className="text-[14px] font-black leading-none text-foreground fm-depth-title dark:text-white">
                 {dayMode ? Math.max(0, bestDay?.post_count || 0) : Math.max(0, peakCount)}
               </div>
@@ -227,10 +227,10 @@ export default function FeedKillZone({
               const intensity = maxCount > 0 ? count / maxCount : 0;
               const fillStyle = count > 0
                 ? {
-                    background: inZone ? ROSE : `rgba(225,29,72,${Math.min(0.72, 0.2 + intensity * 0.42)})`,
+                    background: inZone ? ROSE : `rgb(var(--fm-accent-rgb)/${Math.min(0.72, 0.2 + intensity * 0.42)})`,
                     boxShadow: inZone
-                      ? '0 0 12px rgba(225,29,72,0.34)'
-                      : `0 0 8px rgba(225,29,72,${Math.min(0.24, 0.08 + intensity * 0.12)})`,
+                      ? '0 0 12px rgb(var(--fm-accent-rgb)/0.34)'
+                      : `0 0 8px rgb(var(--fm-accent-rgb)/${Math.min(0.24, 0.08 + intensity * 0.12)})`,
                   }
                 : undefined;
 
@@ -243,7 +243,7 @@ export default function FeedKillZone({
                     style={{ height: `${pct}%`, ...fillStyle }}
                   />
                   {h % 6 === 0 && (
-                    <div className="mt-1 text-[7px] font-black text-foreground/28 dark:text-white/24">
+                    <div className="mt-1 text-[8px] font-black text-foreground/28 dark:text-white/24">
                       {h === 0 ? '12A' : h === 6 ? '6A' : h === 12 ? '12P' : '6P'}
                     </div>
                   )}
@@ -273,7 +273,7 @@ export default function FeedKillZone({
               return (
                 <div key={row.day_of_week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
                   <motion.div
-                    className="relative w-full overflow-hidden rounded-t-[7px] border border-[#FB7185]/25"
+                    className="relative w-full overflow-hidden rounded-t-[6px] border border-[var(--fm-accent-bright)]/25"
                     initial={false}
                     animate={{
                       height: `${clamp(qualityHeight, 4, 96)}%`,
@@ -290,10 +290,10 @@ export default function FeedKillZone({
                     {isBest && <div className="absolute inset-x-1 top-1 h-1 rounded-full bg-white/55" />}
                   </motion.div>
                   <div className="mt-1 flex flex-col items-center leading-none">
-                    <span className={`text-[7px] font-black tracking-[0.12em] ${isBest ? 'text-[#E11D48] dark:text-[#FB7185]' : 'text-foreground/30 dark:text-white/28'}`}>
+                    <span className={`text-[8px] font-black tracking-[0.14em] ${isBest ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]' : 'text-foreground/30 dark:text-white/28'}`}>
                       {row.day_label.slice(0, 3)}
                     </span>
-                    <span className="mt-0.5 text-[7px] font-black text-foreground/24 dark:text-white/22">
+                    <span className="mt-0.5 text-[8px] font-black text-foreground/24 dark:text-white/22">
                       {row.metric_count > 0 ? `${Math.round(row.avg_percentile_performance || 0)}%` : `${row.post_count}`}
                     </span>
                   </div>

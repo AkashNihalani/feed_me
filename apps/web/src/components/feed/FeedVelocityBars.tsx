@@ -109,17 +109,17 @@ function TagChip({ tag }: { tag: Tag }) {
         transition={{ duration: 0.22, ease: EASE }}
         className={[
           'fm-depth-chip inline-flex min-h-[32px] min-w-[70px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 py-2 leading-none sm:min-h-[36px] sm:min-w-[78px] sm:px-[18px] sm:py-[9px] lg:min-h-[40px] lg:min-w-[86px] lg:px-5 lg:py-2.5',
-          'text-[13px] font-black uppercase tracking-[0.13em] sm:text-[14px] sm:tracking-[0.14em] lg:text-[15px]',
+          'text-[14px] font-black uppercase tracking-[0.14em] sm:text-[14px] sm:tracking-[0.14em] lg:text-[16px]',
           isPositive
-            ? 'text-[#E11D48]'
+            ? 'text-[var(--fm-accent)]'
             : 'text-foreground/55 dark:text-white/55',
         ].join(' ')}
         style={
           isPositive
             ? {
-                background: 'rgba(225,29,72,0.1)',
+                background: 'rgb(var(--fm-accent-rgb)/0.1)',
                 boxShadow:
-                  '0 1px 0 rgba(255,255,255,0.66) inset, 0 -1px 0 rgba(225,29,72,0.08) inset, 0 0 0 1px rgba(225,29,72,0.18) inset, 0 5px 14px -6px rgba(225,29,72,0.24)',
+                  '0 1px 0 rgba(255,255,255,0.66) inset, 0 -1px 0 rgb(var(--fm-accent-rgb)/0.08) inset, 0 0 0 1px rgb(var(--fm-accent-rgb)/0.18) inset, 0 5px 14px -6px rgb(var(--fm-accent-rgb)/0.24)',
               }
             : isNegative
               ? {
@@ -160,8 +160,8 @@ function FooterStat({
   const longValue = value.length >= 7 && !value.includes(' ');
 
   return (
-    <div className="fm-depth-inner flex min-h-[78px] min-w-0 flex-col justify-center gap-2 overflow-hidden rounded-[13px] px-2.5 py-2.5 sm:min-h-[82px] sm:px-3 lg:min-h-[86px]">
-      <span className="fm-depth-title block max-w-full truncate text-[8px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/36 sm:text-[9px]">
+    <div className="fm-depth-inner flex min-h-[78px] min-w-0 flex-col justify-center gap-2 overflow-hidden rounded-[14px] px-2.5 py-2.5 sm:min-h-[82px] sm:px-3 lg:min-h-[86px]">
+      <span className="fm-depth-title block max-w-full truncate text-[8px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/36 sm:text-[10px]">
         {label}
       </span>
       <div className="flex min-w-0 flex-col gap-1">
@@ -169,14 +169,14 @@ function FooterStat({
           className={[
             'fm-depth-title block max-w-full font-black leading-[0.92]',
             longValue
-              ? 'text-[17px] tracking-[-0.07em] min-[390px]:text-[18px] sm:text-[22px] sm:tracking-[-0.06em] lg:text-[28px] lg:tracking-[-0.04em]'
-              : 'text-[24px] tracking-[-0.05em] sm:text-[25px] lg:text-[28px] lg:tracking-[-0.04em]',
-            accent ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
+              ? 'text-[18px] tracking-[-0.04em] min-[390px]:text-[18px] sm:text-[22px] sm:tracking-[-0.04em] lg:text-[28px] lg:tracking-[-0.04em]'
+              : 'text-[22px] tracking-[-0.04em] sm:text-[22px] lg:text-[28px] lg:tracking-[-0.04em]',
+            accent ? 'text-[var(--fm-accent)]' : 'text-foreground dark:text-white',
           ].join(' ')}
         >
           {value}
         </span>
-        <span className="block max-w-full text-[8px] font-black uppercase leading-tight tracking-[0.13em] text-foreground/36 dark:text-white/32 sm:text-[9px] lg:text-[10px]">
+        <span className="block max-w-full text-[8px] font-black uppercase leading-tight tracking-[0.14em] text-foreground/36 dark:text-white/32 sm:text-[10px] lg:text-[10px]">
           {meta}
         </span>
       </div>
@@ -201,11 +201,11 @@ function PerformanceRow({
     <motion.li
       layout={reduceMotion ? false : 'position'}
       transition={reduceMotion ? { duration: 0 } : { layout: LAYOUT_SPRING }}
-      className="fm-depth-inner relative flex min-h-[104px] w-full min-w-0 flex-1 flex-col justify-between gap-2.5 rounded-[16px] px-3 py-3 sm:min-h-[118px] sm:gap-3 sm:px-3.5 sm:py-3.5 lg:min-h-[124px]"
+      className="fm-depth-inner relative flex min-h-[104px] w-full min-w-0 flex-1 flex-col justify-between gap-2.5 rounded-[18px] px-3 py-3 sm:min-h-[118px] sm:gap-3 sm:px-3.5 sm:py-3.5 lg:min-h-[124px]"
     >
       <div className="relative z-[1] flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2">
-          <span className="fm-depth-title shrink-0 text-[10px] font-black uppercase leading-none tracking-[0.18em] text-foreground/45 dark:text-white/40 sm:text-[11px] lg:text-[12px]">
+          <span className="fm-depth-title shrink-0 text-[10px] font-black uppercase leading-none tracking-[0.14em] text-foreground/45 dark:text-white/40 sm:text-[12px] lg:text-[12px]">
             {row.label}
           </span>
           <span
@@ -234,14 +234,14 @@ function PerformanceRow({
           transition={reduceMotion ? { duration: 0 } : BAR_SPRING}
           className={[
             'absolute bottom-0 left-0 top-0 overflow-hidden rounded-full',
-            isAbove ? 'shadow-[0_-2px_14px_rgba(225,29,72,0.32)]' : '',
+            isAbove ? 'shadow-[0_-2px_14px_rgb(var(--fm-accent-rgb)/0.32)]' : '',
           ].join(' ')}
           style={{
             background: isBelow
               ? 'linear-gradient(180deg, rgba(0,0,0,0.28), rgba(0,0,0,0.20))'
               : isAbove
                 ? '#E11D48'
-                : 'linear-gradient(90deg, rgba(225,29,72,0.92), rgba(225,29,72,0.72))',
+                : 'linear-gradient(90deg, rgb(var(--fm-accent-rgb)/0.92), rgb(var(--fm-accent-rgb)/0.72))',
           }}
         >
           <div

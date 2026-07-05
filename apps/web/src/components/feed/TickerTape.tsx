@@ -38,13 +38,13 @@ function EntryChip({ handle, delta }: { handle: string; delta: number }) {
   const neg = delta < 0;
   return (
     <div className="mr-5 flex shrink-0 items-center gap-2.5 border-r border-black/6 pr-5 last:border-0 dark:border-white/6">
-      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-black/60 dark:text-white/50 sm:text-[11px]">
+      <span className="text-[10px] font-black uppercase tracking-[0.14em] text-black/60 dark:text-white/50 sm:text-[12px]">
         {handle}
       </span>
       <span
         className={cn(
-          'flex items-center gap-1 rounded-[8px] px-2 py-0.5 text-[10px] font-black tracking-[0.1em] sm:text-[11px]',
-          pos && 'border border-[#FB7185]/60 bg-[#E11D48]/78 text-white dark:bg-[#E11D48] dark:text-white dark:border-[#E11D48]/30',
+          'flex items-center gap-1 rounded-[10px] px-2 py-0.5 text-[10px] font-black tracking-[0.14em] sm:text-[12px]',
+          pos && 'border border-[var(--fm-accent-bright)]/60 bg-[var(--fm-accent)]/78 text-white dark:bg-[var(--fm-accent)] dark:text-white dark:border-[var(--fm-accent)]/30',
           neg && 'bg-black/8 text-black/50 border border-black/8 dark:bg-white/6 dark:text-white/40 dark:border-white/8',
           !pos && !neg && 'bg-black/4 text-black/35 border border-black/4 dark:bg-white/4 dark:text-white/30 dark:border-white/4',
         )}
@@ -65,11 +65,11 @@ function ModeTag({ label }: { label: string }) {
       <span
         className={cn(
           'rounded-[10px] px-3 py-1.5',
-          'border border-[#FB7185] bg-[#E11D48]',
-          'shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_4px_10px_rgba(225,29,72,0.25)]',
-          'dark:border-[#FDA4AF]/30',
-          'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]',
-          'text-[9px] font-black tracking-[0.16em] text-white sm:text-[10px]',
+          'border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)]',
+          'shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_4px_10px_rgb(var(--fm-accent-rgb)/0.25)]',
+          'dark:border-[var(--fm-accent-soft)]/30',
+          'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgb(var(--fm-accent-rgb)/0.2),0_12px_28px_rgba(0,0,0,0.5)]',
+          'text-[10px] font-black tracking-[0.14em] text-white sm:text-[10px]',
         )}
       >
         {label}
@@ -145,8 +145,8 @@ export default function TickerTape({ items, className }: TickerTapeProps) {
       )}
     >
       {/* Edge fades */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-white/90 via-white/40 to-transparent dark:from-[#0a0a0a]/90 dark:via-[#0a0a0a]/40" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white/90 via-white/40 to-transparent dark:from-[#0a0a0a]/90 dark:via-[#0a0a0a]/40" />
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-white/90 via-white/40 to-transparent dark:from-[var(--fm-ink)]/90 dark:via-[var(--fm-ink)]/40" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white/90 via-white/40 to-transparent dark:from-[var(--fm-ink)]/90 dark:via-[var(--fm-ink)]/40" />
 
       {/* CSS-animated infinite scrolling track */}
       <div

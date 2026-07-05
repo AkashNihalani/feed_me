@@ -139,7 +139,7 @@ export default function FeedBriefDialog({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'relative overflow-hidden rounded-[16px] border px-3.5 py-2.5 text-left text-[13px] font-black tracking-normal transition disabled:opacity-35',
+        'relative overflow-hidden rounded-[18px] border px-3.5 py-2.5 text-left text-[14px] font-black tracking-normal transition disabled:opacity-35',
         active
           ? 'border-transparent text-white dark:text-white'
           : 'border-black/10 bg-black/[0.03] text-neutral-600 hover:bg-black/[0.06] dark:border-white/8 dark:bg-white/[0.035] dark:text-white/62 dark:hover:bg-white/[0.07]',
@@ -154,7 +154,7 @@ export default function FeedBriefDialog({
         />
       )}
       <span className="relative z-10 block">{label}</span>
-      {description && <span className={cn("relative z-10 mt-1 block text-[11px] font-semibold leading-snug", active ? "text-white/70 dark:text-white/70" : "text-neutral-400 dark:text-white/42")}>{description}</span>}
+      {description && <span className={cn("relative z-10 mt-1 block text-[12px] font-semibold leading-snug", active ? "text-white/70 dark:text-white/70" : "text-neutral-400 dark:text-white/42")}>{description}</span>}
     </motion.button>
   );
 
@@ -188,14 +188,14 @@ export default function FeedBriefDialog({
             animate={{ y: 0, scale: 1 }}
             exit={{ y: '100%', scale: 0.98 }}
             transition={GRID_LAYOUT_SPRING}
-            className="relative flex h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-[32px] border border-black/10 bg-white/95 text-black shadow-[0_-12px_40px_rgba(0,0,0,0.12)] md:h-auto md:max-h-[min(700px,calc(100vh-4rem))] md:w-[540px] md:rounded-[32px] md:border-black/10 md:shadow-[0_24px_60px_rgba(0,0,0,0.16)] dark:border-white/10 dark:bg-[#07080a]/95 dark:text-white dark:shadow-[0_-12px_40px_rgba(0,0,0,0.4)] md:dark:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
+            className="relative flex h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-[34px] border border-black/10 bg-white/95 text-black shadow-[0_-12px_40px_rgba(0,0,0,0.12)] md:h-auto md:max-h-[min(700px,calc(100vh-4rem))] md:w-[540px] md:rounded-[34px] md:border-black/10 md:shadow-[0_24px_60px_rgba(0,0,0,0.16)] dark:border-white/10 dark:bg-[var(--fm-ink)]/95 dark:text-white dark:shadow-[0_-12px_40px_rgba(0,0,0,0.4)] md:dark:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
           >
             <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-black/10 dark:bg-white/18 md:hidden" />
             <div className="border-b border-black/10 px-5 pb-4 pt-4 dark:border-white/8 md:px-6 md:pt-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400 dark:text-white/38">Brief</div>
-                  <div className="mt-1 truncate text-[26px] font-black tracking-normal">{mode === 'create' ? 'New feed' : title}</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400 dark:text-white/38">Brief</div>
+                  <div className="mt-1 truncate text-[28px] font-black tracking-normal">{mode === 'create' ? 'New feed' : title}</div>
                   <p className="mt-2 text-[14px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Two minutes. We&apos;ll use this to read every signal in your voice.</p>
                 </div>
                 <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/10 bg-black/[0.03] text-neutral-500 dark:border-white/8 dark:bg-white/[0.035] dark:text-white/58">
@@ -204,19 +204,19 @@ export default function FeedBriefDialog({
               </div>
               {mode === 'create' && (
                 <label className="mt-4 block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-400 dark:text-white/36">Feed name</span>
+                  <span className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">Feed name</span>
                   <input
                     maxLength={15}
                     value={feedName}
                     onChange={(event) => onFeedNameChange?.(event.target.value.toUpperCase())}
                     placeholder="BEAUTY"
-                    className="mt-2 w-full rounded-[14px] border border-black/10 bg-black/5 px-4 py-3 text-[20px] font-black uppercase tracking-normal text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/22"
+                    className="mt-2 w-full rounded-[14px] border border-black/10 bg-black/5 px-4 py-3 text-[22px] font-black uppercase tracking-normal text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/22"
                   />
                 </label>
               )}
               <div className="mt-5">
                 <div className="h-1 rounded-full bg-black/10 dark:bg-white/8">
-                  <motion.div className="h-full rounded-full bg-[#E11D48]" animate={{ width: progress }} transition={{ duration: 0.2, ease: APPLE_EASE }} />
+                  <motion.div className="h-full rounded-full bg-[var(--fm-accent)]" animate={{ width: progress }} transition={{ duration: 0.2, ease: APPLE_EASE }} />
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   {CREATE_FEED_STEPS.map((label, index) => {
@@ -228,13 +228,13 @@ export default function FeedBriefDialog({
                           {isActive && (
                             <motion.div
                               layoutId="active-step-indicator"
-                              className="absolute inset-0 rounded-full bg-[#E11D48]"
+                              className="absolute inset-0 rounded-full bg-[var(--fm-accent)]"
                               transition={GRID_LAYOUT_SPRING}
                             />
                           )}
                           <span className={cn('relative z-10 block h-2.5 w-2.5 rounded-full border transition', isActive ? 'border-transparent' : isPast ? 'border-black/50 bg-black/40 dark:border-white/50 dark:bg-white/40' : 'border-black/16 bg-black/6 dark:border-white/16 dark:bg-white/6')} />
                         </div>
-                        <span className={cn("hidden text-[9px] font-black uppercase tracking-[0.12em] transition sm:block md:hidden lg:block", isActive ? "text-[#E11D48]" : isPast ? "text-neutral-500 dark:text-white/50" : "text-neutral-400 dark:text-white/32")}>{label}</span>
+                        <span className={cn("hidden text-[10px] font-black uppercase tracking-[0.14em] transition sm:block md:hidden lg:block", isActive ? "text-[var(--fm-accent)]" : isPast ? "text-neutral-500 dark:text-white/50" : "text-neutral-400 dark:text-white/32")}>{label}</span>
                       </button>
                     );
                   })}
@@ -264,13 +264,13 @@ export default function FeedBriefDialog({
                   <motion.div key="who" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={GRID_LAYOUT_SPRING} className="flex h-full flex-col overflow-y-auto pr-1">
                     <div className="text-[22px] font-black tracking-normal">Who are you tracking?</div>
                     <div className="mt-5">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-400 dark:text-white/36">Account types</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">Account types</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {ACCOUNT_TYPE_OPTIONS.map((option) => renderChip(option, selectedAccountTypes.includes(option), () => toggleAccountType(option)))}
                       </div>
                     </div>
                     <div className="mt-5">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-400 dark:text-white/36">Category</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">Category</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {CATEGORY_OPTIONS.map((option) => renderChip(option, brief.category === option, () => onBriefChange({ category: option })))}
                       </div>
@@ -282,7 +282,7 @@ export default function FeedBriefDialog({
                       />
                     </div>
                     <div className="mt-5">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-400 dark:text-white/36">Where</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400 dark:text-white/36">Where</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {GEOGRAPHY_OPTIONS.map((option) => renderChip(option, brief.geography === option, () => onBriefChange({ geography: option })))}
                       </div>
@@ -299,12 +299,12 @@ export default function FeedBriefDialog({
                 {step === 2 && (
                   <motion.div key="attention" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={GRID_LAYOUT_SPRING} className="flex h-full flex-col">
                     <div className="text-[22px] font-black tracking-normal">Whose attention matters here?</div>
-                    <p className="mt-3 text-[15px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">The people we&apos;re trying to understand - buyers, fans, viewers, hiring managers, dessert lovers.</p>
+                    <p className="mt-3 text-[16px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">The people we&apos;re trying to understand - buyers, fans, viewers, hiring managers, dessert lovers.</p>
                     <input
                       value={brief.audience}
                       onChange={(event) => onBriefChange({ audience: event.target.value })}
                       placeholder="Young urban dessert buyers in Mumbai. Gen Z skincare shoppers. Indie game devs."
-                      className="mt-6 w-full rounded-[16px] border border-black/10 bg-black/5 px-4 py-4 text-[16px] font-semibold leading-relaxed text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
+                      className="mt-6 w-full rounded-[18px] border border-black/10 bg-black/5 px-4 py-4 text-[16px] font-semibold leading-relaxed text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
                     />
                   </motion.div>
                 )}
@@ -312,7 +312,7 @@ export default function FeedBriefDialog({
                 {step === 3 && (
                   <motion.div key="first" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={GRID_LAYOUT_SPRING} className="flex h-full flex-col">
                     <div className="text-[22px] font-black tracking-normal">What do you want to see first?</div>
-                    <p className="mt-3 text-[15px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Pick up to three. These sort cards higher; they never hide real signals.</p>
+                    <p className="mt-3 text-[16px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Pick up to three. These sort cards higher; they never hide real signals.</p>
                     <div className="mt-5 flex flex-wrap gap-2 overflow-y-auto pr-1">
                       {PRIORITY_OPTIONS.map((option) => {
                         const active = brief.priorities.includes(option);
@@ -326,14 +326,14 @@ export default function FeedBriefDialog({
                 {step === 4 && (
                   <motion.div key="context" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={GRID_LAYOUT_SPRING} className="flex h-full flex-col">
                     <div className="text-[22px] font-black tracking-normal">Anything else we should know?</div>
-                    <p className="mt-3 text-[15px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Tell us about the world we&apos;re entering. This is optional.</p>
+                    <p className="mt-3 text-[16px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Tell us about the world we&apos;re entering. This is optional.</p>
                     <textarea
                       value={brief.note}
                       onChange={(event) => onBriefChange({ note: event.target.value.slice(0, 280) })}
                       placeholder="Local slang, recurring campaigns, anchor accounts of the audience's attention, anything Feed Me wouldn't know from the handles alone."
-                      className="mt-6 min-h-[190px] w-full resize-none rounded-[16px] border border-black/10 bg-black/5 px-4 py-4 text-[16px] font-semibold leading-relaxed text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
+                      className="mt-6 min-h-[190px] w-full resize-none rounded-[18px] border border-black/10 bg-black/5 px-4 py-4 text-[16px] font-semibold leading-relaxed text-black outline-none placeholder:text-black/30 dark:border-white/8 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/24"
                     />
-                    <div className="mt-2 text-right text-[11px] font-black uppercase tracking-[0.12em] text-neutral-400 dark:text-white/30">{brief.note.length} / 280</div>
+                    <div className="mt-2 text-right text-[12px] font-black uppercase tracking-[0.14em] text-neutral-400 dark:text-white/30">{brief.note.length} / 280</div>
                   </motion.div>
                 )}
 
@@ -342,12 +342,12 @@ export default function FeedBriefDialog({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="text-[22px] font-black tracking-normal">Your Brief</div>
-                        <p className="mt-3 text-[15px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Edit the summary until it sounds like the way you want this feed read.</p>
+                        <p className="mt-3 text-[16px] font-semibold leading-relaxed text-neutral-500 dark:text-white/52">Edit the summary until it sounds like the way you want this feed read.</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => onBibleDraftChange('')}
-                        className="shrink-0 rounded-[14px] border border-black/10 bg-black/[0.03] px-3 py-2 text-[11px] font-black text-neutral-500 dark:border-white/8 dark:bg-white/[0.04] dark:text-white/58"
+                        className="shrink-0 rounded-[14px] border border-black/10 bg-black/[0.03] px-3 py-2 text-[12px] font-black text-neutral-500 dark:border-white/8 dark:bg-white/[0.04] dark:text-white/58"
                       >
                         Generate from inputs
                       </button>
@@ -365,7 +365,7 @@ export default function FeedBriefDialog({
               </AnimatePresence>
             </div>
 
-            <div className="border-t border-black/10 bg-black/5 px-5 pb-[calc(16px+env(safe-area-inset-bottom))] pt-4 dark:border-white/8 dark:bg-[#07080a] md:px-6">
+            <div className="border-t border-black/10 bg-black/5 px-5 pb-[calc(16px+env(safe-area-inset-bottom))] pt-4 dark:border-white/8 dark:bg-[var(--fm-ink)] md:px-6">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   {step > 0 && (
@@ -386,7 +386,7 @@ export default function FeedBriefDialog({
                   transition={isSummaryStep ? { duration: 0.42, ease: APPLE_EASE } : undefined}
                   onClick={onPrimary}
                   disabled={!canProceed || isBusy}
-                  className="flex h-11 items-center gap-2 rounded-[14px] bg-[#E11D48] px-5 text-[12px] font-black text-white disabled:opacity-40"
+                  className="flex h-11 items-center gap-2 rounded-[14px] bg-[var(--fm-accent)] px-5 text-[12px] font-black text-white disabled:opacity-40"
                 >
                   {isBusy ? (isSummaryStep ? 'Saving' : 'Working') : isSummaryStep ? 'Save Brief' : 'Next'}
                   {!isBusy && !isSummaryStep && <ArrowRight size={15} strokeWidth={2.6} />}

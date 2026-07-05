@@ -89,7 +89,7 @@ function MetricCell({ row, metricKey }: { row: DisplayEngagementAverageRow; metr
   const muted = row.metric_count === 0 || value == null;
 
   return (
-    <div className="flex min-w-0 items-center justify-end text-right text-[18px] font-black leading-none text-foreground dark:text-white sm:text-[20px] lg:text-[24px]">
+    <div className="flex min-w-0 items-center justify-end text-right text-[18px] font-black leading-none text-foreground dark:text-white sm:text-[22px] lg:text-[22px]">
       <AnimatedMetricValue value={value} muted={muted} />
     </div>
   );
@@ -113,7 +113,7 @@ function FeedEngagementAverages({ rows }: { rows: EngagementAverageRow[] }) {
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div>
           <span className="fm-label fm-depth-title">Average Engagement</span>
-          <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/34">
+          <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34">
             Latest checkpoint averages
           </div>
         </div>
@@ -122,14 +122,14 @@ function FeedEngagementAverages({ rows }: { rows: EngagementAverageRow[] }) {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-          className="shrink-0 rounded-full bg-[#E11D48] px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white shadow-[0_9px_20px_-10px_rgba(225,29,72,0.72)] sm:px-3.5 sm:py-1.5 sm:text-[10px] lg:px-4 lg:py-2 lg:text-[11px]"
+          className="shrink-0 rounded-full bg-[var(--fm-accent)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_9px_20px_-10px_rgb(var(--fm-accent-rgb)/0.72)] sm:px-3.5 sm:py-1.5 sm:text-[10px] lg:px-4 lg:py-2 lg:text-[12px]"
         >
           {totalPosts} posts
         </motion.div>
       </div>
 
       <div className="relative z-10 mt-3 flex min-h-0 flex-1 flex-col overflow-hidden border-y border-black/7 dark:border-white/8">
-        <div className="grid shrink-0 grid-cols-[minmax(96px,1.1fr)_repeat(3,minmax(54px,1fr))] items-center gap-2 border-b border-black/6 px-1 py-2.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/36 dark:border-white/8 dark:text-white/30 sm:text-[9px]">
+        <div className="grid shrink-0 grid-cols-[minmax(96px,1.1fr)_repeat(3,minmax(54px,1fr))] items-center gap-2 border-b border-black/6 px-1 py-2.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:border-white/8 dark:text-white/30 sm:text-[10px]">
           <span>Type</span>
           {(Object.keys(METRIC_META) as MetricKey[]).map((metricKey) => {
             const { label, Icon } = METRIC_META[metricKey];
@@ -162,10 +162,10 @@ function FeedEngagementAverages({ rows }: { rows: EngagementAverageRow[] }) {
                     <Icon className="h-[18px] w-[18px] sm:h-5 sm:w-5" strokeWidth={2.55} />
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] font-black leading-none text-foreground dark:text-white sm:text-[13px]">
+                    <div className="truncate text-[12px] font-black leading-none text-foreground dark:text-white sm:text-[14px]">
                       {label}
                     </div>
-                    <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.1em] text-foreground/34 dark:text-white/28 sm:text-[9px]">
+                    <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/28 sm:text-[10px]">
                       {row.post_count} posts
                     </div>
                   </div>

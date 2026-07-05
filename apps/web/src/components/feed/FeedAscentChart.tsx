@@ -79,7 +79,7 @@ function TrendGlyph({ direction }: { direction: TrendDirection }) {
   return (
     <motion.div
       aria-hidden="true"
-      className="inline-flex h-[1em] w-[1em] items-center justify-center text-[#E11D48]"
+      className="inline-flex h-[1em] w-[1em] items-center justify-center text-[var(--fm-accent)]"
       initial={false}
       animate={{ scale: isFlat ? 0.92 : 1 }}
       transition={{ type: 'spring', stiffness: 240, damping: 22, mass: 0.74 }}
@@ -227,11 +227,11 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
               <div className="flex h-[1em] w-[1em] shrink-0 items-center justify-center">
                 <TrendGlyph direction={direction} />
               </div>
-              <div className="min-w-0 font-black leading-none tracking-[-0.07em] tabular-nums text-black dark:text-white">
+              <div className="min-w-0 font-black leading-none tracking-[-0.04em] tabular-nums text-black dark:text-white">
                 {formatDeltaFollowers(animatedDeltaCount)}
               </div>
             </div>
-            <div className="mt-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">
+            <div className="mt-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">
               {contextLine}
             </div>
           </div>
@@ -239,18 +239,18 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
           <div className="w-full lg:max-w-[360px]">
             <div className="grid grid-cols-2 gap-4 border-t border-black/8 pt-3 dark:border-white/10 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
               <div className="min-w-0">
-                <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/32">
+                <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32">
                   Current Total
                 </div>
-                <div className="mt-1.5 text-[21px] font-black leading-none tracking-[-0.05em] tabular-nums text-foreground sm:text-[24px] lg:text-[28px] dark:text-white">
+                <div className="mt-1.5 text-[22px] font-black leading-none tracking-[-0.04em] tabular-nums text-foreground sm:text-[22px] lg:text-[28px] dark:text-white">
                 {formatFollowers(displayFollowers)}
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="text-[8px] font-black uppercase tracking-[0.16em] text-foreground/38 dark:text-white/32">
+                <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32">
                   Growth
                 </div>
-                <div className="mt-1.5 text-[19px] font-black leading-none tracking-[-0.045em] tabular-nums text-foreground sm:text-[21px] lg:text-[24px] dark:text-white">
+                <div className="mt-1.5 text-[18px] font-black leading-none tracking-[-0.04em] tabular-nums text-foreground sm:text-[22px] lg:text-[22px] dark:text-white">
                   {signedPercent(animatedDeltaPercent)}
                 </div>
               </div>
@@ -376,18 +376,18 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
           {displayPoint ? (
             <div className="pointer-events-none absolute bottom-5 left-3 right-3 top-3 z-[4]">
               <div
-                className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#E11D48]/18 shadow-[0_0_0_1px_rgba(225,29,72,0.2),0_8px_20px_rgba(225,29,72,0.22)] dark:bg-[#E11D48]/24 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_9px_22px_rgba(225,29,72,0.32)]"
+                className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--fm-accent)]/18 shadow-[0_0_0_1px_rgb(var(--fm-accent-rgb)/0.2),0_8px_20px_rgb(var(--fm-accent-rgb)/0.22)] dark:bg-[var(--fm-accent)]/24 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_9px_22px_rgb(var(--fm-accent-rgb)/0.32)]"
                 style={{
                   left: `${displayPoint.x}%`,
                   top: `${(displayPoint.y / 40) * 100}%`,
                 }}
               >
-                <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--background)] bg-[#E11D48] shadow-[0_0_0_1px_rgba(225,29,72,0.42)] dark:border-[#050505]" />
+                <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--background)] bg-[var(--fm-accent)] shadow-[0_0_0_1px_rgb(var(--fm-accent-rgb)/0.42)] dark:border-[#050505]" />
               </div>
             </div>
           ) : null}
 
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 px-[2px] text-[8px] font-black uppercase tracking-[0.1em] text-foreground/34">
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 px-[2px] text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34">
             {chart.points.map((point, index) => (
               shouldShowAxisLabel(index, chart.points.length) ? (
                 <span key={`${point.fullLabel}-${index}`} className="absolute -translate-x-1/2" style={{ left: `${point.x}%` }}>

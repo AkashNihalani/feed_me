@@ -19,7 +19,7 @@ function FundNavIcon({ size = 20, className = '' }: NavIconProps) {
   return (
     <span
       aria-hidden="true"
-      className={cn('flex items-center justify-center font-black leading-none tracking-[-0.08em]', className)}
+      className={cn('flex items-center justify-center font-black leading-none tracking-[-0.04em]', className)}
       style={{ fontSize: size + 1, transform: 'translateY(1px)' }}
     >
       ₹
@@ -114,12 +114,12 @@ export default function BottomNav() {
 
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
-      <div className="fm-depth-chrome fm-depth-chrome--nav pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[26px]">
+      <div className="fm-depth-chrome fm-depth-chrome--nav pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[22px] lg:px-1 lg:py-1">
         <div ref={trackRef} className="relative grid grid-cols-3 gap-0.5">
           {activeIndex >= 0 && (
             <motion.span
               aria-hidden="true"
-              className="absolute inset-y-0 left-0 rounded-[22px] bg-[#E11D48] shadow-[0_4px_16px_rgba(225,29,72,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(225,29,72,0.25),0_8px_24px_rgba(0,0,0,0.4)]"
+              className="absolute inset-y-0 left-0 rounded-[22px] bg-[var(--fm-accent)] shadow-[0_4px_16px_rgb(var(--fm-accent-rgb)/0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgb(var(--fm-accent-rgb)/0.25),0_8px_24px_rgba(0,0,0,0.4)]"
               initial={false}
               animate={{ x: pillBounds.x, width: pillBounds.width }}
               transition={PILL_SPRING}
@@ -137,6 +137,7 @@ export default function BottomNav() {
                 href={item.href}
                 prefetch
                 scroll={false}
+                aria-label={item.label}
                 className="group relative z-10"
                 onClick={(event) => {
                   play(isActive ? 'navReselect' : 'navSwitch');
@@ -169,7 +170,7 @@ export default function BottomNav() {
                   <span className="relative z-10">
                     <item.icon size={20} strokeWidth={2.75} />
                   </span>
-                  <span className="relative z-10 mt-1 text-[10px] font-black uppercase tracking-[0.18em]">
+                  <span className="relative z-10 mt-1 text-[10px] font-black uppercase tracking-[0.14em]">
                     {item.label}
                   </span>
                 </motion.div>

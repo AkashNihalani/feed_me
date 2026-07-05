@@ -230,7 +230,7 @@ export default function FeederPostsClient({
             <ArrowLeft size={20} strokeWidth={2.6} />
           </Link>
 
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white/78 bg-[linear-gradient(135deg,rgba(225,29,72,0.18),rgba(255,255,255,0.92))] text-[13px] font-black uppercase tracking-[0.06em] text-[#881337] shadow-[0_4px_12px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.84)] dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(225,29,72,0.6),rgba(24,24,27,0.96))] dark:text-white">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white/78 bg-[linear-gradient(135deg,rgb(var(--fm-accent-rgb)/0.18),rgba(255,255,255,0.92))] text-[14px] font-black uppercase tracking-[0.06em] text-[#881337] shadow-[0_4px_12px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.84)] dark:border-white/10 dark:bg-[linear-gradient(135deg,rgb(var(--fm-accent-rgb)/0.6),rgba(24,24,27,0.96))] dark:text-white">
             {isGroupScope ? (
               <LayoutGrid size={21} strokeWidth={2.8} />
             ) : feeder?.profilePicUrl ? (
@@ -242,10 +242,10 @@ export default function FeederPostsClient({
           </div>
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[24px] font-black leading-none tracking-[-0.04em] text-black dark:text-white sm:text-[28px]">
+            <h1 className="truncate text-[22px] font-black leading-none tracking-[-0.04em] text-black dark:text-white sm:text-[28px]">
               {titleLabel}
             </h1>
-            <div className="mt-1 flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.12em] text-foreground/40 dark:text-white/36">
+            <div className="mt-1 flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/36">
               <span>{isGroupScope ? `${feeder?.feederCount ?? 0} feeders` : `${formatFollowers(feeder?.followerCount ?? null)} followers`}</span>
               <span className="text-foreground/16 dark:text-white/14">|</span>
               <span>{String(feeder?.trackedPosts ?? '--')} posts</span>
@@ -254,8 +254,8 @@ export default function FeederPostsClient({
 
           {/* Hero percentile — inline, not a fat box */}
           <div className="hidden shrink-0 text-right sm:block">
-            <div className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/32">Best post</div>
-            <div className="mt-0.5 text-[28px] font-black leading-none tracking-[-0.05em] text-[#E11D48]">
+            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/32">Best post</div>
+            <div className="mt-0.5 text-[28px] font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]">
               {feeder?.topPercentile != null ? `${Math.round(feeder.topPercentile)}%` : '--'}
             </div>
           </div>
@@ -275,7 +275,7 @@ export default function FeederPostsClient({
                 type="button"
                 onClick={() => updateSortMode(value)}
                 className={cn(
-                  'relative overflow-hidden rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition-colors duration-200',
+                  'relative overflow-hidden rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                   sortMode === value ? 'text-white' : 'fm-depth-chip text-foreground/46 dark:text-white/40',
                 )}
               >
@@ -283,7 +283,7 @@ export default function FeederPostsClient({
                   <motion.span
                     layoutId="feeder-sort-pill-bg"
                     transition={PILL_SPRING}
-                    className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]"
+                    className="absolute inset-0 rounded-full bg-[var(--fm-accent)] shadow-[0_4px_12px_rgb(var(--fm-accent-rgb)/0.22)]"
                   />
                 )}
                 <span className="relative z-10">{label}</span>
@@ -301,7 +301,7 @@ export default function FeederPostsClient({
                 type="button"
                 onClick={() => updateMediaFilter(value)}
                 className={cn(
-                  'relative overflow-hidden whitespace-nowrap rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition-colors duration-200',
+                  'relative overflow-hidden whitespace-nowrap rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                   mediaFilter === value ? 'text-white' : 'fm-depth-chip text-foreground/46 dark:text-white/40',
                 )}
               >
@@ -309,7 +309,7 @@ export default function FeederPostsClient({
                   <motion.span
                     layoutId="feeder-media-pill-bg"
                     transition={PILL_SPRING}
-                    className="absolute inset-0 rounded-full bg-[#E11D48] shadow-[0_4px_12px_rgba(225,29,72,0.22)]"
+                    className="absolute inset-0 rounded-full bg-[var(--fm-accent)] shadow-[0_4px_12px_rgb(var(--fm-accent-rgb)/0.22)]"
                   />
                 )}
                 <span className="relative z-10">{mediaLabel(value)}</span>
@@ -319,8 +319,8 @@ export default function FeederPostsClient({
 
           {/* Mobile-only best percentile */}
           <div className="ml-auto shrink-0 text-right sm:hidden">
-            <div className="text-[8px] font-black uppercase tracking-[0.12em] text-foreground/32">Best</div>
-            <div className="text-[18px] font-black leading-none tracking-[-0.04em] text-[#E11D48]">
+            <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/32">Best</div>
+            <div className="text-[18px] font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]">
               {feeder?.topPercentile != null ? `${Math.round(feeder.topPercentile)}%` : '--'}
             </div>
           </div>
@@ -330,17 +330,17 @@ export default function FeederPostsClient({
           {loading ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="fm-depth-glass aspect-[4/5] animate-pulse rounded-[24px] bg-black/[0.05] md:aspect-[10/11] dark:bg-white/[0.04]" />
+                <div key={index} className="fm-depth-glass aspect-[4/5] animate-pulse rounded-[22px] bg-black/[0.05] md:aspect-[10/11] dark:bg-white/[0.04]" />
               ))}
             </div>
           ) : error ? (
-            <div className="fm-depth-glass rounded-[24px] p-8 text-center">
-              <div className="text-[12px] font-black uppercase tracking-[0.16em] text-foreground/40">Unable to load feeder posts</div>
+            <div className="fm-depth-glass rounded-[22px] p-8 text-center">
+              <div className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/40">Unable to load feeder posts</div>
               <div className="mt-2 text-[14px] font-bold text-foreground/58">{error}</div>
             </div>
           ) : filteredPosts.length === 0 ? (
-            <div className="fm-depth-glass rounded-[24px] p-10 text-center">
-              <div className="text-[12px] font-black uppercase tracking-[0.16em] text-foreground/40">No tracked posts in this selection</div>
+            <div className="fm-depth-glass rounded-[22px] p-10 text-center">
+              <div className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/40">No tracked posts in this selection</div>
               <div className="mt-2 text-[14px] font-bold text-foreground/58">Try another sort or media filter.</div>
             </div>
           ) : (
@@ -376,7 +376,7 @@ function FeederPostCard({ post, showHandle = false }: { post: FeederPostItem; sh
         y: { duration: 0.24, ease: GRID_ITEM_EASE },
         scale: { duration: 0.24, ease: GRID_ITEM_EASE },
       }}
-      className="fm-depth-glass group relative flex aspect-[4/5] flex-col overflow-hidden rounded-[24px] p-3 md:aspect-[10/11] xl:aspect-[20/21]"
+      className="fm-depth-glass group relative flex aspect-[4/5] flex-col overflow-hidden rounded-[22px] p-3 md:aspect-[10/11] xl:aspect-[20/21]"
     >
       <div className="relative flex-1 overflow-hidden rounded-[18px]">
         {post.thumbnailUrl ? (
@@ -388,7 +388,7 @@ function FeederPostCard({ post, showHandle = false }: { post: FeederPostItem; sh
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
           />
         ) : (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(225,29,72,0.28),_rgba(255,255,255,0.2)_35%,_rgba(0,0,0,0.06)_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(225,29,72,0.24),_rgba(255,255,255,0.05)_35%,_rgba(0,0,0,0.5)_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgb(var(--fm-accent-rgb)/0.28),_rgba(255,255,255,0.2)_35%,_rgba(0,0,0,0.06)_100%)] dark:bg-[radial-gradient(circle_at_top,_rgb(var(--fm-accent-rgb)/0.24),_rgba(255,255,255,0.05)_35%,_rgba(0,0,0,0.5)_100%)]" />
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/18 to-black/4 dark:from-black/78 dark:via-black/16 dark:to-black/5" />
@@ -402,21 +402,21 @@ function FeederPostCard({ post, showHandle = false }: { post: FeederPostItem; sh
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               {showHandle && post.handle ? (
-                <div className="mb-1 max-w-[13rem] truncate text-[10px] font-black uppercase tracking-[0.12em] text-white/82">
+                <div className="mb-1 max-w-[13rem] truncate text-[10px] font-black uppercase tracking-[0.14em] text-white/82">
                   @{post.handle}
                 </div>
               ) : null}
-              <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/65">
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/65">
                 {formatDate(post.postedAt)}
               </div>
-              <div className="mt-1 text-[24px] font-black leading-none tracking-[-0.05em] text-white">
+              <div className="mt-1 text-[22px] font-black leading-none tracking-[-0.04em] text-white">
                 {post.latestPercentile != null ? `Top ${Math.round(post.latestPercentile)}%` : '--'}
               </div>
             </div>
             {postHref ? (
-              <div className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#E11D48] px-3 text-white shadow-[0_8px_18px_rgba(225,29,72,0.28)]">
-                <span className="hidden text-[9px] font-black uppercase tracking-[0.12em] sm:inline">Instagram</span>
-                <span className="text-[9px] font-black uppercase tracking-[0.12em] sm:hidden">Open</span>
+              <div className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--fm-accent)] px-3 text-white shadow-[0_8px_18px_rgb(var(--fm-accent-rgb)/0.28)]">
+                <span className="hidden text-[10px] font-black uppercase tracking-[0.14em] sm:inline">Instagram</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] sm:hidden">Open</span>
                 <ArrowUpRight size={16} strokeWidth={2.8} />
               </div>
             ) : null}
@@ -436,7 +436,7 @@ function FeederPostCard({ post, showHandle = false }: { post: FeederPostItem; sh
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-full border border-white/14 bg-black/42 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white/82 backdrop-blur-xl dark:border-white/14 dark:bg-black/44">
+    <div className="rounded-full border border-white/14 bg-black/42 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/82 backdrop-blur-xl dark:border-white/14 dark:bg-black/44">
       {children}
     </div>
   );
@@ -446,7 +446,7 @@ function MetricCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[14px] border border-black/6 bg-black/[0.03] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
       <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38">{label}</div>
-      <div className="mt-1 text-[15px] font-black leading-none tracking-[-0.03em] text-foreground dark:text-white">{value}</div>
+      <div className="mt-1 text-[16px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white">{value}</div>
     </div>
   );
 }

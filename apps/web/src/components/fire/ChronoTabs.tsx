@@ -27,7 +27,7 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false,
       <LayoutGroup id={activePillLayoutId}>
         <div className={[
           'relative flex items-center gap-1 border border-black/[0.04] bg-black/[0.03] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06),inset_0_-1px_0_rgba(255,255,255,0.5)] dark:border-white/[0.05] dark:bg-white/[0.03] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]',
-          compact ? 'rounded-[14px] p-[3px]' : 'rounded-[16px] p-1',
+          compact ? 'rounded-[14px] p-[3px]' : 'rounded-[18px] p-1',
         ].join(' ')}>
           {sortedDays.map((dateStr) => {
             const isActive = activeCandidate === dateStr;
@@ -46,7 +46,7 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false,
                 whileTap={{ scale: 0.96 }}
                 className={[
                   'relative flex-1 text-center font-black',
-                  compact ? 'rounded-[10px] py-1.5 sm:py-2' : 'rounded-[12px] py-2.5 sm:py-3',
+                  compact ? 'rounded-[10px] py-1.5 sm:py-2' : 'rounded-[14px] py-2.5 sm:py-3',
                   isActive ? 'z-10' : 'z-0',
                 ].join(' ')}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -56,8 +56,8 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false,
                     layoutId={activePillLayoutId}
                     layout
                     className={[
-                      'absolute inset-0 bg-[#E11D48] shadow-[0_4px_16px_rgba(225,29,72,0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(225,29,72,0.2),0_12px_28px_rgba(0,0,0,0.5)]',
-                      compact ? 'rounded-[10px]' : 'rounded-[12px]',
+                      'absolute inset-0 bg-[var(--fm-accent)] shadow-[0_4px_16px_rgb(var(--fm-accent-rgb)/0.25),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgb(var(--fm-accent-rgb)/0.2),0_12px_28px_rgba(0,0,0,0.5)]',
+                      compact ? 'rounded-[10px]' : 'rounded-[14px]',
                     ].join(' ')}
                     transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.82 }}
                   />
@@ -66,8 +66,8 @@ export default function ChronoTabs({ days, activeDay, onChange, compact = false,
                   className={[
                     'relative z-10 inline-block leading-none transition-colors duration-200',
                     compact
-                      ? 'text-[12px] tracking-[-0.02em] sm:text-[13px]'
-                      : 'text-[15px] tracking-[-0.02em] sm:text-[16px]',
+                      ? 'text-[12px] tracking-[-0.04em] sm:text-[14px]'
+                      : 'text-[16px] tracking-[-0.04em] sm:text-[16px]',
                     isActive ? 'text-white' : 'text-black/40 dark:text-white/35',
                   ].join(' ')}
                   animate={{

@@ -342,7 +342,7 @@ function SmoothCountdownNumber({
       )}
       style={{
         minWidth: `${reserveValue.length}ch`,
-        filter: glow ? 'drop-shadow(0 0 14px rgba(225,29,72,0.35))' : undefined,
+        filter: glow ? 'drop-shadow(0 0 14px rgb(var(--fm-accent-rgb)/0.35))' : undefined,
       }}
     >
       <span className="invisible leading-none">{reserveValue}</span>
@@ -431,9 +431,9 @@ function HardwareToggle({ active }: { active: boolean }) {
         'relative flex h-[32px] w-[56px] shrink-0 items-center rounded-full p-[3px] transition-all duration-300',
         active
           ? [
-              'bg-[#E11D48]',
-              'shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.35),0_2px_6px_rgba(225,29,72,0.15)]',
-              'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.15),0_0_16px_rgba(225,29,72,0.2),0_4px_12px_rgba(0,0,0,0.4)]',
+              'bg-[var(--fm-accent)]',
+              'shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.35),0_2px_6px_rgb(var(--fm-accent-rgb)/0.15)]',
+              'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.15),0_0_16px_rgb(var(--fm-accent-rgb)/0.2),0_4px_12px_rgba(0,0,0,0.4)]',
             ]
           : [
               'bg-black/[0.08] dark:bg-black/90',
@@ -1357,7 +1357,7 @@ export default function FundPage() {
       transition={{ duration: 0.24, ease: APPLE_EASE }}
       className={cn(
         'relative w-full text-foreground select-none',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#f4f7f9] dark:bg-[#030303]',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[var(--fm-page)]',
         useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
       style={appShellStyle}
@@ -1365,7 +1365,7 @@ export default function FundPage() {
       {!useTranslucentBrowserChrome && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-0 bg-[#f4f7f9] dark:bg-[#030303]"
+          className="pointer-events-none fixed inset-0 z-0 bg-[var(--fm-page)]"
         />
       )}
 
@@ -1410,11 +1410,11 @@ export default function FundPage() {
               style={{
                 background: '#080808',
                 borderRadius: 'clamp(24px, 4vw, 28px)',
-                boxShadow: '0 0 80px rgba(225,29,72,0.06), 0 40px 100px rgba(0,0,0,0.7)',
+                boxShadow: '0 0 80px rgb(var(--fm-accent-rgb)/0.06), 0 40px 100px rgba(0,0,0,0.7)',
               }}
             >
               {/* Top accent line */}
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/30 to-transparent" />
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--fm-accent)]/30 to-transparent" />
 
               {/* ── Header ── */}
               <div className="fm-fund-breakdown-summary fm-fund-breakdown-header relative px-5 pb-0 pt-5 sm:px-7 sm:pt-7">
@@ -1427,8 +1427,8 @@ export default function FundPage() {
                   <X size={15} strokeWidth={2.5} />
                 </button>
 
-                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/50 sm:text-[10px]">Feed Pass</div>
-                <div className="mt-2 text-[26px] font-black leading-none tracking-[-0.04em] text-white sm:text-[32px]">
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)]/50 sm:text-[10px]">Feed Pass</div>
+                <div className="mt-2 text-[28px] font-black leading-none tracking-[-0.04em] text-white sm:text-[34px]">
                   Subscription
                 </div>
               </div>
@@ -1436,19 +1436,19 @@ export default function FundPage() {
               {/* ── Vibrant total pill ── */}
               <div className="fm-fund-breakdown-summary px-5 pt-5 sm:px-7 sm:pt-6">
                 <div
-                  className="relative overflow-hidden rounded-[18px] bg-[#E11D48] px-5 py-4 sm:rounded-[20px] sm:px-6 sm:py-5"
-                  style={{ boxShadow: '0 12px 40px rgba(225,29,72,0.16), 0 0 80px rgba(225,29,72,0.06)' }}
+                  className="relative overflow-hidden rounded-[18px] bg-[var(--fm-accent)] px-5 py-4 sm:rounded-[22px] sm:px-6 sm:py-5"
+                  style={{ boxShadow: '0 12px 40px rgb(var(--fm-accent-rgb)/0.16), 0 0 80px rgb(var(--fm-accent-rgb)/0.06)' }}
                 >
                   {/* Subtle inner glow */}
                   <div className="pointer-events-none absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 40%, rgba(0,0,0,0.04) 100%)' }} />
                   <div className="relative flex items-end justify-between gap-4">
                     <div>
-                      <div className="text-[8px] font-black uppercase tracking-[0.16em] text-white/64 sm:text-[9px]">Monthly total</div>
-                      <div className="mt-1 text-[38px] font-black leading-none tracking-[-0.05em] text-white sm:text-[46px]">
+                      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-white/64 sm:text-[10px]">Monthly total</div>
+                      <div className="mt-1 text-[34px] font-black leading-none tracking-[-0.04em] text-white sm:text-[46px]">
                         ₹{billingSummary.total.toLocaleString('en-IN')}
                       </div>
                     </div>
-                    <div className="mb-1 rounded-full bg-white/12 px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[9px]">
+                    <div className="mb-1 rounded-full bg-white/12 px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[10px]">
                       {billingSummary.feederCount} feeder{billingSummary.feederCount === 1 ? '' : 's'}
                     </div>
                   </div>
@@ -1461,12 +1461,12 @@ export default function FundPage() {
                   {/* Base row */}
                   <div className="flex items-center justify-between border-b border-white/[0.06] py-3.5 first:pt-0 sm:py-4">
                     <div>
-                      <div className="text-[11px] font-black uppercase tracking-[0.06em] text-white/80 sm:text-[12px]">Base passes</div>
-                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white/25 sm:text-[10px]">
+                      <div className="text-[12px] font-black uppercase tracking-[0.06em] text-white/80 sm:text-[12px]">Base passes</div>
+                      <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/25 sm:text-[10px]">
                         {billingSummary.feederCount} × ₹{slotPlanPrice} per feeder
                       </div>
                     </div>
-                    <div className="text-[16px] font-black tracking-[-0.02em] text-white sm:text-[18px]">
+                    <div className="text-[16px] font-black tracking-[-0.04em] text-white sm:text-[18px]">
                       ₹{billingSummary.baseCost.toLocaleString('en-IN')}
                     </div>
                   </div>
@@ -1474,16 +1474,16 @@ export default function FundPage() {
                   {/* Overage row */}
                   <div className="flex items-center justify-between border-b border-white/[0.06] py-3.5 sm:py-4">
                     <div>
-                      <div className="text-[11px] font-black uppercase tracking-[0.06em] text-white/80 sm:text-[12px]">Overage charges</div>
-                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white/25 sm:text-[10px]">
+                      <div className="text-[12px] font-black uppercase tracking-[0.06em] text-white/80 sm:text-[12px]">Overage charges</div>
+                      <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/25 sm:text-[10px]">
                         {billingSummary.overages.length > 0
                           ? `${billingSummary.overages.length} feeder${billingSummary.overages.length === 1 ? '' : 's'} over ${slotPostsCap}-post cap`
                           : `All within ${slotPostsCap}-post cap`}
                       </div>
                     </div>
                     <div className={cn(
-                      'text-[16px] font-black tracking-[-0.02em] sm:text-[18px]',
-                      billingSummary.overageCost > 0 ? 'text-[#E11D48]' : 'text-white/30'
+                      'text-[16px] font-black tracking-[-0.04em] sm:text-[18px]',
+                      billingSummary.overageCost > 0 ? 'text-[var(--fm-accent)]' : 'text-white/30'
                     )}>
                       {billingSummary.overageCost > 0 ? `₹${billingSummary.overageCost.toLocaleString('en-IN')}` : '₹0'}
                     </div>
@@ -1494,10 +1494,10 @@ export default function FundPage() {
               {/* ── Feeder ledger ── */}
               <div className="fm-fund-breakdown-ledger px-5 pt-5 sm:px-7 sm:pt-6">
                 <div className="mb-3 flex items-center justify-between gap-4 lg:mb-4">
-                  <div className="text-[9px] font-black uppercase tracking-[0.16em] text-white/22 sm:text-[10px]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/22 sm:text-[10px]">
                     Overage detail
                   </div>
-                  <div className="hidden rounded-full border border-white/[0.07] bg-white/[0.035] px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white/32 lg:block">
+                  <div className="hidden rounded-full border border-white/[0.07] bg-white/[0.035] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/32 lg:block">
                     {billingSummary.overages.length} over cap
                   </div>
                 </div>
@@ -1506,17 +1506,17 @@ export default function FundPage() {
                     {billingSummary.overages.map((item) => (
                       <div
                         key={item.handle}
-                        className="flex items-center justify-between rounded-[14px] bg-white/[0.03] px-4 py-3 sm:rounded-[16px] sm:py-3.5 lg:bg-white/[0.04]"
+                        className="flex items-center justify-between rounded-[14px] bg-white/[0.03] px-4 py-3 sm:rounded-[18px] sm:py-3.5 lg:bg-white/[0.04]"
                       >
                         <div className="min-w-0 flex-1">
-                        <div className="truncate text-[11px] font-black tracking-[-0.01em] text-white/75 sm:text-[12px]">
+                        <div className="truncate text-[12px] font-black tracking-[-0.04em] text-white/75 sm:text-[12px]">
                           @{item.handle}
                         </div>
-                        <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-white/22 sm:text-[9px]">
+                        <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-white/22 sm:text-[10px]">
                           {item.posts} posts · +{item.excess} over cap
                         </div>
                       </div>
-                        <div className="ml-3 text-[13px] font-black text-white/78 sm:text-[14px]">
+                        <div className="ml-3 text-[14px] font-black text-white/78 sm:text-[14px]">
                           +₹{item.cost}
                         </div>
                       </div>
@@ -1525,8 +1525,8 @@ export default function FundPage() {
                 ) : (
                   <div className="flex min-h-[220px] flex-1 items-center justify-center rounded-[18px] border border-dashed border-white/[0.08] bg-white/[0.025] px-6 text-center">
                     <div>
-                      <div className="text-[13px] font-black uppercase tracking-[0.12em] text-white/64">No overages</div>
-                      <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white/24">
+                      <div className="text-[14px] font-black uppercase tracking-[0.14em] text-white/64">No overages</div>
+                      <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/24">
                         Every active feeder is within the included post cap.
                       </div>
                     </div>
@@ -1540,25 +1540,25 @@ export default function FundPage() {
                   type="button"
                   onClick={startManageSubscriptionCheckout}
                   disabled={manageSubscriptionBusy}
-                  className="group flex w-full items-center justify-between rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-left transition-all duration-200 hover:border-[#E11D48]/16 hover:bg-[#E11D48]/[0.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[18px] sm:px-5 sm:py-4"
+                  className="group flex w-full items-center justify-between rounded-[18px] border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-left transition-all duration-200 hover:border-[var(--fm-accent)]/16 hover:bg-[var(--fm-accent)]/[0.04] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-[18px] sm:px-5 sm:py-4"
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E11D48] text-white sm:h-10 sm:w-10"
-                      style={{ boxShadow: '0 6px 20px rgba(225,29,72,0.18)' }}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--fm-accent)] text-white sm:h-10 sm:w-10"
+                      style={{ boxShadow: '0 6px 20px rgb(var(--fm-accent-rgb)/0.18)' }}
                     >
                       <CreditCard size={15} strokeWidth={2.5} />
                     </div>
                     <div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white/70 sm:text-[11px]">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[12px]">
                         Add feeder pass
                       </div>
-                      <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-white/25 sm:text-[9px]">
+                      <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-white/25 sm:text-[10px]">
                         ₹{slotPlanPrice} per slot · {slotPostsCap} posts included
                       </div>
                     </div>
                   </div>
-                  <ArrowUpRight size={16} className="text-white/20 transition-colors group-hover:text-[#E11D48]/60" />
+                  <ArrowUpRight size={16} className="text-white/20 transition-colors group-hover:text-[var(--fm-accent)]/60" />
                 </button>
               </div>
 
@@ -1576,7 +1576,7 @@ export default function FundPage() {
           className="pointer-events-none fixed inset-0 z-[9999] will-change-[clip-path,opacity]"
           style={{
             background: themeRipple.toDark
-              ? `radial-gradient(circle at ${themeRipple.x}px ${themeRipple.y}px, rgba(225,29,72,0.16) 0%, rgba(8,8,8,0.22) 28%, rgba(8,8,8,0.12) 62%, rgba(8,8,8,0.04) 100%)`
+              ? `radial-gradient(circle at ${themeRipple.x}px ${themeRipple.y}px, rgb(var(--fm-accent-rgb)/0.16) 0%, rgba(8,8,8,0.22) 28%, rgba(8,8,8,0.12) 62%, rgba(8,8,8,0.04) 100%)`
               : `radial-gradient(circle at ${themeRipple.x}px ${themeRipple.y}px, rgba(255,255,255,0.58) 0%, rgba(244,247,249,0.34) 30%, rgba(255,255,255,0.18) 62%, rgba(255,255,255,0.06) 100%)`,
             backdropFilter: themeRipple.toDark
               ? 'blur(10px) saturate(115%) brightness(0.88)'
@@ -1610,27 +1610,27 @@ export default function FundPage() {
               <div className="hidden min-w-0 lg:block" />
               <div className="flex min-w-0 justify-end">
                 <div className="flex flex-col items-end text-right lg:hidden">
-                  <div className="text-[7px] font-black uppercase leading-none tracking-[0.18em] text-black/34 dark:text-white/30">
+                  <div className="text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/34 dark:text-white/30">
                     Feeding Since
                   </div>
                   <div className="mt-0.5 flex items-baseline justify-end gap-1.5">
-                    <div className="text-[30px] font-black leading-none tracking-[-0.06em] text-black dark:text-white tabular-nums fm-depth-title">
+                    <div className="text-[28px] font-black leading-none tracking-[-0.04em] text-black dark:text-white tabular-nums fm-depth-title">
                       {feedingSince.days}
                     </div>
-                    <div className="pb-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/32">
+                    <div className="pb-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/32">
                       Days
                     </div>
                   </div>
                 </div>
                 <div className="hidden flex-col items-end text-right lg:flex">
-                  <div className="text-[8px] font-black uppercase leading-none tracking-[0.2em] text-black/36 dark:text-white/32">
+                  <div className="text-[8px] font-black uppercase leading-none tracking-[0.22em] text-black/36 dark:text-white/32">
                     Feeding Since
                   </div>
                   <div className="mt-1 flex items-baseline justify-end gap-1.5">
-                    <div className="text-[36px] font-black leading-none tracking-[-0.07em] text-black dark:text-white tabular-nums fm-depth-title">
+                    <div className="text-[34px] font-black leading-none tracking-[-0.04em] text-black dark:text-white tabular-nums fm-depth-title">
                       {feedingSince.days}
                     </div>
-                    <div className="pb-1 text-[8px] font-black uppercase tracking-[0.18em] text-black/36 dark:text-white/32">
+                    <div className="pb-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/32">
                       Days
                     </div>
                   </div>
@@ -1679,28 +1679,28 @@ export default function FundPage() {
                 />
 
                 <div className={cn(
-                  'fm-depth-glass relative flex flex-1 flex-col overflow-hidden rounded-[32px] p-5 lg:p-6',
+                  'fm-depth-glass relative flex flex-1 flex-col overflow-hidden rounded-[34px] p-5 lg:p-6',
                   'border border-white/80 bg-white/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_34px_-18px_rgba(15,23,42,0.2)]',
                   'dark:border-white/[0.06] dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045),0_22px_46px_-28px_rgba(0,0,0,0.7)]',
                 )}>
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/40 to-transparent" />
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--fm-accent)]/40 to-transparent" />
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-foreground/42 dark:text-white/36">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">
                         Feeding History
                       </div>
                       <div className="mt-2 flex items-end gap-2">
-                        <div className="text-[58px] font-black leading-[0.82] tracking-[-0.08em] text-foreground tabular-nums dark:text-white sm:text-[68px]">
+                        <div className="text-[58px] font-black leading-[0.82] tracking-[-0.04em] text-foreground tabular-nums dark:text-white sm:text-[68px]">
                           {formatCompactNumber(totalTrackedPosts)}
                         </div>
-                        <div className="pb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-foreground/40 dark:text-white/34">
+                        <div className="pb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/34">
                           Posts
                         </div>
                       </div>
                     </div>
                     <div className="shrink-0 rounded-[18px] border border-black/5 bg-black/[0.035] px-3 py-2 text-right shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.035] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.32)]">
-                      <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/34 dark:text-white/30">Checkpoint Surfaced</div>
-                      <div className="mt-1 text-[22px] font-black leading-none tracking-[-0.05em] text-foreground tabular-nums dark:text-white">{formatCompactNumber(totalCheckpointSurfaces)}</div>
+                      <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/30">Checkpoint Surfaced</div>
+                      <div className="mt-1 text-[22px] font-black leading-none tracking-[-0.04em] text-foreground tabular-nums dark:text-white">{formatCompactNumber(totalCheckpointSurfaces)}</div>
                     </div>
                   </div>
                   <div className="mt-4 text-[10px] font-bold uppercase tracking-[0.14em] leading-relaxed text-foreground/38 dark:text-white/32">
@@ -1711,13 +1711,13 @@ export default function FundPage() {
                       const pct = totalTrackedPosts > 0 ? Math.min(100, (feed.totalPosts / totalTrackedPosts) * 100) : 0;
                       return (
                         <div key={`history:${feed.id}`} className="grid grid-cols-[minmax(74px,108px)_1fr_auto] items-center gap-3">
-                          <div className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-foreground/62 dark:text-white/58">{feed.title}</div>
+                          <div className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-foreground/62 dark:text-white/58">{feed.title}</div>
                           <div className="relative h-2.5 overflow-hidden rounded-full border border-black/5 bg-black/[0.055] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] dark:border-white/[0.04] dark:bg-black/55 dark:shadow-[inset_0_3px_6px_rgba(0,0,0,0.65)]">
                             <motion.div
                               initial={false}
                               animate={{ width: `${pct}%` }}
                               transition={{ duration: 0.32, ease: APPLE_EASE }}
-                              className="absolute inset-y-[1.5px] left-[1.5px] rounded-full bg-[#E11D48] shadow-[0_0_12px_rgba(225,29,72,0.34),inset_0_1px_1px_rgba(255,255,255,0.58)]"
+                              className="absolute inset-y-[1.5px] left-[1.5px] rounded-full bg-[var(--fm-accent)] shadow-[0_0_12px_rgb(var(--fm-accent-rgb)/0.34),inset_0_1px_1px_rgba(255,255,255,0.58)]"
                             />
                           </div>
                           <div className="text-right text-[10px] font-black text-foreground/50 tabular-nums dark:text-white/45">{formatCompactNumber(feed.totalPosts)}</div>
@@ -1725,7 +1725,7 @@ export default function FundPage() {
                       );
                     })}
                     {feedWiseUsage.length === 0 && (
-                      <div className="rounded-[18px] border border-black/5 bg-black/[0.025] px-4 py-5 text-center text-[10px] font-black uppercase tracking-[0.16em] text-foreground/30 dark:border-white/[0.05] dark:bg-white/[0.025] dark:text-white/28">
+                      <div className="rounded-[18px] border border-black/5 bg-black/[0.025] px-4 py-5 text-center text-[10px] font-black uppercase tracking-[0.14em] text-foreground/30 dark:border-white/[0.05] dark:bg-white/[0.025] dark:text-white/28">
                         No tracked posts yet
                       </div>
                     )}
@@ -1734,13 +1734,13 @@ export default function FundPage() {
 
                 {/* Compact Support & Policy Row */}
                 <div className={cn(
-                  'fm-depth-chip rounded-[20px] px-3.5 py-3 sm:px-5 sm:py-3.5',
+                  'fm-depth-chip rounded-[22px] px-3.5 py-3 sm:px-5 sm:py-3.5',
                   'flex items-center gap-2 sm:gap-3',
                 )}>
                   <button
                     type="button"
                     onClick={() => openSupportEmail('FeedMe bug report')}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-black/6 bg-black/[0.03] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60 transition-colors active:scale-[0.97] active:bg-black/[0.06] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-white/55 dark:active:bg-white/[0.08] sm:px-3 sm:text-[9px]"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-black/6 bg-black/[0.03] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/60 transition-colors active:scale-[0.97] active:bg-black/[0.06] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-white/55 dark:active:bg-white/[0.08] sm:px-3 sm:text-[10px]"
                   >
                     <Bug size={11} />
                     Bug
@@ -1748,16 +1748,16 @@ export default function FundPage() {
                   <button
                     type="button"
                     onClick={() => openSupportEmail('FeedMe refund or cancellation help')}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-black/6 bg-black/[0.03] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/60 transition-colors active:scale-[0.97] active:bg-black/[0.06] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-white/55 dark:active:bg-white/[0.08] sm:px-3 sm:text-[9px]"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-black/6 bg-black/[0.03] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/60 transition-colors active:scale-[0.97] active:bg-black/[0.06] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-white/55 dark:active:bg-white/[0.08] sm:px-3 sm:text-[10px]"
                   >
                     <LifeBuoy size={11} />
                     Billing
                   </button>
                   <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
-                    <a href={`${siteUrl}/privacy`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 transition-colors active:text-foreground dark:text-white/38 dark:active:text-white/70 sm:text-[9px]">
+                    <a href={`${siteUrl}/privacy`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/42 transition-colors active:text-foreground dark:text-white/38 dark:active:text-white/70 sm:text-[10px]">
                       <FileText size={10} />Privacy
                     </a>
-                    <a href={`${siteUrl}/terms`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/42 transition-colors active:text-foreground dark:text-white/38 dark:active:text-white/70 sm:text-[9px]">
+                    <a href={`${siteUrl}/terms`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/42 transition-colors active:text-foreground dark:text-white/38 dark:active:text-white/70 sm:text-[10px]">
                       <FileText size={10} />Terms
                     </a>
                   </div>
@@ -1766,7 +1766,7 @@ export default function FundPage() {
 
               {/* Right Column: Unified Control Center */}
               <motion.div variants={tileVariant} className={cn(
-                'fm-depth-glass rounded-[32px] p-5 relative overflow-hidden flex flex-col lg:p-6 xl:p-7',
+                'fm-depth-glass rounded-[34px] p-5 relative overflow-hidden flex flex-col lg:p-6 xl:p-7',
                 'bg-white/70 border border-white/80',
                 'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_32px_-4px_rgba(15,23,42,0.07)]',
                 'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
@@ -1811,7 +1811,7 @@ export default function FundPage() {
                         pathLength={1}
                         strokeDasharray="0.014 0.986"
                         strokeDashoffset={-marker.progress}
-                        style={{ opacity: 0.5, filter: 'drop-shadow(0 0 4px rgba(251,113,133,0.55))' }}
+                        style={{ opacity: 0.5, filter: 'drop-shadow(0 0 4px rgb(var(--fm-accent-bright-rgb)/0.55))' }}
                       />
                     ))}
                     <motion.rect
@@ -1835,7 +1835,7 @@ export default function FundPage() {
                           ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' }
                           : { duration: 3.6, repeat: Infinity, ease: 'easeInOut' },
                       }}
-                      style={{ filter: 'drop-shadow(0 0 8px rgba(225,29,72,0.55))' }}
+                      style={{ filter: 'drop-shadow(0 0 8px rgb(var(--fm-accent-rgb)/0.55))' }}
                     />
                     {/* Leading dot at the tip of the arc */}
                     {nextFireBatch && (
@@ -1858,22 +1858,22 @@ export default function FundPage() {
                           strokeDashoffset: { duration: 0.9, ease: APPLE_EASE },
                           opacity: { duration: inFinalMinute ? 0.9 : 2.4, repeat: Infinity, ease: 'easeInOut' },
                         }}
-                        style={{ filter: 'drop-shadow(0 0 12px rgba(255,255,255,0.85)) drop-shadow(0 0 20px rgba(225,29,72,0.85))' }}
+                        style={{ filter: 'drop-shadow(0 0 12px rgba(255,255,255,0.85)) drop-shadow(0 0 20px rgb(var(--fm-accent-rgb)/0.85))' }}
                       />
                     )}
                   </svg>
 
                   {/* Inner content */}
                   <div className={cn(
-                    'relative z-0 rounded-[21px] px-5 py-4 sm:px-6 sm:py-5',
+                    'relative z-0 rounded-[22px] px-5 py-4 sm:px-6 sm:py-5',
                     'bg-gradient-to-b from-white/80 to-white/50',
                     'dark:from-white/[0.04] dark:to-white/[0.015]',
                   )}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <div className="text-[8px] font-black uppercase tracking-[0.18em] text-foreground/38 dark:text-white/32">Today&apos;s Fire flow</div>
-                          <div className="text-[7px] font-black uppercase tracking-[0.16em] text-foreground/30 dark:text-white/22 tabular-nums">{nowClockLabel} IST</div>
+                          <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32">Today&apos;s Fire flow</div>
+                          <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/30 dark:text-white/22 tabular-nums">{nowClockLabel} IST</div>
                         </div>
                         <div className="mt-1.5 flex items-end gap-2.5">
                           <motion.div
@@ -1881,19 +1881,19 @@ export default function FundPage() {
                             initial={false}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             transition={{ duration: 0.32, ease: APPLE_EASE }}
-                            className="bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-[44px] font-black leading-[0.85] tracking-[-0.07em] text-transparent tabular-nums dark:from-white dark:to-white/70 sm:text-[52px]"
-                            style={{ filter: 'drop-shadow(0 0 18px rgba(225,29,72,0.18))' }}
+                            className="bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-[44px] font-black leading-[0.85] tracking-[-0.04em] text-transparent tabular-nums dark:from-white dark:to-white/70 sm:text-[52px]"
+                            style={{ filter: 'drop-shadow(0 0 18px rgb(var(--fm-accent-rgb)/0.18))' }}
                           >
                             {fireSignalsLoading && fireSnapshot.day !== currentFireDay ? '--' : firePulse.totalSignals}
                           </motion.div>
-                          <div className="pb-1 text-[8px] font-black uppercase tracking-[0.16em] text-foreground/45 dark:text-white/38">
+                          <div className="pb-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/45 dark:text-white/38">
                             {firePulse.totalSignals === 1 ? 'signal fired' : 'signals fired'}
                           </div>
                         </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[8px] font-black uppercase tracking-[0.13em]">
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[8px] font-black uppercase tracking-[0.14em]">
                           {firePulse.lineSignals > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-[#E11D48]/22 bg-[#E11D48]/10 px-2 py-[3px] text-[#BE123C] dark:border-[#E11D48]/24 dark:bg-[#E11D48]/12 dark:text-[#FB7185]">
-                              <span className="h-1 w-1 rounded-full bg-[#E11D48]" />
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[var(--fm-accent)]/22 bg-[var(--fm-accent)]/10 px-2 py-[3px] text-[var(--fm-accent-deep)] dark:border-[var(--fm-accent)]/24 dark:bg-[var(--fm-accent)]/12 dark:text-[var(--fm-accent-bright)]">
+                              <span className="h-1 w-1 rounded-full bg-[var(--fm-accent)]" />
                               <span className="tabular-nums">{firePulse.lineSignals}</span>
                               <span>on your {alertThreshold}% line</span>
                             </span>
@@ -1916,10 +1916,10 @@ export default function FundPage() {
                           animate={{ y: 0, opacity: 1 }}
                           transition={{ duration: 0.24, ease: APPLE_EASE }}
                           className={cn(
-                            'inline-flex min-w-[86px] items-center justify-center gap-1.5 rounded-full px-3.5 py-1.5 text-[9px] font-black uppercase leading-none tracking-[0.16em]',
+                            'inline-flex min-w-[86px] items-center justify-center gap-1.5 rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase leading-none tracking-[0.14em]',
                             liveNowCount > 0
-                              ? 'border border-[#E11D48]/35 bg-[#E11D48] text-white shadow-[0_6px_18px_rgba(225,29,72,0.45)]'
-                              : 'border border-[#E11D48]/18 bg-[#E11D48]/10 text-[#BE123C] dark:border-[#E11D48]/22 dark:bg-[#E11D48]/12 dark:text-[#FB7185]',
+                              ? 'border border-[var(--fm-accent)]/35 bg-[var(--fm-accent)] text-white shadow-[0_6px_18px_rgb(var(--fm-accent-rgb)/0.45)]'
+                              : 'border border-[var(--fm-accent)]/18 bg-[var(--fm-accent)]/10 text-[var(--fm-accent-deep)] dark:border-[var(--fm-accent)]/22 dark:bg-[var(--fm-accent)]/12 dark:text-[var(--fm-accent-bright)]',
                           )}
                         >
                           {liveNowCount > 0 && (
@@ -1943,11 +1943,11 @@ export default function FundPage() {
                                   value={countdownParts.h}
                                   className={cn(
                                     'text-[34px] tracking-normal sm:text-[40px]',
-                                    inFinalMinute ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
+                                    inFinalMinute ? 'text-[var(--fm-accent)]' : 'text-foreground dark:text-white',
                                   )}
                                   glow
                                 />
-                                <span className="ml-[1px] mr-[3px] text-[14px] tracking-[0.04em] text-foreground/35 dark:text-white/26">h</span>
+                                <span className="ml-[1px] mr-[3px] text-[14px] tracking-[0.06em] text-foreground/35 dark:text-white/26">h</span>
                               </>
                             )}
                             {(countdownParts.h > 0 || countdownParts.m > 0) && (
@@ -1957,22 +1957,22 @@ export default function FundPage() {
                                   minDigits={countdownParts.h > 0 ? 2 : 1}
                                   className={cn(
                                     'text-[34px] tracking-normal sm:text-[40px]',
-                                    inFinalMinute ? 'text-[#E11D48]' : 'text-foreground dark:text-white',
+                                    inFinalMinute ? 'text-[var(--fm-accent)]' : 'text-foreground dark:text-white',
                                   )}
                                   glow
                                 />
-                                <span className="ml-[1px] mr-[3px] text-[14px] tracking-[0.04em] text-foreground/35 dark:text-white/26">m</span>
+                                <span className="ml-[1px] mr-[3px] text-[14px] tracking-[0.06em] text-foreground/35 dark:text-white/26">m</span>
                               </>
                             )}
                             <SmoothCountdownNumber
                               value={countdownParts.s}
                               minDigits={2}
                               className={cn(
-                                'text-[20px] tracking-normal sm:text-[22px]',
-                                inFinalMinute ? 'text-[#E11D48]' : 'text-foreground/55 dark:text-white/45',
+                                'text-[22px] tracking-normal sm:text-[22px]',
+                                inFinalMinute ? 'text-[var(--fm-accent)]' : 'text-foreground/55 dark:text-white/45',
                               )}
                             />
-                            <span className="ml-[1px] text-[11px] tracking-[0.04em] text-foreground/30 dark:text-white/22">s</span>
+                            <span className="ml-[1px] text-[12px] tracking-[0.06em] text-foreground/30 dark:text-white/22">s</span>
                           </motion.div>
                         ) : (
                           <motion.div
@@ -1980,21 +1980,21 @@ export default function FundPage() {
                             initial={false}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ duration: 0.24, ease: APPLE_EASE }}
-                            className="mt-3.5 text-[26px] font-black leading-none tracking-[-0.06em] text-foreground dark:text-white sm:text-[30px]"
+                            className="mt-3.5 text-[28px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white sm:text-[28px]"
                           >
                             {pulseHeadline}
                           </motion.div>
                         )}
-                        <div className="mt-1.5 text-[7px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/30">
+                        <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/30">
                           {pulseLabel}
                         </div>
                         {nextFireBatch && (
-                          <div className="mt-1 text-[8px] font-black uppercase tracking-[0.11em] text-foreground/55 dark:text-white/45">
+                          <div className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/55 dark:text-white/45">
                             <span className="tabular-nums">{nextFireBatch.totalRuns}</span> incoming{nextFireMix ? ` · ${nextFireMix}` : ''}
                           </div>
                         )}
                         {!nextFireBatch && liveNowCount > 0 && (
-                          <div className="mt-1 text-[8px] font-black uppercase tracking-[0.11em] text-foreground/55 dark:text-white/45">
+                          <div className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/55 dark:text-white/45">
                             <span className="tabular-nums">{liveNowCount}</span> processing{liveNowMix ? ` · ${liveNowMix}` : ''}
                           </div>
                         )}
@@ -2003,7 +2003,7 @@ export default function FundPage() {
 
                     {/* ── 24h day-shape timeline ── */}
                     <div className="mt-5">
-                      <div className="mb-1.5 flex items-center justify-between text-[7px] font-black uppercase tracking-[0.16em] text-foreground/30 dark:text-white/22 tabular-nums">
+                      <div className="mb-1.5 flex items-center justify-between text-[8px] font-black uppercase tracking-[0.14em] text-foreground/30 dark:text-white/22 tabular-nums">
                         <span>00</span>
                         <span>06</span>
                         <span>12</span>
@@ -2030,10 +2030,10 @@ export default function FundPage() {
                                     className={cn(
                                       'absolute bottom-0 left-0 right-0 rounded-[2px] transition-colors duration-500',
                                       isCurrent
-                                        ? 'h-[6px] bg-[#E11D48]/45 shadow-[0_0_7px_rgba(225,29,72,0.28)]'
+                                        ? 'h-[6px] bg-[var(--fm-accent)]/45 shadow-[0_0_7px_rgb(var(--fm-accent-rgb)/0.28)]'
                                         : isPast
                                           ? 'h-[3px] bg-foreground/[0.07] dark:bg-white/[0.06]'
-                                          : 'h-[4px] bg-[#E11D48]/28 dark:bg-[#FB7185]/24',
+                                          : 'h-[4px] bg-[var(--fm-accent)]/28 dark:bg-[var(--fm-accent-bright)]/24',
                                     )}
                                   />
                                 ) : (
@@ -2044,10 +2044,10 @@ export default function FundPage() {
                                     className={cn(
                                       'absolute bottom-0 left-0 right-0 flex flex-col-reverse overflow-hidden rounded-[3px] transition-[filter,opacity] duration-500',
                                       isCurrent
-                                        ? 'shadow-[0_0_10px_rgba(225,29,72,0.36)]'
+                                        ? 'shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.36)]'
                                         : isPast
                                           ? 'opacity-60'
-                                          : 'shadow-[0_0_7px_rgba(225,29,72,0.24)]',
+                                          : 'shadow-[0_0_7px_rgb(var(--fm-accent-rgb)/0.24)]',
                                     )}
                                   >
                                     <div
@@ -2056,8 +2056,8 @@ export default function FundPage() {
                                         isPast
                                           ? 'bg-foreground/[0.15] dark:bg-white/[0.12]'
                                           : isCurrent
-                                            ? 'bg-[#E11D48]/72'
-                                            : 'bg-[#E11D48]/66',
+                                            ? 'bg-[var(--fm-accent)]/72'
+                                            : 'bg-[var(--fm-accent)]/66',
                                       )}
                                       style={{ height: `${completedPct}%` }}
                                     />
@@ -2065,10 +2065,10 @@ export default function FundPage() {
                                       className={cn(
                                         'w-full transition-colors duration-500',
                                         isCurrent
-                                          ? 'bg-[#E11D48]/34'
+                                          ? 'bg-[var(--fm-accent)]/34'
                                           : isPast
                                             ? 'bg-foreground/[0.09] dark:bg-white/[0.08]'
-                                            : 'bg-[#E11D48]/42 dark:bg-[#FB7185]/34',
+                                            : 'bg-[var(--fm-accent)]/42 dark:bg-[var(--fm-accent-bright)]/34',
                                       )}
                                       style={{ height: `${100 - completedPct}%` }}
                                     />
@@ -2079,12 +2079,12 @@ export default function FundPage() {
                           })}
                         </div>
                         <motion.div
-                          className="pointer-events-none absolute top-0 bottom-0 w-px bg-[#FB7185]"
+                          className="pointer-events-none absolute top-0 bottom-0 w-px bg-[var(--fm-accent-bright)]"
                           animate={{ left: `${dayProgress * 100}%` }}
                           transition={{ duration: 0.6, ease: APPLE_EASE }}
-                          style={{ filter: 'drop-shadow(0 0 4px rgba(251,113,133,0.7))' }}
+                          style={{ filter: 'drop-shadow(0 0 4px rgb(var(--fm-accent-bright-rgb)/0.7))' }}
                         >
-                          <div className="absolute -top-[3px] left-1/2 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[#FB7185] shadow-[0_0_6px_rgba(251,113,133,0.9)]" />
+                          <div className="absolute -top-[3px] left-1/2 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[var(--fm-accent-bright)] shadow-[0_0_6px_rgb(var(--fm-accent-bright-rgb)/0.9)]" />
                         </motion.div>
                       </div>
                     </div>
@@ -2094,13 +2094,13 @@ export default function FundPage() {
                 {/* Divider between activity and settings */}
                 <div className="mt-5 mb-5 h-px w-full bg-foreground/[0.06] dark:bg-white/[0.06]" />
 
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 mb-4">Settings & Alerts</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/50 mb-4">Settings & Alerts</div>
 
                 <div className="space-y-4 flex-1 flex flex-col">
 
                   {/* ── Lights Out (Dark Mode Toggle) ── */}
                   <div className={cn(
-                    'w-full flex items-center justify-between rounded-[20px] px-5 py-[18px]',
+                    'w-full flex items-center justify-between rounded-[22px] px-5 py-[18px]',
                     'bg-gradient-to-b from-white/90 to-white/60',
                     'border border-white/90 border-t-white',
                     'shadow-[inset_0_2px_4px_rgba(255,255,255,1),inset_0_-1px_2px_rgba(0,0,0,0.04),0_6px_16px_-4px_rgba(15,23,42,0.08),0_2px_4px_rgba(0,0,0,0.03)]',
@@ -2125,12 +2125,12 @@ export default function FundPage() {
                             </motion.div>
                           ) : (
                             <motion.div key="sun" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }} transition={{ duration: 0.3 }}>
-                              <Sun size={15} className="text-[#E11D48]" />
+                              <Sun size={15} className="text-[var(--fm-accent)]" />
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </div>
-                      <span className="text-[11px] font-black uppercase tracking-[0.14em] text-foreground/70 dark:text-white/70">Lights Out</span>
+                      <span className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/70 dark:text-white/70">Lights Out</span>
                     </div>
                     <div ref={themeToggleRef} className="cursor-pointer group" onClick={() => {
                       const newIsDarkMode = !isDarkMode;
@@ -2168,14 +2168,14 @@ export default function FundPage() {
 
                   {/* ── Device Fire Alerts ── */}
                   <div className={cn(
-                    'w-full flex items-center justify-between gap-3 rounded-[20px] px-5 py-[18px]',
+                    'w-full flex items-center justify-between gap-3 rounded-[22px] px-5 py-[18px]',
                     'transition-all duration-500',
                     pwaNotificationsEnabled
                       ? [
                           'bg-[#111]',
                           'border border-black',
-                          'shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_24px_-10px_rgba(0,0,0,0.45),0_0_22px_rgba(225,29,72,0.12)]',
-                          'dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_18px_32px_-14px_rgba(0,0,0,0.65),0_0_28px_rgba(225,29,72,0.15)]',
+                          'shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_24px_-10px_rgba(0,0,0,0.45),0_0_22px_rgb(var(--fm-accent-rgb)/0.12)]',
+                          'dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_18px_32px_-14px_rgba(0,0,0,0.65),0_0_28px_rgb(var(--fm-accent-rgb)/0.15)]',
                         ]
                       : notificationPermission === 'denied'
                         ? [
@@ -2183,7 +2183,7 @@ export default function FundPage() {
                             'border border-[#ff9d4d]/45',
                             'shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),0_8px_20px_-10px_rgba(255,122,0,0.3)]',
                             'dark:bg-[linear-gradient(180deg,rgba(255,107,0,0.16),rgba(255,255,255,0.03))]',
-                            'dark:border-[#FF6B00]/30',
+                            'dark:border-[var(--fm-flame)]/30',
                           ]
                         : [
                             'bg-gradient-to-b from-white/90 to-white/60',
@@ -2199,9 +2199,9 @@ export default function FundPage() {
                         'flex items-center justify-center w-8 h-8 rounded-[10px] transition-all duration-300',
                         'shrink-0',
                         pwaNotificationsEnabled
-                          ? 'bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_1px_rgba(255,255,255,0.6)]'
+                          ? 'bg-[var(--fm-accent)] shadow-[0_6px_14px_rgb(var(--fm-accent-rgb)/0.22),inset_0_1px_1px_rgba(255,255,255,0.6)]'
                           : notificationPermission === 'denied'
-                            ? 'bg-[#FF6B00]/15 border border-[#FF6B00]/25'
+                            ? 'bg-[var(--fm-flame)]/15 border border-[var(--fm-flame)]/25'
                             : [
                                 'bg-white/70 border border-white/90',
                                 'shadow-[inset_0_1px_2px_rgba(255,255,255,1),0_2px_6px_rgba(0,0,0,0.06)]',
@@ -2213,22 +2213,22 @@ export default function FundPage() {
                           pwaNotificationsEnabled
                             ? 'text-black'
                             : notificationPermission === 'denied'
-                              ? 'text-[#FF6B00]'
+                              ? 'text-[var(--fm-flame)]'
                               : 'text-foreground/35 dark:text-white/30',
                           'transition-colors duration-300'
                         )} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className={cn(
-                          'text-[11px] font-black uppercase tracking-[0.14em] transition-colors duration-300',
+                          'text-[12px] font-black uppercase tracking-[0.14em] transition-colors duration-300',
                           pwaNotificationsEnabled ? 'text-white' : 'text-foreground/70 dark:text-white/70'
                         )}>
                           Fire Alerts
                         </div>
                         <div className={cn(
-                          'mt-1 text-[9px] font-bold uppercase tracking-[0.12em] leading-relaxed',
+                          'mt-1 text-[10px] font-bold uppercase tracking-[0.14em] leading-relaxed',
                           pwaNotificationsEnabled
-                            ? 'text-[#E11D48]/70'
+                            ? 'text-[var(--fm-accent)]/70'
                             : notificationPermission === 'denied'
                               ? 'text-[#9f4b00] dark:text-[#ffb278]'
                               : 'text-foreground/45 dark:text-white/38'
@@ -2236,7 +2236,7 @@ export default function FundPage() {
                           {pwaStatusText}
                         </div>
                         <div className={cn(
-                          'mt-1 text-[8px] font-bold uppercase tracking-[0.12em]',
+                          'mt-1 text-[8px] font-bold uppercase tracking-[0.14em]',
                           pwaNotificationsEnabled
                             ? 'text-white/42'
                             : 'text-foreground/38 dark:text-white/28'
@@ -2252,7 +2252,7 @@ export default function FundPage() {
                           disabled={notificationBusy || notificationTestBusy || !pwaNotificationsEnabled}
                           onClick={handleTestNotification}
                           className={cn(
-                            'rounded-full px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] transition-all duration-200',
+                            'rounded-full px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] transition-all duration-200',
                             'border border-white/85 bg-white/72 text-foreground/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_4px_12px_rgba(15,23,42,0.08)]',
                             'dark:border-white/10 dark:bg-white/[0.06] dark:text-white/72 dark:shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]',
                             pwaNotificationsEnabled && !notificationTestBusy && 'hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_6px_16px_rgba(15,23,42,0.1)] dark:hover:shadow-[0_10px_24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)]',
@@ -2263,11 +2263,11 @@ export default function FundPage() {
                         </button>
                       )}
                       <div className={cn(
-                        'hidden rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.18em] sm:flex items-center gap-1.5',
+                        'hidden rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] sm:flex items-center gap-1.5',
                         pwaNotificationsEnabled
-                          ? 'bg-[#E11D48]/14 text-[#E11D48] border border-[#E11D48]/18'
+                          ? 'bg-[var(--fm-accent)]/14 text-[var(--fm-accent)] border border-[var(--fm-accent)]/18'
                           : notificationPermission === 'denied'
-                            ? 'bg-[#FF6B00]/10 text-[#FF6B00] border border-[#FF6B00]/20'
+                            ? 'bg-[var(--fm-flame)]/10 text-[var(--fm-flame)] border border-[var(--fm-flame)]/20'
                             : 'bg-black/5 text-foreground/45 border border-black/5 dark:bg-white/5 dark:text-white/40 dark:border-white/[0.06]'
                       )}>
                         {notificationPermission === 'granted' ? <Unlock size={10} strokeWidth={2.4} /> : <Lock size={10} strokeWidth={2.4} />}
@@ -2291,7 +2291,7 @@ export default function FundPage() {
 
                   {/* ── Alert Threshold — Auto-Lock on Release ── */}
                   <div className={cn(
-                    'w-full flex-1 flex flex-col rounded-[20px] px-5 pt-5 pb-4 relative overflow-hidden',
+                    'w-full flex-1 flex flex-col rounded-[22px] px-5 pt-5 pb-4 relative overflow-hidden',
                     'bg-gradient-to-b from-white/95 to-white/65',
                     'border border-white/90 border-t-white',
                     'shadow-[inset_0_2px_4px_rgba(255,255,255,1),inset_0_-1px_2px_rgba(0,0,0,0.04),0_8px_24px_-6px_rgba(15,23,42,0.09),0_2px_4px_rgba(0,0,0,0.03)]',
@@ -2313,7 +2313,7 @@ export default function FundPage() {
                         )}>
                           <Target size={15} className="text-foreground/50 dark:text-white/50" />
                         </div>
-                        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-foreground/70 dark:text-white/70">Threshold</div>
+                        <div className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/70 dark:text-white/70">Threshold</div>
                       </div>
 
                       {/* The hero number display with lock state */}
@@ -2326,14 +2326,14 @@ export default function FundPage() {
                           className={cn(
                             'relative flex items-center justify-center min-w-[56px] h-[34px] rounded-[10px] px-2.5',
                             thresholdLocked
-                              ? 'bg-[#E11D48]/10 border border-[#E11D48]/20 dark:bg-[#E11D48]/[0.06] dark:border-[#E11D48]/15'
+                              ? 'bg-[var(--fm-accent)]/10 border border-[var(--fm-accent)]/20 dark:bg-[var(--fm-accent)]/[0.06] dark:border-[var(--fm-accent)]/15'
                               : 'bg-black/[0.04] border border-black/[0.06] dark:bg-white/[0.04] dark:border-white/[0.06]'
                           )}
                         >
                           <span className={cn(
                             'text-[18px] font-black tabular-nums tracking-tight',
                             thresholdLocked
-                              ? 'text-[#BE123C] dark:text-[#E11D48] dark:drop-shadow-[0_0_10px_rgba(225,29,72,0.3)]'
+                              ? 'text-[var(--fm-accent-deep)] dark:text-[var(--fm-accent)] dark:drop-shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.3)]'
                               : 'text-foreground/80 dark:text-white/80',
                             'transition-colors duration-300'
                           )}>
@@ -2347,7 +2347,7 @@ export default function FundPage() {
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.5, opacity: 0 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                                className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-[#E11D48] shadow-[0_2px_6px_rgba(225,29,72,0.4),inset_0_1px_1px_rgba(255,255,255,0.6)]"
+                                className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-[var(--fm-accent)] shadow-[0_2px_6px_rgb(var(--fm-accent-rgb)/0.4),inset_0_1px_1px_rgba(255,255,255,0.6)]"
                               >
                                 <Check size={9} strokeWidth={3.5} className="text-black" />
                               </motion.div>
@@ -2399,8 +2399,8 @@ export default function FundPage() {
                           transition={{ duration: 0.15, ease: 'easeOut' }}
                           className={cn(
                             'absolute inset-y-[2px] left-[2px] rounded-full',
-                            'bg-[#E11D48] shadow-[0_0_14px_rgba(225,29,72,0.45),inset_0_1px_2px_rgba(255,255,255,0.8),inset_0_-1px_2px_rgba(0,0,0,0.15)]',
-                            isDraggingSlider && 'shadow-[0_0_22px_rgba(225,29,72,0.65),inset_0_1px_2px_rgba(255,255,255,1),inset_0_-1px_3px_rgba(0,0,0,0.2)]',
+                            'bg-[var(--fm-accent)] shadow-[0_0_14px_rgb(var(--fm-accent-rgb)/0.45),inset_0_1px_2px_rgba(255,255,255,0.8),inset_0_-1px_2px_rgba(0,0,0,0.15)]',
+                            isDraggingSlider && 'shadow-[0_0_22px_rgb(var(--fm-accent-rgb)/0.65),inset_0_1px_2px_rgba(255,255,255,1),inset_0_-1px_3px_rgba(0,0,0,0.2)]',
                             'transition-shadow duration-200'
                           )}
                         />
@@ -2419,14 +2419,14 @@ export default function FundPage() {
                             'shadow-[0_3px_10px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.15),inset_0_2px_3px_rgba(255,255,255,1),inset_0_-2px_3px_rgba(0,0,0,0.08)]',
                             'dark:from-[#2a2a2a] dark:to-[#1a1a1a] dark:border-white/10',
                             'dark:shadow-[0_3px_12px_rgba(0,0,0,0.7),0_1px_3px_rgba(0,0,0,0.5),inset_0_2px_3px_rgba(255,255,255,0.12),inset_0_-2px_3px_rgba(0,0,0,0.3)]',
-                            isDraggingSlider && 'dark:shadow-[0_6px_20px_rgba(225,29,72,0.25),0_3px_8px_rgba(0,0,0,0.6),inset_0_2px_3px_rgba(255,255,255,0.15)]',
+                            isDraggingSlider && 'dark:shadow-[0_6px_20px_rgb(var(--fm-accent-rgb)/0.25),0_3px_8px_rgba(0,0,0,0.6),inset_0_2px_3px_rgba(255,255,255,0.15)]',
                             'transition-opacity duration-300'
                           )}
                         >
                           {/* Inner dot indicator */}
                           <div className={cn(
                             'absolute inset-0 m-auto w-[6px] h-[6px] rounded-full',
-                            thresholdLocked ? 'bg-black/10 dark:bg-white/10' : 'bg-[#E11D48]/80 shadow-[0_0_6px_rgba(225,29,72,0.4)]',
+                            thresholdLocked ? 'bg-black/10 dark:bg-white/10' : 'bg-[var(--fm-accent)]/80 shadow-[0_0_6px_rgb(var(--fm-accent-rgb)/0.4)]',
                             'transition-all duration-300'
                           )} />
                         </motion.div>
@@ -2445,7 +2445,7 @@ export default function FundPage() {
 
                   {/* ── System Eject (Sign Out) ── */}
                   <div className={cn(
-                    'w-full flex items-center justify-between rounded-[20px] px-5 py-[18px] mt-4',
+                    'w-full flex items-center justify-between rounded-[22px] px-5 py-[18px] mt-4',
                     // Base Glass Shell
                     'bg-gradient-to-b from-white/90 to-white/60 dark:from-white/[0.06] dark:to-white/[0.015]',
                     'border border-white/90 border-t-white dark:border-white/[0.06] dark:border-t-white/[0.1]',
@@ -2455,15 +2455,15 @@ export default function FundPage() {
                     <div className="flex items-center gap-4">
                       {/* Hardware Icon Block */}
                       <div className={cn(
-                        'flex items-center justify-center w-10 h-10 rounded-[12px]',
+                        'flex items-center justify-center w-10 h-10 rounded-[14px]',
                         'bg-white/70 border border-white/90 shadow-[inset_0_1px_2px_rgba(255,255,255,1),0_2px_6px_rgba(0,0,0,0.06)]',
                         'dark:bg-black/50 dark:border-white/[0.05] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.5),0_1px_0_rgba(255,255,255,0.04)]',
                       )}>
-                        <LogOut size={16} strokeWidth={2.5} className="text-[#E11D48] drop-shadow-[0_2px_4px_rgba(225,29,72,0.2)] dark:drop-shadow-[0_2px_4px_rgba(225,29,72,0.4)]" />
+                        <LogOut size={16} strokeWidth={2.5} className="text-[var(--fm-accent)] drop-shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.2)] dark:drop-shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.4)]" />
                       </div>
 
                       <div className="text-left">
-                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-foreground/80 dark:text-white/80">
+                        <div className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/80 dark:text-white/80">
                           End Session
                         </div>
                         <div className="mt-1 text-[8px] font-bold uppercase tracking-[0.14em] text-foreground/40 dark:text-white/30">
@@ -2480,17 +2480,17 @@ export default function FundPage() {
                       whileTap={{ scale: 0.92 }}
                       className={cn(
                         'relative flex items-center justify-center px-5 h-[34px] rounded-full overflow-hidden outline-none',
-                        'bg-[#E11D48]',
+                        'bg-[var(--fm-accent)]',
                         // Light mode premium red shadows
-                        'shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.45),0_4px_12px_rgba(225,29,72,0.25)]',
+                        'shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.45),0_4px_12px_rgb(var(--fm-accent-rgb)/0.25)]',
                         // Dark mode premium red shadows
-                        'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.2),0_0_16px_rgba(225,29,72,0.4),0_6px_16px_rgba(0,0,0,0.4)]',
+                        'dark:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.2),0_0_16px_rgb(var(--fm-accent-rgb)/0.4),0_6px_16px_rgba(0,0,0,0.4)]',
                         'transition-shadow duration-300',
-                        'hover:shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.6),0_6px_20px_rgba(225,29,72,0.4)]',
-                        'dark:hover:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.3),0_0_24px_rgba(225,29,72,0.6),0_8px_20px_rgba(0,0,0,0.5)]'
+                        'hover:shadow-[inset_0_3px_6px_rgba(136,19,55,0.55),inset_0_-1px_2px_rgba(255,255,255,0.6),0_6px_20px_rgb(var(--fm-accent-rgb)/0.4)]',
+                        'dark:hover:shadow-[inset_0_3px_8px_rgba(0,0,0,0.5),inset_0_-1px_2px_rgba(255,255,255,0.3),0_0_24px_rgb(var(--fm-accent-rgb)/0.6),0_8px_20px_rgba(0,0,0,0.5)]'
                       )}
                     >
-                      <span className="relative z-10 text-[10px] font-black uppercase tracking-[0.2em] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                      <span className="relative z-10 text-[10px] font-black uppercase tracking-[0.22em] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
                         Sign Out
                       </span>
                     </motion.button>
@@ -2502,10 +2502,10 @@ export default function FundPage() {
 
             {/* Bottom Section: Unified Feed Coverage & Feed-Wise Usage (The Crown Jewel) */}
             <motion.div variants={tileVariant}>
-              <div className="text-[12px] font-black uppercase tracking-[0.16em] text-foreground/50 mb-4 px-2 select-none">Feed Bundles & Usage</div>
+              <div className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/50 mb-4 px-2 select-none">Feed Bundles & Usage</div>
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-6">
                 {feeds.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-[11px] font-black uppercase tracking-[0.16em] text-foreground/30">
+                    <div className="col-span-full py-12 text-center text-[12px] font-black uppercase tracking-[0.14em] text-foreground/30">
                       No structured feeds
                     </div>
                 )}
@@ -2534,25 +2534,25 @@ export default function FundPage() {
                     >
                      {/* massive premium Liquid Glass card for each Feed Bundle */}
                      <motion.div whileTap={{ scale: 0.98 }} className={cn(
-                      'fm-depth-glass relative overflow-hidden rounded-[32px] p-6 h-full flex flex-col lg:p-7',
+                      'fm-depth-glass relative overflow-hidden rounded-[34px] p-6 h-full flex flex-col lg:p-7',
                       'bg-white/70 border border-white/80',
                       'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(0,0,0,0.04),0_12px_40px_-4px_rgba(15,23,42,0.06)]',
                       'dark:bg-[rgba(10,10,10,0.65)] dark:border-white/[0.06] dark:border-t-white/[0.1]',
                       'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_56px_rgba(0,0,0,0.5)]',
                       'transition-colors duration-500',
-                      isPrimed && 'dark:bg-[rgba(15,15,15,0.85)] bg-white/90 ring-1 ring-[#E11D48]/40'
+                      isPrimed && 'dark:bg-[rgba(15,15,15,0.85)] bg-white/90 ring-1 ring-[var(--fm-accent)]/40'
                     )}>
                       {/* Card Header (Bundle Info & Link Arrow) */}
                       <div className="flex items-start justify-between mb-6">
                         <div>
-                           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/50 mb-1">Bundle</div>
-                           <h3 className="text-[24px] font-black uppercase tracking-[-0.04em] text-foreground dark:text-white/95 leading-none">{feed.title}</h3>
+                           <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/50 mb-1">Bundle</div>
+                           <h3 className="text-[22px] font-black uppercase tracking-[-0.04em] text-foreground dark:text-white/95 leading-none">{feed.title}</h3>
                         </div>
                         <div className={cn(
                           'flex items-center gap-4',
                         )}>
                           <div className="text-right">
-                             <div className="text-[9px] font-black uppercase tracking-[0.12em] text-foreground/40 mb-1">Total Posts</div>
+                             <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/40 mb-1">Total Posts</div>
                              <div className="text-[16px] font-black text-foreground/80 dark:text-white/80 leading-none">{feed.totalPosts}</div>
                           </div>
 
@@ -2563,14 +2563,14 @@ export default function FundPage() {
                               'bg-white/90 border border-white/90 shadow-[0_4px_12px_rgba(0,0,0,0.05),inset_0_2px_4px_rgba(255,255,255,1)]',
                               'dark:bg-black dark:border-white/5 dark:shadow-[inset_0_4px_8px_rgba(0,0,0,0.8),inset_0_-1px_1px_rgba(255,255,255,0.06),0_1px_1px_rgba(255,255,255,0.05)]',
                               'transition-all duration-300',
-                              isPrimed && 'dark:shadow-[0_8px_24px_rgba(225,29,72,0.4)]'
+                              isPrimed && 'dark:shadow-[0_8px_24px_rgb(var(--fm-accent-rgb)/0.4)]'
                             )}>
                               {/* The Neon Fill Animation */}
                               <motion.div
                                 initial={{ y: '100%' }}
                                 animate={{ y: isPrimed ? '0%' : '100%' }}
                                 transition={{ duration: 0.3, ease: 'easeOut' }}
-                                className="absolute inset-0 bg-[#E11D48] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)]"
+                                className="absolute inset-0 bg-[var(--fm-accent)] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)]"
                               />
                               <ArrowUpRight
                                 size={18}
@@ -2587,7 +2587,7 @@ export default function FundPage() {
                                   initial={{ opacity: 0, y: 5 }}
                                   animate={{ opacity: 1, y: 0 }}
                                   exit={{ opacity: 0, y: 3 }}
-                                  className="absolute -bottom-5 right-6 text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48]"
+                                  className="absolute -bottom-5 right-6 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]"
                                 >
                                   Tap To Enter
                                 </motion.div>
@@ -2601,7 +2601,7 @@ export default function FundPage() {
                       <div className="space-y-4">
                          {feed.feeders.map(f => (
                            <div key={f.handle} className="grid grid-cols-[100px_1fr_40px] items-center gap-4">
-                             <span className="text-[11px] font-black uppercase tracking-[0.1em] text-foreground/80 dark:text-white/80 truncate">@{f.handle}</span>
+                             <span className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/80 dark:text-white/80 truncate">@{f.handle}</span>
 
                              {/* Cylindrical Recessed Hardware Meter */}
                              <div className="relative h-3.5 w-full rounded-full bg-black/5 border border-black/5 dark:bg-black/80 dark:border-transparent dark:shadow-[inset_0_3px_6px_rgba(0,0,0,0.8),inset_0_-1px_1px_rgba(255,255,255,0.06),0_1px_1px_rgba(255,255,255,0.05)] overflow-hidden">
@@ -2609,11 +2609,11 @@ export default function FundPage() {
                                  initial={false}
                                  animate={{ width: `${f.pct}%` }}
                                  transition={{ duration: 0.18, ease: 'easeOut' }}
-                                 className="absolute inset-[1.5px] rounded-full bg-[#E11D48] shadow-[0_0_12px_rgba(225,29,72,0.4),inset_0_1px_2px_rgba(255,255,255,0.7),inset_0_-1px_2px_rgba(0,0,0,0.15)]"
+                                 className="absolute inset-[1.5px] rounded-full bg-[var(--fm-accent)] shadow-[0_0_12px_rgb(var(--fm-accent-rgb)/0.4),inset_0_1px_2px_rgba(255,255,255,0.7),inset_0_-1px_2px_rgba(0,0,0,0.15)]"
                                />
                              </div>
 
-                             <span className="text-[11px] font-black text-right text-foreground/60 dark:text-white/60">{f.count}<span className="text-foreground/30 dark:text-white/30 text-[9px] font-bold">/{slotPostsCap}</span></span>
+                             <span className="text-[12px] font-black text-right text-foreground/60 dark:text-white/60">{f.count}<span className="text-foreground/30 dark:text-white/30 text-[10px] font-bold">/{slotPostsCap}</span></span>
                            </div>
                          ))}
                       </div>

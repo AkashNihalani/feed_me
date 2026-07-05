@@ -87,7 +87,7 @@ export function AppHeader({ id, children, compressed }: AppHeaderProps) {
             : HEADER_ROUTE_MORPH.exit}
         exit={reduceMotion ? { opacity: 0, transition: { duration: 0.01 } } : HEADER_ROUTE_MORPH.exit}
         className={cn(
-          'w-full overflow-hidden',
+          'h-full w-full overflow-hidden',
           isRoutePresent ? 'relative' : 'absolute inset-x-0 top-0',
         )}
         style={{
@@ -125,7 +125,7 @@ function RouteTransitionLayer({
         animate={reduceMotion
           ? { opacity: 1, transition: { duration: 0.01 } }
           : PAGE_SURFACE_MOTION.animate}
-        className="col-start-1 row-start-1 h-full min-h-[100dvh] w-full bg-[#f4f7f9] dark:bg-[#030303]"
+        className="col-start-1 row-start-1 h-full min-h-[100dvh] w-full bg-[var(--fm-page)]"
         style={{
           willChange: reduceMotion ? undefined : 'opacity',
           pointerEvents: 'auto',
@@ -164,7 +164,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <HeaderLayerContext.Provider value={headerLayerValue}>
-      <div className="fm-app-shell-root relative h-full min-h-[100dvh] w-full bg-[#f4f7f9] dark:bg-[#030303]">
+      <div className="fm-app-shell-root relative h-full min-h-[100dvh] w-full bg-[var(--fm-page)]">
         <div
           className={cn(
             'pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
@@ -178,7 +178,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 headerCompressed && 'fm-depth-chrome--header-compressed',
               )}
             >
-              <div ref={setHeaderLayerElement} className="relative overflow-hidden" />
+              <div ref={setHeaderLayerElement} className="relative h-full overflow-hidden" />
             </div>
           </div>
         </div>

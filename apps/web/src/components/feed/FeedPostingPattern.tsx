@@ -178,16 +178,16 @@ function computeActiveDays(rhythmDays: PostingPatternPayload['rhythm_days']): nu
 /* ── Tokens ── */
 
 const CHIP_CLASS = cn(
-  'rounded-[16px] px-3 py-3 text-center sm:rounded-[14px] sm:px-3 sm:py-2.5',
+  'rounded-[18px] px-3 py-3 text-center sm:rounded-[14px] sm:px-3 sm:py-2.5',
   'bg-gradient-to-b from-white/70 to-white/40 border border-white/70',
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_2px_8px_rgba(15,23,42,0.04)]',
   'dark:from-white/[0.05] dark:to-white/[0.02] dark:border-white/[0.06]',
   'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_12px_rgba(0,0,0,0.2)]',
 );
 
-const CHIP_LABEL = 'text-[10px] font-black uppercase leading-[1.02] tracking-[0.13em] text-foreground/45 dark:text-white/38 sm:text-[9px]';
-const CHIP_VALUE = 'mt-1.5 text-[17px] font-black leading-none tracking-[-0.03em] text-foreground dark:text-white sm:mt-1 sm:text-[17px] lg:text-[18px]';
-const SECTION_LABEL = 'text-[10px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32 sm:text-[9px]';
+const CHIP_LABEL = 'text-[10px] font-black uppercase leading-[1.02] tracking-[0.14em] text-foreground/45 dark:text-white/38 sm:text-[10px]';
+const CHIP_VALUE = 'mt-1.5 text-[18px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white sm:mt-1 sm:text-[18px] lg:text-[18px]';
+const SECTION_LABEL = 'text-[10px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32 sm:text-[10px]';
 
 function statGridClass(total: number): string {
   if (total <= 2) return 'grid-cols-6 sm:grid-cols-2';
@@ -243,9 +243,9 @@ function DeltaPill({ value }: { value: number }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 rounded-full px-1.5 py-[3px] text-[9px] font-black tabular-nums leading-none',
+        'inline-flex items-center gap-0.5 rounded-full px-1.5 py-[3px] text-[10px] font-black tabular-nums leading-none',
         positive
-          ? 'bg-[#E11D48]/10 text-[#E11D48] dark:bg-[#E11D48]/15'
+          ? 'bg-[var(--fm-accent)]/10 text-[var(--fm-accent)] dark:bg-[var(--fm-accent)]/15'
           : 'bg-foreground/[0.06] text-foreground/55 dark:bg-white/[0.06] dark:text-white/45',
       )}
     >
@@ -264,7 +264,7 @@ function StatusDot({ status }: { status: PostingPatternPayload['feeder_rows'][nu
         isDormant
           ? 'bg-foreground/20 dark:bg-white/20'
           : status === 'accelerating'
-            ? 'bg-[#E11D48] shadow-[0_0_6px_rgba(225,29,72,0.45)]'
+            ? 'bg-[var(--fm-accent)] shadow-[0_0_6px_rgb(var(--fm-accent-rgb)/0.45)]'
             : 'bg-foreground/45 dark:bg-white/45',
       )}
     />
@@ -329,7 +329,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
       <div className="fm-depth-glass relative flex h-full w-full flex-col justify-between overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
         <div className="relative z-10">
           <span className="fm-label fm-depth-title">Posting Pulse</span>
-          <div className="mt-5 text-[24px] font-black leading-tight text-foreground dark:text-white sm:text-[28px]">
+          <div className="mt-5 text-[22px] font-black leading-tight text-foreground dark:text-white sm:text-[28px]">
             Just getting started
           </div>
           <p className="mt-3 max-w-[26rem] text-[12px] font-semibold leading-5 text-foreground/52 dark:text-white/48">
@@ -362,7 +362,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
             key={headline}
             {...(reduceMotion ? {} : ENTRY_EXIT)}
             transition={SPRING}
-            className="mt-2 text-[clamp(15px,3vw,20px)] font-black leading-[1.25] tracking-[-0.02em] text-foreground dark:text-white"
+            className="mt-2 text-[clamp(15px,3vw,20px)] font-black leading-[1.25] tracking-[-0.04em] text-foreground dark:text-white"
           >
             {headline}
           </motion.p>
@@ -396,9 +396,9 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                       }}
                       transition={{ ...SPRING, delay: Math.min((gi * group.days.length + di) * 0.015, 0.3) }}
                       className={cn(
-                        'flex-1 rounded-[4px]',
+                        'flex-1 rounded-[6px]',
                         hasPosts
-                          ? 'bg-[#E11D48] shadow-[0_0_8px_rgba(225,29,72,0.2)] dark:shadow-[0_0_10px_rgba(225,29,72,0.3)]'
+                          ? 'bg-[var(--fm-accent)] shadow-[0_0_8px_rgb(var(--fm-accent-rgb)/0.2)] dark:shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.3)]'
                           : 'bg-black/8 dark:bg-white/10 rounded-full',
                       )}
                       style={{ minHeight: hasPosts ? 4 : undefined }}
@@ -416,7 +416,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
             {dotGroups.map((group, i) => (
               <div
                 key={i}
-                className="flex-1 text-center text-[9px] font-black uppercase tracking-[0.14em] text-foreground/30 dark:text-white/22 sm:text-[8px]"
+                className="flex-1 text-center text-[10px] font-black uppercase tracking-[0.14em] text-foreground/30 dark:text-white/22 sm:text-[8px]"
               >
                 {group.label}
               </div>
@@ -453,7 +453,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
               </div>
               <div className={CHIP_VALUE}>
                 <AnimatedValue value={formatCadence(pattern.posts_per_week_current)} className="inline tabular-nums" />
-                <span className="ml-0.5 text-[10px] font-black text-foreground/45 dark:text-white/40 sm:text-[11px]">/wk</span>
+                <span className="ml-0.5 text-[10px] font-black text-foreground/45 dark:text-white/40 sm:text-[12px]">/wk</span>
               </div>
             </motion.div>
 
@@ -498,17 +498,17 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                   initial={{ width: 0 }}
                   animate={{ width: `${item.pct}%` }}
                   transition={{ duration: 0.6, ease: EASE, delay: 0.35 + i * 0.05 }}
-                  className="pointer-events-none absolute inset-y-0 left-0 rounded-[14px] bg-[#E11D48]/[0.07] dark:bg-[#E11D48]/[0.12]"
+                  className="pointer-events-none absolute inset-y-0 left-0 rounded-[14px] bg-[var(--fm-accent)]/[0.07] dark:bg-[var(--fm-accent)]/[0.12]"
                 />
                 {/* Top accent bar for the dominant media type */}
                 {isTop && (
-                  <span className="pointer-events-none absolute inset-x-3 top-0 h-[1.5px] rounded-b-full bg-[#E11D48]/70" />
+                  <span className="pointer-events-none absolute inset-x-3 top-0 h-[1.5px] rounded-b-full bg-[var(--fm-accent)]/70" />
                 )}
                 <div
                   className={cn(
                     CHIP_LABEL,
                     'relative z-10 flex min-h-[20px] items-center justify-center gap-1',
-                    isTop && 'text-[#E11D48]/80 dark:text-[#E11D48]',
+                    isTop && 'text-[var(--fm-accent)]/80 dark:text-[var(--fm-accent)]',
                   )}
                 >
                   <MediaGlyph type={item.type} strokeWidth={2.6} className="h-2.5 w-2.5" />
@@ -586,7 +586,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className={SECTION_LABEL}>Top contributors</span>
-                  <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-foreground/32 dark:text-white/24">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-foreground/32 dark:text-white/24">
                     posts / week
                   </span>
                 </div>
@@ -632,7 +632,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                             <div className="flex shrink-0 items-center gap-1.5">
                               <span
                                 className={cn(
-                                  'text-[11px] font-black tabular-nums',
+                                  'text-[12px] font-black tabular-nums',
                                   isDormant
                                     ? 'text-foreground/40 dark:text-white/30'
                                     : 'text-foreground/75 dark:text-white/70',
@@ -665,7 +665,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                                 'absolute inset-y-0 left-0 rounded-full',
                                 isDormant
                                   ? 'bg-foreground/10 dark:bg-white/8'
-                                  : 'bg-gradient-to-r from-[#E11D48]/85 to-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.22)] dark:shadow-[0_0_12px_rgba(225,29,72,0.32)]',
+                                  : 'bg-gradient-to-r from-[var(--fm-accent)]/85 to-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.22)] dark:shadow-[0_0_12px_rgb(var(--fm-accent-rgb)/0.32)]',
                               )}
                             />
                           </div>
@@ -710,29 +710,29 @@ function FingerprintCell({
         y: { duration: 0.22, ease: EASE },
       }}
       className={cn(
-        'relative flex min-h-[62px] items-center gap-2 rounded-[13px] px-2.5 py-2 sm:min-h-[64px] sm:gap-2.5 sm:rounded-[12px] sm:px-2.5 sm:py-2.5 lg:min-h-[66px]',
+        'relative flex min-h-[62px] items-center gap-2 rounded-[14px] px-2.5 py-2 sm:min-h-[64px] sm:gap-2.5 sm:rounded-[14px] sm:px-2.5 sm:py-2.5 lg:min-h-[66px]',
         'bg-black/[0.02] border border-black/[0.04]',
         'dark:bg-white/[0.02] dark:border-white/[0.04]',
       )}
     >
       <span
         className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] sm:h-7 sm:w-7 sm:rounded-[9px]',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] sm:h-7 sm:w-7 sm:rounded-[10px]',
           accent
-            ? 'bg-[#E11D48]/10 text-[#E11D48] dark:bg-[#E11D48]/15'
+            ? 'bg-[var(--fm-accent)]/10 text-[var(--fm-accent)] dark:bg-[var(--fm-accent)]/15'
             : 'bg-black/[0.04] text-foreground/55 dark:bg-white/[0.06] dark:text-white/45',
         )}
       >
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[8px] font-black uppercase tracking-[0.13em] text-foreground/42 dark:text-white/34 sm:text-[8px]">
+        <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/34 sm:text-[8px]">
           {label}
         </div>
         <AnimatedValue
           value={value}
           className={cn(
-            'mt-0.5 text-[14px] font-black leading-[1.05] tracking-[-0.025em] text-foreground dark:text-white sm:text-[15px] lg:text-[16px]',
+            'mt-0.5 text-[14px] font-black leading-[1.05] tracking-[-0.04em] text-foreground dark:text-white sm:text-[16px] lg:text-[16px]',
             tabular && 'tabular-nums',
           )}
         />

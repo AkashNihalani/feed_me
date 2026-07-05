@@ -19,11 +19,11 @@ const KIND_META: Record<RunSignalKind, {
   icon: typeof TrendingUp;
   verb: string;
 }> = {
-  trend: { label: 'Trend', tone: 'text-[#E11D48] bg-[#E11D48]/10 border-[#E11D48]/18', icon: TrendingUp, verb: 'Do more' },
+  trend: { label: 'Trend', tone: 'text-[var(--fm-accent)] bg-[var(--fm-accent)]/10 border-[var(--fm-accent)]/18', icon: TrendingUp, verb: 'Do more' },
   watch: { label: 'Watch', tone: 'text-[#7C2D12] bg-[#F97316]/10 border-[#F97316]/18 dark:text-[#FDBA74]', icon: Eye, verb: 'Watch' },
   easy_win: { label: 'Easy win', tone: 'text-[#0F766E] bg-[#14B8A6]/10 border-[#14B8A6]/18 dark:text-[#5EEAD4]', icon: Zap, verb: 'Try next' },
   what_changed: { label: 'Changed', tone: 'text-[#4338CA] bg-[#6366F1]/10 border-[#6366F1]/18 dark:text-[#A5B4FC]', icon: RefreshCcw, verb: 'New shift' },
-  durability: { label: 'Durability', tone: 'text-[#BE123C] bg-[#FB7185]/10 border-[#FB7185]/18 dark:text-[#FDA4AF]', icon: Activity, verb: 'Has legs' },
+  durability: { label: 'Durability', tone: 'text-[var(--fm-accent-deep)] bg-[var(--fm-accent-bright)]/10 border-[var(--fm-accent-bright)]/18 dark:text-[var(--fm-accent-soft)]', icon: Activity, verb: 'Has legs' },
 };
 
 function mediaProxyUrl(postKey: string | null | undefined): string {
@@ -72,7 +72,7 @@ function EvidenceThumb({
     <div
       className={cn(
         'group/evidence relative isolate overflow-hidden border border-black/[0.06] bg-[#f7eef2] shadow-[0_14px_30px_-24px_rgba(15,23,42,0.55)] dark:border-white/[0.08] dark:bg-white/[0.06]',
-        compact ? 'aspect-[4/5] rounded-[16px]' : 'aspect-[16/11] rounded-[18px]',
+        compact ? 'aspect-[4/5] rounded-[18px]' : 'aspect-[16/11] rounded-[18px]',
       )}
     >
       {src && !dead ? (
@@ -86,12 +86,12 @@ function EvidenceThumb({
           onError={() => setDead(true)}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_28%_18%,rgba(225,29,72,0.2),transparent_44%),linear-gradient(135deg,#fff,#f9eef2)] px-4 text-center text-[9px] font-black uppercase tracking-[0.14em] text-[#E11D48]/58 dark:bg-[radial-gradient(circle_at_28%_18%,rgba(251,113,133,0.22),transparent_44%),linear-gradient(135deg,#171717,#09090b)] dark:text-[#FDA4AF]/58">
+        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_28%_18%,rgb(var(--fm-accent-rgb)/0.2),transparent_44%),linear-gradient(135deg,#fff,#f9eef2)] px-4 text-center text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/58 dark:bg-[radial-gradient(circle_at_28%_18%,rgb(var(--fm-accent-bright-rgb)/0.22),transparent_44%),linear-gradient(135deg,#171717,#09090b)] dark:text-[var(--fm-accent-soft)]/58">
           {title.slice(0, 34)}
         </div>
       )}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02),transparent_38%,rgba(0,0,0,0.78))]" />
-      <div className="absolute left-2.5 top-2.5 rounded-full bg-black/58 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.13em] text-white backdrop-blur-md">
+      <div className="absolute left-2.5 top-2.5 rounded-full bg-black/58 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white backdrop-blur-md">
         {String(index + 1).padStart(2, '0')}
       </div>
       <div className="absolute inset-x-0 bottom-0 p-2.5">
@@ -99,7 +99,7 @@ function EvidenceThumb({
           {evidenceStat(post)}
         </div>
         {showTitle && (
-          <div className="mt-1.5 line-clamp-2 text-[9px] font-black uppercase leading-snug tracking-[0.08em] text-white/92">
+          <div className="mt-1.5 line-clamp-2 text-[10px] font-black uppercase leading-snug tracking-[0.14em] text-white/92">
             {title}
           </div>
         )}
@@ -229,9 +229,9 @@ function MetricPill({ metric }: { metric: RunSignalMetric }) {
   return (
     <span
       className={cn(
-        'inline-flex min-w-0 items-baseline gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.11em]',
+        'inline-flex min-w-0 items-baseline gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]',
         metric.accent
-          ? 'border-[#E11D48]/18 bg-[#E11D48]/10 text-[#E11D48] dark:text-[#FB7185]'
+          ? 'border-[var(--fm-accent)]/18 bg-[var(--fm-accent)]/10 text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]'
           : 'border-black/[0.06] bg-white/60 text-black/48 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/44',
       )}
     >
@@ -279,7 +279,7 @@ function SignalCard({
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 opacity-80"
         style={{
-          background: 'radial-gradient(ellipse 72% 82% at 0% 0%, rgba(225,29,72,0.11), transparent 54%)',
+          background: 'radial-gradient(ellipse 72% 82% at 0% 0%, rgb(var(--fm-accent-rgb)/0.11), transparent 54%)',
         }}
       />
 
@@ -292,20 +292,20 @@ function SignalCard({
           <span className="rounded-full border border-black/[0.05] bg-white/62 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/40 dark:border-white/[0.07] dark:bg-white/[0.05] dark:text-white/36">
             {signal.account}
           </span>
-          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-black/30 dark:text-white/24">
+          <span className="text-[8px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/24">
             {signal.runLabel}
           </span>
           {memoryCount > 0 && (
-            <span className="rounded-full border border-[#E11D48]/12 bg-[#E11D48]/[0.075] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-[#E11D48] dark:text-[#FB7185]">
+            <span className="rounded-full border border-[var(--fm-accent)]/12 bg-[var(--fm-accent)]/[0.075] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]">
               {memoryCount} memory
             </span>
           )}
         </div>
 
-        <h3 className="mt-3 max-w-[760px] text-[25px] font-black leading-[0.98] tracking-normal text-black dark:text-white sm:text-[30px] lg:text-[34px]">
+        <h3 className="mt-3 max-w-[760px] text-[22px] font-black leading-[0.98] tracking-normal text-black dark:text-white sm:text-[28px] lg:text-[34px]">
           {signal.headline}
         </h3>
-        <p className="mt-3 line-clamp-3 max-w-[780px] text-[12.5px] font-bold leading-relaxed text-black/58 dark:text-white/46 sm:text-[13.5px]">
+        <p className="mt-3 line-clamp-3 max-w-[780px] text-[12px] font-bold leading-relaxed text-black/58 dark:text-white/46 sm:text-[14px]">
           {signal.explainer}
         </p>
 
@@ -316,10 +316,10 @@ function SignalCard({
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-black/[0.055] pt-3 dark:border-white/[0.06]">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-black/34 dark:text-white/28">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-black/34 dark:text-white/28">
             {meta.verb}
           </span>
-          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#E11D48] opacity-80 transition group-hover/signal:translate-x-0.5 group-hover/signal:opacity-100">
+          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] opacity-80 transition group-hover/signal:translate-x-0.5 group-hover/signal:opacity-100">
             Open evidence
             <ChevronRight size={12} strokeWidth={3} />
           </span>
@@ -362,7 +362,7 @@ function SignalPopup({
           onClick={onClose}
         >
           <motion.div
-            className="relative flex max-h-[88dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[#FAF9F6] shadow-[0_28px_90px_rgba(0,0,0,0.34)] dark:border-white/[0.08] dark:bg-[#08080a] sm:max-h-[86dvh] sm:grid sm:grid-cols-[minmax(0,1fr)_360px]"
+            className="relative flex max-h-[88dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[#FAF9F6] shadow-[0_28px_90px_rgba(0,0,0,0.34)] dark:border-white/[0.08] dark:bg-[var(--fm-ink)] sm:max-h-[86dvh] sm:grid sm:grid-cols-[minmax(0,1fr)_360px]"
             initial={{ opacity: 0, y: 34, scale: 0.982, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: 30, scale: 0.982, filter: 'blur(10px)' }}
@@ -377,7 +377,7 @@ function SignalPopup({
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.08] bg-white/86 text-black shadow-[0_12px_30px_-18px_rgba(0,0,0,0.42)] transition hover:bg-[#E11D48] hover:text-white active:scale-95 dark:border-white/[0.08] dark:bg-white/[0.08] dark:text-white"
+              className="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.08] bg-white/86 text-black shadow-[0_12px_30px_-18px_rgba(0,0,0,0.42)] transition hover:bg-[var(--fm-accent)] hover:text-white active:scale-95 dark:border-white/[0.08] dark:bg-white/[0.08] dark:text-white"
               aria-label="Close signal"
             >
               <X size={18} strokeWidth={3} />
@@ -395,15 +395,15 @@ function SignalPopup({
                     </span>
                   );
                 })()}
-                <span className="text-[9px] font-black uppercase tracking-[0.17em] text-black/36 dark:text-white/30">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/30">
                   {signal.account} · {signal.runLabel}
                 </span>
               </div>
 
-              <h2 className="mt-4 max-w-[780px] text-[36px] font-black leading-[0.94] tracking-normal text-black dark:text-white sm:text-[48px] lg:text-[58px]">
+              <h2 className="mt-4 max-w-[780px] text-[34px] font-black leading-[0.94] tracking-normal text-black dark:text-white sm:text-[48px] lg:text-[58px]">
                 {signal.headline}
               </h2>
-              <p className="mt-5 max-w-[760px] text-[15px] font-bold leading-relaxed text-black/66 dark:text-white/56 sm:text-[17px]">
+              <p className="mt-5 max-w-[760px] text-[16px] font-bold leading-relaxed text-black/66 dark:text-white/56 sm:text-[18px]">
                 {signal.explainer}
               </p>
 
@@ -414,17 +414,17 @@ function SignalPopup({
               </div>
 
               <div className="mt-7 border-t border-black/[0.08] pt-5 dark:border-white/[0.08]">
-                <div className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-black/38 dark:text-white/30">Evidence posts</div>
+                <div className="mb-3 text-[10px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/30">Evidence posts</div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {signal.evidence.map((post, index) => (
                     <div key={`popup-proof:${signal.id}:${post.post_key || post.title}:${index}`} className="min-w-0">
                       <EvidenceThumb post={post} index={index} showTitle={false} />
                       <div className="mt-2.5 flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="line-clamp-2 break-words text-[11px] font-black uppercase leading-snug tracking-[0.08em] text-black/72 dark:text-white/72">
+                          <div className="line-clamp-2 break-words text-[12px] font-black uppercase leading-snug tracking-[0.14em] text-black/72 dark:text-white/72">
                             {trimTitle(post.title)}
                           </div>
-                          <div className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/34 dark:text-white/28">
+                          <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-black/34 dark:text-white/28">
                             {[post.placed, formatMultiple(post.views_vs_usual), post.legs ? 'legs' : null].filter(Boolean).join(' · ') || 'proof'}
                           </div>
                         </div>
@@ -433,7 +433,7 @@ function SignalPopup({
                             href={post.post_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E11D48] text-white shadow-[0_10px_22px_-14px_rgba(225,29,72,0.8)] transition hover:scale-105 active:scale-95"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--fm-accent)] text-white shadow-[0_10px_22px_-14px_rgb(var(--fm-accent-rgb)/0.8)] transition hover:scale-105 active:scale-95"
                             aria-label="Open evidence post"
                           >
                             <ArrowUpRight size={14} strokeWidth={3} />
@@ -448,17 +448,17 @@ function SignalPopup({
               {memoryEvidence.length > 0 && (
                 <div className="mt-7 border-t border-black/[0.08] pt-5 dark:border-white/[0.08]">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E11D48] dark:text-[#FB7185]">Feeder memory</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]">Feeder memory</div>
                     {signal.memory_moves?.slice(0, 3).map((move) => (
                       <span
                         key={`${signal.id}:memory-move:${move}`}
-                        className="rounded-full border border-black/[0.06] bg-white/70 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-black/38 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/34"
+                        className="rounded-full border border-black/[0.06] bg-white/70 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/38 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/34"
                       >
                         {move}
                       </span>
                     ))}
                   </div>
-                  <p className="mb-3 max-w-[760px] text-[11px] font-bold leading-relaxed text-black/46 dark:text-white/38">
+                  <p className="mb-3 max-w-[760px] text-[12px] font-bold leading-relaxed text-black/46 dark:text-white/38">
                     Older examples appear only when this read points back to feeder memory.
                   </p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -467,14 +467,14 @@ function SignalPopup({
                         <EvidenceThumb post={post} index={index} showTitle={false} />
                         <div className="mt-2.5 flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="line-clamp-2 break-words text-[11px] font-black uppercase leading-snug tracking-[0.08em] text-black/72 dark:text-white/72">
+                            <div className="line-clamp-2 break-words text-[12px] font-black uppercase leading-snug tracking-[0.14em] text-black/72 dark:text-white/72">
                               {trimTitle(post.title)}
                             </div>
-                            <div className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-black/34 dark:text-white/28">
+                            <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-black/34 dark:text-white/28">
                               {[post.move_name, post.placed ? `past post ${post.placed}` : null].filter(Boolean).join(' · ') || 'older example'}
                             </div>
                             {post.receipt_read && (
-                              <div className="mt-2 line-clamp-3 text-[11px] font-bold leading-relaxed text-black/46 dark:text-white/38">
+                              <div className="mt-2 line-clamp-3 text-[12px] font-bold leading-relaxed text-black/46 dark:text-white/38">
                                 {post.receipt_read}
                               </div>
                             )}
@@ -499,19 +499,19 @@ function SignalPopup({
             </div>
 
             <aside className="hidden min-h-0 border-l border-black/[0.08] bg-white/72 p-5 dark:border-white/[0.08] dark:bg-white/[0.03] sm:block">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-black/38 dark:text-white/30">Quick read</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-black/38 dark:text-white/30">Quick read</div>
               <div className="mt-4 grid gap-2">
                 {signal.metrics.slice(0, 5).map((metric) => (
                   <div
                     key={`rail:${signal.id}:${metric.label}`}
                     className={cn(
-                      'rounded-[16px] border p-3',
+                      'rounded-[18px] border p-3',
                       metric.accent
-                        ? 'border-[#E11D48]/18 bg-[#E11D48]/10'
+                        ? 'border-[var(--fm-accent)]/18 bg-[var(--fm-accent)]/10'
                         : 'border-black/[0.06] bg-white/76 dark:border-white/[0.08] dark:bg-white/[0.05]',
                     )}
                   >
-                    <div className={cn('text-[24px] font-black leading-none', metric.accent ? 'text-[#E11D48] dark:text-[#FB7185]' : 'text-black dark:text-white')}>
+                    <div className={cn('text-[22px] font-black leading-none', metric.accent ? 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]' : 'text-black dark:text-white')}>
                       {metric.value}
                     </div>
                     <div className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/36 dark:text-white/30">
@@ -520,8 +520,8 @@ function SignalPopup({
                   </div>
                 ))}
               </div>
-              <div className="mt-5 rounded-[18px] border border-[#E11D48]/12 bg-[#E11D48]/[0.055] p-4">
-                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-[#E11D48] dark:text-[#FB7185]">
+              <div className="mt-5 rounded-[18px] border border-[var(--fm-accent)]/12 bg-[var(--fm-accent)]/[0.055] p-4">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]">
                   <Sparkles size={12} strokeWidth={3} />
                   Feed Me read
                 </div>
@@ -581,15 +581,15 @@ export default function RunSignalFeed({ feedId, selectedHandle = 'all' }: RunSig
     <section className="mt-7 w-full sm:mt-9 lg:mt-10" data-run-signal-feed="true">
       <div className="mb-3 flex items-end justify-between gap-3 border-b border-black/[0.08] pb-2.5 dark:border-white/[0.08]">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48]">
-            <span className="h-2 w-2 rounded-full bg-[#E11D48] shadow-[0_0_16px_rgba(225,29,72,0.42)]" />
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--fm-accent)] shadow-[0_0_16px_rgb(var(--fm-accent-rgb)/0.42)]" />
             Latest intelligence
           </div>
-          <h2 className="mt-1 text-[26px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[34px]">
+          <h2 className="mt-1 text-[28px] font-black leading-none tracking-normal text-black dark:text-white sm:text-[34px]">
             Feedbook
           </h2>
         </div>
-        <div className="shrink-0 rounded-full border border-black/[0.06] bg-white/70 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/34">
+        <div className="shrink-0 rounded-full border border-black/[0.06] bg-white/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-black/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/34">
           {loaded ? `${signals.length} signals${accountCount > 1 ? ` · ${accountCount} feeders` : ''}` : 'Reading'}
         </div>
       </div>

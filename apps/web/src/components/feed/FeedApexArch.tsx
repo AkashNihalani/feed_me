@@ -149,13 +149,13 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     transition={{ duration: 0.15 }}
                     className="flex flex-col items-center"
                   >
-                    <span className="max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.11em] text-black/40 dark:text-white/35">
+                    <span className="max-w-[96px] text-center text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/40 dark:text-white/35">
                       {normalizedSegments.find((s) => s.id === activeSegment)?.label}
                     </span>
-                    <span className="mt-0.5 text-[30px] font-black leading-none tracking-tighter text-black dark:text-white">
+                    <span className="mt-0.5 text-[28px] font-black leading-none tracking-tighter text-black dark:text-white">
                       {normalizedSegments.find((s) => s.id === activeSegment)?.count ?? 0}
                     </span>
-                    <span className="mt-1 max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.1em] text-black/35 dark:text-white/30">
+                    <span className="mt-1 max-w-[96px] text-center text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/35 dark:text-white/30">
                       {normalizedSegments.find((s) => s.id === activeSegment)?.percentage}% share
                     </span>
                   </motion.div>
@@ -168,10 +168,10 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     transition={{ duration: 0.15 }}
                     className="flex flex-col items-center"
                   >
-                    <span className="max-w-[96px] text-center text-[7px] font-black uppercase leading-none tracking-[0.11em] text-black/40 dark:text-white/35">
+                    <span className="max-w-[96px] text-center text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/40 dark:text-white/35">
                       {hasData ? 'Posts' : 'Awaiting Posts'}
                     </span>
-                    <span className="text-[32px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
+                    <span className="text-[34px] font-black leading-none tracking-tighter text-black dark:text-white mt-0.5">
                       {totalPostCount}
                     </span>
                     {!hasData ? (
@@ -204,16 +204,16 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                     <div
                       className={`h-2.5 w-2.5 shrink-0 rounded-full ${
                         isTop
-                          ? 'bg-[#E11D48] shadow-[0_0_6px_rgba(225,29,72,0.32)]'
+                          ? 'bg-[var(--fm-accent)] shadow-[0_0_6px_rgb(var(--fm-accent-rgb)/0.32)]'
                           : 'bg-black/15 dark:bg-white/15'
                       }`}
                     />
-                    <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.08em] text-black/60 dark:text-white/50">
+                    <span className="text-[10px] sm:text-[12px] font-black uppercase tracking-[0.14em] text-black/60 dark:text-white/50">
                       {seg.label}
                     </span>
                   </div>
                   <span
-                    className={`text-[13px] sm:text-[14px] font-black tabular-nums tracking-tight ${
+                    className={`text-[14px] sm:text-[14px] font-black tabular-nums tracking-tight ${
                       isTop
                         ? 'text-foreground dark:text-white'
                         : 'text-black/40 dark:text-white/35'
@@ -224,7 +224,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                 </motion.div>
               );
             }) : (
-              <div className="rounded-[16px] border border-black/6 bg-black/[0.025] px-3 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-black/42 dark:border-white/8 dark:bg-white/[0.03] dark:text-white/38">
+              <div className="rounded-[18px] border border-black/6 bg-black/[0.025] px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-black/42 dark:border-white/8 dark:bg-white/[0.03] dark:text-white/38">
                 No media mix yet. Posts in this window will populate this panel.
               </div>
             )}

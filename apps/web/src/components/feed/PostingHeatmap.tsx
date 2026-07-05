@@ -106,10 +106,10 @@ function generateHeatmapData(days: HeatmapPoint[], weeks: number): DayCell[][] {
 
 function levelClassName(level: number) {
   if (level === 0) return 'bg-black/[0.055] border-black/[0.09] dark:bg-white/10 dark:border-white/18';
-  if (level === 1) return 'bg-[#FFF1F2] border-[#FDA4AF]/72 dark:bg-[#E11D48]/18 dark:border-[#E11D48]/26';
-  if (level === 2) return 'bg-[#FFE4E6] border-[#FB7185]/80 dark:bg-[#E11D48]/34 dark:border-[#E11D48]/44';
-  if (level === 3) return 'bg-[#FB7185]/80 border-[#E11D48]/70 dark:bg-[#E11D48]/62 dark:border-[#E11D48]/72';
-  return 'bg-[#E11D48] border-[#BE123C] dark:bg-[#E11D48] dark:border-[#FB7185]/75';
+  if (level === 1) return 'bg-[#FFF1F2] border-[var(--fm-accent-soft)]/72 dark:bg-[var(--fm-accent)]/18 dark:border-[var(--fm-accent)]/26';
+  if (level === 2) return 'bg-[#FFE4E6] border-[var(--fm-accent-bright)]/80 dark:bg-[var(--fm-accent)]/34 dark:border-[var(--fm-accent)]/44';
+  if (level === 3) return 'bg-[var(--fm-accent-bright)]/80 border-[var(--fm-accent)]/70 dark:bg-[var(--fm-accent)]/62 dark:border-[var(--fm-accent)]/72';
+  return 'bg-[var(--fm-accent)] border-[var(--fm-accent-deep)] dark:bg-[var(--fm-accent)] dark:border-[var(--fm-accent-bright)]/75';
 }
 
 function PostingHeatmap({
@@ -206,7 +206,7 @@ function PostingHeatmap({
                 whileTap={{ scale: 0.96 }}
                 onClick={openExport}
                 disabled={exportControl.isExporting}
-                className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#E11D48]/24 bg-[#E11D48]/10 px-2.5 text-[8px] font-black uppercase tracking-[0.12em] text-[#BE123C] shadow-[0_4px_10px_rgba(225,29,72,0.08)] outline-none transition hover:bg-[#E11D48]/14 focus-visible:ring-2 focus-visible:ring-[#E11D48]/24 disabled:cursor-not-allowed disabled:opacity-55 dark:border-[#E11D48]/28 dark:bg-[#E11D48]/16 dark:text-[#FDA4AF]"
+                className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[var(--fm-accent)]/24 bg-[var(--fm-accent)]/10 px-2.5 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent-deep)] shadow-[0_4px_10px_rgb(var(--fm-accent-rgb)/0.08)] outline-none transition hover:bg-[var(--fm-accent)]/14 focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)]/24 disabled:cursor-not-allowed disabled:opacity-55 dark:border-[var(--fm-accent)]/28 dark:bg-[var(--fm-accent)]/16 dark:text-[var(--fm-accent-soft)]"
                 aria-label="Export posting calendar workbook"
                 aria-haspopup="dialog"
                 aria-expanded={exportControl.open}
@@ -215,7 +215,7 @@ function PostingHeatmap({
                 <span>Export</span>
               </motion.button>
             ) : null}
-            <span className="rounded-full bg-[#E11D48] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white shadow-[0_4px_10px_rgba(225,29,72,0.2)]">
+            <span className="rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white shadow-[0_4px_10px_rgb(var(--fm-accent-rgb)/0.2)]">
               Rolling 90D
             </span>
           </div>
@@ -233,7 +233,7 @@ function PostingHeatmap({
                 const monthStartDay = week.find((day) => day.dayOfMonth <= 7);
                 const monthLabel = monthStartDay?.monthLabel ?? '';
                 return (
-                  <div key={`month-${wIndex}`} className="flex h-[14px] items-center justify-center text-[9px] font-black uppercase tracking-[0.05em] text-foreground/60 drop-shadow-sm">
+                  <div key={`month-${wIndex}`} className="flex h-[14px] items-center justify-center text-[10px] font-black uppercase tracking-[0.06em] text-foreground/60 drop-shadow-sm">
                     {monthLabel}
                   </div>
                 );
@@ -242,7 +242,7 @@ function PostingHeatmap({
               {DAY_LABELS.map((dayLabel, rowIndex) => (
                 <Fragment key={dayLabel}>
                   <div className="flex h-full items-center pr-1">
-                    <span className="text-[9px] font-black uppercase leading-[100%] tracking-[0.1em] text-foreground/42">
+                    <span className="text-[10px] font-black uppercase leading-[100%] tracking-[0.14em] text-foreground/42">
                       {dayLabel}
                     </span>
                   </div>
@@ -251,7 +251,7 @@ function PostingHeatmap({
                     const isPeak = dayData.level === 4;
                     let cellBevel = 'shadow-[0_2px_4px_rgba(15,23,42,0.08),inset_0_1px_1px_rgba(255,255,255,0.28)] dark:shadow-[0_2px_4px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)]';
                     if (dayData.level > 0) {
-                      cellBevel = 'shadow-[0_2px_8px_rgba(225,29,72,0.14),inset_0_1px_1px_rgba(255,255,255,0.42)] dark:shadow-[0_2px_8px_rgba(225,29,72,0.18),inset_0_1px_2px_rgba(255,255,255,0.3)]';
+                      cellBevel = 'shadow-[0_2px_8px_rgb(var(--fm-accent-rgb)/0.14),inset_0_1px_1px_rgba(255,255,255,0.42)] dark:shadow-[0_2px_8px_rgb(var(--fm-accent-rgb)/0.18),inset_0_1px_2px_rgba(255,255,255,0.3)]';
                     }
 
                     return (
@@ -266,7 +266,7 @@ function PostingHeatmap({
                             : { duration: 0.68, ease: [0.22, 1, 0.36, 1], delay: (wIndex * DAYS_PER_WEEK + rowIndex) * 0.004 }}
                           whileHover={{ scale: 1.1, zIndex: 50, borderRadius: '4px' }}
                           whileTap={{ scale: 0.9 }}
-                          className={`block h-full w-full rounded-[8px] border border-black/10 sm:rounded-[4px] dark:border-transparent ${levelClassName(dayData.level)} ${cellBevel}`}
+                          className={`block h-full w-full rounded-[10px] border border-black/10 sm:rounded-[6px] dark:border-transparent ${levelClassName(dayData.level)} ${cellBevel}`}
                           type="button"
                           aria-label={`${dayData.count} posts on ${dayData.date}`}
                           onPointerEnter={(e) => {
@@ -312,13 +312,13 @@ function PostingHeatmap({
                 initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="pointer-events-none fixed z-[99999] hidden min-w-[160px] -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-[12px] border border-black/10 bg-white/95 px-5 py-4 shadow-[0_16px_32px_rgba(0,0,0,0.15)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0A0A0A]/95 dark:shadow-[0_16px_32px_rgba(0,0,0,0.8)] sm:block"
+                className="pointer-events-none fixed z-[99999] hidden min-w-[160px] -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded-[14px] border border-black/10 bg-white/95 px-5 py-4 shadow-[0_16px_32px_rgba(0,0,0,0.15)] backdrop-blur-2xl dark:border-white/10 dark:bg-[var(--fm-ink)]/95 dark:shadow-[0_16px_32px_rgba(0,0,0,0.8)] sm:block"
                 style={{ left: clampedTooltipX, top: tooltip.y }}
               >
                 <div className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-black/50 dark:text-white/40">{tooltip.date}</div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-[24px] font-black leading-none text-black dark:text-white">{tooltip.count}</span>
-                  <span className="text-[12px] font-black uppercase tracking-[0.05em] text-black/58 dark:text-white/64">Posts</span>
+                  <span className="text-[22px] font-black leading-none text-black dark:text-white">{tooltip.count}</span>
+                  <span className="text-[12px] font-black uppercase tracking-[0.06em] text-black/58 dark:text-white/64">Posts</span>
                 </div>
               </motion.div>
 
@@ -327,16 +327,16 @@ function PostingHeatmap({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
                 ref={mobileSheetRef}
-                className="fixed inset-x-3 bottom-[calc(88px+env(safe-area-inset-bottom))] z-[99999] rounded-[18px] border border-black/10 bg-white/96 px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0A0A0A]/96 dark:shadow-[0_18px_40px_rgba(0,0,0,0.82)] sm:hidden"
+                className="fixed inset-x-3 bottom-[calc(88px+env(safe-area-inset-bottom))] z-[99999] rounded-[18px] border border-black/10 bg-white/96 px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-2xl dark:border-white/10 dark:bg-[var(--fm-ink)]/96 dark:shadow-[0_18px_40px_rgba(0,0,0,0.82)] sm:hidden"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[9px] font-black uppercase tracking-[0.16em] text-black/46 dark:text-white/38">{tooltip.date}</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em] text-black/46 dark:text-white/38">{tooltip.date}</div>
                     <div className="mt-2 flex items-end gap-3">
-                      <div className="text-[26px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">
+                      <div className="text-[28px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">
                         {tooltip.count}
                       </div>
-                      <div className="pb-0.5 text-[11px] font-black uppercase tracking-[0.14em] text-black/58 dark:text-white/64">
+                      <div className="pb-0.5 text-[12px] font-black uppercase tracking-[0.14em] text-black/58 dark:text-white/64">
                         Posts Logged
                       </div>
                     </div>

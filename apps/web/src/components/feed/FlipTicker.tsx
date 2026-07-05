@@ -45,8 +45,8 @@ function ValueBadge({ value }: { value: number }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 whitespace-nowrap rounded-[8px] font-black tracking-[0.06em]',
-        pos && 'border border-[#FB7185]/60 bg-[#E11D48]/78 text-white dark:bg-[#E11D48] dark:text-white dark:border-[#E11D48]/30 dark:shadow-[0_0_10px_rgba(225,29,72,0.18)]',
+        'inline-flex items-center gap-0.5 whitespace-nowrap rounded-[10px] font-black tracking-[0.06em]',
+        pos && 'border border-[var(--fm-accent-bright)]/60 bg-[var(--fm-accent)]/78 text-white dark:bg-[var(--fm-accent)] dark:text-white dark:border-[var(--fm-accent)]/30 dark:shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.18)]',
         neg && 'border border-black/8 bg-black/8 text-black/50 dark:bg-white/6 dark:text-white/40 dark:border-white/8',
         !pos && !neg && 'border border-black/4 bg-black/4 text-black/35 dark:bg-white/4 dark:text-white/30 dark:border-white/4',
       )}
@@ -99,7 +99,7 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
           <AnimatePresence mode="wait">
             <motion.span
               key={`h-${item.id}`}
-              className="absolute inset-0 flex items-center justify-center text-[13px] font-black uppercase tracking-[0.12em] text-black/55 dark:text-white/50"
+              className="absolute inset-0 flex items-center justify-center text-[14px] font-black uppercase tracking-[0.14em] text-black/55 dark:text-white/50"
               initial={{ rotateX: 80, opacity: 0, filter: 'blur(2px)' }}
               animate={{ rotateX: 0, opacity: 1, filter: 'blur(0px)' }}
               exit={{ rotateX: -80, opacity: 0, filter: 'blur(2px)' }}
@@ -113,10 +113,10 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
 
         {/* ── Likes: static label + flipping value ── */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/25">
+          <span className="text-[12px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/25">
             Likes
           </span>
-          <div className="relative flex h-[28px] min-w-[72px] items-center justify-center text-[13px]" style={{ perspective: 1000 }}>
+          <div className="relative flex h-[28px] min-w-[72px] items-center justify-center text-[14px]" style={{ perspective: 1000 }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={`l-${item.id}`}
@@ -135,10 +135,10 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
 
         {/* ── Comments: static label + flipping value ── */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/25">
+          <span className="text-[12px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/25">
             Comments
           </span>
-          <div className="relative flex h-[28px] min-w-[72px] items-center justify-center text-[13px]" style={{ perspective: 1000 }}>
+          <div className="relative flex h-[28px] min-w-[72px] items-center justify-center text-[14px]" style={{ perspective: 1000 }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={`c-${item.id}`}
@@ -157,10 +157,10 @@ function DesktopTicker({ items, className }: FlipTickerProps) {
 
         {/* ── Views: static label + flipping value ── */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/25">
+          <span className="text-[12px] font-black uppercase tracking-[0.14em] text-black/30 dark:text-white/25">
             Views
           </span>
-          <div className="relative flex h-[28px] min-w-[72px] items-center justify-center text-[13px]" style={{ perspective: 1000 }}>
+          <div className="relative flex h-[28px] min-w-[72px] items-center justify-center text-[14px]" style={{ perspective: 1000 }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={`v-${item.id}`}
@@ -238,7 +238,7 @@ function MobileTicker({ items, className }: FlipTickerProps) {
             transition={{ duration: MOBILE_FLIP_DURATION, ease: LUXURY_EASE }}
             style={{ transformOrigin: 'center center' }}
           >
-            <span className="text-[14px] font-black uppercase tracking-[0.16em] text-black/60 dark:text-white/55 sm:text-[15px]">
+            <span className="text-[14px] font-black uppercase tracking-[0.14em] text-black/60 dark:text-white/55 sm:text-[16px]">
               {item.handle}
             </span>
           </motion.div>
@@ -270,7 +270,7 @@ function MobileTicker({ items, className }: FlipTickerProps) {
                 style={{ transformOrigin: 'center center' }}
               >
                 <Icon size={14} strokeWidth={2.5} className="text-black/35 dark:text-white/30" />
-                <span className="text-[13px]"><ValueBadge value={value} /></span>
+                <span className="text-[14px]"><ValueBadge value={value} /></span>
               </motion.div>
             ))}
           </motion.div>

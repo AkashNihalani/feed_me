@@ -214,28 +214,28 @@ function PacManHero() {
         ctx.scale(scale, scale);
 
         // Bubble: soft red-tinted glass circle on white
-        ctx.fillStyle = 'rgba(225, 29, 72, 0.06)';
+        ctx.fillStyle = 'rgb(var(--fm-accent-rgb)/0.06)';
         ctx.beginPath();
         ctx.arc(0, 0, bubbleR, 0, Math.PI * 2);
         ctx.fill();
 
         // Border
-        ctx.strokeStyle = 'rgba(225, 29, 72, 0.22)';
+        ctx.strokeStyle = 'rgb(var(--fm-accent-rgb)/0.22)';
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(0, 0, bubbleR, 0, Math.PI * 2);
         ctx.stroke();
 
         // Highlight — top-left specular
-        ctx.strokeStyle = 'rgba(225, 29, 72, 0.12)';
+        ctx.strokeStyle = 'rgb(var(--fm-accent-rgb)/0.12)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(0, 0, bubbleR - 2, -Math.PI * 0.8, -Math.PI * 0.2);
         ctx.stroke();
 
         // Icon — bold red
-        ctx.strokeStyle = 'rgba(225, 29, 72, 0.95)';
-        ctx.fillStyle = 'rgba(225, 29, 72, 0.95)';
+        ctx.strokeStyle = 'rgb(var(--fm-accent-rgb)/0.95)';
+        ctx.fillStyle = 'rgb(var(--fm-accent-rgb)/0.95)';
         ctx.lineWidth = 2.4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -463,9 +463,9 @@ export default function LoginPage() {
         }}
       />
       <div
-        className="absolute left-1/2 top-[18%] h-[320px] w-[320px] -translate-x-1/2 rounded-full border border-[#E11D48]/[0.05] opacity-40 sm:h-[440px] sm:w-[440px] lg:h-[520px] lg:w-[520px]"
+        className="absolute left-1/2 top-[18%] h-[320px] w-[320px] -translate-x-1/2 rounded-full border border-[var(--fm-accent)]/[0.05] opacity-40 sm:h-[440px] sm:w-[440px] lg:h-[520px] lg:w-[520px]"
         style={{
-          background: 'radial-gradient(circle, transparent 55%, rgba(225,29,72,0.02) 100%)',
+          background: 'radial-gradient(circle, transparent 55%, rgb(var(--fm-accent-rgb)/0.02) 100%)',
           animation: 'loginFloat 14s ease-in-out infinite',
         }}
       />
@@ -499,14 +499,14 @@ export default function LoginPage() {
         <span className="inline-flex items-baseline gap-0.5">
           <span className={cn(
             'font-black tracking-[-0.04em]',
-            isLarge ? 'text-[36px] 2xl:text-[44px]' : 'text-[30px] sm:text-[40px]',
+            isLarge ? 'text-[34px] 2xl:text-[44px]' : 'text-[28px] sm:text-[40px]',
           )} style={{ color: INK }}>
             FEED
           </span>
           <span
             className={cn(
               'font-black tracking-[-0.04em]',
-              isLarge ? 'text-[36px] 2xl:text-[44px]' : 'text-[30px] sm:text-[40px]',
+              isLarge ? 'text-[34px] 2xl:text-[44px]' : 'text-[28px] sm:text-[40px]',
             )}
             style={{ color: RED }}
           >
@@ -515,7 +515,7 @@ export default function LoginPage() {
         </span>
       </div>
       {isLarge && (
-        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.4)' }}>
+        <p className="mt-3 text-[12px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.4)' }}>
           Instagram Analytics &middot; Reimagined
         </p>
       )}
@@ -524,11 +524,11 @@ export default function LoginPage() {
 
   const footerLinks = (align: 'center' | 'left' = 'center') => (
     <div className={cn('flex items-center gap-4', align === 'left' ? 'justify-start' : 'justify-center')}>
-      <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-[#0B0B0F]/35 transition-colors hover:text-[#0B0B0F]/65">Privacy</a>
-      <span className="text-[#0B0B0F]/15">&middot;</span>
-      <a href="#" className="text-[9px] font-black uppercase tracking-[0.14em] text-[#0B0B0F]/35 transition-colors hover:text-[#0B0B0F]/65">Terms</a>
-      <span className="text-[#0B0B0F]/15">&middot;</span>
-      <Link href="/" className="text-[9px] font-black uppercase tracking-[0.14em] text-[#0B0B0F]/35 transition-colors hover:text-[#E11D48]/70">Home &rarr;</Link>
+      <a href="#" className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-ink)]/35 transition-colors hover:text-[var(--fm-ink)]/65">Privacy</a>
+      <span className="text-[var(--fm-ink)]/15">&middot;</span>
+      <a href="#" className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-ink)]/35 transition-colors hover:text-[var(--fm-ink)]/65">Terms</a>
+      <span className="text-[var(--fm-ink)]/15">&middot;</span>
+      <Link href="/" className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-ink)]/35 transition-colors hover:text-[var(--fm-accent)]/70">Home &rarr;</Link>
     </div>
   );
 
@@ -552,7 +552,7 @@ export default function LoginPage() {
   return (
     <div
       data-login-shell
-      className="relative grid h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white px-5 pb-[calc(180px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] selection:bg-[#E11D48]/25 selection:text-[#E11D48] sm:px-8 sm:pb-[calc(188px+env(safe-area-inset-bottom))] sm:pt-10 lg:min-h-0 lg:grid-cols-[minmax(430px,1fr)_minmax(360px,460px)] lg:items-center lg:gap-[36px] lg:overflow-hidden lg:px-[44px] lg:py-[30px] xl:grid-cols-[minmax(520px,1fr)_minmax(430px,500px)] xl:gap-[56px] xl:px-[72px] xl:py-[36px] 2xl:grid-cols-[minmax(620px,1fr)_minmax(500px,600px)] 2xl:gap-[76px] 2xl:px-[88px] 2xl:py-[44px] [@media_(min-width:1800px)]:grid-cols-[minmax(760px,1fr)_minmax(580px,680px)] [@media_(min-width:1800px)]:gap-[104px] [@media_(min-width:1800px)]:px-[112px] [@media_(min-width:1800px)]:py-[52px] [@media_(min-width:1024px)_and_(max-height:700px)]:gap-[28px] [@media_(min-width:1024px)_and_(max-height:700px)]:px-[36px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-[22px]"
+      className="relative grid h-[100dvh] min-h-[100svh] w-full overflow-x-hidden overflow-y-auto bg-white px-5 pb-[calc(180px+env(safe-area-inset-bottom))] pt-[calc(22px+env(safe-area-inset-top))] selection:bg-[var(--fm-accent)]/25 selection:text-[var(--fm-accent)] sm:px-8 sm:pb-[calc(188px+env(safe-area-inset-bottom))] sm:pt-10 lg:min-h-0 lg:grid-cols-[minmax(430px,1fr)_minmax(360px,460px)] lg:items-center lg:gap-[36px] lg:overflow-hidden lg:px-[44px] lg:py-[30px] xl:grid-cols-[minmax(520px,1fr)_minmax(430px,500px)] xl:gap-[56px] xl:px-[72px] xl:py-[36px] 2xl:grid-cols-[minmax(620px,1fr)_minmax(500px,600px)] 2xl:gap-[76px] 2xl:px-[88px] 2xl:py-[44px] [@media_(min-width:1800px)]:grid-cols-[minmax(760px,1fr)_minmax(580px,680px)] [@media_(min-width:1800px)]:gap-[104px] [@media_(min-width:1800px)]:px-[112px] [@media_(min-width:1800px)]:py-[52px] [@media_(min-width:1024px)_and_(max-height:700px)]:gap-[28px] [@media_(min-width:1024px)_and_(max-height:700px)]:px-[36px] [@media_(min-width:1024px)_and_(max-height:700px)]:py-[22px]"
       style={{
         WebkitOverflowScrolling: 'touch',
       }}
@@ -564,7 +564,7 @@ export default function LoginPage() {
       <div className="absolute right-4 top-[calc(16px+env(safe-area-inset-top))] z-20 sm:right-6 sm:top-[calc(24px+env(safe-area-inset-top))] xl:top-6">
         <Link
           href="/"
-          className="group flex items-center gap-1.5 rounded-full border border-[#0B0B0F]/[0.08] bg-white/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#0B0B0F]/35 transition-colors hover:border-[#E11D48]/25 hover:text-[#E11D48]/70"
+          className="group flex items-center gap-1.5 rounded-full border border-[var(--fm-ink)]/[0.08] bg-white/60 px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-ink)]/35 transition-colors hover:border-[var(--fm-accent)]/25 hover:text-[var(--fm-accent)]/70"
         >
           feedme.app
           <ExternalLink size={10} strokeWidth={3} className="opacity-50 transition-transform group-hover:translate-x-0.5" />
@@ -588,7 +588,7 @@ export default function LoginPage() {
           <div className="hidden 2xl:block">
             {brandMark(true, 'left')}
           </div>
-          <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.22em] xl:mb-4 xl:text-[10px] 2xl:hidden [@media_(min-width:1024px)_and_(max-height:700px)]:mb-2" style={{ color: 'rgba(11,11,15,0.4)' }}>
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.22em] xl:mb-4 xl:text-[10px] 2xl:hidden [@media_(min-width:1024px)_and_(max-height:700px)]:mb-2" style={{ color: 'rgba(11,11,15,0.4)' }}>
             Instagram Analytics &middot; Reimagined
           </p>
           <LiveDashboard state={liveStats} className="mt-1" />
@@ -619,7 +619,7 @@ export default function LoginPage() {
               : { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }
             }
             transition={{ duration: isSuccess ? 0.5 : 0.8, ease: APPLE_EASE }}
-            className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[28px] xl:rounded-[30px] [@media_(min-width:1800px)]:rounded-[34px]"
+            className="relative w-full overflow-hidden rounded-[22px] sm:rounded-[28px] xl:rounded-[28px] [@media_(min-width:1800px)]:rounded-[34px]"
             style={{
               background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.94) 100%)',
               border: '1px solid rgba(14,19,28,0.08)',
@@ -638,7 +638,7 @@ export default function LoginPage() {
               className="pointer-events-none absolute inset-0 z-0 rounded-[inherit]"
               style={{
                 background: [
-                  'radial-gradient(ellipse 55% 30% at 12% 0%, rgba(225,29,72,0.05) 0%, transparent 70%)',
+                  'radial-gradient(ellipse 55% 30% at 12% 0%, rgb(var(--fm-accent-rgb)/0.05) 0%, transparent 70%)',
                   'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 18%)',
                 ].join(', '),
               }}
@@ -646,7 +646,7 @@ export default function LoginPage() {
 
             {/* Inner depth ring */}
             <div
-              className="pointer-events-none absolute inset-[1px] z-0 rounded-[23px] sm:rounded-[27px] xl:rounded-[31px]"
+              className="pointer-events-none absolute inset-[1px] z-0 rounded-[22px] sm:rounded-[28px] xl:rounded-[28px]"
               style={{
                 border: '1px solid rgba(15,23,42,0.04)',
                 borderTopColor: 'rgba(255,255,255,0.9)',
@@ -676,8 +676,8 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setMode(tab); setError(null); setMessage(null); }}
                     className={cn(
-                      'relative flex-1 rounded-[10px] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.16em] outline-none transition-colors duration-400 focus-visible:ring-2 focus-visible:ring-[#E11D48]/25 2xl:py-3 2xl:text-[11px] [@media_(min-width:1800px)]:py-3.5 [@media_(min-width:1024px)_and_(max-height:700px)]:py-2',
-                      isActive ? 'text-[#E11D48] z-10' : 'text-[#0B0B0F]/35 z-0 hover:text-[#0B0B0F]/60',
+                      'relative flex-1 rounded-[10px] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.14em] outline-none transition-colors duration-400 focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)]/25 2xl:py-3 2xl:text-[12px] [@media_(min-width:1800px)]:py-3.5 [@media_(min-width:1024px)_and_(max-height:700px)]:py-2',
+                      isActive ? 'text-[var(--fm-accent)] z-10' : 'text-[var(--fm-ink)]/35 z-0 hover:text-[var(--fm-ink)]/60',
                     )}
                   >
                     {isActive && (
@@ -716,12 +716,12 @@ export default function LoginPage() {
                   style={{ transformOrigin: 'center bottom' }}
                 >
                   <h1
-                    className="text-[24px] font-black tracking-normal sm:text-[28px] xl:text-[32px] 2xl:text-[38px] [@media_(min-width:1800px)]:text-[42px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]"
+                    className="text-[22px] font-black tracking-normal sm:text-[28px] xl:text-[34px] 2xl:text-[34px] [@media_(min-width:1800px)]:text-[42px] [@media_(min-width:1024px)_and_(max-height:700px)]:text-[28px]"
                     style={{ color: INK }}
                   >
                     {titles[mode]}
                   </h1>
-                  <p className="mt-2 text-[11px] font-semibold tracking-wide xl:text-[12px] 2xl:text-[13px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-1.5" style={{ color: 'rgba(11,11,15,0.45)' }}>
+                  <p className="mt-2 text-[12px] font-semibold tracking-wide xl:text-[12px] 2xl:text-[14px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-1.5" style={{ color: 'rgba(11,11,15,0.45)' }}>
                     {subtitles[mode]}
                   </p>
                 </motion.div>
@@ -742,7 +742,7 @@ export default function LoginPage() {
                 >
                   {/* Email */}
                   <div>
-                    <label className="mb-2.5 block text-[9px] font-black uppercase tracking-[0.22em] [@media_(min-width:1024px)_and_(max-height:700px)]:mb-1.5" style={{ color: 'rgba(11,11,15,0.45)' }}>
+                    <label className="mb-2.5 block text-[10px] font-black uppercase tracking-[0.22em] [@media_(min-width:1024px)_and_(max-height:700px)]:mb-1.5" style={{ color: 'rgba(11,11,15,0.45)' }}>
                       Email Address
                     </label>
                     <motion.div
@@ -771,14 +771,14 @@ export default function LoginPage() {
                           className="absolute left-1/2 top-1/2 h-[560px] w-[560px] 2xl:h-[680px] 2xl:w-[680px]"
                           style={{
                             animation: 'shimmer-sweep 3.5s linear infinite',
-                            background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgba(225,29,72,0.22) 250deg, rgba(225,29,72,0.88) 285deg, rgba(225,29,72,0.34) 322deg, transparent 352deg)',
+                            background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgb(var(--fm-accent-rgb)/0.22) 250deg, rgb(var(--fm-accent-rgb)/0.88) 285deg, rgb(var(--fm-accent-rgb)/0.34) 322deg, transparent 352deg)',
                           }}
                         />
                       </motion.div>
 
                       {/* Inner mask — reveals only the border glow */}
                       <div
-                        className="pointer-events-none absolute inset-[1.5px] z-[1] rounded-[12.5px] transition-colors duration-500"
+                        className="pointer-events-none absolute inset-[1.5px] z-[1] rounded-[14px] transition-colors duration-500"
                         style={{ background: focusedField === 'email' ? 'rgba(255,255,255,1)' : 'rgba(247,248,250,1)' }}
                       />
 
@@ -791,7 +791,7 @@ export default function LoginPage() {
                         required
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:text-[17px] [@media_(min-width:1800px)]:h-[62px] [@media_(min-width:1800px)]:text-[18px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
+                        className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 text-[16px] font-semibold outline-none placeholder:text-[var(--fm-ink)]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:text-[18px] [@media_(min-width:1800px)]:h-[62px] [@media_(min-width:1800px)]:text-[18px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
                         style={{ color: INK, caretColor: RED }}
                       />
                     </motion.div>
@@ -801,14 +801,14 @@ export default function LoginPage() {
                   {mode !== 'forgot' && (
                     <div>
                       <div className="mb-2.5 flex items-center justify-between [@media_(min-width:1024px)_and_(max-height:700px)]:mb-1.5">
-                        <label className="text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.45)' }}>
+                        <label className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: 'rgba(11,11,15,0.45)' }}>
                           Password
                         </label>
                         {mode === 'login' && (
                           <button
                             type="button"
                             onClick={() => { setMode('forgot'); setError(null); setMessage(null); }}
-                            className="rounded-md text-[9px] font-black uppercase tracking-[0.12em] text-[#E11D48]/60 outline-none transition-colors hover:text-[#E11D48] focus-visible:ring-2 focus-visible:ring-[#E11D48]/20"
+                            className="rounded-md text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/60 outline-none transition-colors hover:text-[var(--fm-accent)] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)]/20"
                           >
                             Forgot?
                           </button>
@@ -840,14 +840,14 @@ export default function LoginPage() {
                             className="absolute left-1/2 top-1/2 h-[560px] w-[560px] 2xl:h-[680px] 2xl:w-[680px]"
                             style={{
                               animation: 'shimmer-sweep 3.5s linear infinite',
-                              background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgba(225,29,72,0.22) 250deg, rgba(225,29,72,0.88) 285deg, rgba(225,29,72,0.34) 322deg, transparent 352deg)',
+                              background: 'conic-gradient(from 180deg, transparent 0deg, transparent 218deg, rgb(var(--fm-accent-rgb)/0.22) 250deg, rgb(var(--fm-accent-rgb)/0.88) 285deg, rgb(var(--fm-accent-rgb)/0.34) 322deg, transparent 352deg)',
                             }}
                           />
                         </motion.div>
 
                         {/* Inner mask */}
                         <div
-                          className="pointer-events-none absolute inset-[1.5px] z-[1] rounded-[12.5px] transition-colors duration-500"
+                          className="pointer-events-none absolute inset-[1.5px] z-[1] rounded-[14px] transition-colors duration-500"
                           style={{ background: focusedField === 'password' ? 'rgba(255,255,255,1)' : 'rgba(247,248,250,1)' }}
                         />
 
@@ -860,14 +860,14 @@ export default function LoginPage() {
                           required
                           placeholder="••••••••"
                           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[#0B0B0F]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:pr-14 2xl:text-[17px] [@media_(min-width:1800px)]:h-[62px] [@media_(min-width:1800px)]:text-[18px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
+                          className="relative z-10 h-[54px] w-full rounded-[14px] bg-transparent px-5 pr-12 text-[16px] font-semibold outline-none placeholder:text-[var(--fm-ink)]/25 focus:ring-0 xl:h-[54px] 2xl:h-[58px] 2xl:px-6 2xl:pr-14 2xl:text-[18px] [@media_(min-width:1800px)]:h-[62px] [@media_(min-width:1800px)]:text-[18px] [@media_(min-width:1024px)_and_(max-height:700px)]:h-[48px]"
                           style={{ color: INK, caretColor: RED }}
                         />
                         <button
                           type="button"
                           aria-label={showPassword ? 'Hide password' : 'Show password'}
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-[10px] p-2.5 text-[#0B0B0F]/25 outline-none transition-all hover:bg-[#0B0B0F]/[0.04] hover:text-[#0B0B0F]/55 focus-visible:ring-2 focus-visible:ring-[#E11D48]/20"
+                          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-[10px] p-2.5 text-[var(--fm-ink)]/25 outline-none transition-all hover:bg-[var(--fm-ink)]/[0.04] hover:text-[var(--fm-ink)]/55 focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)]/20"
                         >
                           {showPassword ? <EyeOff size={16} strokeWidth={2.5} /> : <Eye size={16} strokeWidth={2.5} />}
                         </button>
@@ -888,11 +888,11 @@ export default function LoginPage() {
                     className="overflow-hidden"
                   >
                     <div
-                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#b91c1c]"
+                      className="rounded-[14px] px-4 py-3 text-[12px] font-bold text-[#b91c1c]"
                       style={{
-                        background: 'rgba(225,29,72,0.06)',
-                        border: '1px solid rgba(225,29,72,0.16)',
-                        boxShadow: 'inset 0 1px 2px rgba(225,29,72,0.06)',
+                        background: 'rgb(var(--fm-accent-rgb)/0.06)',
+                        border: '1px solid rgb(var(--fm-accent-rgb)/0.16)',
+                        boxShadow: 'inset 0 1px 2px rgb(var(--fm-accent-rgb)/0.06)',
                       }}
                     >
                       {error}
@@ -912,11 +912,11 @@ export default function LoginPage() {
                     className="overflow-hidden"
                   >
                     <div
-                      className="rounded-[12px] px-4 py-3 text-[11px] font-bold text-[#E11D48]"
+                      className="rounded-[14px] px-4 py-3 text-[12px] font-bold text-[var(--fm-accent)]"
                       style={{
-                        background: 'rgba(225,29,72,0.05)',
-                        border: '1px solid rgba(225,29,72,0.14)',
-                        boxShadow: 'inset 0 1px 2px rgba(225,29,72,0.05)',
+                        background: 'rgb(var(--fm-accent-rgb)/0.05)',
+                        border: '1px solid rgb(var(--fm-accent-rgb)/0.14)',
+                        boxShadow: 'inset 0 1px 2px rgb(var(--fm-accent-rgb)/0.05)',
                       }}
                     >
                       {message}
@@ -932,8 +932,8 @@ export default function LoginPage() {
                 whileTap={{ scale: 0.97 }}
                 layout
                 className={cn(
-                  'group relative mt-3 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] outline-none focus-visible:ring-4 focus-visible:ring-[#E11D48]/20 xl:h-[56px] xl:rounded-[16px] 2xl:h-[60px] [@media_(min-width:1800px)]:h-[64px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-2 [@media_(min-width:1024px)_and_(max-height:700px)]:h-[50px]',
-                  'text-[12px] font-black uppercase tracking-[0.2em] text-white xl:text-[13px] 2xl:text-[14px]',
+                  'group relative mt-3 flex h-[56px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] outline-none focus-visible:ring-4 focus-visible:ring-[var(--fm-accent)]/20 xl:h-[56px] xl:rounded-[18px] 2xl:h-[60px] [@media_(min-width:1800px)]:h-[64px] [@media_(min-width:1024px)_and_(max-height:700px)]:mt-2 [@media_(min-width:1024px)_and_(max-height:700px)]:h-[50px]',
+                  'text-[12px] font-black uppercase tracking-[0.22em] text-white xl:text-[14px] 2xl:text-[14px]',
                   'disabled:opacity-40 disabled:cursor-not-allowed'
                 )}
                 style={{
@@ -983,7 +983,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => { setMode('login'); setError(null); setMessage(null); }}
-                    className="rounded-md text-[10px] font-black uppercase tracking-[0.12em] text-[#0B0B0F]/30 outline-none transition-colors hover:text-[#E11D48]/70 focus-visible:ring-2 focus-visible:ring-[#E11D48]/20"
+                    className="rounded-md text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-ink)]/30 outline-none transition-colors hover:text-[var(--fm-accent)]/70 focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)]/20"
                   >
                     &larr; Back to Login
                   </button>
@@ -1012,7 +1012,7 @@ export default function LoginPage() {
             initial={{ scale: 0.3, opacity: 0.6 }}
             animate={{ scale: 5, opacity: 0 }}
             transition={{ duration: 1.2, ease: 'easeOut' }}
-            className="pointer-events-none absolute z-20 h-32 w-32 rounded-full border border-[#E11D48]/40"
+            className="pointer-events-none absolute z-20 h-32 w-32 rounded-full border border-[var(--fm-accent)]/40"
           />
         )}
       </AnimatePresence>

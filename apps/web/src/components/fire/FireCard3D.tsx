@@ -122,20 +122,20 @@ function D7VerdictBar({
         event.stopPropagation();
         onOpen();
       }}
-      className="relative mt-2 mb-2 block w-full overflow-hidden rounded-[16px] border border-[#E11D48]/22 bg-[#17060b] px-3 py-2.5 text-left shadow-[0_14px_30px_rgba(225,29,72,0.16),inset_0_1px_0_rgba(255,255,255,0.16)] transition-transform active:scale-[0.99] dark:border-[#E11D48]/24 dark:bg-[#120408] sm:mb-3"
+      className="relative mt-2 mb-2 block w-full overflow-hidden rounded-[18px] border border-[var(--fm-accent)]/22 bg-[#17060b] px-3 py-2.5 text-left shadow-[0_14px_30px_rgb(var(--fm-accent-rgb)/0.16),inset_0_1px_0_rgba(255,255,255,0.16)] transition-transform active:scale-[0.99] dark:border-[var(--fm-accent)]/24 dark:bg-[#120408] sm:mb-3"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(225,29,72,0.42),transparent_50%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_44%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgb(var(--fm-accent-rgb)/0.42),transparent_50%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_44%)]" />
       <div className="relative flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/56 sm:text-[9px]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#fb7185] shadow-[0_0_10px_rgba(225,29,72,0.5)]" />
+        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/56 sm:text-[10px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent-bright)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.5)]" />
           Post Mortem
         </div>
-        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-white/14 bg-white/10 px-2 py-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-white/70 sm:text-[8px]">
+        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-white/14 bg-white/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/70 sm:text-[8px]">
           Read
           <ChevronRight size={10} strokeWidth={3} />
         </span>
       </div>
-      <p className="relative mt-1.5 line-clamp-2 text-[19px] font-black leading-[1.06] tracking-[-0.01em] text-white sm:text-[22px]">
+      <p className="relative mt-1.5 line-clamp-2 text-[18px] font-black leading-[1.06] tracking-[-0.04em] text-white sm:text-[22px]">
         {verdict}
       </p>
     </button>
@@ -178,12 +178,12 @@ function D7ReadView({
     <motion.div className="flex min-h-0 flex-1 flex-col">
       {/* Eyebrow */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.18em] text-[#E11D48] sm:text-[9px]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]" />
+        <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)] sm:text-[10px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.42)]" />
           {sourceLabel}
         </div>
         {sections.length > 1 ? (
-          <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.16em] text-foreground/32 dark:text-white/30 sm:text-[9px]">
+          <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/32 dark:text-white/30 sm:text-[10px]">
             Swipe
             <ChevronRight size={11} strokeWidth={3} />
           </div>
@@ -192,12 +192,12 @@ function D7ReadView({
 
       {/* Headline hero — bold Feed Me red */}
       {hero ? (
-        <div className="relative mt-2 shrink-0 overflow-hidden rounded-[18px] bg-[#E11D48] px-3.5 py-3.5 shadow-[0_16px_34px_rgba(225,29,72,0.32),inset_0_2px_4px_rgba(255,255,255,0.34),inset_0_-3px_8px_rgba(136,19,55,0.4)] sm:px-4 sm:py-4">
+        <div className="relative mt-2 shrink-0 overflow-hidden rounded-[18px] bg-[var(--fm-accent)] px-3.5 py-3.5 shadow-[0_16px_34px_rgb(var(--fm-accent-rgb)/0.32),inset_0_2px_4px_rgba(255,255,255,0.34),inset_0_-3px_8px_rgba(136,19,55,0.4)] sm:px-4 sm:py-4">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_54%)]" />
-          <div className="relative text-[8px] font-black uppercase tracking-[0.2em] text-white/68 sm:text-[9px]">
+          <div className="relative text-[8px] font-black uppercase tracking-[0.22em] text-white/68 sm:text-[10px]">
             The Verdict
           </div>
-          <p className="relative mt-1 text-[24px] font-black leading-[0.98] tracking-[-0.03em] text-white drop-shadow-sm sm:text-[28px]">
+          <p className="relative mt-1 text-[22px] font-black leading-[0.98] tracking-[-0.04em] text-white drop-shadow-sm sm:text-[28px]">
             {hero}
           </p>
         </div>
@@ -205,11 +205,11 @@ function D7ReadView({
 
       {/* fun_fact — grounded stat as its own section */}
       {showStat ? (
-        <div className="mt-2 shrink-0 rounded-[14px] border border-[#E11D48]/14 bg-white/82 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-[#E11D48]/22 dark:bg-white/[0.06]">
-          <div className="text-[8px] font-black uppercase tracking-[0.16em] text-[#E11D48]/72 sm:text-[9px]">
+        <div className="mt-2 shrink-0 rounded-[14px] border border-[var(--fm-accent)]/14 bg-white/82 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-[var(--fm-accent)]/22 dark:bg-white/[0.06]">
+          <div className="text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/72 sm:text-[10px]">
             By the numbers
           </div>
-          <p className="mt-1 text-[12.5px] font-semibold leading-[1.32] text-foreground/74 dark:text-white/64 sm:text-[13.5px]">
+          <p className="mt-1 text-[12px] font-semibold leading-[1.32] text-foreground/74 dark:text-white/64 sm:text-[14px]">
             {read.funFact}
           </p>
         </div>
@@ -227,16 +227,16 @@ function D7ReadView({
               key={`${itemId}-readpane-${section.label}`}
               className="flex h-full w-full shrink-0 snap-center flex-col px-0.5"
             >
-              <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[16px] border border-black/[0.05] bg-white/90 px-3.5 py-3 shadow-[0_10px_22px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/10 dark:bg-white/[0.1]">
+              <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[18px] border border-black/[0.05] bg-white/90 px-3.5 py-3 shadow-[0_10px_22px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/10 dark:bg-white/[0.1]">
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-[13px] font-black uppercase tracking-[0.02em] text-[#E11D48] sm:text-[14px]">
+                  <span className="text-[14px] font-black uppercase tracking-[0.06em] text-[var(--fm-accent)] sm:text-[14px]">
                     {section.label}
                   </span>
-                  <span className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/32 sm:text-[9px]">
+                  <span className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/32 sm:text-[10px]">
                     {section.eyebrow}
                   </span>
                 </div>
-                <p className="mt-2 text-[13.5px] font-semibold leading-[1.36] text-foreground/80 dark:text-white/70 sm:text-[14.5px]">
+                <p className="mt-2 text-[14px] font-semibold leading-[1.36] text-foreground/80 dark:text-white/70 sm:text-[14px]">
                   {section.value}
                 </p>
               </div>
@@ -262,7 +262,7 @@ function D7ReadView({
                 className={[
                   'h-1.5 rounded-full transition-all duration-300 ease-out',
                   isActive
-                    ? 'w-6 bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]'
+                    ? 'w-6 bg-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.42)]'
                     : 'w-1.5 bg-foreground/16 dark:bg-white/20',
                 ].join(' ')}
               />
@@ -278,7 +278,7 @@ function D7ReadView({
           event.stopPropagation();
           onBack();
         }}
-        className="mt-2.5 inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-[14px] border border-black/[0.06] bg-black/[0.03] py-2.5 text-[9px] font-black uppercase tracking-[0.16em] text-foreground/56 transition-transform active:scale-[0.99] dark:border-white/10 dark:bg-white/[0.05] dark:text-white/56 sm:text-[10px]"
+        className="mt-2.5 inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-[14px] border border-black/[0.06] bg-black/[0.03] py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/56 transition-transform active:scale-[0.99] dark:border-white/10 dark:bg-white/[0.05] dark:text-white/56 sm:text-[10px]"
       >
         <ChevronLeft size={13} strokeWidth={3} />
         Back to Stats
@@ -706,8 +706,8 @@ export function FireCard3D({
         }
       }}
       className={isDesktopCard
-        ? 'fm-fire-card-shell relative block w-full aspect-[5/6] 2xl:aspect-[11/14] overflow-hidden rounded-[20px] 2xl:rounded-[24px] text-left'
-        : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[26px] text-left fm-depth-glass sm:rounded-[32px]'}
+        ? 'fm-fire-card-shell relative block w-full aspect-[5/6] 2xl:aspect-[11/14] overflow-hidden rounded-[22px] 2xl:rounded-[22px] text-left'
+        : 'relative block w-full aspect-[4/5] overflow-hidden rounded-[28px] text-left fm-depth-glass sm:rounded-[34px]'}
       style={{
         WebkitTapHighlightColor: 'transparent',
         maxHeight: isDesktopCard ? undefined : 'var(--fire-card-max-height, 78svh)',
@@ -846,8 +846,8 @@ export function FireCard3D({
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={isDesktopCard
-          ? 'text-[clamp(46px,5vw,92px)] font-black leading-[0.82] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'
-          : 'text-[clamp(108px,30vw,210px)] font-black leading-[0.76] tracking-[-0.055em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'}>
+          ? 'text-[clamp(46px,5vw,92px)] font-black leading-[0.82] tracking-[-0.04em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'
+          : 'text-[clamp(108px,30vw,210px)] font-black leading-[0.76] tracking-[-0.04em] text-white drop-shadow-[0_10px_18px_rgba(0,0,0,0.58)]'}>
           {item.surfacePercentile == null ? '--' : Math.round(item.surfacePercentile)}
           <span className="ml-1 align-top text-[0.42em]">%</span>
         </div>
@@ -866,8 +866,8 @@ export function FireCard3D({
           <div className="flex flex-col items-end gap-1.5">
             {!hideSignalChrome ? (
               <div className={isDesktopCard
-                ? 'fm-fire-card-pill rounded-full px-2.5 py-1 text-[7.5px] font-black uppercase tracking-[0.14em] text-white/88 2xl:px-3 2xl:py-1.5 2xl:text-[8px] 2xl:tracking-[0.16em]'
-                : 'rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]'}
+                ? 'fm-fire-card-pill rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-white/88 2xl:px-3 2xl:py-1.5 2xl:text-[8px] 2xl:tracking-[0.14em]'
+                : 'rounded-full border border-white/32 bg-black/36 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-[18px]'}
               >
                 {signalContextLabel}
               </div>
@@ -925,7 +925,7 @@ export function FireCard3D({
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={isDesktopCard
-          ? 'fm-fire-card-panel rounded-[12px] px-2.5 py-1.5 text-white/92 2xl:rounded-[14px] 2xl:px-3 2xl:py-2'
+          ? 'fm-fire-card-panel rounded-[14px] px-2.5 py-1.5 text-white/92 2xl:rounded-[14px] 2xl:px-3 2xl:py-2'
           : 'rounded-[14px] border border-white/38 bg-white/14 px-3 py-2.5 text-white/92 shadow-[0_10px_24px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-[16px]'}
         >
           <div className={isDesktopCard
@@ -933,8 +933,8 @@ export function FireCard3D({
             : 'flex items-center justify-between gap-2'}
           >
             <span className={isDesktopCard
-              ? 'truncate text-[8.5px] font-black uppercase tracking-[0.08em] text-white/90 2xl:text-[9px] 2xl:tracking-[0.1em]'
-              : 'truncate text-[10px] font-black uppercase tracking-[0.1em] text-white/92'}
+              ? 'truncate text-[8px] font-black uppercase tracking-[0.14em] text-white/90 2xl:text-[10px] 2xl:tracking-[0.14em]'
+              : 'truncate text-[10px] font-black uppercase tracking-[0.14em] text-white/92'}
             >
               {lockedHandle}
             </span>
@@ -943,20 +943,20 @@ export function FireCard3D({
               : 'flex shrink-0 items-center gap-2'}
             >
               <span className={isDesktopCard
-                ? 'rounded-[5px] bg-white/10 px-1 py-0.5 text-[7.5px] font-black uppercase tracking-[0.08em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.1em] 2xl:text-[8px]'
-                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
+                ? 'rounded-[6px] bg-white/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.14em] 2xl:text-[8px]'
+                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/78'}
               >
                 {lockedMediaType}
               </span>
               <span className={isDesktopCard
-                ? 'rounded-[5px] bg-white/10 px-1 py-0.5 text-[7.5px] font-black uppercase tracking-[0.08em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.1em] 2xl:text-[8px]'
-                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
+                ? 'rounded-[6px] bg-white/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.14em] 2xl:text-[8px]'
+                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/78'}
               >
                 {heroMetricStamp} {bestMetric.toUpperCase()}
               </span>
               <span className={isDesktopCard
-                ? 'rounded-[5px] bg-white/10 px-1 py-0.5 text-[7.5px] font-black uppercase tracking-[0.08em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.1em] 2xl:text-[8px]'
-                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white/78'}
+                ? 'rounded-[6px] bg-white/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.14em] 2xl:text-[8px]'
+                : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/78'}
               >
                 {cp}
               </span>
@@ -977,7 +977,7 @@ export function FireCard3D({
             <motion.div
               animate={lockControls}
               className={[
-                'w-full max-w-[240px] rounded-[24px] border px-4 py-4 text-center',
+                'w-full max-w-[240px] rounded-[22px] border px-4 py-4 text-center',
                 /* Light: frosted white glass — image bleeds through softly */
                 'border-white/60 bg-white/85',
                 'shadow-[0_18px_40px_rgba(0,0,0,0.10),0_1px_0_rgba(255,255,255,0.88)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
@@ -992,13 +992,13 @@ export function FireCard3D({
                 transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
                 className={[
                   'mx-auto flex h-12 w-12 items-center justify-center rounded-full',
-                  'border border-[#E11D48]/30 bg-[#E11D48]/12',
-                  'shadow-[0_8px_22px_rgba(225,29,72,0.18),inset_0_1px_0_rgba(255,255,255,0.7)]',
-                  'dark:border-[#E11D48]/22 dark:bg-[#E11D48]/10',
-                  'dark:shadow-[0_8px_26px_rgba(225,29,72,0.14),inset_0_1px_0_rgba(255,255,255,0.06)]',
+                  'border border-[var(--fm-accent)]/30 bg-[var(--fm-accent)]/12',
+                  'shadow-[0_8px_22px_rgb(var(--fm-accent-rgb)/0.18),inset_0_1px_0_rgba(255,255,255,0.7)]',
+                  'dark:border-[var(--fm-accent)]/22 dark:bg-[var(--fm-accent)]/10',
+                  'dark:shadow-[0_8px_26px_rgb(var(--fm-accent-rgb)/0.14),inset_0_1px_0_rgba(255,255,255,0.06)]',
                 ].join(' ')}
               >
-                <Lock className="h-5 w-5 text-[#E11D48]" strokeWidth={2.4} />
+                <Lock className="h-5 w-5 text-[var(--fm-accent)]" strokeWidth={2.4} />
               </motion.div>
 
               {/* Handle · Media · Checkpoint pill */}
@@ -1013,21 +1013,21 @@ export function FireCard3D({
                   <span className="max-w-[102px] truncate text-[8px] font-black uppercase tracking-[0.14em] text-black/68 dark:text-white/72">
                     {lockedHandle}
                   </span>
-                  <span className="h-1 w-1 shrink-0 rounded-full bg-[#E11D48]/40 dark:bg-[#E11D48]/30" />
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--fm-accent)]/40 dark:bg-[var(--fm-accent)]/30" />
                   <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em] text-black/50 dark:text-white/52">
                     {lockedMediaType}
                   </span>
-                  <span className="h-1 w-1 shrink-0 rounded-full bg-[#E11D48]/40 dark:bg-[#E11D48]/30" />
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--fm-accent)]/40 dark:bg-[var(--fm-accent)]/30" />
                   <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.14em] text-black/50 dark:text-white/52">
                     {cp}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-3 text-[18px] font-black leading-[0.92] tracking-[-0.03em] text-black dark:text-white">
+              <div className="mt-3 text-[18px] font-black leading-[0.92] tracking-[-0.04em] text-black dark:text-white">
                 {warmupGate.headline}
               </div>
-              <div className="mt-1 text-[11px] font-semibold leading-[1.25] text-black/55 dark:text-white/52">
+              <div className="mt-1 text-[12px] font-semibold leading-[1.25] text-black/55 dark:text-white/52">
                 {warmupGate.body}
               </div>
 
@@ -1041,7 +1041,7 @@ export function FireCard3D({
                       className={[
                         'h-1.5 flex-1 rounded-full transition-colors duration-200',
                         isActive
-                          ? 'bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.28)]'
+                          ? 'bg-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.28)]'
                           : 'bg-black/10 dark:bg-white/10',
                       ].join(' ')}
                     />
@@ -1049,7 +1049,7 @@ export function FireCard3D({
                 })}
               </div>
 
-              <div className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-black/48 dark:text-white/44">
+              <div className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-black/48 dark:text-white/44">
                 {warmupGate.progressLabel}
               </div>
             </motion.div>
@@ -1067,9 +1067,9 @@ export function FireCard3D({
             transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.58 }}
             style={{ willChange: 'transform, opacity' }}
           >
-            <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] border border-white/80 bg-white/92 p-2 sm:p-3 shadow-[0_32px_80px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-16px_32px_rgba(255,255,255,0.1)] dark:border-white/[0.08] dark:bg-[rgba(10,10,10,0.93)] dark:shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-1px_0_rgba(0,0,0,0.5)]">
-              <div className="pointer-events-none absolute inset-0 rounded-[24px] bg-gradient-to-br from-white/90 via-white/40 to-transparent dark:from-white/10 dark:via-white/[0.02] dark:to-transparent" />
-              <div className="pointer-events-none absolute inset-[1px] rounded-[23px] z-0 dark:hidden" style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }} />
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white/92 p-2 sm:p-3 shadow-[0_32px_80px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-16px_32px_rgba(255,255,255,0.1)] dark:border-white/[0.08] dark:bg-[rgba(10,10,10,0.93)] dark:shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1),inset_0_-1px_0_rgba(0,0,0,0.5)]">
+              <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-gradient-to-br from-white/90 via-white/40 to-transparent dark:from-white/10 dark:via-white/[0.02] dark:to-transparent" />
+              <div className="pointer-events-none absolute inset-[1px] rounded-[22px] z-0 dark:hidden" style={{ boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 6px rgba(0,0,0,0.04)' }} />
               
               <div className="relative z-10 flex min-h-0 flex-1 flex-col">
               <AnimatePresence mode="wait" initial={false}>
@@ -1101,22 +1101,22 @@ export function FireCard3D({
                   style={{ willChange: 'transform, opacity' }}
                 >
               <div className="hide-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain pr-0.5">
-              <div className="mb-2 sm:mb-3 overflow-hidden rounded-[16px] border border-[#E11D48]/10 bg-[#E11D48] p-2.5 shadow-[0_8px_24px_rgba(225,29,72,0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgba(225,29,72,0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] sm:p-3">
+              <div className="mb-2 sm:mb-3 overflow-hidden rounded-[18px] border border-[var(--fm-accent)]/10 bg-[var(--fm-accent)] p-2.5 shadow-[0_8px_24px_rgb(var(--fm-accent-rgb)/0.35),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] dark:shadow-[0_12px_32px_rgb(var(--fm-accent-rgb)/0.25),inset_0_2px_4px_rgba(255,255,255,0.8),inset_0_-2px_4px_rgba(136,19,55,0.4)] sm:p-3">
                 <div className="grid grid-cols-[minmax(0,1fr)_minmax(92px,auto)] items-stretch gap-2">
                   <div className="min-w-0 py-0.5">
-                    <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-white/72">Performance</div>
-                    <div className="mt-1 truncate text-[clamp(25px,7.3vw,40px)] font-black leading-[0.86] tracking-[-0.05em] text-white drop-shadow-sm">
+                    <div className="text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-white/72">Performance</div>
+                    <div className="mt-1 truncate text-[clamp(25px,7.3vw,40px)] font-black leading-[0.86] tracking-[-0.04em] text-white drop-shadow-sm">
                       {compact(value)} {bestMetric.toUpperCase()}
                     </div>
-                    <div className="mt-1 text-[11px] font-black uppercase leading-none tracking-[0.12em] text-white opacity-75 sm:text-[12px]">
+                    <div className="mt-1 text-[12px] font-black uppercase leading-none tracking-[0.14em] text-white opacity-75 sm:text-[12px]">
                       {heroBaselineLabel}
                     </div>
                   </div>
                   <div className="flex min-w-[92px] flex-col justify-center rounded-[14px] border border-white/26 bg-white/14 px-2.5 py-1.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(136,19,55,0.16)]">
-                    <div className="text-[clamp(30px,8.6vw,46px)] font-black leading-[0.82] tracking-[-0.07em] text-white drop-shadow-[0_8px_16px_rgba(136,19,55,0.22)]">
+                    <div className="text-[clamp(30px,8.6vw,46px)] font-black leading-[0.82] tracking-[-0.04em] text-white drop-shadow-[0_8px_16px_rgba(136,19,55,0.22)]">
                       {heroMultipleLabel}
                     </div>
-                    <div className="mt-1 text-[8px] sm:text-[9px] font-black uppercase leading-none tracking-[0.18em] text-white/66">
+                    <div className="mt-1 text-[8px] sm:text-[10px] font-black uppercase leading-none tracking-[0.14em] text-white/66">
                       Multiple
                     </div>
                   </div>
@@ -1131,13 +1131,13 @@ export function FireCard3D({
               >
                 {/* ── Supporting Metrics (matches desktop) ── */}
                 <div className="col-span-12">
-                  <div className="rounded-[14px] border border-white/70 bg-white/72 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgba(225,29,72,0.05)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="rounded-[14px] border border-white/70 bg-white/72 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgb(var(--fm-accent-rgb)/0.05)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)]">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/72">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.45)]" />
+                      <div className="flex items-center gap-1.5 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/72">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.45)]" />
                         Supporting Metrics
                       </div>
-                      <div className="rounded-full bg-[#E11D48]/10 px-2 py-0.5 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-[#E11D48]">
+                      <div className="rounded-full bg-[var(--fm-accent)]/10 px-2 py-0.5 text-[8px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">
                         {bestInLastN == null ? 'Best in — posts' : `Best in ${Math.max(1, Math.round(bestInLastN))} posts`}
                       </div>
                     </div>
@@ -1149,25 +1149,25 @@ export function FireCard3D({
                         return (
                           <div
                             key={metric.key}
-                            className="rounded-[12px] border border-black/[0.04] bg-white/86 px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.11] dark:shadow-[0_10px_22px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                            className="rounded-[14px] border border-black/[0.04] bg-white/86 px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/10 dark:bg-white/[0.11] dark:shadow-[0_10px_22px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.08)]"
                           >
-                            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.15em] text-foreground/54 dark:text-white/46">
+                            <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/54 dark:text-white/46">
                               {metric.label}
                             </div>
                             <div className="mt-1 flex items-end justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="text-[21px] sm:text-[24px] font-black leading-none text-foreground/96 dark:text-white/92">
+                                <div className="text-[22px] sm:text-[22px] font-black leading-none text-foreground/96 dark:text-white/92">
                                   {metric.value == null ? '--' : compact(metric.value)}
                                 </div>
-                                <div className="mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.11em] text-foreground/48 dark:text-white/42">
+                                <div className="mt-1 text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/48 dark:text-white/42">
                                   {metric.baseline == null ? 'Tracked' : `${compact(metric.baseline)} usual`}
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className="text-[22px] sm:text-[26px] font-black leading-none text-[#E11D48] drop-shadow-[0_8px_16px_rgba(225,29,72,0.16)]">
+                                <div className="text-[22px] sm:text-[28px] font-black leading-none text-[var(--fm-accent)] drop-shadow-[0_8px_16px_rgb(var(--fm-accent-rgb)/0.16)]">
                                   {metric.multipleLabel}
                                 </div>
-                                <div className="mt-0.5 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] text-[#E11D48]/60">
+                                <div className="mt-0.5 text-[8px] sm:text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/60">
                                   Lift
                                 </div>
                               </div>
@@ -1184,20 +1184,20 @@ export function FireCard3D({
                   <>
                     <div className="col-span-12">
                       <div className="rounded-[14px] border border-white/70 bg-white/70 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/18 dark:bg-black/56 dark:shadow-[0_16px_34px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.12)]">
-                        <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/72">Timing</div>
+                        <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/72">Timing</div>
                         <div className={`mt-1.5 grid gap-1 ${hourMult == null ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                          <div className="rounded-[12px] border border-white/60 bg-white/80 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/12">
-                            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] text-foreground/56">Post Time</div>
-                            <div className="mt-1 text-[22px] sm:text-[26px] font-black leading-none text-foreground/96">
+                          <div className="rounded-[14px] border border-white/60 bg-white/80 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/12">
+                            <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/56">Post Time</div>
+                            <div className="mt-1 text-[22px] sm:text-[28px] font-black leading-none text-foreground/96">
                               {hourDisplay}
                             </div>
                           </div>
                           {hourMult == null ? null : (
-                            <div className="rounded-[12px] border border-[#E11D48]/12 bg-white/80 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[#E11D48]/18 dark:bg-white/12">
-                            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] text-foreground/56">Time Lift</div>
+                            <div className="rounded-[14px] border border-[var(--fm-accent)]/12 bg-white/80 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[var(--fm-accent)]/18 dark:bg-white/12">
+                            <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/56">Time Lift</div>
                               <div className="mt-1 flex min-w-0 items-end gap-1.5 font-black leading-none">
-                                <span className="text-[24px] sm:text-[28px] text-[#E11D48]">{`${hourMult.toFixed(2)}x`}</span>
-                                <span className="min-w-0 truncate pb-0.5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.07em] text-foreground/48">
+                                <span className="text-[22px] sm:text-[28px] text-[var(--fm-accent)]">{`${hourMult.toFixed(2)}x`}</span>
+                                <span className="min-w-0 truncate pb-0.5 text-[10px] sm:text-[12px] font-black uppercase tracking-[0.06em] text-foreground/48">
                                   vs usual {hour === null ? 'same-hour' : hourDisplay} posts
                                 </span>
                               </div>
@@ -1212,9 +1212,9 @@ export function FireCard3D({
                     <div className="col-span-12">
                       <div className="rounded-[14px] border border-white/70 bg-white/70 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/18 dark:bg-black/56 dark:shadow-[0_16px_34px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(255,255,255,0.12)]">
                         <div className="flex items-center justify-between">
-                          <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-foreground/72">Trajectory</div>
-                          <div className={`rounded-full px-2 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.12em] ${
-                            delta != null && delta > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:bg-[#E11D48]/14 dark:text-[#E11D48]'
+                          <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/72">Trajectory</div>
+                          <div className={`rounded-full px-2 py-0.5 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] ${
+                            delta != null && delta > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:bg-[var(--fm-accent)]/14 dark:text-[var(--fm-accent)]'
                             : delta != null && delta < 0 ? 'bg-orange-500/12 text-orange-500 dark:bg-[#ff8a65]/12 dark:text-[#ff8a65]'
                             : 'bg-black/[0.04] text-foreground/40 dark:bg-white/[0.06]'
                           }`}>
@@ -1223,23 +1223,23 @@ export function FireCard3D({
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-1.5">
                           <div>
-                            <div className="rounded-[12px] border border-white/60 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/12">
-                              <div className={`text-[34px] sm:text-[38px] font-black leading-none ${
-                                isPositiveShift ? 'text-[#E11D48]' : 'text-foreground/96 dark:text-white/92'
+                            <div className="rounded-[14px] border border-white/60 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/12">
+                              <div className={`text-[34px] sm:text-[34px] font-black leading-none ${
+                                isPositiveShift ? 'text-[var(--fm-accent)]' : 'text-foreground/96 dark:text-white/92'
                               }`}>
                                 {displayDeltaStr}
                               </div>
-                              <div className="mt-1 text-[8px] sm:text-[9px] font-black uppercase leading-tight tracking-[0.1em] text-foreground/40">
+                              <div className="mt-1 text-[8px] sm:text-[10px] font-black uppercase leading-tight tracking-[0.14em] text-foreground/40">
                                 Shift vs first
                               </div>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="rounded-[12px] border border-[#E11D48]/12 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[#E11D48]/18 dark:bg-white/12">
-                              <div className="text-[24px] sm:text-[28px] font-black leading-none text-[#E11D48]">
+                            <div className="rounded-[14px] border border-[var(--fm-accent)]/12 bg-white/78 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-[var(--fm-accent)]/18 dark:bg-white/12">
+                              <div className="text-[22px] sm:text-[28px] font-black leading-none text-[var(--fm-accent)]">
                                 {currentTrajectory == null ? '--' : `Top ${Math.round(currentTrajectory)}%`}
                               </div>
-                              <div className="mt-1 text-[8px] sm:text-[9px] font-black uppercase leading-tight tracking-[0.1em] text-foreground/40">
+                              <div className="mt-1 text-[8px] sm:text-[10px] font-black uppercase leading-tight tracking-[0.14em] text-foreground/40">
                                 Current position
                               </div>
                             </div>
@@ -1257,23 +1257,23 @@ export function FireCard3D({
                     onOpen={() => setExpandedPostMortemId(item.id)}
                   />
                 ) : (
-                <div className="mt-2 mb-2 sm:mb-3 rounded-[16px] border border-white/70 bg-white/76 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgba(225,29,72,0.04)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)] sm:p-3">
+                <div className="mt-2 mb-2 sm:mb-3 rounded-[18px] border border-white/70 bg-white/76 p-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-8px_18px_rgb(var(--fm-accent-rgb)/0.04)] dark:border-white/18 dark:bg-black/58 dark:shadow-[0_16px_34px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.12)] sm:p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
-                      <span className="h-2 w-2 rounded-full bg-[#E11D48] shadow-[0_0_10px_rgba(225,29,72,0.42)]" />
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">
+                      <span className="h-2 w-2 rounded-full bg-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.42)]" />
                       Post Read
                     </div>
-                    <div className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:bg-white/[0.06] dark:text-white/38">
+                    <div className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:bg-white/[0.06] dark:text-white/38">
                       {postContextRead.sourceLabel}
                     </div>
                   </div>
 
                   {postContextRead.matches.length > 0 && (
-                    <div className="mt-2 rounded-[13px] border border-[#E11D48]/12 bg-white/86 px-2.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-[#E11D48]/18 dark:bg-white/[0.1]">
-                      <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-[#E11D48]/72">
+                    <div className="mt-2 rounded-[14px] border border-[var(--fm-accent)]/12 bg-white/86 px-2.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-[var(--fm-accent)]/18 dark:bg-white/[0.1]">
+                      <div className="text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]/72">
                         Key Read
                       </div>
-                      <p className="mt-1 text-[15px] sm:text-[16px] font-black leading-[1.08] tracking-[-0.02em] text-foreground/88 dark:text-white/80">
+                      <p className="mt-1 text-[16px] sm:text-[16px] font-black leading-[1.08] tracking-[-0.04em] text-foreground/88 dark:text-white/80">
                         {postContextRead.matches[0]}
                       </p>
                     </div>
@@ -1282,19 +1282,19 @@ export function FireCard3D({
                   <div className="mt-2 grid gap-1.5">
                     {[
                       ...postContextRead.matches.slice(1, 3).map((line) => ({ label: 'Match', line, tone: 'text-foreground/44' })),
-                      ...postContextRead.deviates.slice(0, 2).map((line) => ({ label: 'Deviation', line, tone: 'text-[#E11D48]/68' })),
+                      ...postContextRead.deviates.slice(0, 2).map((line) => ({ label: 'Deviation', line, tone: 'text-[var(--fm-accent)]/68' })),
                       ...postContextRead.notes.slice(0, 1).map((line) => ({ label: 'Note', line, tone: 'text-foreground/44' })),
                     ]
                       .slice(0, 4)
                       .map((field) => (
                         <div
                           key={`${item.id}-read-${field.label}-${field.line}`}
-                          className="rounded-[12px] border border-black/[0.04] bg-white/74 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/[0.08]"
+                          className="rounded-[14px] border border-black/[0.04] bg-white/74 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:bg-white/[0.08]"
                         >
-                          <div className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] ${field.tone}`}>
+                          <div className={`text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] ${field.tone}`}>
                             {field.label}
                           </div>
-                          <p className="mt-1 text-[13px] sm:text-[14px] font-semibold leading-[1.24] text-foreground/70 dark:text-white/60">
+                          <p className="mt-1 text-[14px] sm:text-[14px] font-semibold leading-[1.24] text-foreground/70 dark:text-white/60">
                             {field.line}
                           </p>
                         </div>
@@ -1323,16 +1323,16 @@ export function FireCard3D({
                         primedTimeoutRef.current = window.setTimeout(() => setIsPrimed(false), 3000);
                       }
                     }}
-                    className="group relative cursor-pointer pointer-events-auto flex h-10 sm:h-13 w-full items-center justify-center rounded-[16px] overflow-hidden bg-black dark:bg-[#111] shadow-[0_16px_32px_rgba(0,0,0,0.4),inset_0_2px_4px_rgba(255,255,255,0.2)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_2px_rgba(255,255,255,0.08)] transition-transform active:scale-[0.96]"
+                    className="group relative cursor-pointer pointer-events-auto flex h-10 sm:h-13 w-full items-center justify-center rounded-[18px] overflow-hidden bg-black dark:bg-[#111] shadow-[0_16px_32px_rgba(0,0,0,0.4),inset_0_2px_4px_rgba(255,255,255,0.2)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_2px_rgba(255,255,255,0.08)] transition-transform active:scale-[0.96]"
                   >
                     <motion.div 
                       initial={{ y: '100%' }}
                       animate={{ y: showPrimed ? '0%' : '100%' }}
                       transition={{ duration: 0.3, ease: 'easeOut' }}
-                      className="absolute inset-0 bg-[#E11D48] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)] z-0"
+                      className="absolute inset-0 bg-[var(--fm-accent)] shadow-[inset_0_2px_4px_rgba(255,255,255,0.8)] z-0"
                     />
                     <span 
-                      className={`relative z-10 text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${showPrimed ? 'text-black drop-shadow-sm' : 'text-[#E11D48] drop-shadow-[0_0_8px_rgba(225,29,72,0.3)] dark:text-white dark:drop-shadow-none'}`}
+                      className={`relative z-10 text-[12px] font-black uppercase tracking-[0.22em] transition-colors duration-300 ${showPrimed ? 'text-black drop-shadow-sm' : 'text-[var(--fm-accent)] drop-shadow-[0_0_8px_rgb(var(--fm-accent-rgb)/0.3)] dark:text-white dark:drop-shadow-none'}`}
                     >
                       {showPrimed ? 'Tap To Open' : 'Open Post'}
                     </span>

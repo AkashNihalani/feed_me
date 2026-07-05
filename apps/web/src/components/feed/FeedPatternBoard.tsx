@@ -123,7 +123,7 @@ function evidenceLabel(post: PatternBoardSupportPost | null | undefined): string
 
 function evidenceToneClasses(post: PatternBoardSupportPost | null | undefined): string {
   if (post?.evidence_tone === 'positive') return 'border-emerald-300/24 bg-emerald-300/14 text-emerald-100';
-  if (post?.evidence_tone === 'negative') return 'border-[#E11D48]/28 bg-[#E11D48]/16 text-[#FDA4AF]';
+  if (post?.evidence_tone === 'negative') return 'border-[var(--fm-accent)]/28 bg-[var(--fm-accent)]/16 text-[var(--fm-accent-soft)]';
   return 'border-white/[0.1] bg-white/[0.08] text-white/72';
 }
 
@@ -217,19 +217,19 @@ function ProofTile({
           }}
         />
       ) : (
-        <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgba(225,29,72,0.22),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))]" />
+        <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgb(var(--fm-accent-rgb)/0.22),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))]" />
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex min-w-0 items-center gap-1.5 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.78)_100%)] px-2 pb-1.5 pt-5">
         {label && (
           <span className={[
-            'shrink-0 rounded-full border px-1.5 py-0.5 text-[6px] font-black uppercase tracking-[0.1em]',
+            'shrink-0 rounded-full border px-1.5 py-0.5 text-[6px] font-black uppercase tracking-[0.14em]',
             evidenceToneClasses(post),
           ].join(' ')}
           >
             {label}
           </span>
         )}
-        <div className="min-w-0 truncate text-[8px] font-black uppercase tracking-[0.12em] text-white/86">
+        <div className="min-w-0 truncate text-[8px] font-black uppercase tracking-[0.14em] text-white/86">
           @{handle}
         </div>
       </div>
@@ -241,7 +241,7 @@ function ProofMosaic({ posts }: { posts: PatternBoardSupportPost[] }) {
   const proofPosts = posts.slice(0, 4);
   if (proofPosts.length === 0) {
     return (
-      <div className="flex h-[124px] items-center justify-center rounded-[18px] border border-white/[0.08] bg-[radial-gradient(circle_at_34%_22%,rgba(225,29,72,0.16),transparent_44%),rgba(255,255,255,0.035)] text-[10px] font-black uppercase tracking-[0.18em] text-foreground/28 dark:text-white/24 sm:h-[140px]">
+      <div className="flex h-[124px] items-center justify-center rounded-[18px] border border-white/[0.08] bg-[radial-gradient(circle_at_34%_22%,rgb(var(--fm-accent-rgb)/0.16),transparent_44%),rgba(255,255,255,0.035)] text-[10px] font-black uppercase tracking-[0.14em] text-foreground/28 dark:text-white/24 sm:h-[140px]">
         Awaiting Proof
       </div>
     );
@@ -374,7 +374,7 @@ function FeaturedPreview({
   }, [targetAsset, visibleAsset.key]);
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden rounded-[22px] border-0 bg-[radial-gradient(circle_at_28%_20%,rgba(225,29,72,0.18),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))] outline-none ring-0 lg:rounded-[24px]">
+    <div className="relative h-full min-h-0 overflow-hidden rounded-[22px] border-0 bg-[radial-gradient(circle_at_28%_20%,rgb(var(--fm-accent-rgb)/0.18),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))] outline-none ring-0 lg:rounded-[22px]">
       <FeaturedPreviewLayer
         key={visibleAsset.key}
         asset={visibleAsset}
@@ -429,7 +429,7 @@ function RailThumbnail({
       className={[
         'group relative h-[70px] min-w-[58px] overflow-hidden rounded-[14px] border bg-white/[0.04] transition duration-300 lg:h-[62px] xl:h-[70px]',
         active
-          ? 'border-[#FB7185]/48 opacity-100 shadow-[0_12px_28px_rgba(225,29,72,0.16)]'
+          ? 'border-[var(--fm-accent-bright)]/48 opacity-100 shadow-[0_12px_28px_rgb(var(--fm-accent-rgb)/0.16)]'
           : 'border-white/[0.08] opacity-58 hover:opacity-100',
       ].join(' ')}
       animate={{ scale: active ? 1 : 0.965 }}
@@ -439,7 +439,7 @@ function RailThumbnail({
       {active && (
         <motion.div
           layoutId="support-rail-active"
-          className="pointer-events-none absolute inset-0 z-20 rounded-[14px] ring-2 ring-[#FB7185]/72 ring-offset-2 ring-offset-[#080808]"
+          className="pointer-events-none absolute inset-0 z-20 rounded-[14px] ring-2 ring-[var(--fm-accent-bright)]/72 ring-offset-2 ring-offset-[var(--fm-ink)]"
           transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.8 }}
         />
       )}
@@ -458,19 +458,19 @@ function RailThumbnail({
           }}
         />
       ) : (
-        <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgba(225,29,72,0.22),transparent_42%),rgba(255,255,255,0.035)]" />
+        <div className="h-full w-full bg-[radial-gradient(circle_at_28%_24%,rgb(var(--fm-accent-rgb)/0.22),transparent_42%),rgba(255,255,255,0.035)]" />
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex min-w-0 items-center gap-1 bg-[linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.84)_100%)] px-1.5 pb-1 pt-5">
         {label && (
           <span className={[
-            'shrink-0 rounded-full border px-1 py-0.5 text-[5px] font-black uppercase tracking-[0.08em] lg:text-[5.75px]',
+            'shrink-0 rounded-full border px-1 py-0.5 text-[5px] font-black uppercase tracking-[0.14em] lg:text-[5.75px]',
             evidenceToneClasses(post),
           ].join(' ')}
           >
             {label}
           </span>
         )}
-        <div className="min-w-0 truncate text-[6px] font-black uppercase tracking-[0.1em] text-white/82">
+        <div className="min-w-0 truncate text-[6px] font-black uppercase tracking-[0.14em] text-white/82">
           @{handle}
         </div>
       </div>
@@ -498,10 +498,10 @@ function SupportPostRail({
   return (
     <div className="min-w-0">
       <div className="mb-1.5 flex items-center justify-between gap-3 xl:mb-2">
-        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-white/28">
+        <div className="text-[8px] font-black uppercase tracking-[0.14em] text-white/28">
           Supporting posts
         </div>
-        <div className="text-[8px] font-black uppercase tracking-[0.16em] text-white/22">
+        <div className="text-[8px] font-black uppercase tracking-[0.14em] text-white/22">
           {selectedIndex + 1}/{posts.length}
         </div>
       </div>
@@ -541,26 +541,26 @@ function DetailSection({
   const isAction = tone === 'action';
   const isWarning = tone === 'warning';
   const bodyClass = isAction
-    ? 'mt-2 break-words text-[18px] font-black leading-[1.16] tracking-normal text-white/88 sm:text-[19px] md:text-[20px] lg:text-[22px] xl:text-[24px] [text-wrap:balance]'
-    : 'mt-2 break-words text-[13px] font-semibold leading-relaxed text-white/76 sm:text-[14px] md:text-[15px] md:leading-[1.48] lg:text-[16px] xl:text-[17px]';
+    ? 'mt-2 break-words text-[18px] font-black leading-[1.16] tracking-normal text-white/88 sm:text-[18px] md:text-[22px] lg:text-[22px] xl:text-[22px] [text-wrap:balance]'
+    : 'mt-2 break-words text-[14px] font-semibold leading-relaxed text-white/76 sm:text-[14px] md:text-[16px] md:leading-[1.48] lg:text-[16px] xl:text-[18px]';
 
   return (
     <motion.section
       animate={isAction
         ? {
-          borderColor: ['rgba(225,29,72,0.24)', 'rgba(251,113,133,0.36)', 'rgba(225,29,72,0.24)'],
+          borderColor: ['rgb(var(--fm-accent-rgb)/0.24)', 'rgb(var(--fm-accent-bright-rgb)/0.36)', 'rgb(var(--fm-accent-rgb)/0.24)'],
           boxShadow: [
-            'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 rgba(225,29,72,0)',
-            'inset 0 1px 0 rgba(255,255,255,0.04), 0 0 28px rgba(225,29,72,0.08)',
-            'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 rgba(225,29,72,0)',
+            'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 rgb(var(--fm-accent-rgb)/0)',
+            'inset 0 1px 0 rgba(255,255,255,0.04), 0 0 28px rgb(var(--fm-accent-rgb)/0.08)',
+            'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 rgb(var(--fm-accent-rgb)/0)',
           ],
         }
         : undefined}
       transition={isAction ? { duration: 4.2, repeat: Infinity, ease: 'easeInOut' } : undefined}
       className={[
-        'fm-signal-scroll-tile relative h-auto rounded-[18px] border px-4 py-3.5 md:rounded-[16px] md:px-4 md:py-3.5 lg:px-5 lg:py-4 xl:px-6 xl:py-5',
+        'fm-signal-scroll-tile relative h-auto rounded-[18px] border px-4 py-3.5 md:rounded-[18px] md:px-4 md:py-3.5 lg:px-5 lg:py-4 xl:px-6 xl:py-5',
         isAction
-          ? 'border-[#E11D48]/24 bg-[#E11D48]/12'
+          ? 'border-[var(--fm-accent)]/24 bg-[var(--fm-accent)]/12'
           : isWarning
             ? 'border-white/[0.08] bg-white/[0.045]'
             : 'border-white/[0.07] bg-white/[0.035]',
@@ -568,8 +568,8 @@ function DetailSection({
       ].join(' ')}
     >
       <div className={isAction
-        ? 'text-[8px] font-black uppercase tracking-[0.18em] text-[#FDA4AF] md:text-[9px] xl:text-[9.5px]'
-        : 'text-[8px] font-black uppercase tracking-[0.18em] text-white/30 md:text-[9px] xl:text-[9.5px]'}
+        ? 'text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent-soft)] md:text-[10px] xl:text-[10px]'
+        : 'text-[8px] font-black uppercase tracking-[0.14em] text-white/30 md:text-[10px] xl:text-[10px]'}
       >
         {label}
       </div>
@@ -689,13 +689,13 @@ function SignalInsightDialog({
             exit={{ y: '100%', opacity: 0.96 }}
             transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.95 }}
             onClick={(event) => event.stopPropagation()}
-            className="relative flex h-[var(--signal-dialog-height)] w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[#080808] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] sm:grid sm:w-[min(1120px,calc(100vw-24px))] sm:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.22fr)] sm:rounded-[24px] sm:shadow-[0_32px_90px_rgba(0,0,0,0.72)] md:w-[min(1180px,calc(100vw-40px))] md:grid-cols-[minmax(300px,0.78fr)_minmax(0,1.22fr)] md:rounded-[28px] lg:w-[min(1500px,calc(100vw-64px))] lg:grid-cols-[minmax(410px,500px)_minmax(0,1fr)] xl:w-[min(1600px,calc(100vw-80px))] xl:grid-cols-[minmax(450px,540px)_minmax(0,1fr)]"
+            className="relative flex h-[var(--signal-dialog-height)] w-full flex-col overflow-hidden rounded-t-[28px] border border-white/[0.08] bg-[var(--fm-ink)] text-white shadow-[0_-18px_60px_rgba(0,0,0,0.55)] sm:grid sm:w-[min(1120px,calc(100vw-24px))] sm:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.22fr)] sm:rounded-[22px] sm:shadow-[0_32px_90px_rgba(0,0,0,0.72)] md:w-[min(1180px,calc(100vw-40px))] md:grid-cols-[minmax(300px,0.78fr)_minmax(0,1.22fr)] md:rounded-[28px] lg:w-[min(1500px,calc(100vw-64px))] lg:grid-cols-[minmax(410px,500px)_minmax(0,1fr)] xl:w-[min(1600px,calc(100vw-80px))] xl:grid-cols-[minmax(450px,540px)_minmax(0,1fr)]"
             style={{
               maxHeight: 'min(790px, calc(100dvh - 56px - env(safe-area-inset-top)))',
               '--signal-dialog-height': 'min(790px, calc(100dvh - 56px - env(safe-area-inset-top)))',
             } as CSSProperties}
           >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#E11D48]/42 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--fm-accent)]/42 to-transparent" />
             <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/14 md:hidden" />
 
             <button
@@ -716,14 +716,14 @@ function SignalInsightDialog({
               {selectedPost && (
                 <div className="flex items-center justify-between gap-3 px-1">
                   <div className="min-w-0">
-                    <div className="truncate text-[10px] font-black uppercase tracking-[0.18em] text-white/32 xl:text-[11px]">
+                    <div className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-white/32 xl:text-[12px]">
                       Selected proof
                     </div>
-                    <div className="mt-1 truncate text-[16px] font-bold text-white/72 lg:text-[17px] xl:text-[18px]">
+                    <div className="mt-1 truncate text-[16px] font-bold text-white/72 lg:text-[18px] xl:text-[18px]">
                       {selectedEvidenceSummary || selectedPostRole || selectedPost.media_type || 'Post read'}
                     </div>
                     {selectedEvidenceSummary && selectedPostRole && (
-                      <div className="mt-0.5 truncate text-[12px] font-bold text-white/38 xl:text-[13px]">
+                      <div className="mt-0.5 truncate text-[12px] font-bold text-white/38 xl:text-[14px]">
                         {selectedPostRole}
                       </div>
                     )}
@@ -734,7 +734,7 @@ function SignalInsightDialog({
                     </span>
                     {evidenceLabel(selectedPost) && (
                       <span className={[
-                        'rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] xl:text-[9px]',
+                        'rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] xl:text-[10px]',
                         evidenceToneClasses(selectedPost),
                       ].join(' ')}
                       >
@@ -758,20 +758,20 @@ function SignalInsightDialog({
               >
                 <div className="shrink-0 pr-10 md:pr-12">
                   <div className="flex flex-wrap items-center gap-2 sm:gap-1.5">
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E11D48]/70 xl:text-[10px]">
+                    <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--fm-accent)]/70 xl:text-[10px]">
                       Feed_Me read
                     </span>
                     {confidence && (
-                      <span className="rounded-full border border-[#E11D48]/18 bg-[#E11D48]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-[#FDA4AF]/82 md:px-2.5 md:py-1 md:text-[8px]">
+                      <span className="rounded-full border border-[var(--fm-accent)]/18 bg-[var(--fm-accent)]/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent-soft)]/82 md:px-2.5 md:py-1 md:text-[8px]">
                         {confidence}
                       </span>
                     )}
                   </div>
-                  <h3 className="mt-3 max-w-[calc(100%-10px)] text-[30px] font-black leading-[1.03] tracking-normal text-white [text-wrap:balance] sm:w-full sm:max-w-[min(760px,calc(100%-56px))] sm:text-[28px] sm:leading-[1.02] md:mt-3 md:max-w-[min(920px,calc(100%-64px))] md:text-[34px] lg:text-[46px] lg:leading-[1] xl:max-w-[min(1040px,calc(100%-70px))] xl:text-[54px]">
+                  <h3 className="mt-3 max-w-[calc(100%-10px)] text-[28px] font-black leading-[1.03] tracking-normal text-white [text-wrap:balance] sm:w-full sm:max-w-[min(760px,calc(100%-56px))] sm:text-[28px] sm:leading-[1.02] md:mt-3 md:max-w-[min(920px,calc(100%-64px))] md:text-[34px] lg:text-[46px] lg:leading-[1] xl:max-w-[min(1040px,calc(100%-70px))] xl:text-[54px]">
                     {title}
                   </h3>
                   {metricLine && (
-                    <div className="mt-3 max-w-[min(880px,calc(100%-60px))] text-[12px] font-black uppercase tracking-[0.13em] text-white/38 md:text-[13px] xl:text-[14px]">
+                    <div className="mt-3 max-w-[min(880px,calc(100%-60px))] text-[12px] font-black uppercase tracking-[0.14em] text-white/38 md:text-[14px] xl:text-[14px]">
                       {metricLine}
                     </div>
                   )}
@@ -782,12 +782,12 @@ function SignalInsightDialog({
                   {metrics.map((metric) => (
                     <div
                       key={`${pattern.firewatch_id}:${metric.label}`}
-                      className="min-w-0 rounded-[12px] border border-white/[0.06] bg-white/[0.035] px-2.5 py-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3 lg:px-5 lg:py-4 xl:px-5 xl:py-4"
+                      className="min-w-0 rounded-[14px] border border-white/[0.06] bg-white/[0.035] px-2.5 py-2 sm:px-3 sm:py-2.5 md:px-4 md:py-3 lg:px-5 lg:py-4 xl:px-5 xl:py-4"
                     >
-                      <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-white/28 md:text-[9px] xl:text-[10px]">
+                      <div className="truncate text-[8px] font-black uppercase tracking-[0.14em] text-white/28 md:text-[10px] xl:text-[10px]">
                         {metric.label}
                       </div>
-                      <div className="mt-1 truncate text-[18px] font-black tracking-normal text-white/92 sm:text-[24px] md:text-[30px] lg:text-[40px] xl:text-[44px]">
+                      <div className="mt-1 truncate text-[18px] font-black tracking-normal text-white/92 sm:text-[22px] md:text-[28px] lg:text-[40px] xl:text-[44px]">
                         {metric.value}
                       </div>
                     </div>
@@ -806,7 +806,7 @@ function SignalInsightDialog({
                     <div className="space-y-2 md:space-y-1.5">
                       {card.evidence_pressure.slice(0, 5).map((note, index) => (
                         <div key={`${pattern.firewatch_id}:note:${index}`} className="flex gap-2">
-                          <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#E11D48]/70" />
+                          <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]/70" />
                           <span>{note}</span>
                         </div>
                       ))}
@@ -866,27 +866,27 @@ function PatternCard({
         'shadow-[inset_0_1px_0_rgba(255,255,255,0.74),0_18px_36px_-26px_rgba(15,23,42,0.2)]',
         'dark:border-white/[0.07] dark:bg-white/[0.035] dark:ring-white/[0.045]',
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.055),0_22px_40px_-28px_rgba(0,0,0,0.68)]',
-        selected ? 'ring-[rgba(225,29,72,0.32)] dark:ring-[rgba(225,29,72,0.34)]' : '',
+        selected ? 'ring-[rgb(var(--fm-accent-rgb)/0.32)] dark:ring-[rgb(var(--fm-accent-rgb)/0.34)]' : '',
         pulse ? 'fm-firewatch-hero-pulse' : '',
       ].filter(Boolean).join(' ')}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_22%_0%,rgba(225,29,72,0.16),transparent_50%)] opacity-70" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_22%_0%,rgb(var(--fm-accent-rgb)/0.16),transparent_50%)] opacity-70" />
 
       <div className="relative">
         <ProofMosaic posts={pattern.support_posts || []} />
 
         <div className="mt-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="line-clamp-2 text-[18px] font-black leading-[1.02] tracking-normal text-foreground dark:text-white sm:text-[20px]">
+            <div className="line-clamp-2 text-[18px] font-black leading-[1.02] tracking-normal text-foreground dark:text-white sm:text-[22px]">
               {cardTitle}
             </div>
             {metricLine && (
-              <div className="mt-1.5 line-clamp-1 text-[9px] font-black uppercase tracking-[0.12em] text-foreground/42 dark:text-white/34">
+              <div className="mt-1.5 line-clamp-1 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/34">
                 {metricLine}
               </div>
             )}
             {readPreview && (
-              <div className="mt-2 line-clamp-3 text-[12px] font-semibold leading-snug text-foreground/58 dark:text-white/50 sm:text-[13px]">
+              <div className="mt-2 line-clamp-3 text-[12px] font-semibold leading-snug text-foreground/58 dark:text-white/50 sm:text-[14px]">
                 {readPreview}
               </div>
             )}
@@ -895,7 +895,7 @@ function PatternCard({
                 {cues.map((cue) => (
                   <span
                     key={`${pattern.firewatch_id}:${cue}`}
-                    className="max-w-full truncate rounded-full border border-black/[0.05] bg-black/[0.035] px-2 py-1 text-[8px] font-black uppercase tracking-[0.13em] text-foreground/52 dark:border-white/[0.08] dark:bg-white/[0.045] dark:text-white/44"
+                    className="max-w-full truncate rounded-full border border-black/[0.05] bg-black/[0.035] px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/52 dark:border-white/[0.08] dark:bg-white/[0.045] dark:text-white/44"
                   >
                     {cue}
                   </span>
@@ -905,15 +905,15 @@ function PatternCard({
           </div>
 
           <div className="shrink-0 text-right">
-            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-foreground/42 dark:text-white/34">
+            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/34">
               {familyTag(pattern.context)}
             </div>
             {headline && (
               <>
-                <div className="mt-2 text-[26px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white">
+                <div className="mt-2 text-[28px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white">
                   {headline.value}
                 </div>
-                <div className="mt-1 text-[8px] font-black uppercase tracking-[0.18em] text-foreground/46 dark:text-white/34">
+                <div className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/46 dark:text-white/34">
                   {headline.qualifier}
                 </div>
               </>
@@ -926,12 +926,12 @@ function PatternCard({
             {pills.map((pill) => (
               <div
                 key={`${pattern.firewatch_id}:${pill.label}`}
-                className="min-w-0 rounded-[12px] border border-black/[0.04] bg-white/44 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)] dark:border-white/[0.055] dark:bg-white/[0.032] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                className="min-w-0 rounded-[14px] border border-black/[0.04] bg-white/44 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)] dark:border-white/[0.055] dark:bg-white/[0.032] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
               >
-                <div className="truncate text-[7px] font-black uppercase tracking-[0.16em] text-foreground/34 dark:text-white/28 sm:text-[7.5px]">
+                <div className="truncate text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/28 sm:text-[8px]">
                   {pill.label}
                 </div>
-                <div className="mt-0.5 truncate text-[15px] font-black tracking-normal text-foreground/88 dark:text-white/80 sm:text-[16px]">
+                <div className="mt-0.5 truncate text-[16px] font-black tracking-normal text-foreground/88 dark:text-white/80 sm:text-[16px]">
                   {pill.value}
                 </div>
               </div>
@@ -1012,10 +1012,10 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
     return (
       <div className="fm-feed-mobile-panel min-w-0" ref={sectionRef} id="firewatch-section">
         <div className="flex items-baseline justify-between gap-3">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-foreground/40 dark:text-white/34">
+          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/40 dark:text-white/34">
             Firewatch
           </div>
-          <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-foreground/30 dark:text-white/24">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-foreground/30 dark:text-white/24">
             awaiting D7
           </div>
         </div>
@@ -1031,10 +1031,10 @@ export default function FeedPatternBoard({ patterns }: FeedPatternBoardProps) {
       data-firewatch-active={selectedId || ''}
     >
       <div className="flex items-baseline justify-between gap-3">
-        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-foreground/44 dark:text-white/36">
+        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-foreground/44 dark:text-white/36">
           Firewatch
         </div>
-        <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-foreground/34 dark:text-white/26">
+        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-foreground/34 dark:text-white/26">
           {patterns.length} active
         </div>
       </div>

@@ -45,7 +45,7 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
 const FIRE_HEADER_LAYER_TRANSITION = { duration: 0.46, ease: APPLE_EASE } as const;
 const FIRE_MOBILE_HEADER_OFFSET = 128;
-const FIRE_DESKTOP_HEADER_OFFSET = 174;
+const FIRE_DESKTOP_HEADER_OFFSET = 144;
 const FIRE_HEADER_SCROLL_COMPRESS = {
   collapseDistance: typeof window === 'undefined' ? 260 : Math.round(window.innerHeight * 0.32),
   expandDistance: typeof window === 'undefined' ? 150 : Math.round(window.innerHeight * 0.18),
@@ -1529,7 +1529,7 @@ export default function FirePage() {
     <div
       aria-hidden={!error}
       className={cn(
-        'flex min-h-[42px] w-full items-center justify-center rounded-[16px] px-3 text-[9px] font-black uppercase tracking-[0.18em]',
+        'flex min-h-[42px] w-full items-center justify-center rounded-[18px] px-3 text-[10px] font-black uppercase tracking-[0.14em]',
         error
           ? 'border border-black/[0.04] bg-black/[0.03] text-black/38 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06),inset_0_-1px_0_rgba(255,255,255,0.5)] dark:border-white/[0.05] dark:bg-white/[0.03] dark:text-white/34 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]'
           : 'opacity-0',
@@ -1592,7 +1592,7 @@ export default function FirePage() {
                         type="button"
                         aria-label={`Sort fire cards by ${filters.sort === 'best' ? 'recent' : 'percentile'}`}
                         onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
-                        className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                        className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
                       >
                         <ArrowUpDown size={14} />
                         <span>{filters.sort === 'best' ? 'PCTL' : 'RECENT'}</span>
@@ -1612,7 +1612,7 @@ export default function FirePage() {
                         className={cn(
                           'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 p-2 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset]',
                           'dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]',
-                          hasActiveFilters ? 'text-[#E11D48]' : 'text-black/58 dark:text-white/45',
+                          hasActiveFilters ? 'text-[var(--fm-accent)]' : 'text-black/58 dark:text-white/45',
                         )}
                       >
                         <motion.span
@@ -1641,14 +1641,14 @@ export default function FirePage() {
                       zIndex: headerCompressed ? 3 : 1,
                     }}
                   >
-                    <span className="text-[50px] font-black leading-[0.78] tracking-[-0.055em] text-black dark:text-white fm-depth-title">
+                    <span className="text-[50px] font-black leading-[0.78] tracking-[-0.04em] text-black dark:text-white fm-depth-title">
                       {selectedDateParts?.day ?? '--'}
                     </span>
                     <div className="flex min-w-0 flex-col items-end text-right leading-none">
-                      <span className="max-w-full truncate text-[18px] font-black uppercase tracking-[0.16em] text-[#E11D48]">
+                      <span className="max-w-full truncate text-[18px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">
                         {selectedDateParts?.weekday ?? ''}
                       </span>
-                      <span className="mt-0.5 text-[11px] font-black uppercase tracking-[0.28em] text-black/45 dark:text-white/40">
+                      <span className="mt-0.5 text-[12px] font-black uppercase tracking-[0.22em] text-black/45 dark:text-white/40">
                         {selectedDateParts ? `${selectedDateParts.month} ${selectedDateParts.year}` : ''}
                       </span>
                     </div>
@@ -1699,14 +1699,14 @@ export default function FirePage() {
                         Post Type
                       </div>
                       <div className="mt-0.5 flex items-end justify-center gap-1">
-                        <span className="text-[46px] font-black leading-[0.82] tracking-[-0.1em] text-black dark:text-white">
+                        <span className="text-[46px] font-black leading-[0.82] tracking-[-0.04em] text-black dark:text-white">
                           {total}
                         </span>
-                        <span className="mb-1.5 rounded-full bg-[#E11D48] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-white shadow-[0_4px_12px_rgba(225,29,72,0.22)]">
+                        <span className="mb-1.5 rounded-full bg-[var(--fm-accent)] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white shadow-[0_4px_12px_rgb(var(--fm-accent-rgb)/0.22)]">
                           {mediaFilterLabel(filters.mediaFilter)}
                         </span>
                       </div>
-                      <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.16em] text-black/44 dark:text-white/38">
+                      <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/44 dark:text-white/38">
                         {selectedDay || '--'}
                       </div>
                     </div>
@@ -1725,7 +1725,7 @@ export default function FirePage() {
                             whileTap={{ scale: 0.95 }}
                             onClick={() => updateFilters((current) => ({ ...current, mediaFilter: option.value }))}
                             className={cn(
-                              'relative overflow-hidden rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                              'relative overflow-hidden rounded-[10px] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                               isActive
                                 ? 'text-white'
                                 : 'text-black/55 dark:text-white/45',
@@ -1734,7 +1734,7 @@ export default function FirePage() {
                             {isActive && (
                               <span
                                 aria-hidden="true"
-                                className="absolute inset-0 rounded-[11px] bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgba(225,29,72,0.22),0_10px_24px_rgba(0,0,0,0.26)]"
+                                className="absolute inset-0 rounded-[10px] bg-[var(--fm-accent)] shadow-[0_6px_14px_rgb(var(--fm-accent-rgb)/0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgb(var(--fm-accent-rgb)/0.22),0_10px_24px_rgba(0,0,0,0.26)]"
                               />
                             )}
                             <span className="relative z-10">{option.label}</span>
@@ -1754,7 +1754,7 @@ export default function FirePage() {
                         event.stopPropagation();
                         openZSpaceFilter();
                       }}
-                      className="rounded-[14px] border border-black/6 bg-white/58 px-3.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-black shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]"
+                      className="rounded-[14px] border border-black/6 bg-white/58 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]"
                     >
                       Feed Filter
                     </motion.button>
@@ -1769,7 +1769,7 @@ export default function FirePage() {
                             whileTap={{ scale: 0.95 }}
                             onClick={() => updateFilters((current) => ({ ...current, sort: option.value }))}
                             className={cn(
-                              'relative overflow-hidden rounded-[11px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                              'relative overflow-hidden rounded-[10px] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                               isActive
                                 ? 'text-white'
                                 : 'text-black/55 dark:text-white/45',
@@ -1778,7 +1778,7 @@ export default function FirePage() {
                             {isActive && (
                               <span
                                 aria-hidden="true"
-                                className="absolute inset-0 rounded-[11px] bg-[#E11D48] shadow-[0_6px_14px_rgba(225,29,72,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgba(225,29,72,0.22),0_10px_24px_rgba(0,0,0,0.26)]"
+                                className="absolute inset-0 rounded-[10px] bg-[var(--fm-accent)] shadow-[0_6px_14px_rgb(var(--fm-accent-rgb)/0.22),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_8px_20px_rgb(var(--fm-accent-rgb)/0.22),0_10px_24px_rgba(0,0,0,0.26)]"
                               />
                             )}
                             <span className="relative z-10">{option.label}</span>
@@ -1790,7 +1790,7 @@ export default function FirePage() {
                     {desktopSelectionChips.map((chip) => (
                       <div
                         key={chip.key}
-                        className="rounded-[12px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]"
+                        className="rounded-[14px] border border-black/6 bg-white/60 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[0_4px_10px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/78 dark:shadow-[0_8px_18px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.06)]"
                       >
                         {chip.label}
                       </div>
@@ -1802,9 +1802,9 @@ export default function FirePage() {
                         whileTap={{ scale: 0.95 }}
                         onClick={() => updateFilters((current) => ({ ...current, selectedCheckpoints: [] }))}
                         className={cn(
-                          'rounded-[12px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                          'rounded-[14px] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                           filters.selectedCheckpoints.length === 0
-                            ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_8px_20px_rgba(225,29,72,0.22)]'
+                            ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[var(--fm-accent)] dark:text-white dark:shadow-[0_8px_20px_rgb(var(--fm-accent-rgb)/0.22)]'
                             : 'border border-black/6 bg-white/58 text-black/56 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/46 dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]',
                         )}
                       >
@@ -1826,9 +1826,9 @@ export default function FirePage() {
                               }));
                             }}
                             className={cn(
-                              'rounded-[12px] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors duration-200',
+                              'rounded-[14px] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors duration-200',
                               isSelected
-                                ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[#E11D48] dark:text-white dark:shadow-[0_8px_20px_rgba(225,29,72,0.22)]'
+                                ? 'bg-black text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] dark:bg-[var(--fm-accent)] dark:text-white dark:shadow-[0_8px_20px_rgb(var(--fm-accent-rgb)/0.22)]'
                                 : 'border border-black/6 bg-white/58 text-black/56 shadow-[0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/8 dark:bg-white/[0.05] dark:text-white/46 dark:shadow-[0_8px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]',
                             )}
                           >
@@ -1853,7 +1853,7 @@ export default function FirePage() {
               className="flex w-full items-center justify-center"
               style={fireStateShellStyle()}
             >
-              <Loader2 className="h-12 w-12 animate-spin text-[#E11D48]" />
+              <Loader2 className="h-12 w-12 animate-spin text-[var(--fm-accent)]" />
             </motion.div>
           ) : error ? (
             <motion.div
@@ -1877,7 +1877,7 @@ export default function FirePage() {
               className="flex w-full items-center justify-center px-6 text-center"
               style={fireStateShellStyle()}
             >
-              <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
+              <div className="rounded-2xl border border-white/30 bg-white/20 px-6 py-4 text-xs font-black uppercase tracking-[0.22em] text-foreground/70 dark:border-white/14 dark:bg-black/24">
                 {isRefreshing ? 'Updating fire view' : 'No alerts for this selection'}
               </div>
             </motion.div>
@@ -1916,7 +1916,7 @@ export default function FirePage() {
       />
 
       {process.env.NODE_ENV !== 'production' && (
-        <div className="pointer-events-none absolute bottom-3 left-3 z-[140] rounded-lg border border-white/30 bg-black/55 px-2.5 py-2 text-[10px] font-mono leading-tight text-[#E11D48] dark:border-white/20">
+        <div className="pointer-events-none absolute bottom-3 left-3 z-[140] rounded-lg border border-white/30 bg-black/55 px-2.5 py-2 text-[10px] font-mono leading-tight text-[var(--fm-accent)] dark:border-white/20">
           <div>cards: {cards.length} / {total}</div>
           <div>day: {selectedDay || '--'}</div>
           <div>filters: {serializeFilters(filters)}</div>

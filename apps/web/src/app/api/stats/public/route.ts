@@ -5,7 +5,8 @@ import { withServerRouteCache } from '@/lib/serverRouteCache';
 export const dynamic = 'force-dynamic';
 
 const CACHE_KEY = 'stats:public:v5';
-const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_TTL_MS = 15_000;
+const NO_STORE = { 'Cache-Control': 'no-store' };
 
 const METRIC_KEYS = ['views', 'likes', 'comments', 'posts', 'signals', 'accounts', 'feeds', 'creators'] as const;
 type MetricKey = (typeof METRIC_KEYS)[number];
@@ -192,16 +193,14 @@ export async function GET() {
     });
 
     return NextResponse.json(payload, {
-      headers: {
-        'Cache-Control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
-      },
+      headers: NO_STORE,
     });
   } catch {
     const metrics = {} as Record<MetricKey, { value: number | null; ratePerSec: number }>;
     for (const key of METRIC_KEYS) metrics[key] = { value: null, ratePerSec: 0 };
     return NextResponse.json(
       { metrics, measuredAt: null, source: 'error' },
-      { status: 200, headers: { 'Cache-Control': 'public, max-age=15' } },
+      { status: 200, headers: NO_STORE },
     );
   }
 }

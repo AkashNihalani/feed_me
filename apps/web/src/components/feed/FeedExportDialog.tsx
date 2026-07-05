@@ -127,15 +127,15 @@ export default function FeedExportDialog({
             exit={{ y: '100%', scale: 0.98 }}
             transition={GRID_LAYOUT_SPRING}
             onClick={(event) => event.stopPropagation()}
-            className="relative flex h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-[30px] border border-black/10 bg-white/96 text-black shadow-[0_-18px_60px_rgba(0,0,0,0.18)] md:h-auto md:max-h-[min(760px,calc(100vh-3rem))] md:w-[min(680px,calc(100vw-48px))] md:rounded-[28px] dark:border-white/10 dark:bg-[#07080a]/96 dark:text-white dark:shadow-[0_30px_90px_rgba(0,0,0,0.64)]"
+            className="relative flex h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-[28px] border border-black/10 bg-white/96 text-black shadow-[0_-18px_60px_rgba(0,0,0,0.18)] md:h-auto md:max-h-[min(760px,calc(100vh-3rem))] md:w-[min(680px,calc(100vw-48px))] md:rounded-[28px] dark:border-white/10 dark:bg-[var(--fm-ink)]/96 dark:text-white dark:shadow-[0_30px_90px_rgba(0,0,0,0.64)]"
           >
             <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-black/10 dark:bg-white/18 md:hidden" />
 
             <div className="shrink-0 border-b border-black/10 px-5 pb-4 pt-4 dark:border-white/8 md:px-6 md:pt-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#E11D48]">Excel Export</div>
-                  <div className="mt-1 truncate text-[27px] font-black tracking-normal">Feed workbook</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">Excel Export</div>
+                  <div className="mt-1 truncate text-[28px] font-black tracking-normal">Feed workbook</div>
                   <div className="mt-2 inline-flex max-w-full items-center rounded-full border border-black/10 bg-black/[0.035] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-black/48 dark:border-white/8 dark:bg-white/[0.05] dark:text-white/42">
                     <span className="truncate">{scopeLabel}</span>
                   </div>
@@ -154,24 +154,24 @@ export default function FeedExportDialog({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 md:px-6">
               <div className="grid grid-cols-2 gap-2.5">
-                <label className="block rounded-[16px] border border-black/10 bg-black/[0.025] px-3 py-2.5 dark:border-white/8 dark:bg-white/[0.035]">
-                  <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">From</span>
+                <label className="block rounded-[18px] border border-black/10 bg-black/[0.025] px-3 py-2.5 dark:border-white/8 dark:bg-white/[0.035]">
+                  <span className="text-[10px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">From</span>
                   <input
                     type="date"
                     value={from}
                     max={to || undefined}
                     onChange={(event) => onFromChange(event.target.value)}
-                    className="mt-1 w-full bg-transparent text-[15px] font-black text-black outline-none dark:text-white"
+                    className="mt-1 w-full bg-transparent text-[16px] font-black text-black outline-none dark:text-white"
                   />
                 </label>
-                <label className="block rounded-[16px] border border-black/10 bg-black/[0.025] px-3 py-2.5 dark:border-white/8 dark:bg-white/[0.035]">
-                  <span className="text-[9px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">To</span>
+                <label className="block rounded-[18px] border border-black/10 bg-black/[0.025] px-3 py-2.5 dark:border-white/8 dark:bg-white/[0.035]">
+                  <span className="text-[10px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">To</span>
                   <input
                     type="date"
                     value={to}
                     min={from || undefined}
                     onChange={(event) => onToChange(event.target.value)}
-                    className="mt-1 w-full bg-transparent text-[15px] font-black text-black outline-none dark:text-white"
+                    className="mt-1 w-full bg-transparent text-[16px] font-black text-black outline-none dark:text-white"
                   />
                 </label>
               </div>
@@ -182,7 +182,7 @@ export default function FeedExportDialog({
                     key={preset.id}
                     type="button"
                     onClick={() => setPreset(preset.fields)}
-                    className="rounded-[14px] border border-black/10 bg-black/[0.025] px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.11em] text-black/54 transition hover:bg-black/[0.06] dark:border-white/8 dark:bg-white/[0.035] dark:text-white/46 dark:hover:bg-white/[0.07]"
+                    className="rounded-[14px] border border-black/10 bg-black/[0.025] px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black/54 transition hover:bg-black/[0.06] dark:border-white/8 dark:bg-white/[0.035] dark:text-white/46 dark:hover:bg-white/[0.07]"
                   >
                     {preset.label}
                   </button>
@@ -193,16 +193,16 @@ export default function FeedExportDialog({
                 type="button"
                 onClick={() => onIncludeSummaryChange(!includeSummary)}
                 className={cn(
-                  'mt-4 flex w-full items-center justify-between gap-3 rounded-[16px] border px-3.5 py-3 text-left transition',
+                  'mt-4 flex w-full items-center justify-between gap-3 rounded-[18px] border px-3.5 py-3 text-left transition',
                   includeSummary
-                    ? 'border-[#E11D48]/30 bg-[#E11D48]/10 text-black dark:text-white'
+                    ? 'border-[var(--fm-accent)]/30 bg-[var(--fm-accent)]/10 text-black dark:text-white'
                     : 'border-black/10 bg-black/[0.025] text-black/58 dark:border-white/8 dark:bg-white/[0.035] dark:text-white/46',
                 )}
               >
-                <span className="text-[11px] font-black uppercase tracking-[0.13em]">Summary sheet</span>
+                <span className="text-[12px] font-black uppercase tracking-[0.14em]">Summary sheet</span>
                 <span className={cn(
                   'flex h-5 w-5 items-center justify-center rounded-full border',
-                  includeSummary ? 'border-[#E11D48] bg-[#E11D48] text-white' : 'border-black/14 dark:border-white/14',
+                  includeSummary ? 'border-[var(--fm-accent)] bg-[var(--fm-accent)] text-white' : 'border-black/14 dark:border-white/14',
                 )}>
                   {includeSummary && <Check size={13} strokeWidth={3} />}
                 </span>
@@ -219,11 +219,11 @@ export default function FeedExportDialog({
                         onClick={() => toggleGroup(group.fields)}
                         className="flex w-full items-center justify-between gap-3 text-left"
                       >
-                        <span className="text-[11px] font-black uppercase tracking-[0.14em] text-black/58 dark:text-white/52">{group.label}</span>
+                        <span className="text-[12px] font-black uppercase tracking-[0.14em] text-black/58 dark:text-white/52">{group.label}</span>
                         <span className={cn(
-                          'flex h-5 min-w-5 items-center justify-center rounded-full border text-[9px] font-black',
+                          'flex h-5 min-w-5 items-center justify-center rounded-full border text-[10px] font-black',
                           allSelected
-                            ? 'border-[#E11D48] bg-[#E11D48] text-white'
+                            ? 'border-[var(--fm-accent)] bg-[var(--fm-accent)] text-white'
                             : 'border-black/14 text-black/36 dark:border-white/14 dark:text-white/32',
                         )}>
                           {allSelected ? <Check size={13} strokeWidth={3} /> : groupSelected}
@@ -238,16 +238,16 @@ export default function FeedExportDialog({
                               type="button"
                               onClick={() => toggleField(field.id)}
                               className={cn(
-                                'flex min-h-10 items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition',
+                                'flex min-h-10 items-center justify-between gap-3 rounded-[14px] border px-3 py-2 text-left transition',
                                 active
-                                  ? 'border-[#E11D48]/26 bg-[#E11D48]/10 text-black dark:text-white'
+                                  ? 'border-[var(--fm-accent)]/26 bg-[var(--fm-accent)]/10 text-black dark:text-white'
                                   : 'border-black/8 bg-white/50 text-black/54 hover:bg-white/80 dark:border-white/7 dark:bg-white/[0.035] dark:text-white/44 dark:hover:bg-white/[0.06]',
                               )}
                             >
                               <span className="text-[12px] font-bold leading-snug">{field.label}</span>
                               <span className={cn(
                                 'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
-                                active ? 'border-[#E11D48] bg-[#E11D48] text-white' : 'border-black/14 dark:border-white/14',
+                                active ? 'border-[var(--fm-accent)] bg-[var(--fm-accent)] text-white' : 'border-black/14 dark:border-white/14',
                               )}>
                                 {active && <Check size={10} strokeWidth={3} />}
                               </span>
@@ -261,18 +261,18 @@ export default function FeedExportDialog({
               </div>
 
               {(error || hasInvalidRange || !hasFields) && (
-                <div className="mt-4 rounded-[14px] border border-[#E11D48]/24 bg-[#E11D48]/10 px-3 py-2.5 text-[12px] font-bold text-[#BE123C] dark:text-[#FDA4AF]">
+                <div className="mt-4 rounded-[14px] border border-[var(--fm-accent)]/24 bg-[var(--fm-accent)]/10 px-3 py-2.5 text-[12px] font-bold text-[var(--fm-accent-deep)] dark:text-[var(--fm-accent-soft)]">
                   {error || (hasInvalidRange ? 'Export start date must be before end date' : 'Select at least one field')}
                 </div>
               )}
             </div>
 
-            <div className="shrink-0 border-t border-black/10 bg-white/86 px-5 py-4 dark:border-white/8 dark:bg-[#07080a]/90 md:px-6">
+            <div className="shrink-0 border-t border-black/10 bg-white/86 px-5 py-4 dark:border-white/8 dark:bg-[var(--fm-ink)]/90 md:px-6">
               <button
                 type="button"
                 onClick={onExport}
                 disabled={isExporting || hasInvalidRange || !hasFields}
-                className="flex w-full items-center justify-center gap-2 rounded-[16px] bg-[#E11D48] px-4 py-3 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[0_12px_30px_-14px_rgba(225,29,72,0.7)] transition hover:bg-[#BE123C] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-[var(--fm-accent)] px-4 py-3 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[0_12px_30px_-14px_rgb(var(--fm-accent-rgb)/0.7)] transition hover:bg-[var(--fm-accent-deep)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download size={16} strokeWidth={2.7} />
                 {isExporting ? 'Preparing Workbook' : 'Download XLSX'}

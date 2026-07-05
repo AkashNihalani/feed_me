@@ -177,29 +177,29 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
       <div className="relative z-10 mb-2.5 flex flex-col gap-2.5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <span className="fm-depth-title text-[11px] font-black uppercase leading-none tracking-[0.16em] text-foreground/55 dark:text-white/46 sm:text-[12px]">
+            <span className="fm-depth-title text-[12px] font-black uppercase leading-none tracking-[0.14em] text-foreground/55 dark:text-white/46 sm:text-[12px]">
               Percentage Map
             </span>
             <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-[16px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white sm:text-[19px]">
+              <span className="text-[16px] font-black leading-none tracking-[-0.04em] text-foreground dark:text-white sm:text-[18px]">
                 Latest {VISIBLE_POST_LIMIT}
               </span>
-              <span className="text-[8px] font-black uppercase tracking-[0.13em] text-foreground/36 dark:text-white/30">
+              <span className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:text-white/30">
                 {mediaFilter === 'all' ? 'posts' : filterLabel}
               </span>
             </div>
           </div>
           <div className="rounded-full border border-black/6 bg-white/60 px-2.5 py-1 text-right shadow-[0_5px_14px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/8 dark:bg-white/[0.05]">
-            <div className="text-[8px] font-black uppercase leading-none tracking-[0.12em] text-foreground/34 dark:text-white/28">
+            <div className="text-[8px] font-black uppercase leading-none tracking-[0.14em] text-foreground/34 dark:text-white/28">
               showing
             </div>
-            <div className="mt-0.5 text-[12px] font-black leading-none tabular-nums text-[#E11D48]">
+            <div className="mt-0.5 text-[12px] font-black leading-none tabular-nums text-[var(--fm-accent)]">
               {visiblePoints.length}/{filteredPoints.length}
             </div>
           </div>
         </div>
 
-        <div className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-[15px] border border-black/6 bg-black/[0.025] p-[3px] shadow-[inset_0_1px_3px_rgba(15,23,42,0.035)] dark:border-white/8 dark:bg-white/[0.04]">
+        <div className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-[14px] border border-black/6 bg-black/[0.025] p-[3px] shadow-[inset_0_1px_3px_rgba(15,23,42,0.035)] dark:border-white/8 dark:bg-white/[0.04]">
           {MEDIA_FILTERS.map(({ key, label, Icon }) => (
             <motion.button
               key={key}
@@ -210,12 +210,12 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
                 startTransition(() => setMediaFilter(key));
               }}
               whileTap={{ scale: 0.96 }}
-              className={`relative inline-flex min-w-fit items-center gap-1.5 rounded-[12px] px-2.5 py-1.25 text-[9px] font-black uppercase tracking-[0.1em] sm:px-3 sm:py-1.5 ${mediaFilter === key ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
+              className={`relative inline-flex min-w-fit items-center gap-1.5 rounded-[14px] px-2.5 py-1.25 text-[10px] font-black uppercase tracking-[0.14em] sm:px-3 sm:py-1.5 ${mediaFilter === key ? 'z-10 text-white' : 'z-0 text-foreground/42 dark:text-white/40'}`}
             >
               {mediaFilter === key && (
                 <motion.span
                   layoutId={`scatter-media-pill-bg-${instanceId}`}
-                  className="absolute inset-0 rounded-[12px] bg-[#E11D48] shadow-[0_10px_20px_-10px_rgba(225,29,72,0.55)] dark:shadow-[0_10px_20px_-10px_rgba(225,29,72,0.45)]"
+                  className="absolute inset-0 rounded-[14px] bg-[var(--fm-accent)] shadow-[0_10px_20px_-10px_rgb(var(--fm-accent-rgb)/0.55)] dark:shadow-[0_10px_20px_-10px_rgb(var(--fm-accent-rgb)/0.45)]"
                   transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
                 />
               )}
@@ -232,7 +232,7 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
           className="absolute inset-x-0 border-t border-black/14 dark:border-white/12"
           style={{ top: `${TOP_ZONE_PERCENT}%` }}
         >
-          <span className="absolute -top-3.5 right-1.5 rounded-full bg-white/72 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38 shadow-[0_3px_10px_rgba(15,23,42,0.04)] dark:bg-black/35 dark:text-white/32">
+          <span className="absolute -top-3.5 right-1.5 rounded-full bg-white/72 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 shadow-[0_3px_10px_rgba(15,23,42,0.04)] dark:bg-black/35 dark:text-white/32">
             Top 50%
           </span>
         </div>
@@ -286,13 +286,13 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
                   className={[
                     'rounded-full',
                     isTop
-                      ? 'bg-[#FB7185] shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_0_18px_rgba(225,29,72,0.22)] dark:bg-[#E11D48] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgba(225,29,72,0.45)]'
-                      : 'bg-[#FB7185]/88 shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_14px_rgba(225,29,72,0.14)] dark:bg-[#E11D48]/88 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgba(225,29,72,0.3)]'
+                      ? 'bg-[var(--fm-accent-bright)] shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_0_18px_rgb(var(--fm-accent-rgb)/0.22)] dark:bg-[var(--fm-accent)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_22px_rgb(var(--fm-accent-rgb)/0.45)]'
+                      : 'bg-[var(--fm-accent-bright)]/88 shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_14px_rgb(var(--fm-accent-rgb)/0.14)] dark:bg-[var(--fm-accent)]/88 dark:shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_0_16px_rgb(var(--fm-accent-rgb)/0.3)]'
                   ].join(' ')}
                 />
                 {shouldPulse && (
                   <motion.div
-                    className="absolute inset-[-7px] rounded-full border border-[#FB7185]/34 dark:border-[#E11D48]/42"
+                    className="absolute inset-[-7px] rounded-full border border-[var(--fm-accent-bright)]/34 dark:border-[var(--fm-accent)]/42"
                     animate={{ scale: [1, 1.4, 1], opacity: [0, 0.28, 0] }}
                     transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut', delay: selectionIndex * 0.08 }}
                   />
@@ -314,23 +314,23 @@ function FeedScatterField({ points }: { points: ScatterPoint[] }) {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="pointer-events-none absolute left-1/2 top-3 z-50 min-w-[168px] -translate-x-1/2 rounded-[11px] border border-black/10 bg-white/90 px-3.5 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0A0A0A]/93 dark:shadow-[0_12px_30px_rgba(0,0,0,0.72)]"
+              className="pointer-events-none absolute left-1/2 top-3 z-50 min-w-[168px] -translate-x-1/2 rounded-[10px] border border-black/10 bg-white/90 px-3.5 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[var(--fm-ink)]/93 dark:shadow-[0_12px_30px_rgba(0,0,0,0.72)]"
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-[0.1em] text-black/50 dark:text-white/40">{activeHoveredPoint.date}</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-black/50 dark:text-white/40">{activeHoveredPoint.date}</span>
                 <span className="text-[12px] font-black text-black/62 dark:text-white/72">{activeHoveredPoint.percentile === null ? '--' : `${Math.round(activeHoveredPoint.percentile)}%`}</span>
               </div>
               <div className="text-[16px] font-black tracking-normal text-black dark:text-white">@{activeHoveredPoint.handle}</div>
-              <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-black/42 dark:text-white/36">
+              <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-black/42 dark:text-white/36">
                 {mediaLabel(activeHoveredPoint.mediaType)}
               </div>
               <div className="mt-2 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${tooltipMetrics(activeHoveredPoint).length}, minmax(0, 1fr))` }}>
                 {tooltipMetrics(activeHoveredPoint).map(({ key, label, value, Icon }) => (
                   <div
                     key={key}
-                    className="rounded-[9px] border border-black/[0.06] bg-black/[0.025] px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/[0.05]"
+                    className="rounded-[10px] border border-black/[0.06] bg-black/[0.025] px-2 py-1.5 text-center dark:border-white/10 dark:bg-white/[0.05]"
                   >
-                    <div className="flex items-center justify-center gap-1 text-[8px] font-black uppercase tracking-[0.1em] text-black/38 dark:text-white/34">
+                    <div className="flex items-center justify-center gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/38 dark:text-white/34">
                       <Icon className="h-2.5 w-2.5" strokeWidth={2.5} />
                       {label}
                     </div>

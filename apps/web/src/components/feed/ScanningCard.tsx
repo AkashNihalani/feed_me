@@ -22,7 +22,7 @@ export default function ScanningCard({ handle }: { handle: string }) {
                 <motion.span
                     animate={{ opacity: [0, 1, 0] }}
                     transition={{ duration: 0.8, repeat: Infinity }}
-                    className="ml-1 inline-block h-[0.9em] w-[0.18em] rounded-full bg-[#E11D48] align-[-0.1em]"
+                    className="ml-1 inline-block h-[0.9em] w-[0.18em] rounded-full bg-[var(--fm-accent)] align-[-0.1em]"
                 />
              </motion.h3>
         </div>
