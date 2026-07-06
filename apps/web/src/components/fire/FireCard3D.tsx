@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Lock, Pause, Play } from 'lucide-react';
 import { FireItem } from './types';
-import { compact } from '@/components/fire/fireLogicHelpers';
 import {
+  formatMetricValue,
   metricLabel,
   orderedSupportMetricsFromPayload,
   resolveBestMetricFromPayload,
@@ -422,26 +422,28 @@ export function FireCard3D({
 
   const bestMetric = resolveBestMetricFromPayload(
     metrics,
-    text(payload.best_metric) || item.metricKey || 'views',
-    item.surfaceMediaType || item.mediaType,
+    text(payload.best_metric) || item.metricKey || 'engagement_rate',
   );
   const bestMetricObj = asRec(metrics[bestMetric]);
 
   const value = num(bestMetricObj.value) ?? item.metricValue;
   const baseline = num(bestMetricObj.baseline);
   const multiple = num(bestMetricObj.multiple);
-  const heroBaselineLabel = baseline == null ? '-- usual' : `${compact(baseline)} usual`;
+  const heroMetricLabel = metricLabel(bestMetric, 'short').toUpperCase();
+  const heroMetricValue = formatMetricValue(bestMetric, value, '--');
+  const heroBaselineLabel = baseline == null ? '-- usual' : `${formatMetricValue(bestMetric, baseline, '--')} usual`;
   const heroMultipleLabel = multiple == null ? '--' : `${multiple.toFixed(2)}x`;
   const supportMetrics = orderedSupportMetricsFromPayload(
     metrics,
     bestMetric,
-    item.surfaceMediaType || item.mediaType,
   ).map((metric) => ({
     key: metric.key,
     label: metricLabel(metric.key, 'singular'),
     value: metric.value,
     multiple: metric.multiple,
     baseline: metric.baseline,
+    valueLabel: formatMetricValue(metric.key, metric.value, '--'),
+    baselineLabel: formatMetricValue(metric.key, metric.baseline, '--'),
     multipleLabel: metric.multiple == null ? '--' : `${metric.multiple.toFixed(2)}x`,
   }));
 
@@ -492,7 +494,7 @@ export function FireCard3D({
   const showAutoplayToggle = !isDesktopCard && showMobileAutoplayToggle && lockedMediaType === 'REEL' && Boolean(previewUrl || previewFallbackUrl);
   const shouldMountInlinePreview = canRenderInlinePreview && (shouldPlayPreview || previewPlaying);
   const inlinePreviewPreload = 'auto' as const;
-  const heroMetricStamp = value == null ? '--' : compact(value);
+  const heroMetricStamp = heroMetricValue;
   const hideSignalChrome = item.hideSignalChrome === true;
   const postContextRead = parsePostContextRead(meta);
   const showPostMortemStreak = postContextRead?.isD7Read === true;
@@ -952,7 +954,7 @@ export function FireCard3D({
                 ? 'rounded-[6px] bg-white/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.14em] 2xl:text-[8px]'
                 : 'rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/78'}
               >
-                {heroMetricStamp} {bestMetric.toUpperCase()}
+                {heroMetricStamp} {heroMetricLabel}
               </span>
               <span className={isDesktopCard
                 ? 'rounded-[6px] bg-white/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/72 2xl:rounded-[6px] 2xl:px-1.5 2xl:tracking-[0.14em] 2xl:text-[8px]'
@@ -1106,7 +1108,7 @@ export function FireCard3D({
                   <div className="min-w-0 py-0.5">
                     <div className="text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-white/72">Performance</div>
                     <div className="mt-1 truncate text-[clamp(25px,7.3vw,40px)] font-black leading-[0.86] tracking-[-0.04em] text-white drop-shadow-sm">
-                      {compact(value)} {bestMetric.toUpperCase()}
+                      {heroMetricValue} {heroMetricLabel}
                     </div>
                     <div className="mt-1 text-[12px] font-black uppercase leading-none tracking-[0.14em] text-white opacity-75 sm:text-[12px]">
                       {heroBaselineLabel}
@@ -1157,10 +1159,10 @@ export function FireCard3D({
                             <div className="mt-1 flex items-end justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="text-[22px] sm:text-[22px] font-black leading-none text-foreground/96 dark:text-white/92">
-                                  {metric.value == null ? '--' : compact(metric.value)}
+                                  {metric.valueLabel}
                                 </div>
                                 <div className="mt-1 text-[10px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-foreground/48 dark:text-white/42">
-                                  {metric.baseline == null ? 'Tracked' : `${compact(metric.baseline)} usual`}
+                                  {metric.baseline == null ? 'Tracked' : `${metric.baselineLabel} usual`}
                                 </div>
                               </div>
                               <div className="text-right">

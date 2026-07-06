@@ -1,4 +1,10 @@
 import { FireItem } from './types';
+import {
+  CANONICAL_FIRE_METRICS,
+  formatMetricValue,
+  metricLabel,
+  resolveBestMetricFromPayload,
+} from './fireMetricDisplay';
 
 type LayerSlide = {
   title: string;
@@ -56,14 +62,17 @@ export function buildSlides(item: FireItem): LayerSlide[] {
   const timing = asRec(payload.timing);
   const trajectory = asRec(payload.trajectory);
 
-  const bestMetric = (typeof payload.best_metric === 'string' && payload.best_metric.trim() ? payload.best_metric.trim().toLowerCase() : 'views');
+  const bestMetric = resolveBestMetricFromPayload(
+    metrics,
+    typeof payload.best_metric === 'string' && payload.best_metric.trim() ? payload.best_metric.trim().toLowerCase() : 'engagement_rate',
+  );
 
-  const metricRows = ['views', 'likes', 'comments'].map((m) => {
+  const metricRows = CANONICAL_FIRE_METRICS.map((m) => {
     const md = asRec(metrics[m]);
-    const val = compact(typeof md.value === 'number' ? md.value : null);
-    const base = compact(typeof md.baseline === 'number' ? md.baseline : null);
+    const val = formatMetricValue(m, typeof md.value === 'number' ? md.value : null);
+    const base = formatMetricValue(m, typeof md.baseline === 'number' ? md.baseline : null);
     const mult = multiple(typeof md.multiple === 'number' ? md.multiple : null);
-    return `${m.toUpperCase()} ${val} · ${base} · ${mult}`;
+    return `${metricLabel(m, 'short').toUpperCase()} ${val} · ${base} · ${mult}`;
   });
 
   const bestData = asRec(metrics[bestMetric]);

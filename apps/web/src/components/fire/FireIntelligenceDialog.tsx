@@ -8,8 +8,8 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { FireItem } from './types';
-import { compact } from './fireLogicHelpers';
 import {
+  formatMetricValue,
   metricLabel,
   orderedSupportMetricsFromPayload,
   resolveBestMetricFromPayload,
@@ -278,10 +278,6 @@ function buildFeederArchiveHref(item: FireItem | null): string | null {
   return `/feed/${feedId}/feeder/${encodeURIComponent(handle)}`;
 }
 
-function compactOrDash(v: number | null): string {
-  return v == null || !Number.isFinite(v) ? '--' : compact(v);
-}
-
 function multipleOrDash(v: number | null): string {
   return v == null || !Number.isFinite(v) ? '--' : `${v.toFixed(2)}x`;
 }
@@ -498,8 +494,7 @@ export default function FireIntelligenceDialog({
     const meta = asRecord(payload.meta);
     const bestMetric = resolveBestMetricFromPayload(
       metrics,
-      text(payload.best_metric) || item.metricKey || 'views',
-      item.surfaceMediaType || item.mediaType,
+      text(payload.best_metric) || item.metricKey || 'engagement_rate',
     );
     const bestMetricObj = asRecord(metrics[bestMetric]);
     const value = num(bestMetricObj.value) ?? item.metricValue;
@@ -522,18 +517,20 @@ export default function FireIntelligenceDialog({
     const supportMetrics = orderedSupportMetricsFromPayload(
       metrics,
       bestMetric,
-      item.surfaceMediaType || item.mediaType,
     ).map((metric) => ({
       key: metric.key,
       label: metricLabel(metric.key),
       multiple: multipleOrDash(metric.multiple),
-      value: compactOrDash(metric.value),
-      baseline: compactOrDash(metric.baseline),
+      value: formatMetricValue(metric.key, metric.value, '--'),
+      baseline: formatMetricValue(metric.key, metric.baseline, '--'),
     }));
     const postContextRead = parsePostContextRead(meta);
 
     return {
-      bestMetric: metricLabel(bestMetric),
+      bestMetric,
+      bestMetricLabel: metricLabel(bestMetric),
+      valueLabel: formatMetricValue(bestMetric, value, '--'),
+      baselineLabel: formatMetricValue(bestMetric, baseline, '--'),
       value,
       baseline,
       multiple,
@@ -894,10 +891,10 @@ export default function FireIntelligenceDialog({
                         <div className="mt-2.5 flex items-end justify-between gap-4">
                           <div>
                             <div className="text-[34px] font-black leading-none tracking-[-0.04em] text-white">
-                              {compactOrDash(stats.value)}
+                              {stats.valueLabel}
                             </div>
                             <div className="mt-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/70">
-                              {stats.bestMetric}
+                              {stats.bestMetricLabel}
                             </div>
                           </div>
                           <div className="text-right">
@@ -905,7 +902,7 @@ export default function FireIntelligenceDialog({
                               {multipleOrDash(stats.multiple)}
                             </div>
                             <div className="mt-1 text-[14px] font-semibold text-white/76">
-                              {compactOrDash(stats.baseline)} usual
+                              {stats.baselineLabel} usual
                             </div>
                           </div>
                         </div>

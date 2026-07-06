@@ -27,7 +27,7 @@ const FIRE_PAGE_TTL_MS = 5 * 60 * 1000;
 const FIRE_LIVE_PAGE_TTL_MS = 15 * 1000;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
 const FIRE_MAX_BOOTSTRAP_PREFETCH_DAY_COUNT = 3;
-const FIRE_CACHE_VERSION = 'v10';
+const FIRE_CACHE_VERSION = 'v11';
 const FIRE_THUMBNAIL_ASSET_ROLES = [
   'thumbnail',
   'display',
@@ -265,37 +265,30 @@ function previewCaptureAllowedForBusinessDay(businessDay: string | null | undefi
   return day >= PREVIEW_CAPTURE_START_DAY;
 }
 
-function isViewsMetricSupported(mediaType: string | null | undefined): boolean {
-  const normalized = String(mediaType || '').trim().toLowerCase();
-  return normalized === 'reel' || normalized === 'video';
-}
-
-function metricValueFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey, mediaType?: string | null): number | null {
-  if (metric === 'views' && !isViewsMetricSupported(mediaType)) return null;
-  if (metric === 'views') return nullableNumber(row.views);
+function metricValueFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey): number | null {
   if (metric === 'likes') return nullableNumber(row.likes);
-  return nullableNumber(row.comments);
+  if (metric === 'comments') return nullableNumber(row.comments);
+  return nullableNumber(row.engagement_rate);
 }
 
-function metricPercentileFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey, mediaType?: string | null): number | null {
-  if (metric === 'views' && !isViewsMetricSupported(mediaType)) return null;
-  if (metric === 'views') return nullableNumber(row.views_percentile);
+function metricPercentileFromPostMetric(row: FirePostMetricRow, metric: FireMetricKey): number | null {
   if (metric === 'likes') return nullableNumber(row.likes_percentile);
-  return nullableNumber(row.comments_percentile);
+  if (metric === 'comments') return nullableNumber(row.comments_percentile);
+  return nullableNumber(row.engagement_rate_percentile);
 }
 
 function baselineValueFromRow(row: FireFeederBaselineRow | null | undefined, metric: FireMetricKey): number | null {
   if (!row) return null;
-  if (metric === 'views') return nullableNumber(row.median_views);
   if (metric === 'likes') return nullableNumber(row.median_likes);
-  return nullableNumber(row.median_comments);
+  if (metric === 'comments') return nullableNumber(row.median_comments);
+  return null;
 }
 
 function hourBaselineValueFromRow(row: FireFeederHourBaselineRow | null | undefined, metric: FireMetricKey): number | null {
   if (!row) return null;
-  if (metric === 'views') return nullableNumber(row.median_views);
   if (metric === 'likes') return nullableNumber(row.median_likes);
-  return nullableNumber(row.median_comments);
+  if (metric === 'comments') return nullableNumber(row.median_comments);
+  return null;
 }
 
 function computeMultiple(value: number | null, baseline: number | null): number | null {
@@ -523,12 +516,15 @@ type AlertSurfaceRow = {
   views: number | null;
   likes: number | null;
   comments: number | null;
+  engagement_rate: number | null;
   views_baseline: number | null;
   likes_baseline: number | null;
   comments_baseline: number | null;
+  engagement_rate_baseline: number | null;
   views_multiple: number | null;
   likes_multiple: number | null;
   comments_multiple: number | null;
+  engagement_rate_multiple: number | null;
   hour_ist: number | null;
   hour_percentile: number | null;
   hour_multiple: number | null;
@@ -569,6 +565,7 @@ type FirePostMetricRow = {
   views: number | null;
   likes: number | null;
   comments: number | null;
+  engagement_rate?: number | null;
   metric_value: number | string | null;
   percentile_performance: number | null;
   percentile_performance_exact?: number | null;
@@ -577,12 +574,15 @@ type FirePostMetricRow = {
   views_percentile: number | null;
   likes_percentile: number | null;
   comments_percentile: number | null;
+  engagement_rate_percentile?: number | null;
   views_baseline?: number | null;
   likes_baseline?: number | null;
   comments_baseline?: number | null;
+  engagement_rate_baseline?: number | null;
   views_multiple?: number | null;
   likes_multiple?: number | null;
   comments_multiple?: number | null;
+  engagement_rate_multiple?: number | null;
   hour_multiple?: number | null;
   feed_percentile: number | null;
   delta_from_d1: number | null;
@@ -656,40 +656,34 @@ type ResolvedMediaUrls = {
   previewUrls: Map<string, string>;
 };
 
-type FireMetricKey = 'views' | 'likes' | 'comments';
+type FireMetricKey = 'likes' | 'comments' | 'engagement_rate';
 
-function metricPreferenceOrder(mediaType: string | null): FireMetricKey[] {
-  if (isViewsMetricSupported(mediaType)) return ['views', 'likes', 'comments'];
-  return ['likes', 'comments'];
+function metricPreferenceOrder(): FireMetricKey[] {
+  return ['engagement_rate', 'likes', 'comments'];
 }
 
 function rowMetricValue(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
-  if (metric === 'views' && !isViewsMetricSupported(row.media_type)) return null;
-  return metric === 'views' ? nullableNumber(row.views) : metric === 'likes' ? nullableNumber(row.likes) : nullableNumber(row.comments);
+  if (metric === 'likes') return nullableNumber(row.likes);
+  if (metric === 'comments') return nullableNumber(row.comments);
+  return nullableNumber(row.engagement_rate);
 }
 
 function rowMetricBaseline(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
-  if (metric === 'views' && !isViewsMetricSupported(row.media_type)) return null;
-  return metric === 'views'
-    ? nullableNumber(row.views_baseline)
-    : metric === 'likes'
-      ? nullableNumber(row.likes_baseline)
-      : nullableNumber(row.comments_baseline);
+  if (metric === 'likes') return nullableNumber(row.likes_baseline);
+  if (metric === 'comments') return nullableNumber(row.comments_baseline);
+  return nullableNumber(row.engagement_rate_baseline);
 }
 
 function rowMetricMultiple(row: AlertSurfaceRow, metric: FireMetricKey): number | null {
-  if (metric === 'views' && !isViewsMetricSupported(row.media_type)) return null;
-  return metric === 'views'
-    ? nullableNumber(row.views_multiple)
-    : metric === 'likes'
-      ? nullableNumber(row.likes_multiple)
-      : nullableNumber(row.comments_multiple);
+  if (metric === 'likes') return nullableNumber(row.likes_multiple);
+  if (metric === 'comments') return nullableNumber(row.comments_multiple);
+  return nullableNumber(row.engagement_rate_multiple);
 }
 
 function deriveBestMetric(row: AlertSurfaceRow): FireMetricKey {
   const preferred = (nullableString(row.metric_key) || '').toLowerCase();
-  const ordered = metricPreferenceOrder(row.media_type);
-  if ((preferred === 'views' || preferred === 'likes' || preferred === 'comments') && rowMetricValue(row, preferred) != null) {
+  const ordered = metricPreferenceOrder();
+  if ((preferred === 'engagement_rate' || preferred === 'likes' || preferred === 'comments') && rowMetricValue(row, preferred) != null) {
     return preferred;
   }
   let bestMetric: FireMetricKey | null = null;
@@ -734,9 +728,9 @@ function serializeAlertRow(row: AlertSurfaceRow): Record<string, unknown> {
   const payload = {
     best_metric: bestMetric,
     metrics: {
-      views: buildMetricPayload(row, 'views', bestMetric),
       likes: buildMetricPayload(row, 'likes', bestMetric),
       comments: buildMetricPayload(row, 'comments', bestMetric),
+      engagement_rate: buildMetricPayload(row, 'engagement_rate', bestMetric),
     },
     position: {
       overall_percentile: nullableNumber(row.surface_percentile_exact) ?? nullableNumber(row.surface_percentile),
@@ -947,6 +941,7 @@ async function fetchCurrentDayTrackingRows(
     'views',
     'likes',
     'comments',
+    'engagement_rate',
     'metric_value',
     'percentile_performance',
     'percentile_performance_exact',
@@ -955,12 +950,15 @@ async function fetchCurrentDayTrackingRows(
     'views_percentile',
     'likes_percentile',
     'comments_percentile',
+    'engagement_rate_percentile',
     'views_baseline',
     'likes_baseline',
     'comments_baseline',
+    'engagement_rate_baseline',
     'views_multiple',
     'likes_multiple',
     'comments_multiple',
+    'engagement_rate_multiple',
     'hour_multiple',
     'feed_percentile',
     'delta_from_d1',
@@ -1002,7 +1000,11 @@ async function fetchCurrentDayTrackingRows(
       (
         isMissingColumnReferenceError(error, 'post_metrics', 'percentile_performance_exact') ||
         isMissingColumnReferenceError(error, 'post_metrics', 'ranking_metric') ||
-        isMissingColumnReferenceError(error, 'post_metrics', 'views_baseline')
+        isMissingColumnReferenceError(error, 'post_metrics', 'views_baseline') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate_percentile') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate_baseline') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate_multiple')
       )
     ) {
       const legacyResult = await sb
@@ -1053,6 +1055,7 @@ async function fetchCurrentDayTrackingRows(
       views: row.views ?? null,
       likes: row.likes ?? null,
       comments: row.comments ?? null,
+      engagement_rate: row.engagement_rate ?? null,
       metric_value: row.metric_value ?? null,
       percentile_performance: row.percentile_performance ?? null,
       percentile_performance_exact: row.percentile_performance_exact ?? null,
@@ -1061,12 +1064,15 @@ async function fetchCurrentDayTrackingRows(
       views_percentile: row.views_percentile ?? null,
       likes_percentile: row.likes_percentile ?? null,
       comments_percentile: row.comments_percentile ?? null,
+      engagement_rate_percentile: row.engagement_rate_percentile ?? null,
       views_baseline: row.views_baseline ?? null,
       likes_baseline: row.likes_baseline ?? null,
       comments_baseline: row.comments_baseline ?? null,
+      engagement_rate_baseline: row.engagement_rate_baseline ?? null,
       views_multiple: row.views_multiple ?? null,
       likes_multiple: row.likes_multiple ?? null,
       comments_multiple: row.comments_multiple ?? null,
+      engagement_rate_multiple: row.engagement_rate_multiple ?? null,
       hour_multiple: row.hour_multiple ?? null,
       feed_percentile: row.feed_percentile ?? null,
       delta_from_d1: row.delta_from_d1 ?? null,
@@ -1193,6 +1199,7 @@ async function fetchMetricRowsForPostKeys(
     'views',
     'likes',
     'comments',
+    'engagement_rate',
     'metric_value',
     'percentile_performance',
     'percentile_performance_exact',
@@ -1201,12 +1208,15 @@ async function fetchMetricRowsForPostKeys(
     'views_percentile',
     'likes_percentile',
     'comments_percentile',
+    'engagement_rate_percentile',
     'views_baseline',
     'likes_baseline',
     'comments_baseline',
+    'engagement_rate_baseline',
     'views_multiple',
     'likes_multiple',
     'comments_multiple',
+    'engagement_rate_multiple',
     'hour_multiple',
     'feed_percentile',
     'delta_from_d1',
@@ -1249,7 +1259,11 @@ async function fetchMetricRowsForPostKeys(
       (
         isMissingColumnReferenceError(error, 'post_metrics', 'percentile_performance_exact') ||
         isMissingColumnReferenceError(error, 'post_metrics', 'ranking_metric') ||
-        isMissingColumnReferenceError(error, 'post_metrics', 'views_baseline')
+        isMissingColumnReferenceError(error, 'post_metrics', 'views_baseline') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate_percentile') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate_baseline') ||
+        isMissingColumnReferenceError(error, 'post_metrics', 'engagement_rate_multiple')
       )
     ) {
       const legacyResult = await fetchChunk(legacyFields);
@@ -1382,7 +1396,6 @@ function dedupeMetricRows(rows: FirePostMetricRow[]): FirePostMetricRow[] {
 
 function requiresLegacyBaselineFallback(row: FirePostMetricRow): boolean {
   return (
-    nullableNumber(row.views_baseline) == null ||
     nullableNumber(row.likes_baseline) == null ||
     nullableNumber(row.comments_baseline) == null ||
     nullableString(row.ranking_metric) == null ||
@@ -1497,12 +1510,13 @@ function buildSyntheticFireRows(options: {
     const views = nullableNumber(metricRow.views);
     const likes = nullableNumber(metricRow.likes);
     const comments = nullableNumber(metricRow.comments);
-    const viewsBaseline = nullableNumber(metricRow.views_baseline) ?? baselineValueFromRow(baseline, 'views');
+    const engagementRate = nullableNumber(metricRow.engagement_rate);
     const likesBaseline = nullableNumber(metricRow.likes_baseline) ?? baselineValueFromRow(baseline, 'likes');
     const commentsBaseline = nullableNumber(metricRow.comments_baseline) ?? baselineValueFromRow(baseline, 'comments');
-    const viewsMultiple = nullableNumber(metricRow.views_multiple) ?? computeMultiple(views, viewsBaseline);
+    const engagementRateBaseline = nullableNumber(metricRow.engagement_rate_baseline);
     const likesMultiple = nullableNumber(metricRow.likes_multiple) ?? computeMultiple(likes, likesBaseline);
     const commentsMultiple = nullableNumber(metricRow.comments_multiple) ?? computeMultiple(comments, commentsBaseline);
+    const engagementRateMultiple = nullableNumber(metricRow.engagement_rate_multiple) ?? computeMultiple(engagementRate, engagementRateBaseline);
 
     const rowSeed = {
       id: buildSyntheticAlertId(Number(feeder.feed_id), postKey, checkpoint, businessDay),
@@ -1539,12 +1553,15 @@ function buildSyntheticFireRows(options: {
       views,
       likes,
       comments,
-      views_baseline: viewsBaseline,
+      engagement_rate: engagementRate,
+      views_baseline: null,
       likes_baseline: likesBaseline,
       comments_baseline: commentsBaseline,
-      views_multiple: viewsMultiple,
+      engagement_rate_baseline: engagementRateBaseline,
+      views_multiple: null,
       likes_multiple: likesMultiple,
       comments_multiple: commentsMultiple,
+      engagement_rate_multiple: engagementRateMultiple,
       hour_ist: hourIst,
       hour_percentile: null,
       hour_multiple: null,
@@ -1562,11 +1579,11 @@ function buildSyntheticFireRows(options: {
 
     const bestMetric = deriveBestMetric(rowSeed);
     const storedMetricMatchesBest = nullableString(metricRow.ranking_metric)?.toLowerCase() === bestMetric;
-    const bestValue = metricValueFromPostMetric(metricRow, bestMetric, mediaType)
+    const bestValue = metricValueFromPostMetric(metricRow, bestMetric)
       ?? (storedMetricMatchesBest ? nullableNumber(metricRow.metric_value) : null);
     const bestPercentile = storedMetricMatchesBest
       ? displayPercentile
-      : metricPercentileFromPostMetric(metricRow, bestMetric, mediaType);
+      : metricPercentileFromPostMetric(metricRow, bestMetric);
     const hourMultiple = (storedMetricMatchesBest ? nullableNumber(metricRow.hour_multiple) : null)
       ?? computeMultiple(bestValue, hourBaselineValueFromRow(hourBaseline, bestMetric));
     rowSeed.metric_key = bestMetric;

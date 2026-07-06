@@ -10,6 +10,7 @@ import FireIntelligenceDialog from '@/components/fire/FireIntelligenceDialog';
 import ZSpaceFilter from '@/components/fire/ZSpaceFilter';
 import { AppHeader, usePageReady } from '@/components/shell/AppShell';
 import {
+  metricLabel,
   metricMultipleFromPayload,
   metricValueFromPayload,
   resolveBestMetricFromPayload,
@@ -444,8 +445,8 @@ function sortFireAlertItems(items: FireAlertItem[], sortMode: FireSortMode): Fir
 
     const aMetrics = asRecord(a.payload.metrics);
     const bMetrics = asRecord(b.payload.metrics);
-    const aBestMetric = resolveBestMetricFromPayload(aMetrics, a.metricKey || asString(a.payload.best_metric), a.surfaceMediaType || a.mediaType);
-    const bBestMetric = resolveBestMetricFromPayload(bMetrics, b.metricKey || asString(b.payload.best_metric), b.surfaceMediaType || b.mediaType);
+    const aBestMetric = resolveBestMetricFromPayload(aMetrics, a.metricKey || asString(a.payload.best_metric));
+    const bBestMetric = resolveBestMetricFromPayload(bMetrics, b.metricKey || asString(b.payload.best_metric));
     const aMultiple = metricMultipleFromPayload(aMetrics, aBestMetric) ?? Number.NEGATIVE_INFINITY;
     const bMultiple = metricMultipleFromPayload(bMetrics, bBestMetric) ?? Number.NEGATIVE_INFINITY;
     if (aMultiple !== bMultiple) return bMultiple - aMultiple;
@@ -504,8 +505,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
   const metrics = asRecord(payload.metrics);
   const bestMetric = resolveBestMetricFromPayload(
     metrics,
-    asString(payload.best_metric) || asString(row.metric_key) || 'views',
-    surfaceMediaType,
+    asString(payload.best_metric) || asString(row.metric_key) || 'engagement_rate',
   );
   const bestMetricData = asRecord(metrics[bestMetric]);
   const position = asRecord(payload.position);
@@ -591,7 +591,7 @@ function normalizeAlertRow(row: AlertRow): FireAlertItem | null {
       handle: surfaceHandle,
       mediaType: surfaceMediaType,
       checkpoint: checkpoint.toUpperCase(),
-      metricLabel: bestMetric.toUpperCase(),
+      metricLabel: metricLabel(bestMetric, 'short').toUpperCase(),
       metricValue,
     },
   };

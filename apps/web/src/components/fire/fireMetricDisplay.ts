@@ -1,4 +1,5 @@
-export type FireMetricKey = 'views' | 'likes' | 'comments';
+export const CANONICAL_FIRE_METRICS = ['engagement_rate', 'likes', 'comments'] as const;
+export type FireMetricKey = (typeof CANONICAL_FIRE_METRICS)[number];
 
 type MetricPayloadMap = Record<string, unknown>;
 
@@ -22,17 +23,6 @@ function asNumber(value: unknown): number | null {
   return null;
 }
 
-function isReelLikeMediaType(mediaType: string | null | undefined): boolean {
-  const normalized = String(mediaType || '').trim().toLowerCase();
-  return normalized === 'reel' || normalized === 'video';
-}
-
-function metricPreferenceOrder(mediaType: string | null | undefined): FireMetricKey[] {
-  return isReelLikeMediaType(mediaType)
-    ? ['views', 'likes', 'comments']
-    : ['likes', 'comments'];
-}
-
 function metricPayload(metrics: MetricPayloadMap, metric: FireMetricKey): Record<string, unknown> {
   return asRecord(metrics[metric]);
 }
@@ -49,31 +39,48 @@ export function metricBaselineFromPayload(metrics: MetricPayloadMap, metric: Fir
   return asNumber(metricPayload(metrics, metric).baseline);
 }
 
-export function metricLabel(metric: FireMetricKey, variant: 'plural' | 'singular' = 'plural'): string {
+export function metricLabel(metric: FireMetricKey, variant: 'plural' | 'singular' | 'short' = 'plural'): string {
+  if (metric === 'engagement_rate') return variant === 'short' ? 'ER' : 'Engagement Rate';
   if (variant === 'singular') {
-    if (metric === 'views') return 'View';
     if (metric === 'likes') return 'Like';
     return 'Comment';
   }
-  if (metric === 'views') return 'Views';
   if (metric === 'likes') return 'Likes';
   return 'Comments';
+}
+
+function compactCount(v: number): string {
+  const n = Math.abs(v);
+  if (n >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(Math.round(v));
+}
+
+function formatEngagementRate(value: number): string {
+  const pct = Math.abs(value) <= 1 ? value * 100 : value;
+  const decimals = Math.abs(pct) >= 10 ? 1 : 2;
+  return `${pct.toFixed(decimals).replace(/\.?0+$/, '')}%`;
+}
+
+export function formatMetricValue(metric: FireMetricKey, value: number | null, missing = 'INSUFFICIENT DATA'): string {
+  if (value == null || !Number.isFinite(value)) return missing;
+  return metric === 'engagement_rate' ? formatEngagementRate(value) : compactCount(value);
 }
 
 export function resolveBestMetricFromPayload(
   metrics: MetricPayloadMap,
   preferred: string,
-  mediaType: string | null | undefined,
 ): FireMetricKey {
   const normalizedPreferred = preferred.trim().toLowerCase();
   if (
-    (normalizedPreferred === 'views' || normalizedPreferred === 'likes' || normalizedPreferred === 'comments')
+    (normalizedPreferred === 'engagement_rate' || normalizedPreferred === 'likes' || normalizedPreferred === 'comments')
     && metricValueFromPayload(metrics, normalizedPreferred) != null
   ) {
     return normalizedPreferred;
   }
 
-  const ordered = metricPreferenceOrder(mediaType);
+  const ordered = CANONICAL_FIRE_METRICS;
   let bestMetric: FireMetricKey | null = null;
   let bestMultiple: number | null = null;
 
@@ -98,13 +105,7 @@ export function resolveBestMetricFromPayload(
 function compareMetricPayloadValues(
   a: MetricPayloadValue,
   b: MetricPayloadValue,
-  mediaType: string | null | undefined,
 ): number {
-  if (!isReelLikeMediaType(mediaType)) {
-    if (a.key === 'views' && b.key !== 'views') return 1;
-    if (b.key === 'views' && a.key !== 'views') return -1;
-  }
-
   const aMultiple = a.multiple ?? Number.NEGATIVE_INFINITY;
   const bMultiple = b.multiple ?? Number.NEGATIVE_INFINITY;
   if (aMultiple !== bMultiple) return bMultiple - aMultiple;
@@ -113,24 +114,21 @@ function compareMetricPayloadValues(
   const bValue = b.value ?? Number.NEGATIVE_INFINITY;
   if (aValue !== bValue) return bValue - aValue;
 
-  const order = metricPreferenceOrder(mediaType);
+  const order = CANONICAL_FIRE_METRICS;
   return order.indexOf(a.key) - order.indexOf(b.key);
 }
 
 export function orderedSupportMetricsFromPayload(
   metrics: MetricPayloadMap,
   bestMetric: FireMetricKey,
-  mediaType: string | null | undefined,
 ): MetricPayloadValue[] {
-  return (['views', 'likes', 'comments'] as FireMetricKey[])
+  return CANONICAL_FIRE_METRICS
     .filter((metric) => metric !== bestMetric)
-    .filter((metric) => metric !== 'views' || isReelLikeMediaType(mediaType))
     .map((metric) => ({
       key: metric,
       value: metricValueFromPayload(metrics, metric),
       multiple: metricMultipleFromPayload(metrics, metric),
       baseline: metricBaselineFromPayload(metrics, metric),
     }))
-    .filter((metric) => metric.value != null)
-    .sort((a, b) => compareMetricPayloadValues(a, b, mediaType));
+    .sort(compareMetricPayloadValues);
 }

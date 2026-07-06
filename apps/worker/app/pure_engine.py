@@ -389,6 +389,15 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
+def _to_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def _clean_profile_pic_url(url: Any) -> str | None:
     if url is None:
         return None
@@ -437,10 +446,7 @@ def _is_reel_media_type(media_type: Any) -> bool:
 
 
 def _canonical_fire_metric_order(media_type: Any) -> tuple[str, ...]:
-    normalized = str(media_type or "").strip().lower()
-    if normalized in {"reel", "video"}:
-        return ("views", "likes", "comments")
-    return ("likes", "comments", "views")
+    return ("likes", "comments", "engagement_rate")
 
 
 def _round_half_up(value: float | None) -> int | None:
@@ -456,25 +462,32 @@ def _median_bigint(values: list[int | float | None]) -> int | None:
     return _round_half_up(float(statistics.median(cleaned)))
 
 
-def _metric_multiple(value: int | None, baseline: int | None) -> float | None:
+def _median_numeric(values: list[int | float | None], ndigits: int = 8) -> float | None:
+    cleaned = sorted(float(value) for value in values if value is not None)
+    if not cleaned:
+        return None
+    return round(float(statistics.median(cleaned)), ndigits)
+
+
+def _metric_multiple(value: int | float | None, baseline: int | float | None) -> float | None:
     if value is None or baseline is None or baseline <= 0:
         return None
     return round(float(value) / float(baseline), 4)
 
 
-def _competition_rank_maps(values: list[int | None]) -> tuple[dict[int, int], int]:
-    counts: dict[int, int] = defaultdict(int)
+def _competition_rank_maps(values: list[int | float | None]) -> tuple[dict[int | float, int], int]:
+    counts: dict[int | float, int] = defaultdict(int)
     total = 0
     for value in values:
         if value is None:
             continue
-        normalized = int(value)
+        normalized = value if isinstance(value, int) else float(value)
         counts[normalized] += 1
         total += 1
     if total <= 0:
         return {}, 0
 
-    rank_map: dict[int, int] = {}
+    rank_map: dict[int | float, int] = {}
     rank = 1
     for value in sorted(counts.keys(), reverse=True):
         rank_map[value] = rank
@@ -525,15 +538,35 @@ def _reference_ts_for_metric_row(posted_at: Any, business_day: Any) -> datetime 
     return None
 
 
-def _metric_value_for_name(record: dict[str, Any], metric: str) -> int | None:
+def _engagement_count_from_metrics(likes: Any, comments: Any) -> int | None:
+    normalized_likes = _to_int(likes)
+    normalized_comments = _to_int(comments)
+    if normalized_likes is None and normalized_comments is None:
+        return None
+    return int(normalized_likes or 0) + int(normalized_comments or 0)
+
+
+def _engagement_rate_from_metrics(likes: Any, comments: Any, followers: Any) -> tuple[int | None, float | None]:
+    engagement_count = _engagement_count_from_metrics(likes, comments)
+    followers_at_metric = _to_int(followers)
+    if engagement_count is None or followers_at_metric is None or followers_at_metric <= 0:
+        return engagement_count, None
+    return engagement_count, round(float(engagement_count) / float(followers_at_metric), 8)
+
+
+def _metric_value_for_name(record: dict[str, Any], metric: str) -> int | float | None:
     normalized = str(metric or "").strip().lower()
     value = record.get(normalized)
+    if normalized == "engagement_rate":
+        return _to_float(value)
     return _to_int(value)
 
 
-def _baseline_value_for_name(record: dict[str, Any], metric: str) -> int | None:
+def _baseline_value_for_name(record: dict[str, Any], metric: str) -> int | float | None:
     normalized = str(metric or "").strip().lower()
     value = record.get(f"{normalized}_baseline")
+    if normalized == "engagement_rate":
+        return _to_float(value)
     return _to_int(value)
 
 
@@ -1479,11 +1512,16 @@ class PureEngine:
               pm.views,
               pm.likes,
               pm.comments,
+              pm.engagement_count,
+              pm.followers_at_metric,
+              pm.engagement_rate,
+              fd.follower_count,
               lower(coalesce(p.media_type, 'unknown')) as media_type,
               p.posted_at,
               extract(hour from (p.posted_at at time zone %s))::smallint as hour_ist
             from public.post_metrics pm
             join public.posts p on p.post_key = pm.post_key
+            join public.feeders fd on fd.id = p.feeder_id
             where p.feeder_id = %s
               and lower(pm.checkpoint) = %s
             order by
@@ -1506,6 +1544,17 @@ class PureEngine:
             normalized["views"] = _to_int(row.get("views"))
             normalized["likes"] = _to_int(row.get("likes"))
             normalized["comments"] = _to_int(row.get("comments"))
+            followers_at_metric = _to_int(row.get("followers_at_metric"))
+            if followers_at_metric is None:
+                followers_at_metric = _to_int(row.get("follower_count"))
+            engagement_count, engagement_rate = _engagement_rate_from_metrics(
+                normalized.get("likes"),
+                normalized.get("comments"),
+                followers_at_metric,
+            )
+            normalized["followers_at_metric"] = followers_at_metric
+            normalized["engagement_count"] = engagement_count if engagement_count is not None else _to_int(row.get("engagement_count"))
+            normalized["engagement_rate"] = engagement_rate if engagement_rate is not None else _to_float(row.get("engagement_rate"))
             normalized["hour_ist"] = _to_int(row.get("hour_ist"))
             normalized["reference_ts"] = (
                 _reference_ts_for_metric_row(row.get("posted_at"), row.get("business_date_ist"))
@@ -1544,21 +1593,29 @@ class PureEngine:
                 views_values = [_metric_value_for_name(candidate, "views") for candidate in window]
                 likes_values = [_metric_value_for_name(candidate, "likes") for candidate in window]
                 comments_values = [_metric_value_for_name(candidate, "comments") for candidate in window]
+                engagement_rate_values = [_metric_value_for_name(candidate, "engagement_rate") for candidate in window]
 
                 current["views_baseline"] = _median_bigint(views_values)
                 current["likes_baseline"] = _median_bigint(likes_values)
                 current["comments_baseline"] = _median_bigint(comments_values)
+                current["engagement_rate_baseline"] = _median_numeric(engagement_rate_values)
                 current["views_multiple"] = _metric_multiple(current.get("views"), current.get("views_baseline"))
                 current["likes_multiple"] = _metric_multiple(current.get("likes"), current.get("likes_baseline"))
                 current["comments_multiple"] = _metric_multiple(current.get("comments"), current.get("comments_baseline"))
+                current["engagement_rate_multiple"] = _metric_multiple(
+                    current.get("engagement_rate"),
+                    current.get("engagement_rate_baseline"),
+                )
 
                 views_rank_map, views_pool_size = _competition_rank_maps(views_values)
                 likes_rank_map, likes_pool_size = _competition_rank_maps(likes_values)
                 comments_rank_map, comments_pool_size = _competition_rank_maps(comments_values)
+                engagement_rate_rank_map, engagement_rate_pool_size = _competition_rank_maps(engagement_rate_values)
 
                 current_views = current.get("views")
                 current_likes = current.get("likes")
                 current_comments = current.get("comments")
+                current_engagement_rate = current.get("engagement_rate")
 
                 current["views_percentile"], _ = _percentile_from_rank(
                     views_rank_map.get(int(current_views)) if current_views is not None else None,
@@ -1571,6 +1628,10 @@ class PureEngine:
                 current["comments_percentile"], _ = _percentile_from_rank(
                     comments_rank_map.get(int(current_comments)) if current_comments is not None else None,
                     comments_pool_size,
+                )
+                current["engagement_rate_percentile"], _ = _percentile_from_rank(
+                    engagement_rate_rank_map.get(float(current_engagement_rate)) if current_engagement_rate is not None else None,
+                    engagement_rate_pool_size,
                 )
 
                 current["ranking_metric"] = _choose_canonical_fire_metric(current, media_type)
@@ -1585,6 +1646,9 @@ class PureEngine:
                 elif ranking_metric == "likes":
                     ranking_rank = likes_rank_map.get(int(ranking_value)) if ranking_value is not None else None
                     ranking_pool_size = likes_pool_size
+                elif ranking_metric == "engagement_rate":
+                    ranking_rank = engagement_rate_rank_map.get(float(ranking_value)) if ranking_value is not None else None
+                    ranking_pool_size = engagement_rate_pool_size
                 else:
                     ranking_rank = comments_rank_map.get(int(ranking_value)) if ranking_value is not None else None
                     ranking_pool_size = comments_pool_size
@@ -1595,13 +1659,17 @@ class PureEngine:
 
                 hour_multiple = None
                 hour_ist = current.get("hour_ist")
-                if hour_ist is not None and ranking_metric in {"views", "likes", "comments"}:
+                if hour_ist is not None and ranking_metric in {"likes", "comments", "engagement_rate"}:
                     hour_values = [
                         _metric_value_for_name(candidate, ranking_metric)
                         for candidate in window
                         if candidate.get("hour_ist") == hour_ist
                     ]
-                    hour_baseline = _median_bigint(hour_values)
+                    hour_baseline = (
+                        _median_numeric(hour_values)
+                        if ranking_metric == "engagement_rate"
+                        else _median_bigint(hour_values)
+                    )
                     hour_multiple = _metric_multiple(ranking_value, hour_baseline)
                 current["hour_multiple"] = hour_multiple
                 current["feed_percentile"] = None
@@ -1636,21 +1704,27 @@ class PureEngine:
 
             update_params.append(
                 (
+                    values.get("followers_at_metric"),
+                    values.get("engagement_count"),
+                    values.get("engagement_rate"),
                     values.get("metric_value"),
                     current_percentile,
                     values.get("percentile_performance_exact"),
                     values.get("views_percentile"),
                     values.get("likes_percentile"),
                     values.get("comments_percentile"),
+                    values.get("engagement_rate_percentile"),
                     delta_from_d1,
                     values.get("ranking_metric"),
                     values.get("ranking_multiple"),
                     values.get("views_baseline"),
                     values.get("likes_baseline"),
                     values.get("comments_baseline"),
+                    values.get("engagement_rate_baseline"),
                     values.get("views_multiple"),
                     values.get("likes_multiple"),
                     values.get("comments_multiple"),
+                    values.get("engagement_rate_multiple"),
                     values.get("hour_multiple"),
                     post_key,
                     row_checkpoint,
@@ -1661,12 +1735,16 @@ class PureEngine:
             cur.executemany(
                 """
                 update public.post_metrics
-                set metric_value = %s,
+                set followers_at_metric = %s,
+                    engagement_count = %s,
+                    engagement_rate = %s,
+                    metric_value = %s,
                     percentile_performance = %s,
                     percentile_performance_exact = %s,
                     views_percentile = %s,
                     likes_percentile = %s,
                     comments_percentile = %s,
+                    engagement_rate_percentile = %s,
                     feed_percentile = null,
                     delta_from_d1 = %s,
                     ranking_metric = %s,
@@ -1674,9 +1752,11 @@ class PureEngine:
                     views_baseline = %s,
                     likes_baseline = %s,
                     comments_baseline = %s,
+                    engagement_rate_baseline = %s,
                     views_multiple = %s,
                     likes_multiple = %s,
                     comments_multiple = %s,
+                    engagement_rate_multiple = %s,
                     hour_multiple = %s
                 where post_key = %s
                   and lower(checkpoint) = %s
@@ -2403,24 +2483,48 @@ class PureEngine:
         views: int | None,
         likes: int | None,
         comments: int | None,
+        followers_at_metric: int | None = None,
         business_date_ist: date | None = None,
     ) -> bool:
-        """Write raw metrics only — Supabase trigger computes derived fields."""
+        """Write raw metrics and lightweight derived engagement fields."""
+        engagement_count, engagement_rate = _engagement_rate_from_metrics(likes, comments, followers_at_metric)
         row = self.conn.execute(
             """
             insert into public.post_metrics
-              (post_key, checkpoint, views, likes, comments, computed_at, business_date_ist)
-            values (%s,%s,%s,%s,%s,now(),%s)
+              (post_key, checkpoint, views, likes, comments, followers_at_metric, engagement_count, engagement_rate, computed_at, business_date_ist)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,now(),%s)
             on conflict (post_key, checkpoint)
             do update set
               views=excluded.views,
               likes=excluded.likes,
               comments=excluded.comments,
+              followers_at_metric=coalesce(excluded.followers_at_metric, public.post_metrics.followers_at_metric),
+              engagement_count=coalesce(excluded.engagement_count, public.post_metrics.engagement_count),
+              engagement_rate=case
+                when coalesce(excluded.engagement_count, public.post_metrics.engagement_count) is not null
+                 and coalesce(excluded.followers_at_metric, public.post_metrics.followers_at_metric) > 0
+                  then round(
+                    coalesce(excluded.engagement_count, public.post_metrics.engagement_count)::numeric
+                    / coalesce(excluded.followers_at_metric, public.post_metrics.followers_at_metric)::numeric,
+                    8
+                  )
+                else coalesce(excluded.engagement_rate, public.post_metrics.engagement_rate)
+              end,
               computed_at=now(),
               business_date_ist=coalesce(excluded.business_date_ist, public.post_metrics.business_date_ist)
             returning post_key
             """,
-            (post_key, checkpoint, views, likes, comments, business_date_ist),
+            (
+                post_key,
+                checkpoint,
+                views,
+                likes,
+                comments,
+                followers_at_metric,
+                engagement_count,
+                engagement_rate,
+                business_date_ist,
+            ),
         ).fetchone()
         return bool(row and row.get("post_key"))
 
@@ -2431,17 +2535,39 @@ class PureEngine:
         views: int | None,
         likes: int | None,
         comments: int | None,
+        followers_at_metric: int | None = None,
+        engagement_count: int | None = None,
+        engagement_rate: float | None = None,
         business_date_ist: date | None = None,
     ):
         """Insert-only metric writer for fallback stamps (never overwrite existing checkpoint rows)."""
+        computed_engagement_count, computed_engagement_rate = _engagement_rate_from_metrics(
+            likes,
+            comments,
+            followers_at_metric,
+        )
+        if engagement_count is None:
+            engagement_count = computed_engagement_count
+        if engagement_rate is None:
+            engagement_rate = computed_engagement_rate
         self.conn.execute(
             """
             insert into public.post_metrics
-              (post_key, checkpoint, views, likes, comments, computed_at, business_date_ist)
-            values (%s,%s,%s,%s,%s,now(),%s)
+              (post_key, checkpoint, views, likes, comments, followers_at_metric, engagement_count, engagement_rate, computed_at, business_date_ist)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,now(),%s)
             on conflict (post_key, checkpoint) do nothing
             """,
-            (post_key, checkpoint, views, likes, comments, business_date_ist),
+            (
+                post_key,
+                checkpoint,
+                views,
+                likes,
+                comments,
+                followers_at_metric,
+                engagement_count,
+                engagement_rate,
+                business_date_ist,
+            ),
         )
 
     def _mark_post_availability(self, post_key: str, status: str, reason: str | None = None):
@@ -2475,7 +2601,15 @@ class PureEngine:
 
         row = self.conn.execute(
             """
-            select checkpoint, views, likes, comments, business_date_ist
+            select
+              checkpoint,
+              views,
+              likes,
+              comments,
+              followers_at_metric,
+              engagement_count,
+              engagement_rate,
+              business_date_ist
             from public.post_metrics
             where post_key = %s
               and lower(checkpoint) = any(%s)
@@ -2549,7 +2683,10 @@ class PureEngine:
             snapshot.get("views"),
             snapshot.get("likes"),
             snapshot.get("comments"),
-            business_day,
+            followers_at_metric=snapshot.get("followers_at_metric"),
+            engagement_count=snapshot.get("engagement_count"),
+            engagement_rate=snapshot.get("engagement_rate"),
+            business_date_ist=business_day,
         )
         prior_checkpoint = str(snapshot.get("checkpoint") or "").strip().upper() or "PREVIOUS"
         return f"checkpoint frozen: post unavailable; reused {prior_checkpoint} metrics ({reason[:240]})"
@@ -2571,6 +2708,7 @@ class PureEngine:
         rows = self.conn.execute(
             """
             select cj.*, p.post_url, p.media_type, p.feeder_id, p.posted_at, fd.handle
+                 , fd.follower_count
                  , p.provider_post_id
                  , p.availability_status
                  , p.availability_error
@@ -3158,6 +3296,8 @@ class PureEngine:
                                 else:
                                     self._set_checkpoint_result(jid, "failed", na, None, err)
                                 continue
+                            _, owner_followers = _extract_owner_profile(item)
+                            followers_at_metric = owner_followers if owner_followers is not None else _to_int(j.get("follower_count"))
                             self._mark_post_availability(job_post_key, "active", None)
                             thumbnail_url, video_url, carousel_urls = _extract_media_refs(item)
                             resolved_media_type = _media_type(item) or str(j.get("media_type") or "").strip().lower()
@@ -3179,7 +3319,15 @@ class PureEngine:
                             )
                             # Canonical dedupe for metrics is (post_key, checkpoint). Checkpoint re-runs
                             # update the same row while preserving the checkpoint business day stamp.
-                            metric_written = self._upsert_metric(str(j["post_key"]), checkpoint, views, likes, comments, business_day)
+                            metric_written = self._upsert_metric(
+                                str(j["post_key"]),
+                                checkpoint,
+                                views,
+                                likes,
+                                comments,
+                                followers_at_metric=followers_at_metric,
+                                business_date_ist=business_day,
+                            )
                             if not metric_written:
                                 try:
                                     self.conn.rollback()
