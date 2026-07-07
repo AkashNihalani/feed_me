@@ -61,6 +61,10 @@ const FIRE_META_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const CHECKPOINT_ORDER = ['D1', 'D3', 'D7', 'D21'];
 const WARMUP_REQUIRED = 3;
 const FIRE_INITIAL_BATCH_SIZE = 20;
+// Minimum hold between a day/filter tap and the new mobile deck's entrance —
+// long enough for the header expand morph (0.42s starts at tap) to mostly
+// settle so the deck always rises bottom-up into a stable frame.
+const DECK_SWAP_BEAT_MS = 380;
 const FIRE_BACKGROUND_PREFETCH_DAY_COUNT_DESKTOP = 2;
 const FIRE_BACKGROUND_PREFETCH_DAY_COUNT_MOBILE = 0;
 const FIRE_BOOTSTRAP_PREFETCH_DAY_COUNT_DESKTOP = 3;
@@ -849,6 +853,21 @@ export default function FirePage() {
 
   const desktopSelectionChips = useMemo(() => buildDesktopSelectionChips(filters, availableFeeds), [filters, availableFeeds]);
   const deckResetKey = useMemo(() => `${selectedDay}:${serializeFilters(filters)}`, [selectedDay, filters]);
+  // Swap IDENTITY = day + membership filters, with sort pinned: sort reorders
+  // the same cards, so it must flow through the mounted deck in place (the
+  // physical reshuffle, like desktop) — never the exit/rise swap.
+  const deckSwapIdentityKey = useMemo(
+    () => `${selectedDay}:${serializeFilters({ ...filters, sort: 'best' })}`,
+    [selectedDay, filters],
+  );
+  // The key the MOBILE deck is currently rendered under. It only advances once
+  // the new selection's cards are in AND their thumbnails are decoded, so a
+  // day/filter change plays ONE deterministic swap (old deck exits, new deck
+  // runs the same rise-in it plays on first mount) instead of mutating cards
+  // under the live strip — the source of the "flash at old position, then
+  // travel" artifact. Desktop is NOT keyed by this: its grid keeps the shared
+  // -element day/filter domino.
+  const [deckSwapKey, setDeckSwapKey] = useState(() => deckSwapIdentityKey);
   const deckMediaReadyRequestRef = useRef(0);
   const bootstrapCachedPageKeyRef = useRef<string | null>(null);
   // Selected date broken into pieces for the collapsed one-row header.
@@ -878,6 +897,14 @@ export default function FirePage() {
     ),
     [cards, filters, warmupSummary],
   );
+  // Mobile deck content, frozen to deckSwapKey: the mounted deck keeps showing
+  // the outgoing selection's cards until the swap commits, so new cards never
+  // mutate a live strip. Appends under the same selection flow through when the
+  // ready effect re-snapshots. Desktop renders displayCards directly (domino).
+  const [deckCards, setDeckCards] = useState<FireAlertItem[]>(() => displayCards);
+  // While a new selection's swap hasn't committed, mobile shows the loading
+  // state (the exit→beat→rise choreography); desktop swaps in place (domino).
+  const mobileDeckSwapPending = !isDesktopViewport && deckSwapKey !== deckSwapIdentityKey;
   const firePickerReady = pickerDays.length > 0 && Boolean(selectedDay);
   // Let the shell switch into Fire immediately. The page owns its data-loading
   // state with the centered spinner below; waiting for cards here makes the
@@ -907,11 +934,50 @@ export default function FirePage() {
     });
   }, [cardsHydratedFromCache, deckResetKey, displayCards, isDesktopViewport, loading]);
 
+  // At the moment of a day/filter tap: stamp the time (the swap beat below is
+  // measured from here) and put theatre back at the top instantly — smooth-
+  // scrolling through the OLD day's cards was part of the abrupt feel. The
+  // scroll reset also starts the header expansion; the beat gives that 0.42s
+  // morph time to finish behind the loading state so the incoming deck rises
+  // into a stable frame instead of gliding down with the growing header.
+  const deckResetKeyChangedAtRef = useRef(0);
+  const prevDeckIdentityRef = useRef(deckSwapIdentityKey);
   useEffect(() => {
-    if (displayCards.length > 0 && deckMediaReady) {
-      setHasShownDeck(true);
+    if (prevDeckIdentityRef.current === deckSwapIdentityKey) return;
+    prevDeckIdentityRef.current = deckSwapIdentityKey;
+    deckResetKeyChangedAtRef.current = Date.now();
+    if (!isDesktopViewport && !isStandaloneMode) {
+      window.scrollTo(0, 0);
     }
-  }, [deckMediaReady, displayCards.length]);
+  }, [deckSwapIdentityKey, isDesktopViewport, isStandaloneMode]);
+
+  useEffect(() => {
+    if (displayCards.length === 0 || !deckMediaReady) return;
+    setHasShownDeck(true);
+
+    // Same selection (sort reorder / append / warmup refresh): update content
+    // in place — the mounted deck's layout animation reshuffles the cards.
+    if (deckSwapKey === deckSwapIdentityKey) {
+      setDeckCards(displayCards);
+      return;
+    }
+
+    // New selection: commit ONE deterministic swap, no earlier than the beat.
+    // Cache hits and cold fetches land in the same choreography — old deck
+    // exits at tap, brief hold, new deck plays its bottom-up rise.
+    const commit = () => {
+      setDeckSwapKey(deckSwapIdentityKey);
+      setDeckCards(displayCards);
+    };
+    const elapsed = Date.now() - deckResetKeyChangedAtRef.current;
+    const wait = Math.max(0, DECK_SWAP_BEAT_MS - elapsed);
+    if (wait === 0) {
+      commit();
+      return;
+    }
+    const timer = window.setTimeout(commit, wait);
+    return () => window.clearTimeout(timer);
+  }, [deckMediaReady, deckSwapIdentityKey, deckSwapKey, displayCards]);
   const desktopModalIndex = useMemo(
     () => (desktopModalCard ? displayCards.findIndex((card) => card.id === desktopModalCard.id) : -1),
     [desktopModalCard, displayCards],
@@ -1844,7 +1910,7 @@ export default function FirePage() {
 
       <div ref={contentRef} className={cn(useBrowserPageScroll ? 'w-full' : 'h-full w-full')}>
         <AnimatePresence mode="wait" initial={false}>
-          {loading || (!hasShownDeck && !error && displayCards.length > 0 && !deckMediaReady) ? (
+          {loading || (mobileDeckSwapPending && displayCards.length > 0) || (!hasShownDeck && !error && displayCards.length > 0 && !deckMediaReady) ? (
             <motion.div
               key="fire-loading"
               initial={PAGE_DISSOLVE.initial}
@@ -1883,7 +1949,7 @@ export default function FirePage() {
             </motion.div>
           ) : (
             <motion.div
-              key="fire-deck"
+              key={isDesktopViewport ? 'fire-deck' : `fire-deck:${deckSwapKey}`}
               initial={PAGE_DISSOLVE.initial}
               animate={PAGE_DISSOLVE.animate}
               exit={PAGE_DISSOLVE.exit}
@@ -1891,13 +1957,13 @@ export default function FirePage() {
             >
               <div className={useBrowserPageScroll ? 'min-h-[100dvh]' : 'h-full'}>
                 <FluidDeck
-                  cards={displayCards}
+                  cards={isDesktopViewport ? displayCards : deckCards}
                   hasMore={hasMore}
                   loadingMore={loadingMore}
                   onLoadMore={handleLoadMore}
                   onOpenCard={setDesktopModalCard}
                   usePageScroll={useBrowserPageScroll}
-                  resetKey={deckResetKey}
+                  resetKey={isDesktopViewport ? deckResetKey : `${deckSwapKey}:sort=${filters.sort}`}
                   total={total}
                 />
               </div>

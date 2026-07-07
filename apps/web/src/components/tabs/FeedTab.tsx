@@ -1,7 +1,5 @@
 'use client';
 
-/* eslint-disable @next/next/no-img-element -- Feeder story avatars use direct dynamic profile URLs. */
-
 import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
@@ -13,6 +11,7 @@ import ScanningCard from '@/components/feed/ScanningCard';
 import FeedDetailV2 from '@/components/feed/FeedDetailV2';
 import FeedExportDialog from '@/components/feed/FeedExportDialog';
 import FeederReaderCover from '@/components/feed/FeederReaderCover';
+import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import FeederReaderPage from '@/components/feed/FeederReaderPage';
 import RunSignalFeed from '@/components/feed/RunSignalFeed';
 import FlipTicker, { TickerItem } from '@/components/feed/FlipTicker';
@@ -219,65 +218,8 @@ function dashboardFallbackFromFeed(feed: Feed | null | undefined, timeframe: Tim
   };
 }
 
-const STORY_GRADIENTS = [
-  ['#1f2937', '#0f172a'],
-  ['#b91c1c', '#7f1d1d'],
-  ['#1d4ed8', '#1e3a8a'],
-  ['#047857', '#064e3b'],
-  ['#b45309', '#78350f'],
-  ['#7c3aed', '#4c1d95'],
-  ['#0891b2', '#155e75'],
-  ['#475569', '#1e293b'],
-] as const;
-
-function feederInitials(handle: string | null | undefined) {
-  const clean = String(handle || '').replace(/^@+/, '').trim();
-  if (!clean) return 'FM';
-  return clean.slice(0, 2).toUpperCase();
-}
-
-function storyGradientForHandle(handle: string | null | undefined) {
-  const clean = String(handle || '');
-  const seed = clean.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return STORY_GRADIENTS[seed % STORY_GRADIENTS.length];
-}
-
-function FeederStoryAvatar({
-  feeder,
-  className,
-  style,
-}: {
-  feeder: Pick<Feeder, 'handle' | 'profilePicUrl'>;
-  className?: string;
-  style?: CSSProperties;
-}) {
-  const [from, to] = storyGradientForHandle(feeder.handle);
-  return (
-    <span
-      className={cn(
-        'relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(150deg,var(--fm-story-grad-from),var(--fm-story-grad-to))] text-[18px] font-black leading-none text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] [text-shadow:0_1px_3px_rgba(0,0,0,0.35)]',
-        className,
-      )}
-      style={{
-        ['--fm-story-grad-from' as string]: from,
-        ['--fm-story-grad-to' as string]: to,
-        ...style,
-      }}
-    >
-      {feeder.profilePicUrl ? (
-        <img
-          src={feeder.profilePicUrl}
-          alt={`@${feeder.handle}`}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-          decoding="async"
-        />
-      ) : (
-        <span className="relative z-10">{feederInitials(feeder.handle)}</span>
-      )}
-    </span>
-  );
-}
+// Feeder circle identity lives in @/components/feed/FeederStoryAvatar now,
+// shared with the reader home tray.
 
 function ActiveStoryRingStroke() {
   return (
@@ -879,6 +821,11 @@ function FeedPageContent() {
     if (sortMode === 'feeders') return list.sort((a, b) => b.feeders.length - a.feeders.length || a.title.localeCompare(b.title));
     return list;
   }, [feeds, sortMode]);
+  // Layout animations on the grid only when membership/order actually changes
+  // (delete/sort dominos). Without this, revealing the kept-alive tab re-runs
+  // framer's layout measurement from the hidden (display:none, zero-rect)
+  // state and every tile plays a tiny phantom correction on each tab switch.
+  const feedGridLayoutKey = useMemo(() => sortedFeeds.map((feed) => feed.id).join('|'), [sortedFeeds]);
   const shortTitle = String(activeFeed?.title || 'Feed').toUpperCase();
   const compactPrimaryLabel = selectedHandle === 'all' ? shortTitle : `@${selectedHandle.toUpperCase()}`;
   const compactSecondaryLabel = selectedHandle === 'all' ? 'FULL FEED' : shortTitle;
@@ -1725,7 +1672,7 @@ function FeedPageContent() {
               }}
             >
               <div className="w-full px-2 sm:px-3 lg:px-4">
-                <motion.div layout className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-6 xl:gap-7 xl:!max-w-[1400px]">
+                <motion.div layout layoutDependency={feedGridLayoutKey} className="fm-tab-canvas-shell mx-auto grid grid-cols-1 gap-4 min-[720px]:grid-cols-2 lg:gap-6 xl:gap-7 xl:!max-w-[1400px]">
                   <AnimatePresence mode="popLayout">
                     {sortedFeeds.map((feed, i) => {
                       // Per-tile entrance — animates on its OWN mount, so async
@@ -1737,6 +1684,7 @@ function FeedPageContent() {
                       <motion.div
                         key={feed.id}
                         layout
+                        layoutDependency={feedGridLayoutKey}
                         initial={SLOT_ITEM.hidden}
                         animate={SLOT_ITEM.visible}
                         exit={SLOT_ITEM.exit}

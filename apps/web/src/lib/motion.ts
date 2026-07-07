@@ -18,11 +18,22 @@ export const PILL_SPRING = {
 export const GRID_ITEM_EASE = [0.22, 1, 0.36, 1] as const;
 export const PAGE_EXIT_EASE = [0.42, 0, 1, 1] as const;
 
+// ── The switch clock ─────────────────────────────────────────────────────────
+// ONE duration + ease for everything that moves when the user changes surface:
+// the tab content settle (AppTabHost), the header content entrance (AppShell),
+// and in-tab state swaps (PAGE_DISSOLVE). A switch should read as a single
+// coordinated motion, not three elements on private timers. The bottom-nav
+// pill keeps its spring — it's the gesture's initiator, and its settle time
+// already lands within this window.
+export const SWITCH_CLOCK_MS = 260;
+export const SWITCH_CLOCK_S = SWITCH_CLOCK_MS / 1000;
+export const SWITCH_CLOCK_CSS_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
 export const PAGE_DISSOLVE = {
   initial: { opacity: 0 },
   animate: {
     opacity: 1,
-    transition: { duration: 0.24, ease: GRID_ITEM_EASE },
+    transition: { duration: SWITCH_CLOCK_S, ease: GRID_ITEM_EASE },
   },
   exit: {
     opacity: 0,
@@ -44,55 +55,42 @@ export const PAGE_SURFACE_MOTION = {
   },
 } as const;
 
+// Cross-route arrival: a real dissolve + rise on the switch clock. Cross-surface
+// changes have no shared elements, so a dissolve (not physics) is the grammar.
 export const ROUTE_CONTENT_SETTLE = {
   initial: {
-    opacity: 0.985,
-    y: 2,
+    opacity: 0,
+    y: 8,
   },
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.16, ease: GRID_ITEM_EASE },
+    transition: { duration: SWITCH_CLOCK_S, ease: GRID_ITEM_EASE },
   },
 } as const;
 
-export const TAB_CONTENT_SETTLE = {
-  initial: {
-    opacity: 1,
-    x: 0,
-    y: 0,
-  },
-  animate: {
-    opacity: 1,
-    x: 0,
-    y: 0,
-    transition: { duration: 0.34, ease: GRID_ITEM_EASE },
-  },
-  exit: {
-    opacity: 1,
-    x: 0,
-    y: 0,
-    transition: { duration: 0.34, ease: GRID_ITEM_EASE },
-  },
-} as const;
-
+// Header content entrance on route/tab change. The outgoing header unmounts
+// hard (its portal returns null the moment the route flips), so the incoming
+// side carries the whole transition: rise + fade on the switch clock, against
+// the glass capsule that never moves. exit doubles as the "mounted but not
+// ready" resting state, so it must be invisible.
 export const HEADER_ROUTE_MORPH = {
   initial: {
-    opacity: 0.985,
-    y: 2,
+    opacity: 0,
+    y: 6,
     scale: 1,
   },
   animate: {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { duration: 0.16, ease: GRID_ITEM_EASE },
+    transition: { duration: SWITCH_CLOCK_S, ease: GRID_ITEM_EASE },
   },
   exit: {
-    opacity: 1,
+    opacity: 0,
     y: 0,
     scale: 1,
-    transition: { duration: 0.01, ease: GRID_ITEM_EASE },
+    transition: { duration: 0.12, ease: GRID_ITEM_EASE },
   },
 } as const;
 

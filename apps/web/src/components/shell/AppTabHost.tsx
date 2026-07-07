@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { Activity, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
+import { SWITCH_CLOCK_CSS_EASE, SWITCH_CLOCK_MS } from '@/lib/motion';
 
 const tabLoaders = {
   feed: () => import('@/components/tabs/FeedTab'),
@@ -64,17 +65,24 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
   // listeners (e.g. the Fund live clock) instead of draining the main thread.
   const [mountedTabs, setMountedTabs] = useState<Set<TabKey>>(() => new Set([activeTab]));
   const prevTabRef = useRef<TabKey>(activeTab);
+  const tabElsRef = useRef<Partial<Record<TabKey, HTMLDivElement | null>>>({});
 
   // Ensure the active tab is mounted — covers a direct deep-link to a tab that
   // idle pre-warm hasn't reached yet.
   useEffect(() => {
-    setMountedTabs((current) => {
-      if (current.has(activeTab)) return current;
-      const next = new Set(current);
-      next.add(activeTab);
-      return next;
-    });
-  }, [activeTab]);
+    if (mountedTabs.has(activeTab)) return;
+    const timer = window.setTimeout(() => {
+      setMountedTabs((current) => {
+        if (current.has(activeTab)) return current;
+        const next = new Set(current);
+        next.add(activeTab);
+        return next;
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, mountedTabs]);
+
+  const renderedTabs = mountedTabs.has(activeTab) ? mountedTabs : new Set([...mountedTabs, activeTab]);
 
   // Once the first paint settles, build the remaining tabs in the background as
   // hidden Activities, so even the first switch to them is instant. Hidden
@@ -89,26 +97,70 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
   // A newly revealed tab starts at the top, matching prior behavior (every
   // switch used to rebuild at scroll 0) so a tab never inherits the previous
   // tab's page-scroll offset. Runs before paint to avoid a visible jump.
+  //
+  // The revealed tab then settles in with a transform-only rise on the shared
+  // switch clock (same duration/ease as the header entrance). Deliberately NOT
+  // opacity (grouping the shadowed subtree makes iOS rasterize the whole tab
+  // per switch) and deliberately NOT framer-motion (animations inside a hidden
+  // <Activity> are suspended and replay unreliably on reveal — this host is
+  // always mounted, so a plain CSS transition it drives always fires). The
+  // transform is cleared once settled so position:fixed descendants (e.g. the
+  // fire PWA deck band) don't keep a transformed containing block.
   useIsomorphicLayoutEffect(() => {
     if (prevTabRef.current === activeTab) return;
     prevTabRef.current = activeTab;
     window.scrollTo(0, 0);
+
+    const el = tabElsRef.current[activeTab];
+    if (!el) return;
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
+    el.style.transition = 'none';
+    el.style.transform = 'translateY(10px)';
+
+    let raf2 = 0;
+    let settleTimer = 0;
+    const finish = () => {
+      el.style.transition = '';
+      el.style.transform = '';
+    };
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        el.style.transition = `transform ${SWITCH_CLOCK_MS}ms ${SWITCH_CLOCK_CSS_EASE}`;
+        el.style.transform = 'translateY(0px)';
+        settleTimer = window.setTimeout(finish, SWITCH_CLOCK_MS + 40);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+      window.clearTimeout(settleTimer);
+      finish();
+    };
   }, [activeTab]);
 
   return (
     <div data-active-tab={activeTab} className="min-h-[100dvh] w-full">
       {TAB_ORDER.map((key) => {
-        if (!mountedTabs.has(key)) return null;
+        if (!renderedTabs.has(key)) return null;
         const TabComponent = TAB_COMPONENTS[key];
         const isActive = key === activeTab;
         return (
           <Activity key={key} name={`tab-${key}`} mode={isActive ? 'visible' : 'hidden'}>
-            {/* Tabs reveal instantly — they're already built (kept alive). Each
-                surface runs its own per-element slot entrance on mount (first
-                load + genuine in-tab navigation). No whole-tab opacity dissolve
-                (grouping a shadowed subtree forces iOS to rasterize it on every
-                switch). */}
-            <div data-tab={key} className="min-h-[100dvh] w-full">
+            {/* Tabs are already built (kept alive); arrival is the transform-only
+                settle driven by the layout effect above, on the shared switch
+                clock. No whole-tab opacity dissolve (grouping a shadowed subtree
+                forces iOS to rasterize it on every switch). */}
+            <div
+              data-tab={key}
+              ref={(node) => {
+                tabElsRef.current[key] = node;
+              }}
+              className="min-h-[100dvh] w-full"
+            >
               <TabComponent />
             </div>
           </Activity>
