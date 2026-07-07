@@ -1,29 +1,34 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- command thumbnails use dynamic read-only media URLs. */
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
   Boxes,
   Brain,
-  ChartNoAxesColumnIncreasing,
-  ChevronDown,
   CircleDollarSign,
   Flame,
   Gauge,
   HardDrive,
+  Image as ImageIcon,
   Layers3,
+  Lock,
   Network,
   Search,
   ShieldCheck,
-  Sparkles,
   TimerReset,
-  WalletCards,
+  Video,
 } from 'lucide-react';
 
 type Dict = Record<string, unknown>;
 type DomainId =
   | 'overview'
+  | 'feeds'
+  | 'activity'
+  | 'pending'
+  | 'failures'
   | 'account'
   | 'engine'
   | 'checkpoints'
@@ -33,6 +38,7 @@ type DomainId =
   | 'notifications'
   | 'finance'
   | 'gaps';
+type StatusKind = 'live' | 'stale' | 'failed' | 'missing' | 'partial' | 'readonly' | 'info';
 
 type CommandRow = {
   id: string;
@@ -46,19 +52,12 @@ type CommandRow = {
   raw: Dict;
 };
 
-type NavItem = {
-  id: DomainId;
-  label: string;
-  icon: typeof Gauge;
-  group: 'main' | 'pipeline' | 'stack';
-};
-
 type CommandPayload = {
   generatedAt?: string;
   access?: Dict;
-  pricing?: Dict;
   topline?: Dict;
   accountGraph?: Dict;
+  feedOps?: Dict;
   engine?: Dict;
   checkpoints?: Dict;
   fireSignals?: Dict;
@@ -69,45 +68,76 @@ type CommandPayload = {
   instrumentationGaps?: Dict[];
 };
 
+type SystemHealth = {
+  id: DomainId;
+  label: string;
+  status: StatusKind;
+  value: string;
+  note: string;
+  updatedAt: string | null;
+};
+
+type Attention = {
+  id: string;
+  label: string;
+  source: string;
+  detail: string;
+  status: StatusKind;
+  updatedAt: string | null;
+  row?: CommandRow;
+};
+
 type LoadFailure = {
   status: number;
   message: string;
 };
 
-const navItems: NavItem[] = [
-  { id: 'overview', label: 'Dashboard', icon: Gauge, group: 'main' },
-  { id: 'account', label: 'Account graph', icon: Network, group: 'main' },
-  { id: 'engine', label: 'Engine', icon: TimerReset, group: 'main' },
-  { id: 'checkpoints', label: 'Checkpoints', icon: Layers3, group: 'pipeline' },
-  { id: 'fire', label: 'Fire / Signals', icon: Flame, group: 'pipeline' },
-  { id: 'intelligence', label: 'Intelligence', icon: Brain, group: 'pipeline' },
-  { id: 'media', label: 'Media', icon: HardDrive, group: 'stack' },
-  { id: 'notifications', label: 'Notifications', icon: Bell, group: 'stack' },
-  { id: 'finance', label: 'Finance', icon: CircleDollarSign, group: 'stack' },
-  { id: 'gaps', label: 'Instrumentation gaps', icon: AlertTriangle, group: 'stack' },
+const navItems: { id: DomainId; label: string; icon: typeof Gauge; group: string }[] = [
+  { id: 'overview', label: 'Overview', icon: Gauge, group: 'command' },
+  { id: 'feeds', label: 'Feeds', icon: Network, group: 'command' },
+  { id: 'activity', label: 'Activity', icon: TimerReset, group: 'command' },
+  { id: 'pending', label: 'Pending', icon: Layers3, group: 'command' },
+  { id: 'failures', label: 'Failures', icon: Flame, group: 'command' },
+  { id: 'gaps', label: 'Gaps', icon: AlertTriangle, group: 'command' },
 ];
 
-const statusTone: Record<string, string> = {
-  active: 'good',
-  fresh: 'good',
-  done: 'good',
-  sent: 'good',
-  paid: 'good',
-  pending: 'watch',
-  retry: 'watch',
-  running: 'blue',
-  capturing: 'blue',
-  partial: 'blue',
-  paused: 'muted',
-  skipped: 'muted',
-  stale: 'muted',
-  configuration_needed: 'watch',
-  missing_instrumentation: 'watch',
-  failed: 'bad',
-  error: 'bad',
-  capture_failed: 'bad',
-  purge_failed: 'bad',
-  unavailable: 'bad',
+const domainNavItems: { id: DomainId; label: string; icon: typeof Gauge; group: string }[] = [
+  { id: 'account', label: 'Account Graph', icon: Network, group: 'domain' },
+  { id: 'engine', label: 'Engine', icon: TimerReset, group: 'domain' },
+  { id: 'checkpoints', label: 'Checkpoints', icon: Layers3, group: 'domain' },
+  { id: 'fire', label: 'Fire / Signals', icon: Flame, group: 'domain' },
+  { id: 'intelligence', label: 'Intelligence', icon: Brain, group: 'domain' },
+  { id: 'media', label: 'Media', icon: HardDrive, group: 'domain' },
+  { id: 'notifications', label: 'Notifications', icon: Bell, group: 'domain' },
+  { id: 'finance', label: 'Finance', icon: CircleDollarSign, group: 'domain' },
+];
+const allNavItems = [...navItems, ...domainNavItems];
+
+const statusOrder: Record<StatusKind, number> = {
+  failed: 0,
+  missing: 1,
+  stale: 2,
+  partial: 3,
+  info: 4,
+  readonly: 5,
+  live: 6,
+};
+
+const pipelineLabels: Record<DomainId, string[]> = {
+  overview: ['Risk', 'Freshness', 'Records', 'Inspector'],
+  feeds: ['Smooth', 'Pending', 'Failed', 'Missing'],
+  activity: ['Recent', 'Feeds', 'Feeders', 'Records'],
+  pending: ['Queued', 'Next', 'Feeders', 'Failures'],
+  failures: ['Failed', 'Feeds', 'Feeders', 'Latest'],
+  account: ['Users', 'Feeds', 'Feeders', 'Context'],
+  engine: ['Queued', 'Running', 'Retry', 'Failed'],
+  checkpoints: ['D1', 'D3', 'D7', 'D21'],
+  fire: ['Alerts', 'Signals', 'Hot Posts', 'Suppressed'],
+  intelligence: ['Fingerprints', 'Condense', 'D7 Reads', 'Model Calls'],
+  media: ['Capture', 'Storage', 'Purge', 'Failed'],
+  notifications: ['Subscriptions', 'Pending', 'Sent', 'Failed'],
+  finance: ['Planned MRR', 'Paid', 'Pending', 'Cost Gaps'],
+  gaps: ['Cost', 'Health', 'Traffic', 'Finance'],
 };
 
 function dict(value: unknown): Dict {
@@ -163,7 +193,7 @@ function labelize(value: unknown, fallback = 'Unknown') {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function shortDate(value: unknown) {
+function shortDate(value: unknown, withSeconds = false) {
   const raw = str(value);
   if (!raw) return 'No timestamp';
   const date = new Date(raw);
@@ -174,22 +204,38 @@ function shortDate(value: unknown) {
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    second: withSeconds ? '2-digit' : undefined,
   }).format(date);
 }
 
 function relativeTime(value: unknown) {
   const raw = str(value);
-  if (!raw) return 'No timestamp';
+  if (!raw) return 'missing';
   const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return 'No timestamp';
-  const diff = Date.now() - date.getTime();
-  const minutes = Math.round(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
+  if (Number.isNaN(date.getTime())) return 'missing';
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
+  if (hours < 48) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+function statusKind(status: unknown): StatusKind {
+  const key = str(status).toLowerCase();
+  if (['failed', 'error', 'unavailable', 'capture_failed', 'purge_failed'].includes(key)) return 'failed';
+  if (key.includes('missing')) return 'missing';
+  if (key === 'stale') return 'stale';
+  if (['partial', 'configuration_needed', 'pending', 'retry', 'running', 'capturing'].includes(key)) return 'partial';
+  if (['active', 'fresh', 'done', 'sent', 'paid', 'enabled'].includes(key)) return 'live';
+  return 'info';
+}
+
+function latestAt(rows: CommandRow[]) {
+  return rows
+    .map((row) => str(row.updatedAt))
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
 }
 
 function makeRow(raw: Dict, fallback: Partial<CommandRow>): CommandRow {
@@ -209,6 +255,7 @@ function makeRow(raw: Dict, fallback: Partial<CommandRow>): CommandRow {
 
 function rowsForDomain(payload: CommandPayload | null, domain: DomainId): CommandRow[] {
   if (!payload) return [];
+  if (['feeds', 'activity', 'pending', 'failures'].includes(domain)) return [];
   const account = dict(payload.accountGraph);
   const engine = dict(payload.engine);
   const checkpoints = dict(payload.checkpoints);
@@ -224,7 +271,7 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
       ...list(account.feeders).map((row) => makeRow(row, {
         title: str(row.handle, 'Unknown feeder'),
         eyebrow: `${labelize(row.role, 'Feeder')} feeder`,
-        subtitle: `Feed #${str(row.feed_id)} · ${formatNumber(row.follower_count)} followers`,
+        subtitle: `Feed #${str(row.feed_id)} / ${formatNumber(row.follower_count)} followers`,
         metric: labelize(row.context_role, 'Context'),
         source: 'feeders',
       })),
@@ -240,7 +287,7 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
 
   if (domain === 'engine') {
     return list(engine.recentJobs).map((row) => makeRow(row, {
-      title: `${labelize(row.job_type, 'Run')} · feeder #${str(row.feeder_id)}`,
+      title: `${labelize(row.job_type, 'Run')} / feeder #${str(row.feeder_id)}`,
       eyebrow: 'Run job',
       subtitle: str(row.last_error, `Business day ${str(row.business_date_ist, 'not set')}`),
       metric: `attempt ${formatNumber(row.attempt)}`,
@@ -251,18 +298,18 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
   if (domain === 'checkpoints') {
     return [
       ...list(checkpoints.recentJobs).map((row) => makeRow(row, {
-        title: `${labelize(row.checkpoint, 'Checkpoint')} · ${str(row.post_key, 'post')}`,
+        title: str(row.feeder_handle) ? `@${str(row.feeder_handle)}` : str(row.post_key, 'Unknown post'),
         eyebrow: 'Checkpoint job',
-        subtitle: str(row.last_error, `Next run ${shortDate(row.next_run_at)}`),
+        subtitle: str(row.post_key, str(row.last_error, `Next run ${shortDate(row.next_run_at)}`)),
         metric: `attempt ${formatNumber(row.attempt)}`,
         source: 'checkpoint_jobs',
       })),
       ...list(checkpoints.recentMetrics).map((row) => makeRow(row, {
-        title: `${labelize(row.checkpoint, 'Metric')} · ${str(row.post_key, 'post')}`,
+        title: str(row.feeder_handle) ? `@${str(row.feeder_handle)}` : str(row.post_key, 'Unknown post'),
         eyebrow: 'Metric surface',
-        subtitle: `Likes ${formatNumber(row.likes)} · Comments ${formatNumber(row.comments)} · Views ${formatNumber(row.views)}`,
+        subtitle: str(row.post_key, 'Metric row'),
         status: 'done',
-        metric: str(row.percentile_performance, 'percentile'),
+        metric: `${formatNumber(row.views)} views`,
         updatedAt: str(row.computed_at),
         source: 'post_metrics',
       })),
@@ -272,16 +319,16 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
   if (domain === 'fire') {
     return [
       ...list(fire.recentAlerts).map((row) => makeRow(row, {
-        title: `${labelize(row.alert_type, 'Alert')} · ${str(row.post_key, 'post')}`,
+        title: `${labelize(row.alert_type, 'Alert')} / ${str(row.post_key, 'post')}`,
         eyebrow: labelize(row.signal_code, 'Fire alert'),
-        subtitle: str(row.body, `${labelize(row.checkpoint, 'checkpoint')} · ${str(row.metric_key, 'metric')}`),
+        subtitle: str(row.body, `${labelize(row.checkpoint, 'checkpoint')} / ${str(row.metric_key, 'metric')}`),
         metric: str(row.surface_percentile, 'surface'),
         source: 'fire_alerts',
       })),
       ...list(fire.recentSignals).map((row) => makeRow(row, {
         title: labelize(row.signal_type, 'Signal'),
         eyebrow: labelize(row.signal_family, 'Signal family'),
-        subtitle: str(row.body, `${labelize(row.scope, 'scope')} · ${labelize(row.checkpoint, 'checkpoint')}`),
+        subtitle: str(row.body, `${labelize(row.scope, 'scope')} / ${labelize(row.checkpoint, 'checkpoint')}`),
         metric: str(row.business_date_ist),
         updatedAt: str(row.last_fired_at) || str(row.updated_at),
         source: 'signals',
@@ -292,9 +339,9 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
   if (domain === 'intelligence') {
     return [
       ...list(intelligence.recentModelCalls).map((row) => makeRow(row, {
-        title: `${labelize(row.call_type, 'Model call')} · ${str(row.feeder_handle, 'unknown')}`,
+        title: `${labelize(row.call_type, 'Model call')} / ${str(row.feeder_handle, 'unknown')}`,
         eyebrow: str(row.model, 'model'),
-        subtitle: str(row.error, `${str(row.prompt_version, 'prompt')} · ${str(row.post_key, 'no post')}`),
+        subtitle: str(row.error, `${str(row.prompt_version, 'prompt')} / ${str(row.post_key, 'no post')}`),
         metric: str(row.pattern_id, str(row.call_key, 'audit')),
         updatedAt: str(row.completed_at) || str(row.updated_at),
         source: 'feeder_file_model_calls',
@@ -302,7 +349,7 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
       ...list(artifacts.feederFiles).map((row) => makeRow(row, {
         title: str(row.feeder_handle, 'Feeder file'),
         eyebrow: 'Feeder file',
-        subtitle: `${str(row.compile_version, 'compile')} · ${str(row.active_window, 'window unknown')}`,
+        subtitle: `${str(row.compile_version, 'compile')} / ${str(row.active_window, 'window unknown')}`,
         source: 'feeder_files',
       })),
       ...list(artifacts.condensations).map((row) => makeRow(row, {
@@ -317,9 +364,9 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
 
   if (domain === 'media') {
     return list(media.recentAssets).map((row) => makeRow(row, {
-      title: `${labelize(row.asset_role, 'Asset')} · ${str(row.post_key, 'post')}`,
+      title: `${labelize(row.asset_role, 'Asset')} / ${str(row.post_key, 'post')}`,
       eyebrow: str(row.storage_bucket, 'storage'),
-      subtitle: str(row.last_error, `${str(row.mime_type, 'mime unknown')} · ${formatBytes(row.byte_size)}`),
+      subtitle: str(row.last_error, `${str(row.mime_type, 'mime unknown')} / ${formatBytes(row.byte_size)}`),
       metric: formatBytes(row.byte_size),
       source: 'post_media_assets',
     }));
@@ -328,7 +375,7 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
   if (domain === 'notifications') {
     return [
       ...list(notifications.recentJobs).map((row) => makeRow(row, {
-        title: `${labelize(row.kind, 'Push')} job · ${str(row.dedupe_key, 'dedupe')}`,
+        title: `${labelize(row.kind, 'Push')} job / ${str(row.dedupe_key, 'dedupe')}`,
         eyebrow: 'Push job',
         subtitle: str(row.last_error, `Feed ${str(row.feed_id, 'unknown')}`),
         metric: `attempt ${formatNumber(row.attempt)}`,
@@ -368,128 +415,434 @@ function rowsForDomain(payload: CommandPayload | null, domain: DomainId): Comman
   }
 
   return [
-    ...rowsForDomain(payload, 'engine').slice(0, 6),
+    ...rowsForDomain(payload, 'engine').slice(0, 5),
+    ...rowsForDomain(payload, 'checkpoints').slice(0, 5),
     ...rowsForDomain(payload, 'fire').slice(0, 5),
     ...rowsForDomain(payload, 'intelligence').slice(0, 5),
     ...rowsForDomain(payload, 'media').slice(0, 4),
-    ...rowsForDomain(payload, 'gaps').slice(0, 4),
+    ...rowsForDomain(payload, 'gaps').slice(0, 6),
   ];
 }
 
-function MetricCard({
-  label,
-  value,
-  delta,
-  color,
-  bars = 16,
-}: {
-  label: string;
-  value: string;
-  delta: string;
-  color: 'blue' | 'green' | 'orange' | 'violet';
-  bars?: number;
-}) {
-  const filled = Math.max(4, Math.min(bars - 2, Math.round((bars * (color === 'orange' ? 0.74 : color === 'green' ? 0.63 : 0.56)))));
+function systemHealth(payload: CommandPayload | null): SystemHealth[] {
+  if (!payload) return [];
+  const topline = dict(payload.topline);
+  const account = dict(payload.accountGraph);
+  const engine = dict(payload.engine);
+  const checkpoints = dict(payload.checkpoints);
+  const fire = dict(payload.fireSignals);
+  const intelligence = dict(payload.intelligence);
+  const media = dict(payload.media);
+  const notifications = dict(payload.notifications);
+  const finance = dict(payload.finance);
+  const engineTotals = dict(engine.totals);
+  const checkpointTotals = dict(checkpoints.totals);
+  const fireTotals = dict(fire.totals);
+  const intelligenceTotals = dict(intelligence.totals);
+  const mediaTotals = dict(media.totals);
+  const notificationTotals = dict(notifications.totals);
+  const realFinance = dict(finance.realSurfaces);
+  const gapCount = list(payload.instrumentationGaps).length;
+
+  return [
+    {
+      id: 'account',
+      label: 'Account',
+      status: num(topline.activeFeeders) ? 'live' : 'stale',
+      value: formatNumber(topline.activeFeeders),
+      note: `${formatNumber(topline.followerReach)} reach`,
+      updatedAt: str(account.latestChangeAt) || latestAt(rowsForDomain(payload, 'account')),
+    },
+    {
+      id: 'engine',
+      label: 'Engine',
+      status: num(engineTotals.failed) ? 'failed' : num(engineTotals.open) ? 'partial' : 'live',
+      value: formatNumber(engineTotals.jobs),
+      note: `${formatNumber(engineTotals.successPercent)}% success`,
+      updatedAt: str(engine.latestChangeAt) || latestAt(rowsForDomain(payload, 'engine')),
+    },
+    {
+      id: 'checkpoints',
+      label: 'Checkpoints',
+      status: num(checkpointTotals.failed) ? 'failed' : num(checkpointTotals.open) ? 'partial' : 'live',
+      value: formatNumber(checkpointTotals.jobs),
+      note: `${formatNumber(checkpointTotals.metrics)} metric rows`,
+      updatedAt: str(checkpoints.latestChangeAt) || latestAt(rowsForDomain(payload, 'checkpoints')),
+    },
+    {
+      id: 'fire',
+      label: 'Fire',
+      status: num(fireTotals.erroredSignals) ? 'failed' : num(fireTotals.staleOrSuppressedSignals) ? 'stale' : 'live',
+      value: formatNumber(num(fireTotals.alerts) + num(fireTotals.signals)),
+      note: `${formatNumber(fireTotals.hotPosts)} hot posts`,
+      updatedAt: str(fire.latestChangeAt) || latestAt(rowsForDomain(payload, 'fire')),
+    },
+    {
+      id: 'intelligence',
+      label: 'Intelligence',
+      status: num(intelligenceTotals.failedModelCalls) ? 'failed' : 'live',
+      value: formatNumber(intelligenceTotals.modelCalls),
+      note: `${formatNumber(intelligenceTotals.feederFiles)} feeder files`,
+      updatedAt: str(intelligence.latestChangeAt) || latestAt(rowsForDomain(payload, 'intelligence')),
+    },
+    {
+      id: 'media',
+      label: 'Media',
+      status: num(mediaTotals.failed) ? 'failed' : num(mediaTotals.pendingCapture) || num(mediaTotals.purgeQueue) ? 'partial' : 'live',
+      value: formatBytes(mediaTotals.knownBytes),
+      note: `${formatNumber(mediaTotals.assets)} assets`,
+      updatedAt: str(media.latestChangeAt) || latestAt(rowsForDomain(payload, 'media')),
+    },
+    {
+      id: 'notifications',
+      label: 'Notifications',
+      status: num(notificationTotals.failedJobs) ? 'failed' : num(notificationTotals.openJobs) ? 'partial' : 'live',
+      value: formatNumber(notificationTotals.jobs),
+      note: `${formatNumber(notificationTotals.activeSubscriptions)} active subs`,
+      updatedAt: str(notifications.latestChangeAt) || latestAt(rowsForDomain(payload, 'notifications')),
+    },
+    {
+      id: 'finance',
+      label: 'Finance',
+      status: 'partial',
+      value: formatInr(finance.plannedMonthlyRevenueInr),
+      note: `${formatInr(realFinance.paidTransactionsInr)} known paid`,
+      updatedAt: latestAt(rowsForDomain(payload, 'finance')),
+    },
+    {
+      id: 'gaps',
+      label: 'Gaps',
+      status: gapCount ? 'missing' : 'live',
+      value: formatNumber(gapCount),
+      note: 'instrumentation gaps',
+      updatedAt: payload.generatedAt || null,
+    },
+  ];
+}
+
+function attentionQueue(payload: CommandPayload | null, systems: SystemHealth[]): Attention[] {
+  if (!payload) return [];
+  const rows = rowsForDomain(payload, 'overview');
+  const rowAttention = rows
+    .filter((row) => statusKind(row.status) !== 'live')
+    .map((row) => ({
+      id: `${row.source}:${row.id}`,
+      label: row.title,
+      source: row.source,
+      detail: row.subtitle,
+      status: statusKind(row.status),
+      updatedAt: row.updatedAt,
+      row,
+    }));
+  const systemAttention = systems
+    .filter((system) => ['failed', 'missing', 'stale', 'partial'].includes(system.status))
+    .map((system) => ({
+      id: `system:${system.id}`,
+      label: system.label,
+      source: 'system',
+      detail: system.note,
+      status: system.status,
+      updatedAt: system.updatedAt,
+    }));
+
+  return [...systemAttention, ...rowAttention]
+    .sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
+    .slice(0, 10);
+}
+
+function StatusChip({ status, label }: { status: StatusKind | string; label?: string }) {
+  const kind = typeof status === 'string' && status in statusOrder ? status as StatusKind : statusKind(status);
+  const text = label || (
+    kind === 'live' ? 'LIVE'
+      : kind === 'stale' ? 'STALE'
+        : kind === 'failed' ? 'FAILED'
+          : kind === 'missing' ? 'MISSING'
+            : kind === 'partial' ? 'PARTIAL'
+              : kind === 'readonly' ? 'READ ONLY'
+                : 'INFO'
+  );
+  return <span className={`cmd-status is-${kind}`}>{text}</span>;
+}
+
+function PostRecordCell({ row }: { row: CommandRow }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const raw = row.raw;
+  const handle = str(raw.feeder_handle).replace(/^@/, '');
+  const postKey = str(raw.post_key, row.subtitle);
+  const checkpoint = labelize(raw.checkpoint, row.eyebrow);
+  const mediaType = str(raw.media_type).toLowerCase();
+  const thumbnailUrl = str(raw.thumbnail_url);
+  const hasMetrics = ['views', 'likes', 'comments'].some((key) => raw[key] != null);
+  const FallbackIcon = mediaType === 'video' || mediaType === 'reel' ? Video : ImageIcon;
 
   return (
-    <section className="cmd-card cmd-metric-card">
-      <div className="cmd-card-label">
-        <Sparkles size={13} />
-        <span>{label}</span>
+    <span className="cmd-post-cell">
+      <span className="cmd-post-thumb">
+        {thumbnailUrl && !imageFailed ? (
+          <img src={thumbnailUrl} alt="" loading="lazy" onError={() => setImageFailed(true)} />
+        ) : (
+          <FallbackIcon size={18} />
+        )}
+      </span>
+      <span className="cmd-post-copy">
+        <strong>{handle ? `@${handle}` : row.title}</strong>
+        <code>{postKey}</code>
+        <span className="cmd-post-meta">
+          <em>{checkpoint}</em>
+        </span>
+        {hasMetrics ? (
+          <span className="cmd-post-metrics">
+            <small>{formatNumber(raw.views)} views</small>
+            <small>{formatNumber(raw.likes)} likes</small>
+            <small>{formatNumber(raw.comments)} comments</small>
+          </span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function opsStatus(health: unknown): StatusKind {
+  const key = str(health).toLowerCase();
+  if (key === 'smooth') return 'live';
+  if (key === 'pending') return 'partial';
+  if (key === 'failed') return 'failed';
+  if (key === 'stale') return 'stale';
+  if (key === 'missing') return 'missing';
+  return 'info';
+}
+
+function rowFromOpsEvent(raw: Dict): CommandRow {
+  return makeRow(raw, {
+    id: str(raw.id, crypto.randomUUID()),
+    title: str(raw.title, 'Ops event'),
+    eyebrow: str(raw.source, 'feedOps'),
+    subtitle: [str(raw.feedName), str(raw.feederHandle) ? `@${str(raw.feederHandle)}` : '', str(raw.detail)].filter(Boolean).join(' / '),
+    status: str(raw.status, 'done'),
+    metric: str(raw.kind, str(raw.source, 'event')),
+    updatedAt: str(raw.happenedAt) || str(raw.nextRunAt) || null,
+    source: str(raw.source, 'feedOps'),
+  });
+}
+
+function FeederOpsPill({ feeder }: { feeder: Dict }) {
+  return (
+    <span className={`cmd-feeder-pill is-${str(feeder.health, 'missing')}`}>
+      <i className={`cmd-dot is-${opsStatus(feeder.health)}`} />
+      <strong>@{str(feeder.handle, 'unknown')}</strong>
+      <em>{str(feeder.role, 'standard')}</em>
+      <small>{formatNumber(feeder.pendingCount)}p / {formatNumber(feeder.failureCount)}f</small>
+    </span>
+  );
+}
+
+function OpsEventRow({ event, onSelect }: { event: Dict; onSelect: (row: CommandRow) => void }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const thumbnailUrl = str(event.thumbnailUrl);
+
+  return (
+    <button type="button" className="cmd-ops-event" onClick={() => onSelect(rowFromOpsEvent(event))}>
+      <span className="cmd-post-thumb">
+        {thumbnailUrl && !imageFailed ? (
+          <img src={thumbnailUrl} alt="" loading="lazy" onError={() => setImageFailed(true)} />
+        ) : (
+          <ImageIcon size={17} />
+        )}
+      </span>
+      <span className="cmd-ops-event-copy">
+        <strong>{str(event.feedName, 'Unowned feed')} {str(event.feederHandle) ? `/ @${str(event.feederHandle)}` : ''}</strong>
+        <small>{str(event.title, labelize(event.kind, 'Event'))} / {str(event.source, 'source')}</small>
+        <em>{str(event.detail, str(event.postKey, 'No detail'))}</em>
+      </span>
+      <span className="cmd-ops-event-state">
+        <StatusChip status={str(event.status, 'done')} />
+        <small>{relativeTime(str(event.happenedAt) || str(event.nextRunAt))}</small>
+      </span>
+    </button>
+  );
+}
+
+function OpsEventList({
+  title,
+  events,
+  empty,
+  onSelect,
+}: {
+  title: string;
+  events: Dict[];
+  empty: string;
+  onSelect: (row: CommandRow) => void;
+}) {
+  return (
+    <section className="cmd-panel cmd-ops-list">
+      <div className="cmd-panel-head">
+        <span>{title}</span>
+        <strong>{events.length}</strong>
       </div>
-      <div className="cmd-metric-value">{value}</div>
-      <div className={`cmd-delta cmd-delta-${color}`}>{delta}</div>
-      <div className="cmd-micro-bars" aria-hidden="true">
-        {Array.from({ length: bars }).map((_, index) => (
-          <span key={index} className={index < filled ? `is-${color}` : ''} />
+      {events.length ? events.map((event) => (
+        <OpsEventRow key={str(event.id)} event={event} onSelect={onSelect} />
+      )) : (
+        <div className="cmd-empty small">
+          <ShieldCheck size={18} />
+          <strong>{empty}</strong>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FeedOpsCard({ feed, onSelect }: { feed: Dict; onSelect: (row: CommandRow) => void }) {
+  const latestFailure = dict(feed.latestFailure);
+  return (
+    <section className={`cmd-feed-card is-${str(feed.health, 'missing')}`}>
+      <div className="cmd-feed-card-head">
+        <div>
+          <span>FEED</span>
+          <strong>{str(feed.feedName, 'Untitled feed')}</strong>
+        </div>
+        <StatusChip status={opsStatus(feed.health)} label={str(feed.health, 'missing').toUpperCase()} />
+      </div>
+      <div className="cmd-feed-stats">
+        <div><span>feeders</span><strong>{formatNumber(feed.activeFeederCount)} / {formatNumber(feed.feederCount)}</strong></div>
+        <div><span>last</span><strong>{relativeTime(feed.lastActivityAt)}</strong></div>
+        <div><span>next</span><strong>{relativeTime(feed.nextWorkAt)}</strong></div>
+      </div>
+      <div className="cmd-feeder-pills">
+        {list(feed.feeders).slice(0, 10).map((feeder) => <FeederOpsPill key={str(feeder.feederId, str(feeder.handle))} feeder={feeder} />)}
+      </div>
+      {latestFailure.id ? (
+        <button type="button" className="cmd-feed-failure" onClick={() => onSelect(rowFromOpsEvent(latestFailure))}>
+          <AlertTriangle size={14} />
+          <span>{str(latestFailure.title, 'Latest failure')}</span>
+          <small>{relativeTime(latestFailure.happenedAt)}</small>
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function FeedOpsBoard({ feeds, onSelect }: { feeds: Dict[]; onSelect: (row: CommandRow) => void }) {
+  return (
+    <section className="cmd-feed-board">
+      {feeds.length ? feeds.map((feed) => (
+        <FeedOpsCard key={str(feed.feedId, str(feed.feedName))} feed={feed} onSelect={onSelect} />
+      )) : (
+        <div className="cmd-empty">
+          <Boxes size={22} />
+          <strong>No feeds in scope</strong>
+          <span>The command API did not return feed operations rows.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PortalHeader({
+  payload,
+  betaState,
+  criticalCount,
+}: {
+  payload: CommandPayload | null;
+  betaState: 'READY' | 'WATCH' | 'BLOCKED';
+  criticalCount: number;
+}) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <header className="cmd-portal-header">
+      <div>
+        <h1>COMMAND CENTER</h1>
+        <span>{payload ? `FEEDME / READ-ONLY LIVE OPS / LAST READ ${shortDate(payload.generatedAt, true)}` : 'FEEDME / READ CYCLE PENDING'}</span>
+      </div>
+      <div className="cmd-header-grid" aria-label="Command state">
+        <div><span>IST</span><strong>{shortDate(now.toISOString(), true).split(', ').pop()}</strong></div>
+        <div><span>STATE</span><strong className={`is-${betaState.toLowerCase()}`}>{betaState}</strong></div>
+        <div><span>CRITICAL</span><strong>{criticalCount}</strong></div>
+        <StatusChip status="readonly" />
+      </div>
+    </header>
+  );
+}
+
+function BetaReadinessBand({
+  betaState,
+  criticalCount,
+  attention,
+}: {
+  betaState: 'READY' | 'WATCH' | 'BLOCKED';
+  criticalCount: number;
+  attention: Attention[];
+}) {
+  const lead = attention[0];
+  const issueSummary = criticalCount
+    ? `${criticalCount} critical ${criticalCount === 1 ? 'surface is' : 'surfaces are'} blocking beta.`
+    : attention.length
+      ? `${attention.length} ${attention.length === 1 ? 'surface needs' : 'surfaces need'} review before beta lock.`
+      : 'All watched surfaces are clear in this read.';
+  const leadText = lead ? `${lead.label} / ${lead.detail}` : 'No failed, stale, or missing surfaces detected in this read.';
+
+  return (
+    <section className={`cmd-readiness is-${betaState.toLowerCase()}`}>
+      <div>
+        <span>READ-ONLY BETA STATE</span>
+        <strong>{betaState}</strong>
+        <p><b>{issueSummary}</b> {leadText}</p>
+      </div>
+      <div className="cmd-readiness-count">
+        <span>{criticalCount}</span>
+        <small>{criticalCount === 1 ? 'blocker' : 'blockers'}</small>
+      </div>
+      <div className="cmd-band-sweep" aria-hidden="true" />
+    </section>
+  );
+}
+
+function PipelineRail({
+  active,
+  payload,
+}: {
+  active: DomainId;
+  payload: CommandPayload;
+}) {
+  const labels = pipelineLabels[active];
+  const rows = rowsForDomain(payload, active);
+  const failed = rows.filter((row) => statusKind(row.status) === 'failed').length;
+  const partial = rows.filter((row) => statusKind(row.status) === 'partial').length;
+  const live = rows.filter((row) => statusKind(row.status) === 'live').length;
+  const missing = active === 'gaps' ? rows.length : 0;
+  const values = active === 'finance'
+    ? [
+      formatInr(dict(payload.finance).plannedMonthlyRevenueInr),
+      formatInr(dict(dict(payload.finance).realSurfaces).paidTransactionsInr),
+      formatInr(dict(dict(payload.finance).realSurfaces).pendingTransactionsInr),
+      String(list(payload.instrumentationGaps).filter((gap) => str(gap.id).includes('cost')).length),
+    ]
+    : [String(live), String(partial), String(rows.length), String(failed + missing)];
+
+  return (
+    <section className="cmd-panel cmd-pipeline">
+      <div className="cmd-panel-head">
+        <span>{active === 'overview' ? 'SYSTEM MATRIX' : `${allNavItems.find((item) => item.id === active)?.label.toUpperCase()} RAIL`}</span>
+        <strong>{rows.length}</strong>
+      </div>
+      <div className="cmd-pipeline-track">
+        {labels.map((label, index) => (
+          <div key={label} className={index === labels.length - 1 && failed + missing ? 'is-hot' : ''}>
+            <span>{label}</span>
+            <strong>{values[index] ?? '0'}</strong>
+          </div>
         ))}
       </div>
     </section>
   );
 }
 
-function MiniBarChart({
-  payload,
-  active,
-  onSelect,
-}: {
-  payload: CommandPayload;
-  active: DomainId;
-  onSelect: (domain: DomainId) => void;
-}) {
-  const topline = dict(payload.topline);
-  const engineTotals = dict(dict(payload.engine).totals);
-  const checkpointTotals = dict(dict(payload.checkpoints).totals);
-  const fireTotals = dict(dict(payload.fireSignals).totals);
-  const intelligenceTotals = dict(dict(payload.intelligence).totals);
-  const mediaTotals = dict(dict(payload.media).totals);
-  const notificationTotals = dict(dict(payload.notifications).totals);
-  const gaps = list(payload.instrumentationGaps).length;
-
-  const bars: { id: DomainId; label: string; value: number; color?: string }[] = [
-    { id: 'account', label: 'Accounts', value: num(topline.feeders) },
-    { id: 'engine', label: 'Engine', value: num(engineTotals.jobs), color: '#139df2' },
-    { id: 'checkpoints', label: 'D1-D21', value: num(checkpointTotals.jobs) },
-    { id: 'fire', label: 'Fire', value: num(fireTotals.alerts) + num(fireTotals.signals), color: '#ff6a00' },
-    { id: 'intelligence', label: 'Intel', value: num(intelligenceTotals.modelCalls) + num(intelligenceTotals.feederFiles), color: '#675cff' },
-    { id: 'media', label: 'Media', value: num(mediaTotals.assets) },
-    { id: 'notifications', label: 'Push', value: num(notificationTotals.jobs) + num(notificationTotals.subscriptions) },
-    { id: 'finance', label: 'Finance', value: Math.max(1, num(topline.plannedMonthlyRevenueInr) / 1499), color: '#18bf73' },
-    { id: 'gaps', label: 'Gaps', value: gaps, color: '#ff4f7b' },
-  ];
-  const max = Math.max(1, ...bars.map((bar) => bar.value));
-
-  return (
-    <section className="cmd-card cmd-workload">
-      <div className="cmd-section-head">
-        <div>
-          <div className="cmd-card-label">
-            <ChartNoAxesColumnIncreasing size={14} />
-            <span>System workload</span>
-          </div>
-          <div className="cmd-workload-title">{formatNumber(num(topline.posts))}</div>
-          <span className="cmd-muted">tracked posts across read-only contracts</span>
-        </div>
-        <div className="cmd-select-chip">
-          Today IST
-          <ChevronDown size={14} />
-        </div>
-      </div>
-      <div className="cmd-bars-grid">
-        {bars.map((bar) => {
-          const height = 18 + (bar.value / max) * 174;
-          const isActive = active === bar.id;
-          return (
-            <button
-              key={bar.id}
-              type="button"
-              className={`cmd-bar-button ${isActive ? 'is-active' : ''}`}
-              onClick={() => onSelect(bar.id)}
-              aria-label={`View ${bar.label}`}
-            >
-              <span className="cmd-bar-value">{formatNumber(bar.value)}</span>
-              <span
-                className="cmd-bar"
-                style={{
-                  height,
-                  background: isActive ? (bar.color || '#139df2') : undefined,
-                }}
-              />
-              <span className="cmd-bar-label">{bar.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function StatusChip({ status }: { status: string }) {
-  const key = status.toLowerCase();
-  return <span className={`cmd-status is-${statusTone[key] || 'muted'}`}>{labelize(status)}</span>;
-}
-
-function DataTable({
+function CommandTable({
   rows,
   selected,
   onSelect,
@@ -499,107 +852,124 @@ function DataTable({
   onSelect: (row: CommandRow) => void;
 }) {
   return (
-    <section className="cmd-card cmd-table-card">
-      <div className="cmd-table-head">
-        <div className="cmd-card-label">
-          <Boxes size={14} />
-          <span>Read-only record ledger</span>
-        </div>
-        <span>{rows.length} visible</span>
+    <section className="cmd-panel cmd-table-panel">
+      <div className="cmd-panel-head">
+        <span>RECORDS IN THIS VIEW</span>
+        <strong>{rows.length} visible</strong>
       </div>
       {rows.length === 0 ? (
         <div className="cmd-empty">
-          <ShieldCheck size={24} />
-          <strong>No records found</strong>
-          <span>The selected scope has no rows for this view.</span>
+          <Boxes size={24} />
+          <strong>No records</strong>
+          <span>This scope has no rows for the selected view.</span>
         </div>
       ) : (
-        <div className="cmd-table-wrap">
-          <table className="cmd-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Metric</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={`${row.source}:${row.id}`}
-                  className={selected?.id === row.id && selected.source === row.source ? 'is-selected' : ''}
-                  onClick={() => onSelect(row)}
-                >
-                  <td>
-                    <div className="cmd-row-title">{row.title}</div>
-                    <div className="cmd-row-subtitle">{row.subtitle}</div>
-                  </td>
-                  <td>{row.source}</td>
-                  <td><StatusChip status={row.status} /></td>
-                  <td>{row.metric || row.eyebrow}</td>
-                  <td>{relativeTime(row.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="cmd-record-list">
+          {rows.map((row) => (
+            <button
+              key={`${row.source}:${row.id}`}
+              type="button"
+              className={selected?.id === row.id && selected.source === row.source ? 'cmd-record-card is-selected' : 'cmd-record-card'}
+              onClick={() => onSelect(row)}
+            >
+              <span className="cmd-record-state">
+                <StatusChip status={row.status} />
+                <small>{relativeTime(row.updatedAt)}</small>
+              </span>
+              {row.source === 'checkpoint_jobs' || row.source === 'post_metrics' ? (
+                <PostRecordCell row={row} />
+              ) : (
+                <span className="cmd-record-copy">
+                  <strong>{row.title}</strong>
+                  <small>{row.subtitle}</small>
+                </span>
+              )}
+              <span className="cmd-record-meta">
+                <em>{row.source}</em>
+                <strong>{row.metric || row.eyebrow}</strong>
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </section>
   );
 }
 
-function FinanceRail({ payload, selected }: { payload: CommandPayload; selected: CommandRow | null }) {
-  const finance = dict(payload.finance);
+function GapChecklist({ gaps }: { gaps: Dict[] }) {
+  const groups = ['cost', 'health', 'traffic', 'finance', 'platform'];
+  return (
+    <section className="cmd-panel">
+      <div className="cmd-panel-head">
+        <span>GAP CHECKLIST</span>
+        <strong>{gaps.length}</strong>
+      </div>
+      <div className="cmd-gap-grid">
+        {groups.map((group) => {
+          const groupGaps = gaps.filter((gap) => `${gap.id} ${gap.label} ${gap.path}`.toLowerCase().includes(group));
+          return (
+            <div key={group}>
+              <span>{group}</span>
+              <strong>{groupGaps.length || '-'}</strong>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function InspectorRail({
+  payload,
+  selected,
+  active,
+}: {
+  payload: CommandPayload | null;
+  selected: CommandRow | null;
+  active: DomainId;
+}) {
+  const access = dict(payload?.access);
+  const finance = dict(payload?.finance);
   const assumptions = dict(finance.assumptions);
   const realSurfaces = dict(finance.realSurfaces);
-  const topline = dict(payload.topline);
-  const gaps = list(payload.instrumentationGaps);
   const preview = selected?.raw || {};
   const previewEntries = Object.entries(preview)
     .filter(([, value]) => value == null || ['string', 'number', 'boolean'].includes(typeof value))
-    .slice(0, 8);
+    .slice(0, 9);
 
   return (
-    <aside className="cmd-right-rail">
-      <section className="cmd-card cmd-pricing-card">
-        <div className="cmd-card-label">
-          <WalletCards size={14} />
-          <span>Finance assumptions</span>
+    <aside className="cmd-inspector">
+      <section className="cmd-panel cmd-readonly-note">
+        <div className="cmd-panel-head">
+          <span>ACCESS</span>
+          <StatusChip status="readonly" />
         </div>
-        <div className="cmd-metal-card" aria-hidden="true">
-          <span>FEEDME</span>
-          <strong>COMMAND</strong>
-          <small>read-only ledger</small>
-        </div>
-        <div className="cmd-rail-list">
-          <div><span>Price per feeder</span><strong>{formatInr(assumptions.plannedPriceInrPerFeeder)}</strong></div>
-          <div><span>Razorpay</span><strong>not live</strong></div>
-          <div><span>Bright Data</span><strong>$1.50 / 1k</strong></div>
-          <div><span>Planned MRR</span><strong>{formatInr(topline.plannedMonthlyRevenueInr)}</strong></div>
-          <div><span>Known paid</span><strong>{formatInr(realSurfaces.paidTransactionsInr)}</strong></div>
+        <p>{str(access.note, 'Read-only command scope. No mutation controls are exposed.')}</p>
+        <div className="cmd-inspector-kv">
+          <span>Email</span><strong>{str(access.signedInEmail, 'Admin')}</strong>
+          <span>Mode</span><strong>{labelize(access.mode, 'Scoped')}</strong>
         </div>
       </section>
 
-      <section className="cmd-card cmd-detail-card">
-        <div className="cmd-section-head compact">
-          <div className="cmd-card-label">
-            <Sparkles size={14} />
-            <span>Selection detail</span>
-          </div>
-          {selected ? <StatusChip status={selected.status} /> : null}
+      <section className="cmd-panel cmd-detail-card">
+        <div className="cmd-panel-head">
+          <span>INSPECTOR</span>
+          {selected ? <StatusChip status={selected.status} /> : <StatusChip status="info" />}
         </div>
         {selected ? (
           <>
             <h2>{selected.title}</h2>
             <p>{selected.subtitle}</p>
-            <div className="cmd-rail-list compact-list">
-              <div><span>Source</span><strong>{selected.source}</strong></div>
-              <div><span>Updated</span><strong>{shortDate(selected.updatedAt)}</strong></div>
-              <div><span>Metric</span><strong>{selected.metric || selected.eyebrow}</strong></div>
+            <div className="cmd-inspector-kv">
+              <span>View</span><strong>{labelize(active)}</strong>
+              <span>Source</span><strong>{selected.source}</strong>
+              <span>Updated</span><strong>{shortDate(selected.updatedAt)}</strong>
+              <span>Metric</span><strong>{selected.metric || selected.eyebrow}</strong>
               {previewEntries.map(([key, value]) => (
-                <div key={key}><span>{labelize(key)}</span><strong>{value == null ? 'null' : String(value)}</strong></div>
+                <div key={key} className="cmd-kv-pair">
+                  <span>{labelize(key)}</span>
+                  <strong>{value == null ? 'null' : String(value)}</strong>
+                </div>
               ))}
             </div>
           </>
@@ -607,31 +977,21 @@ function FinanceRail({ payload, selected }: { payload: CommandPayload; selected:
           <div className="cmd-empty small">
             <Boxes size={20} />
             <strong>Select a row</strong>
-            <span>Record details appear here without exposing mutations.</span>
+            <span>Record context lands here.</span>
           </div>
         )}
       </section>
 
-      <section className="cmd-card cmd-gaps-card">
-        <div className="cmd-section-head compact">
-          <div className="cmd-card-label">
-            <AlertTriangle size={14} />
-            <span>Instrumentation gaps</span>
-          </div>
-          <strong>{gaps.length}</strong>
+      <section className="cmd-panel">
+        <div className="cmd-panel-head">
+          <span>FINANCE TRUTH</span>
+          <StatusChip status="partial" />
         </div>
-        <div className="cmd-gap-bars" aria-hidden="true">
-          {gaps.slice(0, 28).map((gap, index) => (
-            <span key={`${str(gap.id, 'gap')}-${index}`} className={`is-${index % 3}`} />
-          ))}
-        </div>
-        <div className="cmd-gap-list">
-          {gaps.slice(0, 4).map((gap) => (
-            <div key={str(gap.id, str(gap.label))}>
-              <span>{str(gap.label, 'Gap')}</span>
-              <strong>{labelize(gap.status, 'Missing')}</strong>
-            </div>
-          ))}
+        <div className="cmd-inspector-kv">
+          <span>Price / feeder</span><strong>{formatInr(assumptions.plannedPriceInrPerFeeder)}</strong>
+          <span>Razorpay</span><strong>not live</strong>
+          <span>Known paid</span><strong>{formatInr(realSurfaces.paidTransactionsInr)}</strong>
+          <span>Known pending</span><strong>{formatInr(realSurfaces.pendingTransactionsInr)}</strong>
         </div>
       </section>
     </aside>
@@ -689,11 +1049,19 @@ export default function CommandHubClient() {
     };
   }, []);
 
+  const systems = useMemo(() => systemHealth(payload), [payload]);
+  const attention = useMemo(() => attentionQueue(payload, systems), [payload, systems]);
   const allRows = useMemo(() => rowsForDomain(payload, active), [payload, active]);
+  const feedOps = dict(payload?.feedOps);
+  const opsFeeds = list(feedOps.feeds);
+  const opsRecent = list(feedOps.recentActivity);
+  const opsPending = list(feedOps.pendingAhead);
+  const opsFailures = list(feedOps.failures);
   const statuses = useMemo(() => {
+    if (active === 'feeds') return ['all', 'smooth', 'pending', 'stale', 'failed', 'missing'];
     const set = new Set(allRows.map((row) => row.status).filter(Boolean));
     return ['all', ...Array.from(set).sort()];
-  }, [allRows]);
+  }, [active, allRows]);
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return allRows.filter((row) => {
@@ -706,47 +1074,49 @@ export default function CommandHubClient() {
         .includes(needle);
     });
   }, [allRows, query, statusFilter]);
+  const visibleFeeds = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return opsFeeds.filter((feed) => {
+      const matchesStatus = statusFilter === 'all' || str(feed.health) === statusFilter;
+      if (!matchesStatus) return false;
+      if (!needle) return true;
+      return [feed.feedName, feed.status, feed.health, ...list(feed.feeders).map((feeder) => str(feeder.handle))]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle);
+    });
+  }, [opsFeeds, query, statusFilter]);
+  const criticalCount = systems.filter((system) => system.status === 'failed').length
+    + list(payload?.instrumentationGaps).filter((gap) => statusKind(gap.status) === 'failed').length;
+  const betaState: 'READY' | 'WATCH' | 'BLOCKED' = criticalCount ? 'BLOCKED' : attention.length ? 'WATCH' : 'READY';
+  const isAuthError = error?.status === 401;
 
   useEffect(() => {
     setSelected(rows[0] || null);
   }, [active, rows]);
 
-  const topline = dict(payload?.topline);
-  const engineTotals = dict(dict(payload?.engine).totals);
-  const fireTotals = dict(dict(payload?.fireSignals).totals);
-  const mediaTotals = dict(dict(payload?.media).totals);
-  const access = dict(payload?.access);
-  const activeNav = navItems.find((item) => item.id === active);
-  const isAuthError = error?.status === 401;
-
   return (
     <div className="cmd-stage" data-command-shell>
-      <div className="cmd-title">FeedMe Command</div>
+      <div className="cmd-scan" aria-hidden="true" />
+      <PortalHeader payload={payload} betaState={betaState} criticalCount={criticalCount} />
+      <div className="cmd-refresh-line" aria-hidden="true" />
+
       <div className="cmd-shell">
-        <aside className="cmd-sidebar">
+        <aside className="cmd-rail">
           <div className="cmd-brand">
-            <span className="cmd-brand-mark"><Sparkles size={17} /></span>
-            <strong>FeedMe Inc.</strong>
+            <span className="cmd-brand-mark"><Lock size={15} /></span>
+            <strong>COMMAND</strong>
           </div>
           <label className="cmd-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search"
-              aria-label="Search command hub"
-            />
-            <span>⌘P</span>
+            <Search size={15} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records" aria-label="Search command hub" />
           </label>
-
-          {(['main', 'pipeline', 'stack'] as const).map((group) => (
-            <nav key={group} className="cmd-nav-group" aria-label={group}>
-              <div className="cmd-nav-label">
-                {group === 'main' ? 'Main Menu' : group === 'pipeline' ? 'Pipeline' : 'Stack'}
-                <ChevronDown size={13} />
-              </div>
-              {navItems.filter((item) => item.group === group).map((item) => {
+          {['command', 'domain'].map((group) => (
+            <nav key={group} aria-label={group}>
+              <span>{group}</span>
+              {allNavItems.filter((item) => item.group === group).map((item) => {
                 const Icon = item.icon;
+                const health = systems.find((system) => system.id === item.id);
                 return (
                   <button
                     key={item.id}
@@ -757,44 +1127,23 @@ export default function CommandHubClient() {
                       setStatusFilter('all');
                     }}
                   >
-                    <Icon size={16} />
-                    <span>{item.label}</span>
-                    {item.id === 'gaps' ? <em>{list(payload?.instrumentationGaps).length}</em> : null}
+                    <Icon size={15} />
+                    <em>{item.label}</em>
+                    {health ? <i className={`cmd-dot is-${health.status}`} /> : null}
                   </button>
                 );
               })}
             </nav>
           ))}
-
-          <div className="cmd-upgrade">
-            <span className="cmd-brand-mark"><ShieldCheck size={16} /></span>
-            <strong>Read-only</strong>
-            <p>{str(access.note, 'Signed-in command scope')}</p>
-          </div>
-          <div className="cmd-user">
-            <span>{str(access.signedInEmail, 'Admin')}</span>
-            <small>{labelize(access.mode, 'Account scope')}</small>
-          </div>
         </aside>
 
         <main className="cmd-main">
-          <header className="cmd-header">
-            <div>
-              <h1>{activeNav?.label || 'Dashboard'}</h1>
-              <span>{payload ? `Last read ${shortDate(payload.generatedAt)}` : 'Preparing read model'}</span>
-            </div>
-            <div className="cmd-header-actions">
-              <span className="cmd-black-chip"><ShieldCheck size={15} /> Read-only</span>
-              <span className="cmd-soft-chip">{labelize(access.mode, loading ? 'Loading' : 'Scoped')}</span>
-            </div>
-          </header>
-
           {loading ? (
             <div className="cmd-loading-grid">
-              {Array.from({ length: 8 }).map((_, index) => <span key={index} />)}
+              {Array.from({ length: 10 }).map((_, index) => <span key={index} />)}
             </div>
           ) : error ? (
-            <section className={`cmd-card cmd-error ${isAuthError ? 'cmd-auth-error' : ''}`}>
+            <section className={`cmd-panel cmd-error ${isAuthError ? 'cmd-auth-error' : ''}`}>
               {isAuthError ? <ShieldCheck size={28} /> : <AlertTriangle size={28} />}
               <strong>{isAuthError ? 'Sign in required' : 'Command hub unavailable'}</strong>
               <span>
@@ -802,56 +1151,81 @@ export default function CommandHubClient() {
                   ? 'The command hub is read-only, but it still needs your FeedMe session before it can load account data.'
                   : error.message}
               </span>
-              {isAuthError ? (
-                <a className="cmd-primary-link" href="/login?next=%2Fcommand">
-                  Sign in to Command Hub
-                </a>
-              ) : null}
+              {isAuthError ? <a className="cmd-primary-link" href="/login?next=%2Fcommand">Sign in to Command Hub</a> : null}
             </section>
           ) : payload ? (
             <>
-              <section className="cmd-metrics-grid">
-                <MetricCard
-                  label="Account graph"
-                  value={formatNumber(topline.activeFeeders)}
-                  delta={`${formatNumber(topline.followerReach)} follower reach`}
-                  color="blue"
-                />
-                <MetricCard
-                  label="Engine jobs"
-                  value={formatNumber(engineTotals.jobs)}
-                  delta={`${formatNumber(engineTotals.successPercent)}% success`}
-                  color="green"
-                />
-                <MetricCard
-                  label="Fire / Signals"
-                  value={formatNumber(num(fireTotals.alerts) + num(fireTotals.signals))}
-                  delta={`${formatNumber(fireTotals.hotPosts)} hot posts`}
-                  color="orange"
-                />
-                <MetricCard
-                  label="Media storage"
-                  value={formatBytes(mediaTotals.knownBytes)}
-                  delta={`${formatNumber(mediaTotals.failed)} failed captures`}
-                  color="violet"
-                />
-              </section>
+              <div className="cmd-mobile-tabs" aria-label="Command tabs">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={active === item.id ? 'is-active' : ''}
+                    onClick={() => {
+                      setActive(item.id);
+                      setStatusFilter('all');
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
 
-              <div className="cmd-content-grid">
-                <div className="cmd-center">
-                  <MiniBarChart payload={payload} active={active} onSelect={setActive} />
-                  <div className="cmd-filter-row">
-                    <span>{activeNav?.label || 'Dashboard'} records</span>
-                    <label>
-                      Status
-                      <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                        {statuses.map((status) => <option key={status} value={status}>{labelize(status)}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                  <DataTable rows={rows} selected={selected} onSelect={setSelected} />
-                </div>
-                <FinanceRail payload={payload} selected={selected} />
+              <div className="cmd-content">
+                <section className="cmd-center">
+                  <BetaReadinessBand betaState={betaState} criticalCount={criticalCount} attention={attention} />
+
+                  {active === 'overview' ? (
+                    <>
+                      <FeedOpsBoard feeds={visibleFeeds.slice(0, 8)} onSelect={setSelected} />
+                      <div className="cmd-overview-grid">
+                        <OpsEventList title="Recent App Activity" events={opsRecent.slice(0, 6)} empty="No recent activity" onSelect={setSelected} />
+                        <OpsEventList title="Pending Ahead" events={opsPending.slice(0, 6)} empty="Nothing queued" onSelect={setSelected} />
+                      </div>
+                      <OpsEventList title="Failure Queue" events={opsFailures.slice(0, 6)} empty="No failures" onSelect={setSelected} />
+                    </>
+                  ) : active === 'feeds' ? (
+                    <>
+                      <div className="cmd-filter-row">
+                        <span>Feeds / operations</span>
+                        <label>
+                          Health
+                          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                            {statuses.map((status) => <option key={status} value={status}>{labelize(status)}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <FeedOpsBoard feeds={visibleFeeds} onSelect={setSelected} />
+                    </>
+                  ) : active === 'activity' ? (
+                    <OpsEventList title="Recent App Activity" events={opsRecent} empty="No recent activity" onSelect={setSelected} />
+                  ) : active === 'pending' ? (
+                    <OpsEventList title="Pending Ahead" events={opsPending} empty="Nothing queued" onSelect={setSelected} />
+                  ) : active === 'failures' ? (
+                    <OpsEventList title="Failure Queue" events={opsFailures} empty="No failures" onSelect={setSelected} />
+                  ) : active === 'gaps' ? (
+                    <>
+                      <GapChecklist gaps={list(payload.instrumentationGaps)} />
+                      <CommandTable rows={rows} selected={selected} onSelect={setSelected} />
+                    </>
+                  ) : (
+                    <>
+                      <div className="cmd-filter-row">
+                        <span>{allNavItems.find((item) => item.id === active)?.label} / records</span>
+                        <label>
+                          Status
+                          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                            {statuses.map((status) => <option key={status} value={status}>{labelize(status)}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <PipelineRail active={active} payload={payload} />
+                      <CommandTable rows={rows} selected={selected} onSelect={setSelected} />
+                    </>
+                  )}
+                </section>
+
+                <InspectorRail payload={payload} selected={selected} active={active} />
               </div>
             </>
           ) : null}

@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 const COMMAND_ROUTE_TTL_SECONDS = 20;
 const FEEDER_PRICE_INR = 1499;
 const BRIGHT_DATA_USD_PER_1K_RECORDS = 1.5;
+const STALE_HOURS = 24;
 
 type DbRow = Record<string, unknown>;
 
@@ -86,8 +87,11 @@ function emptyRead<T extends DbRow>(): TableRead<T> {
   return { available: true, rows: [], count: 0, error: null };
 }
 
-function asString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value : null;
+function asString(value: unknown): string | null;
+function asString(value: unknown, fallback: string): string;
+function asString(value: unknown, fallback: string | null = null): string | null {
+  if (typeof value === 'string' && value.trim()) return value;
+  return fallback;
 }
 
 function asNumber(value: unknown): number | null {
@@ -97,6 +101,14 @@ function asNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function labelize(value: unknown, fallback = 'Unknown') {
+  return (asString(value, fallback) || fallback)
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function asDateMs(value: unknown): number {
@@ -168,6 +180,192 @@ function tableErrorGaps(reads: Record<string, TableRead>) {
       detail: read.error || 'Read failed',
       path: 'Check Supabase table availability, privileges, or selected columns.',
     }));
+}
+
+function mediaRouteUrl(postKey: unknown): string | null {
+  const key = asString(postKey);
+  return key ? `/api/media?postKey=${encodeURIComponent(key)}&role=thumbnail` : null;
+}
+
+function decoratePostRows<T extends DbRow>(
+  rows: T[],
+  posts: DbRow[],
+  feeders: DbRow[],
+  mediaAssets: DbRow[],
+): T[] {
+  const postByKey = new Map(posts.map((post) => [asString(post.post_key), post]).filter((entry): entry is [string, DbRow] => Boolean(entry[0])));
+  const feederById = new Map(feeders.map((feeder) => [asNumber(feeder.id), feeder]).filter((entry): entry is [number, DbRow] => entry[0] != null));
+  const assetByPostKey = new Map(
+    mediaAssets
+      .filter((asset) => ['thumbnail', 'display', 'carousel_0', 'carousel_00', 'carousel_01', 'carousel_1'].includes((asString(asset.asset_role) || '').toLowerCase()))
+      .map((asset) => [asString(asset.post_key), asset])
+      .filter((entry): entry is [string, DbRow] => Boolean(entry[0])),
+  );
+
+  return rows.map((row) => {
+    const postKey = asString(row.post_key);
+    const post = postKey ? postByKey.get(postKey) : null;
+    const feederId = post ? asNumber(post.feeder_id) : null;
+    const feeder = feederId != null ? feederById.get(feederId) : null;
+    return {
+      ...row,
+      post_key: postKey,
+      feeder_id: feederId,
+      feeder_handle: feeder ? asString(feeder.handle) : null,
+      media_type: post ? asString(post.media_type) : null,
+      thumbnail_url: postKey && (assetByPostKey.has(postKey) || post) ? mediaRouteUrl(postKey) : null,
+      posted_at: post ? asString(post.posted_at) : null,
+    };
+  });
+}
+
+function eventHealth(status: unknown): 'smooth' | 'pending' | 'failed' {
+  const key = (asString(status) || '').toLowerCase();
+  if (['failed', 'error', 'capture_failed', 'purge_failed', 'unavailable'].includes(key)) return 'failed';
+  if (['pending', 'retry', 'running', 'capturing', 'purging', 'pending_capture', 'purge_pending'].includes(key)) return 'pending';
+  return 'smooth';
+}
+
+function buildFeedOps({
+  feeds,
+  feeders,
+  posts,
+  runJobs,
+  checkpointJobs,
+  postMetrics,
+  fireAlerts,
+  signals,
+  mediaAssets,
+  pushJobs,
+  modelCalls,
+}: {
+  feeds: DbRow[];
+  feeders: DbRow[];
+  posts: DbRow[];
+  runJobs: DbRow[];
+  checkpointJobs: DbRow[];
+  postMetrics: DbRow[];
+  fireAlerts: DbRow[];
+  signals: DbRow[];
+  mediaAssets: DbRow[];
+  pushJobs: DbRow[];
+  modelCalls: DbRow[];
+}) {
+  const feedById = new Map(feeds.map((feed) => [asNumber(feed.id), feed]).filter((entry): entry is [number, DbRow] => entry[0] != null));
+  const feederById = new Map(feeders.map((feeder) => [asNumber(feeder.id), feeder]).filter((entry): entry is [number, DbRow] => entry[0] != null));
+  const feederByHandle = new Map(feeders.map((feeder) => [asString(feeder.handle), feeder]).filter((entry): entry is [string, DbRow] => Boolean(entry[0])));
+  const postByKey = new Map(posts.map((post) => [asString(post.post_key), post]).filter((entry): entry is [string, DbRow] => Boolean(entry[0])));
+
+  function owner(input: { feedId?: unknown; feederId?: unknown; feederHandle?: unknown; postKey?: unknown }) {
+    const post = asString(input.postKey) ? postByKey.get(asString(input.postKey) || '') : null;
+    const feederId = asNumber(input.feederId) ?? (post ? asNumber(post.feeder_id) : null);
+    const feeder = feederId != null
+      ? feederById.get(feederId)
+      : feederByHandle.get(asString(input.feederHandle) || '');
+    const feedId = asNumber(input.feedId) ?? (feeder ? asNumber(feeder.feed_id) : null);
+    const feed = feedId != null ? feedById.get(feedId) : null;
+    return { feed, feedId, feeder, feederId, post };
+  }
+
+  function event(row: DbRow, source: string, kind: string, title: string, detail: string, dates: { happenedAt?: unknown; nextRunAt?: unknown }, input: { feedId?: unknown; feederId?: unknown; feederHandle?: unknown; postKey?: unknown } = {}) {
+    const found = owner(input);
+    const postKey = asString(input.postKey);
+    return {
+      id: `${source}:${String(row.id ?? row.post_key ?? row.call_key ?? `${kind}:${postKey || 'none'}`)}`,
+      feedId: found.feedId,
+      feedName: found.feed ? asString(found.feed.name) : null,
+      feederId: found.feederId,
+      feederHandle: found.feeder ? asString(found.feeder.handle) : asString(input.feederHandle),
+      postKey,
+      thumbnailUrl: postKey ? mediaRouteUrl(postKey) : null,
+      source,
+      kind,
+      status: asString(row.status, 'done'),
+      title,
+      detail,
+      happenedAt: asString(dates.happenedAt) || null,
+      nextRunAt: asString(dates.nextRunAt) || null,
+    };
+  }
+
+  const events = [
+    ...runJobs.map((row) => event(row, 'run_jobs', asString(row.job_type, 'run'), 'Discovery run', asString(row.last_error, asString(row.business_date_ist, 'Run job')), { happenedAt: row.updated_at, nextRunAt: row.next_run_at }, { feederId: row.feeder_id })),
+    ...checkpointJobs.map((row) => event(row, 'checkpoint_jobs', asString(row.checkpoint, 'checkpoint'), `Checkpoint ${asString(row.checkpoint, '')}`, asString(row.last_error, asString(row.post_key, 'Checkpoint job')), { happenedAt: row.updated_at, nextRunAt: row.next_run_at }, { postKey: row.post_key })),
+    ...postMetrics.map((row) => event({ ...row, status: 'done' }, 'post_metrics', asString(row.checkpoint, 'metric'), `Metric ${asString(row.checkpoint, '')}`, `${asNumber(row.views) || 0} views`, { happenedAt: row.computed_at }, { postKey: row.post_key })),
+    ...fireAlerts.map((row) => event(row, 'fire_alerts', asString(row.alert_type, 'fire'), labelize(row.alert_type, 'Fire alert'), asString(row.body, asString(row.signal_code, 'Fire alert')), { happenedAt: row.updated_at || row.created_at }, { feedId: row.feed_id, feederId: row.feeder_id, postKey: row.post_key })),
+    ...signals.map((row) => event(row, 'signals', asString(row.signal_family, 'signal'), labelize(row.signal_type, 'Signal'), asString(row.body, asString(row.scope, 'Signal')), { happenedAt: row.last_fired_at || row.updated_at }, { feedId: row.feed_id, feederId: row.feeder_id })),
+    ...mediaAssets.map((row) => event(row, 'post_media_assets', asString(row.asset_role, 'media'), labelize(row.asset_role, 'Media asset'), asString(row.last_error, `${asString(row.storage_bucket, 'storage')} ${asString(row.mime_type, '')}`), { happenedAt: row.updated_at || row.captured_at, nextRunAt: row.next_run_at }, { postKey: row.post_key })),
+    ...pushJobs.map((row) => event(row, 'web_push_jobs', asString(row.kind, 'push'), labelize(row.kind, 'Push job'), asString(row.last_error, asString(row.dedupe_key, 'Push job')), { happenedAt: row.updated_at || row.sent_at, nextRunAt: row.next_run_at }, { feedId: row.feed_id })),
+    ...modelCalls.map((row) => event(row, 'feeder_file_model_calls', asString(row.call_type, 'model'), labelize(row.call_type, 'Model call'), asString(row.error, asString(row.model, 'Model call')), { happenedAt: row.completed_at || row.updated_at, nextRunAt: null }, { feederHandle: row.feeder_handle, postKey: row.post_key })),
+  ].filter((item) => item.feedId != null || item.feederId != null || item.postKey || item.source === 'web_push_jobs');
+
+  function healthFor(items: typeof events) {
+    if (items.some((item) => eventHealth(item.status) === 'failed')) return 'failed';
+    if (items.some((item) => eventHealth(item.status) === 'pending')) return 'pending';
+    const latest = items.map((item) => asDateMs(item.happenedAt)).sort((a, b) => b - a)[0] || 0;
+    if (latest && Date.now() - latest > STALE_HOURS * 60 * 60 * 1000) return 'stale';
+    return items.length ? 'smooth' : 'missing';
+  }
+
+  function latestDate(items: typeof events, key: 'happenedAt' | 'nextRunAt') {
+    const dates = items.map((item) => asDateMs(item[key])).filter(Boolean).sort((a, b) => key === 'nextRunAt' ? a - b : b - a);
+    return dates[0] ? new Date(dates[0]).toISOString() : null;
+  }
+
+  const failures = events
+    .filter((item) => eventHealth(item.status) === 'failed')
+    .sort((a, b) => asDateMs(b.happenedAt) - asDateMs(a.happenedAt));
+  const pendingAhead = events
+    .filter((item) => eventHealth(item.status) === 'pending' || item.nextRunAt)
+    .sort((a, b) => asDateMs(a.nextRunAt) - asDateMs(b.nextRunAt))
+    .slice(0, 80);
+  const recentActivity = events
+    .filter((item) => item.happenedAt)
+    .sort((a, b) => asDateMs(b.happenedAt) - asDateMs(a.happenedAt))
+    .slice(0, 80);
+
+  const cards = feeds.map((feed) => {
+    const feedId = asNumber(feed.id);
+    const feedFeeders = feeders.filter((feeder) => asNumber(feeder.feed_id) === feedId);
+    const feedEvents = events.filter((item) => item.feedId === feedId);
+    const feedFailures = failures.filter((item) => item.feedId === feedId);
+    return {
+      feedId,
+      feedName: asString(feed.name, 'Untitled feed'),
+      status: asString(feed.status, 'unknown'),
+      health: healthFor(feedEvents),
+      feederCount: feedFeeders.length,
+      activeFeederCount: countWhere(feedFeeders, (row) => asString(row.status) === 'active'),
+      pausedFeederCount: countWhere(feedFeeders, (row) => asString(row.status) === 'paused'),
+      lastActivityAt: latestDate(feedEvents, 'happenedAt'),
+      nextWorkAt: latestDate(feedEvents, 'nextRunAt'),
+      latestFailure: feedFailures[0] || null,
+      feeders: feedFeeders.map((feeder) => {
+        const feederId = asNumber(feeder.id);
+        const feederEvents = events.filter((item) => item.feederId === feederId);
+        return {
+          feederId,
+          feedId,
+          handle: asString(feeder.handle, 'unknown'),
+          role: asString(feeder.role, 'standard'),
+          status: asString(feeder.status, 'unknown'),
+          health: healthFor(feederEvents),
+          followerCount: asNumber(feeder.follower_count),
+          lastActivityAt: latestDate(feederEvents, 'happenedAt'),
+          nextWorkAt: latestDate(feederEvents, 'nextRunAt'),
+          pendingCount: feederEvents.filter((item) => eventHealth(item.status) === 'pending').length,
+          failureCount: feederEvents.filter((item) => eventHealth(item.status) === 'failed').length,
+        };
+      }),
+    };
+  });
+
+  return {
+    feeds: cards,
+    recentActivity,
+    pendingAhead,
+    failures: failures.slice(0, 80),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -454,6 +652,19 @@ export async function GET(request: NextRequest) {
   const pendingTransactionsPaise = transactions.rows
     .filter((row) => asString(row.status) === 'pending')
     .reduce((total, row) => total + (asNumber(row.amount) || 0), 0);
+  const feedOps = buildFeedOps({
+    feeds: feeds.rows,
+    feeders: feeders.rows,
+    posts: posts.rows,
+    runJobs: runJobs.rows,
+    checkpointJobs: checkpointJobs.rows,
+    postMetrics: postMetrics.rows,
+    fireAlerts: fireAlerts.rows,
+    signals: signals.rows,
+    mediaAssets: mediaAssets.rows,
+    pushJobs: pushJobs.rows,
+    modelCalls: modelCalls.rows,
+  });
 
   const payload = {
     generatedAt,
@@ -494,6 +705,7 @@ export async function GET(request: NextRequest) {
       feeds: pickRows(feeds.rows, 24),
       feeders: pickRows(feeders.rows, 48),
     },
+    feedOps,
     engine: {
       totals: {
         jobs: runJobs.count,
@@ -520,8 +732,8 @@ export async function GET(request: NextRequest) {
       jobsByStatus: countBy(checkpointJobs.rows, 'status'),
       jobsByCheckpoint: countBy(checkpointJobs.rows, 'checkpoint'),
       metricsByCheckpoint: countBy(postMetrics.rows, 'checkpoint'),
-      recentJobs: pickRows(checkpointJobs.rows, 44),
-      recentMetrics: pickRows(postMetrics.rows, 32),
+      recentJobs: decoratePostRows(pickRows(checkpointJobs.rows, 44), posts.rows, feeders.rows, mediaAssets.rows),
+      recentMetrics: decoratePostRows(pickRows(postMetrics.rows, 32), posts.rows, feeders.rows, mediaAssets.rows),
       recentErrors: recentErrors(checkpointJobs.rows),
       latestChangeAt: latestIso([...checkpointJobs.rows, ...postMetrics.rows], ['updated_at', 'computed_at', 'created_at']),
     },
