@@ -2,6 +2,7 @@
 .env
 .env.*
 node_modules/
+.pnpm-store/
 __pycache__/
 .wrangler/
 apps/worker/scripts/out/

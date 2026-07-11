@@ -2703,7 +2703,41 @@ class PureEngine:
         self.conn.commit()
         return rows
 
-    def _claim_checkpoint_jobs(self, limit: int) -> list[dict]:
+    def _claim_checkpoint_jobs(self, limit: int, job_ids: list[int] | None = None) -> list[dict]:
+        if job_ids:
+            rows = self.conn.execute(
+                """
+                with picked as (
+                    select cj.id
+                    from public.checkpoint_jobs cj
+                    where cj.id = any(%s)
+                      and cj.status in ('pending', 'retry')
+                      and public.fn_checkpoint_job_claimable(cj.attempt, cj.next_run_at, now())
+                    order by cj.id
+                    for update skip locked
+                    limit %s
+                ), claimed as (
+                    update public.checkpoint_jobs cj
+                    set status = 'running', updated_at = now()
+                    from picked
+                    where cj.id = picked.id
+                    returning cj.*
+                )
+                select cj.*, p.post_url, p.media_type, p.feeder_id, p.posted_at, fd.handle
+                     , fd.follower_count
+                     , p.provider_post_id
+                     , p.availability_status
+                     , p.availability_error
+                     , p.availability_checked_at
+                from claimed cj
+                join public.posts p on p.post_key = cj.post_key
+                join public.feeders fd on fd.id = p.feeder_id
+                """,
+                (job_ids, max(1, limit)),
+            ).fetchall()
+            self.conn.commit()
+            return rows
+
         self.conn.execute("select public.skip_unqualified_d21_jobs()")
         rows = self.conn.execute(
             """
@@ -3119,8 +3153,8 @@ class PureEngine:
                             pass
                     last_checkpoint_yield = time.time()
 
-    def process_checkpoint_jobs(self, limit: int = 5000):
-        jobs = self._claim_checkpoint_jobs(limit)
+    def process_checkpoint_jobs(self, limit: int = 5000, job_ids: list[int] | None = None):
+        jobs = self._claim_checkpoint_jobs(limit, job_ids)
         if not jobs:
             return
 

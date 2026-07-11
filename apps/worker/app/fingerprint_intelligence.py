@@ -39,14 +39,17 @@ from .config import (
 )
 from .feeder_prompts import (
     ACTIVE_COLD_START_COMPILE_VERSIONS,
-    D7_READ_PROMPT_VERSION,
-    D7_READ_SYSTEM_V6,
     FEEDER_FILE_COLD_START_PROMPT_VERSION,
+    POST_CONDENSATION_PROMPT_VERSION,
+    POST_CONDENSATION_SYSTEM_V5,
+)
+from .intelligence_engine_prompts import (
+    D7_READ_PROMPT_VERSION,
+    D7_READ_SYSTEM,
+    FEEDER_FILE_MAX_REEL_CARDS,
     FINGERPRINT_EXTRACTION_SYSTEM_V8,
     FINGERPRINT_PROMPT_VERSION,
     FINGERPRINT_SAMPLING_POLICY_VERSION,
-    POST_CONDENSATION_PROMPT_VERSION,
-    POST_CONDENSATION_SYSTEM_V5,
 )
 
 _GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -654,7 +657,7 @@ def _normalize_d7_read_mapping(parsed: dict[str, Any], *, post_key: str) -> dict
     read = str(body.get("read") or "").strip()
     scene = str(body.get("scene") or "").strip()
     fit = _flatten_read_field(body.get("fit"))
-    recent_run = _flatten_read_field(body.get("recent_run"))
+    recent_run = _flatten_read_field(body.get("recent_run") or body.get("run"))
     if read:
         out: dict[str, Any] = {
             "post_key": post_key,
@@ -938,7 +941,7 @@ def _call_d7_read_model(
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": D7_READ_SYSTEM_V6},
+            {"role": "system", "content": D7_READ_SYSTEM},
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, indent=2, default=str)},
         ],
         "temperature": float(os.getenv("D7_READ_TEMPERATURE", "0.55")),
@@ -1082,7 +1085,7 @@ def _record_d7_read_model_call(
                 post_key,
                 D7_READ_MODEL,
                 D7_READ_PROMPT_VERSION,
-                D7_READ_SYSTEM_V6,
+                D7_READ_SYSTEM,
                 json.dumps(user_payload, ensure_ascii=False, default=str),
                 raw_output,
                 json.dumps(parsed_output, ensure_ascii=False) if parsed_output is not None else None,
@@ -1351,22 +1354,6 @@ def _d7_metric(row: dict[str, Any], axis: str) -> int | float | None:
     if axis == "comments" and (row.get("views") is not None or row.get("likes") is not None):
         return 0
     return None
-
-
-def _d7_related_handles(row: dict[str, Any]) -> list[str]:
-    value = row.get("related_handles")
-    if isinstance(value, list):
-        handles = [str(item or "").strip().lstrip("@").lower() for item in value if str(item or "").strip()]
-        return list(dict.fromkeys(handles))
-    return []
-
-
-def _d7_collab_info(row: dict[str, Any]) -> dict[str, Any]:
-    handles = _d7_related_handles(row)
-    return {
-        "collab_post": "yes" if bool(row.get("collab_post")) else "no",
-        "related_handles": handles,
-    }
 
 
 def _d7_posted_ts(row: dict[str, Any]) -> float:
@@ -1904,6 +1891,8 @@ def _active_cold_start_feeder_file(conn: Any, *, feeder_id: int, handle: str) ->
 def _d7_feeder_file_without_target(feed_file: dict[str, Any], post_key: str) -> dict[str, Any]:
     """Avoid self-reference when a target post is already present in memory."""
     out = copy.deepcopy(feed_file)
+    if isinstance(out.get("posts"), list):
+        out["posts"] = [post for post in out["posts"] if str((post or {}).get("post_key") or "") != post_key]
     alias_map = out.get("source_alias_map") if isinstance(out.get("source_alias_map"), dict) else {}
     target_aliases = {alias for alias, key in alias_map.items() if str(key) == post_key}
     if not target_aliases:
@@ -1915,6 +1904,138 @@ def _d7_feeder_file_without_target(feed_file: dict[str, Any], post_key: str) -> 
         bite["receipts"] = [r for r in receipts if str((r or {}).get("post")) not in target_aliases]
         bite["n_current_window"] = len(bite["receipts"])
     return out
+
+
+_D7_REEL_CARD_FIELDS = (
+    "summary",
+    "aim",
+    "aim_receipt",
+    "proof",
+    "proof_receipt",
+    "open",
+    "close",
+    "package",
+    "package_receipt",
+)
+
+
+def _d7_payload_time(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _d7_rank_landing(rank: int | None, pool: int) -> tuple[str, str]:
+    if rank is None or pool <= 0:
+        return "unknown", "unknown"
+    pct = rank / pool
+    if pct <= 0.25:
+        return "overdelivered", "deep feeder hit"
+    if pct <= 0.625:
+        return "held", "useful middle"
+    if pct <= 0.875:
+        return "underdelivered", "soft, did not move the run"
+    return "underdelivered", "low, missed the feeder"
+
+
+def _d7_anomalies(row: dict[str, Any]) -> list[str]:
+    shape = _d7_metric_shape(
+        row.get("views_multiple"),
+        row.get("likes_multiple"),
+        row.get("comments_multiple"),
+    )
+    return [shape] if "over-indexed" in shape else []
+
+
+def _d7_payload_performance(row: dict[str, Any], *, rank: int | None, pool: int) -> dict[str, Any]:
+    job, landing = _d7_rank_landing(rank, pool)
+    return {
+        "job": job,
+        "rank": f"{rank}/{pool}" if rank is not None and pool > 0 else "",
+        "landing": landing,
+        "anomalies": _d7_anomalies(row),
+    }
+
+
+def _d7_clean_performance(value: Any, row: dict[str, Any], *, rank: int | None, pool: int) -> dict[str, Any]:
+    computed = _d7_payload_performance(row, rank=rank, pool=pool)
+    if not isinstance(value, dict):
+        return computed
+    anomalies = value.get("anomalies")
+    return {
+        "job": str(value.get("job") or computed["job"]),
+        "rank": str(value.get("rank") or computed["rank"]),
+        "landing": str(value.get("landing") or computed["landing"]),
+        "anomalies": [str(item) for item in anomalies if str(item).strip()] if isinstance(anomalies, list) else computed["anomalies"],
+    }
+
+
+def _d7_reel_card(value: Any) -> dict[str, str] | None:
+    source = value.get("card") if isinstance(value, dict) and isinstance(value.get("card"), dict) else value
+    if not isinstance(source, dict):
+        return None
+    card = {field: str(source.get(field) or "").strip() for field in _D7_REEL_CARD_FIELDS}
+    aliases = {
+        "summary": "what_happened",
+        "aim": "job",
+        "aim_receipt": "job_basis",
+        "proof": "driver",
+        "proof_receipt": "driver_basis",
+        "package": "form",
+        "package_receipt": "form_basis",
+    }
+    for field, alias in aliases.items():
+        if not card[field]:
+            card[field] = str(source.get(alias) or "").strip()
+    if not all(card[field] for field in ("summary", "aim", "proof", "open", "close", "package")):
+        return None
+    return card
+
+
+def _d7_numbered_feeder_posts(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept = posts[-FEEDER_FILE_MAX_REEL_CARDS:]
+    for idx, post in enumerate(kept, start=1):
+        post["id"] = f"m{idx:02d}"
+    return kept
+
+
+def _d7_feeder_posts_from_file(
+    feed_file: dict[str, Any] | None,
+    *,
+    post_key: str,
+    rows_by_key: dict[str, dict[str, Any]],
+    rank_lookup: dict[str, int],
+    pool: int,
+) -> list[dict[str, Any]]:
+    raw_posts = feed_file.get("posts") if isinstance(feed_file, dict) and isinstance(feed_file.get("posts"), list) else []
+    posts: list[dict[str, Any]] = []
+    for item in raw_posts:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("post_key") or "").strip()
+        key_norm = key.lower()
+        if not key_norm or key_norm == post_key.lower():
+            continue
+        card = _d7_reel_card(item)
+        if not card:
+            continue
+        row = rows_by_key.get(key_norm, {})
+        posts.append(
+            {
+                "id": "",
+                "url": item.get("url") or item.get("post_url") or row.get("post_url"),
+                "card": card,
+                "post_key": key or row.get("post_key"),
+                "posted_at": _d7_payload_time(item.get("posted_at") or row.get("posted_at")),
+                "performance": _d7_clean_performance(
+                    item.get("performance"),
+                    row,
+                    rank=rank_lookup.get(key_norm),
+                    pool=pool,
+                ),
+            }
+        )
+    return _d7_numbered_feeder_posts(posts)
 
 
 def _d7_bite_match_context(feed_file: dict[str, Any], fingerprint: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -2104,8 +2225,6 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
               p.caption,
               p.media_type,
               p.posted_at,
-              p.related_handles,
-              p.collab_post,
               p.post_url,
               f.handle,
               pm.views,
@@ -2151,6 +2270,7 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
             select
               p.post_key,
               p.posted_at,
+              p.post_url,
               pm.views,
               pm.likes,
               pm.comments,
@@ -2189,69 +2309,35 @@ def _build_d7_read_input(conn: Any, post_key: str) -> dict[str, Any] | None:
             -(_d7_float(_d7_metric(row, "views")) or 0.0),
         ),
     )
-    rank_lookup = {str(row.get("post_key") or ""): index + 1 for index, row in enumerate(ranked_rows)}
-    rank = f"{rank_lookup.get(post_key, len(ranked_rows))}/{max(1, len(ranked_rows))}"
-
-    recent_rows = rows[: min(10, len(rows))]
-    hot = sum(1 for row in recent_rows if _d7_band_from_percentile(row.get("percentile_performance_exact")) == "hot")
-    cold = sum(1 for row in recent_rows if _d7_band_from_percentile(row.get("percentile_performance_exact")) == "cold")
-    comment_heavy = sum(
-        1
-        for row in recent_rows
-        if (_d7_float(_d7_metric(row, "comments")) or 0.0)
-        > max((_d7_float(_d7_metric(row, "views")) or 0.0), (_d7_float(_d7_metric(row, "likes")) or 0.0)) * 1.2
+    pool = max(1, len(ranked_rows))
+    rank_lookup = {str(row.get("post_key") or "").lower(): index + 1 for index, row in enumerate(ranked_rows)}
+    rows_by_key = {str(row.get("post_key") or "").lower(): row for row in rows}
+    trigger_rank = rank_lookup.get(post_key.lower(), pool)
+    feeder_posts = _d7_feeder_posts_from_file(
+        feed_file,
+        post_key=post_key,
+        rows_by_key=rows_by_key,
+        rank_lookup=rank_lookup,
+        pool=pool,
     )
-    if hot >= 3:
-        run_summary = f"hot stretch: {hot} of the last {len(recent_rows)} D7 reels landed near the top of the recent pool"
-    elif cold >= 3:
-        run_summary = f"cooling stretch: {cold} of the last {len(recent_rows)} D7 reels sat near the bottom of recent posts"
-    elif comment_heavy >= 2:
-        run_summary = f"conversation-heavy stretch: {comment_heavy} of the last {len(recent_rows)} D7 reels leaned harder on comments than reach"
-    else:
-        run_summary = f"mixed recent form across the last {len(recent_rows)} D7 reels"
+    if not feeder_posts:
+        return None
 
     return {
         "account": {"handle": handle},
         "this_post": {
+            "caption": trigger.get("caption"),
             "post_key": post_key,
             "post_url": trigger.get("post_url"),
-            "posted_on": _d7_posted_on(trigger),
-            "caption": trigger.get("caption"),
-            **_d7_collab_info(trigger),
+            "posted_at": _d7_payload_time(trigger.get("posted_at")),
             "fingerprint": fingerprint,
-            "band": _d7_band_from_percentile(trigger.get("percentile_performance_exact") or trigger.get("percentile_performance")),
-            "rank": rank,
-            "metric_shape": _d7_metric_shape(
-                trigger.get("views_multiple"),
-                trigger.get("likes_multiple"),
-                trigger.get("comments_multiple"),
+            "performance": _d7_payload_performance(
+                trigger,
+                rank=trigger_rank,
+                pool=pool,
             ),
-            "views": _d7_metric(trigger, "views"),
-            "likes": _d7_metric(trigger, "likes"),
-            "comments": _d7_metric(trigger, "comments"),
-            "views_vs_90d": _d7_float(trigger.get("views_multiple")),
-            "likes_vs_90d": _d7_float(trigger.get("likes_multiple")),
-            "comments_vs_90d": _d7_float(trigger.get("comments_multiple")),
-            **_d7_bite_match_context(feed_file, fingerprint),
         },
-        "feeder_file": feed_file,
-        "recent_run": {
-            "last_N_summary": run_summary,
-            "last_10_posts": [
-                {
-                    "post_key": str(row.get("post_key") or ""),
-                    "posted_on": _d7_posted_on(row),
-                    "band": _d7_band_from_percentile(row.get("percentile_performance_exact") or row.get("percentile_performance")),
-                    "rank": f"{rank_lookup.get(str(row.get('post_key') or ''), len(ranked_rows))}/{max(1, len(ranked_rows))}",
-                    "metric_shape": _d7_metric_shape(
-                        row.get("views_multiple"),
-                        row.get("likes_multiple"),
-                        row.get("comments_multiple"),
-                    ),
-                }
-                for row in recent_rows
-            ],
-        },
+        "feeder_file": {"posts": feeder_posts},
     }
 
 
