@@ -446,7 +446,7 @@ def _is_reel_media_type(media_type: Any) -> bool:
 
 
 def _canonical_fire_metric_order(media_type: Any) -> tuple[str, ...]:
-    return ("likes", "comments", "engagement_rate")
+    return ("engagement_rate",)
 
 
 def _round_half_up(value: float | None) -> int | None:
@@ -2498,7 +2498,16 @@ class PureEngine:
               views=excluded.views,
               likes=excluded.likes,
               comments=excluded.comments,
-              followers_at_metric=coalesce(excluded.followers_at_metric, public.post_metrics.followers_at_metric),
+              followers_at_metric=coalesce(
+                excluded.followers_at_metric,
+                public.post_metrics.followers_at_metric,
+                (
+                  select fd.follower_count
+                  from public.posts p
+                  join public.feeders fd on fd.id = p.feeder_id
+                  where p.post_key = excluded.post_key
+                )
+              ),
               engagement_count=coalesce(excluded.engagement_count, public.post_metrics.engagement_count),
               engagement_rate=case
                 when coalesce(excluded.engagement_count, public.post_metrics.engagement_count) is not null

@@ -1,0 +1,492 @@
+{
+  "account": {
+    "handle": "@anuj.mp4"
+  },
+  "week": {
+    "label": "SIM-W03",
+    "simulation": true,
+    "source_card_age": "2 weeks ago",
+    "settled_post_count": 5
+  },
+  "current_posts": [
+    {
+      "title": "Flip State Punchline",
+      "posted": "2 weeks ago",
+      "lane": "reel",
+      "recent_rank": "35/40",
+      "overall_rank": "51/58",
+      "post_card": "POST NAME  \nFlip State Punchline\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:07  \nCaption: extends  \nSurface: top text overlay, green t-shirt, sunglasses, mustache filter, bedroom\n\nWORK  \nA two-character jump-cut skit plays out a casual check-in, then cuts to a depressed reply that ends on a one-word pun.\n\nFLOW  \n0:00-0:01 First character in a green t-shirt smiles and asks, “Are Saurabh long time no see, what's up man? What's up bro”.\n0:01-0:04 Cut to the same actor as a second character with silver metallic sunglasses and a mustache filter; he says, “nothing bro, I'm just in a really bad state right now. Um...”\n0:04-0:07 Cut back to the first character looking down, then up, and saying “UP.”\n\nTEXT & REFERENCES  \nHook: in a bad state rn  \nNamed: Saurabh, UP, Uttar Pradesh\n\nMECHANIC FINGERPRINT  \nCheck-in -> bad state reply -> “UP” pun",
+      "trigger": {
+        "facts": [
+          "Weakest D7 landing among the preceding 5 posts.",
+          "Entered the overall bottom 15 D7 posts in the supplied comparison period."
+        ],
+        "context": {
+          "recent_floor_broken": 5,
+          "overall_bottom_band": 15
+        }
+      }
+    },
+    {
+      "title": "Cut to Ludo",
+      "posted": "2 weeks ago",
+      "lane": "reel",
+      "recent_rank": "7/40",
+      "overall_rank": "16/58",
+      "post_card": "POST NAME  \nCut to Ludo\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:14  \nCaption: extends  \nSurface: office lounge, blue sofas, wooden coffee table, Ludo board\n\nWORK  \nThe reel cuts from urgent pitch talk to a Ludo game in an office lounge, then back to the group reacting and speaking.\n\nFLOW  \n0:00-0:08 Extreme low-angle shot of four people in corporate attire standing in a tight circle and talking seriously.  \n0:08-0:09 Wide shot reveals a modern office lounge with a wooden coffee table and a Ludo board game.  \n0:09-0:10 Close-up shows a white die rolling on the board and landing on two.  \n0:10-0:12 Wide shot shows the group slumping and sitting down on blue sofas.  \n0:12-0:14 Medium shot shows a man in a peach shirt speaking and gesturing.\n\nTEXT & REFERENCES  \nHook: humari pitch mein  \nNamed: Ludo, @misdirectedbyanas, @aksmouli, @breezycatmedia, @ndini23, @satvikbhatt, @bora.psd\n\nMECHANIC FINGERPRINT  \nUrgent pitch talk -> Ludo reveal -> die roll -> slump -> closing line",
+      "trigger": {
+        "facts": [
+          "Entered the overall top 30 D7 posts in the supplied comparison period."
+        ],
+        "context": {
+          "overall_top_band": 30
+        }
+      }
+    },
+    {
+      "title": "Taunt into play",
+      "posted": "2 weeks ago",
+      "lane": "reel",
+      "recent_rank": "10/40",
+      "overall_rank": "21/58",
+      "post_card": "POST NAME  \nTaunt into play\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:14 observed window  \nCaption: extends  \nSurface: outdoor football turf, goal net, players, yellow text\n\nWORK  \nA football reel moves from a taunting opening line and on-screen text into field action, a kick, a slide into the goal net, and a final regroup near the goal.\n\nFLOW  \n0:00-0:01 — Young man in white jersey does a wide squat taunt in front of the goal; bright yellow text reads “SUCK MY FAT C***K”; spoken line starts “Suck my fat...”.  \n0:02-0:04 — Tall man in sunglasses stretches on the turf; shorter man in black stands with arms crossed.  \n0:05-0:08 — A ball is kicked toward the goal; the man in white slides feet-first into the back of the net; off-camera voice says “Easy, easy.”  \n0:09-0:13 — The man in white gets up, runs across the turf, and bumps into the man in sunglasses.  \n0:14 — Goalkeeper in grey stands ready in the goal with a ball on the turf in front.\n\nTEXT & REFERENCES  \nHook: “Suck my fat...”  \nNamed: none\n\nMECHANIC FINGERPRINT  \nTaunt text + spoken line -> football action -> slide into net -> run-up bump -> reset at goal",
+      "trigger": {
+        "facts": [
+          "Entered the overall top 30 D7 posts in the supplied comparison period."
+        ],
+        "context": {
+          "overall_top_band": 30
+        }
+      }
+    },
+    {
+      "title": "Reframe with punchline",
+      "posted": "2 weeks ago",
+      "lane": "reel",
+      "recent_rank": "6/40",
+      "overall_rank": "14/58",
+      "post_card": "POST NAME  \nReframe with punchline\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:05  \nCaption: standalone  \nSurface: top-center text overlay; phone call; indoor room\n\nWORK  \nThe reel stages a two-person phone exchange with rapid jump cuts, then ends on a location-based punchline.\n\nFLOW  \n0:00-0:01 Close-up of a young man holding a phone to his ear.  \n0:01-0:03 Quick cuts show a face modified by a female appearance filter speaking to camera.  \n0:03-0:05 Cut back to the man; he looks down, then says, “Damn. Andheri East.”\n\nTEXT & REFERENCES  \nHook: in a bad place rn  \nNamed: Andheri East\n\nMECHANIC FINGERPRINT  \nSetup through phone dialogue -> face-filtered reply -> location punchline"
+    },
+    {
+      "title": "Sock Mistake Cut",
+      "posted": "2 weeks ago",
+      "lane": "reel",
+      "recent_rank": "4/40",
+      "overall_rank": "11/58",
+      "post_card": "POST NAME  \nSock Mistake Cut\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:00-0:14 observed window  \nCaption: standalone  \nSurface: sofa, office desk, phone, subtitle text\n\nWORK  \nThe reel cuts from a lounge gag involving a pulled-off sock to a tense office warning and then back to the sock misunderstanding.\n\nFLOW  \n0:00-0:03 — A man lies on a blue sofa; another man removes a white sock from his foot and hands it to a woman.  \n0:03-0:06 — The woman takes the sock, mistakes it for a tissue, and blows her nose into it.  \n0:07-0:10 — Cut to a man in a black shirt leaning over an office desk and speaking urgently.  \n0:11-0:14 — The woman realizes it was a sock, screams in disgust, and throws it away; an office phone rings in the background.\n\nTEXT & REFERENCES  \nHook: Oh thank you.  \nNamed: none\n\nMECHANIC FINGERPRINT  \nSock handoff -> mistaken use -> urgent office warning -> disgust reaction"
+    },
+    {
+      "title": "Reveal Car, Drive Off",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "12/40",
+      "overall_rank": "24/58",
+      "post_card": "POST NAME  \nReveal Car, Drive Off\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:23  \nCaption: extends  \nSurface: Blue Dart / DHL storefront, HP petrol pump, matte black BMW M340i\n\nWORK  \nA walking intro cuts to a parked car showcase, then to interior and exterior detail shots, and ends with the car driving away.\n\nFLOW  \n0:00-0:04: A young man walks toward camera at night near a Blue Dart / DHL storefront, looking at his phone, then up, then adjusting his glasses.  \n0:04-0:07: Camera pans right to a matte black BMW sedan parked at an HP petrol pump.  \n0:07-0:13: Rear taillights, front headlight with blue ambient light, wide shot, and close-up of the M340i badge and rear taillight.  \n0:13-0:21: The man leans on the hood pointing at camera, then a quick interior shot shows the steering wheel and dashboard, then rear and front-angle shots of the car.  \n0:21-0:23: The man crosses his arms by the hood, and the car drives away into the night.\n\nTEXT & REFERENCES  \nHook: yall just have to get used to these for some time  \nNamed: Blue Dart, DHL, HP, BMW M340i, Indian Customs, Temperature by Sean Paul\n\nMECHANIC FINGERPRINT  \nWalking intro -> car reveal -> detail cuts -> posed hood shots -> drive-off ending"
+    },
+    {
+      "title": "Roll and Cut",
+      "posted": "8 weeks ago",
+      "lane": "reel",
+      "recent_rank": "9/40",
+      "overall_rank": "19/58",
+      "post_card": "POST NAME  \nRoll and Cut\n\nHEADER  \nMedia: reel  \nLength / Slides: null  \nCaption: extends  \nSurface: garage bay, driveway, BMW sedan, Limitless sign, on-screen text\n\nWORK  \nA reel alternates rolling, close-up, and rear-angle car shots with beat-synced cuts over a single continuous track.\n\nFLOW  \n0:00-0:01 Matte black BMW sedan is parked in a garage bay under warm lights; centered top text reads “we get it bro 🙏”.  \n0:01-0:03 The car rolls forward onto a driveway as the camera pans to the front grille and LED headlights.  \n0:03-0:05 Close-up shifts to the front-left wheel and headlight, then to a rear shot against a sunset sky with plate “MP4”.  \n0:05-0:08 Side panning and tracking shots show the car moving slowly, then passing other parked vehicles; the driver’s door opens slightly.  \n0:08-0:13 Rear-angle and close-up shots return to the dual exhaust, rear diffuser, front-left headlight, and wheel.\n\nTEXT & REFERENCES  \nHook: we get it bro 🙏  \nNamed: BMW, MP4, DD03AM0089, Limitless, Limitless Customs, Brazilian Funk/Phonk Car Trend\n\nMECHANIC FINGERPRINT  \nParked car -> rolling drive-by -> detail close-ups -> rear finish -> return close-up"
+    },
+    {
+      "title": "Freeze-Frame Reveal",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "15/40",
+      "overall_rank": "27/58",
+      "post_card": "POST NAME  \nFreeze-Frame Reveal\n\nHEADER  \nMedia: reel  \nLength / Slides: unknown  \nCaption: extends  \nSurface: retail store interior, exterior black building, text overlays\n\nWORK  \nThe reel opens on a bleeped store confrontation, cuts to a woman walking and speaking to camera, then freeze-frames her fall with name/title overlays before an exterior launch shot.\n\nFLOW  \n0:00-0:04 Two men in orange shirts face a man in a white turban in a retail store; shouting, bleeps, and fast cuts continue.  \n0:05-0:09 A woman in a black dress walks through the store, gestures at shoppers, and speaks to camera.  \n0:10-0:12 She falls backward into a chair in slow motion; the text shows “Aysha Sultan,” “Anuj’s PA,” then “Not Anuj’s PA,” with a record scratch and “Yup, that’s me…” line.  \n0:13-0:14 Cut to an exterior black building with a viewfinder overlay reading “3 DAYS BEFORE THE LAUNCH.”\n\nTEXT & REFERENCES  \nHook: “What the f*#^ are y'all doing here?”  \nNamed: Aysha Sultan, Anuj’s PA, Broadway, Bandra, @experiencebroadway_, @anuj.mp4_, SNEAKE, Record Scratch Meme\n\nMECHANIC FINGERPRINT  \nConfrontation -> walking monologue -> slow-motion fall -> identity/title overlay -> exterior launch tag"
+    },
+    {
+      "title": "Food Tour Cuts",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "8/40",
+      "overall_rank": "18/58",
+      "post_card": "POST NAME\nFood Tour Cuts\n\nHEADER\nMedia: reel\nLength / Slides: 0:14\nCaption: extends\nSurface: restaurant booth; food close-ups; dining room; on-screen text\n\nWORK\nA reel cuts between group voiceover, food close-ups, and restaurant interior shots while naming dishes and the restaurant.\n\nFLOW\n0:00-0:02 Three people sit at a booth; the center man holds a burger and fries.\n0:02-0:04 Close-ups show prawns emptied from a green coconut shell and chocolate sauce poured over a tart.\n0:04-0:06 The center man takes a bite of a folded taco; the three diners smile and pose with the burger plate while “O Pedro baby!” is spoken.\n0:06-0:08 Quick cuts show the restaurant interior, tables, and a large wall mirror.\n0:08-0:11 The coconut prawn dish and a wide dining-room shot with hanging plants appear.\n0:11-0:14 A Burrata salad appears as the woman speaks directly to camera.\n\nTEXT & REFERENCES\nHook: “We're in Mumbai at what people say is one of”\nNamed: O Pedro, Mumbai, Goan restaurants, Burrata salad\n\nMECHANIC FINGERPRINT\nGroup voiceover -> dish close-ups -> interior cuts -> direct-to-camera close."
+    },
+    {
+      "title": "Profile-switch Storyline",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "21/40",
+      "overall_rank": "35/58",
+      "post_card": "POST NAME  \nProfile-switch Storyline\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:31  \nCaption: extends  \nSurface: plain indoor wall, two profile shots, black screen\n\nWORK  \nThe reel alternates between two profile shots of the same man to stage a back-and-forth conversation, then cuts to black while music continues.\n\nFLOW  \n0:00-0:02: Left-facing profile; top text reads “when ur rich friend says they come from humble beginnings”; annoyed expression.  \n0:02-0:10: Right-facing profile; the man speaks fast and defensively about school, no food in the canteen, getting food from a dustbin, eating glass, and going to the hospital.  \n0:10-0:12: Left-facing profile interrupts with disbelief.  \n0:12-0:20: Right-facing profile continues, saying his dad begged colleagues, mentions racers, then says his dad got into racing.  \n0:20-0:30: Left-facing profile rolls eyes and shakes head; audio music fades in and swells.  \n0:30-0:31: Screen cuts to black while music continues.\n\nTEXT & REFERENCES  \nHook: “when ur rich friend says they come from humble beginnings”  \nNamed: Džanum by Teya Dora, Moye Moye meme\n\nMECHANIC FINGERPRINT  \nSplit-profile dialogue -> escalating story -> music swell -> black-screen cut"
+    },
+    {
+      "title": "Mock Complaint Loop",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "31/40",
+      "overall_rank": "47/58",
+      "post_card": "POST NAME\nMock Complaint Loop\n\nHEADER\nMedia: reel\nLength / Slides: 74.951s\nCaption: extends\nSurface: black-and-white low-angle indoor shot, top text, two speakers\n\nWORK\nA single continuous reel of off-camera dialogue between a man and his mother, ending with him pointing at the camera and saying it is going on Instagram.\n\nFLOW\n0:00-0:03 Black-and-white shot opens on a man in a grey tank top and silver chain; centered top text reads “my parents don't appreciate me.”\n0:03-0:20 He talks toward someone off-camera; static low-angle frame shows a ceiling fan and wall light.\n0:20-0:40 An off-camera female voice responds; he reacts with small smiles and looks around.\n0:40-1:10 He argues back while the mother teases him about self-praise and “Instagram” is mentioned in the dialogue.\n1:10-1:15 A woman briefly appears at the top left; he smiles, gives a thumbs-up, waves, points at the lens, and says the video is going on Instagram.\n\nTEXT & REFERENCES\nHook: my parents don't appreciate me\nNamed: Anuj, Instagram\n\nMECHANIC FINGERPRINT\nComplaint setup -> off-camera rebuttal -> self-defense -> camera address -> Instagram exit"
+    },
+    {
+      "title": "Swap and Style Jerseys",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "38/40",
+      "overall_rank": "55/58",
+      "post_card": "POST NAME\nSwap and Style Jerseys\n\nHEADER\nMedia: reel\nLength / Slides: 0:31\nCaption: extends\nSurface: title card, jerseys, sunglasses, ball pendant, garage, turf, rooftop\n\nWORK\nThe reel moves from brand title cards into sequential shots of one man styling Lotto x H&M jerseys and handling a red soccer ball across indoor and outdoor locations.\n\nFLOW\n0:00-0:01 Title card reads “LOTTO H&M” on black.\n0:01-0:04 Rapid cuts show one man posing in red, black, and white Lotto jerseys under a dark spotlight.\n0:04-0:06 Close-up shows round sunglasses, a smile, and a silver soccer ball pendant necklace.\n0:06-0:13 In a parking garage, he does footwork tricks with a red soccer ball and spins it on his finger.\n0:13-0:15 Multiple cloned versions of him stand in a line, then he kicks the ball at the camera.\n0:15-0:24 On green turf, he wears a dark patterned jersey, dribbles, juggles, and poses.\n0:24-0:29 On a rooftop, he wears a white pinstripe jersey, makes a finger-heart gesture, juggles the red ball, and looks at camera.\n0:29-0:31 Final title card reads “LOTTO H&M.”\n\nTEXT & REFERENCES\nHook: LOTTO H&M\nNamed: Lotto, H&M, LEGEND SPORT, Youth\n\nMECHANIC FINGERPRINT\nTitle card -> jersey styling -> ball tricks -> cloned lineup -> field dribbling -> rooftop pose -> title card"
+    },
+    {
+      "title": "Mock-phone rant",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "30/40",
+      "overall_rank": "46/58",
+      "post_card": "POST NAME  \nMock-phone rant\n\nHEADER  \nMedia: reel  \nLength / Slides: unknown  \nCaption: extends  \nSurface: man in black t-shirt, silver chain, plaster bust, indoor room, black-and-white filter\n\nWORK  \nSingle-shot monologue that shifts into a mock phone call using a plaster bust as a phone.\n\nFLOW  \n0:00-0:07 Man speaks to camera in black-and-white, gestures, and visible text names the Mrinal Tai Gore flyover, 248 crores, 750 meters, and “unfinished.”  \n0:07-0:14 He holds a white plaster bust to his ear as a mock phone, the dialogue turns into a louder caller voice, and the visible text shows the aggressive exchange ending with “dumbass.”\n\nTEXT & REFERENCES  \nHook: “POV: 248cr for a 750m flyover (unfinished)”  \nNamed: Mrinal Tai Gore flyover\n\nMECHANIC FINGERPRINT  \nDirect address -> flyover cost claim -> mock phone call -> aggressive reply"
+    },
+    {
+      "title": "Escalate a complaint",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "5/40",
+      "overall_rank": "12/58",
+      "post_card": "POST NAME  \nEscalate a complaint\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:14  \nCaption: extends  \nSurface: black T-shirt, chain, smartwatch, wall text, static overlay\n\nWORK  \nA single-take reel shows one speaker acting out a disappointed reaction, then turning it into a sarcastic complaint about Ronaldo, Messi, and FIFA.\n\nFLOW  \n0:00-0:03: Speaker looks down, shakes his head, and mutters; on-screen text reads “practicing for when Ronaldo loses yet another WC.”  \n0:03-0:07: He puts hands on hips, looks off-camera left, and continues complaining.  \n0:07-0:10: He turns right, gestures, and becomes more animated and defensive.  \n0:10-0:14: He leans closer to the camera, gestures mockingly, and says the competition is “rigged,” “Rigged for Messi to win,” and “FIFA’s boy.”\n\nTEXT & REFERENCES  \nHook: It’s rigged.  \nNamed: Cristiano Ronaldo, Lionel Messi, FIFA\n\nMECHANIC FINGERPRINT  \nDisappointment pose -> complaint escalation -> named football references -> sarcastic close."
+    },
+    {
+      "title": "Invent a Driver",
+      "posted": "6 weeks ago",
+      "lane": "reel",
+      "recent_rank": "18/40",
+      "overall_rank": "31/58",
+      "post_card": "POST NAME  \nInvent a Driver\n\nHEADER  \nMedia: reel  \nLength / Slides: null  \nCaption: extends  \nSurface: static text overlay, selfie hallway, elevator, parking garage\n\nWORK  \nA man narrates and stages a parking dispute by claiming a non-existent driver is responsible.\n\nFLOW  \n0:00-0:10 Selfie close-up in a bright indoor hallway; he smiles at camera.  \n0:10-0:23 He walks through a lobby toward elevators while talking to camera.  \n0:23-0:31 In the elevator, he shows a smiling uniformed staff member and laughs while explaining the plan.  \n0:31-0:50 He exits into a basement parking garage and speaks loudly to an off-camera attendant.  \n0:50-1:15 He gestures, points at parking spots, scratches his head, and keeps naming a “new driver.”  \n1:15-1:30 He listens off-camera, sticks out his tongue briefly, nods, and continues the same story.\n\nTEXT & REFERENCES  \nHook: blame someone that does not exist  \nNamed: none\n\nMECHANIC FINGERPRINT  \nSelf-recorded excuse plan -> elevator explanation -> garage confrontation -> repeated invented-driver blame"
+    },
+    {
+      "title": "Force a Hug",
+      "posted": "8 weeks ago",
+      "lane": "reel",
+      "recent_rank": "14/40",
+      "overall_rank": "26/58",
+      "post_card": "POST NAME  \nForce a Hug\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:00-1:05  \nCaption: standalone  \nSurface: Anuj, scooter rider, cab driver, white car, street at night\n\nWORK  \nThe reel shows Anuj intervening in a roadside dispute between a scooter rider and a cab driver, then directing them to hug.\n\nFLOW  \n0:00-0:07 Anuj speaks to camera on a night street, then turns to the scooter rider holding his shoulder.  \n0:08-0:17 Anuj demonstrates deep breathing; the scooter rider copies him while speaking in pain.  \n0:18-0:21 Anuj says he has studied medical and tells the rider to move his arm.  \n0:22-0:27 The camera pans to the cab driver by a white car; Anuj tells him to take the injured man to hospital in his AC car.  \n0:28-0:44 The cab driver says the scooter rider is also at fault; Anuj interrupts, mentions “blood on your hands,” and the cab driver shows a dent and scratch on the car door.  \n0:45-0:55 Anuj says not to fight, mentions Kokilaben, and asks if there is any hospital better than “Ambani.”  \n0:56-1:05 Anuj tells them to hug; they hug, then he joins for a three-way hug.\n\nTEXT & REFERENCES  \nHook: “Ek second, ek second, aise situation mein thoda saas lo pehle.”  \nNamed: Kokilaben Dhirubhai Ambani Hospital, Ambani\n\nMECHANIC FINGERPRINT  \nRoadside dispute -> breathing instruction -> hospital appeal -> hug instruction -> group hug"
+    },
+    {
+      "title": "Roast the Crowd",
+      "posted": "5 weeks ago",
+      "lane": "reel",
+      "recent_rank": "20/40",
+      "overall_rank": "33/58",
+      "post_card": "POST NAME  \nRoast the Crowd\n\nHEADER  \nMedia: reel  \nLength / Slides: 85.702 seconds  \nCaption: standalone  \nSurface: city street at night; host, onlookers, storefront signs\n\nWORK  \nThe reel shows a street mic session where the host prompts onlookers, two participants take the mic for roast delivery, the crowd votes, and the host exits.\n\nFLOW  \n0:00-0:03 Host in a black Versace bathrobe, sunglasses, and backward cap speaks to onlookers on a night street.  \n0:03-0:20 He interacts with a boy in a blue Manchester United jersey, then asks about Aryan Kataria; black-and-white flashes and ding sounds punctuate reactions.  \n0:20-0:49 Aryan, in sunglasses with a McDonald's fry box, delivers a rhyming roast; the crowd reacts and the camera shows two girls walking away laughing.  \n0:55-1:19 A tall blonde guy takes the mic and delivers a fast Hindi rap roast; the host asks for a winner and the crowd calls names.  \n1:19-1:25 The host counts votes, says he does not want to participate anymore, and the video cuts to black.\n\nTEXT & REFERENCES  \nHook: My name is Anuj and I'm just here for the vibes, boom.  \nNamed: Anuj, Aryan Kataria, Versace, Manchester United, McDonald's, Rani's Collection, Funky 2.0, MEETA, CHARLOTTE, Yogi's Coffeehouse\n\nMECHANIC FINGERPRINT  \nHost prompt -> two mic roasts -> crowd vote -> host exit"
+    },
+    {
+      "title": "Glass-Review Parody",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "22/40",
+      "overall_rank": "37/58",
+      "post_card": "POST NAME  \nGlass-Review Parody\n\nHEADER  \nMedia: reel  \nLength / Slides: 88s  \nCaption: extends  \nSurface: dark wooden counter, grey sweatshirt, water bottle, glasses\n\nWORK  \nAnuj reviews a sequence of glasses on camera while pouring and drinking water, with comedic cutaways, filters, and reference inserts.\n\nFLOW  \n0:00-0:03: Yellow overlay reads “Reviewing glasses so I drink more water”; Anuj introduces himself and says he is going to review glasses; sudden zoom on his mouth.  \n0:03-0:21: He holds a standard faceted glass, pours water into it, takes a sip, and describes it as versatile.  \n0:21-0:36: He ցույցs a shorter faceted glass, pours water into it, compares the two heights, and the frame turns black-and-white with sad violin music.  \n0:36-0:53: He holds a heavy-bottomed whiskey glass, acts out a Bollywood father scene in black-and-white, then shows an elegant goblet glass with a split-screen insert of Sarabhai vs Sarabhai.  \n0:53-1:03: He drinks from the goblet glass, then shows a large beer mug and reacts negatively.  \n1:03-1:28: He holds a shot glass, tells a drunk auto-rickshaw story, flashes to black-and-white, then closes by saying “Bad, bad glass” while gesturing to throw it away.  \n\nTEXT & REFERENCES  \nHook: “What’s up guys, my name”  \nNamed: Anuj, Coke, Bollywood, Sarabhai vs Sarabhai, Sad Violin (Sad Romance by Thao Nguyen Xanh), Bisleri  \n\nMECHANIC FINGERPRINT  \nGlass lineup -> physical handling -> parody inserts -> negative closure"
+    },
+    {
+      "title": "Zoom Through Sorrow",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "19/40",
+      "overall_rank": "32/58",
+      "post_card": "POST NAME  \nZoom Through Sorrow\n\nHEADER  \nMedia: reel  \nLength / Slides: 13.952s  \nCaption: extends  \nSurface: one man, black-and-white close-up, Real Madrid jersey graphic, text overlay, indoor room, wall light, white curtain\n\nWORK  \nA slow zoom holds on a man in black-and-white while overlaid text, a jersey graphic, and continuous music run to a loop cut.\n\nFLOW  \n0:00-0:03: Close-up profile of a man looking upward; white Real Madrid jersey graphic on chest; text reads “Mbappe watching PSG win back 2 back UCLs after going trophyless.”  \n0:03-0:11: Camera slowly zooms in; he blinks, looks down, then back up toward a wall-mounted light fixture.  \n0:11-13.952: Tight zoom on eye and cheek; he looks down again; cut to black and loop restart.\n\nTEXT & REFERENCES  \nHook: Mbappe watching PSG win back 2 back UCLs after going trophyless  \nNamed: Mbappe, PSG, UCLs, Madrid, Real Madrid, Emirates, FLY BETTER, Tu Hi Re, Bombay (1995)\n\nMECHANIC FINGERPRINT  \nText overlay + jersey graphic + slow zoom + loop cut"
+    },
+    {
+      "title": "Layer room with mashups",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "36/40",
+      "overall_rank": "52/58",
+      "post_card": "POST NAME\nLayer room with mashups\n\nHEADER\nMedia: reel\nLength / Slides: 1:18\nCaption: extends\nSurface: Clubhouse-style audio room UI, user avatars, arrows, lyric overlays, cutouts\n\nWORK\nThe reel stages a simulated audio-room conversation with synchronized singing, rapping, speaker cues, and pop-up reference cutouts.\n\nFLOW\n0:00-0:01 Clubhouse-style room UI, avatars, red arrow on Anuj.\n0:02-0:06 A cappella singing of “Aaoge Jab Tum”; Shahid Kapoor and Kareena Kapoor cutouts appear; yellow lyric text.\n0:07-0:10 Krish asks to rap over the singing; red arrow shifts to Krish.\n0:11-0:26 Singing and rap overlap; Central Cee and Shahid/Kareena cutouts bounce; “How can I be homophobic? My b**** is gay” is shown.\n0:27-0:50 Spoken dialogue about Instagram views, the page following him, Narendra Modi, Hanumankind, and a next-Vishal-Shekhar line; arrow moves between Nirav, Anuj, and Krish; Narendra Modi and Hanumankind cutouts appear.\n0:51-1:13 Singing and fast rap overlap again; Shahid/Kareena and Hanumankind cutouts bounce; “Ten toes in…” and “Big Stepper” text appears.\n1:14-1:18 Nirav and Anuj speak; Vishal Dadlani and Shekhar Ravjiani cutouts appear; “Vishal Shekhar is actually one guy” is shown.\n\nTEXT & REFERENCES\nHook: Would y'all like to hear me sing?\nNamed: Anuj, Krish, Nirav, Shahid Kapoor, Kareena Kapoor, Central Cee, Narendra Modi, Hanumankind, Vishal Dadlani, Shekhar Ravjiani, Clubhouse, Jab We Met, Aaoge Jab Tum, Doja, Big Dawgs, Instagram, Vishal-Shekhar\n\nMECHANIC FINGERPRINT\nAudio-room dialogue -> lyric/speech layering -> synced cutouts and arrows -> reference corrections"
+    },
+    {
+      "title": "Flip into Dad",
+      "posted": "4 weeks ago",
+      "lane": "reel",
+      "recent_rank": "34/40",
+      "overall_rank": "50/58",
+      "post_card": "POST NAME  \nFlip into Dad\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:00-0:49  \nCaption: extends  \nSurface: black-and-white reel, indoor room, playing card, text overlay\n\nWORK  \nA two-part reel starts with a young man holding up a playing card, then hard-cuts to the same actor in black-and-white playing an off-camera dad monologue.\n\nFLOW  \n0:00-0:04: Medium close-up of a young man in a blue Nike t-shirt smiles, gestures, and holds up a playing card to someone off-camera.  \n0:00-0:04: On-screen text reads, “POV: you go to a guys house but his unemployed dad is also there”.  \n0:05-0:49: Hard cut to black-and-white. The same actor plays the dad and speaks off-camera to Anuj and the friend.  \n0:05-0:49: He delivers mixed English and Hindi lines about money, a bad magician, not giving ₹3000, not listening to his father, not doing engineering or MBA, posting “waahiyat video” on Instagram, calling for the mother, and torn boxers.  \n0:05-0:49: He shifts eye-line left and right, rubs his face, covers his eyes with both hands, and laughs at the end.\n\nTEXT & REFERENCES  \nHook: POV: you go to a guys house but his unemployed dad is also there  \nNamed: Anuj, Instagram, Sad Romance\n\nMECHANIC FINGERPRINT  \nSetup with card -> hard cut to grayscale roleplay monologue -> money and family complaints -> laugh end"
+    },
+    {
+      "title": "Flip whiteboard beats",
+      "posted": "6 weeks ago",
+      "lane": "reel",
+      "recent_rank": "2/40",
+      "overall_rank": "8/58",
+      "post_card": "POST NAME  \nFlip whiteboard beats\n\nHEADER  \nMedia: reel  \nLength / Slides: 17.923s  \nCaption: extends  \nSurface: black piano, whiteboard, grey sofa, balcony, cash, wine glass\n\nWORK  \nA fast-cut reel moves between a FLAMES whiteboard, cash poses, balcony shots, and a final toast.\n\nFLOW  \n0:00-0:03 man in black Versace bathrobe stands by a black piano, draws a heart on a whiteboard next to “MODI” under a “FLAMES” layout; “MELONY” and “FLAMES” and “MODI” are visible.  \n0:03-0:09 cut to a balcony drink, then the man on a grey sofa holding a thick stack of cash to his ear, then slapping his leg with the cash.  \n0:09-0:15 cut back to the whiteboard reading “ITALY EXPANSION PROPOSAL,” then the man wipes the board clean with a cloth.  \n0:15-0:17.923 the man sits on the grey sofa and raises a wine glass toward the camera before the cut ends mid-action.\n\nTEXT & REFERENCES  \nHook: Parle marketing team rn  \nNamed: Parle, MELONY, FLAMES, MODI, ITALY EXPANSION PROPOSAL, Jimmy Cooks, Drake, 21 Savage, Versace, Italy\n\nMECHANIC FINGERPRINT  \nWhiteboard gag -> cash poses -> expansion board -> toast close"
+    },
+    {
+      "title": "Roast by voiceover",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "23/40",
+      "overall_rank": "38/58",
+      "post_card": "POST NAME  \nRoast by voiceover\n\nHEADER  \nMedia: reel  \nLength / Slides: unknown  \nCaption: extends  \nSurface: car interior, selfie camera, on-screen text\n\nWORK  \nOne continuous shot of a man in a car speaking to camera while an off-camera male voice answers with a rapid Hindi roast.\n\nFLOW  \n0:00-0:02 close-up selfie of a young man in the driver’s seat wearing red-tinted sunglasses, a silver chain, and a grey t-shirt; he speaks to camera.  \n0:02-0:14 an off-camera male voice shouts in Hindi with local slang and profanity; the driver turns slightly and smirks.  \n0:00-0:14 visible text reads “watching obsession: Delhi”.\n\nTEXT & REFERENCES  \nHook: “watching obsession: Delhi”  \nNamed: Delhi, Mumbai, Obsession\n\nMECHANIC FINGERPRINT  \nSelfie monologue -> off-camera roast -> on-screen text alignment"
+    },
+    {
+      "title": "Open with chord",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "39/40",
+      "overall_rank": "57/58",
+      "post_card": "POST NAME\nOpen with chord\n\nHEADER\nMedia: reel\nLength / Slides: 14s\nCaption: standalone\nSurface: grey sweatshirt, grand piano, red reflective lid, brick wall\n\nWORK\nA single uncut reel shows one pianist performing one continuous solo piano take.\n\nFLOW\n0:00-0:02: The pianist sits at a grand piano with hands poised over the keys.\n0:02-0:05: He strikes a heavy opening chord, lifts his right hand, and runs downward fast.\n0:05-0:10: He plays rapid arpeggios; the key movement mirrors in the red piano lid.\n0:10-0:14: He shifts into rhythmic chords and the video cuts off mid-performance.\n\nTEXT & REFERENCES\nHook: fresh_res\nNamed: none\n\nMECHANIC FINGERPRINT\nPoised hands -> opening chord -> rapid runs and arpeggios -> rhythmic chords -> cutoff"
+    },
+    {
+      "title": "Sundae Taste Tour",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "13/40",
+      "overall_rank": "25/58",
+      "post_card": "POST NAME  \nSundae Taste Tour\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:14  \nCaption: extends  \nSurface: Baskin Robbins outlet, ice cream cones, sundae plates, storefront\n\nWORK  \nThe reel shows two hosts inside Baskin Robbins in Mumbai tasting and naming ice cream cones and sundaes while on-screen text and spoken dialogue track the desserts.\n\nFLOW  \n0:00-0:02 Two men wearing sunglasses sit at a wooden table inside Baskin Robbins, holding up ice cream cones; on-screen text reads “We’re in Mumbai” and “And our favorite ice cream place in the whole wide world.”  \n0:02-0:05 A gloved hand scoops green ice cream, then a chocolate-rimmed waffle cone with white ice cream appears, followed by the man in the white shirt eating a spoonful.  \n0:05-0:10 The two men pose with cones, a yellow-striped vehicle exterior appears briefly, then the store interior, a cone close-up, and the Baskin Robbins storefront appear.  \n0:10-0:14 Three plated desserts appear, the man in the white shirt tastes a sundae, the man in the pink shirt eats a sundae, and the man in the white shirt presents a tiramisu sundae while speaking to camera.\n\nTEXT & REFERENCES  \nHook: “We’re in Mumbai”  \nNamed: Mumbai, Baskin Robbins, Dubai Chocolate Sundae, Kataifi, tiramisu sundae\n\nMECHANIC FINGERPRINT  \nLocation intro -> dessert naming -> tasting close-ups -> final sundae presentational beat"
+    },
+    {
+      "title": "Stutter Into Chaos",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "26/40",
+      "overall_rank": "41/58",
+      "post_card": "POST NAME\nStutter Into Chaos\n\nHEADER\nMedia: reel\nLength / Slides: null\nCaption: extends\nSurface: white studio room, clothing rack, office chair, black patterned robe\n\nWORK\nA short reel cuts between a group in a white room, one central actor escalating into aggressive motion, the others restraining him, and a reset back to the starting pose.\n\nFLOW\n0:00-0:02 Four actors stand in a white room with a clothing rack; three hold their hands up and one sits in an office chair.\n0:02-0:05 The man in the black patterned robe steps forward and makes an intense face.\n0:05-0:13 He pushes the seated man’s head, gets into the others’ faces, and the group restrains him through rapid close-up reaction cuts.\n0:13-0:15 The group relaxes into a synchronized casual dancing pose and the video loops.\n\nTEXT & REFERENCES\nHook: comics when they get hired to act but suddenly have writing inputs\nNamed: Versace\n\nMECHANIC FINGERPRINT\nGroup setup -> aggressive escalation -> restraint reactions -> synchronized reset loop"
+    },
+    {
+      "title": "Say the tattoo",
+      "posted": "3 weeks ago",
+      "lane": "reel",
+      "recent_rank": "37/40",
+      "overall_rank": "54/58",
+      "post_card": "POST NAME  \nSay the tattoo\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:00-0:01  \nCaption: extends  \nSurface: forearm tattoo, on-screen text, spoken line, patterned clothing\n\nWORK  \nA single continuous close-up shows a forearm tattoo and the spoken line reading it aloud.\n\nFLOW  \n0:00-0:01 — Close-up handheld shot of a forearm with a cursive tattoo reading “Mauli” and a feather underneath; static lowercase on-screen text reads “mauli.”  \n0:00-0:01 — A female voice says, “Oh my god, it says Mauli.”  \n0:00-0:01 — Grey and pink patterned clothing and wooden flooring are visible in the background.\n\nTEXT & REFERENCES  \nHook: Oh my god, it says Mauli.  \nNamed: none\n\nMECHANIC FINGERPRINT  \nTattoo close-up -> on-screen text -> spoken readout"
+    },
+    {
+      "title": "Rapid-fire Answer Check",
+      "posted": "5 weeks ago",
+      "lane": "reel",
+      "recent_rank": "40/40",
+      "overall_rank": "58/58",
+      "post_card": "POST NAME  \nRapid-fire Answer Check\n\nHEADER  \nMedia: reel  \nLength / Slides: null  \nCaption: standalone  \nSurface: black-and-white glitch intro; white conference room; question overlays; split-screen; logos\n\nWORK  \nA rapid-fire group interview moves through a sequence of questions with cutaway reactions, text overlays, and a closing logo card.\n\nFLOW  \n0:00-0:03 black-and-white glitch intro shows two men talking; static transition plays.  \n0:04-0:09 color footage shows several young men at a white conference table greeting the camera and laughing.  \n0:10-0:26 the group answers “IS COLLEGE WORTH IT?” in rapid cuts.  \n0:27-0:39 the host asks “CLAUDE CODE OR CODEX?”; one participant says “Cursor,” and two men share a handshake/high-five.  \n0:40-0:57 the group answers “WHICH SUBREDDIT DO YOU USE THE MOST?”; subreddit names appear as text overlays.  \n0:58-1:27 the group answers “WHAT IS YOUR FAVORITE THING TO DO OUTSIDE OF WORK?”; split-screen shows reactions to “getting lost in jungles” and “mountain climbing in Delhi.”  \n1:28-1:44 the host shows screen time on a phone; a split-screen shows two participants reacting.  \n1:45-1:49 the participants wave goodbye; the end card shows “STARTUP VILLAGE MUMBAI” and “little unusual” logos.\n\nTEXT & REFERENCES  \nHook: RAPID FIRE  \nNamed: Startup Village Mumbai, little unusual, Claude Code, Codex, Cursor, r/AmItheA**hole, r/IndianFashionAddicts, r/54, r/AskHistorians, Red Bull Racing, Max Verstappen, Oracle, Ghazipur Landfill\n\nMECHANIC FINGERPRINT  \nQuestion overlays -> rapid answers -> reaction split-screens -> closing logo card"
+    },
+    {
+      "title": "Panic-Cut Through Street",
+      "posted": "6 weeks ago",
+      "lane": "reel",
+      "recent_rank": "11/40",
+      "overall_rank": "22/58",
+      "post_card": "POST NAME  \nPanic-Cut Through Street\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:20  \nCaption: extends  \nSurface: caption, city street at night, phones, auto-rickshaw\n\nWORK  \nA group on a night street cycles through shock poses, frantic phone miming, and running in circles under the caption text.\n\nFLOW  \n0:00-0:02 Five young people stand on a city street at night with exaggerated confusion and disbelief.  \n0:02-0:07 One man jumps up and down; the group lines up and raises their arms while looking upward.  \n0:07-0:12 One man walks around looking lost; another stares wide-eyed into the camera; one man jumps over another’s shoulder.  \n0:12-0:20 The group pretends to make frantic phone calls, then runs in a chaotic circle and bumps into one another.\n\nTEXT & REFERENCES  \nHook: sobo brats finding out that there is a world that exists outside of bombay  \nNamed: SoBo (South Bombay) Culture, auto-rickshaw, Devanagari script\n\nMECHANIC FINGERPRINT  \nCaptioned stereotype -> escalating panic tableau -> phone miming -> circular chaos"
+    },
+    {
+      "title": "Hands over cash",
+      "posted": "6 weeks ago",
+      "lane": "reel",
+      "recent_rank": "25/40",
+      "overall_rank": "40/58",
+      "post_card": "POST NAME  \nHands over cash\n\nHEADER  \nMedia: reel  \nLength / Slides: 00:00-00:23  \nCaption: extends  \nSurface: top text overlay: “anuj.mp4 hangs out with new friend”\n\nWORK  \nA balcony-to-scaffold exchange is recorded in dialogue, gesture, laughter, and a final handoff of cash notes.\n\nFLOW  \n00:00-00:02: A young man opens double glass doors and steps onto a balcony.  \n00:02-00:06: He leans over the railing and greets a worker on bamboo scaffolding; the worker smiles up.  \n00:07-00:12: Close-ups show his hand on the railing, watch, tattoo, and gestures toward the ropes.  \n00:12-00:17: He looks down, talks, laughs, and the worker keeps smiling.  \n00:18-00:23: He hands several Indian Rupee cash notes to the worker, who accepts them smiling.\n\nTEXT & REFERENCES  \nHook: “Arre bhaiya... haan.”  \nNamed: Anuj, Indian Rupee\n\nMECHANIC FINGERPRINT  \nGreeting -> scaffold exchange -> gesturing close-ups -> laughter -> cash handoff"
+    },
+    {
+      "title": "Split Life Updates",
+      "posted": "7 weeks ago",
+      "lane": "reel",
+      "recent_rank": "29/40",
+      "overall_rank": "45/58",
+      "post_card": "POST NAME  \nSplit Life Updates\n\nHEADER  \nMedia: reel  \nLength / Slides: unknown  \nCaption: extends  \nSurface: on-screen text, indoor domestic setting, wigs, sunglasses\n\nWORK  \nThe reel splits into two character-set exchanges, one for girls and one for boys, with rapid jump cuts and on-screen labels.\n\nFLOW  \n0:00-0:03: Female character with short dark hair looks serious; second female character with a high bun looks concerned.  \n0:03-0:11: First female character speaks with intense facial expressions.  \n0:11-0:19: Second female character reacts with shock and anger; first female character begins to weep.  \n0:20-0:24: Male character with curly hair and bright orange reflective sunglasses smiles and speaks casually.  \n0:24-0:28: Bald male character scratches his head, smiles, and gives a casual response.\n\nTEXT & REFERENCES  \nHook: Guys, so I have to talk to you all about something.  \nNamed: Nancy, Jamnabai Narsee School, Jamnabai, roka ceremony\n\nMECHANIC FINGERPRINT  \nGirls sharing life updates -> dramatic two-character exchange -> boys sharing life updates -> casual two-character exchange"
+    },
+    {
+      "title": "Rig a Boom Battle",
+      "posted": "7 weeks ago",
+      "lane": "reel",
+      "recent_rank": "16/40",
+      "overall_rank": "28/58",
+      "post_card": "POST NAME  \nRig a Boom Battle\n\nHEADER  \nMedia: reel  \nLength / Slides: 1:07  \nCaption: extends  \nSurface: outdoor cosmetics stall, 3 rappers, shopkeeper, microphone, phone, notebook\n\nWORK  \nA street-side rap battle cycles through three rappers and a shopkeeper, with repeated “Boom” cues and a final winner call.\n\nFLOW  \n0:00-0:02 Three young men stand in front of a cosmetics stall; the front rapper holds a microphone and phone, and the shopkeeper sits to the right.  \n0:03-0:04 The shopkeeper says “Boom” into the microphone.  \n0:05-0:12 The bathrobe-wearing rapper delivers a verse, points at the tall man, then passes the microphone back for another “Boom,” with a black-and-white flash.  \n0:13-0:22 The sunglasses-wearing rapper takes the microphone, reads from a red notebook, and gets reactions from the others, with another black-and-white flash.  \n0:23-0:35 He continues reading; the shopkeeper repeats “Boom,” and the first rapper and shopkeeper do a quick handshake.  \n0:36-0:54 The tall rapper steps forward, reads from his phone, and is interrupted and corrected as he struggles with Hindi grammar.  \n0:55-1:07 The tall rapper asks who was best; the shopkeeper points to the bathrobe-wearing rapper as winner, and the others protest.\n\nTEXT & REFERENCES  \nHook: Diss track battle in public 💀  \nNamed: Anuj Gupta, Ved Maddison, Versace, NPC, Beemer, McDonald’s\n\nMECHANIC FINGERPRINT  \nShared mic battle -> repeated “Boom” cue -> three verse turns -> shopkeeper vote -> winner call -> protest"
+    },
+    {
+      "title": "Skip and React",
+      "posted": "7 weeks ago",
+      "lane": "reel",
+      "recent_rank": "24/40",
+      "overall_rank": "39/58",
+      "post_card": "POST NAME  \nSkip and React\n\nHEADER  \nMedia: reel  \nLength / Slides: unknown  \nCaption: standalone  \nSurface: backseat car, young man, static top-center text overlay\n\nWORK  \nA reel shows one man in a moving car telling a story, then cuts to a black-and-white segment before returning to color.\n\nFLOW  \n00:00-00:10: Young man in backseat, talking animatedly, smiling, gesturing left.  \n00:11-00:14: Black-and-white filter; he looks down, smiles, and covers his face with his hand.  \n00:15-00:19: Return to color and a slightly different angle; he laughs and looks around the car interior.  \n00:20-00:30: Original angle and color; he keeps talking, wipes his eye, and gestures while smiling.\n\nTEXT & REFERENCES  \nHook: when ur telling the girls about last nights story but u gotta skip past the part where u were cheating  \nNamed: Adidas-style logo, apbibo\n\nMECHANIC FINGERPRINT  \nStorytelling in car -> black-and-white guilt beat -> return to color talk -> closing gestures"
+    },
+    {
+      "title": "Viralize the clip",
+      "posted": "8 weeks ago",
+      "lane": "reel",
+      "recent_rank": "3/40",
+      "overall_rank": "9/58",
+      "post_card": "POST NAME  \nViralize the clip\n\nHEADER  \nMedia: reel  \nLength / Slides: null  \nCaption: extends  \nSurface: “Creators after that one VIRAL video”\n\nWORK  \nThe reel moves from a song-counting and dance sequence to a view-count celebration, then to cafe payment trouble and phone-call negotiation about turning the moment into an IP.\n\nFLOW  \n0:00-0:03: A woman and a man count to five with hand gestures in a living room while “Ek Do Teen” plays.  \n0:04-0:15: The man shouts “Chal dhating naach!” and the duo dance across a living room, street, and cafe to “Dhating Naach.”  \n0:16-0:24: Outside a cafe, they look at a phone, react to “10 million,” and repeatedly say they will make an “IP.”  \n0:25-0:30: Inside the cafe, they pose while a barista points at the payment terminal and asks them to pay.  \n0:31-0:43: They pace outside on phone calls, talk about brands, commercials, and budget, then shout together.\n\nTEXT & REFERENCES  \nHook: Creators after that one VIRAL video  \nNamed: Ruhee Dosani, Anuj, Ek Do Teen, Dhating Naach, IP, Cocoa Brownies\n\nMECHANIC FINGERPRINT  \nCount-and-dance intro -> 10 million reveal -> IP talk -> cafe payment interruption -> budget calls -> final shout"
+    },
+    {
+      "title": "Swap MJ Meaning",
+      "posted": "8 weeks ago",
+      "lane": "reel",
+      "recent_rank": "27/40",
+      "overall_rank": "43/58",
+      "post_card": "POST NAME\nSwap MJ Meaning\n\nHEADER\nMedia: reel\nLength / Slides: 0:59\nCaption: extends\nSurface: seaside path, indoor bar, tinsel backdrop, MJ cutout, text overlays\n\nWORK\nThe reel moves from a seaside walk into an indoor party sequence where the dialogue around “MJ” shifts between Michael Jordan and Michael Jackson.\n\nFLOW\n0:00-0:04 Two people walk on a paved seaside path with palm trees.\n0:05-0:11 The woman speaks on her phone; the man smiles, reacts, and holds his head.\n0:12-0:20 The woman answers a call from her mother; the transcript includes “GHADE KI AULLAAAD”; the man dances in the background.\n0:21-0:34 Cut to an indoor party space with silver tinsel and a life-sized Michael Jackson cardboard cutout; the man wears a basketball jersey and fedora and holds a basketball; they argue and dance.\n0:35-0:41 They dance in a dim bar with blue and purple lights while holding microphones and singing.\n0:42-0:45 Photo-style cuts show them posing with the Michael Jackson cutout.\n0:46-0:54 They dance with another man dressed as Michael Jackson; the overlay “district FANS ONLY” appears.\n0:55-0:59 Black screen with white text “district movies.”\n\nTEXT & REFERENCES\nHook: That one friend who gets everything wrong\nNamed: Michael Jordan, Michael Jackson, Billie Jean, district FANS ONLY, district movies\n\nMECHANIC FINGERPRINT\nOuting setup -> misread MJ ticket talk -> MJ meaning shift -> party performance -> branded end card"
+    },
+    {
+      "title": "Replace With AI",
+      "posted": "8 weeks ago",
+      "lane": "reel",
+      "recent_rank": "1/40",
+      "overall_rank": "1/58",
+      "post_card": "POST NAME  \nReplace With AI\n\nHEADER  \nMedia: reel  \nLength / Slides: 1 reel  \nCaption: extends  \nSurface: Mother, son, AI character, Blinkit app, boAt smartwatches, delivery partner\n\nWORK  \nA reel stages a mother-son home scene with a personified AI helper, then cuts to Blinkit app ordering and delivery of a boAt smartwatch for Mother’s Day.\n\nFLOW  \n0:00-0:04 Mother asks how to upload on WhatsApp; son says he is a macro influencer and has no time.  \n0:04-0:12 A black-turtleneck, star-headband AI character appears and helps her.  \n0:12-0:24 Mother asks what to gift for Gauri’s shih tzu; son gives a lazy answer; AI gives pet gift options.  \n0:24-0:49 Mother feeds, hugs, and selfies with the AI while the son watches, then bangs on the glass door from outside.  \n0:49-0:57 Son chokes the AI; the AI says how to win the mother back.  \n0:57-1:09 Blinkit app ordering appears, then a boAt smartwatch is delivered and given to the mother; Mother’s Day text closes the reel.\n\nTEXT & REFERENCES  \nHook: How do I upload this on whatsapp?  \nNamed: WhatsApp, AI, Gauri’s shih tzu, Blinkit, boAt, Blinkit India’s Last Minute App, Mother’s Day\n\nMECHANIC FINGERPRINT  \nDismissal -> personified AI helper -> gift prompts -> conflict -> app order -> delivery -> reconciliation -> Mother’s Day outro"
+    },
+    {
+      "title": "Hard Cut to Notification",
+      "posted": "2 months ago",
+      "lane": "reel",
+      "recent_rank": "33/40",
+      "overall_rank": "49/58",
+      "post_card": "POST NAME  \nHard Cut to Notification\n\nHEADER  \nMedia: reel  \nLength / Slides: 14s  \nCaption: extends  \nSurface: talking-head bedroom, iPhone lock screen, Zomato banner\n\nWORK  \nA spoken monologue cuts to a phone lock screen notification, with a chime between the two shots.\n\nFLOW  \n0:00-0:10 Close-up of a young man speaking to camera in a bedroom; he gestures with pleading expressions.  \n0:00-0:10 Spoken Hinglish text addresses “Arjun bhai” and says scrolling reels is not a job, asks to find a job, do something, and ends with “Par maine aisa kyun bola?”  \n0:11 A hard cut lands on a top-down shot of a black iPhone on a bed; a chime plays.  \n0:11-0:14 The lock screen shows Fri 1 May, 6:02, and a Zomato notification banner with “You’ve been someone’s reason to smile today 👉👈 Let us be yours 🍛”; a quiet Hindi voiceover plays.\n\nTEXT & REFERENCES  \nHook: Arjun bhai scrolling reels is not a job bhai.  \nNamed: Arjun bhai, Zomato, Airtel, Apple, iOS\n\nMECHANIC FINGERPRINT  \nLecture monologue -> hard cut -> notification banner -> quiet voiceover"
+    },
+    {
+      "title": "Escalate Then Clap",
+      "posted": "2 months ago",
+      "lane": "reel",
+      "recent_rank": "32/40",
+      "overall_rank": "48/58",
+      "post_card": "POST NAME  \nEscalate Then Clap\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:14  \nCaption: extends  \nSurface: “How to ruin a friendship immediately”\n\nWORK  \nA two-character dialogue escalates from moving in together to a petty confession and a threat, then cuts to a synchronized hand-slapping routine.\n\nFLOW  \n0:00-0:03 Close-up of a young man saying they should move in together; top text reads “How to ruin a friendship immediately.”  \n0:03-0:06 Cut to a second character agreeing, then back to the first character agreeing to the plan.  \n0:06-0:11 The second character says he drank all the other’s milk; the first character says he has dreams where he slits his throat and watches his parents cremate him.  \n0:11-0:14 The second character stares in shocked silence, then both characters perform a rapid hand-slapping and clapping routine.\n\nTEXT & REFERENCES  \nHook: How to ruin a friendship immediately  \nNamed: none\n\nMECHANIC FINGERPRINT  \nPremise text -> dialogue escalation -> shock beat -> synchronized hand-slapping routine"
+    },
+    {
+      "title": "Split by alarm",
+      "posted": "2 months ago",
+      "lane": "reel",
+      "recent_rank": "17/40",
+      "overall_rank": "29/58",
+      "post_card": "POST NAME  \nSplit by alarm\n\nHEADER  \nMedia: reel  \nLength / Slides: none  \nCaption: extends  \nSurface: close-up man, indoor room, alarm text overlays\n\nWORK  \nThe reel shows one person in two labeled segments, with a jump cut from a loud Delhi voiceover to a casual Mumbai voiceover.\n\nFLOW  \n0:00-0:12: Close-up of a young man in a white patterned shirt and silver chain; he looks around nervously; on-screen text reads “hearing the alarm: Delhi”; a brief Hindi line is interrupted by an aggressive off-screen male voice.  \n0:12-0:15: Single jump cut; the same man faces sideways with a relaxed expression; on-screen text changes to “hearing the alarm: Mumbai”; the audio shifts to soft casual English.\n\nTEXT & REFERENCES  \nHook: hearing the alarm: Delhi  \nNamed: Delhi, Mumbai, Instagram\n\nMECHANIC FINGERPRINT  \nLabel contrast -> voiceover shift -> jump cut -> second label"
+    },
+    {
+      "title": "Alert-Sound Reaction",
+      "posted": "2 months ago",
+      "lane": "reel",
+      "recent_rank": "28/40",
+      "overall_rank": "44/58",
+      "post_card": "POST NAME  \nAlert-Sound Reaction\n\nHEADER  \nMedia: reel  \nLength / Slides: 0:11  \nCaption: extends  \nSurface: bed, floral sheets, wooden headboard, window, AC unit\n\nWORK  \nA single-shot reaction reel moves from waking in bed to reacting under siren audio and emergency-broadcast text.\n\nFLOW  \n0:00-0:02: Close-up of a man waking up startled in bed and looking around in confusion.  \n0:00-0:05: Loud, exaggerated gasping and heavy breathing play while he sits up quickly, looks distressed, and runs a hand through his hair.  \n0:05-0:11: High-pitched emergency siren beeps and a robotic female voice read an alert message while he ducks back down onto the bed and covers his head.\n\nTEXT & REFERENCES  \nHook: alert notification miss kardiya kyunki mai 2 PM ke pehle nahi uth ta  \nNamed: @bunshah, @laxmanstanding, Indian Government Emergency Alert System Test\n\nMECHANIC FINGERPRINT  \nWake-up reaction -> emergency audio -> cover-head ducking"
+    }
+  ],
+  "previous_portraits": [
+    {
+      "run_offset": 1,
+      "relationship": "immediately_previous",
+      "bites": [
+        {
+          "bite_id": "status_arrives_with_a_heckler",
+          "display_rank": 1,
+          "movement": "strengthened",
+          "title": "Status Needs a Heckler",
+          "current_read": "Status only survives here if it can take a heckle. The matte BMW is both announced as a fixture and pre-emptively mocked; a supposed PA is relabelled “Not Anuj’s PA”; restaurant favorites arrive with breezy confidence, while the rich-friend memoir and family scenes make self-importance ridiculous. Straight product posing remains the boundary.",
+          "changed_because": "New car, launch, and restaurant material broadens the pattern from personal wealth jokes into access, affiliation, and lifestyle presentation.",
+          "why_it_matters_now": "It explains why visible luxury and proximity never read as uncomplicated aspiration in this current feed.",
+          "evidence_refs": [
+            "Reveal Car, Drive Off",
+            "Roll and Cut",
+            "Freeze-Frame Reveal",
+            "Food Tour Cuts",
+            "Profile-switch Storyline",
+            "Mock Complaint Loop"
+          ],
+          "counterevidence_refs": [
+            "Swap and Style Jerseys"
+          ],
+          "reinterpretation": null
+        },
+        {
+          "bite_id": "every_dispute_needs_a_director",
+          "display_rank": 2,
+          "movement": "sharpened",
+          "title": "Grievance Needs a Performance",
+          "current_read": "Conflict is staged as a role each participant has to overplay. A flyover complaint becomes a phone call with a plaster bust, Ronaldo disappointment becomes a FIFA conspiracy, and a parking excuse invents a driver from nowhere. The roadside hug and roast battles now read less as resolutions than escalations with assigned parts.",
+          "changed_because": "The flyover and FIFA rants make the earlier interventions look less like problem-solving than a broader appetite for grievance as theatrical escalation.",
+          "why_it_matters_now": "It clarifies why arguments, corrections, and public complaints repeatedly become full scenes rather than passing reactions.",
+          "evidence_refs": [
+            "Mock-phone rant",
+            "Escalate a complaint",
+            "Invent a Driver",
+            "Force a Hug",
+            "Roast the Crowd"
+          ],
+          "counterevidence_refs": [],
+          "reinterpretation": {
+            "old_read": "Anuj directs public disputes toward comic resolution.",
+            "new_read": "Disputes are primarily excuses for participants to perform increasingly disproportionate versions of themselves.",
+            "evidence_refs": [
+              "Invent a Driver",
+              "Force a Hug",
+              "Mock-phone rant",
+              "Escalate a complaint"
+            ]
+          }
+        },
+        {
+          "bite_id": "references_deliver_the_verdict",
+          "display_rank": 3,
+          "movement": "held",
+          "title": "References Settle the Scene",
+          "current_read": "References decide how a scene should feel, not merely what it mentions. Ronaldo, Messi, and FIFA turn a complaint into sports grievance; black-and-white Bollywood fatherhood grades the glass review; film songs, rap, cutouts, and speaker arrows turn an audio room into a contested performance. The cultural shorthand keeps delivering the final emotional cue.",
+          "changed_because": "Football grievance joins the same established reference system, while music, film inserts, jerseys, and cutouts continue carrying scenes beyond dialogue.",
+          "why_it_matters_now": "It shows why named people, songs, and visual callbacks function as evidence inside the joke rather than decoration.",
+          "evidence_refs": [
+            "Escalate a complaint",
+            "Glass-Review Parody",
+            "Zoom Through Sorrow",
+            "Layer room with mashups"
+          ],
+          "counterevidence_refs": [],
+          "reinterpretation": null
+        }
+      ]
+    },
+    {
+      "run_offset": 2,
+      "relationship": "two_runs_ago",
+      "bites": [
+        {
+          "bite_id": "status_arrives_with_a_heckler",
+          "display_rank": 1,
+          "movement": "new",
+          "title": "Status Arrives With Hecklers",
+          "current_read": "Status is never allowed to stand unchallenged here. The M340i receives both a “we get it bro” montage and a new instruction to get used to it; the rich friend’s hardship story collapses under disbelief, while the dad and mother puncture Anuj’s Instagram self-regard. Pure jersey styling is the boundary: sometimes the product simply gets to pose.",
+          "changed_because": "Cars, family scenes, and wealth jokes now provide enough distinct evidence that self-aware status performance reads as a feed-level rule.",
+          "why_it_matters_now": "It explains why luxury, ambition, and creator confidence appear as material for ridicule rather than uncomplicated celebration.",
+          "evidence_refs": [
+            "Reveal Car, Drive Off",
+            "Roll and Cut",
+            "Profile-switch Storyline",
+            "Mock Complaint Loop",
+            "Flip into Dad"
+          ],
+          "counterevidence_refs": [
+            "Swap and Style Jerseys"
+          ],
+          "reinterpretation": null
+        },
+        {
+          "bite_id": "every_dispute_needs_a_director",
+          "display_rank": 2,
+          "movement": "new",
+          "title": "Every Dispute Needs Direction",
+          "current_read": "Arguments become games of who gets to direct the scene. Anuj invents a driver to escape a parking dispute, prescribes breathing and a forced hug at a roadside crash, and hosts street roasts until a shopkeeper names a winner. Even the family complaint ends by announcing itself for Instagram. The authority is flimsy, but everyone has to play along.",
+          "changed_because": "Parking, roadside, family, and street-mic scenes independently establish intervention and adjudication as recurring comic roles.",
+          "why_it_matters_now": "It clarifies why ordinary friction keeps becoming a public performance with rules, judges, corrections, and reluctant participants.",
+          "evidence_refs": [
+            "Invent a Driver",
+            "Force a Hug",
+            "Roast the Crowd",
+            "Mock Complaint Loop"
+          ],
+          "counterevidence_refs": [],
+          "reinterpretation": null
+        },
+        {
+          "bite_id": "references_deliver_the_verdict",
+          "display_rank": 3,
+          "movement": "new",
+          "title": "References Deliver The Verdict",
+          "current_read": "Pop culture operates as a reaction system, not background decoration. Sad violins, Bollywood fathers, and Sarabhai clips grade the glass review; Mbappé’s regret is carried by a Madrid shirt and “Tu Hi Re”; the audio room turns film songs, rap, and celebrity cutouts into a live argument. References supply the punchline’s emotional verdict.",
+          "changed_because": "The current window uses music, film inserts, jerseys, cutouts, and memes across distinct formats to complete the joke’s meaning.",
+          "why_it_matters_now": "It shows that the feed’s cultural references function as active evidence inside scenes, not decorative recognition bait.",
+          "evidence_refs": [
+            "Glass-Review Parody",
+            "Zoom Through Sorrow",
+            "Layer room with mashups",
+            "Flip whiteboard beats"
+          ],
+          "counterevidence_refs": [],
+          "reinterpretation": null
+        }
+      ]
+    }
+  ]
+}

@@ -72,6 +72,9 @@ class Metric:
     views_x: float | None
     likes_x: float | None
     comments_x: float | None
+    engagement_rate: float | None
+    engagement_rate_baseline: float | None
+    engagement_rate_x: float | None
 
 
 @dataclass
@@ -165,9 +168,7 @@ def _raw_metric(post: Post, checkpoint: str) -> Metric | None:
 
 
 def _metric_required_channels(post: Post) -> tuple[str, ...]:
-    if post.media_type == "reel":
-        return ("views", "likes", "comments")
-    return ("likes", "comments")
+    return ("engagement_rate",)
 
 
 def _metric_complete(post: Post, checkpoint: str) -> bool:
@@ -410,6 +411,9 @@ def _build_posts(rows: list[dict[str, Any]]) -> list[Post]:
                 views_x=_to_float(row.get("views_multiple")),
                 likes_x=_to_float(row.get("likes_multiple")),
                 comments_x=_to_float(row.get("comments_multiple")),
+                engagement_rate=_to_float(row.get("engagement_rate")),
+                engagement_rate_baseline=_to_float(row.get("engagement_rate_baseline")),
+                engagement_rate_x=_to_float(row.get("engagement_rate_multiple")),
             )
     return list(posts_by_key.values())
 
@@ -438,12 +442,15 @@ def _load_feed_posts(conn: Any, feed_id: int, business_date_ist: date, *, app_ti
               pm.views,
               pm.likes,
               pm.comments,
+              pm.engagement_rate,
               pm.views_baseline,
               pm.likes_baseline,
               pm.comments_baseline,
+              pm.engagement_rate_baseline,
               pm.views_multiple,
               pm.likes_multiple,
-              pm.comments_multiple
+              pm.comments_multiple,
+              pm.engagement_rate_multiple
             from public.posts p
             join public.feeders fd on fd.id = p.feeder_id
             left join public.post_metrics pm on pm.post_key = p.post_key
@@ -582,7 +589,6 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
             comment_floor = max(10.0, (prior_comment_median or 0.0) * 1.5)
             comment_spikes: list[Post] = []
             like_heavy: list[Post] = []
-            viral_passive: list[Post] = []
             for post in recent10_d7:
                 metric = _metric(post, "d7")
                 if not metric:
@@ -591,8 +597,6 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                     comment_spikes.append(post)
                 if _dominant_multiple(metric.likes_x, [metric.comments_x, metric.views_x]):
                     like_heavy.append(post)
-                if media_type == "reel" and _dominant_multiple(metric.views_x, [metric.likes_x, metric.comments_x]):
-                    viral_passive.append(post)
 
             if len(recent10_d7) >= 10 and len(comment_spikes) >= 4:
                 ws, we = _window_dates(recent10_d7, timezone_name)
@@ -612,16 +616,6 @@ def _own_candidates(feed_id: int, feeder_posts: list[Post], business_date_ist: d
                     _snapshot(like_heavy, "d7", {"trigger": "4_of_last_10_likes_x_2_gap_2x"}),
                     _sample_top(like_heavy, "d7", 4), [],
                     _body("OWN_LIKE_HEAVY", len(like_heavy), "d7", "likes"),
-                ))
-
-            if len(recent10_d7) >= 10 and len(viral_passive) >= 3:
-                ws, we = _window_dates(recent10_d7, timezone_name)
-                candidates.append(SignalCandidate(
-                    "own", "OWN_VIRAL_PASSIVE", feed_id, feeder_id, "d7", business_date_ist,
-                    media_type, sub_bucket, ws, we,
-                    _snapshot(viral_passive, "d7", {"trigger": "3_of_last_10_views_x_2_gap_2x"}),
-                    _sample_top(viral_passive, "d7", 3), [],
-                    _body("OWN_VIRAL_PASSIVE", len(viral_passive), "d7", "views"),
                 ))
 
             for checkpoint, previous_checkpoint in (("d7", "d3"), ("d21", "d7")):

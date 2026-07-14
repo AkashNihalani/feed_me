@@ -1,0 +1,121 @@
+{
+  "this_week": {
+    "header": "Mumbai complaints become status theater",
+    "tagline": "The feed turned civic gripes into casted spectacle.",
+    "summary": "Across civic rants, football grievance, restaurant outings, and a launch tease, Anuj’s world keeps converting access and complaint into scenes where status invites instant correction."
+  },
+  "what_changed": [
+    {
+      "movement": "Mumbai food outings entered the current mix.",
+      "detail": "Two fast Mumbai food reels place recognizable venues inside the account’s usual confident, host-led city montage language now.",
+      "post_refs": [
+        "Food Tour Cuts",
+        "Sundae Taste Tour"
+      ]
+    },
+    {
+      "movement": "A named launch storyline surfaced.",
+      "detail": "The Broadway/SNEAKE teaser introduces a named collaborator and launch countdown through a mock confrontation, title-card reveal, and exterior tag.",
+      "post_refs": [
+        "Freeze-Frame Reveal"
+      ]
+    }
+  ],
+  "bites": [
+    {
+      "bite_id": "status_arrives_with_a_heckler",
+      "display_rank": 1,
+      "movement": "strengthened",
+      "title": "Status Needs a Heckler",
+      "current_read": "Status only survives here if it can take a heckle. The matte BMW is both announced as a fixture and pre-emptively mocked; a supposed PA is relabelled “Not Anuj’s PA”; restaurant favorites arrive with breezy confidence, while the rich-friend memoir and family scenes make self-importance ridiculous. Straight product posing remains the boundary.",
+      "changed_because": "New car, launch, and restaurant material broadens the pattern from personal wealth jokes into access, affiliation, and lifestyle presentation.",
+      "why_it_matters_now": "It explains why visible luxury and proximity never read as uncomplicated aspiration in this current feed.",
+      "evidence_refs": [
+        "Reveal Car, Drive Off",
+        "Roll and Cut",
+        "Freeze-Frame Reveal",
+        "Food Tour Cuts",
+        "Profile-switch Storyline",
+        "Mock Complaint Loop"
+      ],
+      "counterevidence_refs": [
+        "Swap and Style Jerseys"
+      ],
+      "reinterpretation": null
+    },
+    {
+      "bite_id": "every_dispute_needs_a_director",
+      "display_rank": 2,
+      "movement": "sharpened",
+      "title": "Grievance Needs a Performance",
+      "current_read": "Conflict is staged as a role each participant has to overplay. A flyover complaint becomes a phone call with a plaster bust, Ronaldo disappointment becomes a FIFA conspiracy, and a parking excuse invents a driver from nowhere. The roadside hug and roast battles now read less as resolutions than escalations with assigned parts.",
+      "changed_because": "The flyover and FIFA rants make the earlier interventions look less like problem-solving than a broader appetite for grievance as theatrical escalation.",
+      "why_it_matters_now": "It clarifies why arguments, corrections, and public complaints repeatedly become full scenes rather than passing reactions.",
+      "evidence_refs": [
+        "Mock-phone rant",
+        "Escalate a complaint",
+        "Invent a Driver",
+        "Force a Hug",
+        "Roast the Crowd"
+      ],
+      "counterevidence_refs": [],
+      "reinterpretation": {
+        "old_read": "Anuj directs public disputes toward comic resolution.",
+        "new_read": "Disputes are primarily excuses for participants to perform increasingly disproportionate versions of themselves.",
+        "evidence_refs": [
+          "Invent a Driver",
+          "Force a Hug",
+          "Mock-phone rant",
+          "Escalate a complaint"
+        ]
+      }
+    },
+    {
+      "bite_id": "references_deliver_the_verdict",
+      "display_rank": 3,
+      "movement": "held",
+      "title": "References Settle the Scene",
+      "current_read": "References decide how a scene should feel, not merely what it mentions. Ronaldo, Messi, and FIFA turn a complaint into sports grievance; black-and-white Bollywood fatherhood grades the glass review; film songs, rap, cutouts, and speaker arrows turn an audio room into a contested performance. The cultural shorthand keeps delivering the final emotional cue.",
+      "changed_because": "Football grievance joins the same established reference system, while music, film inserts, jerseys, and cutouts continue carrying scenes beyond dialogue.",
+      "why_it_matters_now": "It shows why named people, songs, and visual callbacks function as evidence inside the joke rather than decoration.",
+      "evidence_refs": [
+        "Escalate a complaint",
+        "Glass-Review Parody",
+        "Zoom Through Sorrow",
+        "Layer room with mashups"
+      ],
+      "counterevidence_refs": [],
+      "reinterpretation": null
+    }
+  ],
+  "observations": [
+    {
+      "text": "On-screen text frames short acted premises in Roast by voiceover, Mock-phone rant, Escalate a complaint, and Stutter Into Chaos.",
+      "post_refs": [
+        "Roast by voiceover",
+        "Mock-phone rant",
+        "Escalate a complaint",
+        "Stutter Into Chaos"
+      ]
+    },
+    {
+      "text": "Black-and-white footage appears in Mock-phone rant, Mock Complaint Loop, Flip into Dad, Glass-Review Parody, and Zoom Through Sorrow.",
+      "post_refs": [
+        "Mock-phone rant",
+        "Mock Complaint Loop",
+        "Flip into Dad",
+        "Glass-Review Parody",
+        "Zoom Through Sorrow"
+      ]
+    }
+  ],
+  "feederverse_watch": {
+    "rank_pulse": "Recent ranks put the FIFA complaint and both Mumbai food reels ahead of their broader baselines, while the solo piano and tattoo fragments sit near the bottom.",
+    "signals": [
+      "Food Tour Cuts and Sundae Taste Tour establish a current Mumbai venue-and-tasting lane.",
+      "Freeze-Frame Reveal includes an explicit “3 DAYS BEFORE THE LAUNCH” tag for Broadway and SNEAKE."
+    ]
+  },
+  "trigger_tags": [],
+  "next_watch": "Whether the polished restaurant and launch-facing material will stay vulnerable to the same heckling that currently keeps cars, titles, and complaints from becoming self-serious."
+}

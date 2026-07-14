@@ -1,0 +1,131 @@
+{
+  "this_week": {
+    "header": "Literal Punchlines Meet Lifestyle Theater",
+    "tagline": "New short skits sharpen how scenes now resolve.",
+    "summary": "This window keeps status and disputes performative, while compact location and workplace reveals show that a single named detail can abruptly govern a scene’s meaning."
+  },
+  "what_changed": [
+    {
+      "movement": "Vague phrases became location reveals",
+      "detail": "Two new five-to-seven-second exchanges make vague emotional phrasing hinge on named places, pulling the feed’s usual escalation into a cleaner, faster reveal.",
+      "post_refs": [
+        "Flip State Punchline",
+        "Reframe with punchline"
+      ]
+    }
+  ],
+  "bites": [
+    {
+      "bite_id": "status_arrives_with_a_heckler",
+      "display_rank": 1,
+      "movement": "held",
+      "title": "Status Needs a Heckler",
+      "current_read": "Status has to arrive already undercut here. The M340i is announced with “get used to these” after an earlier “we get it bro” montage; the rich friend’s humble-origin story and family complaints make self-regard ridiculous. Retail launch and restaurant access keep the same rule: visibility invites a heckle.",
+      "changed_because": "The newest posts add no different status logic; cars, access, family self-regard, and the product-styling exception still hold the pattern intact.",
+      "why_it_matters_now": "It explains why luxury, proximity, and creator confidence remain material for jokes rather than uncomplicated aspiration.",
+      "evidence_refs": [
+        "Reveal Car, Drive Off",
+        "Roll and Cut",
+        "Profile-switch Storyline",
+        "Mock Complaint Loop",
+        "Freeze-Frame Reveal",
+        "Food Tour Cuts"
+      ],
+      "counterevidence_refs": [
+        "Swap and Style Jerseys"
+      ],
+      "reinterpretation": null
+    },
+    {
+      "bite_id": "every_dispute_needs_a_director",
+      "display_rank": 2,
+      "movement": "held",
+      "title": "Complaints Need Blocking",
+      "current_read": "Complaints are scenes that need blocking. A flyover grievance requires a plaster-bust phone call, Ronaldo loss becomes a FIFA conspiracy, an invented driver sustains a parking lie, and a crash ends in a directed hug. The point is not resolution: each complaint earns roles, escalation, and a closing beat.",
+      "changed_because": "The current window still supplies grievances, excuses, forced mediation, and crowd adjudication, but no evidence shifts the established rule beyond theatrical escalation.",
+      "why_it_matters_now": "It clarifies why everyday friction repeatedly expands into public scenes with assigned roles and disproportionate endings.",
+      "evidence_refs": [
+        "Mock-phone rant",
+        "Escalate a complaint",
+        "Invent a Driver",
+        "Force a Hug",
+        "Roast the Crowd",
+        "Rig a Boom Battle"
+      ],
+      "counterevidence_refs": [],
+      "reinterpretation": null
+    },
+    {
+      "bite_id": "references_deliver_the_verdict",
+      "display_rank": 3,
+      "movement": "recast",
+      "title": "Names Turn Talk Concrete",
+      "current_read": "Specific names now do more than cue a reaction: they make vague speech suddenly literal. “Bad state” resolves as UP and “bad place” as Andheri East, while a serious “pitch” is exposed as Ludo. Ronaldo, Messi, and FIFA similarly turn disappointment into a precise, recognizable complaint. The named detail is the scene’s trapdoor.",
+      "changed_because": "Location puns and the Ludo reveal show that naming does not merely grade emotion; it materially flips what the scene is about.",
+      "why_it_matters_now": "It explains why place names, games, celebrities, and institutions repeatedly supply the feed’s decisive turn.",
+      "evidence_refs": [
+        "Flip State Punchline",
+        "Reframe with punchline",
+        "Cut to Ludo",
+        "Escalate a complaint",
+        "Zoom Through Sorrow"
+      ],
+      "counterevidence_refs": [],
+      "reinterpretation": {
+        "old_read": "Cultural references supplied a scene’s emotional verdict.",
+        "new_read": "Proper names now convert vague premises into literal, specific comic realities.",
+        "evidence_refs": [
+          "Escalate a complaint",
+          "Glass-Review Parody"
+        ]
+      }
+    }
+  ],
+  "observations": [
+    {
+      "text": "Rapid cuts move between speakers or group setups before a final reaction, reveal, or closing line.",
+      "post_refs": [
+        "Flip State Punchline",
+        "Reframe with punchline",
+        "Cut to Ludo",
+        "Sock Mistake Cut"
+      ]
+    },
+    {
+      "text": "Black-and-white footage appears in monologues, reaction beats, and parody inserts across otherwise varied indoor reels.",
+      "post_refs": [
+        "Mock Complaint Loop",
+        "Mock-phone rant",
+        "Glass-Review Parody",
+        "Zoom Through Sorrow",
+        "Flip into Dad"
+      ]
+    }
+  ],
+  "feederverse_watch": {
+    "rank_pulse": "The latest compact reels split sharply: the Andheri, sock, and Ludo pieces sit well above their baselines, while the UP pun breaks below the recent floor.",
+    "signals": [
+      "Location-based punchlines appear in both “bad state” and “bad place” dialogue setups.",
+      "Office lounge, football turf, and sofa scenes bring larger multi-person staging into the newest posts.",
+      "The newest strongest landings combine abrupt scene changes with a physical reveal, reaction, or game-like payoff."
+    ]
+  },
+  "trigger_tags": [
+    {
+      "label": "Pun skit floor break",
+      "note": "The UP punchline reel became the weakest recent landing in its comparison set.",
+      "post_ref": "Flip State Punchline"
+    },
+    {
+      "label": "Office ensemble lift",
+      "note": "The pitch-to-Ludo reveal entered the supplied overall top performance band.",
+      "post_ref": "Cut to Ludo"
+    },
+    {
+      "label": "Turf action lift",
+      "note": "The football taunt reel also entered the supplied overall top performance band.",
+      "post_ref": "Taunt into play"
+    }
+  ],
+  "next_watch": "Whether the new compressed wordplay can coexist with longer ensemble spectacles, given the sharp contrast in their recent reception."
+}

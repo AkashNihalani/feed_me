@@ -1,0 +1,103 @@
+{
+  "this_week": {
+    "header": "Luxury Gets Its Own Heckler",
+    "tagline": "The feed makes status another scene to contest.",
+    "summary": "This window turns cars, family arguments, public disputes, and borrowed references into a feed where prestige is shown loudly, then tested by the joke’s next voice."
+  },
+  "what_changed": [
+    {
+      "movement": "The BMW becomes a recurring possession.",
+      "detail": "The newer reveal treats the M340i as a recurring possession, not merely a trend prop, while its caption keeps inevitable flex commentary audible.",
+      "post_refs": [
+        "Reveal Car, Drive Off",
+        "Roll and Cut"
+      ]
+    }
+  ],
+  "bites": [
+    {
+      "bite_id": "status_arrives_with_a_heckler",
+      "display_rank": 1,
+      "movement": "new",
+      "title": "Status Arrives With Hecklers",
+      "current_read": "Status is never allowed to stand unchallenged here. The M340i receives both a “we get it bro” montage and a new instruction to get used to it; the rich friend’s hardship story collapses under disbelief, while the dad and mother puncture Anuj’s Instagram self-regard. Pure jersey styling is the boundary: sometimes the product simply gets to pose.",
+      "changed_because": "Cars, family scenes, and wealth jokes now provide enough distinct evidence that self-aware status performance reads as a feed-level rule.",
+      "why_it_matters_now": "It explains why luxury, ambition, and creator confidence appear as material for ridicule rather than uncomplicated celebration.",
+      "evidence_refs": [
+        "Reveal Car, Drive Off",
+        "Roll and Cut",
+        "Profile-switch Storyline",
+        "Mock Complaint Loop",
+        "Flip into Dad"
+      ],
+      "counterevidence_refs": [
+        "Swap and Style Jerseys"
+      ],
+      "reinterpretation": null
+    },
+    {
+      "bite_id": "every_dispute_needs_a_director",
+      "display_rank": 2,
+      "movement": "new",
+      "title": "Every Dispute Needs Direction",
+      "current_read": "Arguments become games of who gets to direct the scene. Anuj invents a driver to escape a parking dispute, prescribes breathing and a forced hug at a roadside crash, and hosts street roasts until a shopkeeper names a winner. Even the family complaint ends by announcing itself for Instagram. The authority is flimsy, but everyone has to play along.",
+      "changed_because": "Parking, roadside, family, and street-mic scenes independently establish intervention and adjudication as recurring comic roles.",
+      "why_it_matters_now": "It clarifies why ordinary friction keeps becoming a public performance with rules, judges, corrections, and reluctant participants.",
+      "evidence_refs": [
+        "Invent a Driver",
+        "Force a Hug",
+        "Roast the Crowd",
+        "Mock Complaint Loop"
+      ],
+      "counterevidence_refs": [],
+      "reinterpretation": null
+    },
+    {
+      "bite_id": "references_deliver_the_verdict",
+      "display_rank": 3,
+      "movement": "new",
+      "title": "References Deliver The Verdict",
+      "current_read": "Pop culture operates as a reaction system, not background decoration. Sad violins, Bollywood fathers, and Sarabhai clips grade the glass review; Mbappé’s regret is carried by a Madrid shirt and “Tu Hi Re”; the audio room turns film songs, rap, and celebrity cutouts into a live argument. References supply the punchline’s emotional verdict.",
+      "changed_because": "The current window uses music, film inserts, jerseys, cutouts, and memes across distinct formats to complete the joke’s meaning.",
+      "why_it_matters_now": "It shows that the feed’s cultural references function as active evidence inside scenes, not decorative recognition bait.",
+      "evidence_refs": [
+        "Glass-Review Parody",
+        "Zoom Through Sorrow",
+        "Layer room with mashups",
+        "Flip whiteboard beats"
+      ],
+      "counterevidence_refs": [],
+      "reinterpretation": null
+    }
+  ],
+  "observations": [
+    {
+      "text": "Black-and-white footage appears in full scenes or inserts across glass reviews, parent skits, street roasts, and car storytelling.",
+      "post_refs": [
+        "Glass-Review Parody",
+        "Mock Complaint Loop",
+        "Flip into Dad",
+        "Roast the Crowd",
+        "Skip and React"
+      ]
+    },
+    {
+      "text": "One performer occupies alternating character positions or profiles in dialogue sketches with hard cuts between each side.",
+      "post_refs": [
+        "Profile-switch Storyline",
+        "Flip into Dad",
+        "Split Life Updates",
+        "Escalate Then Clap"
+      ]
+    }
+  ],
+  "feederverse_watch": {
+    "rank_pulse": "Recent ranks place the BMW reveal and short football-sorrow sketch ahead of several elaborate branded and mashup reels; the older AI gift narrative remains the overall leader.",
+    "signals": [
+      "The matte black BMW appears in both a self-aware montage and a newer direct reveal.",
+      "Branded work spans an AI-and-gifting narrative, an MJ performance campaign, and Lotto jersey styling."
+    ]
+  },
+  "trigger_tags": [],
+  "next_watch": "Whether the BMW and fashion material keep receiving comic resistance, or begin operating as straight lifestyle display, remains the clearest unresolved tension."
+}
