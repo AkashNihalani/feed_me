@@ -9,11 +9,16 @@ os.environ.setdefault("POSTGRES_DSN", "postgresql://user:pass@localhost:5432/db"
 os.environ.setdefault("BRIGHTDATA_API_KEY", "test")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.pure_engine import _choose_canonical_fire_metric  # noqa: E402
+from app.pure_engine import _choose_canonical_fire_metric, _engagement_rate_from_metrics  # noqa: E402
 from app.signal_detection import Metric, Post, _metric_complete  # noqa: E402
 
 
 class EngagementRateRankingTest(unittest.TestCase):
+    def test_engagement_rate_does_not_require_views(self) -> None:
+        engagement_count, engagement_rate = _engagement_rate_from_metrics(337, 14, 1_318_229)
+        self.assertEqual(engagement_count, 351)
+        self.assertEqual(engagement_rate, 0.00026627)
+
     def test_engagement_rate_is_the_only_canonical_metric(self) -> None:
         metric = _choose_canonical_fire_metric(
             {"likes": 999, "comments": 999, "engagement_rate": 0.0125, "engagement_rate_multiple": 1.4},

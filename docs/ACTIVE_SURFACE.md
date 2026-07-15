@@ -22,7 +22,7 @@ This project is being actively maintained around a small, stable contract:
 
 ## Active SQL files
 
-- `infra/supabase/sql/brightdata_schedule_source_of_truth.sql`
+- `infra/supabase/migrations/20260715061500_two_discovery_checkpoint_pipeline.sql`
 - `infra/supabase/migrations/20260327113000_brightdata_exact_checkpoint_schedule.sql`
 
 ## Active frontend surfaces

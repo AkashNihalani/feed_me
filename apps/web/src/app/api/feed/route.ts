@@ -1028,48 +1028,13 @@ export async function POST(request: NextRequest) {
           p_run_at: nowIso,
         });
 
-        // Keep a safe fallback for partially migrated environments.
+        // The canonical RPC assigns the current AM/PM discovery slot.
         if (bootstrapErr) {
-          const { data: enqueueCount, error: enqueueErr } = await sb.rpc('enqueue_daily_job_for_feeder', {
+          const { error: enqueueErr } = await sb.rpc('enqueue_daily_job_for_feeder', {
             p_feeder_id: feederId,
             p_run_at: nowIso,
           });
-
-          const { data: openJob, error: openJobErr } = await sb
-            .from('run_jobs')
-            .select('id')
-            .eq('feeder_id', feederId)
-            .eq('job_type', 'daily')
-            .in('status', ['pending', 'running', 'retry'])
-            .limit(1);
-          if (openJobErr) throw openJobErr;
-
-          if (!openJob || openJob.length === 0) {
-            const { error: runJobErr } = await sb.from('run_jobs').insert({
-              feeder_id: feederId,
-              job_type: 'daily',
-              status: 'pending',
-              attempt: 0,
-              next_run_at: nowIso,
-              last_error: null,
-            });
-            if (runJobErr) throw runJobErr;
-          }
-
-          if (!enqueueErr && Number(enqueueCount || 0) > 0) {
-            const followerRpcNames = [
-              'enqueue_daily_follower_job_for_feeder',
-              'enqueue_weekly_follower_job_for_feeder',
-            ] as const;
-
-            for (const rpcName of followerRpcNames) {
-              const { error: followerErr } = await sb.rpc(rpcName, {
-                p_feeder_id: feederId,
-                p_run_at: nowIso,
-              });
-              if (!followerErr) break;
-            }
-          }
+          if (enqueueErr) throw enqueueErr;
         }
       }
 

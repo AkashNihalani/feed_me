@@ -9,9 +9,6 @@ def main():
         "--mode",
         choices=[
             "enqueue_daily",
-            "enqueue_poll",
-            "enqueue_daily_followers",
-            "enqueue_weekly_followers",
             "once",
             "worker",
             "fingerprint_reels_once",
@@ -49,24 +46,6 @@ def main():
         eng = PureEngine()
         try:
             print(f"enqueued_daily={eng.enqueue_daily()}")
-        finally:
-            eng.close()
-    elif args.mode == "enqueue_poll":
-        eng = PureEngine()
-        try:
-            print(f"enqueued_poll={eng.enqueue_poll()}")
-        finally:
-            eng.close()
-    elif args.mode == "enqueue_daily_followers":
-        eng = PureEngine()
-        try:
-            print(f"enqueued_daily_followers={eng.enqueue_daily_followers()}")
-        finally:
-            eng.close()
-    elif args.mode == "enqueue_weekly_followers":
-        eng = PureEngine()
-        try:
-            print(f"enqueued_daily_followers={eng.enqueue_weekly_followers()}")
         finally:
             eng.close()
     elif args.mode == "once":

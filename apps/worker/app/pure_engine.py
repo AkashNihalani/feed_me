@@ -52,10 +52,7 @@ from .config import (
     FIRE_MEDIA_RETENTION_ENABLED,
 )
 from .web_push import is_enabled as web_push_enabled, send as send_web_push
-from .signal_detection import (
-    resolve_audience_signals_for_feed as run_audience_signals_for_feed,
-    resolve_signals_for_feed as run_signals_for_feed,
-)
+from .signal_detection import resolve_signals_for_feed as run_signals_for_feed
 from .fingerprint_intelligence import (
     current_model_version as current_fingerprint_model_version,
     fingerprint_reels as run_fingerprint_reels,
@@ -72,6 +69,7 @@ from .retry_policy import (
 
 _MEDIA_CAPTURE_TIMEOUT_SECONDS = 60
 _MEDIA_UPLOAD_TIMEOUT_SECONDS = 120
+_DISCOVERY_CHECKPOINT_DAYS = 22
 _MEDIA_ALLOWED_FETCH_PROTOCOLS = ("http://", "https://")
 _MEDIA_FETCH_HEADERS = {
     "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
@@ -622,6 +620,21 @@ def _checkpoint_item_error(item: dict) -> str | None:
         detail = f"{code}: {message}".strip(": ").strip()
         return detail or "checkpoint scrape returned provider error"
     return None
+
+
+def _usable_discovery_items(items: list[dict]) -> tuple[list[dict], list[str]]:
+    usable: list[dict] = []
+    errors: list[str] = []
+    for item in items:
+        provider_error = _checkpoint_item_error(item)
+        if provider_error:
+            errors.append(provider_error)
+            continue
+        source_url = str(item.get("url") or "").strip()
+        profile_pic, follower_count = _extract_owner_profile(item)
+        if source_url or profile_pic or follower_count is not None:
+            usable.append(item)
+    return usable, errors
 
 
 def _is_deleted_post_provider_error(error: str | None) -> bool:
@@ -2265,23 +2278,6 @@ class PureEngine:
         self.conn.commit()
         return int((r or {}).get("c") or 0)
 
-    def enqueue_poll(self) -> int:
-        r = self.conn.execute("select public.enqueue_poll_jobs(now()) as c").fetchone()
-        self.conn.commit()
-        return int((r or {}).get("c") or 0)
-
-    def enqueue_daily_followers(self) -> int:
-        try:
-            r = self.conn.execute("select public.enqueue_daily_follower_jobs(now()) as c").fetchone()
-        except Exception:
-            self.conn.rollback()
-            r = self.conn.execute("select public.enqueue_weekly_follower_jobs(now()) as c").fetchone()
-        self.conn.commit()
-        return int((r or {}).get("c") or 0)
-
-    def enqueue_weekly_followers(self) -> int:
-        return self.enqueue_daily_followers()
-
     def requeue_stale(self, minutes: int = 30):
         self.conn.execute("select * from public.requeue_stale_jobs(%s)", (max(1, minutes),)).fetchone()
         self.conn.commit()
@@ -2304,20 +2300,6 @@ class PureEngine:
             """,
             (profile_pic_url, follower_count, feeder_id),
         )
-
-    def _recent_provider_post_ids(self, feeder_id: int, limit: int = 200) -> list[str]:
-        rows = self.conn.execute(
-            """
-            select provider_post_id
-            from public.posts
-            where feeder_id = %s
-              and provider_post_id is not null
-            order by posted_at desc nulls last, updated_at desc, created_at desc
-            limit %s
-            """,
-            (feeder_id, max(1, limit)),
-        ).fetchall()
-        return [str(row.get("provider_post_id") or "").strip() for row in rows if str(row.get("provider_post_id") or "").strip()]
 
     def _active_feeder_ids_by_handle(self, handles: set[str]) -> dict[str, list[int]]:
         normalized_handles = sorted({handle for handle in (_normalize_handle(value) for value in handles) if handle})
@@ -2747,7 +2729,6 @@ class PureEngine:
             self.conn.commit()
             return rows
 
-        self.conn.execute("select public.skip_unqualified_d21_jobs()")
         rows = self.conn.execute(
             """
             select cj.*, p.post_url, p.media_type, p.feeder_id, p.posted_at, fd.handle
@@ -2764,6 +2745,127 @@ class PureEngine:
         ).fetchall()
         self.conn.commit()
         return rows
+
+    def _satisfy_due_checkpoints_from_discovery(
+        self,
+        feeder_id: int,
+        post_key: str,
+        posted_at: datetime | None,
+        item: dict,
+        profile_followers: int | None,
+    ) -> set[tuple[int, str, date]]:
+        views, likes, comments = _extract_metrics(item)
+        if views is None and likes is None and comments is None:
+            return set()
+
+        _, item_followers = _extract_owner_profile(item)
+        followers = item_followers if item_followers is not None else profile_followers
+        jobs = self.conn.execute(
+            """
+            select id, checkpoint, attempt, next_run_at
+            from public.checkpoint_jobs
+            where post_key = %s
+              and status in ('pending', 'retry')
+              and next_run_at <= now()
+              and not exists (
+                select 1
+                from public.post_metrics pm
+                where pm.post_key = checkpoint_jobs.post_key
+                  and lower(pm.checkpoint) = lower(checkpoint_jobs.checkpoint)
+              )
+            order by next_run_at desc, id desc
+            """,
+            (post_key,),
+        ).fetchall()
+
+        if not jobs:
+            return set()
+
+        # A late snapshot cannot truthfully represent several checkpoint ages.
+        # Keep the newest due checkpoint and retire older missed windows.
+        for stale_job in jobs[1:]:
+            self.conn.execute(
+                """
+                update public.checkpoint_jobs
+                set status = 'skipped',
+                    last_error = 'superseded: exact checkpoint window was missed',
+                    updated_at = now()
+                where id = %s and status in ('pending', 'retry')
+                """,
+                (int(stale_job["id"]),),
+            )
+
+        touched: set[tuple[int, str, date]] = set()
+        for job in jobs[:1]:
+            checkpoint = str(job.get("checkpoint") or "").strip().lower()
+            business_day = self._checkpoint_business_day_for_job(
+                posted_at,
+                checkpoint,
+                job.get("next_run_at"),
+            )
+            if business_day is None or not self._upsert_metric(
+                post_key,
+                checkpoint,
+                views,
+                likes,
+                comments,
+                followers_at_metric=followers,
+                business_date_ist=business_day,
+            ):
+                continue
+            self.conn.execute(
+                """
+                update public.checkpoint_jobs
+                set status = 'done', last_error = null, updated_at = now()
+                where id = %s and status in ('pending', 'retry')
+                """,
+                (int(job["id"]),),
+            )
+            touched.add((feeder_id, checkpoint, business_day))
+        return touched
+
+    def _resolve_completed_checkpoints(self, touched: set[tuple[int, str, date]]):
+        recomputed_pairs: set[tuple[int, str]] = set()
+        intelligence_triggered_feeders: set[int] = set()
+
+        for feeder_id, cp, business_day in sorted(touched, key=lambda item: (item[2], item[0], item[1])):
+            try:
+                recompute_key = (feeder_id, cp)
+                if recompute_key not in recomputed_pairs:
+                    self._recompute_feeder_checkpoint_rankings(feeder_id, cp)
+                    recomputed_pairs.add(recompute_key)
+                self._extend_hot_visual_media_for_day(feeder_id, cp, business_day)
+                if cp == "d7" and feeder_id not in intelligence_triggered_feeders:
+                    intelligence_triggered_feeders.add(feeder_id)
+                    try:
+                        intelligence_result = self._run_d7_feeder_file_metric_trigger(feeder_id)
+                        stats = intelligence_result.get("intelligence") if isinstance(intelligence_result, dict) else None
+                        media_stats = intelligence_result.get("media") if isinstance(intelligence_result, dict) else None
+                        if (
+                            isinstance(stats, dict) and (stats.get("selected") or stats.get("failed"))
+                        ) or (
+                            isinstance(media_stats, dict) and (media_stats.get("staged") or media_stats.get("failed"))
+                        ):
+                            print(
+                                "[feeder-file-trigger] "
+                                f"feeder_id={feeder_id} media={media_stats} intelligence={stats}"
+                            )
+                    except Exception as intelligence_exc:
+                        try:
+                            self.conn.rollback()
+                        except Exception:
+                            pass
+                        print(f"[feeder-file-trigger] failed for feeder={feeder_id}: {intelligence_exc}")
+                self._resolve_for_feeder(feeder_id, cp, business_day)
+                self._try_resolve_feed(feeder_id, cp, business_day)
+            except Exception as resolve_exc:
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                print(
+                    f"[checkpoint-resolve] failed for feeder={feeder_id} checkpoint={cp} business_day={business_day}: {resolve_exc}"
+                )
 
     def _claim_web_push_jobs(self, limit: int) -> list[dict]:
         rows = self.conn.execute(
@@ -2885,14 +2987,6 @@ class PureEngine:
             app_timezone=APP_TIMEZONE,
         )
 
-    def _resolve_audience_signals_for_feed(self, feeder_id: int, business_date_ist: date):
-        return run_audience_signals_for_feed(
-            self.conn,
-            feeder_id,
-            business_date_ist,
-            app_timezone=APP_TIMEZONE,
-        )
-
     def fingerprint_reels(
         self,
         feeder_id: int | None = None,
@@ -2975,12 +3069,9 @@ class PureEngine:
 
         def submit_job(pool: ThreadPoolExecutor, job: dict):
             handle = (job.get("handle") or "").lstrip("@")
-            job_type = str(job.get("job_type") or "daily").strip().lower()
-            days_window = 2 if job_type in ("repair", "poll") else 1
-            recent_provider_post_ids = None if job_type == "followers" else self._recent_provider_post_ids(int(job["feeder_id"]))
             jid = int(job["id"])
             jobs_by_id[jid] = job
-            future = pool.submit(run_actor_handle, handle, days_window, recent_provider_post_ids)
+            future = pool.submit(run_actor_handle, handle, _DISCOVERY_CHECKPOINT_DAYS, None)
             futures_by_id[jid] = future
             future_to_id[future] = jid
 
@@ -2998,21 +3089,11 @@ class PureEngine:
                 return
 
             pending_job_ids = set(futures_by_id.keys())
-            last_checkpoint_yield = time.time()
             while pending_job_ids:
                 pending_futures = [futures_by_id[jid] for jid in pending_job_ids]
                 done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
 
                 if not done:
-                    if time.time() - last_checkpoint_yield >= 5:
-                        try:
-                            self.process_checkpoint_jobs(max(1, min(CHECKPOINT_SCRAPE_CHUNK_SIZE, CHECKPOINT_JOB_CLAIM_LIMIT)))
-                        except Exception:
-                            try:
-                                self.conn.rollback()
-                            except Exception:
-                                pass
-                        last_checkpoint_yield = time.time()
                     continue
 
                 for future in done:
@@ -3025,10 +3106,14 @@ class PureEngine:
                     job = jobs_by_id.pop(jid)
                     att = int(job.get("attempt") or 0)
                     feeder_id = int(job["feeder_id"])
-                    job_type = str(job.get("job_type") or "daily").strip().lower()
-
                     try:
                         items = future.result()
+                        usable_items, provider_errors = _usable_discovery_items(items)
+                        if not usable_items:
+                            detail = provider_errors[0] if provider_errors else "no records"
+                            raise RuntimeError(f"discovery temporarily unavailable: {detail}")
+                        items = usable_items
+                        discovery_touched: set[tuple[int, str, date]] = set()
                         feeder_handle = _normalize_handle(job.get("handle"))
                         related_handles_by_item = [
                             _extract_related_handles(item, feeder_handle)
@@ -3051,20 +3136,6 @@ class PureEngine:
                             if profile_pic_url and profile_followers is not None:
                                 break
                         self._refresh_feeder_profile(feeder_id, profile_pic_url, profile_followers)
-
-                        if job_type == "followers":
-                            if profile_pic_url is None and profile_followers is None:
-                                raise RuntimeError("follower scrape returned no profile data")
-                            self.conn.commit()
-                            business_day = job.get("business_date_ist")
-                            if not isinstance(business_day, date):
-                                try:
-                                    business_day = date.fromisoformat(str(business_day))
-                                except Exception:
-                                    business_day = datetime.now(ZoneInfo(APP_TIMEZONE or "Asia/Kolkata")).date()
-                            self._resolve_audience_signals_for_feed(feeder_id, business_day)
-                            self._set_run_result(jid, "done", att, None, None)
-                            continue
 
                         for item, related_handles in zip(items, related_handles_by_item):
                             source_url = item.get("url") or ""
@@ -3123,8 +3194,19 @@ class PureEngine:
                                             CHECKPOINT_BUCKET_MINUTES,
                                         ),
                                     )
+                                if target_feeder_id == feeder_id:
+                                    discovery_touched.update(
+                                        self._satisfy_due_checkpoints_from_discovery(
+                                            feeder_id,
+                                            post_key,
+                                            posted_at,
+                                            item,
+                                            profile_followers,
+                                        )
+                                    )
 
                         self.conn.commit()
+                        self._resolve_completed_checkpoints(discovery_touched)
                         self._set_run_result(jid, "done", att, None, None)
                     except Exception as exc:
                         try:
@@ -3151,16 +3233,6 @@ class PureEngine:
                         jid = int(job["id"])
                         pending_job_ids.add(jid)
                         remaining -= 1
-
-                if time.time() - last_checkpoint_yield >= 5:
-                    try:
-                        self.process_checkpoint_jobs(max(1, min(CHECKPOINT_SCRAPE_CHUNK_SIZE, CHECKPOINT_JOB_CLAIM_LIMIT)))
-                    except Exception:
-                        try:
-                            self.conn.rollback()
-                        except Exception:
-                            pass
-                    last_checkpoint_yield = time.time()
 
     def process_checkpoint_jobs(self, limit: int = 5000, job_ids: list[int] | None = None):
         jobs = self._claim_checkpoint_jobs(limit, job_ids)
@@ -3437,50 +3509,7 @@ class PureEngine:
                             if feeder_id and cp in ("d1", "d3", "d7", "d21"):
                                 touched.add((feeder_id, cp, business_day))
 
-            recomputed_pairs: set[tuple[int, str]] = set()
-            intelligence_triggered_feeders: set[int] = set()
-
-            # Resolver chain for checkpoint jobs once batch writes are done
-            for feeder_id, cp, business_day in sorted(touched, key=lambda item: (item[2], item[0], item[1])):
-                try:
-                    recompute_key = (feeder_id, cp)
-                    if recompute_key not in recomputed_pairs:
-                        self._recompute_feeder_checkpoint_rankings(feeder_id, cp)
-                        recomputed_pairs.add(recompute_key)
-                    self._extend_hot_visual_media_for_day(feeder_id, cp, business_day)
-                    if cp == "d7" and feeder_id not in intelligence_triggered_feeders:
-                        intelligence_triggered_feeders.add(feeder_id)
-                        try:
-                            intelligence_result = self._run_d7_feeder_file_metric_trigger(feeder_id)
-                            stats = intelligence_result.get("intelligence") if isinstance(intelligence_result, dict) else None
-                            media_stats = intelligence_result.get("media") if isinstance(intelligence_result, dict) else None
-                            if (
-                                isinstance(stats, dict)
-                                and (stats.get("selected") or stats.get("failed"))
-                            ) or (
-                                isinstance(media_stats, dict)
-                                and (media_stats.get("staged") or media_stats.get("failed"))
-                            ):
-                                print(
-                                    "[feeder-file-trigger] "
-                                    f"feeder_id={feeder_id} media={media_stats} intelligence={stats}"
-                                )
-                        except Exception as intelligence_exc:
-                            try:
-                                self.conn.rollback()
-                            except Exception:
-                                pass
-                            print(f"[feeder-file-trigger] failed for feeder={feeder_id}: {intelligence_exc}")
-                    self._resolve_for_feeder(feeder_id, cp, business_day)
-                    self._try_resolve_feed(feeder_id, cp, business_day)
-                except Exception as resolve_exc:
-                    try:
-                        self.conn.rollback()
-                    except Exception:
-                        pass
-                    print(
-                        f"[checkpoint-resolve] failed for feeder={feeder_id} checkpoint={cp} business_day={business_day}: {resolve_exc}"
-                    )
+            self._resolve_completed_checkpoints(touched)
 
         except Exception as exc:
             try:
@@ -5871,11 +5900,9 @@ def run_worker(loop_sleep_seconds: int = 2, run_limit: int = 120, checkpoint_lim
             # Process jobs
             try:
                 eng.ensure_connection("before job processing", verify=True)
-                eng.ensure_connection("before checkpoint processing", verify=True)
-                eng.process_checkpoint_jobs(effective_checkpoint_limit)
                 eng.ensure_connection("before run processing", verify=True)
                 eng.process_run_jobs(run_limit)
-                eng.ensure_connection("after run checkpoint processing", verify=True)
+                eng.ensure_connection("after discovery checkpoint processing", verify=True)
                 eng.process_checkpoint_jobs(effective_checkpoint_limit)
                 eng.ensure_connection("before media processing", verify=True)
                 eng.process_post_media_assets()

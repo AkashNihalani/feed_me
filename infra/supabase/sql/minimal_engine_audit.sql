@@ -33,10 +33,6 @@ with required_functions(name) as (
     ('fn_is_hot_percentile'),
     ('enqueue_daily_jobs'),
     ('enqueue_daily_job_for_feeder'),
-    ('enqueue_poll_jobs'),
-    ('enqueue_poll_job_for_feeder'),
-    ('enqueue_weekly_follower_jobs'),
-    ('enqueue_weekly_follower_job_for_feeder'),
     ('bootstrap_feeder_jobs'),
     ('enqueue_checkpoint_jobs'),
     ('claim_run_jobs'),
@@ -47,9 +43,6 @@ with required_functions(name) as (
     ('set_run_job_result'),
     ('set_checkpoint_job_result'),
     ('requeue_stale_jobs'),
-    ('finalize_daily_jobs_for_day'),
-    ('enqueue_repair_jobs_from_previous_day'),
-    ('skip_unqualified_d21_jobs'),
     ('fn_feed_dashboard')
 )
 select rf.name as function_name,

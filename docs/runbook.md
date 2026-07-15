@@ -31,7 +31,6 @@ Create `apps/worker/.env` from `infra/.env.worker.example`.
 ```bash
 set -a; source apps/worker/.env; set +a
 .venv/bin/python -m apps.worker.app.cli --mode enqueue_daily
-.venv/bin/python -m apps.worker.app.cli --mode enqueue_poll
 .venv/bin/python -m apps.worker.app.cli --mode once
 ```
 
