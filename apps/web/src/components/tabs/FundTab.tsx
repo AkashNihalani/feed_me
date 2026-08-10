@@ -465,17 +465,23 @@ function HardwareToggle({ active }: { active: boolean }) {
   );
 }
 
-export default function FundPage() {
+type FundPageProps = {
+  embedded?: boolean;
+};
+
+function FundPageContent({ embedded = false }: FundPageProps = {}) {
   const router = useRouter();
   const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const contentRef = useRef<HTMLDivElement>(null);
-  const mobileBottomClearance = useTranslucentBrowserChrome
+  const mobileBottomClearance = embedded
+    ? '24px'
+    : useTranslucentBrowserChrome
     ? '0px'
     : 'calc(170px + env(safe-area-inset-bottom))';
   const fundHeaderCompressed = useCompressedOnScroll(
     contentRef,
-    useBrowserPageScroll,
+    !embedded && useBrowserPageScroll,
     { collapseDistance: 220, expandDistance: 120, topGuard: 54 },
   );
 
@@ -875,6 +881,7 @@ export default function FundPage() {
   }, [router]);
 
   useEffect(() => {
+    if (embedded) return;
     let payment: string | null = null;
     try {
       payment = new URLSearchParams(window.location.search).get('payment');
@@ -889,7 +896,7 @@ export default function FundPage() {
         router.replace('/profile');
       }
     })().catch(() => {});
-  }, [router]);
+  }, [embedded, router]);
 
   const slotPlanPrice = slots.plan?.price ?? 499;
   const slotPostsCap = slots.plan?.postsCap ?? 30;
@@ -1357,12 +1364,15 @@ export default function FundPage() {
       transition={{ duration: 0.24, ease: APPLE_EASE }}
       className={cn(
         'relative w-full text-foreground select-none',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[var(--fm-page)]',
-        useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
+        embedded
+          ? 'bg-transparent overflow-visible'
+          : useTranslucentBrowserChrome
+            ? 'bg-transparent overflow-visible'
+            : useBrowserPageScroll ? 'overflow-visible' : 'overflow-hidden',
       )}
-      style={appShellStyle}
+      style={embedded ? { minHeight: 'auto' } : appShellStyle}
     >
-      {!useTranslucentBrowserChrome && (
+      {!embedded && !useTranslucentBrowserChrome && (
         <div
           aria-hidden="true"
           className="pointer-events-none fixed inset-0 z-0 bg-[var(--fm-page)]"
@@ -1599,6 +1609,7 @@ export default function FundPage() {
         />
       )}
 
+      {!embedded && (
       <AppHeader
         id="fund"
         compressed={fundHeaderCompressed}
@@ -1640,25 +1651,33 @@ export default function FundPage() {
           </div>
         </div>
       </AppHeader>
+      )}
 
       {/* ═══ CONTENT STAGGER GRID ═══ */}
       <div className={cn(
         'z-10 pointer-events-none',
-        useBrowserPageScroll
+        embedded
+          ? 'relative'
+          : useBrowserPageScroll
           ? cn('relative', useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]')
           : 'relative h-full',
       )}>
         <div
           ref={contentRef}
           className={cn(
-            'w-full overflow-x-hidden pt-[calc(var(--fm-tab-mobile-content-offset)+env(safe-area-inset-top))] lg:pt-[var(--fm-tab-desktop-content-offset)] pointer-events-auto',
-            useBrowserPageScroll
+            'w-full overflow-x-hidden pointer-events-auto',
+            embedded ? 'pt-0 lg:pt-0' : 'pt-[calc(var(--fm-tab-mobile-content-offset)+env(safe-area-inset-top))] lg:pt-[var(--fm-tab-desktop-content-offset)]',
+            embedded
+              ? 'overflow-visible'
+              : useBrowserPageScroll
               ? cn(useTranslucentBrowserChrome ? 'min-h-[100lvh]' : 'min-h-[var(--fm-app-height,100dvh)]', 'overflow-visible')
               : 'hide-scrollbar h-full overflow-y-auto',
           )}
           style={{
             WebkitOverflowScrolling: useBrowserPageScroll ? undefined : 'touch',
-            paddingBottom: isStandaloneMode ? 'calc(170px + env(safe-area-inset-bottom))' : mobileBottomClearance,
+            paddingBottom: embedded
+              ? mobileBottomClearance
+              : isStandaloneMode ? 'calc(170px + env(safe-area-inset-bottom))' : mobileBottomClearance,
           }}
         >
           <motion.div
@@ -2630,4 +2649,12 @@ export default function FundPage() {
       </div>
     </motion.div>
   );
+}
+
+export function EmbeddedFundPage() {
+  return <FundPageContent embedded />;
+}
+
+export default function FundPage() {
+  return <FundPageContent />;
 }

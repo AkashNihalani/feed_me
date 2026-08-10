@@ -9,6 +9,7 @@ import {
   useSpring,
 } from 'framer-motion';
 import { DashboardSummary } from './dashboardTypes';
+import { cn } from '@/lib/utils';
 
 type MetricKey = 'views' | 'likes' | 'comments';
 
@@ -30,7 +31,6 @@ const EQ_TOL = 0.05;
 const EASE = [0.25, 0.1, 0.25, 1] as const;
 const LAYOUT_SPRING = { type: 'spring', stiffness: 420, damping: 36, mass: 0.9 } as const;
 const BAR_SPRING = { type: 'spring', stiffness: 160, damping: 24, mass: 0.9 } as const;
-const MARKER_SPRING = { type: 'spring', stiffness: 220, damping: 28 } as const;
 
 function percentileToRatio(value: number | null | undefined): number | null {
   if (value == null) return null;
@@ -55,6 +55,11 @@ function toPct(value: number | null, min = 0, max = 100) {
 function formatTopPercentile(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '--';
   return `Top ${Math.round(value)}%`;
+}
+
+function ratioToTopPercentile(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Math.max(1, Math.min(99, Math.round(101 - value * 35)));
 }
 
 function AnimatedMultiplier({ value, suffix = 'x' }: { value: number | null; suffix?: string }) {
@@ -193,7 +198,6 @@ function PerformanceRow({
 }) {
   const tag = tagFor(row.current, row.baseline);
   const fillPct = toPct(row.current, 4, 100);
-  const markerPct = row.baseline == null ? null : toPct(row.baseline, 2, 100);
   const isAbove = tag.kind === 'above';
   const isBelow = tag.kind === 'below';
 
@@ -201,78 +205,48 @@ function PerformanceRow({
     <motion.li
       layout={reduceMotion ? false : 'position'}
       transition={reduceMotion ? { duration: 0 } : { layout: LAYOUT_SPRING }}
-      className="fm-depth-inner relative flex min-h-[104px] w-full min-w-0 flex-1 flex-col justify-between gap-2.5 rounded-[18px] px-3 py-3 sm:min-h-[118px] sm:gap-3 sm:px-3.5 sm:py-3.5 lg:min-h-[124px]"
+      className="relative isolate flex min-h-[88px] w-full min-w-0 flex-1 overflow-hidden rounded-[18px] border border-black/[0.04] bg-foreground/[0.035] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-white/[0.055] dark:bg-white/[0.035] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)] sm:min-h-[102px] sm:px-3.5 sm:py-3.5 lg:min-h-[108px]"
     >
-      <div className="relative z-[1] flex min-w-0 items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2">
+      <motion.span
+        aria-hidden="true"
+        className={cn(
+          'absolute inset-y-0 left-0 -z-10 w-full origin-left',
+          isBelow
+            ? 'bg-foreground/[0.055] dark:bg-white/[0.055]'
+            : 'bg-[rgb(var(--fm-accent-rgb)/0.10)] dark:bg-[rgb(var(--fm-accent-rgb)/0.14)]',
+        )}
+        initial={reduceMotion ? false : { scaleX: 0 }}
+        animate={{ scaleX: fillPct / 100 }}
+        transition={reduceMotion ? { duration: 0 } : BAR_SPRING}
+      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-y-0 left-1/2 -z-10 w-px border-l border-dashed',
+          isAbove ? 'border-[rgb(var(--fm-accent-rgb)/0.34)]' : 'border-foreground/16 dark:border-white/14',
+        )}
+      />
+
+      <div className="relative z-[1] grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <div className="flex min-w-0 flex-col gap-2">
           <span className="fm-depth-title shrink-0 text-[10px] font-black uppercase leading-none tracking-[0.14em] text-foreground/45 dark:text-white/40 sm:text-[12px] lg:text-[12px]">
             {row.label}
           </span>
+          <span className="min-w-0 truncate text-[9px] font-black uppercase tracking-[0.14em] text-foreground/34 dark:text-white/30">
+            {row.current == null ? 'awaiting read' : `${formatTopPercentile(ratioToTopPercentile(row.current))} window`}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <TagChip tag={tag} />
           <span
-            className={[
-              'fm-depth-title font-black leading-none tracking-[-0.04em]',
-              'text-[52px] sm:text-[60px] lg:text-[70px]',
-              isBelow ? 'text-foreground/55 dark:text-white/55' : 'text-foreground dark:text-white',
-            ].join(' ')}
+            className={cn(
+              'fm-depth-title min-w-[74px] text-right text-[34px] font-black leading-none tracking-[-0.04em] tabular-nums sm:text-[42px] lg:text-[48px]',
+              isBelow ? 'text-foreground/58 dark:text-white/58' : 'text-foreground dark:text-white',
+            )}
           >
             <AnimatedMultiplier value={row.current} />
           </span>
         </div>
-        <TagChip tag={tag} />
-      </div>
-
-      <div className="relative h-[9px] w-full overflow-visible rounded-full sm:h-[11px] lg:h-[12px]">
-        <div
-          className="absolute inset-0 rounded-full border border-black/5 bg-[linear-gradient(180deg,rgba(0,0,0,0.05),rgba(0,0,0,0.02))] shadow-[inset_0_1px_2px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(255,255,255,0.6)] dark:border-white/5 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.55),inset_0_-1px_0_rgba(255,255,255,0.03)]"
-          aria-hidden
-        />
-
-        <motion.div
-          layout={false}
-          initial={reduceMotion ? false : { width: 0 }}
-          animate={{ width: `${fillPct}%` }}
-          transition={reduceMotion ? { duration: 0 } : BAR_SPRING}
-          className={[
-            'absolute bottom-0 left-0 top-0 overflow-hidden rounded-full',
-            isAbove ? 'shadow-[0_-2px_14px_rgb(var(--fm-accent-rgb)/0.32)]' : '',
-          ].join(' ')}
-          style={{
-            background: isBelow
-              ? 'linear-gradient(180deg, rgba(0,0,0,0.28), rgba(0,0,0,0.20))'
-              : isAbove
-                ? '#E11D48'
-                : 'linear-gradient(90deg, rgb(var(--fm-accent-rgb)/0.92), rgb(var(--fm-accent-rgb)/0.72))',
-          }}
-        >
-          <div
-            className={[
-              'absolute inset-x-0 top-0 h-[2px] rounded-t-full',
-              isBelow ? 'bg-white/15' : 'bg-white/55',
-            ].join(' ')}
-            aria-hidden
-          />
-        </motion.div>
-
-        {markerPct != null && (
-          <motion.div
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 z-[2] -translate-y-1/2"
-            style={{
-              left: `${markerPct}%`,
-              height: 'calc(100% + 10px)',
-            }}
-            initial={false}
-            animate={{ left: `${markerPct}%` }}
-            transition={reduceMotion ? { duration: 0 } : MARKER_SPRING}
-          >
-            <div className="relative -translate-x-1/2" style={{ height: '100%' }}>
-              <div
-                className="h-full w-[2px] border-l border-dashed border-foreground/45 dark:border-white/40"
-                style={{ borderLeftWidth: '1.5px' }}
-              />
-            </div>
-          </motion.div>
-        )}
       </div>
     </motion.li>
   );
