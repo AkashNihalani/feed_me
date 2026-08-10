@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, Flame } from 'lucide-react';
+import { LayoutGrid, Trophy } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
 import { PILL_SPRING } from '@/lib/motion';
@@ -29,9 +29,13 @@ function FundNavIcon({ size = 20, className = '' }: NavIconProps) {
 
 const NAV_ITEMS = [
   { label: 'Feed', href: '/', icon: LayoutGrid },
-  { label: 'Fire', href: '/fire', icon: Flame },
+  { label: 'Lead', href: '/lead', icon: Trophy },
   { label: 'Fund', href: '/profile', icon: FundNavIcon },
 ];
+
+function primaryTabHref(pathname: string | null) {
+  return pathname === '/fire' ? '/lead' : pathname;
+}
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -45,7 +49,7 @@ export default function BottomNav() {
   // instead of waiting for the route commit (which can be many frames later).
   const [pendingHref, setPendingHref] = useState<{ href: string; fromPathname: string } | null>(null);
   const activeIndex = useMemo(() => {
-    const target = pendingHref?.fromPathname === pathname ? pendingHref.href : pathname;
+    const target = pendingHref?.fromPathname === pathname ? pendingHref.href : primaryTabHref(pathname);
     return NAV_ITEMS.findIndex((item) => target === item.href);
   }, [pendingHref, pathname]);
 
@@ -90,19 +94,20 @@ export default function BottomNav() {
   useEffect(() => {
     try {
       if (!pathname || pathname === '/login') return;
-      const isTab = pathname === '/' || pathname === '/fire' || pathname === '/profile';
+      const tabHref = primaryTabHref(pathname);
+      const isTab = tabHref === '/' || tabHref === '/lead' || tabHref === '/profile';
       if (!isTab) return;
       const existing = sessionStorage.getItem('feedme:last-tab');
       const intent = sessionStorage.getItem('feedme:intent');
-      if (pathname === '/' && existing && existing !== '/' && intent !== '/') return;
-      sessionStorage.setItem('feedme:last-tab', pathname);
+      if (tabHref === '/' && existing && existing !== '/' && intent !== '/') return;
+      sessionStorage.setItem('feedme:last-tab', tabHref);
       sessionStorage.setItem('feedme:last-tab-ts', String(Date.now()));
     } catch {}
   }, [pathname]);
 
   useEffect(() => {
     router.prefetch('/');
-    router.prefetch('/fire');
+    router.prefetch('/lead');
     router.prefetch('/profile');
   }, [router]);
 
@@ -110,7 +115,7 @@ export default function BottomNav() {
     if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
   }, []);
 
-  if (pathname === '/login' || pathname?.startsWith('/command') || pathname?.startsWith('/visit') || pathname?.startsWith('/read')) return null;
+  if (pathname === '/login' || pathname?.startsWith('/command') || pathname?.startsWith('/drop') || pathname?.startsWith('/visit') || pathname?.startsWith('/read')) return null;
 
   return (
     <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
@@ -138,6 +143,7 @@ export default function BottomNav() {
                 prefetch
                 scroll={false}
                 aria-label={item.label}
+                aria-current={isHighlighted ? 'page' : undefined}
                 className="group relative z-10"
                 onClick={(event) => {
                   play(isActive ? 'navReselect' : 'navSwitch');
@@ -145,9 +151,6 @@ export default function BottomNav() {
                   if (isActive && item.href === '/' && typeof window !== 'undefined' && window.location.search.includes('id=')) {
                     event.preventDefault();
                     window.dispatchEvent(new CustomEvent('feedme:feed-tab-reselect'));
-                  }
-                  if (isActive && item.href === '/fire' && typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('feedme:fire-tab-reselect'));
                   }
                   try {
                     sessionStorage.setItem('feedme:intent', item.href);

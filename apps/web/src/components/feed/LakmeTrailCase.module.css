@@ -1,0 +1,597 @@
+.root {
+  --case-red: #ff174f;
+  --case-white: #f5f5f1;
+  height: 100svh;
+  min-height: 100svh;
+  overflow: hidden;
+  background: #000;
+  color: var(--case-white);
+  font-family: "Space Grotesk", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  display: grid;
+  width: min(100%, 1180px);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: clamp(18px, 3vw, 36px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.header {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.handle,
+.window,
+.accountMeta,
+.legend,
+.footer,
+.readTopline {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.handle {
+  font-size: clamp(14px, 1.5vw, 18px);
+  font-weight: 850;
+}
+
+.accountMeta {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.window {
+  font-size: clamp(9px, 1vw, 11px);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.replayButton,
+.closeButton {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: #000;
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.replayButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  transition: border-color 160ms cubic-bezier(0.23, 1, 0.32, 1), transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.replayButton svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.4;
+}
+
+.experience {
+  display: grid;
+  min-height: 0;
+  place-content: center;
+  padding: 12px 0 8px;
+}
+
+.orbitWrap {
+  display: grid;
+  width: 100%;
+  place-items: center;
+}
+
+.orbitStage {
+  position: relative;
+  width: min(76svh, 760px, calc(100vw - 56px));
+  aspect-ratio: 1;
+  cursor: grab;
+  isolation: isolate;
+  touch-action: pan-x;
+}
+
+.orbitStage:active {
+  cursor: grabbing;
+}
+
+.orbitStage:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid rgba(255, 255, 255, 0.76);
+  outline-offset: 5px;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.nodeButton {
+  position: absolute;
+  display: grid;
+  width: clamp(70px, 12vw, 88px);
+  height: clamp(70px, 12vw, 88px);
+  place-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nodeButton:disabled {
+  pointer-events: none;
+}
+
+.nodeCard {
+  --mount-color: var(--case-white);
+  --mount-opacity: 0.72;
+  position: relative;
+  display: block;
+  isolation: isolate;
+  overflow: visible;
+  border: 0;
+  box-sizing: border-box;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.nodeButtonRun .nodeCard {
+  --mount-color: var(--case-red);
+  --mount-opacity: 1;
+}
+
+.nodeCard::before {
+  position: absolute;
+  z-index: -2;
+  inset: 7px -7px -7px 7px;
+  border-radius: 6px;
+  background: var(--mount-color);
+  content: "";
+  opacity: 0;
+  transition: opacity 130ms ease-out;
+}
+
+.nodeCard[data-visible="true"]::before {
+  opacity: var(--mount-opacity);
+}
+
+.nodeCard img {
+  object-fit: cover;
+}
+
+.nodeImage {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #0b0b0b;
+  box-shadow: 0 0 0 3px #000, 0 13px 28px rgba(0, 0, 0, 0.72);
+  clip-path: inset(0 49% 0 49% round 5px);
+  opacity: 0;
+  will-change: clip-path, opacity;
+}
+
+.nodeCard[data-visible="true"] .nodeImage {
+  animation: exposePost 240ms cubic-bezier(0.23, 1, 0.32, 1) 64ms both;
+}
+
+.nodeImage::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  content: "";
+  pointer-events: none;
+}
+
+.nodeButtonFocus .nodeCard {
+  --mount-color: var(--case-red);
+  --mount-opacity: 1;
+}
+
+.nodeMetric {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+  z-index: 5;
+  display: flex;
+  height: 17px;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 0 5px;
+  backdrop-filter: blur(6px) saturate(120%);
+  color: #fff;
+  font-size: clamp(5px, 1.35vw, 7px);
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  text-transform: uppercase;
+}
+
+.nodeCard[data-visible="true"] .nodeMetric {
+  animation: exposeMetric 130ms ease-out 205ms both;
+}
+
+@keyframes exposePost {
+  from {
+    clip-path: inset(0 49% 0 49% round 5px);
+    opacity: 0;
+  }
+
+  to {
+    clip-path: inset(0 0 0 0 round 5px);
+    opacity: 1;
+  }
+}
+
+@keyframes exposeMetric {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.nodeMetric strong {
+  font: inherit;
+}
+
+.nodeMetric span {
+  color: var(--case-red);
+  font-weight: 950;
+}
+
+.centerTitle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  display: grid;
+  width: 27%;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #000;
+  box-shadow: 0 0 0 7px #000, 0 0 0 8px rgba(255, 255, 255, 0.22), 0 18px 34px rgba(0, 0, 0, 0.82);
+  text-align: center;
+  text-transform: uppercase;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.centerTitle strong {
+  font-size: clamp(14px, 4vw, 27px);
+  font-weight: 950;
+  line-height: 0.93;
+  letter-spacing: -0.055em;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.footer p,
+.footer span {
+  margin: 0;
+}
+
+.footer p {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: clamp(9px, 1.1vw, 11px);
+  font-weight: 850;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.readCard {
+  position: relative;
+  display: grid;
+  width: min(100%, 760px);
+  max-height: min(720px, calc(100svh - 48px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 16px;
+  background: rgba(9, 9, 9, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 28px 90px rgba(0, 0, 0, 0.72);
+  grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
+}
+
+.readVisual {
+  position: relative;
+  min-height: 480px;
+  background: #111;
+}
+
+.readVisual img {
+  object-fit: cover;
+}
+
+.readBody {
+  position: relative;
+  padding: 36px;
+}
+
+.readTopline {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding-right: 42px;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.readRoleRun { color: var(--case-red); }
+.readRoleHistory { color: #fff; }
+
+.closeButton {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.closeButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+.readBody h2 {
+  max-width: 360px;
+  margin: 58px 0 20px;
+  font-size: clamp(34px, 4.2vw, 56px);
+  font-weight: 950;
+  line-height: 0.88;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.metrics span {
+  display: grid;
+  gap: 5px;
+  padding: 15px 12px 15px 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.metrics b {
+  color: #fff;
+  font-size: clamp(16px, 2vw, 22px);
+  letter-spacing: -0.04em;
+}
+
+.construction {
+  margin: 22px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.fingerprint {
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  font-weight: 620;
+  line-height: 1.5;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .replayButton:hover,
+  .closeButton:hover {
+    border-color: rgba(255, 255, 255, 0.7);
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nodeCard[data-visible="true"] .nodeImage {
+    animation: none;
+    clip-path: inset(0 0 0 0 round 5px);
+    opacity: 1;
+  }
+
+  .nodeCard[data-visible="true"] .nodeMetric {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.replayButton:active,
+.closeButton:active,
+.nodeButton:active {
+  transform: scale(0.96);
+}
+
+.nodeButton:active {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+.replayButton:focus-visible,
+.closeButton:focus-visible,
+.nodeButton:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding: 18px 14px 16px;
+  }
+
+  .accountMeta {
+    font-size: 7px;
+  }
+
+  .headerRight {
+    gap: 8px;
+  }
+
+  .replayButton {
+    width: 32px;
+    height: 32px;
+  }
+
+  .experience {
+    place-content: start center;
+    padding: clamp(72px, 11svh, 96px) 0 6px;
+  }
+
+  .orbitStage {
+    width: min(calc(100vw - 4px), calc(100svh - 190px));
+    max-width: 430px;
+  }
+
+  .orbitWrap {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+  }
+
+  .footer {
+    display: grid;
+    justify-content: center;
+    gap: 5px;
+    text-align: center;
+  }
+
+  .footer span {
+    color: rgba(255, 255, 255, 0.54);
+    font-size: 7px;
+  }
+
+  .modalBackdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .readCard {
+    width: 100%;
+    max-height: calc(100svh - 24px);
+    overflow-y: auto;
+    border-radius: 18px;
+    grid-template-columns: 1fr;
+  }
+
+  .readVisual {
+    min-height: 34svh;
+    max-height: 310px;
+  }
+
+  .readBody {
+    padding: 22px 20px 24px;
+  }
+
+  .closeButton {
+    top: 16px;
+    right: 16px;
+  }
+
+  .readBody h2 {
+    margin: 34px 0 18px;
+    font-size: clamp(32px, 11vw, 46px);
+  }
+
+  .metrics {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .metrics span {
+    padding: 12px 4px 12px 0;
+    font-size: 6px;
+  }
+
+  .metrics b {
+    font-size: 16px;
+  }
+}
+
+@media (max-height: 700px) and (max-width: 560px) {
+  .accountMeta,
+  .footer span {
+    display: none;
+  }
+
+  .orbitStage {
+    width: min(calc(100vw - 4px), calc(100svh - 140px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replayButton:active,
+  .closeButton:active,
+  .nodeButton:active {
+    transform: none;
+  }
+
+  .nodeButton:active {
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .accountMeta,
+  .footer,
+  .fingerprint {
+    color: rgba(255, 255, 255, 0.82);
+  }
+}

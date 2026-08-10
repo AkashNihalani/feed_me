@@ -1,862 +1,808 @@
 'use client';
 
 /* ─────────────────────────────────────────────────────────────
-   FEEDER READER PAGE — the read the cover opens into.
-   Each run is 10 posts read AGAINST what's driving the account:
-   the within-run bars, the badass triad (what moved /
-   what mattered / the door — with proof), THE SHIFT (what these 10 did
-   to the moves driving the account now), the posts, and the metrics.
+   FEEDER READER PAGE — the editorial read of one bite run.
+   A bite run = the latest 10 posts, read against the last 30 (a 40-post
+   memory). One visual language runs the whole page: LANDING (deep hit / held /
+   soft / low) drives bar height, bar colour, the composition headline, and
+   every evidence post — so the chart and the prose are the same object seen
+   twice.
 
-   Desktop: monument — run bars + metrics | the read.
-   Mobile: a full-bleed card DECK (stacked backs, flick anywhere to change
-   run) with a segmented takeover (Read · Shift · Posts) so nothing buries
-   the read and the run-switch is always a swipe away. Feels like an app.
-   We never say "last 30 / recent memory" — it just feels like we know.
+   Top section is a fixed instrument: trajectory on the left, a fixed-height
+   metric panel on the right. Click a bar and the panel crossfades IN PLACE to
+   that post — the metrics never leave the top and nothing below shifts.
+
+   Below: the run_report lead, the read (what got bit / bite size), the crumbs
+   as numbered rows, and the Feed / Fade moves. Thumbnails are slots we fill
+   from the 90-day per-post thumbnail store; placeholder until wired.
    ───────────────────────────────────────────────────────────── */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence, useReducedMotion, type PanInfo } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import Odometer, { SlotNumber } from '@/components/login/Odometer';
+import Odometer from '@/components/login/Odometer';
 
-type Trend = 'up' | 'down' | 'flat';
-type ShiftDir = 'up' | 'down' | 'flat' | 'new';
-type Shift = { move: string; delta: string; read: string; dir: ShiftDir };
+const ACCENT = '#E11D48';
+const SOFT_EASE = [0.16, 0.9, 0.2, 1] as const;
+const SLOT_EASE = [0.34, 1.56, 0.64, 1] as const;
 
-type RunCard = {
-  id: string; deckLabel: string; live: boolean; postsIn?: number;
-  span: string; // duration + when it ran, e.g. "Ran 6 days · ended 2d ago"
-  avg: number; usual: number; trend: Trend;
-  trajectory: number[];
-  headline: string; moved: string; mattered: string; door: string;
-  shift: Shift[];
+type BitePostRef = { id: string; display_tag: string; age?: string; url?: string; thumbnail?: string };
+type PerfPost = { id: string; rank: string | number; landing?: string; job?: string; thumbnail?: string };
+type FeedFadeItem = { read: string; next: string; posts?: BitePostRef[] };
+type Crumb = { label: string; read: string; posts?: BitePostRef[] };
+
+export type BiteRunReport = {
+  headline?: string;
+  run_report: string;
+  crumbs: Crumb[];
+  what_got_bit: string;
+  bite_size: string;
+  performance?: {
+    window?: string;
+    memory_size?: number;
+    drop_shape?: string;
+    period_read?: string;
+    posts?: PerfPost[];
+  };
+  feed_fade: { feed: FeedFadeItem[]; fade: FeedFadeItem[] };
 };
 
-const POSTS_PER_RUN = 10;
-export const FEEDER_READER_CURRENT_AVG = 37;
+export type FeederReaderPageProps = {
+  onBack?: () => void;
+  backLabel?: string;
+  feederLabel?: string;
+  showHeader?: boolean;
+  report?: BiteRunReport | null;
+};
 
-const RUNS: RunCard[] = [
-  {
-    id: 'now', span: 'Day 3 · started 26h ago', deckLabel: 'this run · live', live: true, postsIn: 3, avg: FEEDER_READER_CURRENT_AVG, usual: 24, trend: 'down',
-    trajectory: [40, 44, 31],
-    headline: 'A top 1% that flatters a coin-flip.',
-    moved: 'Your sharpest post in weeks was the mom/son/AI ad-sketch — top 1%. Soak it in.',
-    mattered: 'But that wasn’t the idea, it was the delivery — thin premise, the voices carried it. You’ve run that roleplay move ten times and it swings top 1% to top 81%. Not a format, a coin flip on phrasing.',
-    door: 'Your most reliable idea — faux-tycoon status comedy — hit top 7% and 14%, and you ran it twice. It’s gathering dust while you roll dice on roleplay. Build the status premise inside the character format. Every near-ceiling post already has both — you’ve just never done it on purpose.',
-    shift: [
-      { move: 'Character roleplay', delta: 'most-run · volatile', read: 'No driver earned — still a coin flip.', dir: 'flat' },
-      { move: 'Status comedy', delta: 'held · 2 strong', read: 'One more and it locks as a driver.', dir: 'up' },
-      { move: 'The dark cold-open', delta: 'under every top post', read: 'You lean on it without noticing.', dir: 'new' },
-    ],
-  },
-  {
-    id: 'r1', span: 'Ran 6 days · ended 2d ago', deckLabel: 'last run', live: false, avg: 33, usual: 22, trend: 'down',
-    trajectory: [6, 9, 13, 21, 29, 37, 44, 47, 50, 54],
-    headline: 'Front-loaded, then out of gas.',
-    moved: 'Hot open — first three near the ceiling — then a clean slide to the floor by the close.',
-    mattered: 'You spent the strong idea early and coasted. The back half was filler, and the room left before the end.',
-    door: 'Spread the strong bits — don’t dump them all in the first three and hope the back half carries.',
-    shift: [
-      { move: 'Status comedy', delta: 'cooled', read: 'Burned it early; nothing left to hold the close.', dir: 'down' },
-      { move: 'Topical reactions', delta: 'sank again', read: 'Third run they’ve dragged the floor.', dir: 'down' },
-    ],
-  },
-  {
-    id: 'r2', span: 'Ran 5 days · ended 9d ago', deckLabel: 'two runs back', live: false, avg: 39, usual: 21, trend: 'flat',
-    trajectory: [44, 40, 7, 46, 41, 43, 38, 42, 45, 47],
-    headline: 'One spike, otherwise flat.',
-    moved: 'Nine posts sat mid-to-cold. One — the cricket reaction — broke top 7% and dragged the average up.',
-    mattered: 'Be honest: that wasn’t you, it was the match. Strip it and this is your flattest run in a while.',
-    door: 'Don’t read the spike as a pattern. The flat nine are the real story — and they’re all missing a driver.',
-    shift: [
-      { move: 'Live-moment ride', delta: 'borrowed', read: 'Reach was the match’s, not yours.', dir: 'flat' },
-      { move: 'Status comedy', delta: 'absent', read: 'Your sharpest idea sat out the whole run.', dir: 'down' },
-    ],
-  },
-  {
-    id: 'r3', span: 'Ran 7 days · ended 16d ago', deckLabel: 'three runs back', live: false, avg: 11, usual: 20, trend: 'up',
-    trajectory: [8, 6, 11, 9, 14, 7, 12, 10, 15, 13],
-    headline: 'Best run in weeks — steady heat.',
-    moved: 'Ten posts, ten landed top 15%. No dead weight, no fluke spike — just consistent.',
-    mattered: 'Every one leaned on the status-comedy bit. Your sharpest tool, used the whole way through.',
-    door: 'This is the bar. Whatever you’ve changed since — change it back.',
-    shift: [
-      { move: 'Status comedy', delta: 'locked · 4 strong', read: 'This is the run that made it a driver.', dir: 'up' },
-      { move: 'Character roleplay', delta: 'in support', read: 'Carried the idea instead of replacing it.', dir: 'up' },
-    ],
-  },
-  {
-    id: 'r4', span: 'Ran 6 days · ended 24d ago', deckLabel: 'four runs back', live: false, avg: 23, usual: 19, trend: 'flat',
-    trajectory: [44, 40, 33, 27, 22, 17, 14, 11, 9, 7],
-    headline: 'Slow start, strong finish.',
-    moved: 'Opened cold and built — the back half climbed steadily to near the ceiling.',
-    mattered: 'You found the groove late. The posts that worked all dropped the polish and got loose.',
-    door: 'Start where you finished — open loose, skip the warm-up.',
-    shift: [{ move: 'Loose, unscripted bits', delta: 'surfaced', read: 'The looser it got, the harder it hit.', dir: 'new' }],
-  },
-];
+/* ── landing: the one language ───────────────────────────────────────────────
+   Every "where did it land" signal collapses to a 0–3 tier. Bar height comes
+   from the real rank; tier only decides colour + label, so the chart, the
+   composition strip, and the evidence chips all read the same. */
+type Tier = 0 | 1 | 2 | 3;
 
-const TREND_GLYPH: Record<Trend, string> = { up: '▲', down: '▼', flat: '—' };
-const SHIFT_GLYPH: Record<ShiftDir, string> = { up: '▲', down: '▼', flat: '—', new: '＋' };
-const heightFor = (l: number) => Math.max(0.08, Math.min(1, 1 - l / 62));
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-// One-line read per post, by where it sits in the run and the band it landed in.
-// "rank" is the feeder-file percentile (lower = better).
-function postTag(rank: number, index: number, total: number): string {
-  if (index === 0) return rank <= 12 ? 'the hot open' : 'a cold open';
-  if (index === total - 1) return rank <= 20 ? 'stuck the landing' : 'the floor';
-  if (rank <= 8) return 'the spike';
-  if (rank <= 16) return 'near the ceiling';
-  if (rank <= 30) return 'holding';
-  if (rank <= 45) return 'cooling';
-  return 'dead weight';
+function landingTier(landing?: string): Tier {
+  const l = (landing || '').toLowerCase();
+  if (l.includes('hit') || l.includes('deep') || l.includes('top')) return 3;
+  if (l.includes('low')) return 0;
+  if (l.includes('soft')) return 1;
+  return 2; // held / useful middle
 }
 
-// Mock per-post metrics derived from feeder-file rank (better rank → more reach).
-// Swap for real run-report fields later; shape stays the same.
-function statFor(rank: number) {
-  const reach = Math.max(46000, Math.round((105 - rank) * 13200));
-  return { views: reach, likes: Math.round(reach * 0.092), comments: Math.round(reach * 0.0023) };
+const TIER_META: Record<Tier, { label: string; bar: string; dot: string; text: string; faded: string }> = {
+  3: { label: 'Deep hit', bar: 'bg-[#F71852]', dot: 'bg-[#F71852]', text: 'text-[#E11D48]', faded: 'bg-[#F71852]/15' },
+  2: { label: 'Held', bar: 'bg-foreground/55', dot: 'bg-foreground/55', text: 'text-foreground/70', faded: 'bg-foreground/10' },
+  1: { label: 'Soft', bar: 'bg-foreground/28', dot: 'bg-foreground/30', text: 'text-foreground/45', faded: 'bg-foreground/[0.06]' },
+  0: { label: 'Low', bar: 'bg-foreground/14', dot: 'bg-foreground/18', text: 'text-foreground/35', faded: 'bg-foreground/[0.04]' },
+};
+
+function parseRank(rank: string | number): { value: number; window: number } {
+  if (typeof rank === 'number') return { value: rank, window: 40 };
+  const [v, w] = String(rank).split('/');
+  return { value: Math.max(1, Math.round(Number(v) || 50)), window: Math.max(2, Math.round(Number(w) || 40)) };
 }
 
-// Split into the numeric part and the unit suffix. The suffix (K/M) is rendered
-// outside the slot animation — SlotNumber gives marks a thin fixed-width slot
-// that clips wide letters like M/K.
-function compactParts(n: number): { num: string; suffix: string } {
-  if (n >= 1e6) return { num: (n / 1e6).toFixed(1).replace(/\.0$/, ''), suffix: 'M' };
-  if (n >= 1e3) return { num: String(Math.round(n / 1e3)), suffix: 'K' };
-  return { num: String(n), suffix: '' };
+// Taller = better (lower rank). Full range so a 4/40 towers over a 39/40 — no
+// baseline compression. A small floor keeps the worst post a visible stub.
+function barHeight(rank: number, window: number) {
+  return 0.08 + 0.92 * ((window - rank) / (window - 1));
+}
+
+// "5 top, 2 held, 2 soft, 1 low" → ordered tier counts, highest tier first.
+function parseDropShape(shape?: string): { tier: Tier; label: string; count: number }[] {
+  const labels: Record<string, Tier> = { top: 3, held: 2, soft: 1, low: 0 };
+  const found: Record<Tier, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  (shape || '').split(',').forEach((part) => {
+    const m = part.trim().match(/(\d+)\s+(\w+)/);
+    if (!m) return;
+    const tier = labels[m[2].toLowerCase()];
+    if (tier != null) found[tier] += Number(m[1]);
+  });
+  return ([3, 2, 1, 0] as Tier[]).map((tier) => ({ tier, label: TIER_META[tier].label, count: found[tier] })).filter((s) => s.count > 0);
+}
+
+/* A real report renders as one run. Historical navigation can be populated once
+   the API supplies verified prior reports; the frontend does not invent them. */
+type RunView = { key: string; deckLabel: string; span: string; live: boolean; report: BiteRunReport };
+
+function buildRuns(report: BiteRunReport): RunView[] {
+  return [{ key: 'latest', deckLabel: 'latest run', span: 'Last 10 posts · this week', live: false, report }];
 }
 
 function Eyebrow({ children, accent = false, className }: { children: React.ReactNode; accent?: boolean; className?: string }) {
   return <span className={cn('text-[10px] font-black uppercase tracking-[0.22em]', accent ? 'text-[#E11D48]' : 'text-foreground/40', className)}>{children}</span>;
 }
 
-function RunMeta({ run }: { run: RunCard }) {
+/* ── post thumbnail slot — filled from the 90-day per-post store; graceful
+   placeholder until wired. Never a fabricated metric tile. */
+// fill = size to the parent's height (used in the fixed-height instrument panel so
+// selecting a post can never grow the section). Otherwise width-based.
+function PostThumb({ post, fill }: { post: { display_tag?: string; thumbnail?: string }; fill?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 sm:gap-2.5">
-      {run.live ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[#E11D48] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white">
-          <span className="h-1 w-1 rounded-full bg-white fm-live-dot" /> Live · {run.postsIn}/{POSTS_PER_RUN}
-        </span>
+    <div className={cn('relative shrink-0 overflow-hidden rounded-[16px] border border-foreground/12 bg-foreground/[0.05]', fill ? 'h-full w-auto' : 'w-[120px]')} style={{ aspectRatio: '9 / 16' }}>
+      {post.thumbnail ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={post.thumbnail} alt={post.display_tag || ''} className="h-full w-full object-cover" />
       ) : (
-        <span className="rounded-full border border-foreground/12 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/40">Sealed · {POSTS_PER_RUN} posts</span>
+        <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+          <span className="block h-9 w-9 rounded-full border border-foreground/20" />
+          <span className="absolute ml-[2px] border-y-[7px] border-l-[11px] border-y-transparent border-l-foreground/35" />
+        </span>
       )}
-      <span className="inline-flex items-baseline font-black leading-none text-foreground">
-        <span className="mr-1.5 self-center text-[10px] font-black uppercase tracking-[0.2em] text-foreground/40">avg</span>
-        <Odometer value={run.avg} className="inline-flex min-w-[1.22em] text-[34px] sm:text-[46px] lg:text-[78px] xl:text-[88px]" />
-        <span className="text-[0.36em] text-[#E11D48]">%</span>
-      </span>
-      <span className="inline-flex items-baseline gap-1 text-[10px] font-black uppercase tracking-[0.12em] text-foreground/45">
-        <span className={cn(run.trend === 'down' ? 'text-[#E11D48]' : run.trend === 'up' ? 'text-foreground/70' : 'text-foreground/40')}>{TREND_GLYPH[run.trend]}</span>
-        vs usual <span className="text-foreground/65"><Odometer value={run.usual} className="inline-flex" /></span>%
-      </span>
+      <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-white/25" />
     </div>
   );
 }
 
-const SOFT_EASE = [0.16, 0.9, 0.2, 1] as const;
-
-// Premium one-by-one reveal — each element slots in after the previous. Explicit
-// objects (not variant labels) so it always fires on mount, even nested inside the
-// run-switch slide. Tuned so it reads sequential without leaving a blank screen.
-const HERO_STEP = 0.07;
-const HERO_BASE = 0.05;
-function revealAt(delay: number, reduce: boolean) {
-  if (reduce) return {};
-  return {
-    initial: { opacity: 0, y: 12 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.46, ease: SOFT_EASE, delay },
-  };
-}
-function heroReveal(i: number, reduce: boolean) {
-  return revealAt(HERO_BASE + i * HERO_STEP, reduce);
-}
-
-type RunBarSlot = {
-  index: number;
-  rank: number | null;
-  fill: number;
-  posted: boolean;
-};
-
-type BarTone = {
-  color: string;
-  glow: string;
-  glowStrength: number;
-  label: string;
-  pulse: boolean;
-};
-
-function postStrength(rank: number, run: RunCard): number {
-  const scores = run.trajectory.map((rank) => 101 - rank);
-  const minScore = Math.min(...scores);
-  const maxScore = Math.max(...scores);
-  const spread = Math.max(22, maxScore - minScore);
-  const mid = (minScore + maxScore) / 2;
-  const domainMin = clamp(mid - spread / 2, 1, 101 - spread);
-  const domainMax = domainMin + spread;
-  return clamp(0.18 + clamp((101 - rank - domainMin) / (domainMax - domainMin), 0, 1) * 0.78, 0.18, 0.96);
+/* ── mentions — wherever the read pins posts (crumbs, feed, fade) we name them
+   inline instead of repeating thumbnails. A run post jumps to the top instrument
+   and selects itself (the one rich view lives there); a memory post opens out.
+   Text pills wrap, so any number of pinned posts is fine. */
+function Mentions({ posts, runIndexById, onMention, className }: { posts?: BitePostRef[]; runIndexById: Map<string, number>; onMention: (i: number, el: HTMLElement) => void; className?: string }) {
+  if (!posts || posts.length === 0) return null;
+  return (
+    <div className={cn('flex flex-wrap items-center gap-x-2.5 gap-y-2', className ?? 'mt-3.5')}>
+      <span className="text-[9px] font-black uppercase tracking-[0.18em] text-foreground/30">pinned</span>
+      {posts.map((post) => {
+        const idx = runIndexById.get(post.id);
+        const inRun = idx != null;
+        const base = 'group inline-flex items-center gap-1 text-[12.5px] font-black leading-tight tracking-tight no-underline transition-colors';
+        const name = <span className="underline decoration-1 underline-offset-[3px] decoration-foreground/20 group-hover:decoration-[#E11D48]">{post.display_tag}</span>;
+        if (inRun) {
+          return (
+            <button key={`${post.id}:${post.display_tag}`} type="button" onClick={(e) => onMention(idx!, e.currentTarget)} className={cn(base, 'text-foreground/72 hover:text-[#E11D48]')}>
+              {name}<span aria-hidden className="text-[10px] text-foreground/35 group-hover:text-[#E11D48]">↑</span>
+            </button>
+          );
+        }
+        if (post.url) {
+          return (
+            <a key={`${post.id}:${post.display_tag}`} href={post.url} target="_blank" rel="noreferrer" className={cn(base, 'text-foreground/55 hover:text-[#E11D48]')}>
+              {name}<span aria-hidden className="text-[10px] text-foreground/35 group-hover:text-[#E11D48]">↗</span>
+            </a>
+          );
+        }
+        return <span key={`${post.id}:${post.display_tag}`} className={cn(base, 'text-foreground/55')}>{name}</span>;
+      })}
+    </div>
+  );
 }
 
-function barToneForRank(rank: number, run: RunCard): BarTone {
-  const fill = postStrength(rank, run);
-  if (fill >= 0.88 || rank <= 8) {
-    return {
-      color: '#F71852',
-      glow: 'rgba(247,24,82,0.42)',
-      glowStrength: 0.74,
-      label: 'text-[#FF5C84]',
-      pulse: true,
-    };
-  }
-  if (fill >= 0.68 || rank <= 18) {
-    return {
-      color: '#D41444',
-      glow: 'rgba(225,29,72,0.28)',
-      glowStrength: 0.54,
-      label: 'text-[#FB7185]',
-      pulse: true,
-    };
-  }
-  if (fill >= 0.42 || rank <= 36) {
-    return {
-      color: '#9F1239',
-      glow: 'rgba(159,18,57,0.2)',
-      glowStrength: 0.34,
-      label: 'text-foreground/46',
-      pulse: false,
-    };
-  }
-  return {
-    color: rank >= 55 ? '#1A050A' : '#4A0B1A',
-    glow: 'rgba(74,11,26,0.16)',
-    glowStrength: 0.2,
-    label: 'text-foreground/34',
-    pulse: false,
-  };
-}
-
-function runBarSlots(run: RunCard): { slots: RunBarSlot[]; baseline: number } {
-  const slots: RunBarSlot[] = Array.from({ length: POSTS_PER_RUN }, (_, index) => {
-    const rank = run.trajectory[index] ?? null;
-    if (rank == null) return { index, rank, fill: 0, posted: false };
-    return { index, rank, fill: postStrength(rank, run), posted: true };
-  });
-  return { slots, baseline: postStrength(run.usual, run) };
-}
-
-function RunBars({
-  run,
-  selectedIndex,
-  onSelect,
-  reduce,
-  mode,
-}: {
-  run: RunCard;
-  selectedIndex: number | null;
-  onSelect: (i: number) => void;
-  reduce: boolean;
-  mode: 'desktop' | 'mobile';
-}) {
-  const { slots, baseline } = runBarSlots(run);
-  const compact = mode === 'mobile';
-  const graphDelay = compact ? HERO_BASE + 6 * HERO_STEP : 0.1;
-  const stagger = compact ? 0.064 : 0.086;
-  const lastPostedIndex = Math.max(0, run.trajectory.length - 1);
-  const bestIndex = run.trajectory.indexOf(Math.min(...run.trajectory));
-  const pulseIndex = run.live ? lastPostedIndex : bestIndex;
+/* ── the instrument: trajectory + a fixed-height metric panel, side by side.
+   Selecting a bar swaps the panel in place. Nothing below ever moves. */
+function Bars({ posts, selected, onSelect, reduce, className }: { posts: PerfPost[]; selected: number | null; onSelect: (i: number) => void; reduce: boolean; className?: string }) {
+  const window = parseRank(posts[0]?.rank ?? '20/40').window;
+  const midHeight = barHeight(window / 2, window);
+  const ranks = posts.map((p) => parseRank(p.rank).value);
+  const bestIndex = ranks.indexOf(Math.min(...ranks));
 
   return (
-    <motion.div
-      {...(reduce ? {} : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.36, ease: SOFT_EASE, delay: graphDelay } })}
-      className={cn('relative w-full', compact ? 'h-[clamp(170px,42vw,220px)]' : 'h-full min-h-[250px]')}
-    >
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between text-[8px] font-black uppercase tracking-[0.14em] text-foreground/28">
-        <span>open</span>
-        <span>close</span>
+    <div className={cn('relative h-[clamp(176px,30vw,236px)] w-full', className)}>
+      <div className="pointer-events-none absolute inset-x-0 -top-0.5 flex justify-between text-[8px] font-black uppercase tracking-[0.16em] text-foreground/25">
+        <span>best · rank 1</span>
+        <span>memory · {window}</span>
       </div>
-      <motion.span
-        aria-hidden
-        className="pointer-events-none absolute left-0 right-0 z-20 h-px origin-left bg-foreground/24"
-        style={{ bottom: `${baseline * 100}%` }}
-        initial={reduce ? false : { scaleX: 0, opacity: 0 }}
-        animate={{ scaleX: 1, opacity: 1 }}
-        transition={reduce ? { duration: 0 } : { delay: graphDelay + 0.72, duration: 0.48, ease: SOFT_EASE }}
-      />
-      <span
-        className="pointer-events-none absolute right-0 z-20 -translate-y-1/2 rounded-full bg-background/70 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-foreground/38 backdrop-blur"
-        style={{ bottom: `${baseline * 100}%` }}
-      >
-        usual {run.usual}%
-      </span>
-      <div className={cn('absolute inset-x-0 bottom-0 top-5 grid grid-cols-10 items-end', compact ? 'gap-1.5' : 'gap-2.5 xl:gap-3')}>
-        {slots.map((slot) => {
-          const active = selectedIndex === slot.index;
-          const best = slot.index === bestIndex;
-          const fill = slot.posted ? slot.fill : 0;
-          const fillDelay = reduce || !slot.posted ? 0 : graphDelay + 0.07 + slot.index * stagger;
-          const tone = slot.rank == null ? null : barToneForRank(slot.rank, run);
-          const shouldPulse = Boolean(tone?.pulse && slot.index === pulseIndex);
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 z-10 h-px bg-foreground/15" style={{ bottom: `${midHeight * 100}%` }} />
+      <span className="pointer-events-none absolute right-0 z-10 -translate-y-1/2 text-[7px] font-black uppercase tracking-[0.12em] text-foreground/30" style={{ bottom: `${midHeight * 100}%` }}>top half</span>
+
+      <div className="absolute inset-x-0 bottom-0 top-4 grid grid-cols-10 items-end gap-[5px] sm:gap-2">
+        {posts.map((post, i) => {
+          const { value, window: w } = parseRank(post.rank);
+          const tier = landingTier(post.landing);
+          const meta = TIER_META[tier];
+          const h = barHeight(value, w);
+          const active = selected === i;
+          const best = i === bestIndex;
           return (
             <button
-              key={slot.index}
+              key={post.id}
               type="button"
-              disabled={!slot.posted}
-              aria-label={slot.posted ? `Post ${slot.index + 1}, top ${slot.rank}%` : `Future post ${slot.index + 1}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (slot.posted) onSelect(slot.index);
-              }}
-              className={cn(
-                'group/bar relative flex h-full min-w-0 items-end justify-center rounded-[12px] outline-none transition-transform duration-300 focus-visible:ring-2 focus-visible:ring-[#E11D48]/40',
-                active ? 'scale-x-[1.06]' : 'scale-x-100',
-                slot.posted ? 'cursor-pointer' : 'cursor-default',
-              )}
+              onClick={() => onSelect(i)}
+              aria-label={`Post ${i + 1}, rank ${value} of ${w}, ${meta.label}`}
+              className="group relative flex h-full min-w-0 items-end justify-center rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-[#E11D48]/40"
             >
-              {slot.posted ? (
-                <span className="absolute inset-x-0 bottom-0 top-0 rounded-[12px] bg-[#1A050A]/24 shadow-[inset_0_1px_0_rgba(255,255,255,0.026),inset_0_-16px_26px_rgba(0,0,0,0.34)] dark:bg-[#1A050A]/34" />
-              ) : (
-                <span className="absolute inset-x-[28%] bottom-0 h-1.5 rounded-full bg-[#1A050A]/24 dark:bg-white/[0.035]" />
-              )}
-              {slot.posted && (
-                <>
-                  <motion.span
-                    aria-hidden
-                    className="absolute inset-x-[10%] bottom-0 rounded-t-[14px] blur-[16px]"
-                    style={{ height: `${Math.max(18, fill * 82)}%`, backgroundColor: tone?.glow }}
-                    initial={reduce ? false : { opacity: 0 }}
-                    animate={shouldPulse && !reduce ? { opacity: [tone?.glowStrength ?? 0.3, 0.86, tone?.glowStrength ?? 0.3] } : { opacity: active || best ? (tone?.glowStrength ?? 0.42) : (tone?.glowStrength ?? 0.24) * 0.72 }}
-                    transition={shouldPulse && !reduce ? { delay: graphDelay + 0.2 + lastPostedIndex * stagger, duration: 1.2, ease: 'easeInOut' } : { duration: reduce ? 0 : 0.28 }}
-                  />
-                  {active && <span aria-hidden className="absolute -inset-x-1 bottom-0 top-4 rounded-[15px] bg-[#F71852]/[0.055] shadow-[0_0_34px_rgba(247,24,82,0.24)]" />}
-                  <motion.span
-                    aria-hidden
-                    className="absolute inset-x-[18%] bottom-0 origin-bottom rounded-t-[9px] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-18px_24px_rgba(26,5,10,0.42),0_10px_24px_rgba(225,29,72,0.11)]"
-                    style={{
-                      height: '100%',
-                      backgroundColor: tone?.color,
-                      backgroundImage: 'linear-gradient(180deg,rgba(255,255,255,0.13),rgba(255,255,255,0.02) 32%,rgba(0,0,0,0.28) 100%)',
-                    }}
-                    initial={reduce ? false : { scaleY: 0 }}
-                    animate={{ scaleY: fill }}
-                    transition={reduce ? { duration: 0 } : { delay: fillDelay, duration: compact ? 0.72 : 0.82, ease: [0.16, 0.9, 0.22, 1] }}
-                  />
-                  {(active || best || (run.live && slot.index === lastPostedIndex)) && (
-                    <span
-                      className={cn(
-                        'pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 whitespace-nowrap text-[8px] font-black uppercase tracking-[0.08em]',
-                        active || best ? 'text-[#F71852]' : tone?.label,
-                        compact ? 'text-[7px]' : '',
-                      )}
-                      style={{ bottom: `${Math.min(96, fill * 100 + 4)}%` }}
-                    >
-                      {slot.rank}%
-                    </span>
-                  )}
-                </>
-              )}
+              <span aria-hidden className="absolute inset-x-0 bottom-0 top-0 rounded-[10px] bg-foreground/[0.04]" />
+              <motion.span
+                aria-hidden
+                className={cn('absolute inset-x-[14%] bottom-0 origin-bottom rounded-t-[7px]', meta.bar, (best || tier === 3) && 'shadow-[0_6px_22px_rgba(225,29,72,0.28)]')}
+                style={{ height: '100%' }}
+                initial={reduce ? false : { scaleY: 0 }}
+                animate={{ scaleY: h, opacity: active || selected == null ? 1 : 0.5 }}
+                transition={reduce ? { duration: 0 } : { scaleY: { delay: 0.038 + i * 0.026, duration: 0.41, ease: SOFT_EASE }, opacity: { duration: 0.16 } }}
+              />
+              <span
+                className={cn(
+                  'pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 text-[8px] font-black uppercase tabular-nums tracking-[0.04em] transition-opacity',
+                  active || best ? meta.text : 'text-transparent group-hover:text-foreground/45',
+                )}
+                style={{ bottom: `${Math.min(94, h * 100 + 3)}%` }}
+              >
+                {value}
+              </span>
             </button>
           );
         })}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
-function Triad({ run, reduce, delay = 0 }: { run: RunCard; reduce: boolean; delay?: number }) {
-  const step = 0.08;
+function CompositionStrip({ segments }: { segments: { tier: Tier; label: string; count: number }[] }) {
+  const total = segments.reduce((s, x) => s + x.count, 0) || 1;
   return (
-    <div className="min-w-0 max-w-full">
-      <motion.h3 {...revealAt(delay, reduce)} className="max-w-full text-[24px] font-black leading-[1.06] tracking-tight text-foreground break-words sm:text-[30px] lg:text-[32px] xl:text-[36px]">{run.headline}</motion.h3>
-      <div className="mt-5 space-y-3.5 lg:mt-6 lg:space-y-5">
-        {[['What moved', run.moved], ['What mattered', run.mattered]].map(([l, b], i) => (
-          <motion.div key={l} {...revealAt(delay + (i + 1) * step, reduce)} className="border-t border-foreground/10 pt-3.5 lg:pt-5">
-            <Eyebrow>{l}</Eyebrow>
-            <p className="mt-1.5 max-w-full text-[14.5px] font-black leading-snug tracking-tight text-foreground break-words sm:text-[15.5px] lg:text-[18px] xl:text-[19px]">{b}</p>
-          </motion.div>
+    <div>
+      <div className="flex h-2 w-full overflow-hidden rounded-full">
+        {segments.map((s) => (
+          <span key={s.tier} className={cn('h-full', TIER_META[s.tier].bar)} style={{ width: `${(s.count / total) * 100}%` }} />
         ))}
-        <motion.div {...revealAt(delay + 3 * step, reduce)} className="border-t border-foreground/10 pt-3.5 lg:pt-5">
-          <div className="flex items-baseline gap-2.5">
-            <span className="shrink-0 text-[18px] font-black leading-none text-[#E11D48]">↳</span>
-            <div className="min-w-0"><Eyebrow accent>The door</Eyebrow><p className="mt-1 max-w-full text-[15px] font-black leading-snug tracking-tight text-foreground break-words sm:text-[16px] lg:text-[18px] xl:text-[19px]">{run.door}</p></div>
-          </div>
-        </motion.div>
       </div>
-    </div>
-  );
-}
-
-function ShiftList({ run, reduce, delay = 0 }: { run: RunCard; reduce: boolean; delay?: number }) {
-  const step = 0.08;
-  return (
-    <div className="min-w-0 max-w-full">
-      <motion.div {...revealAt(delay, reduce)} className="flex flex-wrap items-center gap-x-2 gap-y-1"><Eyebrow accent>What this run shifted</Eyebrow><span className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/30">· driving you now</span></motion.div>
-      <div className="mt-1 lg:mt-2">
-        {run.shift.map((s, i) => {
-          const hot = s.dir === 'up' || s.dir === 'new';
-          return (
-            <motion.div key={s.move} {...revealAt(delay + (i + 1) * step, reduce)} className="border-t border-foreground/8 py-3 lg:py-4">
-              <div className="flex items-center gap-2.5 lg:gap-3">
-                <span className={cn('w-3 shrink-0 text-[12px] font-black lg:text-[15px]', hot ? 'text-[#E11D48]' : 'text-foreground/45')}>{SHIFT_GLYPH[s.dir]}</span>
-                <span className="min-w-0 flex-1 text-[14px] font-black tracking-tight text-foreground lg:text-[18px]">{s.move}</span>
-                <span className={cn('max-w-[44%] shrink-0 text-right text-[9px] font-black uppercase leading-tight tracking-[0.12em] lg:text-[11px]', hot ? 'text-[#E11D48]' : 'text-foreground/45')}>{s.delta}</span>
-              </div>
-              <p className="mt-1 max-w-full pl-[22px] text-[12.5px] font-bold leading-snug text-foreground/50 break-words lg:pl-[27px] lg:text-[16px]">{s.read}</p>
-            </motion.div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function RunMetrics({ run, reduce, baseIndex = 0 }: { run: RunCard; reduce: boolean; baseIndex?: number }) {
-  const ceiling = Math.min(...run.trajectory);
-  const floor = Math.max(...run.trajectory);
-  const beat = run.trajectory.filter((l) => l < run.usual).length;
-  const cells = [
-    { k: 'ceiling', v: `top ${ceiling}%` },
-    { k: 'floor', v: `top ${floor}%` },
-    { k: 'beat your usual', v: `${beat}/${run.trajectory.length}` },
-    { k: 'followers', v: '+1.2k' },
-  ];
-  return (
-    <div className="grid grid-cols-2 gap-2 lg:gap-3">
-      {cells.map((c, i) => (
-        <motion.div key={c.k} {...heroReveal(baseIndex + i, reduce)} className="rounded-[12px] border border-foreground/10 bg-foreground/[0.03] px-3 py-2.5 lg:rounded-[16px] lg:px-4 lg:py-4">
-          <div className="text-[20px] font-black leading-none tracking-tight text-foreground lg:text-[32px] xl:text-[36px]">{c.v}</div>
-          <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/45 lg:mt-2 lg:text-[10px]">{c.k}</div>
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-function runMetricCells(run: RunCard) {
-  const ceiling = Math.min(...run.trajectory);
-  const floor = Math.max(...run.trajectory);
-  const beat = run.trajectory.filter((l) => l < run.usual).length;
-  return [
-    { k: 'ceiling top', v: `${ceiling}%` },
-    { k: 'floor top', v: `${floor}%` },
-    { k: 'beat usual', v: `${beat}/${run.trajectory.length}` },
-    { k: 'followers', v: '+1.2k' },
-  ];
-}
-
-function PostPreviewThumb({ rank, index }: { rank: number; index: number }) {
-  const score = clamp((101 - rank) / 100, 0, 1);
-  return (
-    <div
-      className="relative w-[58px] shrink-0 overflow-hidden rounded-[13px] border border-white/[0.12] shadow-[0_14px_30px_rgba(0,0,0,0.16),0_0_26px_rgba(225,29,72,0.13)]"
-      style={{
-        aspectRatio: '9 / 12',
-        background: `linear-gradient(180deg, rgba(255,122,154,${(0.3 + score * 0.32).toFixed(2)}), rgba(225,29,72,${(0.2 + score * 0.24).toFixed(2)}) 48%, #130407 100%)`,
-      }}
-    >
-      <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-white/34" />
-      <span aria-hidden className="absolute -bottom-4 left-1/2 h-12 w-12 -translate-x-1/2 rounded-full bg-[#E11D48]/38 blur-xl" />
-      <span className="absolute left-2 top-2 text-[9px] font-black tabular-nums text-white/76">#{index + 1}</span>
-      <span className="absolute bottom-2 left-2 inline-flex items-baseline font-black leading-none text-white">
-        <span className="text-[19px]">{rank}</span>
-        <span className="ml-[0.02em] text-[9px] text-white/70">%</span>
-      </span>
-    </div>
-  );
-}
-
-function DesktopScoreHud({ run, selected, reduce, onSelect, onClose }: { run: RunCard; selected: number | null; reduce: boolean; onSelect: (i: number) => void; onClose: () => void }) {
-  const postIndex = selected == null ? null : Math.min(selected, run.trajectory.length - 1);
-  const rank = postIndex == null ? null : run.trajectory[postIndex];
-  const postStats = rank == null ? null : statFor(rank);
-  const showPost = postIndex != null && rank != null && postStats != null;
-  const cells = showPost
-    ? [
-        { k: 'views', v: compactParts(postStats.views).num, suffix: compactParts(postStats.views).suffix },
-        { k: 'comments', v: compactParts(postStats.comments).num, suffix: compactParts(postStats.comments).suffix },
-        { k: 'likes', v: compactParts(postStats.likes).num, suffix: compactParts(postStats.likes).suffix },
-        { k: 'post', v: `#${postIndex + 1}` },
-      ]
-    : runMetricCells(run);
-
-  return (
-    <motion.div
-      {...heroReveal(0, reduce)}
-      className="pointer-events-auto relative z-10 flex h-full min-h-[228px] w-[clamp(220px,18vw,260px)] shrink-0 flex-col justify-between py-2 pr-5"
-    >
-      <div className="min-h-[132px]">
-        <div className="flex items-center justify-between gap-3">
-          <Eyebrow accent={run.live}>{showPost ? postTag(rank, postIndex, run.trajectory.length) : run.live ? 'this run' : 'sealed run'}</Eyebrow>
-          <span className={cn('text-[10px] font-black uppercase tracking-[0.14em]', run.trend === 'down' ? 'text-[#E11D48]' : run.trend === 'up' ? 'text-foreground/65' : 'text-foreground/35')}>
-            {TREND_GLYPH[run.trend]}
+      <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1">
+        {segments.map((s) => (
+          <span key={s.tier} className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-foreground/55">
+            <span className={cn('h-1.5 w-1.5 rounded-full', TIER_META[s.tier].dot)} />
+            <span className="tabular-nums text-foreground/80">{s.count}</span> {s.label}
           </span>
-        </div>
-
-        {showPost ? (
-          <div className="mt-4 grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3">
-            <PostPreviewThumb rank={rank} index={postIndex} />
-            <div className="min-w-0">
-              <div className="flex items-end gap-1.5 text-foreground">
-                <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-foreground/40">rank</span>
-                <span className="inline-flex items-baseline font-black leading-none text-[46px] xl:text-[50px]">
-                  <Odometer value={rank} animateOnMount className="inline-flex min-w-[1.12em]" />
-                  <span className="ml-[0.03em] text-[0.34em] text-[#E11D48]">%</span>
-                </span>
-              </div>
-              <p className="mt-1 text-[9px] font-black uppercase leading-snug tracking-[0.12em] text-foreground/42">
-                Post {postIndex + 1} of {run.trajectory.length}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="mt-4 flex items-end gap-2 text-foreground">
-              <span className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-foreground/40">avg</span>
-              <span className="inline-flex items-baseline font-black leading-none text-[56px] xl:text-[62px] 2xl:text-[66px]">
-                <Odometer value={run.avg} animateOnMount className="inline-flex min-w-[1.14em]" />
-                <span className="ml-[0.03em] text-[0.34em] text-[#E11D48]">%</span>
-              </span>
-            </div>
-            <p className="mt-2 min-h-[30px] text-[10px] font-black uppercase leading-snug tracking-[0.12em] text-foreground/42">
-              {run.trajectory.length}/{POSTS_PER_RUN} posts mapped · usual {run.usual}%
-            </p>
-          </>
-        )}
+        ))}
       </div>
+    </div>
+  );
+}
 
-      <div>
-        <div className="grid grid-cols-2 gap-x-5 gap-y-3 border-t border-foreground/10 pt-3.5">
-          {cells.map((cell) => (
-            <div key={cell.k} className="min-w-0">
-              <div className="flex min-w-0 items-baseline text-[20px] font-black leading-none tracking-tight text-foreground xl:text-[22px]">
-                {'suffix' in cell ? (
-                  <>
-                    <span className="truncate">{cell.v}</span>
-                    {cell.suffix && <span className="ml-[0.03em] text-[0.72em] text-foreground/62">{cell.suffix}</span>}
-                  </>
-                ) : (
-                  <span className="truncate">{cell.v}</span>
-                )}
+function MetricPanel({ report, posts, selected, reduce }: { report: BiteRunReport; posts: PerfPost[]; selected: number | null; reduce: boolean }) {
+  const segments = parseDropShape(report.performance?.drop_shape);
+  const ranks = posts.map((p) => parseRank(p.rank).value);
+  const ceiling = Math.min(...ranks);
+  const floor = Math.max(...ranks);
+  const window = parseRank(posts[0]?.rank ?? '20/40').window;
+
+  const post = selected != null ? posts[selected] : null;
+  const allRefs = useMemo(
+    () => report.crumbs.flatMap((c) => c.posts || []).concat(report.feed_fade.feed.concat(report.feed_fade.fade).flatMap((f) => f.posts || [])),
+    [report],
+  );
+  const tag = post ? allRefs.find((p) => p.id === post.id) : undefined;
+  const showPost = post != null;
+
+  return (
+    <div className="relative h-[228px] overflow-hidden">
+      <motion.div
+        className="absolute inset-0"
+        animate={{ opacity: showPost ? 0 : 1 }}
+        transition={reduce ? { duration: 0 } : { duration: 0.17, ease: SOFT_EASE }}
+        style={{ pointerEvents: showPost ? 'none' : 'auto' }}
+        aria-hidden={showPost}
+      >
+        <Eyebrow accent>This run · 10 vs the last 30</Eyebrow>
+        <div className="mt-3"><CompositionStrip segments={segments} /></div>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          {[{ k: 'ceiling', v: ceiling }, { k: 'floor', v: floor }].map((c) => (
+            <div key={c.k} className="rounded-[14px] border border-foreground/10 bg-foreground/[0.03] px-3.5 py-3">
+              <div className="inline-flex items-baseline font-black leading-none text-foreground">
+                <span className="text-[30px] tabular-nums xl:text-[34px]">{c.v}</span>
+                <span className="ml-0.5 text-[12px] text-foreground/40">/{window}</span>
               </div>
-              <div className="mt-1.5 truncate text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 xl:text-[9px]">{cell.k}</div>
+              <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-foreground/40">{c.k} rank</div>
             </div>
           ))}
         </div>
-        <div className="mt-4 flex h-7 items-center gap-1">
-          {showPost ? (
-            <>
-              <HeroNavButton label="Previous post" glyph="‹" disabled={postIndex === 0} onClick={() => onSelect(postIndex - 1)} />
-              <HeroNavButton label="Next post" glyph="›" disabled={postIndex === run.trajectory.length - 1} onClick={() => onSelect(postIndex + 1)} />
-              <HeroNavButton label="Back to run" glyph="×" onClick={onClose} />
-            </>
-          ) : (
-            <span className="text-[9px] font-black uppercase tracking-[0.16em] text-foreground/28">click a bar for post metrics</span>
-          )}
-        </div>
-      </div>
-    </motion.div>
+        {report.performance?.period_read && (
+          <p className="mt-4 text-[12px] font-black leading-snug tracking-tight text-foreground/55">{report.performance.period_read}</p>
+        )}
+      </motion.div>
+
+      <motion.div
+        className="absolute inset-0"
+        animate={{ opacity: showPost ? 1 : 0 }}
+        transition={reduce ? { duration: 0 } : { duration: 0.17, ease: SOFT_EASE }}
+        style={{ pointerEvents: showPost ? 'auto' : 'none' }}
+        aria-hidden={!showPost}
+      >
+        {post && (() => {
+          const { value, window: w } = parseRank(post.rank);
+          const tier = landingTier(post.landing);
+          const meta = TIER_META[tier];
+          return (
+            <div className="flex h-full gap-4 sm:gap-5">
+              <PostThumb post={{ display_tag: tag?.display_tag, thumbnail: tag?.thumbnail || post.thumbnail }} fill />
+              <div className="flex min-w-0 flex-1 flex-col py-0.5">
+                <span className="text-[9px] font-black uppercase tracking-[0.16em] text-foreground/35">post {(selected ?? 0) + 1} of 10 · this run</span>
+                {tag?.display_tag && <p className="mt-1.5 text-[17px] font-black leading-tight tracking-tight text-foreground sm:text-[19px]">{tag.display_tag}</p>}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]', meta.faded, meta.text)}>
+                    <span className={cn('h-1 w-1 rounded-full', meta.dot)} /> {meta.label}
+                  </span>
+                  {post.job && (
+                    <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]', post.job === 'overdelivered' ? 'border-[#E11D48]/30 text-[#E11D48]' : post.job === 'underdelivered' ? 'border-foreground/12 text-foreground/40' : 'border-foreground/15 text-foreground/55')}>{post.job}</span>
+                  )}
+                </div>
+                <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+                  <span className="inline-flex items-baseline font-black leading-none text-foreground">
+                    <span className="mr-1 text-[9px] font-black uppercase tracking-[0.18em] text-foreground/40">rank</span>
+                    <Odometer value={value} animateOnMount className="inline-flex min-w-[1.2em] justify-end text-right text-[40px] tabular-nums xl:text-[46px]" />
+                    <span className="ml-0.5 text-[15px] text-foreground/40">/{w}</span>
+                  </span>
+                  {tag?.url && (
+                    <a href={tag.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-full border border-foreground/15 bg-foreground/[0.03] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-foreground/65 no-underline transition-colors hover:border-[#E11D48]/40 hover:bg-[#E11D48]/[0.08] hover:text-[#E11D48]">
+                      Open post <span aria-hidden>↗</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </motion.div>
+    </div>
   );
 }
 
-function ReaderMonument({ runs, index, setIndex, reduce }: { runs: RunCard[]; index: number; setIndex: (i: number) => void; reduce: boolean }) {
-  const [dir, setDir] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
-  const run = runs[index];
-  const go = (nextIndex: number, direction: number) => {
-    setDir(direction);
-    setIndex((nextIndex + runs.length) % runs.length);
-    setSelected(null);
-  };
-  const pickPost = (i: number) => setSelected(Math.max(0, Math.min(run.trajectory.length - 1, i)));
+function SlotCopy({ slotKey, delay = 0, reduce, className, children }: { slotKey: string; delay?: number; reduce: boolean; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={cn('relative block overflow-hidden', className)}>
+      <div aria-hidden className="invisible block">
+        {children}
+      </div>
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={slotKey}
+          className="absolute inset-x-0 top-0 block"
+          initial={reduce ? false : { opacity: 0, y: '-118%', rotate: -1.6 }}
+          animate={{ opacity: 1, y: '0%', rotate: 0 }}
+          exit={reduce ? undefined : { opacity: 0, y: '118%', rotate: 1.6 }}
+          transition={reduce ? { duration: 0 } : { duration: 0.42, ease: SLOT_EASE, delay }}
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function DesktopTrajectoryPanel({
+  view,
+  report,
+  posts,
+  selected,
+  selectFromBar,
+  reduce,
+  runIndex,
+  runs,
+  goRun,
+}: {
+  view: RunView;
+  report: BiteRunReport;
+  posts: PerfPost[];
+  selected: number | null;
+  selectFromBar: (i: number | null) => void;
+  reduce: boolean;
+  runIndex: number;
+  runs: RunView[];
+  goRun: (next: number) => void;
+}) {
+  const segments = parseDropShape(report.performance?.drop_shape);
+  const ranks = posts.map((p) => parseRank(p.rank).value);
+  const ceiling = Math.min(...ranks);
+  const floor = Math.max(...ranks);
+  const window = parseRank(posts[0]?.rank ?? '20/40').window;
+  const post = selected != null ? posts[selected] : null;
+  const refs = report.crumbs.flatMap((c) => c.posts || []).concat(report.feed_fade.feed.concat(report.feed_fade.fade).flatMap((f) => f.posts || []));
+  const tag = post ? refs.find((p) => p.id === post.id) : undefined;
   const onDragEnd = (_: unknown, info: PanInfo) => {
-    if (info.offset.x < -55) go(index + 1, 1);
-    else if (info.offset.x > 55) go(index - 1, -1);
+    if (info.offset.x < -64 && runIndex < runs.length - 1) goRun(runIndex + 1);
+    else if (info.offset.x > 64 && runIndex > 0) goRun(runIndex - 1);
   };
 
   return (
-    <motion.section
+    <motion.div
       drag={reduce ? false : 'x'}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.12}
       dragSnapToOrigin
       onDragEnd={onDragEnd}
-      onClick={() => { if (selected != null) setSelected(null); }}
-      style={{
-        touchAction: 'pan-y',
-        background: 'linear-gradient(180deg, rgba(247,24,82,0.028), rgba(255,255,255,0.012) 28%, rgba(0,0,0,0.024) 100%)',
-      }}
-      className="fm-depth-glass relative h-[360px] cursor-grab overflow-hidden rounded-[32px] p-5 text-left text-foreground active:cursor-grabbing xl:h-[clamp(380px,40dvh,430px)] xl:p-6 2xl:h-[460px]"
+      whileTap={reduce ? undefined : { scale: 0.992 }}
+      className="fm-depth-glass relative cursor-grab overflow-hidden rounded-[30px] border border-white/80 p-6 shadow-[0_34px_90px_-34px_rgba(15,23,42,0.58),0_16px_36px_-24px_rgba(225,29,72,0.72),inset_0_1px_0_rgba(255,255,255,0.86)] ring-1 ring-[#E11D48]/10 active:cursor-grabbing dark:border-white/10"
+      style={{ touchAction: 'pan-y' }}
     >
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-20 bg-[#F71852]/[0.024]" />
-      <div className="relative z-20 mb-3 flex items-start justify-between gap-6">
-        <div className="min-w-0">
-          <Eyebrow accent={run.live}>{run.deckLabel}</Eyebrow>
-          <div className="mt-1 truncate text-[9px] font-black uppercase tracking-[0.14em] text-foreground/35">{run.span}</div>
-        </div>
-        <div className="flex items-center justify-end gap-1.5">
-          {runs.map((r, i) => (
-            <button key={r.id} type="button" aria-label={r.deckLabel} onClick={(e) => { e.stopPropagation(); go(i, i > index ? 1 : -1); }} className={cn('h-1.5 rounded-full transition-all', i === index ? 'w-5 bg-[#E11D48]' : 'w-1.5 bg-foreground/20 hover:bg-foreground/35')} />
-          ))}
-        </div>
+      <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 z-20 grid h-16 w-5 -translate-y-1/2 place-items-center rounded-full border border-foreground/8 bg-white/68 text-[18px] font-black text-foreground/24 shadow-sm dark:bg-white/[0.08]">‹</span>
+      <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 z-20 grid h-16 w-5 -translate-y-1/2 place-items-center rounded-full border border-foreground/8 bg-white/68 text-[18px] font-black text-foreground/24 shadow-sm dark:bg-white/[0.08]">›</span>
+      <div className="mb-3 flex items-center justify-between">
+        <Eyebrow>Trajectory</Eyebrow>
+        <Eyebrow className="text-foreground/28">{view.span}</Eyebrow>
       </div>
-
-      <AnimatePresence mode="wait" custom={dir} initial={false}>
-        <motion.div
-          key={run.id}
-          custom={dir}
-          variants={reduce ? undefined : slideVariants}
-          initial={reduce ? false : 'enter'}
-          animate="center"
-          exit={reduce ? undefined : 'exit'}
-          transition={{ duration: 0.28, ease: SOFT_EASE }}
-          className="absolute inset-x-5 bottom-5 top-[58px] xl:inset-x-6 xl:bottom-6"
-        >
-          <DesktopScoreHud run={run} selected={selected} reduce={reduce} onSelect={pickPost} onClose={() => setSelected(null)} />
-          <div className="absolute inset-y-3 left-[clamp(250px,21vw,292px)] right-0 z-0 xl:inset-y-4">
-            <RunBars run={run} selectedIndex={selected} onSelect={pickPost} reduce={reduce} mode="desktop" />
+      <div className="grid grid-cols-[minmax(0,1fr)_280px] gap-5">
+        <Bars posts={posts} selected={selected} onSelect={(i) => selectFromBar(i === selected ? null : i)} reduce={reduce} className="h-[min(318px,34vh)] min-h-[240px]" />
+        <div className="flex min-h-0 flex-col border-l border-foreground/8 pl-5">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {post ? (
+              <motion.div
+                key={`post:${post.id}`}
+                initial={reduce ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? undefined : { opacity: 0, y: -8 }}
+                transition={reduce ? { duration: 0 } : { duration: 0.19, ease: SOFT_EASE }}
+                className="flex min-h-[214px] gap-4"
+              >
+                <PostThumb post={{ display_tag: tag?.display_tag, thumbnail: tag?.thumbnail || post.thumbnail }} fill />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <Eyebrow accent>Post {selected! + 1}</Eyebrow>
+                  <p className="mt-2 text-[24px] font-black leading-[0.96] tracking-tight text-foreground">
+                    {tag?.display_tag || `Rank ${parseRank(post.rank).value}`}
+                  </p>
+                  <p className="mt-auto inline-flex items-baseline font-black leading-none text-foreground">
+                    <span className="mr-1 text-[9px] uppercase tracking-[0.16em] text-foreground/38">rank</span>
+                    <span className="text-[54px] tabular-nums text-[#E11D48]">{parseRank(post.rank).value}</span>
+                    <span className="text-[16px] text-foreground/38">/{parseRank(post.rank).window}</span>
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key={`run:${view.key}`}
+                initial={reduce ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? undefined : { opacity: 0, y: -8 }}
+                transition={reduce ? { duration: 0 } : { duration: 0.19, ease: SOFT_EASE }}
+              >
+                <Eyebrow accent>This run</Eyebrow>
+                <div className="mt-3">
+                  <CompositionStrip segments={segments} />
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-2.5">
+                  {[{ k: 'ceiling', v: ceiling }, { k: 'floor', v: floor }].map((c) => (
+                    <div key={c.k} className="rounded-[14px] border border-foreground/10 bg-foreground/[0.03] px-3 py-3">
+                      <div className="inline-flex items-baseline font-black leading-none text-foreground">
+                        <span className="text-[31px] tabular-nums">{c.v}</span>
+                        <span className="ml-0.5 text-[11px] text-foreground/40">/{window}</span>
+                      </div>
+                      <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/40">{c.k}</div>
+                    </div>
+                  ))}
+                </div>
+                {report.performance?.period_read && (
+                  <p className="mt-5 text-[12px] font-black leading-snug tracking-tight text-foreground/56">{report.performance.period_read}</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div className="mt-auto flex items-center gap-1.5 pt-5">
+            {runs.map((r, i) => (
+              <button
+                key={r.key}
+                type="button"
+                aria-label={r.deckLabel}
+                onClick={() => goRun(i)}
+                className={cn('h-2 rounded-full transition-all', i === runIndex ? 'w-8 bg-[#E11D48]' : 'w-2 bg-foreground/18 hover:bg-foreground/35')}
+              />
+            ))}
           </div>
-        </motion.div>
-      </AnimatePresence>
-    </motion.section>
-  );
-}
-
-// ── the stat hero — one block that crossfades between the run's numbers and a
-//    selected post's thumbnail + metrics. Run and post are built to the same
-//    height so the grid stack never resizes between states.
-
-// A metric tile that stays dedicated to its metric but rotates its value between
-// this post and the account's usual, on the Odometer slot animation. Domino:
-// each tile flips after its own delay so the row cascades, never all at once.
-function MetricTile({ label, post, usual, cycle, delayMs, reduce }: { label: string; post: number; usual: number; cycle: number; delayMs: number; reduce: boolean }) {
-  const [showUsual, setShowUsual] = useState(false);
-  useEffect(() => {
-    const target = cycle % 2 === 1;
-    const t = window.setTimeout(() => setShowUsual(target), delayMs);
-    return () => window.clearTimeout(t);
-  }, [cycle, delayMs]);
-  const { num, suffix } = compactParts(showUsual ? usual : post);
-  return (
-    <div className="overflow-hidden rounded-[12px] border border-foreground/10 bg-foreground/[0.03] px-2.5 py-2">
-      <div className="truncate text-[8px] font-black uppercase tracking-[0.12em] text-foreground/40">{label}</div>
-      <div className="mt-1 flex items-baseline text-[19px] font-black leading-none tracking-tight text-foreground tabular-nums">
-        {reduce ? num : <SlotNumber text={num} animateOnMount={false} revealDelayMs={0} />}
-        {suffix && <span className="ml-[0.02em] text-[0.72em] text-foreground/70">{suffix}</span>}
+        </div>
       </div>
-      <div className={cn('mt-1 truncate text-[7px] font-black uppercase tracking-[0.1em] transition-colors duration-500', showUsual ? 'text-foreground/35' : 'text-[#E11D48]')}>{showUsual ? 'vs usual' : 'this post'}</div>
-    </div>
+    </motion.div>
   );
 }
 
-function HeroNavButton({ label, glyph, disabled, onClick }: { label: string; glyph: string; disabled?: boolean; onClick: () => void }) {
+function Instrument({ report, posts, selected, onSelect, reduce, instrumentRef, canReturn, onReturn }: {
+  report: BiteRunReport; posts: PerfPost[]; selected: number | null; onSelect: (i: number | null) => void; reduce: boolean; instrumentRef: React.RefObject<HTMLDivElement | null>; canReturn: boolean; onReturn: () => void;
+}) {
   return (
-    <button type="button" aria-label={label} disabled={disabled} onClick={(e) => { e.stopPropagation(); onClick(); }} className="inline-flex h-7 w-7 items-center justify-center rounded-[8px] border border-foreground/12 bg-foreground/[0.03] text-[15px] font-black leading-none text-foreground/70 transition-colors hover:bg-foreground/[0.07] disabled:opacity-25">
-      {glyph}
-    </button>
+    <section
+      ref={instrumentRef}
+      className="fm-depth-glass relative scroll-mt-4 overflow-hidden rounded-[26px] p-5 sm:rounded-[30px] sm:p-7"
+      style={{ background: 'linear-gradient(180deg, rgba(247,24,82,0.03), rgba(255,255,255,0.01) 30%, rgba(0,0,0,0.02) 100%)' }}
+    >
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={{ background: 'radial-gradient(ellipse 60% 60% at 100% 0%, rgba(225,29,72,0.08), transparent 60%)' }} />
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="h-2 w-2 rounded-full bg-[#E11D48] fm-live-dot" />
+          <Eyebrow>Trajectory · post by post</Eyebrow>
+        </div>
+        {canReturn ? (
+          <button type="button" onClick={onReturn} className="inline-flex items-center gap-1 rounded-full bg-[#E11D48]/[0.08] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#E11D48] transition-colors hover:bg-[#E11D48]/[0.14]">↩ back to the read</button>
+        ) : selected != null ? (
+          <button type="button" onClick={() => onSelect(null)} className="text-[9px] font-black uppercase tracking-[0.16em] text-foreground/45 transition-colors hover:text-foreground/75">← whole run</button>
+        ) : (
+          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-foreground/30">tap a bar</span>
+        )}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:gap-9">
+        <Bars posts={posts} selected={selected} onSelect={(i) => onSelect(i === selected ? null : i)} reduce={reduce} />
+        <div className="lg:border-l lg:border-foreground/10 lg:pl-9">
+          <MetricPanel report={report} posts={posts} selected={selected} reduce={reduce} />
+        </div>
+      </div>
+    </section>
   );
 }
 
-function PostHero({ run, index, reduce, onSelect, onClose, active }: { run: RunCard; index: number; reduce: boolean; onSelect: (i: number) => void; onClose: () => void; active: boolean }) {
-  const total = run.trajectory.length;
-  const rank = run.trajectory[index];
-  const s = statFor(rank);
-  const usual = statFor(run.usual);
-  const w = heightFor(rank);
-  const [cycle, setCycle] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setCycle((c) => c + 1), 5000);
-    return () => window.clearInterval(id);
-  }, [active]);
+/* ── the read ────────────────────────────────────────────────────────────── */
+function reveal(delay: number, reduce: boolean) {
+  if (reduce) return {};
+  return { initial: { opacity: 0, y: 14 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: '-60px' }, transition: { duration: 0.33, ease: SOFT_EASE, delay } };
+}
+
+function Crumbs({ report, runIndexById, onMention, reduce }: { report: BiteRunReport; runIndexById: Map<string, number>; onMention: (i: number, el: HTMLElement) => void; reduce: boolean }) {
   return (
     <div>
-      <div className="flex items-stretch gap-3">
-        <motion.div
-          {...heroReveal(0, reduce)}
-          className="relative w-[72px] shrink-0 overflow-hidden rounded-[13px] border border-white/[0.14]"
-          style={{ aspectRatio: '9 / 12', background: `linear-gradient(180deg, rgba(225,29,72,${(0.2 + w * 0.6).toFixed(2)}), #120406)` }}
-        >
-          <span className="absolute left-2 top-2 text-[10px] font-black tabular-nums text-white/75">#{index + 1}</span>
-        </motion.div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div className="flex items-start justify-between gap-2">
-            <motion.div {...heroReveal(1, reduce)} className="min-w-0">
-              <div className="flex items-baseline gap-1.5 text-foreground">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground/40">rank</span>
-                <span className="inline-flex items-baseline text-[34px] font-black leading-none">
-                  <Odometer value={rank} animateOnMount className="inline-flex min-w-[1.1em]" />
-                  <span className="text-[0.36em] text-[#E11D48]">% top</span>
-                </span>
-              </div>
-              <div className="mt-1.5 truncate text-[11px] font-black uppercase tracking-[0.12em] text-foreground/55">{postTag(rank, index, total)}</div>
-            </motion.div>
-            <motion.div {...heroReveal(2, reduce)} className="flex shrink-0 items-center gap-1">
-              <HeroNavButton label="Previous post" glyph="‹" disabled={index === 0} onClick={() => onSelect(index - 1)} />
-              <HeroNavButton label="Next post" glyph="›" disabled={index === total - 1} onClick={() => onSelect(index + 1)} />
-              <HeroNavButton label="Back to run" glyph="×" onClick={onClose} />
-            </motion.div>
+      <Eyebrow accent>What got bit</Eyebrow>
+      <div className="mt-5">
+        {report.crumbs.map((crumb, i) => (
+          <motion.div
+            key={crumb.label}
+            {...reveal(i * 0.06, reduce)}
+            className="grid gap-x-10 gap-y-3 border-t border-foreground/10 py-7 sm:py-9 lg:grid-cols-[minmax(0,7fr)_minmax(0,9fr)]"
+          >
+            <div className="flex items-start gap-4">
+              <span className="text-[44px] font-black leading-[0.8] tabular-nums text-foreground/[0.15] sm:text-[64px]">{String(i + 1).padStart(2, '0')}</span>
+              <h3 className="pt-1 text-[21px] font-black leading-tight tracking-tight text-foreground sm:text-[27px]">{crumb.label}</h3>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold leading-relaxed text-foreground/68 sm:text-[16.5px]">{crumb.read}</p>
+              <Mentions posts={crumb.posts} runIndexById={runIndexById} onMention={onMention} />
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FeedFade({ report, runIndexById, onMention, reduce }: { report: BiteRunReport; runIndexById: Map<string, number>; onMention: (i: number, el: HTMLElement) => void; reduce: boolean }) {
+  const cols: { kind: 'Feed' | 'Fade'; sub: string; items: FeedFadeItem[] }[] = [
+    { kind: 'Feed', sub: 'give the audience more of this', items: report.feed_fade.feed },
+    { kind: 'Fade', sub: 'lift the ones starting to fade', items: report.feed_fade.fade },
+  ];
+  return (
+    <div className="grid gap-10 lg:grid-cols-2 lg:gap-12">
+      {cols.map((col) => {
+        const feed = col.kind === 'Feed';
+        return (
+          <div key={col.kind}>
+            <div className="border-t-2 pt-4" style={{ borderColor: feed ? ACCENT : 'rgba(127,127,127,0.28)' }}>
+              <h3 className={cn('text-[22px] font-black leading-none tracking-tight sm:text-[26px]', feed ? 'text-[#E11D48]' : 'text-foreground/80')}>{col.kind}</h3>
+              <span className="mt-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-foreground/40">{col.sub}</span>
+            </div>
+            <div className="mt-6 space-y-7">
+              {col.items.map((item, i) => (
+                <motion.div key={`${item.read}:${i}`} {...reveal(i * 0.06, reduce)} className="min-w-0">
+                  <p className="max-w-[520px] text-[15px] font-black leading-snug tracking-tight text-foreground sm:text-[16px]">{item.read}</p>
+                  <div className="mt-3 flex gap-2.5">
+                    <span className={cn('mt-0.5 shrink-0 text-[13px] font-black leading-none', feed ? 'text-[#E11D48]' : 'text-foreground/40')}>↳</span>
+                    <p className="max-w-[500px] text-[13.5px] font-bold leading-relaxed text-foreground/55">{item.next}</p>
+                  </div>
+                  <Mentions posts={item.posts} runIndexById={runIndexById} onMention={onMention} />
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DesktopReaderConsole({
+  feederLabel,
+  view,
+  runs,
+  runIndex,
+  goRun,
+  report,
+  posts,
+  selected,
+  selectFromBar,
+  reduce,
+}: {
+  feederLabel: string;
+  view: RunView;
+  runs: RunView[];
+  runIndex: number;
+  goRun: (next: number) => void;
+  report: BiteRunReport;
+  posts: PerfPost[];
+  selected: number | null;
+  selectFromBar: (i: number | null) => void;
+  reduce: boolean;
+}) {
+  return (
+    <section className="hidden lg:block">
+      <div className="mx-auto grid min-h-[calc(var(--fm-app-height,100dvh)-var(--fm-reader-desktop-offset)-28px)] max-w-[1320px] grid-rows-[auto_auto_auto] gap-4 pb-8">
+        <div className="flex items-end justify-between gap-6 px-2 pt-1">
+          <div className="min-w-0 max-w-[1040px]">
+            <SlotCopy slotKey={`deck:${view.key}`} reduce={reduce}>
+              <Eyebrow accent>{view.deckLabel}</Eyebrow>
+            </SlotCopy>
+            <SlotCopy slotKey={`headline:${view.key}`} delay={0.08} reduce={reduce} className="mt-2">
+              <h1 className="text-[66px] font-black leading-[0.86] tracking-tight text-foreground xl:text-[76px]">
+                {report.headline || feederLabel}
+              </h1>
+            </SlotCopy>
+          </div>
+          <div className="mb-2 flex shrink-0 items-center gap-2">
+            {runs.map((r, i) => (
+              <button
+                key={r.key}
+                type="button"
+                aria-label={r.deckLabel}
+                onClick={() => goRun(i)}
+                className={cn('h-2 rounded-full transition-all', i === runIndex ? 'w-7 bg-[#E11D48]' : 'w-2 bg-foreground/18 hover:bg-foreground/35')}
+              />
+            ))}
+            <button type="button" aria-label="Newer run" disabled={runIndex === 0} onClick={() => goRun(runIndex - 1)} className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-foreground/12 text-[14px] font-black text-foreground/55 disabled:opacity-25">‹</button>
+            <button type="button" aria-label="Older run" disabled={runIndex === runs.length - 1} onClick={() => goRun(runIndex + 1)} className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-foreground/12 text-[14px] font-black text-foreground/55 disabled:opacity-25">›</button>
           </div>
         </div>
-      </div>
-      <div className="mt-2.5 grid grid-cols-3 gap-2">
-        <motion.div {...heroReveal(3, reduce)}><MetricTile label="views" post={s.views} usual={usual.views} cycle={cycle} delayMs={0} reduce={reduce} /></motion.div>
-        <motion.div {...heroReveal(4, reduce)}><MetricTile label="comments" post={s.comments} usual={usual.comments} cycle={cycle} delayMs={380} reduce={reduce} /></motion.div>
-        <motion.div {...heroReveal(5, reduce)}><MetricTile label="likes" post={s.likes} usual={usual.likes} cycle={cycle} delayMs={760} reduce={reduce} /></motion.div>
-      </div>
-    </div>
-  );
-}
-
-function HeroZone({ run, selected, onSelect, onClose, reduce }: { run: RunCard; selected: number | null; onSelect: (i: number) => void; onClose: () => void; reduce: boolean }) {
-  // Both layers stay mounted in one grid cell; we only crossfade opacity between
-  // them. The cell is always sized to the taller layer, so toggling run↔post
-  // never resizes the block — no layout shift / page stretch, on any device.
-  const showPost = selected != null;
-  const postIndex = Math.min(selected ?? 0, run.trajectory.length - 1);
-  return (
-    <div className="grid">
-      <motion.div
-        className="col-start-1 row-start-1 min-w-0"
-        animate={{ opacity: showPost ? 0 : 1 }}
-        transition={reduce ? { duration: 0 } : { duration: 0.3, ease: SOFT_EASE }}
-        style={{ pointerEvents: showPost ? 'none' : 'auto' }}
-        aria-hidden={showPost}
-      >
-        <motion.div {...heroReveal(0, reduce)}><RunMeta run={run} /></motion.div>
-        <div className="mt-4"><RunMetrics run={run} reduce={reduce} baseIndex={1} /></div>
-      </motion.div>
-      <motion.div
-        className="col-start-1 row-start-1 min-w-0"
-        animate={{ opacity: showPost ? 1 : 0 }}
-        transition={reduce ? { duration: 0 } : { duration: 0.3, ease: SOFT_EASE }}
-        style={{ pointerEvents: showPost ? 'auto' : 'none' }}
-        aria-hidden={!showPost}
-      >
-        <PostHero run={run} index={postIndex} reduce={reduce} onSelect={onSelect} onClose={onClose} active={showPost} />
-      </motion.div>
-    </div>
-  );
-}
-
-// ── mobile: one cohesive gesture — swipe sideways anywhere = change run,
-//    scroll down = the full read. No competing tap-tabs. ───────────────────
-const slideVariants = {
-  enter: (d: number) => ({ opacity: 0, x: d >= 0 ? 32 : -32 }),
-  center: { opacity: 1, x: 0 },
-  exit: (d: number) => ({ opacity: 0, x: d >= 0 ? -32 : 32 }),
-};
-
-function MobileDeck({ runs, index, setIndex, reduce }: { runs: RunCard[]; index: number; setIndex: (i: number) => void; reduce: boolean }) {
-  const [dir, setDir] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
-  const run = runs[index];
-  const go = (ni: number, d: number) => {
-    if (ni < 0 || ni >= runs.length || ni === index) return;
-    setDir(d);
-    setIndex(ni);
-    setSelected(null);
-  };
-  const pickPost = (i: number) => setSelected(Math.max(0, Math.min(run.trajectory.length - 1, i)));
-  const onDragEnd = (_: unknown, info: PanInfo) => {
-    if (info.offset.x < -55) go(index + 1, 1);
-    else if (info.offset.x > 55) go(index - 1, -1);
-  };
-  return (
-    <div className="min-w-0 max-w-full overflow-x-hidden lg:hidden">
-      <div className="mb-3 flex items-start justify-between">
-        <div className="min-w-0">
-          <Eyebrow accent={run.live}>{run.deckLabel}</Eyebrow>
-          <div className="mt-1 truncate text-[9px] font-black uppercase tracking-[0.14em] text-foreground/35">{run.span}</div>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {runs.map((r, i) => (
-            <button key={r.id} type="button" aria-label={r.deckLabel} onClick={() => go(i, i > index ? 1 : -1)} className={cn('h-1.5 rounded-full transition-all', i === index ? 'w-5 bg-[#E11D48]' : 'w-1.5 bg-foreground/20')} />
-          ))}
-        </div>
-      </div>
-
-      {/* one card. drag it sideways from ANYWHERE to change run; scroll to read.
-          tapping anywhere (except a bar/nav) returns a selected post to the run. */}
-      <motion.div
-        drag={reduce ? false : 'x'}
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.16}
-        dragSnapToOrigin
-        onDragEnd={onDragEnd}
-        onClick={() => { if (selected != null) setSelected(null); }}
-        style={{ touchAction: 'pan-y' }}
-        className="fm-depth-glass relative max-w-full cursor-grab overflow-hidden rounded-[22px] p-4 active:cursor-grabbing sm:rounded-[24px] sm:p-5"
-      >
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 opacity-90" style={{ background: 'radial-gradient(ellipse 56% 46% at 100% 0%, rgba(225,29,72,0.1), transparent 56%)' }} />
-        <AnimatePresence mode="wait" custom={dir} initial={false}>
-          <motion.div
-            key={run.id}
-            custom={dir}
-            variants={reduce ? undefined : slideVariants}
-            initial={reduce ? false : 'enter'}
-            animate="center"
-            exit={reduce ? undefined : 'exit'}
-            transition={{ duration: 0.28, ease: [0.16, 0.9, 0.2, 1] }}
-            className="min-w-0 max-w-full overflow-hidden"
-          >
-            <HeroZone run={run} selected={selected} onSelect={pickPost} onClose={() => setSelected(null)} reduce={reduce} />
-            <motion.div {...heroReveal(6, reduce)} className="mt-5 sm:mt-6">
-              <div className="flex items-baseline justify-between gap-2">
-                <Eyebrow className="shrink-0 whitespace-nowrap">The run, post by post</Eyebrow>
-                <span className="shrink-0 whitespace-nowrap text-[9px] font-black uppercase tracking-[0.14em] text-foreground/30">{selected == null ? 'tap a bar' : 'tap to close'}</span>
+        <div className="grid grid-cols-[minmax(0,0.95fr)_minmax(500px,0.95fr)] gap-5">
+          <div className="px-2 py-2 pr-4">
+            <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(260px,0.75fr)] gap-8">
+              <div>
+                <Eyebrow>The run read</Eyebrow>
+                <SlotCopy slotKey={`run-read:${view.key}`} delay={0.18} reduce={reduce}>
+                  <p className="mt-3 text-[21px] font-black leading-[1.22] tracking-tight text-foreground/84">
+                    {report.run_report}
+                  </p>
+                </SlotCopy>
               </div>
-              <div className="mt-2"><RunBars run={run} selectedIndex={selected} onSelect={pickPost} reduce={reduce} mode="mobile" /></div>
-            </motion.div>
-            <div className="mt-6 sm:mt-7"><Triad run={run} reduce={reduce} delay={HERO_BASE + 8 * HERO_STEP} /></div>
-            <div className="mt-6 sm:mt-7"><ShiftList run={run} reduce={reduce} delay={HERO_BASE + 11 * HERO_STEP} /></div>
-          </motion.div>
-        </AnimatePresence>
-      </motion.div>
-      <p className="mt-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-foreground/25">swipe sideways to change run · scroll for the full read</p>
-    </div>
-  );
-}
+              <div>
+                <Eyebrow accent>Bite size</Eyebrow>
+                <SlotCopy slotKey={`bite-size:${view.key}`} delay={0.28} reduce={reduce}>
+                  <p className="mt-3 text-[15px] font-black leading-snug tracking-tight text-foreground/68">
+                    {report.bite_size}
+                  </p>
+                </SlotCopy>
+              </div>
+            </div>
+          </div>
 
-// ── desktop split ──────────────────────────────────────────────────────────
-function DesktopSplit({ runs, index, setIndex, reduce }: { runs: RunCard[]; index: number; setIndex: (i: number) => void; reduce: boolean }) {
-  const run = runs[index];
+          <DesktopTrajectoryPanel
+            view={view}
+            report={report}
+            posts={posts}
+            selected={selected}
+            selectFromBar={selectFromBar}
+            reduce={reduce}
+            runIndex={runIndex}
+            runs={runs}
+            goRun={goRun}
+          />
+        </div>
 
-  return (
-    <div className="hidden lg:block">
-      <ReaderMonument runs={runs} index={index} setIndex={setIndex} reduce={reduce} />
+        <div className="grid min-h-0 gap-7">
+          <div className="min-h-0 px-2 py-1">
+            <Eyebrow accent>What got bit</Eyebrow>
+            <div className="mt-3 grid grid-cols-3 gap-9">
+              {report.crumbs.map((crumb, i) => (
+                <SlotCopy key={crumb.label} slotKey={`crumb:${view.key}:${crumb.label}`} delay={0.34 + i * 0.07} reduce={reduce}>
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[24px] font-black leading-none tabular-nums text-[#E11D48]">{String(i + 1).padStart(2, '0')}</span>
+                      <h2 className="text-[31px] font-black leading-[0.94] tracking-tight text-foreground">{crumb.label}</h2>
+                    </div>
+                    <p className="mt-3 text-[18px] font-black leading-[1.18] tracking-tight text-foreground/74">{crumb.read}</p>
+                    <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5">
+                      {(crumb.posts || []).map((post) => (
+                        <span key={`${post.id}:${post.display_tag}`} className="text-[13.5px] font-black leading-tight text-[#E11D48]">
+                          {post.display_tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </SlotCopy>
+              ))}
+            </div>
+          </div>
 
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={`read-${run.id}`}
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={reduce ? undefined : { opacity: 0, y: -8 }}
-          transition={{ duration: 0.28, ease: SOFT_EASE }}
-          className="mt-7 grid min-w-0 gap-10 xl:grid-cols-[minmax(0,0.86fr)_minmax(320px,0.44fr)] xl:gap-12"
-        >
-          <article className="min-w-0 max-w-[900px]">
-            <Triad run={run} reduce={reduce} delay={HERO_BASE + 2 * HERO_STEP} />
-          </article>
-          <aside className="min-w-0 xl:pt-2">
-            <ShiftList run={run} reduce={reduce} delay={HERO_BASE + 6 * HERO_STEP} />
+          <aside className="grid min-h-0 grid-cols-2 gap-10 px-2">
+            {(['Feed', 'Fade'] as const).map((kind) => {
+              const items = kind === 'Feed' ? report.feed_fade.feed : report.feed_fade.fade;
+              return (
+                <div key={kind} className="py-2">
+                  <SlotCopy slotKey={`desktop-${kind}:${view.key}`} delay={0.48 + (kind === 'Fade' ? 0.08 : 0)} reduce={reduce}>
+                    <h3 className={cn('text-[54px] font-black leading-none tracking-tight', kind === 'Feed' ? 'text-[#E11D48]' : 'text-foreground/72')}>{kind}</h3>
+                    <div className="mt-4 grid grid-cols-2 gap-7">
+                      {items.map((item, i) => (
+                        <div key={i} className="border-t border-foreground/8 pt-3">
+                          <p className="text-[18px] font-black leading-[1.14] tracking-tight text-foreground/78">{item.read}</p>
+                          <p className="mt-2 text-[15px] font-bold leading-snug text-foreground/50">{item.next}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </SlotCopy>
+                </div>
+              );
+            })}
           </aside>
-        </motion.div>
-      </AnimatePresence>
-    </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
-export default function FeederReaderPage({ onBack, backLabel = 'Dashboard', feederLabel = '@anuj', showHeader = true }: { onBack?: () => void; backLabel?: string; feederLabel?: string; showHeader?: boolean } = {}) {
+function FeederReaderReport({
+  baseReport,
+  onBack,
+  backLabel = 'Dashboard',
+  feederLabel = '@anuj',
+  showHeader = true,
+}: Omit<FeederReaderPageProps, 'report'> & { baseReport: BiteRunReport }) {
   const reduce = Boolean(useReducedMotion());
-  const [index, setIndex] = useState(0);
+  const runs = useMemo(() => buildRuns(baseReport), [baseReport]);
+
+  const [runIndex, setRunIndex] = useState(0);
+  const view = runs[runIndex];
+  const report = view.report;
+  const posts = useMemo(() => report.performance?.posts?.slice(0, 10) ?? [], [report]);
+  const runIndexById = useMemo(() => new Map(posts.map((p, i) => [p.id, i] as const)), [posts]);
+
+  const [selected, setSelected] = useState<number | null>(null);
+  const instrumentRef = useRef<HTMLDivElement | null>(null);
+  const originRef = useRef<HTMLElement | null>(null);
+  const mobileTopRef = useRef<HTMLDivElement | null>(null);
+  const mobileSwipeRef = useRef<{ x: number; y: number } | null>(null);
+  const [canReturn, setCanReturn] = useState(false);
+
+  const goRun = useCallback((next: number) => {
+    setRunIndex((next + runs.length) % runs.length);
+    setSelected(null);
+    setCanReturn(false);
+    originRef.current = null;
+  }, [runs.length]);
+  const scrollMobileTop = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => mobileTopRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' }));
+    });
+  }, []);
+  const goMobileRun = useCallback((next: number) => {
+    goRun(next);
+    scrollMobileTop();
+  }, [goRun, scrollMobileTop]);
+  useEffect(() => {
+    const node = mobileTopRef.current;
+    if (!node) return undefined;
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      mobileSwipeRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    };
+    const onEnd = (event: TouchEvent) => {
+      const start = mobileSwipeRef.current;
+      const touch = event.changedTouches[0];
+      mobileSwipeRef.current = null;
+      if (!start || !touch) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (Math.abs(dx) < 82 || Math.abs(dx) < Math.abs(dy) * 1.45) return;
+      if (dx < 0 && runIndex < runs.length - 1) goMobileRun(runIndex + 1);
+      else if (dx > 0 && runIndex > 0) goMobileRun(runIndex - 1);
+    };
+    const onCancel = () => { mobileSwipeRef.current = null; };
+    node.addEventListener('touchstart', onStart, { passive: true });
+    node.addEventListener('touchend', onEnd, { passive: true });
+    node.addEventListener('touchcancel', onCancel, { passive: true });
+    return () => {
+      node.removeEventListener('touchstart', onStart);
+      node.removeEventListener('touchend', onEnd);
+      node.removeEventListener('touchcancel', onCancel);
+    };
+  }, [goMobileRun, runIndex, runs.length]);
+  const selectFromBar = (i: number | null) => {
+    setSelected(i);
+    setCanReturn(false);
+    originRef.current = null;
+  };
+  const onMention = (i: number, el: HTMLElement) => {
+    originRef.current = el;
+    setSelected(i);
+    setCanReturn(true);
+    instrumentRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  };
+  const returnToRead = () => {
+    originRef.current?.scrollIntoView({ behavior: 'auto', block: 'center' });
+    setCanReturn(false);
+  };
   const backClass = 'flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-foreground/45 no-underline transition-colors hover:text-foreground/70 sm:text-[11px] sm:tracking-[0.2em]';
+
   return (
-    // Cap the reader so large screens feel expansive without stretching the read.
-    <div className="mx-auto min-w-0 max-w-full overflow-x-hidden text-foreground lg:max-w-[1180px] xl:max-w-[1280px] 2xl:max-w-[1360px]">
+    <div className="mx-auto min-w-0 max-w-full overflow-x-hidden text-foreground lg:max-w-[1160px] xl:max-w-[1280px]">
       {showHeader && (
         <div className="mb-6 grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-2">
           {onBack ? (
@@ -868,8 +814,110 @@ export default function FeederReaderPage({ onBack, backLabel = 'Dashboard', feed
           <span className="min-w-0 truncate text-right text-[11px] font-black tracking-tight text-foreground/70">{feederLabel}</span>
         </div>
       )}
-      <MobileDeck runs={RUNS} index={index} setIndex={setIndex} reduce={reduce} />
-      <DesktopSplit runs={RUNS} index={index} setIndex={setIndex} reduce={reduce} />
+
+      <DesktopReaderConsole
+        feederLabel={feederLabel}
+        view={view}
+        runs={runs}
+        runIndex={runIndex}
+        goRun={goRun}
+        report={report}
+        posts={posts}
+        selected={selected}
+        selectFromBar={selectFromBar}
+        reduce={reduce}
+      />
+
+      <div
+        ref={mobileTopRef}
+        className="lg:hidden"
+      >
+      {/* masthead + run navigator */}
+      <div className="mb-6">
+        <div className="flex items-end justify-between gap-4">
+          <Eyebrow accent>{view.deckLabel}</Eyebrow>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              {runs.map((r, i) => (
+                <button key={r.key} type="button" aria-label={r.deckLabel} onClick={() => goMobileRun(i)} className={cn('h-1.5 rounded-full transition-all', i === runIndex ? 'w-5 bg-[#E11D48]' : 'w-1.5 bg-foreground/20 hover:bg-foreground/40')} />
+              ))}
+            </div>
+            <div className="flex items-center gap-1">
+              <button type="button" aria-label="Newer run" disabled={runIndex === 0} onClick={() => goMobileRun(runIndex - 1)} className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-foreground/14 text-[13px] font-black text-foreground/60 transition-colors hover:bg-foreground/[0.05] disabled:opacity-25">‹</button>
+              <button type="button" aria-label="Older run" disabled={runIndex === runs.length - 1} onClick={() => goMobileRun(runIndex + 1)} className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-foreground/14 text-[13px] font-black text-foreground/60 transition-colors hover:bg-foreground/[0.05] disabled:opacity-25">›</button>
+            </div>
+          </div>
+        </div>
+        <h1 className="mt-2 text-[42px] font-black leading-[0.9] tracking-tight text-foreground sm:text-[52px]">{report.headline || feederLabel}</h1>
+        {report.headline && <p className="mt-1 text-[13px] font-black text-foreground/45">{feederLabel}</p>}
+        <p className="mt-2 text-[11px] font-black uppercase tracking-[0.16em] text-foreground/40">{view.span} · read against the last 30</p>
+      </div>
+
+      <div key={view.key} className="min-w-0 overflow-x-clip">
+          <Instrument report={report} posts={posts} selected={selected} onSelect={selectFromBar} reduce={reduce} instrumentRef={instrumentRef} canReturn={canReturn} onReturn={returnToRead} />
+
+          {/* setup + verdict — twin-length fields paired so neither leaves a gutter */}
+          <div className="mt-9 grid gap-7">
+            <motion.p {...reveal(0, reduce)} className="text-[22px] font-black leading-[1.22] tracking-tight text-foreground/84 first-letter:float-left first-letter:mr-2.5 first-letter:text-[64px] first-letter:font-black first-letter:leading-[0.78] first-letter:text-[#E11D48] sm:text-[24px]">
+              {report.run_report}
+            </motion.p>
+            <motion.div {...reveal(0.06, reduce)}>
+              <Eyebrow accent>Bite size</Eyebrow>
+              <p className="mt-3 text-[17px] font-black leading-snug tracking-tight text-foreground/[0.68] sm:text-[18px]">{report.bite_size}</p>
+            </motion.div>
+          </div>
+
+          {/* the long read — two columns so it fills the width and stays readable */}
+          <motion.div {...reveal(0, reduce)} className="mt-12 border-t border-foreground/10 pt-9">
+            <Eyebrow>The read</Eyebrow>
+            <p className="mt-4 text-[15.5px] font-bold leading-relaxed text-foreground/[0.74] sm:text-[16.5px] lg:columns-2 lg:gap-12 [&]:[column-fill:balance]">{report.what_got_bit}</p>
+          </motion.div>
+
+          <div className="mt-12 border-t border-foreground/10 pt-9">
+            <Crumbs report={report} runIndexById={runIndexById} onMention={onMention} reduce={reduce} />
+          </div>
+
+          <div className="mt-12 border-t border-foreground/10 pt-9">
+            <FeedFade report={report} runIndexById={runIndexById} onMention={onMention} reduce={reduce} />
+          </div>
+      </div>
+      </div>
     </div>
   );
+}
+
+function EmptyReader({
+  onBack,
+  backLabel = 'Dashboard',
+  feederLabel = '@anuj',
+  showHeader = true,
+}: Omit<FeederReaderPageProps, 'report'>) {
+  const backClass = 'flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-foreground/45 no-underline transition-colors hover:text-foreground/70 sm:text-[11px] sm:tracking-[0.2em]';
+
+  return (
+    <div className="mx-auto min-w-0 max-w-full overflow-x-hidden text-foreground lg:max-w-[1160px] xl:max-w-[1280px]">
+      {showHeader ? (
+        <div className="mb-6 grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-2">
+          {onBack ? (
+            <button type="button" onClick={onBack} className={cn(backClass, 'bg-transparent p-0 text-left')}><span className="text-[14px]">‹</span><span className="truncate">{backLabel}</span></button>
+          ) : (
+            <Link href="/" className={backClass}><span className="text-[14px]">‹</span><span className="truncate">{backLabel}</span></Link>
+          )}
+          <div className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-[#E11D48]" /><span className="truncate text-[10px] font-black uppercase tracking-[0.18em] text-foreground/55 sm:text-[11px] sm:tracking-[0.26em]">Feeder Reader</span></div>
+          <span className="min-w-0 truncate text-right text-[11px] font-black tracking-tight text-foreground/70">{feederLabel}</span>
+        </div>
+      ) : null}
+      <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-foreground/10 bg-foreground/[0.025] px-6 text-center">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E11D48]">Reader ready</p>
+          <h2 className="mt-3 text-[30px] font-black tracking-[-0.04em] text-foreground">No stored run</h2>
+          <p className="mx-auto mt-3 max-w-md text-[13px] font-bold leading-relaxed text-foreground/48">The reader design is preserved. A verified run will populate it when live data is connected.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function FeederReaderPage({ report, ...props }: FeederReaderPageProps = {}) {
+  return report ? <FeederReaderReport {...props} baseReport={report} /> : <EmptyReader {...props} />;
 }

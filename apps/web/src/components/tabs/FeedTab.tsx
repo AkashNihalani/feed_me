@@ -1,10 +1,10 @@
 'use client';
 
-import { startTransition, useCallback, useEffect, useLayoutEffect, useState, useMemo, Suspense, useRef, type CSSProperties, type MouseEvent } from 'react';
+import { startTransition, useCallback, useEffect, useId, useLayoutEffect, useState, useMemo, Suspense, useRef, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'framer-motion';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronLeft, Clock, Crown, FileText, Plus, Target, Users, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Clock, CreditCard, Crown, FileText, Plus, Target, Users, X } from 'lucide-react';
 import FeedTile from '@/components/feed/FeedTile';
 import FeederRow from '@/components/feed/FeederRow';
 import ScanningCard from '@/components/feed/ScanningCard';
@@ -19,6 +19,7 @@ import Odometer from '@/components/login/Odometer';
 import { DashboardPayload, TIMEFRAME_TO_DAYS, Timeframe } from '@/components/feed/dashboardTypes';
 import FeedBriefDialog from '@/components/feed/FeedBriefDialog';
 import { FeedBrief, CREATE_FEED_LAST_STEP, defaultFeedBrief, buildFeedBriefText, normalizeFeedBrief } from '@/components/feed/feedBriefUtils';
+import FundPanelOverlay from '@/components/feed/FundPanelOverlay';
 import { AppHeader, usePageReady } from '@/components/shell/AppShell';
 import { cn } from '@/lib/utils';
 import { useAppHaptics } from '@/lib/haptics';
@@ -57,14 +58,14 @@ type SlotUsage = {
 
 const INITIAL_FEEDS: Feed[] = [];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FEED_HEADER_MORPH_TRANSITION = { duration: 0.46, ease: APPLE_EASE } as const;
 const FEED_HEADER_VIEW_TRANSITION = { duration: 0.32, ease: APPLE_EASE } as const;
 const FEED_MOBILE_LIST_HEADER_HEIGHT = 176;
 const FEED_DESKTOP_LIST_HEADER_HEIGHT = 128;
-const FEED_MOBILE_DETAIL_HEADER_HEIGHT = 260;
+const FEED_MOBILE_DETAIL_HEADER_HEIGHT = 172;
 const FEED_DESKTOP_DETAIL_HEADER_HEIGHT = 122;
 const FEED_DESKTOP_CONTENT_OFFSET = 130;
-const FEED_MOBILE_DETAIL_CHROME_HEIGHT = '222px';
+const FEED_MOBILE_DETAIL_CHROME_HEIGHT = '152px';
+const FEED_MOBILE_DETAIL_COMPRESSED_CHROME_HEIGHT = '68px';
 const FEED_DESKTOP_DETAIL_CHROME_HEIGHT = '92px';
 const FEED_MOBILE_READER_HEADER_HEIGHT = 218;
 const FEED_DESKTOP_READER_HEADER_HEIGHT = 116;
@@ -84,7 +85,7 @@ const FEED_VIEW_DISSOLVE = {
     transition: { duration: 0.22, ease: GRID_ITEM_EASE },
   },
 } as const;
-const FEED_MOBILE_CONTENT_OFFSET = 'calc(260px + env(safe-area-inset-top))';
+const FEED_MOBILE_CONTENT_OFFSET = 'calc(172px + env(safe-area-inset-top))';
 const FEED_MOBILE_READER_CONTENT_OFFSET = 'calc(218px + env(safe-area-inset-top))';
 const FEED_CACHE_KEY = 'feed:bundle:v7';
 const DASHBOARD_CACHE_PREFIX = 'feed:dashboard:v12';
@@ -95,6 +96,8 @@ const FEED_DETAIL_SCROLL_RESTORE_PREFIX = 'feedme:feed-detail-scroll:';
 const ACCENT = '#E11D48';
 const STORY_RING_RADIUS = 43;
 const STORY_RING_CIRCUMFERENCE = 2 * Math.PI * STORY_RING_RADIUS;
+const FEED_TIMEFRAMES: readonly Timeframe[] = ['7D', '30D', '60D', '90D'];
+const TIMEFRAME_SLOT_SPRING = { type: 'spring', stiffness: 540, damping: 42, mass: 0.7 } as const;
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   '7D': '7D',
@@ -267,10 +270,12 @@ function ActiveStoryRingStroke() {
 function FullFeedStoryButton({
   feeders,
   selected,
+  compactMobile = false,
   onClick,
 }: {
   feeders: Feeder[];
   selected: boolean;
+  compactMobile?: boolean;
   onClick: () => void;
 }) {
   const visibleFeeders = feeders.slice(0, 3);
@@ -282,14 +287,23 @@ function FullFeedStoryButton({
       aria-pressed={selected}
       aria-label="Show full feed"
       onClick={onClick}
-      className="group flex w-[82px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
+      className={cn(
+        'group flex shrink-0 flex-col items-center border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]',
+        compactMobile ? 'w-[70px] gap-1 lg:w-[82px] lg:gap-[5px]' : 'w-[82px] gap-[5px]',
+      )}
     >
       <span
         className={cn(
           'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-500 ease-out',
           selected
-            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]'
-            : 'h-[70px] w-[70px] bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+            ? cn(
+                'bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]',
+                compactMobile ? 'h-[64px] w-[64px] lg:h-[76px] lg:w-[76px]' : 'h-[76px] w-[76px]',
+              )
+            : cn(
+                'bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+                compactMobile ? 'h-[60px] w-[60px] lg:h-[70px] lg:w-[70px]' : 'h-[70px] w-[70px]',
+              ),
         )}
       >
         {selected && <ActiveStoryRingStroke />}
@@ -314,7 +328,8 @@ function FullFeedStoryButton({
       </span>
       <span
         className={cn(
-          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-black leading-none text-black/42 dark:text-white/44',
+          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center font-black leading-none text-black/42 dark:text-white/44',
+          compactMobile ? 'text-[9px] lg:text-[10px]' : 'text-[10px]',
           selected && 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]',
         )}
       >
@@ -327,10 +342,12 @@ function FullFeedStoryButton({
 function FeederStoryButton({
   feeder,
   selected,
+  compactMobile = false,
   onClick,
 }: {
   feeder: Feeder;
   selected: boolean;
+  compactMobile?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -340,14 +357,23 @@ function FeederStoryButton({
       aria-pressed={selected}
       aria-label={`Show @${feeder.handle}`}
       onClick={onClick}
-      className="group flex w-[82px] shrink-0 flex-col items-center gap-[5px] border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]"
+      className={cn(
+        'group flex shrink-0 flex-col items-center border-0 bg-transparent p-0 text-inherit [user-select:none] [-webkit-tap-highlight-color:transparent]',
+        compactMobile ? 'w-[70px] gap-1 lg:w-[82px] lg:gap-[5px]' : 'w-[82px] gap-[5px]',
+      )}
     >
       <span
         className={cn(
           'relative grid place-items-center rounded-full p-[5px] transition-[background,box-shadow,width,height] duration-500 ease-out',
           selected
-            ? 'h-[76px] w-[76px] bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]'
-            : 'h-[70px] w-[70px] bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+            ? cn(
+                'bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]',
+                compactMobile ? 'h-[64px] w-[64px] lg:h-[76px] lg:w-[76px]' : 'h-[76px] w-[76px]',
+              )
+            : cn(
+                'bg-black/[0.07] shadow-none dark:bg-white/[0.11]',
+                compactMobile ? 'h-[60px] w-[60px] lg:h-[70px] lg:w-[70px]' : 'h-[70px] w-[70px]',
+              ),
         )}
       >
         {selected && <ActiveStoryRingStroke />}
@@ -365,7 +391,8 @@ function FeederStoryButton({
       </span>
       <span
         className={cn(
-          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[10px] font-black lowercase leading-none text-black/42 dark:text-white/44',
+          'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center font-black lowercase leading-none text-black/42 dark:text-white/44',
+          compactMobile ? 'text-[9px] lg:text-[10px]' : 'text-[10px]',
           selected && 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]',
         )}
       >
@@ -378,19 +405,25 @@ function FeederStoryButton({
 function FeederStoryRail({
   feeders,
   selectedHandle,
+  compactMobile = false,
   onSelectHandle,
 }: {
   feeders: Feeder[];
   selectedHandle: string;
+  compactMobile?: boolean;
   onSelectHandle: (handle: string) => void;
 }) {
   if (feeders.length === 0) return null;
 
   return (
-    <div className="hide-scrollbar -mx-1 flex min-h-[94px] items-start gap-2 overflow-x-auto overflow-y-visible px-1 pb-1 pt-1 [-webkit-overflow-scrolling:touch] lg:min-h-[90px]">
+    <div className={cn(
+      'hide-scrollbar -mx-1 flex items-start gap-2 overflow-x-auto overflow-y-visible px-1 pb-1 pt-1 [-webkit-overflow-scrolling:touch] lg:min-h-[90px]',
+      compactMobile ? 'min-h-[78px]' : 'min-h-[94px]',
+    )}>
       <FullFeedStoryButton
         feeders={feeders}
         selected={selectedHandle === 'all'}
+        compactMobile={compactMobile}
         onClick={() => onSelectHandle('all')}
       />
       {feeders.map((feeder) => (
@@ -398,9 +431,172 @@ function FeederStoryRail({
           key={`story:${feeder.handle}`}
           feeder={feeder}
           selected={selectedHandle === feeder.handle}
+          compactMobile={compactMobile}
           onClick={() => onSelectHandle(feeder.handle)}
         />
       ))}
+    </div>
+  );
+}
+
+function FeedTimeframePicker({
+  value,
+  onChange,
+}: {
+  value: Timeframe;
+  onChange: (value: Timeframe) => void;
+}) {
+  const reduce = Boolean(useReducedMotion());
+  const panelId = useId();
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<{ top: number; right: number } | null>(null);
+  const availableTimeframes = FEED_TIMEFRAMES.filter((timeframe) => timeframe !== value);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const frame = window.requestAnimationFrame(() => optionRefs.current[0]?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, value]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeFromOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && !triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    const closeFromViewportChange = () => setOpen(false);
+
+    document.addEventListener('pointerdown', closeFromOutside);
+    document.addEventListener('keydown', closeFromKeyboard);
+    window.addEventListener('orientationchange', closeFromViewportChange);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      document.removeEventListener('keydown', closeFromKeyboard);
+      window.removeEventListener('orientationchange', closeFromViewportChange);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPlacement({
+      top: Math.min(rect.bottom - 12, window.innerHeight - 160),
+      right: Math.max(12, window.innerWidth - rect.right),
+    });
+    setOpen(true);
+  };
+
+  const moveFocus = (index: number, direction: number) => {
+    optionRefs.current[(index + direction + availableTimeframes.length) % availableTimeframes.length]?.focus();
+  };
+
+  const picker = typeof document !== 'undefined' ? createPortal(
+    <AnimatePresence>
+      {open && placement ? (
+        <motion.div
+          ref={panelRef}
+          id={panelId}
+          role="menu"
+          aria-label="Time range"
+          initial={{ height: reduce ? 148 : 12 }}
+          animate={{ height: 148 }}
+          exit={{ height: reduce ? 148 : 12 }}
+          transition={reduce
+            ? { duration: 0 }
+            : { type: 'spring', stiffness: 360, damping: 36, mass: 0.9 }}
+          className="fixed z-[160] w-[76px] overflow-hidden rounded-[14px] border border-white/[0.11] bg-[linear-gradient(180deg,rgba(20,16,18,.98),rgba(5,5,5,.96))] text-white shadow-[0_24px_60px_-22px_rgba(0,0,0,.98),0_0_38px_-24px_rgb(var(--fm-accent-rgb)/.76)] backdrop-blur-[18px]"
+          style={{ top: placement.top, right: placement.right, willChange: reduce ? undefined : 'height' }}
+        >
+          <div className="grid gap-1 px-px pb-1 pt-[14px]">
+            {availableTimeframes.map((timeframe, index) => (
+              <button
+                key={timeframe}
+                ref={(node) => { optionRefs.current[index] = node; }}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  triggerRef.current?.focus();
+                  onChange(timeframe);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    moveFocus(index, 1);
+                  } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+                    event.preventDefault();
+                    moveFocus(index, -1);
+                  } else if (event.key === 'Home' || event.key === 'End') {
+                    event.preventDefault();
+                    optionRefs.current[event.key === 'Home' ? 0 : availableTimeframes.length - 1]?.focus();
+                  }
+                }}
+                className="relative grid h-10 w-full touch-manipulation place-items-center overflow-hidden rounded-[11px] text-[16px] font-black tabular-nums tracking-[-0.03em] text-white/60 outline-none transition-[background-color,color,transform] duration-150 active:scale-[0.94] active:bg-[var(--fm-accent)]/70 active:text-white focus-visible:bg-[var(--fm-accent)]/70 focus-visible:text-white focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]"
+              >
+                {timeframe}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
+  ) : null;
+
+  return (
+    <div className="shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-label={`Time range: ${TIMEFRAME_TO_DAYS[value]} days`}
+        onClick={toggle}
+        className="relative z-10 flex h-11 w-[76px] touch-manipulation items-center justify-center gap-1 overflow-hidden rounded-[14px] border border-white/[0.09] bg-black/38 text-[16px] font-black uppercase tracking-[-0.02em] text-white shadow-[inset_0_2px_10px_rgba(0,0,0,.38)] outline-none transition-transform duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+      >
+        <span className="relative grid h-[1.08em] w-8 shrink-0 place-items-center overflow-hidden leading-none">
+          <AnimatePresence initial={false}>
+            <motion.span
+              key={value}
+              initial={reduce ? false : { transform: 'translate3d(0, 112%, 0)' }}
+              animate={{ transform: 'translate3d(0, 0%, 0)' }}
+              exit={reduce
+                ? { transform: 'translate3d(0, 0%, 0)' }
+                : { transform: 'translate3d(0, -112%, 0)' }}
+              transition={reduce ? { duration: 0 } : TIMEFRAME_SLOT_SPRING}
+              className="absolute inset-0 grid place-items-center tabular-nums text-white"
+            >
+              {value}
+            </motion.span>
+          </AnimatePresence>
+        </span>
+        <motion.span
+          animate={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          transition={reduce
+            ? { duration: 0.1 }
+            : { type: 'spring', stiffness: 520, damping: 40, mass: 0.7 }}
+          className="grid place-items-center"
+        >
+          <ChevronDown className="h-3.5 w-3.5 text-white/54" aria-hidden="true" />
+        </motion.span>
+      </button>
+      {picker}
     </div>
   );
 }
@@ -681,9 +877,9 @@ function FeedPageContent() {
         }
       })();
       if (initialDocumentPath !== '/') return;
-      const recent = lastTab === '/fire' && now - lastTs < 120000;
-      const cameFromFire = (document.referrer || '').includes('/fire');
-      if (recent && (nav?.type === 'reload' || cameFromFire)) router.replace('/fire');
+      const recent = (lastTab === '/lead' || lastTab === '/fire') && now - lastTs < 120000;
+      const cameFromLead = ['/lead', '/fire'].some((path) => (document.referrer || '').includes(path));
+      if (recent && (nav?.type === 'reload' || cameFromLead)) router.replace('/lead');
     } catch {}
   }, [router]);
 
@@ -709,6 +905,7 @@ function FeedPageContent() {
   const [isAddingFeeder, setIsAddingFeeder] = useState(false);
   const [addingFeeder, setAddingFeeder] = useState<string | null>(null);
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
+  const [isFundPanelOpen, setIsFundPanelOpen] = useState(false);
   const [pendingDeleteFeedId, setPendingDeleteFeedId] = useState<string | null>(null);
   const [newFeedName, setNewFeedName] = useState('');
   const [newFeedBrief, setNewFeedBrief] = useState<FeedBrief>(() => defaultFeedBrief());
@@ -744,7 +941,11 @@ function FeedPageContent() {
   const headerCompressed = useCompressedOnScroll(
     contentRef,
     view === 'detail' && useReaderPageScroll,
-    { collapseDistance: 220, expandDistance: 120, topGuard: 54 },
+    {
+      collapseDistance: useBrowserPageScroll ? 150 : 220,
+      expandDistance: useBrowserPageScroll ? 64 : 120,
+      topGuard: useBrowserPageScroll ? 30 : 54,
+    },
   );
   const detailHeaderCompressed = !reading && headerCompressed;
   useEffect(() => {
@@ -765,17 +966,22 @@ function FeedPageContent() {
     if (view !== 'detail') {
       html.style.removeProperty('--fm-mobile-header-chrome-height');
       html.style.removeProperty('--fm-desktop-header-chrome-height');
+      html.style.removeProperty('--fm-mobile-header-chrome-compressed-height');
       return undefined;
     }
 
     html.style.setProperty('--fm-mobile-header-chrome-height', reading ? FEED_MOBILE_READER_CHROME_HEIGHT : FEED_MOBILE_DETAIL_CHROME_HEIGHT);
     html.style.setProperty('--fm-desktop-header-chrome-height', reading ? FEED_DESKTOP_READER_CHROME_HEIGHT : FEED_DESKTOP_DETAIL_CHROME_HEIGHT);
+    if (!reading && useBrowserPageScroll) {
+      html.style.setProperty('--fm-mobile-header-chrome-compressed-height', FEED_MOBILE_DETAIL_COMPRESSED_CHROME_HEIGHT);
+    }
 
     return () => {
       html.style.removeProperty('--fm-mobile-header-chrome-height');
       html.style.removeProperty('--fm-desktop-header-chrome-height');
+      html.style.removeProperty('--fm-mobile-header-chrome-compressed-height');
     };
-  }, [reading, view]);
+  }, [reading, useBrowserPageScroll, view]);
 
   useEffect(() => {
     if (view !== 'detail' || !useBrowserPageScroll) return;
@@ -829,8 +1035,6 @@ function FeedPageContent() {
   const shortTitle = String(activeFeed?.title || 'Feed').toUpperCase();
   const compactPrimaryLabel = selectedHandle === 'all' ? shortTitle : `@${selectedHandle.toUpperCase()}`;
   const compactSecondaryLabel = selectedHandle === 'all' ? 'FULL FEED' : shortTitle;
-  const compactWindowNumber = String(TIMEFRAME_TO_DAYS[timeframe]);
-  const compactWindowUnitLabel = TIMEFRAME_TO_DAYS[timeframe] === 1 ? 'DAY' : 'DAYS';
   const pendingDeleteFeed = useMemo(
     () => (pendingDeleteFeedId ? feeds.find((feed) => feed.id === pendingDeleteFeedId) ?? null : null),
     [feeds, pendingDeleteFeedId]
@@ -1291,25 +1495,21 @@ function FeedPageContent() {
                     <motion.div
                       key="mobile-detail-header"
                       layout
-                      className="fm-feed-header-morph-isolated relative overflow-hidden"
+                      className={cn('fm-feed-header-morph-isolated relative overflow-hidden', !reading && 'py-2')}
                       initial={{ y: 8, scale: 0.992, clipPath: 'inset(0 0 58% 0 round 26px)' }}
                       animate={{ y: 0, scale: 1, clipPath: 'inset(0 0 0% 0 round 26px)' }}
                       exit={{ y: -8, scale: 0.992, clipPath: 'inset(0 0 100% 0 round 26px)' }}
                       transition={FEED_HEADER_VIEW_TRANSITION}
                       style={{ transformOrigin: '50% 0%' }}
                     >
-                    <motion.div initial={false} className="relative flex h-[58px] min-h-0 items-center">
-                      <motion.div
-                        className="absolute inset-0 grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5"
-                        initial={false}
-                        animate={{
-                          opacity: detailHeaderCompressed ? 0 : 1,
-                          x: detailHeaderCompressed ? -10 : 0,
-                          scale: detailHeaderCompressed ? 0.985 : 1,
-                        }}
-                        transition={FEED_HEADER_MORPH_TRANSITION}
-                        style={{ pointerEvents: detailHeaderCompressed ? 'none' : 'auto' }}
-                      >
+                    <div
+                      className={cn(
+                        'grid min-h-0 items-center',
+                        reading
+                          ? 'h-[58px] grid-cols-[40px_minmax(0,1fr)_auto] gap-2.5'
+                          : 'h-11 grid-cols-[44px_minmax(0,1fr)_76px_76px] gap-1.5',
+                      )}
+                    >
                         <motion.button
                           key="back-btn"
                           whileTap={{ scale: 0.92 }}
@@ -1319,7 +1519,10 @@ function FeedPageContent() {
                             else handleBack();
                           }}
                           aria-label={reading ? 'Back to feed dashboard' : 'Back to feeds'}
-                          className="relative flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[14px] border border-white/76 bg-white/68 text-black/58 shadow-[0_5px_14px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.92)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/45 dark:shadow-[0_7px_18px_rgba(0,0,0,0.42),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                          className={cn(
+                            'relative flex shrink-0 items-center justify-center rounded-[14px] border border-white/76 bg-white/68 text-black/58 shadow-[0_5px_14px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.92)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/45 dark:shadow-[0_7px_18px_rgba(0,0,0,0.42),0_1px_0_rgba(255,255,255,0.06)_inset]',
+                            reading ? 'h-[38px] w-[38px]' : 'h-11 w-11',
+                          )}
                         >
                           <ChevronLeft size={21} strokeWidth={2.7} />
                         </motion.button>
@@ -1337,57 +1540,40 @@ function FeedPageContent() {
                           </span>
                         </div>
 
-                        <div className="min-w-[92px] rounded-[18px] border border-white/82 bg-white/76 px-3 py-2 text-right text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_7px_18px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_20px_rgba(0,0,0,0.38),0_1px_0_rgba(255,255,255,0.06)_inset]">
+                        <div className={cn(
+                          'flex flex-col justify-center rounded-[14px] border border-white/82 bg-white/76 text-right text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_7px_18px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_20px_rgba(0,0,0,0.38),0_1px_0_rgba(255,255,255,0.06)_inset]',
+                          reading ? 'min-w-[92px] rounded-[18px] px-3 py-2' : 'h-11 w-[76px] px-2 py-1.5',
+                        )}>
                           {topAveragePercentile == null ? (
-                            <div className="text-[18px] font-black leading-none tracking-[-0.04em] text-black dark:text-white">--</div>
+                            <div className={cn('font-black leading-none tracking-[-0.04em] text-black dark:text-white', reading ? 'text-[18px]' : 'text-[16px]')}>--</div>
                           ) : (
                             <div className="flex items-baseline justify-end gap-0.5 whitespace-nowrap">
-                              <span className="text-[14px] font-black leading-none tracking-[-0.04em] text-black/72 dark:text-white/72">Top</span>
-                              <span className="inline-flex items-baseline text-[22px] font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]">
+                              <span className={cn('font-black leading-none tracking-[-0.04em] text-black/72 dark:text-white/72', reading ? 'text-[14px]' : 'text-[10px]')}>Top</span>
+                              <span className={cn('inline-flex items-baseline font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]', reading ? 'text-[22px]' : 'text-[18px]')}>
                                 <Odometer value={topAveragePercentile} className="inline-flex min-w-[1.1em] overflow-visible" />
                                 <span>%</span>
                               </span>
                             </div>
                           )}
-                          <div className="mt-1 truncate text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/38 dark:text-white/32">
+                          <div className={cn('truncate font-black uppercase leading-none text-black/38 dark:text-white/32', reading ? 'mt-1 text-[8px] tracking-[0.14em]' : 'mt-0.5 text-[7px] tracking-[0.1em]')}>
                             {topAveragePosts > 0 ? `${topAveragePosts} posts` : 'Avg rank'}
                           </div>
                         </div>
-                      </motion.div>
 
-                      <motion.div
-                        className="absolute inset-0 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-3"
-                        initial={false}
-                        animate={{
-                          opacity: detailHeaderCompressed ? 1 : 0,
-                          x: detailHeaderCompressed ? 0 : 10,
-                          scale: detailHeaderCompressed ? 1 : 0.985,
-                        }}
-                        transition={FEED_HEADER_MORPH_TRANSITION}
-                        style={{ pointerEvents: detailHeaderCompressed ? 'auto' : 'none' }}
-                      >
-                        <div className="flex min-w-0 items-end gap-1.5 justify-self-start">
-                          <span className="text-[48px] font-black leading-[0.78] tracking-[-0.04em] text-black dark:text-white fm-depth-title">
-                            {compactWindowNumber}
-                          </span>
-                          <span className="mb-1.5 text-[10px] font-black uppercase leading-none tracking-[0.22em] text-black/44 dark:text-white/38">
-                            {compactWindowUnitLabel}
-                          </span>
-                        </div>
-                        <div className="flex w-full min-w-0 flex-col items-end overflow-hidden text-right leading-none">
-                          <span className="block max-w-full truncate text-[16px] font-black uppercase tracking-[0.06em] text-[var(--fm-accent)] drop-shadow-[0_8px_18px_rgb(var(--fm-accent-rgb)/0.16)]">
-                            {compactPrimaryLabel}
-                          </span>
-                          <span className="mt-1 block max-w-full truncate text-[10px] font-black uppercase tracking-[0.22em] text-black/42 dark:text-white/36">
-                            {compactSecondaryLabel}
-                          </span>
-                        </div>
-                      </motion.div>
-                    </motion.div>
+                        {!reading && (
+                          <FeedTimeframePicker
+                            value={timeframe}
+                            onChange={(nextTimeframe) => {
+                              play('snapLock');
+                              setTimeframe(nextTimeframe);
+                            }}
+                          />
+                        )}
+                    </div>
 
                     <motion.div
                       initial={false}
-                      className="mt-[5px] min-w-0 overflow-hidden pointer-events-auto"
+                      className={cn('min-w-0 overflow-hidden pointer-events-auto', reading ? 'mt-[5px]' : 'mt-1.5')}
                       animate={{
                         opacity: detailHeaderCompressed ? 0 : 1,
                         y: detailHeaderCompressed ? -14 : 0,
@@ -1404,30 +1590,35 @@ function FeedPageContent() {
                         pointerEvents: detailHeaderCompressed ? 'none' : 'auto',
                         willChange: 'transform, opacity, clip-path',
                       }}
+                      aria-hidden={detailHeaderCompressed}
+                      inert={detailHeaderCompressed ? true : undefined}
                     >
                       <div className="flex flex-col gap-1">
-                        <div className="relative grid h-[40px] grid-cols-4 items-center gap-1 rounded-[18px] border border-white/82 bg-white/70 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:border-white/[0.05] dark:bg-white/[0.03] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
-                          {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
-                            <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
-                              className={cn('relative h-full rounded-[14px] text-center font-black',
-                                tf === timeframe
-                                  ? 'z-10 text-[16px] tracking-[-0.04em] text-white sm:text-[16px]'
-                                  : 'z-0 text-[12px] tracking-[0.06em] text-black/42 sm:text-[12px] dark:text-white/38'
-                              )} style={{ WebkitTapHighlightColor: 'transparent' }}>
-                              {tf === timeframe && (
-                                <motion.span
-                                  layoutId="timeframe-pill-bg"
-                                  className="absolute inset-0 rounded-[14px] border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgb(var(--fm-accent-rgb)/0.26)] dark:border-[var(--fm-accent-soft)]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgb(var(--fm-accent-rgb)/0.2),0_12px_28px_rgba(0,0,0,0.5)]"
-                                  transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
-                                />
-                              )}
-                              <span className="relative z-10">{TIMEFRAME_LABELS[tf]}</span>
-                            </motion.button>
-                          ))}
-                        </div>
+                        {reading && (
+                          <div className="relative grid h-[40px] grid-cols-4 items-center gap-1 rounded-[18px] border border-white/82 bg-white/70 p-1 shadow-[inset_0_2px_4px_rgba(214,223,235,0.34),inset_0_-1px_0_rgba(255,255,255,0.84),0_4px_10px_rgba(15,23,42,0.04)] dark:border-white/[0.05] dark:bg-white/[0.03] dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+                            {(['7D', '30D', '60D', '90D'] as Timeframe[]).map(tf => (
+                              <motion.button key={tf} type="button" onClick={() => { play('snapLock'); setTimeframe(tf); }} whileTap={{ scale: 0.95 }}
+                                className={cn('relative h-full rounded-[14px] text-center font-black',
+                                  tf === timeframe
+                                    ? 'z-10 text-[16px] tracking-[-0.04em] text-white sm:text-[16px]'
+                                    : 'z-0 text-[12px] tracking-[0.06em] text-black/42 sm:text-[12px] dark:text-white/38'
+                                )} style={{ WebkitTapHighlightColor: 'transparent' }}>
+                                {tf === timeframe && (
+                                  <motion.span
+                                    layoutId="timeframe-pill-bg"
+                                    className="absolute inset-0 rounded-[14px] border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),inset_0_-2px_4px_rgba(136,19,55,0.18),0_6px_16px_rgb(var(--fm-accent-rgb)/0.26)] dark:border-[var(--fm-accent-soft)]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_20px_rgb(var(--fm-accent-rgb)/0.2),0_12px_28px_rgba(0,0,0,0.5)]"
+                                    transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
+                                  />
+                                )}
+                                <span className="relative z-10">{TIMEFRAME_LABELS[tf]}</span>
+                              </motion.button>
+                            ))}
+                          </div>
+                        )}
                         <FeederStoryRail
                           feeders={activeFeed?.feeders ?? []}
                           selectedHandle={selectedHandle}
+                          compactMobile={!reading}
                           onSelectHandle={(handle) => { play('snapLock'); setSelectedHandle(handle); }}
                         />
                       </div>
@@ -1455,6 +1646,18 @@ function FeedPageContent() {
                       </div>
                       <span className="relative inline-flex min-w-0 shrink-0 items-center overflow-hidden align-middle">
                         <div className="flex items-center gap-2">
+                        <motion.button
+                          type="button"
+                          whileTap={{ scale: 0.94 }}
+                          aria-label="Open fund"
+                          onClick={() => {
+                            play('snapLock');
+                            setIsFundPanelOpen(true);
+                          }}
+                          className="relative flex h-[36px] w-[36px] items-center justify-center overflow-hidden rounded-[14px] border border-white/70 bg-white/60 text-black/55 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/50 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                        >
+                          <CreditCard size={16} strokeWidth={2.5} />
+                        </motion.button>
                         <motion.button
                           type="button"
                           whileTap={{ scale: 0.94 }}
@@ -1594,7 +1797,7 @@ function FeedPageContent() {
                       }}
                     >
                       {/* Row 1: FEED title | FlipTicker | + Add Feed */}
-                      <div className="fm-app-header-row grid grid-cols-[180px_minmax(0,1fr)_180px] gap-2.5">
+                      <div className="fm-app-header-row grid grid-cols-[180px_minmax(0,1fr)_260px] gap-2.5">
                         <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FEED</span>
                         <div className="flex justify-center px-0.5 min-w-0">
                           <div className="relative min-w-0 overflow-hidden w-full">
@@ -1602,6 +1805,17 @@ function FeedPageContent() {
                           </div>
                         </div>
                         <div className="flex min-w-0 items-center justify-end gap-2">
+                          <motion.button
+                            type="button"
+                            whileTap={{ scale: 0.94 }}
+                            onClick={() => {
+                              play('snapLock');
+                              setIsFundPanelOpen(true);
+                            }}
+                            className="flex items-center justify-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-3 py-2 text-[12px] font-black uppercase tracking-[0.14em] text-black/58 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/52 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
+                          >
+                            <CreditCard size={15} strokeWidth={2.5} /> Fund
+                          </motion.button>
                           <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => setIsCreatingFeed(true)}
                             className="flex items-center justify-center gap-1.5 rounded-[14px] bg-[var(--fm-accent)] px-3.5 py-2 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_2px_4px_rgba(159,18,57,0.22),0_8px_18px_-4px_rgb(var(--fm-accent-rgb)/0.35)] dark:shadow-[0_2px_4px_rgb(var(--fm-accent-rgb)/0.15),0_8px_24px_-4px_rgb(var(--fm-accent-rgb)/0.25),0_1px_0_rgba(255,255,255,0.3)_inset]">
                             <Plus size={15} strokeWidth={3} /> Add Feed
@@ -1946,6 +2160,11 @@ function FeedPageContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <FundPanelOverlay
+        open={isFundPanelOpen}
+        onClose={() => setIsFundPanelOpen(false)}
+      />
 
       <FeedExportDialog
         open={isExportDialogOpen && Boolean(activeFeed)}

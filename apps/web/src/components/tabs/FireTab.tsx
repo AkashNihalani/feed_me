@@ -1,9 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { CSSProperties, startTransition, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowUpDown, Loader2, SlidersHorizontal } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowUpDown, ChevronLeft, Loader2, SlidersHorizontal } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ChronoTabs from '@/components/fire/ChronoTabs';
 import FluidDeck from '@/components/fire/FluidDeck';
 import FireIntelligenceDialog from '@/components/fire/FireIntelligenceDialog';
@@ -27,7 +28,7 @@ import {
   WarmupMediaBucket,
 } from '@/components/fire/types';
 import { useAppHaptics } from '@/lib/haptics';
-import { GRID_ITEM_EASE, HEADER_COLLAPSE_SPRING, PAGE_DISSOLVE } from '@/lib/motion';
+import { PAGE_DISSOLVE } from '@/lib/motion';
 import { getFireSignalMeta } from '@/lib/fireSignals';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
@@ -44,7 +45,10 @@ const FIRE_SORT_OPTIONS: { label: string; value: FireSortMode }[] = [
   { label: 'RECENT', value: 'recent' },
 ];
 const APPLE_EASE = [0.32, 0.72, 0, 1] as const;
-const FIRE_HEADER_LAYER_TRANSITION = { duration: 0.46, ease: APPLE_EASE } as const;
+const FIRE_HEADER_EASE_OUT = [0.23, 1, 0.32, 1] as const;
+const FIRE_HEADER_LAYER_ENTER = { duration: 0.22, ease: FIRE_HEADER_EASE_OUT } as const;
+const FIRE_HEADER_LAYER_EXIT = { duration: 0.14, ease: FIRE_HEADER_EASE_OUT } as const;
+const FIRE_HEADER_REDUCED_TRANSITION = { duration: 0.12, ease: FIRE_HEADER_EASE_OUT } as const;
 const FIRE_MOBILE_HEADER_OFFSET = 128;
 const FIRE_DESKTOP_HEADER_OFFSET = 144;
 const FIRE_HEADER_SCROLL_COMPRESS = {
@@ -77,6 +81,25 @@ const FIRE_MEDIA_FILTER_OPTIONS: { label: string; value: FireMediaFilter }[] = [
   { label: 'REELS', value: 'REEL' },
   { label: 'ALL', value: 'ALL' },
 ];
+
+function LeadBackLink({ showLabel = false, onClick }: { showLabel?: boolean; onClick: () => void }) {
+  return (
+    <Link
+      href="/lead"
+      prefetch
+      scroll={false}
+      aria-label="Back to Lead"
+      onClick={onClick}
+      className={cn(
+        'flex h-10 shrink-0 items-center justify-center rounded-[14px] border border-white/70 bg-white/60 text-black/62 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] transition-colors hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent)] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/58 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset] dark:hover:text-white',
+        showLabel ? 'gap-1.5 px-3' : 'w-10',
+      )}
+    >
+      <ChevronLeft size={19} strokeWidth={2.8} />
+      {showLabel ? <span className="text-[10px] font-black uppercase tracking-[0.14em]">Lead</span> : null}
+    </Link>
+  );
+}
 
 type FireCachedState = {
   pickerDays: string[];
@@ -266,13 +289,6 @@ function sortCheckpointList(values: string[]): string[] {
 function normalizeFireMediaFilter(value: unknown): FireMediaFilter {
   const normalized = String(value || 'ALL').trim().toUpperCase();
   return normalized === 'IMAGE' || normalized === 'CAROUSEL' || normalized === 'REEL' ? normalized : 'ALL';
-}
-
-function mediaFilterLabel(value: FireMediaFilter): string {
-  if (value === 'IMAGE') return 'IMAGES';
-  if (value === 'CAROUSEL') return 'CAROUSELS';
-  if (value === 'REEL') return 'REELS';
-  return 'ALL';
 }
 
 function flattenSelectedFeederIds(filters: FireFilterState): number[] {
@@ -768,6 +784,7 @@ async function fetchPage(
 export default function FirePage() {
   const router = useRouter();
   const { play } = useAppHaptics();
+  const reduceHeaderMotion = Boolean(useReducedMotion());
   const [initialCachedState] = useState(readValidFireCachedState);
   const initialCachedCards = initialCachedState ? dedupeFireAlertItems(initialCachedState.cards || []) : [];
   const contentRef = useRef<HTMLDivElement>(null);
@@ -812,6 +829,9 @@ export default function FirePage() {
   const openZSpaceFilter = useCallback(() => {
     setIsZSpaceOpen(true);
     play('snapLock');
+  }, [play]);
+  const handleBackToLead = useCallback(() => {
+    play('navSwitch');
   }, [play]);
   const useBrowserPageScroll = !isDesktopViewport;
   const useRootSnap = useBrowserPageScroll && isStandaloneMode;
@@ -1199,7 +1219,7 @@ export default function FirePage() {
   }, [initialDataReady, pickerDays, availableFeeds, selectedDay, filters, cards, availableCheckpoints, warmupSummary, hasMore, total]);
 
   useEffect(() => {
-    document.title = 'Fire';
+    document.title = 'Recent | FeedMe';
   }, []);
 
   useEffect(() => {
@@ -1601,7 +1621,7 @@ export default function FirePage() {
           : 'opacity-0',
       )}
     >
-      {error ? 'Fire data unavailable' : null}
+      {error ? 'Recent posts unavailable' : null}
     </div>
   );
 
@@ -1630,33 +1650,44 @@ export default function FirePage() {
         id="fire"
         compressed={headerCompressed}
       >
-            <div className="relative z-10 px-3.5 sm:px-4 lg:flex lg:h-full lg:flex-col lg:justify-center lg:px-5">
+            <div className="relative z-10 px-3.5 sm:px-4 xl:flex xl:h-full xl:flex-col xl:justify-center xl:px-5">
               <motion.div
-                className="relative overflow-hidden lg:hidden"
+                className="relative overflow-hidden xl:hidden"
                 initial={false}
               >
                 <motion.div initial={false} className="fm-app-header-row relative flex">
+                  <div className="absolute left-0 top-1/2 z-[5] -translate-y-1/2">
+                    <LeadBackLink onClick={handleBackToLead} />
+                  </div>
                   <motion.div
-                    className="absolute inset-0 flex items-center justify-between gap-3"
+                    className="absolute inset-0 flex items-center justify-between gap-3 pl-12"
                     initial={false}
                     animate={{
                       opacity: headerCompressed ? 0 : 1,
-                      x: headerCompressed ? -10 : 0,
-                      scale: headerCompressed ? 0.985 : 1,
+                      transform: reduceHeaderMotion || !headerCompressed
+                        ? 'translate3d(0, 0, 0) scale(1)'
+                        : 'translate3d(0, -6px, 0) scale(0.99)',
                     }}
-                    transition={FIRE_HEADER_LAYER_TRANSITION}
+                    transition={reduceHeaderMotion
+                      ? FIRE_HEADER_REDUCED_TRANSITION
+                      : headerCompressed
+                        ? FIRE_HEADER_LAYER_EXIT
+                        : FIRE_HEADER_LAYER_ENTER}
                     style={{
-                      pointerEvents: 'auto',
+                      pointerEvents: headerCompressed ? 'none' : 'auto',
                       zIndex: headerCompressed ? 1 : 3,
+                      willChange: reduceHeaderMotion ? undefined : 'transform, opacity',
                     }}
                   >
-                    <span className="fm-app-header-title shrink-0 text-black dark:text-white fm-depth-title">FIRE</span>
+                    <h1 className="fm-depth-title truncate text-[20px] font-black uppercase leading-none tracking-[0.08em] text-black max-[374px]:text-[17px] dark:text-white sm:text-[22px]">
+                      Recent
+                    </h1>
                     <span className="relative inline-flex min-w-0 items-center overflow-hidden align-middle">
                       <div className="flex items-center gap-2">
                       <motion.button
                         whileTap={{ scale: 0.95 }}
                         type="button"
-                        aria-label={`Sort fire cards by ${filters.sort === 'best' ? 'recent' : 'percentile'}`}
+                        aria-label={`Sort recent posts by ${filters.sort === 'best' ? 'recent' : 'percentile'}`}
                         onClick={() => updateFilters((current) => ({ ...current, sort: current.sort === 'best' ? 'recent' : 'best' }))}
                         className="flex shrink-0 items-center gap-1.5 rounded-[14px] border border-white/70 bg-white/60 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black/70 shadow-[0_2px_6px_rgba(0,0,0,0.08),0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_0_rgba(0,0,0,0.04)_inset] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/68 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)_inset]"
                       >
@@ -1666,7 +1697,7 @@ export default function FirePage() {
                       <button
                         ref={mobileFilterButtonRef}
                         type="button"
-                        aria-label="Open fire filters"
+                        aria-label="Open recent post filters"
                         onPointerDown={(event) => {
                           event.stopPropagation();
                           openZSpaceFilter();
@@ -1693,18 +1724,23 @@ export default function FirePage() {
                     </span>
                   </motion.div>
                   <motion.div
-                    className="absolute inset-0 flex items-center justify-between gap-4"
+                    className="absolute inset-0 flex items-center justify-between gap-4 pl-12"
                     initial={false}
                     animate={{
                       opacity: headerCompressed ? 1 : 0,
-                      x: headerCompressed ? 0 : 10,
-                      y: headerCompressed ? 13 : 0,
-                      scale: headerCompressed ? 1 : 0.985,
+                      transform: reduceHeaderMotion || headerCompressed
+                        ? 'translate3d(0, 0, 0) scale(1)'
+                        : 'translate3d(0, 6px, 0) scale(0.99)',
                     }}
-                    transition={FIRE_HEADER_LAYER_TRANSITION}
+                    transition={reduceHeaderMotion
+                      ? FIRE_HEADER_REDUCED_TRANSITION
+                      : headerCompressed
+                        ? FIRE_HEADER_LAYER_ENTER
+                        : FIRE_HEADER_LAYER_EXIT}
                     style={{
-                      pointerEvents: 'auto',
+                      pointerEvents: headerCompressed ? 'auto' : 'none',
                       zIndex: headerCompressed ? 3 : 1,
+                      willChange: reduceHeaderMotion ? undefined : 'transform, opacity',
                     }}
                   >
                     <span className="text-[50px] font-black leading-[0.78] tracking-[-0.04em] text-black dark:text-white fm-depth-title">
@@ -1725,19 +1761,18 @@ export default function FirePage() {
                   className="mt-2 min-w-0 overflow-hidden pointer-events-auto"
                   animate={{
                     opacity: headerCompressed ? 0 : 1,
-                    y: headerCompressed ? -14 : 0,
-                    clipPath: headerCompressed
-                      ? 'inset(0 0 100% 0 round 18px)'
-                      : 'inset(0 0 0% 0 round 18px)',
+                    transform: reduceHeaderMotion || !headerCompressed
+                      ? 'translate3d(0, 0, 0)'
+                      : 'translate3d(0, -6px, 0)',
                   }}
-                  transition={{
-                    opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
-                    y: HEADER_COLLAPSE_SPRING,
-                    clipPath: { duration: 0.28, ease: GRID_ITEM_EASE },
-                  }}
+                  transition={reduceHeaderMotion
+                    ? FIRE_HEADER_REDUCED_TRANSITION
+                    : headerCompressed
+                      ? FIRE_HEADER_LAYER_EXIT
+                      : FIRE_HEADER_LAYER_ENTER}
                   style={{
                     pointerEvents: headerCompressed ? 'none' : 'auto',
-                    willChange: 'transform, opacity, clip-path',
+                    willChange: reduceHeaderMotion ? undefined : 'transform, opacity',
                   }}
 	                >
 	                  <div className="relative min-w-0 overflow-hidden">
@@ -1748,9 +1783,14 @@ export default function FirePage() {
 	                </motion.div>
               </motion.div>
 
-              <div className="hidden flex-col gap-2 lg:flex lg:h-full lg:justify-center">
-                <div className="fm-app-header-row grid grid-cols-[180px_minmax(0,1fr)_180px] gap-2.5">
-                    <span className="fm-app-header-title text-black dark:text-white fm-depth-title">FIRE</span>
+              <div className="hidden flex-col gap-2 xl:flex xl:h-full xl:justify-center">
+                <div className="fm-app-header-row grid grid-cols-[200px_minmax(0,1fr)] gap-2.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <LeadBackLink showLabel onClick={handleBackToLead} />
+                      <h1 className="fm-depth-title whitespace-nowrap text-[22px] font-black uppercase leading-none tracking-[0.08em] text-black dark:text-white">
+                        Recent
+                      </h1>
+                    </div>
 	                  <div className="flex min-w-0 justify-center px-0.5">
 	                    <div className="relative min-w-0 overflow-hidden w-full max-w-[940px]">
 	                      {firePickerReady
@@ -1758,26 +1798,6 @@ export default function FirePage() {
                         : firePickerPlaceholder}
 	                    </div>
 	                  </div>
-                  <span className="relative inline-flex min-w-0 items-center justify-end overflow-hidden align-middle">
-                    <div className="flex items-center justify-end">
-                      <div className="min-w-[110px] rounded-[18px] border border-black/6 bg-white/68 px-2.5 py-1.5 text-center shadow-[0_10px_22px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-white/[0.07] dark:shadow-[0_12px_24px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                      <div className="text-[8px] font-black uppercase tracking-[0.22em] text-black/38 dark:text-white/32">
-                        Post Type
-                      </div>
-                      <div className="mt-0.5 flex items-end justify-center gap-1">
-                        <span className="text-[46px] font-black leading-[0.82] tracking-[-0.04em] text-black dark:text-white">
-                          {total}
-                        </span>
-                        <span className="mb-1.5 rounded-full bg-[var(--fm-accent)] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-white shadow-[0_4px_12px_rgb(var(--fm-accent-rgb)/0.22)]">
-                          {mediaFilterLabel(filters.mediaFilter)}
-                        </span>
-                      </div>
-                      <div className="-mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-black/44 dark:text-white/38">
-                        {selectedDay || '--'}
-                      </div>
-                    </div>
-                    </div>
-                  </span>
                 </div>
 
                 <div className="flex min-h-[42px] flex-wrap items-center gap-2 overflow-hidden rounded-[18px] border border-black/5 bg-black/[0.035] px-2.5 py-2 shadow-[inset_0_2px_8px_rgba(0,0,0,0.04)] dark:border-white/8 dark:bg-white/[0.03] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]">
@@ -1931,7 +1951,7 @@ export default function FirePage() {
               style={fireStateShellStyle()}
             >
               <div className="rounded-2xl border border-red-400/40 bg-red-500/10 px-6 py-5 text-sm font-semibold tracking-wide text-red-600 dark:text-red-300">
-                FIRE DATA UNAVAILABLE: {error}
+                RECENT UNAVAILABLE: {error}
               </div>
             </motion.div>
           ) : displayCards.length === 0 ? (

@@ -71,6 +71,15 @@ function candidatePostKeys(postKey: string): string[] {
   return Array.from(new Set([trimmed, withoutHash, lower, lowerWithoutHash].filter(Boolean)));
 }
 
+function isCommandAdmin(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const allowlist = (process.env.COMMAND_HUB_ADMIN_EMAILS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return allowlist.includes(email.trim().toLowerCase());
+}
+
 function privateMediaHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
   if (!headers.has('cache-control')) {
@@ -516,14 +525,17 @@ export async function GET(req: NextRequest) {
   }
 
   const sb = adminClient();
-  const feedIds = await fetchUserFeedIds(sb, authData.user.id);
+  const hasCommandAdminAccess = isCommandAdmin(authData.user.email);
+  const feedIds = hasCommandAdminAccess ? [] : await fetchUserFeedIds(sb, authData.user.id);
   const postKey = (req.nextUrl.searchParams.get('postKey') || '').trim();
   const assetRole = (req.nextUrl.searchParams.get('role') || 'thumbnail').trim().toLowerCase();
   const raw = req.nextUrl.searchParams.get('url') || '';
 
   if (postKey) {
     try {
-      const postKeyCandidates = await authorizedPostKeyCandidates(sb, feedIds, postKey);
+      const postKeyCandidates = hasCommandAdminAccess
+        ? candidatePostKeys(postKey)
+        : await authorizedPostKeyCandidates(sb, feedIds, postKey);
       if (postKeyCandidates.length === 0) {
         return new Response('media unavailable', { status: 404 });
       }

@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:command": "node --test tests/command-truth.test.mjs tests/command-view-model.test.mjs",
+    "test:feederboard": "node scripts/test-feederboard-facts.mjs",
     "vercel-build": "next build"
   },
   "dependencies": {
