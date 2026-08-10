@@ -481,7 +481,7 @@ export function HunchRibbon({
 
 /* THE GATES — lifecycle checkpoints + one thick path. This variant is the
    evergreen read: the path holds high and runs past the last gate. */
-function Gates({ className }: { className?: string }) {
+export function Gates({ className }: { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const play = useInView(ref, { once: true, amount: 0.7 });
   const reduce = Boolean(useReducedMotion());
@@ -525,7 +525,7 @@ function Gates({ className }: { className?: string }) {
 
 /* THE STRIP, rhythm variant — same tile language as the ember row: tiles
    are posts in time, the silence is real empty width, the returns land red. */
-function RhythmStrip({ className }: { className?: string }) {
+export function RhythmStrip({ className }: { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const play = useInView(ref, { once: true, amount: 0.7 });
   const reduce = Boolean(useReducedMotion());

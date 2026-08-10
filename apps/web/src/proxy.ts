@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PROTECTED_PREFIXES = ['/profile', '/feed', '/fire']
+const PROTECTED_PREFIXES = ['/profile', '/feed', '/lead', '/fire', '/command', '/drop', '/read']
 const PROTECTED_EXACT_PATHS = new Set(['/'])
 
 function safeInternalPath(value: string | null): string {
@@ -78,5 +78,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/fire/:path*', '/profile/:path*', '/feed/:path*', '/login'],
+  matcher: ['/', '/lead/:path*', '/fire/:path*', '/profile/:path*', '/feed/:path*', '/command/:path*', '/drop/:path*', '/read/:path*', '/login'],
 }
