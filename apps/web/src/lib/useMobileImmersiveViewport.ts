@@ -10,7 +10,7 @@ function isStandaloneDisplayMode(): boolean {
     || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
 }
 
-export function useMobileImmersiveViewport() {
+export function useMobileImmersiveViewport(desktopMediaQuery = '(min-width: 1024px)') {
   const [isStandaloneMode, setIsStandaloneMode] = useState(false);
   const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const useBrowserPageScroll = !isDesktopViewport;
@@ -18,7 +18,7 @@ export function useMobileImmersiveViewport() {
 
   useEffect(() => {
     const standaloneMql = window.matchMedia('(display-mode: standalone)');
-    const desktopMql = window.matchMedia('(min-width: 1024px)');
+    const desktopMql = window.matchMedia(desktopMediaQuery);
     const syncMode = () => {
       setIsStandaloneMode(isStandaloneDisplayMode());
       setIsDesktopViewport(desktopMql.matches);
@@ -34,7 +34,7 @@ export function useMobileImmersiveViewport() {
       desktopMql.removeEventListener?.('change', syncMode);
       window.removeEventListener('resize', syncMode);
     };
-  }, []);
+  }, [desktopMediaQuery]);
 
   useEffect(() => {
     if (!useBrowserPageScroll) return undefined;
