@@ -29,6 +29,10 @@
   --fm-dashboard-accent: var(--fm-accent);
   --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
   --fm-dashboard-accent-contrast: #ffffff;
+  --lead-wedge-surface: radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc);
+  --lead-wedge-border: #ffffff;
+  --lead-wedge-mark: var(--fm-accent);
+  --lead-wedge-label: rgb(15 23 42 / 0.48);
 
   /* ── ONE GLASS SYSTEM ──────────────────────────────────────────
      Single source of truth for every frosted surface. Only the two
@@ -73,6 +77,10 @@ html.dark {
   --fm-dashboard-accent: var(--fm-accent);
   --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
   --fm-dashboard-accent-contrast: #ffffff;
+  --lead-wedge-surface: radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc);
+  --lead-wedge-border: #ffffff;
+  --lead-wedge-mark: var(--fm-accent);
+  --lead-wedge-label: rgb(255 255 255 / 0.48);
 
   --fm-page: #030303;
 
@@ -372,6 +380,71 @@ html.dark {
   }
 
   .fm-login-slot-number__face--old {
+    display: none;
+  }
+}
+
+/* ─── Slot text — the login odometer grammar for arbitrary glyphs ───
+   Sizer-driven widths (works for letters, %, ×), only changed glyphs roll,
+   then everything settles back to static text. */
+.fm-slot-roll {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: pre;
+}
+
+.fm-slot-roll__slot {
+  position: relative;
+  display: inline-flex;
+  height: 1.08em;
+  flex: none;
+  justify-content: center;
+  overflow: hidden;
+  line-height: 1;
+  vertical-align: baseline;
+}
+
+.fm-slot-roll__sizer {
+  visibility: hidden;
+  white-space: pre;
+}
+
+.fm-slot-roll__face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: pre;
+}
+
+.fm-slot-roll__face--old {
+  display: none;
+  opacity: 0;
+}
+
+.fm-slot-roll__slot--changed .fm-slot-roll__face {
+  will-change: transform, opacity;
+}
+
+.fm-slot-roll__slot--changed .fm-slot-roll__face--old {
+  display: flex;
+  animation: fm-login-slot-number-old 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: var(--fm-slot-delay, 0ms);
+}
+
+.fm-slot-roll__slot--changed .fm-slot-roll__face--new {
+  animation: fm-login-slot-number-new 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--fm-slot-delay, 0ms) + 34ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-slot-roll__slot--changed .fm-slot-roll__face {
+    animation: none;
+    transform: translateY(0);
+  }
+
+  .fm-slot-roll__face--old {
     display: none;
   }
 }
@@ -953,6 +1026,21 @@ html.fm-reader-root-scroll body > main {
     min-height 360ms cubic-bezier(0.32, 0.72, 0, 1),
     clip-path 340ms cubic-bezier(0.32, 0.72, 0, 1),
     border-radius 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Recent's scroll morph is a frequent, interruptible interaction. Keep the
+   glass shape in the same short motion envelope as its content instead of
+   letting the old 340–460ms transition layers drift apart. */
+.fm-app-shell-root[data-header-id="fire"] .fm-depth-chrome--header {
+  transition:
+    clip-path 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-radius 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-app-shell-root[data-header-id="fire"] .fm-depth-chrome--header {
+    transition-duration: 120ms;
+  }
 }
 
 @media (min-width: 1024px) {

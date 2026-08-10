@@ -34,6 +34,7 @@ type PostRow = {
   feeder_id: number;
   posted_at: string | null;
   media_type: string | null;
+  thumbnail_url: string | null;
 };
 
 type MetricRow = {
@@ -62,6 +63,7 @@ type FeedBundlePayload = {
       handle: string;
       isAnchor: boolean;
       profilePicUrl?: string | null;
+      thumbnailUrl?: string | null;
       followerCount?: number | null;
       metrics: {
         likes: string;
@@ -104,7 +106,7 @@ const DB_FETCH_BATCH_SIZE = 1000;
 const FEED_BUNDLE_TTL_MS = 5 * 60 * 1000;
 
 function feedBundleCacheKey(userId: string) {
-  return `feed:bundle:${userId}`;
+  return `feed:bundle:v2:${userId}`;
 }
 
 function invalidateUserDerivedCaches(userId: string) {
@@ -215,6 +217,18 @@ function buildProfileImageProxyUrl(url: string | null | undefined) {
     role: 'thumbnail',
     url: normalized,
   });
+  return `/api/media?${search.toString()}`;
+}
+
+function buildPostThumbnailProxyUrl(postKey: string | null | undefined, url?: string | null) {
+  const key = typeof postKey === 'string' ? postKey.trim() : '';
+  if (!key) return null;
+  const search = new URLSearchParams({
+    postKey: key,
+    role: 'thumbnail',
+  });
+  const normalizedUrl = normalizeUrl(url);
+  if (normalizedUrl) search.set('url', normalizedUrl);
   return `/api/media?${search.toString()}`;
 }
 
@@ -344,6 +358,14 @@ function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
             ? (feederRow.metrics as Record<string, unknown>)
             : {};
           const profilePicUrl = normalizeUrl(String(feederRow.profilePicUrl || ''));
+          const rawThumbnailUrl = normalizeUrl(String(
+            feederRow.thumbnailUrl
+            || feederRow.postThumbnailUrl
+            || feederRow.thumbnail_url
+            || feederRow.resolved_thumbnail_url
+            || '',
+          ));
+          const postKey = normalizeUrl(String(feederRow.postKey || feederRow.post_key || ''));
 
           return {
             handle: String(feederRow.handle ?? ''),
@@ -351,6 +373,9 @@ function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
             profilePicUrl: profilePicUrl && !profilePicUrl.includes('unavatar.io/instagram')
               ? buildProfileImageProxyUrl(profilePicUrl)
               : null,
+            thumbnailUrl: postKey
+              ? buildPostThumbnailProxyUrl(postKey, rawThumbnailUrl)
+              : rawThumbnailUrl,
             followerCount: feederRow.followerCount == null ? null : toMetricNumber(feederRow.followerCount),
             metrics: {
               likes: toMetricString(toMetricNumber(feederMetrics.likes)),
@@ -417,6 +442,90 @@ async function attachFeedContexts(sb: SupabaseAdminClient, userId: string, bundl
         contextBible: String(context.context_bible || ''),
       };
     }),
+  };
+}
+
+async function attachFeederThumbnails(sb: SupabaseAdminClient, bundle: FeedBundlePayload): Promise<FeedBundlePayload> {
+  const feedIds = bundle.feeds.map((feed) => Number(feed.id)).filter((id) => Number.isFinite(id) && id > 0);
+  if (feedIds.length === 0) return bundle;
+
+  const { data: feederData, error: feederError } = await sb
+    .from('feeders')
+    .select('id,feed_id,handle,role,status,created_at,profile_pic_url,follower_count')
+    .in('feed_id', feedIds)
+    .eq('status', 'active');
+  if (feederError) return bundle;
+
+  const feeders = (feederData || []) as FeederRow[];
+  const feederIds = feeders.map((feeder) => feeder.id);
+  if (feederIds.length === 0) return bundle;
+
+  const { data: postsData, error: postsError } = await sb
+    .from('posts')
+    .select('post_key,feeder_id,posted_at,media_type,thumbnail_url')
+    .in('feeder_id', feederIds);
+  if (postsError) return bundle;
+
+  const posts = (postsData || []) as PostRow[];
+  const postKeys = posts.map((post) => post.post_key).filter(Boolean);
+  if (postKeys.length === 0) return bundle;
+
+  const { data: metricsData, error: metricsError } = await sb
+    .from('post_metrics')
+    .select('post_key,checkpoint,likes,comments,views,computed_at')
+    .in('post_key', postKeys)
+    .order('computed_at', { ascending: false });
+  if (metricsError) return bundle;
+
+  const metrics = (metricsData || []) as MetricRow[];
+  const latestMetricByPost = new Map<string, MetricRow>();
+  for (const metric of metrics) {
+    if (!latestMetricByPost.has(metric.post_key)) {
+      latestMetricByPost.set(metric.post_key, metric);
+    }
+  }
+
+  const { checkpointsByPost } = buildTrackedPostState(posts, feeders, metrics);
+  const postByKey = new Map<string, PostRow>(posts.map((post) => [post.post_key, post]));
+  const postKeysByFeeder = new Map<number, string[]>();
+  for (const post of posts) {
+    const bucket = postKeysByFeeder.get(post.feeder_id) || [];
+    bucket.push(post.post_key);
+    postKeysByFeeder.set(post.feeder_id, bucket);
+  }
+
+  const thumbnailByFeedHandle = new Map<string, string>();
+  for (const feeder of feeders) {
+    let best: { post: PostRow; score: number; postedAt: number } | null = null;
+    for (const key of postKeysByFeeder.get(feeder.id) || []) {
+      const post = postByKey.get(key);
+      if (!post || !isTrackedPost(post, feeder, checkpointsByPost)) continue;
+      const metric = latestMetricByPost.get(key);
+      if (!metric) continue;
+
+      const score = (metric.comments || 0) * 6 + (metric.likes || 0) + (metric.views || 0) * 0.015;
+      const parsedPostedAt = parseIsoTime(post.posted_at);
+      const candidate = { post, score, postedAt: Number.isFinite(parsedPostedAt) ? parsedPostedAt : 0 };
+      if (!best || candidate.score > best.score || (candidate.score === best.score && candidate.postedAt > best.postedAt)) {
+        best = candidate;
+      }
+    }
+
+    const thumbnail = best ? buildPostThumbnailProxyUrl(best.post.post_key, best.post.thumbnail_url) : null;
+    if (thumbnail) thumbnailByFeedHandle.set(`${feeder.feed_id}:${normalizeHandle(feeder.handle)}`, thumbnail);
+  }
+
+  if (thumbnailByFeedHandle.size === 0) return bundle;
+
+  return {
+    ...bundle,
+    feeds: bundle.feeds.map((feed) => ({
+      ...feed,
+      feeders: feed.feeders.map((feeder) => ({
+        ...feeder,
+        thumbnailUrl: feeder.thumbnailUrl || thumbnailByFeedHandle.get(`${Number(feed.id)}:${normalizeHandle(feeder.handle)}`) || null,
+      })),
+    })),
   };
 }
 
@@ -717,7 +826,8 @@ async function getFeedBundle(userId: string) {
   });
 
   if (!error) {
-    return attachFeedContexts(sb, userId, normalizeFeedBundlePayload(data));
+    const bundle = await attachFeederThumbnails(sb, normalizeFeedBundlePayload(data));
+    return attachFeedContexts(sb, userId, bundle);
   }
 
   const message = error?.message || '';
@@ -764,7 +874,7 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
   if (feederIds.length > 0) {
     const { data: postsData, error: postsError } = await sb
       .from('posts')
-      .select('post_key,feeder_id,posted_at,media_type')
+      .select('post_key,feeder_id,posted_at,media_type,thumbnail_url')
       .in('feeder_id', feederIds);
     if (postsError) throw postsError;
     posts = (postsData || []) as PostRow[];
@@ -805,12 +915,14 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
     feedersByFeed.set(f.feed_id, arr);
   }
   const feederMetrics = new Map<number, { likes: number; comments: number; views: number; postsTracked: number }>();
+  const feederThumbnail = new Map<number, string | null>();
   for (const feeder of feeders) {
     const keys = postKeysByFeeder.get(feeder.id) || [];
     let likes = 0;
     let comments = 0;
     let views = 0;
     let postsTracked = 0;
+    let bestThumbnailPost: { post: PostRow; score: number; postedAt: number } | null = null;
 
     for (const key of keys) {
       const post = postByKey.get(key);
@@ -821,9 +933,28 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
       comments += m.comments || 0;
       views += m.views || 0;
       postsTracked += 1;
+
+      const engagementScore = (m.comments || 0) * 6 + (m.likes || 0) + (m.views || 0) * 0.015;
+      const postedAt = parseIsoTime(post.posted_at);
+      const candidate = {
+        post,
+        score: engagementScore,
+        postedAt: Number.isFinite(postedAt) ? postedAt : 0,
+      };
+      if (
+        !bestThumbnailPost
+        || candidate.score > bestThumbnailPost.score
+        || (candidate.score === bestThumbnailPost.score && candidate.postedAt > bestThumbnailPost.postedAt)
+      ) {
+        bestThumbnailPost = candidate;
+      }
     }
 
     feederMetrics.set(feeder.id, { likes, comments, views, postsTracked });
+    feederThumbnail.set(
+      feeder.id,
+      bestThumbnailPost ? buildPostThumbnailProxyUrl(bestThumbnailPost.post.post_key, bestThumbnailPost.post.thumbnail_url) : null,
+    );
   }
 
   const mappedFeeds = feeds.map((feed) => {
@@ -847,6 +978,7 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
         profilePicUrl: feeder.profile_pic_url && !feeder.profile_pic_url.includes('unavatar.io/instagram')
           ? buildProfileImageProxyUrl(feeder.profile_pic_url)
           : null,
+        thumbnailUrl: feederThumbnail.get(feeder.id) || null,
         followerCount: feeder.follower_count,
         metrics: {
           likes: toMetricString(stats.likes),

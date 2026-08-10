@@ -6,19 +6,23 @@ import { SWITCH_CLOCK_CSS_EASE, SWITCH_CLOCK_MS } from '@/lib/motion';
 
 const tabLoaders = {
   feed: () => import('@/components/tabs/FeedTab'),
+  lead: () => import('@/app/lead/page'),
   fire: () => import('@/components/tabs/FireTab'),
   fund: () => import('@/components/tabs/FundTab'),
 } as const;
 
 const FeedTab = dynamic(tabLoaders.feed, { loading: () => <TabFallback /> });
+const LeadTab = dynamic(tabLoaders.lead, { loading: () => <TabFallback /> });
 const FireTab = dynamic(tabLoaders.fire, { loading: () => <TabFallback /> });
 const FundTab = dynamic(tabLoaders.fund, { loading: () => <TabFallback /> });
 
 type TabKey = keyof typeof tabLoaders;
 
-const TAB_ORDER: TabKey[] = ['feed', 'fire', 'fund'];
+const PRIMARY_TAB_ORDER: TabKey[] = ['feed', 'lead', 'fund'];
+const TAB_RENDER_ORDER: TabKey[] = [...PRIMARY_TAB_ORDER, 'fire'];
 const TAB_COMPONENTS: Record<TabKey, ComponentType> = {
   feed: FeedTab,
+  lead: LeadTab,
   fire: FireTab,
   fund: FundTab,
 };
@@ -27,6 +31,7 @@ const TAB_COMPONENTS: Record<TabKey, ComponentType> = {
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 function tabKeyForPathname(pathname: string): TabKey {
+  if (pathname === '/lead') return 'lead';
   if (pathname === '/fire') return 'fire';
   if (pathname === '/profile') return 'fund';
   return 'feed';
@@ -84,13 +89,16 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
 
   const renderedTabs = mountedTabs.has(activeTab) ? mountedTabs : new Set([...mountedTabs, activeTab]);
 
-  // Once the first paint settles, build the remaining tabs in the background as
-  // hidden Activities, so even the first switch to them is instant. Hidden
-  // Activities don't run effects, so this is a one-time low-priority render with
-  // nothing left running afterward.
+  // Once the first paint settles, build the remaining primary tabs in the
+  // background. Fire is an auxiliary Lead surface, so it stays out of the
+  // initial bundle/render path until Post Mortem opens it.
   useEffect(() => {
     return scheduleIdle(() => {
-      setMountedTabs((current) => (current.size === TAB_ORDER.length ? current : new Set(TAB_ORDER)));
+      setMountedTabs((current) => (
+        PRIMARY_TAB_ORDER.every((key) => current.has(key))
+          ? current
+          : new Set([...current, ...PRIMARY_TAB_ORDER])
+      ));
     });
   }, []);
 
@@ -144,7 +152,7 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
 
   return (
     <div data-active-tab={activeTab} className="min-h-[100dvh] w-full">
-      {TAB_ORDER.map((key) => {
+      {TAB_RENDER_ORDER.map((key) => {
         if (!renderedTabs.has(key)) return null;
         const TabComponent = TAB_COMPONENTS[key];
         const isActive = key === activeTab;

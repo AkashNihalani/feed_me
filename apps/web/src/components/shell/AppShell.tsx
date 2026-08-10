@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  CSSProperties,
   ReactNode,
   createContext,
   useCallback,
@@ -35,11 +36,12 @@ const HeaderLayerContext = createContext<{
   setCompressed: (compressed: boolean) => void;
 } | null>(null);
 function isTabRoute(pathname: string) {
-  return pathname === '/' || pathname === '/fire' || pathname === '/profile';
+  return pathname === '/' || pathname === '/lead' || pathname === '/fire' || pathname === '/profile';
 }
 
 function headerIdForPathname(pathname: string) {
   if (pathname === '/') return 'feed';
+  if (pathname === '/lead') return 'lead';
   if (pathname === '/fire') return 'fire';
   if (pathname === '/profile') return 'fund';
   return null;
@@ -156,6 +158,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setHeaderCompression({ pathname, compressed });
   }, [pathname]);
   const headerCompressed = headerCompression.pathname === pathname && headerCompression.compressed;
+  const shellStyle = currentHeaderId === 'lead'
+    ? {
+        '--fm-mobile-header-chrome-height': '152px',
+        '--fm-desktop-header-chrome-height': '168px',
+        '--fm-mobile-header-chrome-compressed-height': '68px',
+      } as CSSProperties
+    : undefined;
   const headerLayerValue = useMemo(() => ({
     currentId: currentHeaderId,
     element: headerLayerElement,
@@ -164,7 +173,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <HeaderLayerContext.Provider value={headerLayerValue}>
-      <div className="fm-app-shell-root relative h-full min-h-[100dvh] w-full bg-[var(--fm-page)]">
+      <div
+        data-header-id={currentHeaderId ?? undefined}
+        className="fm-app-shell-root relative h-full min-h-[100dvh] w-full bg-[var(--fm-page)]"
+        style={shellStyle}
+      >
         <div
           className={cn(
             'pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
