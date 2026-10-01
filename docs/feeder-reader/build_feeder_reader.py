@@ -1,4 +1,4 @@
-"""Build data for feeder-reader.html, the Feeder Reader app prototype (Now / Series / Grid).
+"""Build data for the Feeder Reader app prototype (Now / Series / Grid).
 
 Starts from wall-data.json (postcards, covers, reader lines) and adds:
 - a date per post (approximate: card age bucket, anchored so Blinkit's
@@ -122,6 +122,101 @@ def attach(f, series, runs, read, note):
 
 attach(anuj, A_SERIES, A_RUNS, A_READ, 'Dates are approximate (from each card’s age), anchored so the Mother’s Day post lands on May 8.')
 attach(lakme, L_SERIES, L_RUNS, L_READ, 'Dates are placeholders spread across the run; the source file has no post dates.')
+
+
+# ---------------------------------------------------------------- plain-language layer
+# Postcard titles ("Reframe with punchline") are internal. Users get a label
+# that says what happens, so copy never assumes they've seen the post.
+A_LABELS = {
+    'Alert-Sound Reaction': 'Sleeps through the national emergency alert',
+    'Split by alarm': 'An alarm goes off: Delhi panics, Mumbai shrugs',
+    'Escalate Then Clap': 'Two flatmates trade dark confessions',
+    'Hard Cut to Notification': 'A friend lectures him that reels aren’t a job',
+    'Replace With AI': 'Blinkit ad: his mom swaps him for an AI assistant',
+    'Swap MJ Meaning': 'District ad: a Jordan-or-Jackson mix-up',
+    'Viralize the clip': 'Creators after one viral video talk “IP”',
+    'Force a Hug': 'He forces a hug at a roadside crash',
+    'Roll and Cut': 'His new BMW, captioned “we get it bro”',
+    'Skip and React': 'Retelling a night, skipping the cheating part',
+    'Rig a Boom Battle': 'A rap battle at a street cosmetics stall',
+    'Split Life Updates': 'Girls’ life updates vs boys’ life updates',
+    'Hands over cash': 'He hands cash to a scaffolding worker',
+    'Panic-Cut Through Street': 'South Bombay kids lost outside their bubble',
+    'Flip whiteboard beats': 'Parody of Parle’s marketing team milking “Melodi”',
+    'Invent a Driver': 'He blames a parking mess on a made-up driver',
+    'Rapid-fire Answer Check': 'Sponsored Startup Village rapid-fire panel',
+    'Roast the Crowd': 'A street-mic roast hosted in a bathrobe',
+    'Flip into Dad': 'He plays his dad mocking his videos',
+    'Layer room with mashups': 'A Clubhouse room turns into a song mashup',
+    'Zoom Through Sorrow': 'Mbappé watching PSG win without him',
+    'Glass-Review Parody': 'He reviews drinking glasses',
+    'Swap and Style Jerseys': 'Sponsored Lotto x H&M jersey lookbook',
+    'Mock Complaint Loop': 'His mom mocks his self-praise',
+    'Profile-switch Storyline': 'A rich friend’s “humble beginnings” story',
+    'Reveal Car, Drive Off': 'The BMW again: “get used to these”',
+    'Say the tattoo': 'A one-second shot of a tattoo that says “Mauli”',
+    'Stutter Into Chaos': 'Comic actors who suddenly have “writing inputs”',
+    'Sundae Taste Tour': 'Tasting sundaes at Baskin Robbins',
+    'Open with chord': 'A 14-second piano performance',
+    'Roast by voiceover': 'A Delhi voice roasts him from off camera',
+    'Escalate a complaint': 'A rant that Ronaldo’s losses are “rigged for Messi”',
+    'Mock-phone rant': 'A rant about a ₹248 crore unfinished flyover',
+    'Food Tour Cuts': 'Eating at O Pedro with friends',
+    'Freeze-Frame Reveal': 'Broadway store launch ad: “not Anuj’s PA”',
+    'Sock Mistake Cut': 'Office prank: a friend’s sock used as a tissue',
+    'Reframe with punchline': '“I’m in a bad place” → “Andheri East”',
+    'Taunt into play': 'Football trash talk, then he slides into the net',
+    'Cut to Ludo': 'A tense office “pitch” is actually a Ludo game',
+    'Flip State Punchline': '“I’m in a bad state” → “UP”',
+}
+L_LABELS = {
+    'Council of Makeup Lovers': '“The council of makeup lovers” community post',
+    'Downloading in Progress': 'A “downloading in progress” screen overlay',
+    'Golden Hour on My Lips': 'A golden-hour lip look, worn in first person',
+    'Eyeliner Does It All': 'Eyeliner packshot: “your eyeliner does it all”',
+    'Lashes Get the Main Role': 'Mascara: “your lashes got the main character”',
+    'We Celebrate Your Skin': '“We celebrate your skin” skincare post',
+    'Wand Came to Work': 'Mascara packshot: “this wand came to work”',
+    'Her Day’s Packed, Ice D': 'Ice D: a woman’s packed day, kept fresh',
+    'First Job Confusion': 'First-job confusion, captioned in Bengali',
+    'Eyeconic Instants': 'A product pun: “instants that look Eyeconic”',
+}
+TAGLINES = {
+    'biz': 'He plays marketers, creators and agency people', 'football': 'Football as a fan’s heartbreak',
+    'crew': 'Dumb moments with his friends', 'bmw': 'His BMW, always mocked in the caption',
+    'food': 'Eating out in Mumbai with friends', 'place': '5-second jokes that end on a place name',
+    'street': 'Unscripted bits with real strangers', 'city': 'Delhi vs Mumbai and city complaints',
+    'brand': 'Paid partnerships', 'both': 'He plays both people in a conversation',
+    'solo': 'Just him, about his own day', 'family': 'Family judging his Instagram career',
+    'skin': 'Skincare built around a woman’s day', 'people': 'Captions that talk to people',
+    'eye': 'Liner and mascara as the hero', 'oneoff': 'Posted once this run',
+}
+A_RUNS2 = {
+    1: ('A Blinkit ad became his best post', 'Blinkit’s Mother’s Day ad, where his mom swaps him for an AI assistant, ranked #1 of all 40 posts. A sketch about creators who think one viral video makes them an “IP” ranked #3. His new BMW debuted with the caption “we get it bro” and landed in his top 25%. Solo bits about his own day (sleeping through the emergency alert, a friend’s lecture that reels aren’t a job) landed in his bottom half.'),
+    2: ('A Parle parody hit #2; a sponsored panel hit #40', 'His parody of Parle’s marketing team milking the “Melodi” meme beat each of the 9 posts before it and ranked #2. Street bits with strangers (a made-up driver, a rap battle at a cosmetics stall, a bathrobe roast) all landed mid-table. A sponsored Startup Village rapid-fire panel ranked #40, below every post before it.'),
+    3: ('Seven of ten sank; the BMW sequel saved it', 'Mostly him alone: reviewing drinking glasses, his mom mocking his self-praise, a tattoo, a piano take. Seven of ten landed in his bottom half. The second BMW post (“get used to these”) beat each of the 10 posts before it. A sponsored Lotto x H&M jersey lookbook ranked #38.'),
+    4: ('His friend-group sketches carried the run', 'Six of ten landed in his top 25%. Best: an office prank where a friend’s sock gets used as a tissue, which beat each of the 20 posts before it. A rant that Ronaldo’s losses are “rigged for Messi” beat 16. He tried a new 5-second joke twice: “I’m in a bad place” → “Andheri East” landed in his top 15%; “I’m in a bad state” → “UP” landed in his bottom 15%.'),
+}
+L_RUNS2 = {1: ('Every reel beat usual views; eye makeup ranked lowest', 'All ten reels beat Lakmé’s usual view count (2× on average). The best: an Ice D post about a woman’s packed day (3.7× usual views, top 10%). The four eye-makeup reels, where the eyeliner or mascara is the hero, all landed in the bottom half.')}
+A_READ2 = [
+    ('Works best', 'Parodies of his own industry: Parle’s marketers, creators after one viral video, a “pitch” that’s a Ludo game. 3 of 4 landed in his top 20%.', 'biz'),
+    ('Works least', 'Family judging his Instagram career: his dad calls his videos “waahiyat”, his mom mocks his self-praise, a friend says reels aren’t a job. All 3 landed in his bottom quarter.', 'family'),
+    ('Watch next', 'The new 5-second place-name joke. Andheri East (a commute every Mumbaikar knows) landed top 15%; UP (just a pun) landed bottom 15%.', 'place'),
+]
+L_READ2 = [
+    ('Works best', 'Skincare built around a woman’s day: the Ice D packed-day post was their best of the run (top 10%).', 'skin'),
+    ('Works least', 'Eye makeup as the hero: 4 reels (eyeliner, mascara, kajal), all in the bottom half.', 'eye'),
+    ('Watch next', 'Posts that talk to people (the makeup-lovers “council”, first-job confusion): top 24% and 41%. Too early to call.', 'people'),
+]
+for f, labels, runs, read in ((anuj, A_LABELS, A_RUNS2, A_READ2), (lakme, L_LABELS, L_RUNS2, L_READ2)):
+    for p in f['posts']:
+        p['label'] = labels[p['title']]
+    for sr in f['series']:
+        sr['sub'] = TAGLINES[sr['id']]
+    f['runRecaps'] = {str(k): {'head': a, 'body': b} for k, (a, b) in runs.items()}
+    f['read'] = [{'label': a, 'text': b, 'series': c} for a, b, c in read]
+    f['who'] = 'his' if f is anuj else 'their'
+assert len(A_LABELS) == 40 and len(L_LABELS) == 10
 
 data = json.dumps({'feeders': [anuj, lakme]}, ensure_ascii=False)
 page = HERE / 'feeder-reader.html'

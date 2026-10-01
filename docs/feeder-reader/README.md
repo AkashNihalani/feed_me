@@ -12,7 +12,20 @@ questions with three screens and no in-page expansion:
 | When did it happen? | **Series**: one dot per post on the 90-day timeline, with run bands |
 
 Posts and series open as overlays (a sheet on phones), never by pushing the
-page around. The reader's unit of insight is the **series**: what it literally
+page around.
+
+**Plain labels.** Postcard titles ("Reframe with punchline") are internal.
+Every post also carries a `label` that says what happens ("“I’m in a bad
+place” → “Andheri East”"), and all user-facing copy uses labels, so nobody
+needs to have seen the post. The reader should write this label alongside the
+postcard.
+
+**Motion.** Springs are simulated and sampled into native `linear()` easing
+curves, falling back to cubic-béziers. Tapped covers fly into the overlay hero
+and back on close. Run switches sink and re-rise the stage. The series chart
+re-orders with FLIP when stepping runs. Grid filter and sort re-flow with FLIP.
+Content reveals on scroll. Ripples work on tap. Covers tilt with a glare on
+fine pointers only. Everything is disabled under reduced motion. The reader's unit of insight is the **series**: what it literally
 is, how many times it ran, when, where each one landed, and one plain verdict
 with numbers ("3 of 4 in the top 20%").
 
