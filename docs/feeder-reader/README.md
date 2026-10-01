@@ -1,38 +1,70 @@
 # Feeder Reader: memory model and prototypes
 
 **Current prototype: `feeder-reader.html`** (built by `build_feeder_reader.py`,
-which reads the data embedded in `feeder-wall.html`). It answers four
-questions with three screens and no in-page expansion:
+which reads the data embedded in `feeder-wall.html`). One screen: the wall.
+Every reel in memory is on it, one row per run of ten, newest on top. Nothing
+lives on a separate page. Insight comes as layers you switch on over the wall.
 
-| Question | Where it's answered |
+| Layer | What the tiles show | Tap a reel | Tap a chip |
+|---|---|---|---|
+| **Bite** | bite word, ▲ out-bit N in a row, ▼ N in a row bit harder | a wave runs back through everything it out-bit and stops at the reel that bit harder | lights every reel in that bite band |
+| **Why** | what decided the bite: the idea, the moment, the faces or the craft | lights every reel decided the same way | the reader on that driver for this account |
+| **Bits** | which recurring thing it is (the account's IP, campaign or product line) | lights every other go at the same bit: how often, and when | the reader on that bit |
+
+Above the wall sits the **dispatch**: the reader's note on the run you're
+looking at ("Back with the boys"), with a pip bar of the run's bite. Picking a
+run lights its row. A floating **reader card** carries the take for whatever
+is tapped. "Open" sends the cover into a detail sheet with the take, the bite
+chart, the driver and every other go at the same bit.
+
+**Bite** is the Feed Me word for where a reel landed at day 7 against the
+account's own memory (it replaces "resistance" in all user-facing copy):
+
+| Word | Band |
 |---|---|
-| What is the account posting? | **Now**: the latest run in plain words plus three read cards |
-| Where did each post land? | Everywhere. Higher cover = landed better (the "podium"); rose = top of this account |
-| How often does it recur? | **Series**: each recurring thing (a creator's IP, a brand's campaign or product line) as a row, ×count |
-| When did it happen? | **Series**: one dot per post on the 90-day timeline, with run bands |
+| Devoured | top 10% |
+| Bit hard | top 25% |
+| Nibbled | top half |
+| Left on the plate | bottom half |
 
-Posts and series open as overlays (a sheet on phones), never by pushing the
-page around.
+"Out-bit the 20 before it" is the ripple. "9 in a row bit harder" is shortOf.
+The reel that ends a ripple is the one that "bit harder".
+
+**The reader's voice.** Every take is written for someone who has never seen
+the reel. It says what happens first, then why it got the bite it got, with a
+number only where it settles the point. It sounds like someone who has watched
+the whole feed: cheeky, specific, and in the feed's own nouns ("the BMW he
+can't stop roasting himself about", "Andheri East is a commute every
+Mumbaikar has suffered"). It never sounds like a marketing report. Each take
+names one **driver**, which the run-of-10 reader should output alongside the
+take:
+
+- **the idea**: was the joke or premise itself any good;
+- **the moment**: was something already in the air (Mother's Day, a meme, a
+  match);
+- **the faces**: who is in it (crew, strangers, a celebrity);
+- **the craft**: length, pacing, format, where the brand sits.
+
+That is how the reader separates "the celebrity always lands" from "the
+campaign hype carried it" from "the content itself was good". Driver medians
+are code-computed per account, so a claim like "all nine reels with his crew
+landed in his top half" is checkable.
 
 **Plain labels.** Postcard titles ("Reframe with punchline") are internal.
 Every post also carries a `label` that says what happens ("“I’m in a bad
-place” → “Andheri East”"), and all user-facing copy uses labels, so nobody
-needs to have seen the post. The reader should write this label alongside the
-postcard.
+place” → “Andheri East”"). All user-facing copy uses labels.
 
 **Motion.** Springs are simulated and sampled into native `linear()` easing
-curves, falling back to cubic-béziers. Tapped covers fly into the overlay hero
-and back on close. Run switches sink and re-rise the stage. The series chart
-re-orders with FLIP when stepping runs. Grid filter and sort re-flow with FLIP.
-Content reveals on scroll. Ripples work on tap. Covers tilt with a glare on
-fine pointers only. Everything is disabled under reduced motion. The reader's unit of insight is the **series**: what it literally
-is, how many times it ran, when, where each one landed, and one plain verdict
-with numbers ("3 of 4 in the top 20%").
+curves, falling back to cubic-béziers. Rows pop in as they scroll into view.
+Layer tags wave across the wall in posting order when you switch layers. A
+tapped reel sends a sweep back through what it out-bit. Covers fly into the
+detail sheet and back. Ripples work on tap, and covers tilt with a glare on
+fine pointers only. Everything is disabled under reduced motion.
 
-The pipeline implication: each new D7 post gets assigned to a series (or
-starts a new one, or stays a one-off) when its postcard is written. Code
-computes counts, dates and landings per series. The reader writes the series
-description and verdict and updates them every run.
+The pipeline implication: each new D7 post gets a label, a driver, a take and
+a bit (series), or it stays a one-off, when its run is read. Code computes
+bands, ripples, counts and dates. The reader writes the takes, bit takes and
+run dispatch, and rewrites the bit takes every run.
 
 **Current prototype: `feeder-wall.html`** (built by `build_feeder_wall.py`).
 The feed as a living wall: one row per run of ten, newest on top. Posts glow
@@ -82,7 +114,7 @@ per-post reader lines in it are hand-written stand-ins for model output.
 
 - **Rank**: D7 position among the same lane's posts in memory (newest 100, or
   all posts in 90 days when fewer). Shown as "top N%".
-- **Resistance**, looking back through the same lane in posting order:
+- **Bite** (called resistance in code), looking back through the same lane in posting order:
   - `ripple`: how many posts in a row this one beat;
   - `stopper`: the first post it did not beat, with that post's rank;
   - `shortOf`: how many posts in a row ranked above it.
