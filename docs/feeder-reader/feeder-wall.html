@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head>
+<body>
+<title>Feeder Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: the feed as a living wall. One row per run of ten, newest on top.
+   Glow = landed high, dim = landed low. Tap a post and a wave runs back through
+   every post it beat. Viewpoints light the wall; the side panel (a sheet on
+   phones) tells the story. Deliberately single-theme: a dark, lit wall. */
+:root {
+  color-scheme: dark;
+  --bg: #050506;
+  --panel: #0f0f12;
+  --panel-2: #17171c;
+  --line: #24242b;
+  --ink: #fafafa;
+  --ink-2: #b4b4bd;
+  --ink-3: #74747f;
+  --rose: #fb7185;
+  --rose-deep: #e11d48;
+  --rose-glow: rgba(251, 113, 133, 0.45);
+  --rose-soft: rgba(251, 113, 133, 0.14);
+  --white-ring: rgba(255, 255, 255, 0.92);
+  --font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font: 15px/1.5 var(--font-body); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+:focus-visible { outline: 2px solid var(--rose); outline-offset: 3px; border-radius: 8px; }
+.app { max-width: 1440px; margin: 0 auto; padding-inline: clamp(16px, 2.6vw, 36px); padding-block: 18px 120px; display: grid; gap: 22px; }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.eyebrow { font: 500 11px/1.2 var(--font-data); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+
+/* bar */
+.bar { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; }
+.logo { font: 700 17px/1 var(--font-display); letter-spacing: -0.02em; }
+.logo i { font-style: normal; color: var(--rose); }
+.feeders { display: inline-flex; gap: 6px; }
+.feeders button { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1px solid var(--line); font: 500 13px/1 var(--font-body); color: var(--ink-2); }
+.feeders button .av { width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg, var(--rose), #7c3aed); }
+.feeders button[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
+.feeders button small { font: 400 10.5px/1 var(--font-data); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
+.meter { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.cells { display: grid; grid-template-columns: repeat(50, 3px); grid-auto-rows: 7px; gap: 2px; }
+.cells i { background: var(--line); border-radius: 1px; }
+.cells i.on { background: var(--ink-3); }
+.cells i.new { background: var(--rose); }
+.meter span { font: 400 11.5px/1.2 var(--font-data); color: var(--ink-2); white-space: nowrap; }
+.meter b { color: var(--ink); font-weight: 600; }
+.replay { font: 600 12px/1 var(--font-data); letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; color: var(--ink); }
+.replay:hover { border-color: var(--rose); }
+
+/* stance */
+.stance h1 { font: 700 clamp(34px, 6.4vw, 84px)/0.95 var(--font-display); letter-spacing: -0.045em; margin: 10px 0 12px; text-wrap: balance; max-width: 19ch; }
+.stance p { margin: 0; color: var(--ink-2); font-size: clamp(15px, 1.4vw, 18px); max-width: 60ch; }
+.stance .eyebrow b { color: var(--rose); font-weight: 500; }
+
+/* lenses */
+.lenses { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 4px; margin-inline: -2px; }
+.lenses::-webkit-scrollbar { display: none; }
+.lens { flex: 0 0 auto; display: grid; gap: 6px; padding: 11px 14px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); min-width: 150px; max-width: 230px; }
+.lens b { font: 700 14px/1.15 var(--font-display); letter-spacing: -0.01em; }
+.lens .row { display: flex; align-items: center; gap: 8px; font: 400 11px/1 var(--font-data); color: var(--ink-3); }
+.lens .bar2 { flex: 1; height: 4px; border-radius: 2px; background: var(--line); position: relative; overflow: hidden; }
+.lens .bar2 i { position: absolute; inset: 0 auto 0 0; background: var(--rose); border-radius: 2px; }
+.lens[aria-pressed="true"] { border-color: var(--rose); background: linear-gradient(180deg, var(--rose-soft), var(--panel)); }
+.lens.dim b { color: var(--ink-2); }
+.st { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.st.settled { background: var(--ink); }
+.st.tested { background: var(--ink-3); }
+.st.emerging { border: 1px solid var(--ink-3); }
+
+.lensbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 20px; align-items: center; padding: 14px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rose); }
+.lensbar h2 { font: 700 clamp(18px, 2vw, 22px)/1.15 var(--font-display); letter-spacing: -0.02em; margin: 0 0 4px; }
+.lensbar .nums { display: flex; flex-wrap: wrap; gap: 4px 16px; font: 400 12px/1.4 var(--font-data); color: var(--ink-2); }
+.lensbar .nums b { color: var(--rose); font-weight: 600; }
+.lensbar .nums b.w { color: var(--ink); }
+.pill { font: 600 12px/1 var(--font-data); letter-spacing: 0.04em; border-radius: 999px; padding: 9px 13px; background: var(--ink); color: var(--bg); white-space: nowrap; }
+.pill.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--line); }
+
+/* main */
+.main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (min-width: 980px) { .main { grid-template-columns: minmax(0, 1fr) 400px; } }
+.wall { container: wall / inline-size; display: grid; gap: 18px; }
+.run { display: grid; gap: 8px; }
+.runhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 2px 2px; }
+.runhead b { font: 600 11px/1 var(--font-data); letter-spacing: 0.12em; color: var(--ink-3); }
+.runhead span { font: 700 15px/1.2 var(--font-display); letter-spacing: -0.01em; }
+.runhead em { font: 400 11.5px/1 var(--font-data); font-style: normal; color: var(--ink-3); }
+.runhead:hover span, .runhead[aria-current="true"] span { color: var(--rose); }
+.runhead[aria-current="true"] b { color: var(--rose); }
+.grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+@container wall (min-width: 620px) { .grid { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 7px; } }
+
+/* tile = mock reel cover */
+.tile { position: relative; display: block; aspect-ratio: 3 / 4; border-radius: 9px; container-type: inline-size; transition: transform 0.25s ease, opacity 0.3s ease; }
+.tile .face { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; background: linear-gradient(170deg, var(--g1), var(--g2)); transition: filter 0.35s ease, opacity 0.35s ease; }
+.tile .face.gray { filter: grayscale(1) contrast(1.1); }
+.tile svg.art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tile .cap { position: absolute; left: 8%; right: 8%; top: 9%; font: 700 clamp(5px, 10.5cqi, 17px)/1.12 var(--font-display); color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.8), 0 0 8px rgba(0,0,0,.5); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; letter-spacing: -0.01em; }
+.tile .badge { position: absolute; right: 5%; bottom: 5%; font: 600 clamp(6px, 11cqi, 12px)/1 var(--font-data); color: #fff; background: var(--rose-deep); padding: 3px 4px; border-radius: 4px; }
+.tile .dur { position: absolute; left: 6%; bottom: 6%; font: 500 clamp(5px, 9cqi, 11px)/1 var(--font-data); color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+.tile .ring { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+.tile .flag { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; }
+.tile .sweep { position: absolute; inset: 0; opacity: 0; background: linear-gradient(100deg, transparent 10%, rgba(251,113,133,.85) 50%, transparent 90%); mix-blend-mode: screen; }
+
+/* heat: where it landed */
+.tile.h4 .ring { animation: beat 1.5s ease-in-out infinite; animation-delay: var(--dl); }
+.tile.h3 .ring { animation: beat 2.4s ease-in-out infinite; animation-delay: var(--dl); }
+.tile.h2 .ring { box-shadow: 0 0 0 1.5px var(--rose); }
+.tile.h1 .face { filter: brightness(0.82) saturate(0.85); }
+.tile.h1 .face.gray { filter: grayscale(1) brightness(0.8); }
+.tile.h0 .face { filter: brightness(0.42) saturate(0.25); }
+.tile.h0 .face.gray { filter: grayscale(1) brightness(0.42); }
+@keyframes beat {
+  0%, 100% { box-shadow: 0 0 0 1.5px var(--rose), 0 0 0 0 rgba(251,113,133,0); }
+  50% { box-shadow: 0 0 0 2px var(--rose), 0 0 22px 4px var(--rose-glow); }
+}
+
+/* lens */
+.tile.out { opacity: 0.16; }
+.tile.out .ring { animation: none; box-shadow: none; }
+.tile.out .face { filter: grayscale(1) brightness(0.6); }
+.tile.core:not(.h4):not(.h3) .ring { box-shadow: 0 0 0 1.5px var(--rose); }
+.tile.contrast { opacity: 0.9; }
+.tile.contrast .ring { animation: none; box-shadow: 0 0 0 1.5px var(--white-ring); }
+.tile.exc .ring { animation: none; box-shadow: none; outline: 1.5px dashed var(--rose); outline-offset: 2px; }
+
+/* selection + resistance wave */
+.tile:hover { transform: translateY(-2px); }
+.tile.sel { transform: scale(1.08); z-index: 3; }
+.tile.sel .ring { animation: none; box-shadow: 0 0 0 2.5px #fff, 0 10px 30px rgba(0,0,0,.6); }
+.tile.beaten .flag { box-shadow: inset 0 -4px 0 var(--rose); }
+.tile.beaten.wave .sweep { animation: sweep 0.7s ease-out both; animation-delay: var(--wd); }
+@keyframes sweep { 0% { opacity: 0; transform: translateX(-60%); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateX(60%); } }
+.tile.above .flag { box-shadow: inset 0 4px 0 #fff; }
+.tile.stopper .ring { animation: none; box-shadow: 0 0 0 2px #fff; }
+.tile.stopper .flag::after { content: "STOP"; position: absolute; left: 50%; top: -9px; transform: translateX(-50%); font: 700 9px/1 var(--font-data); letter-spacing: 0.1em; background: #fff; color: #000; padding: 3px 5px; border-radius: 4px; }
+.tile.stopper.wave .flag::after { animation: pop 0.4s ease-out both; animation-delay: var(--wd); }
+@keyframes pop { from { transform: translate(-50%, 6px) scale(0.6); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+.tile.enter { animation: drop 0.55s cubic-bezier(.2,.8,.2,1) both; animation-delay: var(--ed); }
+@keyframes drop { from { opacity: 0; transform: translateY(-14px) scale(0.92); } to { opacity: 1; transform: none; } }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 400 11.5px/1.3 var(--font-data); color: var(--ink-3); padding-top: 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 12px; height: 16px; border-radius: 3px; display: inline-block; background: #555; }
+.legend .g { box-shadow: 0 0 0 1.5px var(--rose), 0 0 10px 2px var(--rose-glow); background: #6b4a33; }
+.legend .d { background: #2a2622; }
+.legend .w { box-shadow: inset 0 -3px 0 var(--rose); background: #333; }
+.legend .s { box-shadow: 0 0 0 1.5px #fff; background: #333; }
+
+/* panel / sheet content */
+.panel { position: sticky; top: 14px; max-height: calc(100vh - 28px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 22px; scrollbar-width: thin; }
+@media (max-width: 979px) { .panel { display: none; } }
+.pv { display: grid; gap: 16px; }
+.pv h2 { font: 700 30px/1.02 var(--font-display); letter-spacing: -0.035em; margin: 0; text-wrap: balance; }
+.pv .meta { font: 400 11.5px/1.4 var(--font-data); color: var(--ink-3); }
+.hero-thumb { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 16px; align-items: end; }
+.hero-thumb .tile { aspect-ratio: 9 / 16; cursor: default; }
+.hero-thumb .tile:hover { transform: none; }
+.bigstat { display: grid; gap: 2px; }
+.bigstat .n { font: 700 54px/0.9 var(--font-display); letter-spacing: -0.05em; }
+.bigstat .n.r { color: var(--rose); }
+.bigstat .l { font: 500 10.5px/1.3 var(--font-data); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.stats { display: flex; gap: 22px; flex-wrap: wrap; }
+.reschip { display: inline-block; font: 600 10.5px/1 var(--font-data); letter-spacing: 0.1em; text-transform: uppercase; color: #000; background: var(--rose); padding: 5px 7px; border-radius: 5px; }
+.reschip.w { background: #fff; }
+.resline { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.angle { display: grid; gap: 0; border-radius: 14px; background: var(--panel-2); padding: 4px 14px; }
+.angle div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.angle div:last-child { border: 0; }
+.angle span:first-child { font: 500 10px/1.9 var(--font-data); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.feeling { font: 700 22px/1.12 var(--font-display); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.feeling::before { content: "The feeling"; display: block; font: 500 10px/1 var(--font-data); letter-spacing: 0.12em; text-transform: uppercase; color: var(--rose); margin-bottom: 8px; }
+.reader { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--ink-2); }
+.reader b { color: var(--ink); }
+.strip { display: grid; grid-auto-flow: column; grid-auto-columns: 112px; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.frame { display: grid; gap: 6px; align-content: start; }
+.frame .fx { aspect-ratio: 9 / 13; border-radius: 8px; position: relative; overflow: hidden; background: linear-gradient(170deg, var(--g1), var(--g2)); }
+.frame .fx.gray { filter: grayscale(1); }
+.frame .fx em { position: absolute; left: 6px; top: 6px; font: 600 10px/1 var(--font-data); font-style: normal; background: rgba(0,0,0,.65); color: #fff; padding: 3px 4px; border-radius: 4px; }
+.frame .fx svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.frame p { margin: 0; font-size: 11.5px; line-height: 1.35; color: var(--ink-2); }
+.sec { display: grid; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 400 11px/1 var(--font-data); color: var(--ink-2); background: var(--panel-2); border-radius: 6px; padding: 6px 7px; }
+button.chip:hover { color: var(--ink); }
+button.chip.vp { border: 1px solid var(--rose-soft); color: var(--ink); }
+.twin { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 12px; align-items: center; background: var(--panel-2); border-radius: 14px; padding: 12px; }
+.twin p { margin: 0; font-size: 13px; color: var(--ink-2); text-align: center; }
+.twin p b { display: block; font: 700 16px/1.1 var(--font-display); color: var(--ink); margin-bottom: 4px; }
+.minis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mini { display: grid; gap: 6px; align-content: start; }
+.mini .tile { aspect-ratio: 3 / 4; }
+.mini p { margin: 0; font-size: 11.5px; line-height: 1.3; color: var(--ink-2); }
+.mini p b { display: block; color: var(--ink); font: 600 10.5px/1.2 var(--font-data); margin-bottom: 2px; }
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.vs .bigstat { background: var(--panel-2); border-radius: 14px; padding: 14px; }
+.vs .bigstat .n { font-size: 42px; }
+.hist { display: flex; gap: 6px; }
+.hist span { font: 500 10px/1 var(--font-data); padding: 5px 6px; border-radius: 5px; border: 1px solid var(--line); color: var(--ink-3); }
+.hist span.on { color: var(--ink); border-color: var(--ink-3); }
+.hist span.cur { color: #000; background: var(--rose); border-color: var(--rose); }
+.moment { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: center; }
+.moment .tile { aspect-ratio: 3 / 4; }
+.moment p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.moment p b { display: block; font: 700 17px/1.15 var(--font-display); color: var(--ink); margin-bottom: 3px; }
+.moment p em { font: 500 10px/1 var(--font-data); font-style: normal; letter-spacing: 0.12em; text-transform: uppercase; color: var(--rose); display: block; margin-bottom: 6px; }
+.lede { font: 500 16px/1.5 var(--font-body); color: var(--ink-2); margin: 0; }
+
+/* mobile peek + sheet */
+.peek { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 20; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 10px 10px 10px; border-radius: 16px; background: rgba(20, 20, 24, 0.92); backdrop-filter: blur(14px); border: 1px solid var(--line); box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+.peek .tile { aspect-ratio: 3 / 4; }
+.peek b { display: block; font: 700 15px/1.15 var(--font-display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peek span { font: 400 11.5px/1.3 var(--font-data); color: var(--ink-2); }
+.peek span i { font-style: normal; color: var(--rose); }
+@media (min-width: 980px) { .peek, .sheet, .scrim { display: none !important; } }
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 29; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 88vh; overflow: auto; background: var(--panel); border-radius: 22px 22px 0 0; border-top: 1px solid var(--line); padding: 10px 18px calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateY(105%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+.sheet.open { transform: none; }
+.sheet .grab { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; position: sticky; top: -10px; background: var(--panel); padding: 8px 0; z-index: 2; }
+.sheet .grab i { width: 40px; height: 4px; border-radius: 2px; background: var(--line); }
+.sheet .grab button { font: 500 12px/1 var(--font-data); color: var(--ink-2); padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; }
+.source { font: 400 11px/1.5 var(--font-data); color: var(--ink-3); max-width: 90ch; }
+
+@media (max-width: 520px) {
+  .meter { margin-left: 0; width: 100%; }
+  .cells { grid-template-columns: repeat(50, minmax(0, 1fr)); flex: 1; }
+  .pv h2 { font-size: 26px; }
+  .hero-thumb { grid-template-columns: 112px minmax(0, 1fr); }
+  .bigstat .n { font-size: 46px; }
+  .lensbar { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile.h4 .ring, .tile.h3 .ring { animation: none; box-shadow: 0 0 0 2px var(--rose), 0 0 14px 2px var(--rose-glow); }
+  .tile.beaten.wave .sweep, .tile.enter, .tile.stopper.wave .flag::after { animation: none; }
+  .tile, .sheet { transition: none; }
+}
+</style>
+
+<div class="app">
+  <header class="bar">
+    <span class="logo">Feed<i>Me</i></span>
+    <div class="feeders" id="feeders" role="group" aria-label="Feeder"></div>
+    <div class="meter"><div class="cells" id="cells" aria-hidden="true"></div><span id="memcap"></span></div>
+    <button type="button" class="replay" id="replay">Replay memory</button>
+  </header>
+
+  <section class="stance">
+    <div class="eyebrow" id="stanceEyebrow"></div>
+    <h1 id="stanceHead"></h1>
+    <p id="stanceBody"></p>
+  </section>
+
+  <nav class="lenses" id="lenses" aria-label="Viewpoints"></nav>
+  <div class="lensbar" id="lensbar" hidden></div>
+
+  <div class="main">
+    <section>
+      <div class="wall" id="wall" aria-label="Posts in memory"></div>
+      <div class="legend">
+        <span><i class="g"></i>Landed high</span>
+        <span><i class="d"></i>Landed low</span>
+        <span><i class="w"></i>Beaten by the selected post</span>
+        <span><i class="s"></i>Stopped it</span>
+      </div>
+    </section>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+  <p class="source" id="source"></p>
+</div>
+
+<div class="peek" id="peek" hidden></div>
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Details">
+  <div class="grab"><i></i><button type="button" id="closeSheet">Close</button></div>
+  <div id="sheetBody"></div>
+</div>
+
+<script>
+const DATA = {"feeders": [{"handle": "anuj.mp4", "kind": "Creator", "runs": 4, "cap": 100, "unit": "postcards", "stance": ["The insider who calls everyone’s bluff.", "His own included. He’s strongest inside the room, saying what everyone in it is thinking. He’s weakest when the room turns on him."], "posts": [{"id": "a0", "title": "Alert-Sound Reaction", "age": "2 months ago", "rank_final": 28, "scene": "bedroom", "art": "p1", "speaks": "Late sleepers", "pokes": "Himself", "feeling": "Sleeping through a national emergency.", "line": "A bit about his own sleep. Nobody in it to call out but himself, and it sank into the bottom half.", "flow": [{"t": "0:00-0:02", "beat": "Close-up of a man waking up startled in bed and looking around in confusion."}, {"t": "0:00-0:05", "beat": "Loud, exaggerated gasping and heavy breathing play while he sits up quickly, looks distressed, and runs a hand through his hair."}, {"t": "0:05-0:11", "beat": "High-pitched emergency siren beeps and a robotic female voice read an alert message while he ducks back down onto the bed and covers his head."}], "hook": "alert notification miss kardiya kyunki mai 2 PM ke pehle nahi uth ta", "named": ["@bunshah", "@laxmanstanding", "Indian Government Emergency Alert System Test"], "length": "0:11"}, {"id": "a1", "title": "Split by alarm", "age": "2 months ago", "rank_final": 17, "scene": "plain", "art": "p1", "speaks": "Mumbaikars", "pokes": "Delhi", "feeling": "Delhi panics. Mumbai shrugs.", "line": "A Mumbai-vs-Delhi contrast. It points at another city instead of laughing at his own, and it held the middle.", "flow": [{"t": "0:00-0:12", "beat": "Close-up of a young man in a white patterned shirt and silver chain; he looks around nervously; on-screen text reads “hearing the alarm: Delhi”; a brief Hindi line is interrupted by an aggressive off-screen male voice."}, {"t": "0:12-0:15", "beat": "Single jump cut; the same man faces sideways with a relaxed expression; on-screen text changes to “hearing the alarm: Mumbai”; the audio shifts to soft casual English."}], "hook": "hearing the alarm: Delhi", "named": ["Delhi", "Mumbai", "Instagram"], "length": ""}, {"id": "a2", "title": "Escalate Then Clap", "age": "2 months ago", "rank_final": 32, "scene": "home", "art": "p1", "speaks": "Flatmates", "pokes": "Friendship", "feeling": "Moving in together ruins everything.", "line": "He plays both flatmates. A general premise with no tribe he belongs to, and it sat low.", "flow": [{"t": "0:00-0:03", "beat": "Close-up of a young man saying they should move in together; top text reads “How to ruin a friendship immediately.”"}, {"t": "0:03-0:06", "beat": "Cut to a second character agreeing, then back to the first character agreeing to the plan."}, {"t": "0:06-0:11", "beat": "The second character says he drank all the other’s milk; the first character says he has dreams where he slits his throat and watches his parents cremate him."}, {"t": "0:11-0:14", "beat": "The second character stares in shocked silence, then both characters perform a rapid hand-slapping and clapping routine."}], "hook": "How to ruin a friendship immediately", "named": [], "length": "0:14"}, {"id": "a3", "title": "Hard Cut to Notification", "age": "2 months ago", "rank_final": 33, "scene": "bedroom", "art": "p1", "speaks": "Creators", "pokes": "Him, lectured", "feeling": "“Reels is not a job.”", "line": "Arjun bhai lectures him, and Zomato’s notification answers back. He is the one being judged here, and this angle keeps landing in the bottom third.", "flow": [{"t": "0:00-0:10", "beat": "Close-up of a young man speaking to camera in a bedroom; he gestures with pleading expressions."}, {"t": "0:00-0:10", "beat": "Spoken Hinglish text addresses “Arjun bhai” and says scrolling reels is not a job, asks to find a job, do something, and ends with “Par maine aisa kyun bola?”"}, {"t": "0:11", "beat": "A hard cut lands on a top-down shot of a black iPhone on a bed; a chime plays."}, {"t": "0:11-0:14", "beat": "The lock screen shows Fri 1 May, 6:02, and a Zomato notification banner with “You’ve been someone’s reason to smile today 👉👈 Let us be yours 🍛”; a quiet Hindi voiceover plays."}], "hook": "Arjun bhai scrolling reels is not a job bhai.", "named": ["Arjun bhai", "Zomato", "Airtel", "Apple", "iOS"], "length": "14s"}, {"id": "a4", "title": "Replace With AI", "age": "8 weeks ago", "rank_final": 1, "scene": "home", "art": "p3", "speaks": "Mums", "pokes": "The influencer son", "feeling": "Even an AI is a better son than an influencer.", "line": "The creator gets replaced by an AI in his own home, and Blinkit saves Mother’s Day. The brand paid for his angle on creators, not for his face, and it is the ceiling of this memory.", "flow": [{"t": "0:00-0:04", "beat": "Mother asks how to upload on WhatsApp; son says he is a macro influencer and has no time."}, {"t": "0:04-0:12", "beat": "A black-turtleneck, star-headband AI character appears and helps her."}, {"t": "0:12-0:24", "beat": "Mother asks what to gift for Gauri’s shih tzu; son gives a lazy answer; AI gives pet gift options."}, {"t": "0:24-0:49", "beat": "Mother feeds, hugs, and selfies with the AI while the son watches, then bangs on the glass door from outside."}, {"t": "0:49-0:57", "beat": "Son chokes the AI; the AI says how to win the mother back."}, {"t": "0:57-1:09", "beat": "Blinkit app ordering appears, then a boAt smartwatch is delivered and given to the mother; Mother’s Day text closes the reel."}], "hook": "How do I upload this on whatsapp?", "named": ["WhatsApp", "AI", "Gauri’s shih tzu", "Blinkit", "boAt", "Blinkit India’s Last Minute App", "Mother’s Day"], "length": ""}, {"id": "a5", "title": "Swap MJ Meaning", "age": "8 weeks ago", "rank_final": 27, "scene": "party", "art": "p2", "speaks": "Friends", "pokes": "The friend who gets it wrong", "feeling": "That one friend who mixes up every reference.", "line": "A general friend type, not a tribe he is inside. District shows up only on the end card. Just below the middle.", "flow": [{"t": "0:00-0:04", "beat": "Two people walk on a paved seaside path with palm trees."}, {"t": "0:05-0:11", "beat": "The woman speaks on her phone; the man smiles, reacts, and holds his head."}, {"t": "0:12-0:20", "beat": "The woman answers a call from her mother; the transcript includes “GHADE KI AULLAAAD”; the man dances in the background."}, {"t": "0:21-0:34", "beat": "Cut to an indoor party space with silver tinsel and a life-sized Michael Jackson cardboard cutout; the man wears a basketball jersey and fedora and holds a basketball; they argue and dance."}, {"t": "0:35-0:41", "beat": "They dance in a dim bar with blue and purple lights while holding microphones and singing."}, {"t": "0:42-0:45", "beat": "Photo-style cuts show them posing with the Michael Jackson cutout."}, {"t": "0:46-0:54", "beat": "They dance with another man dressed as Michael Jackson; the overlay “district FANS ONLY” appears."}, {"t": "0:55-0:59", "beat": "Black screen with white text “district movies.”"}], "hook": "That one friend who gets everything wrong", "named": ["Michael Jordan", "Michael Jackson", "Billie Jean", "district FANS ONLY", "district movies"], "length": "0:59"}, {"id": "a6", "title": "Viralize the clip", "age": "8 weeks ago", "rank_final": 3, "scene": "home", "art": "p2", "speaks": "Creators", "pokes": "Creators after one hit", "feeling": "One viral video and suddenly it’s an “IP”.", "line": "He and Ruhee play the creators he knows: 10 million views, IP talk, can’t pay the cafe bill. He is guilty of it too, which is why it stings. Near the top.", "flow": [{"t": "0:00-0:03", "beat": "A woman and a man count to five with hand gestures in a living room while “Ek Do Teen” plays."}, {"t": "0:04-0:15", "beat": "The man shouts “Chal dhating naach!” and the duo dance across a living room, street, and cafe to “Dhating Naach.”"}, {"t": "0:16-0:24", "beat": "Outside a cafe, they look at a phone, react to “10 million,” and repeatedly say they will make an “IP.”"}, {"t": "0:25-0:30", "beat": "Inside the cafe, they pose while a barista points at the payment terminal and asks them to pay."}, {"t": "0:31-0:43", "beat": "They pace outside on phone calls, talk about brands, commercials, and budget, then shout together."}], "hook": "Creators after that one VIRAL video", "named": ["Ruhee Dosani", "Anuj", "Ek Do Teen", "Dhating Naach", "IP", "Cocoa Brownies"], "length": ""}, {"id": "a7", "title": "Force a Hug", "age": "8 weeks ago", "rank_final": 14, "scene": "night", "art": "p3", "speaks": "Anyone who has watched a road fight", "pokes": "The self-appointed mediator", "feeling": "Every road fight has one guy who takes charge.", "line": "He plays the guy who appoints himself mediator, and the Kokilaben-or-“Ambani” line only a Mumbaikar says out loud. Upper third.", "flow": [{"t": "0:00-0:07", "beat": "Anuj speaks to camera on a night street, then turns to the scooter rider holding his shoulder."}, {"t": "0:08-0:17", "beat": "Anuj demonstrates deep breathing; the scooter rider copies him while speaking in pain."}, {"t": "0:18-0:21", "beat": "Anuj says he has studied medical and tells the rider to move his arm."}, {"t": "0:22-0:27", "beat": "The camera pans to the cab driver by a white car; Anuj tells him to take the injured man to hospital in his AC car."}, {"t": "0:28-0:44", "beat": "The cab driver says the scooter rider is also at fault; Anuj interrupts, mentions “blood on your hands,” and the cab driver shows a dent and scratch on the car door."}, {"t": "0:45-0:55", "beat": "Anuj says not to fight, mentions Kokilaben, and asks if there is any hospital better than “Ambani.”"}, {"t": "0:56-1:05", "beat": "Anuj tells them to hug; they hug, then he joins for a three-way hug."}], "hook": "Ek second, ek second, aise situation mein thoda saas lo pehle.", "named": ["Kokilaben Dhirubhai Ambani Hospital", "Ambani"], "length": ""}, {"id": "a8", "title": "Roll and Cut", "age": "8 weeks ago", "rank_final": 9, "scene": "garage", "art": "car", "speaks": "His followers", "pokes": "His own flex", "feeling": "“We get it bro.” You bought the car.", "line": "The BMW arrives already heckled by its own caption. He calls the bluff on his own flex before anyone else can. Upper quarter.", "flow": [{"t": "0:00-0:01", "beat": "Matte black BMW sedan is parked in a garage bay under warm lights; centered top text reads “we get it bro 🙏”."}, {"t": "0:01-0:03", "beat": "The car rolls forward onto a driveway as the camera pans to the front grille and LED headlights."}, {"t": "0:03-0:05", "beat": "Close-up shifts to the front-left wheel and headlight, then to a rear shot against a sunset sky with plate “MP4”."}, {"t": "0:05-0:08", "beat": "Side panning and tracking shots show the car moving slowly, then passing other parked vehicles; the driver’s door opens slightly."}, {"t": "0:08-0:13", "beat": "Rear-angle and close-up shots return to the dual exhaust, rear diffuser, front-left headlight, and wheel."}], "hook": "we get it bro 🙏", "named": ["BMW", "MP4", "DD03AM0089", "Limitless", "Limitless Customs", "Brazilian Funk/Phonk Car Trend"], "length": ""}, {"id": "a9", "title": "Skip and React", "age": "7 weeks ago", "rank_final": 24, "scene": "car", "art": "p1", "speaks": "Guys", "pokes": "Himself", "feeling": "Editing out the cheating part.", "line": "A confession about his own night. The camera is on him, and it settled below the middle.", "flow": [{"t": "00:00-00:10", "beat": "Young man in backseat, talking animatedly, smiling, gesturing left."}, {"t": "00:11-00:14", "beat": "Black-and-white filter; he looks down, smiles, and covers his face with his hand."}, {"t": "00:15-00:19", "beat": "Return to color and a slightly different angle; he laughs and looks around the car interior."}, {"t": "00:20-00:30", "beat": "Original angle and color; he keeps talking, wipes his eye, and gestures while smiling."}], "hook": "when ur telling the girls about last nights story but u gotta skip past the part where u were cheating", "named": ["Adidas-style logo", "apbibo"], "length": ""}, {"id": "a10", "title": "Rig a Boom Battle", "age": "7 weeks ago", "rank_final": 16, "scene": "street", "art": "p3", "speaks": "The street", "pokes": "Wannabe rappers", "feeling": "Everyone’s a rapper until the shopkeeper judges.", "line": "A shopkeeper judges a diss battle at a cosmetics stall. The crowd carries it into the upper half.", "flow": [{"t": "0:00-0:02", "beat": "Three young men stand in front of a cosmetics stall; the front rapper holds a microphone and phone, and the shopkeeper sits to the right."}, {"t": "0:03-0:04", "beat": "The shopkeeper says “Boom” into the microphone."}, {"t": "0:05-0:12", "beat": "The bathrobe-wearing rapper delivers a verse, points at the tall man, then passes the microphone back for another “Boom,” with a black-and-white flash."}, {"t": "0:13-0:22", "beat": "The sunglasses-wearing rapper takes the microphone, reads from a red notebook, and gets reactions from the others, with another black-and-white flash."}, {"t": "0:23-0:35", "beat": "He continues reading; the shopkeeper repeats “Boom,” and the first rapper and shopkeeper do a quick handshake."}, {"t": "0:36-0:54", "beat": "The tall rapper steps forward, reads from his phone, and is interrupted and corrected as he struggles with Hindi grammar."}, {"t": "0:55-1:07", "beat": "The tall rapper asks who was best; the shopkeeper points to the bathrobe-wearing rapper as winner, and the others protest."}], "hook": "Diss track battle in public 💀", "named": ["Anuj Gupta", "Ved Maddison", "Versace", "NPC", "Beemer", "McDonald’s"], "length": "1:07"}, {"id": "a11", "title": "Split Life Updates", "age": "7 weeks ago", "rank_final": 29, "scene": "home", "art": "p1", "speaks": "Girls vs boys", "pokes": "Both", "feeling": "Girls get drama. Boys get a shrug.", "line": "A gender contrast with no tribe he belongs to. It fell short of seven straight.", "flow": [{"t": "0:00-0:03", "beat": "Female character with short dark hair looks serious; second female character with a high bun looks concerned."}, {"t": "0:03-0:11", "beat": "First female character speaks with intense facial expressions."}, {"t": "0:11-0:19", "beat": "Second female character reacts with shock and anger; first female character begins to weep."}, {"t": "0:20-0:24", "beat": "Male character with curly hair and bright orange reflective sunglasses smiles and speaks casually."}, {"t": "0:24-0:28", "beat": "Bald male character scratches his head, smiles, and gives a casual response."}], "hook": "Guys, so I have to talk to you all about something.", "named": ["Nancy", "Jamnabai Narsee School", "Jamnabai", "roka ceremony"], "length": ""}, {"id": "a12", "title": "Hands over cash", "age": "6 weeks ago", "rank_final": 25, "scene": "balcony", "art": "p2", "speaks": "Unclear", "pokes": "Unclear", "feeling": "The card doesn’t show the angle.", "line": "Cash handed to a worker on scaffolding. The reader can’t tell who the joke is on, so it stays unexplained.", "flow": [{"t": "00:00-00:02", "beat": "A young man opens double glass doors and steps onto a balcony."}, {"t": "00:02-00:06", "beat": "He leans over the railing and greets a worker on bamboo scaffolding; the worker smiles up."}, {"t": "00:07-00:12", "beat": "Close-ups show his hand on the railing, watch, tattoo, and gestures toward the ropes."}, {"t": "00:12-00:17", "beat": "He looks down, talks, laughs, and the worker keeps smiling."}, {"t": "00:18-00:23", "beat": "He hands several Indian Rupee cash notes to the worker, who accepts them smiling."}], "hook": "Arre bhaiya... haan.", "named": ["Anuj", "Indian Rupee"], "length": ""}, {"id": "a13", "title": "Panic-Cut Through Street", "age": "6 weeks ago", "rank_final": 11, "scene": "night", "art": "p3", "speaks": "Mumbaikars outside SoBo", "pokes": "SoBo kids", "feeling": "SoBo kids think the world ends at Bombay.", "line": "A class joke inside Mumbai, told by someone who knows exactly who the SoBo brats are. It beat four straight.", "flow": [{"t": "0:00-0:02", "beat": "Five young people stand on a city street at night with exaggerated confusion and disbelief."}, {"t": "0:02-0:07", "beat": "One man jumps up and down; the group lines up and raises their arms while looking upward."}, {"t": "0:07-0:12", "beat": "One man walks around looking lost; another stares wide-eyed into the camera; one man jumps over another’s shoulder."}, {"t": "0:12-0:20", "beat": "The group pretends to make frantic phone calls, then runs in a chaotic circle and bumps into one another."}], "hook": "sobo brats finding out that there is a world that exists outside of bombay", "named": ["SoBo (South Bombay) Culture", "auto-rickshaw", "Devanagari script"], "length": "0:20"}, {"id": "a14", "title": "Flip whiteboard beats", "age": "6 weeks ago", "rank_final": 2, "scene": "luxe", "art": "p1", "speaks": "Marketing people", "pokes": "Parle’s marketing team", "feeling": "One meme, and suddenly it’s an “Italy expansion proposal”.", "line": "He plays a marketing team milking “Melodi”: whiteboard, cash, robe, toast. The industry he works in, called out from inside. #2 in memory.", "flow": [{"t": "0:00-0:03", "beat": "man in black Versace bathrobe stands by a black piano, draws a heart on a whiteboard next to “MODI” under a “FLAMES” layout; “MELONY” and “FLAMES” and “MODI” are visible."}, {"t": "0:03-0:09", "beat": "cut to a balcony drink, then the man on a grey sofa holding a thick stack of cash to his ear, then slapping his leg with the cash."}, {"t": "0:09-0:15", "beat": "cut back to the whiteboard reading “ITALY EXPANSION PROPOSAL,” then the man wipes the board clean with a cloth."}, {"t": "0:15-0:17.923", "beat": "the man sits on the grey sofa and raises a wine glass toward the camera before the cut ends mid-action."}], "hook": "Parle marketing team rn", "named": ["Parle", "MELONY", "FLAMES", "MODI", "ITALY EXPANSION PROPOSAL", "Jimmy Cooks", "Drake", "21 Savage", "Versace", "Italy"], "length": "17.923s"}, {"id": "a15", "title": "Invent a Driver", "age": "6 weeks ago", "rank_final": 18, "scene": "garage", "art": "p1", "speaks": "Anyone dodging blame", "pokes": "Himself", "feeling": "Blame someone who doesn’t exist.", "line": "A self-recorded excuse plan. The joke is on his own scheme, and it held the middle.", "flow": [{"t": "0:00-0:10", "beat": "Selfie close-up in a bright indoor hallway; he smiles at camera."}, {"t": "0:10-0:23", "beat": "He walks through a lobby toward elevators while talking to camera."}, {"t": "0:23-0:31", "beat": "In the elevator, he shows a smiling uniformed staff member and laughs while explaining the plan."}, {"t": "0:31-0:50", "beat": "He exits into a basement parking garage and speaks loudly to an off-camera attendant."}, {"t": "0:50-1:15", "beat": "He gestures, points at parking spots, scratches his head, and keeps naming a “new driver.”"}, {"t": "1:15-1:30", "beat": "He listens off-camera, sticks out his tongue briefly, nods, and continues the same story."}], "hook": "blame someone that does not exist", "named": [], "length": ""}, {"id": "a16", "title": "Rapid-fire Answer Check", "age": "5 weeks ago", "rank_final": 40, "scene": "studio", "art": "p3", "speaks": "The sponsor", "pokes": "Nobody", "feeling": "No angle. A panel answers questions.", "line": "A Startup Village panel. The sponsor bought a format, not his viewpoint. Every post before it landed higher.", "flow": [{"t": "0:00-0:03", "beat": "black-and-white glitch intro shows two men talking; static transition plays."}, {"t": "0:04-0:09", "beat": "color footage shows several young men at a white conference table greeting the camera and laughing."}, {"t": "0:10-0:26", "beat": "the group answers “IS COLLEGE WORTH IT?” in rapid cuts."}, {"t": "0:27-0:39", "beat": "the host asks “CLAUDE CODE OR CODEX?”; one participant says “Cursor,” and two men share a handshake/high-five."}, {"t": "0:40-0:57", "beat": "the group answers “WHICH SUBREDDIT DO YOU USE THE MOST?”; subreddit names appear as text overlays."}, {"t": "0:58-1:27", "beat": "the group answers “WHAT IS YOUR FAVORITE THING TO DO OUTSIDE OF WORK?”; split-screen shows reactions to “getting lost in jungles” and “mountain climbing in Delhi.”"}, {"t": "1:28-1:44", "beat": "the host shows screen time on a phone; a split-screen shows two participants reacting."}, {"t": "1:45-1:49", "beat": "the participants wave goodbye; the end card shows “STARTUP VILLAGE MUMBAI” and “little unusual” logos."}], "hook": "RAPID FIRE", "named": ["Startup Village Mumbai", "little unusual", "Claude Code", "Codex", "Cursor", "r/AmItheA**hole", "r/IndianFashionAddicts", "r/54", "r/AskHistorians", "Red Bull Racing", "Max Verstappen", "Oracle", "Ghazipur Landfill"], "length": ""}, {"id": "a17", "title": "Roast the Crowd", "age": "5 weeks ago", "rank_final": 20, "scene": "night", "art": "p3", "speaks": "The street", "pokes": "Everyone, then himself", "feeling": "Hosting a roast and losing control of it.", "line": "Street mic in the Versace robe, ending with him quitting his own show. The middle.", "flow": [{"t": "0:00-0:03", "beat": "Host in a black Versace bathrobe, sunglasses, and backward cap speaks to onlookers on a night street."}, {"t": "0:03-0:20", "beat": "He interacts with a boy in a blue Manchester United jersey, then asks about Aryan Kataria; black-and-white flashes and ding sounds punctuate reactions."}, {"t": "0:20-0:49", "beat": "Aryan, in sunglasses with a McDonald's fry box, delivers a rhyming roast; the crowd reacts and the camera shows two girls walking away laughing."}, {"t": "0:55-1:19", "beat": "A tall blonde guy takes the mic and delivers a fast Hindi rap roast; the host asks for a winner and the crowd calls names."}, {"t": "1:19-1:25", "beat": "The host counts votes, says he does not want to participate anymore, and the video cuts to black."}], "hook": "My name is Anuj and I'm just here for the vibes, boom.", "named": ["Anuj", "Aryan Kataria", "Versace", "Manchester United", "McDonald's", "Rani's Collection", "Funky 2.0", "MEETA", "CHARLOTTE", "Yogi's Coffeehouse"], "length": "85.702 seconds"}, {"id": "a18", "title": "Flip into Dad", "age": "4 weeks ago", "rank_final": 34, "scene": "gray", "art": "p1", "speaks": "Dads", "pokes": "Him", "feeling": "Dad thinks your Instagram is a waste.", "line": "He plays his own dad calling his videos “waahiyat”. The camera turns on his life, and it drops to the bottom quarter.", "flow": [{"t": "0:00-0:04", "beat": "Medium close-up of a young man in a blue Nike t-shirt smiles, gestures, and holds up a playing card to someone off-camera."}, {"t": "0:00-0:04", "beat": "On-screen text reads, “POV: you go to a guys house but his unemployed dad is also there”."}, {"t": "0:05-0:49", "beat": "Hard cut to black-and-white. The same actor plays the dad and speaks off-camera to Anuj and the friend."}, {"t": "0:05-0:49", "beat": "He delivers mixed English and Hindi lines about money, a bad magician, not giving ₹3000, not listening to his father, not doing engineering or MBA, posting “waahiyat video” on Instagram, calling for the mother, and torn boxers."}, {"t": "0:05-0:49", "beat": "He shifts eye-line left and right, rubs his face, covers his eyes with both hands, and laughs at the end."}], "hook": "POV: you go to a guys house but his unemployed dad is also there", "named": ["Anuj", "Instagram", "Sad Romance"], "length": ""}, {"id": "a19", "title": "Layer room with mashups", "age": "4 weeks ago", "rank_final": 36, "scene": "ui", "art": "ui", "speaks": "Unclear", "pokes": "Too many targets", "feeling": "A pile of references, no single target.", "line": "Shahid, Kareena, Central Cee, Modi, Hanumankind. Lots of names and no one to call out. Near the floor.", "flow": [{"t": "0:00-0:01", "beat": "Clubhouse-style room UI, avatars, red arrow on Anuj."}, {"t": "0:02-0:06", "beat": "A cappella singing of “Aaoge Jab Tum”; Shahid Kapoor and Kareena Kapoor cutouts appear; yellow lyric text."}, {"t": "0:07-0:10", "beat": "Krish asks to rap over the singing; red arrow shifts to Krish."}, {"t": "0:11-0:26", "beat": "Singing and rap overlap; Central Cee and Shahid/Kareena cutouts bounce; “How can I be homophobic? My b**** is gay” is shown."}, {"t": "0:27-0:50", "beat": "Spoken dialogue about Instagram views, the page following him, Narendra Modi, Hanumankind, and a next-Vishal-Shekhar line; arrow moves between Nirav, Anuj, and Krish; Narendra Modi and Hanumankind cutouts appear."}, {"t": "0:51-1:13", "beat": "Singing and fast rap overlap again; Shahid/Kareena and Hanumankind cutouts bounce; “Ten toes in…” and “Big Stepper” text appears."}, {"t": "1:14-1:18", "beat": "Nirav and Anuj speak; Vishal Dadlani and Shekhar Ravjiani cutouts appear; “Vishal Shekhar is actually one guy” is shown."}], "hook": "Would y'all like to hear me sing?", "named": ["Anuj", "Krish", "Nirav", "Shahid Kapoor", "Kareena Kapoor", "Central Cee", "Narendra Modi", "Hanumankind", "Vishal Dadlani", "Shekhar Ravjiani", "Clubhouse", "Jab We Met", "Aaoge Jab Tum", "Doja", "Big Dawgs", "Instagram", "Vishal-Shekhar"], "length": "1:18"}, {"id": "a20", "title": "Zoom Through Sorrow", "age": "4 weeks ago", "rank_final": 19, "scene": "gray", "art": "p1", "speaks": "Madrid fans", "pokes": "Mbappé", "feeling": "Leave for glory, watch your old club win it.", "line": "A fan’s grief, played straight in grayscale with no dialogue. It beat four straight but stopped at the middle.", "flow": [{"t": "0:00-0:03", "beat": "Close-up profile of a man looking upward; white Real Madrid jersey graphic on chest; text reads “Mbappe watching PSG win back 2 back UCLs after going trophyless.”"}, {"t": "0:03-0:11", "beat": "Camera slowly zooms in; he blinks, looks down, then back up toward a wall-mounted light fixture."}, {"t": "0:11-13.952", "beat": "Tight zoom on eye and cheek; he looks down again; cut to black and loop restart."}], "hook": "Mbappe watching PSG win back 2 back UCLs after going trophyless", "named": ["Mbappe", "PSG", "UCLs", "Madrid", "Real Madrid", "Emirates", "FLY BETTER", "Tu Hi Re", "Bombay (1995)"], "length": "13.952s"}, {"id": "a21", "title": "Glass-Review Parody", "age": "4 weeks ago", "rank_final": 22, "scene": "counter", "art": "p1", "speaks": "Himself", "pokes": "His own habit", "feeling": "“Reviewing glasses so I drink more water.”", "line": "A bit about his own kitchen counter, carried by sad violins and Sarabhai inserts. Just below the middle.", "flow": [{"t": "0:00-0:03", "beat": "Yellow overlay reads “Reviewing glasses so I drink more water”; Anuj introduces himself and says he is going to review glasses; sudden zoom on his mouth."}, {"t": "0:03-0:21", "beat": "He holds a standard faceted glass, pours water into it, takes a sip, and describes it as versatile."}, {"t": "0:21-0:36", "beat": "He ցույցs a shorter faceted glass, pours water into it, compares the two heights, and the frame turns black-and-white with sad violin music."}, {"t": "0:36-0:53", "beat": "He holds a heavy-bottomed whiskey glass, acts out a Bollywood father scene in black-and-white, then shows an elegant goblet glass with a split-screen insert of Sarabhai vs Sarabhai."}, {"t": "0:53-1:03", "beat": "He drinks from the goblet glass, then shows a large beer mug and reacts negatively."}, {"t": "1:03-1:28", "beat": "He holds a shot glass, tells a drunk auto-rickshaw story, flashes to black-and-white, then closes by saying “Bad, bad glass” while gesturing to throw it away."}], "hook": "What’s up guys, my name", "named": ["Anuj", "Coke", "Bollywood", "Sarabhai vs Sarabhai", "Sad Violin (Sad Romance by Thao Nguyen Xanh)", "Bisleri"], "length": "88s"}, {"id": "a22", "title": "Swap and Style Jerseys", "age": "4 weeks ago", "rank_final": 38, "scene": "turf", "art": "p1", "speaks": "The brand", "pokes": "Nobody", "feeling": "No angle. The jerseys pose.", "line": "Lotto x H&M jerseys, posed straight. No bluff to call and no feeling named, and it fell short of five straight.", "flow": [{"t": "0:00-0:01", "beat": "Title card reads “LOTTO H&M” on black."}, {"t": "0:01-0:04", "beat": "Rapid cuts show one man posing in red, black, and white Lotto jerseys under a dark spotlight."}, {"t": "0:04-0:06", "beat": "Close-up shows round sunglasses, a smile, and a silver soccer ball pendant necklace."}, {"t": "0:06-0:13", "beat": "In a parking garage, he does footwork tricks with a red soccer ball and spins it on his finger."}, {"t": "0:13-0:15", "beat": "Multiple cloned versions of him stand in a line, then he kicks the ball at the camera."}, {"t": "0:15-0:24", "beat": "On green turf, he wears a dark patterned jersey, dribbles, juggles, and poses."}, {"t": "0:24-0:29", "beat": "On a rooftop, he wears a white pinstripe jersey, makes a finger-heart gesture, juggles the red ball, and looks at camera."}, {"t": "0:29-0:31", "beat": "Final title card reads “LOTTO H&M.”"}], "hook": "LOTTO H&M", "named": ["Lotto", "H&M", "LEGEND SPORT", "Youth"], "length": "0:31"}, {"id": "a23", "title": "Mock Complaint Loop", "age": "4 weeks ago", "rank_final": 31, "scene": "gray", "art": "p1", "speaks": "Him", "pokes": "Him, via Mom", "feeling": "“My parents don’t appreciate me.”", "line": "Mom teases his self-praise until he says it’s going on Instagram. The camera turns on him again, and it lands in the bottom quarter again.", "flow": [{"t": "0:00-0:03", "beat": "Black-and-white shot opens on a man in a grey tank top and silver chain; centered top text reads “my parents don't appreciate me.”"}, {"t": "0:03-0:20", "beat": "He talks toward someone off-camera; static low-angle frame shows a ceiling fan and wall light."}, {"t": "0:20-0:40", "beat": "An off-camera female voice responds; he reacts with small smiles and looks around."}, {"t": "0:40-1:10", "beat": "He argues back while the mother teases him about self-praise and “Instagram” is mentioned in the dialogue."}, {"t": "1:10-1:15", "beat": "A woman briefly appears at the top left; he smiles, gives a thumbs-up, waves, points at the lens, and says the video is going on Instagram."}], "hook": "my parents don't appreciate me", "named": ["Anuj", "Instagram"], "length": "74.951s"}, {"id": "a24", "title": "Profile-switch Storyline", "age": "4 weeks ago", "rank_final": 21, "scene": "plain", "art": "p1", "speaks": "Middle-class friends", "pokes": "The rich friend", "feeling": "Rich friends and their “humble beginnings”.", "line": "The rich friend’s hardship story collapses into his dad getting into racing. Right tribe, but solo in two profile shots, and it held the middle.", "flow": [{"t": "0:00-0:02", "beat": "Left-facing profile; top text reads “when ur rich friend says they come from humble beginnings”; annoyed expression."}, {"t": "0:02-0:10", "beat": "Right-facing profile; the man speaks fast and defensively about school, no food in the canteen, getting food from a dustbin, eating glass, and going to the hospital."}, {"t": "0:10-0:12", "beat": "Left-facing profile interrupts with disbelief."}, {"t": "0:12-0:20", "beat": "Right-facing profile continues, saying his dad begged colleagues, mentions racers, then says his dad got into racing."}, {"t": "0:20-0:30", "beat": "Left-facing profile rolls eyes and shakes head; audio music fades in and swells."}, {"t": "0:30-0:31", "beat": "Screen cuts to black while music continues."}], "hook": "when ur rich friend says they come from humble beginnings", "named": ["Džanum by Teya Dora", "Moye Moye meme"], "length": "0:31"}, {"id": "a25", "title": "Reveal Car, Drive Off", "age": "4 weeks ago", "rank_final": 12, "scene": "night", "art": "car", "speaks": "His followers", "pokes": "His own flex", "feeling": "“Get used to these.” Sorry, not sorry.", "line": "The BMW again, mocking its own flex. It beat ten straight and ended a run of bits about his own life.", "flow": [{"t": "0:00-0:04", "beat": "A young man walks toward camera at night near a Blue Dart / DHL storefront, looking at his phone, then up, then adjusting his glasses."}, {"t": "0:04-0:07", "beat": "Camera pans right to a matte black BMW sedan parked at an HP petrol pump."}, {"t": "0:07-0:13", "beat": "Rear taillights, front headlight with blue ambient light, wide shot, and close-up of the M340i badge and rear taillight."}, {"t": "0:13-0:21", "beat": "The man leans on the hood pointing at camera, then a quick interior shot shows the steering wheel and dashboard, then rear and front-angle shots of the car."}, {"t": "0:21-0:23", "beat": "The man crosses his arms by the hood, and the car drives away into the night."}], "hook": "yall just have to get used to these for some time", "named": ["Blue Dart", "DHL", "HP", "BMW M340i", "Indian Customs", "Temperature by Sean Paul"], "length": "0:23"}, {"id": "a26", "title": "Say the tattoo", "age": "3 weeks ago", "rank_final": 37, "scene": "home", "art": "arm", "speaks": "Unclear", "pokes": "Unclear", "feeling": "The card doesn’t show the angle.", "line": "One second of a forearm tattoo that says “Mauli”. Nothing to read an angle from. Near the floor.", "flow": [{"t": "0:00-0:01", "beat": "Close-up handheld shot of a forearm with a cursive tattoo reading “Mauli” and a feather underneath; static lowercase on-screen text reads “mauli.”"}, {"t": "0:00-0:01", "beat": "A female voice says, “Oh my god, it says Mauli.”"}, {"t": "0:00-0:01", "beat": "Grey and pink patterned clothing and wooden flooring are visible in the background."}], "hook": "Oh my god, it says Mauli.", "named": [], "length": ""}, {"id": "a27", "title": "Stutter Into Chaos", "age": "3 weeks ago", "rank_final": 26, "scene": "studio", "art": "p3", "speaks": "Writers", "pokes": "Actors with “inputs”", "feeling": "Hired to act, suddenly a writer.", "line": "An industry tribe he knows, but it stays in a white room with no reveal. Below the middle.", "flow": [{"t": "0:00-0:02", "beat": "Four actors stand in a white room with a clothing rack; three hold their hands up and one sits in an office chair."}, {"t": "0:02-0:05", "beat": "The man in the black patterned robe steps forward and makes an intense face."}, {"t": "0:05-0:13", "beat": "He pushes the seated man’s head, gets into the others’ faces, and the group restrains him through rapid close-up reaction cuts."}, {"t": "0:13-0:15", "beat": "The group relaxes into a synchronized casual dancing pose and the video loops."}], "hook": "comics when they get hired to act but suddenly have writing inputs", "named": ["Versace"], "length": ""}, {"id": "a28", "title": "Sundae Taste Tour", "age": "3 weeks ago", "rank_final": 13, "scene": "icecream", "art": "p2", "speaks": "Foodies", "pokes": "Nobody", "feeling": "No angle. A favourite place, shown.", "line": "Baskin Robbins with a friend. It landed well, but there’s no viewpoint in it. The city is just where it happens.", "flow": [{"t": "0:00-0:02", "beat": "Two men wearing sunglasses sit at a wooden table inside Baskin Robbins, holding up ice cream cones; on-screen text reads “We’re in Mumbai” and “And our favorite ice cream place in the whole wide world.”"}, {"t": "0:02-0:05", "beat": "A gloved hand scoops green ice cream, then a chocolate-rimmed waffle cone with white ice cream appears, followed by the man in the white shirt eating a spoonful."}, {"t": "0:05-0:10", "beat": "The two men pose with cones, a yellow-striped vehicle exterior appears briefly, then the store interior, a cone close-up, and the Baskin Robbins storefront appear."}, {"t": "0:10-0:14", "beat": "Three plated desserts appear, the man in the white shirt tastes a sundae, the man in the pink shirt eats a sundae, and the man in the white shirt presents a tiramisu sundae while speaking to camera."}], "hook": "We’re in Mumbai", "named": ["Mumbai", "Baskin Robbins", "Dubai Chocolate Sundae", "Kataifi", "tiramisu sundae"], "length": "0:14"}, {"id": "a29", "title": "Open with chord", "age": "3 weeks ago", "rank_final": 39, "scene": "piano", "art": "p1", "speaks": "Unclear", "pokes": "Nobody", "feeling": "No angle. A piano take.", "line": "A 14-second piano take with no joke. It fell short of twelve straight.", "flow": [{"t": "0:00-0:02", "beat": "The pianist sits at a grand piano with hands poised over the keys."}, {"t": "0:02-0:05", "beat": "He strikes a heavy opening chord, lifts his right hand, and runs downward fast."}, {"t": "0:05-0:10", "beat": "He plays rapid arpeggios; the key movement mirrors in the red piano lid."}, {"t": "0:10-0:14", "beat": "He shifts into rhythmic chords and the video cuts off mid-performance."}], "hook": "fresh_res", "named": [], "length": "14s"}, {"id": "a30", "title": "Roast by voiceover", "age": "3 weeks ago", "rank_final": 23, "scene": "car", "art": "p1", "speaks": "Mumbaikars", "pokes": "Delhi", "feeling": "Delhi’s obsession is loud.", "line": "A Delhi voice roasts him. Pointed at another city again, and again the middle.", "flow": [{"t": "0:00-0:02", "beat": "close-up selfie of a young man in the driver’s seat wearing red-tinted sunglasses, a silver chain, and a grey t-shirt; he speaks to camera."}, {"t": "0:02-0:14", "beat": "an off-camera male voice shouts in Hindi with local slang and profanity; the driver turns slightly and smirks."}, {"t": "0:00-0:14", "beat": "visible text reads “watching obsession: Delhi”."}], "hook": "watching obsession: Delhi", "named": ["Delhi", "Mumbai", "Obsession"], "length": ""}, {"id": "a31", "title": "Escalate a complaint", "age": "3 weeks ago", "rank_final": 5, "scene": "plain", "art": "p1", "speaks": "Ronaldo fans", "pokes": "Ronaldo fans, and FIFA", "feeling": "“It’s rigged. Rigged for Messi.”", "line": "He is the fan who takes losing personally, already rehearsing the next excuse. Solo, and it beat sixteen straight.", "flow": [{"t": "0:00-0:03", "beat": "Speaker looks down, shakes his head, and mutters; on-screen text reads “practicing for when Ronaldo loses yet another WC.”"}, {"t": "0:03-0:07", "beat": "He puts hands on hips, looks off-camera left, and continues complaining."}, {"t": "0:07-0:10", "beat": "He turns right, gestures, and becomes more animated and defensive."}, {"t": "0:10-0:14", "beat": "He leans closer to the camera, gestures mockingly, and says the competition is “rigged,” “Rigged for Messi to win,” and “FIFA’s boy.”"}], "hook": "It’s rigged.", "named": ["Cristiano Ronaldo", "Lionel Messi", "FIFA"], "length": "0:14"}, {"id": "a32", "title": "Mock-phone rant", "age": "3 weeks ago", "rank_final": 30, "scene": "gray", "art": "p1", "speaks": "Commuters", "pokes": "The civic body", "feeling": "₹248 crore for 750 metres of flyover.", "line": "A real Mumbai grievance, but delivered as a rant. He is amused by his city, not angry at it, and the anger didn’t land.", "flow": [{"t": "0:00-0:07", "beat": "Man speaks to camera in black-and-white, gestures, and visible text names the Mrinal Tai Gore flyover, 248 crores, 750 meters, and “unfinished.”"}, {"t": "0:07-0:14", "beat": "He holds a white plaster bust to his ear as a mock phone, the dialogue turns into a louder caller voice, and the visible text shows the aggressive exchange ending with “dumbass.”"}], "hook": "POV: 248cr for a 750m flyover (unfinished)", "named": ["Mrinal Tai Gore flyover"], "length": ""}, {"id": "a33", "title": "Food Tour Cuts", "age": "3 weeks ago", "rank_final": 8, "scene": "restaurant", "art": "p3", "speaks": "Foodies", "pokes": "Nobody", "feeling": "No angle. A restaurant, shown.", "line": "O Pedro with friends. It landed in the top quarter, but the reader can’t credit a viewpoint. It’s hosting, not insight.", "flow": [{"t": "0:00-0:02", "beat": "Three people sit at a booth; the center man holds a burger and fries."}, {"t": "0:02-0:04", "beat": "Close-ups show prawns emptied from a green coconut shell and chocolate sauce poured over a tart."}, {"t": "0:04-0:06", "beat": "The center man takes a bite of a folded taco; the three diners smile and pose with the burger plate while “O Pedro baby!” is spoken."}, {"t": "0:06-0:08", "beat": "Quick cuts show the restaurant interior, tables, and a large wall mirror."}, {"t": "0:08-0:11", "beat": "The coconut prawn dish and a wide dining-room shot with hanging plants appear."}, {"t": "0:11-0:14", "beat": "A Burrata salad appears as the woman speaks directly to camera."}], "hook": "We're in Mumbai at what people say is one of", "named": ["O Pedro", "Mumbai", "Goan restaurants", "Burrata salad"], "length": "0:14"}, {"id": "a34", "title": "Freeze-Frame Reveal", "age": "3 weeks ago", "rank_final": 15, "scene": "store", "art": "p3", "speaks": "His followers", "pokes": "His own status", "feeling": "“Anuj’s PA.” Correction: not Anuj’s PA.", "line": "Broadway’s launch arrives through a staged fight and a PA who isn’t his. The brand bought his self-deflating angle. Upper half.", "flow": [{"t": "0:00-0:04", "beat": "Two men in orange shirts face a man in a white turban in a retail store; shouting, bleeps, and fast cuts continue."}, {"t": "0:05-0:09", "beat": "A woman in a black dress walks through the store, gestures at shoppers, and speaks to camera."}, {"t": "0:10-0:12", "beat": "She falls backward into a chair in slow motion; the text shows “Aysha Sultan,” “Anuj’s PA,” then “Not Anuj’s PA,” with a record scratch and “Yup, that’s me…” line."}, {"t": "0:13-0:14", "beat": "Cut to an exterior black building with a viewfinder overlay reading “3 DAYS BEFORE THE LAUNCH.”"}], "hook": "What the f*#^ are y'all doing here?", "named": ["Aysha Sultan", "Anuj’s PA", "Broadway", "Bandra", "@experiencebroadway_", "@anuj.mp4_", "SNEAKE", "Record Scratch Meme"], "length": ""}, {"id": "a35", "title": "Sock Mistake Cut", "age": "2 weeks ago", "rank_final": 4, "scene": "office", "art": "p3", "speaks": "Office friends", "pokes": "The friend who used a sock", "feeling": "That one disgusting thing your friend did.", "line": "His crew being idiots, filmed like an inside joke. No names, no message. It beat twenty straight.", "flow": [{"t": "0:00-0:03", "beat": "A man lies on a blue sofa; another man removes a white sock from his foot and hands it to a woman."}, {"t": "0:03-0:06", "beat": "The woman takes the sock, mistakes it for a tissue, and blows her nose into it."}, {"t": "0:07-0:10", "beat": "Cut to a man in a black shirt leaning over an office desk and speaking urgently."}, {"t": "0:11-0:14", "beat": "The woman realizes it was a sock, screams in disgust, and throws it away; an office phone rings in the background."}], "hook": "Oh thank you.", "named": [], "length": ""}, {"id": "a36", "title": "Reframe with punchline", "age": "2 weeks ago", "rank_final": 6, "scene": "bedroom", "art": "p1", "speaks": "Every Mumbaikar", "pokes": "Andheri East", "feeling": "Being in a bad place has a postcode.", "line": "Every Mumbaikar has been stuck in Andheri East. He laughs at his own city from inside it. It didn’t beat the sock reel before it, but that one was top 10%: strong company.", "flow": [{"t": "0:00-0:01", "beat": "Close-up of a young man holding a phone to his ear."}, {"t": "0:01-0:03", "beat": "Quick cuts show a face modified by a female appearance filter speaking to camera."}, {"t": "0:03-0:05", "beat": "Cut back to the man; he looks down, then says, “Damn. Andheri East.”"}], "hook": "in a bad place rn", "named": ["Andheri East"], "length": "0:05"}, {"id": "a37", "title": "Taunt into play", "age": "2 weeks ago", "rank_final": 10, "scene": "turf", "art": "p3", "speaks": "Sunday-league guys", "pokes": "The show-off", "feeling": "Talk big, slide into the net.", "line": "His crew on the turf, the trash talk undone by the slide into the net. Top quarter.", "flow": [{"t": "0:00-0:01", "beat": "Young man in white jersey does a wide squat taunt in front of the goal; bright yellow text reads “SUCK MY FAT C***K”; spoken line starts “Suck my fat...”."}, {"t": "0:02-0:04", "beat": "Tall man in sunglasses stretches on the turf; shorter man in black stands with arms crossed."}, {"t": "0:05-0:08", "beat": "A ball is kicked toward the goal; the man in white slides feet-first into the back of the net; off-camera voice says “Easy, easy.”"}, {"t": "0:09-0:13", "beat": "The man in white gets up, runs across the turf, and bumps into the man in sunglasses."}, {"t": "0:14", "beat": "Goalkeeper in grey stands ready in the goal with a ball on the turf in front."}], "hook": "Suck my fat...", "named": [], "length": ""}, {"id": "a38", "title": "Cut to Ludo", "age": "2 weeks ago", "rank_final": 7, "scene": "office", "art": "p3", "speaks": "Agency people", "pokes": "Corporate seriousness", "feeling": "Every “urgent pitch” is a board game.", "line": "The serious huddle turns out to be a Ludo game. His own work world, called out by people inside it. Top 20%.", "flow": [{"t": "0:00-0:08", "beat": "Extreme low-angle shot of four people in corporate attire standing in a tight circle and talking seriously."}, {"t": "0:08-0:09", "beat": "Wide shot reveals a modern office lounge with a wooden coffee table and a Ludo board game."}, {"t": "0:09-0:10", "beat": "Close-up shows a white die rolling on the board and landing on two."}, {"t": "0:10-0:12", "beat": "Wide shot shows the group slumping and sitting down on blue sofas."}, {"t": "0:12-0:14", "beat": "Medium shot shows a man in a peach shirt speaking and gesturing."}], "hook": "humari pitch mein", "named": ["Ludo", "@misdirectedbyanas", "@aksmouli", "@breezycatmedia", "@ndini23", "@satvikbhatt", "@bora.psd"], "length": "0:14"}, {"id": "a39", "title": "Flip State Punchline", "age": "2 weeks ago", "rank_final": 35, "scene": "bedroom", "art": "p1", "speaks": "Nobody in particular", "pokes": "A whole state, from outside", "feeling": "A pun, not a feeling.", "line": "The Andheri joke’s twin, pointed at UP. No Mumbaikar feeling behind it, just a double meaning on “state”. It fell short of all nine posts before it.", "flow": [{"t": "0:00-0:01", "beat": "First character in a green t-shirt smiles and asks, “Are Saurabh long time no see, what's up man? What's up bro”."}, {"t": "0:01-0:04", "beat": "Cut to the same actor as a second character with silver metallic sunglasses and a mustache filter; he says, “nothing bro, I'm just in a really bad state right now. Um...”"}, {"t": "0:04-0:07", "beat": "Cut back to the first character looking down, then up, and saying “UP.”"}], "hook": "in a bad state rn", "named": ["Saurabh", "UP", "Uttar Pradesh"], "length": "0:07"}], "viewpoints": [{"id": "bluff", "title": "Calls the bluff on his own tribe", "body": "He is inside every circle he mocks: SoBo kids, creators after one hit, Parle’s marketing team, the rich friend, the agency pitch, his own BMW. The joke is the pretension, told by someone guilty of it too.", "core": ["a13", "a6", "a14", "a24", "a38", "a8", "a25", "a34"], "contrast": [], "exception": ["a27"], "coreLabel": "calling out his tribe", "contrastLabel": null, "history": {"1": {"movement": "new", "status": "emerging"}, "2": {"movement": "strengthened", "status": "tested"}, "3": {"movement": "sharpened", "status": "settled"}, "4": {"movement": "strengthened", "status": "settled"}}}, {"id": "local", "title": "Mumbai’s private jokes, from a local", "body": "Andheri East as the bad place, SoBo kids lost outside Bombay, Kokilaben as the hospital you’d pick over “Ambani”. Only someone who lives the city has these feelings. Pointed at someone else’s home (Delhi, UP), it’s a stereotype from outside. Places he just visits (O Pedro, Baskin Robbins) don’t count.", "core": ["a36", "a13", "a7"], "contrast": ["a1", "a30", "a39"], "exception": ["a32"], "coreLabel": "laughing at his own city", "contrastLabel": "pointing at elsewhere", "history": {"4": {"movement": "new", "status": "emerging"}}}, {"id": "crew", "title": "His crew, being idiots", "body": "A sock used as a tissue, a pitch that is Ludo, trash talk undone by a slide into the net. No message and no target outside the group: the audience sees its own friends.", "core": ["a35", "a38", "a37", "a13"], "contrast": [], "exception": ["a27"], "coreLabel": "the crew’s own moments", "contrastLabel": null, "history": {"4": {"movement": "new", "status": "emerging"}}}, {"id": "fan", "title": "The fan who takes losing personally", "body": "Ronaldo’s loss is “rigged for Messi”. Mbappé watches PSG win it twice. Football works when he is the wounded fan, not the model in the jersey.", "core": ["a31", "a20", "a37"], "contrast": ["a22"], "exception": [], "coreLabel": "the wounded fan", "contrastLabel": "football, no feeling", "history": {"3": {"movement": "new", "status": "emerging"}, "4": {"movement": "strengthened", "status": "emerging"}}}, {"id": "quiet", "title": "Turn the camera on him and the room goes quiet", "body": "Dad on his “waahiyat” videos, Mom on his self-praise, Arjun bhai on reels not being a job, sleeping past 2 PM. When Anuj is the subject instead of the observer, the audience loses its seat next to him.", "core": ["a18", "a23", "a3", "a0", "a9", "a21"], "contrast": [], "exception": ["a4"], "coreLabel": "Anuj as the subject", "contrastLabel": null, "history": {"1": {"movement": "new", "status": "emerging"}, "2": {"movement": "strengthened", "status": "tested"}, "3": {"movement": "strengthened", "status": "tested"}, "4": {"movement": "held", "status": "tested"}}}, {"id": "sponsor", "title": "Sponsors land when they buy his angle", "body": "Blinkit paid for his take on creators (an AI out-sons the influencer). Broadway paid for him deflating himself (“not Anuj’s PA”). Startup Village and Lotto paid for a format with no angle, and they sit at the floor.", "core": ["a4", "a34"], "contrast": ["a16", "a22", "a5"], "exception": [], "coreLabel": "brand buys his angle", "contrastLabel": "brand brings a format", "history": {"2": {"movement": "new", "status": "emerging"}, "3": {"movement": "strengthened", "status": "tested"}, "4": {"movement": "strengthened", "status": "tested"}}}], "runNotes": {"1": {"head": "Two ceilings on day one", "body": "The Blinkit story, where an AI out-sons the influencer, and “creators after one viral video” both land near the top. Both call the bluff on creators. The BMW arrives already heckled. The bits about his own life sink."}, "2": {"head": "He goes after the tribes", "body": "SoBo kids panicking outside Bombay and Parle’s “Melodi” whiteboard: two circles he belongs to, both called out, both top 30%. The Startup Village panel, a sponsor’s format with no angle, lands last."}, "3": {"head": "He turned the camera on himself", "body": "Mom, Dad in grayscale, a tattoo, a piano, his water-glass habit: seven of ten sink. The BMW reveal breaks the run by mocking his own flex and beats ten straight."}, "4": {"head": "Back in the room", "body": "Sock, Ludo, the turf taunt: his crew being idiots, all top 25%. Ronaldo’s “rigged” beats sixteen straight. Andheri East lands top 15% because every Mumbaikar has been in that bad place. UP is the same joke about someone else’s home, and it falls short of nine straight."}}, "twins": [{"a": "a36", "b": "a39", "line": "Same setup, same five-second two-hander, one word apart. Andheri East is a Mumbaikar laughing at his own city. UP is a pun about someone else’s home."}, {"a": "a8", "b": "a22", "line": "Both show off a possession. The BMW heckles itself. The jerseys just pose."}, {"a": "a4", "b": "a16", "line": "Both are paid. Blinkit bought his angle on creators. Startup Village bought a panel format."}, {"a": "a14", "b": "a18", "line": "Same solo performer. In one he calls out the industry. In the other, his dad calls him out."}], "source": "Ranks and postcards from the SIM-W03 run packet. Order inside each week is approximate."}, {"handle": "lakmeindia", "kind": "Brand", "runs": 1, "cap": 100, "unit": "posts", "stance": ["Too early to call.", "One run and captions only. One split is already visible: Lakmé lands when a woman’s day leads and the product follows."], "posts": [{"id": "l0", "title": "Council of Makeup Lovers", "age": "this run", "pct_fixed": 24, "scene": "lips", "art": "p3", "speaks": "Makeup lovers", "pokes": "The community", "feeling": "You’re part of the council.", "line": "The caption talks to a community, and the product arrives on a gesture. Upper quarter.", "hook": "The council of makeup lovers has been su…", "flow": [], "named": [], "length": "", "views": 2.3, "legs": false}, {"id": "l1", "title": "Downloading in Progress", "age": "this run", "pct_fixed": 31, "scene": "phone", "art": "ui", "speaks": "Unclear", "pokes": "Unclear", "feeling": "A look, loading.", "line": "A loading-screen overlay. It kept climbing after day one and finished mid-run.", "hook": "Downloading in progress ⏳\n\nBecause your…", "flow": [], "named": [], "length": "", "views": 2.1, "legs": true}, {"id": "l2", "title": "Golden Hour on My Lips", "age": "this run", "pct_fixed": 18, "scene": "gold", "art": "p1", "speaks": "The wearer", "pokes": "Her own look", "feeling": "Wearing the golden hour.", "line": "A person wears the claim in first person. Top 18%.", "hook": "Wearing the golden hour on my lips just…", "flow": [], "named": [], "length": "", "views": 2.8, "legs": false}, {"id": "l3", "title": "Eyeliner Does It All", "age": "this run", "pct_fixed": 59, "scene": "shelf", "art": "product", "speaks": "The product", "pokes": "Nobody", "feeling": "The eyeliner does it all.", "line": "The product alone, as a packshot. Bottom half.", "hook": "When your eyeliner does it all, looking…", "flow": [], "named": [], "length": "", "views": 1.1, "legs": false}, {"id": "l4", "title": "Lashes Get the Main Role", "age": "this run", "pct_fixed": 56, "scene": "nude", "art": "p1", "speaks": "The product", "pokes": "Nobody", "feeling": "Your lashes, main character.", "line": "The product is the subject even with a face in frame. Bottom half.", "hook": "TLDR: Your lashes finally got the main c…", "flow": [], "named": [], "length": "", "views": 1.4, "legs": false}, {"id": "l5", "title": "We Celebrate Your Skin", "age": "this run", "pct_fixed": 39, "scene": "phone", "art": "ui", "speaks": "You", "pokes": "Unclear", "feeling": "Celebrating your skin.", "line": "A screen-style overlay about skin. Middle of the run.", "hook": "We celebrate your skin and skincare ever…", "flow": [], "named": [], "length": "", "views": 2.0, "legs": false}, {"id": "l6", "title": "Wand Came to Work", "age": "this run", "pct_fixed": 55, "scene": "shelf", "art": "product", "speaks": "The product", "pokes": "Nobody", "feeling": "This wand came to work.", "line": "A packshot that kept climbing after day one but stayed in the bottom half.", "hook": "TLDR: This wand came to work. 💅🏼\n\nWith a…", "flow": [], "named": [], "length": "", "views": 1.4, "legs": true}, {"id": "l7", "title": "Her Day’s Packed, Ice D", "age": "this run", "pct_fixed": 10, "scene": "mint", "art": "p1", "speaks": "Busy women", "pokes": "A packed day", "feeling": "Her day’s packed; this keeps her fresh.", "line": "A woman’s day leads and the product follows. The best of the run: top 10%, 3.7× usual views.", "hook": "Her day’s packed, but a refreshing Ice D…", "flow": [], "named": [], "length": "", "views": 3.7, "legs": false}, {"id": "l8", "title": "First Job Confusion", "age": "this run", "pct_fixed": 41, "scene": "nude", "art": "p1", "speaks": "First-jobbers", "pokes": "Corporate confusion", "feeling": "First-job confusion, in Bengali.", "line": "A person and a real moment, tested on skin. Middle of the run.", "hook": "First job-এর confusion আর corporate-এর c…", "flow": [], "named": [], "length": "", "views": 2.0, "legs": false}, {"id": "l9", "title": "Eyeconic Instants", "age": "this run", "pct_fixed": 61, "scene": "phone", "art": "product", "speaks": "The product", "pokes": "Nobody", "feeling": "Instants that look “Eyeconic”.", "line": "A product pun over a screen overlay. The lowest placement of the run.", "hook": "Only posting instants that look Eyeconic…", "flow": [], "named": [], "length": "", "views": 1.0, "legs": true}], "viewpoints": [{"id": "person", "title": "A woman’s day leads, the product follows", "body": "When a person and her moment come first (a packed day, “my lips”, the makeup lovers), the post places in the top quarter. When the product is the subject (the eyeliner does it all, the wand came to work), it places in the bottom half. Ten posts and captions only: a first sighting.", "core": ["l7", "l2", "l0"], "contrast": ["l3", "l4", "l6", "l9"], "exception": ["l8"], "coreLabel": "person leads", "contrastLabel": "product leads", "history": {"1": {"movement": "new", "status": "emerging"}}}, {"id": "overlay", "title": "Screen overlays are a habit, not a reason", "body": "Four of ten posts wear a phone-screen overlay, and they place anywhere from top 10% to top 61%. It’s how Lakmé dresses a post right now. On its own, it doesn’t say where a post will land.", "core": ["l1", "l5", "l7", "l9"], "contrast": [], "exception": [], "coreLabel": "overlay posts", "contrastLabel": null, "history": {"1": {"movement": "new", "status": "emerging"}}}], "runNotes": {"1": {"head": "One run in, captions only", "body": "All ten beat Lakmé’s usual views, so this run is about which beat them most. Her packed day with Ice D tops it at 3.7×. The four posts where the product is the subject all land in the bottom half."}}, "twins": [{"a": "l7", "b": "l9", "line": "Both wear a screen overlay. One puts a woman’s day first, the other a product pun. Top 10% against top 61%."}], "source": "Ten posts from the run-bites file: captions, placements and the media log. No postcards yet. Order as recorded."}]};
+const SCENES = {
+  bedroom: ['#7a5236', '#22160f'], night: ['#1a2b5e', '#3d2a10'], car: ['#1c4a47', '#081a19'], garage: ['#2a3140', '#06070a'],
+  office: ['#52677d', '#1a222c'], turf: ['#3f9a4c', '#0f3a1d'], restaurant: ['#a0552e', '#2e170c'], icecream: ['#f0a6be', '#7a3550'],
+  studio: ['#c9c9c4', '#6e6e69'], gray: ['#9a9a9a', '#161616'], home: ['#93795a', '#342a1f'], party: ['#5a33a0', '#160a2a'],
+  ui: ['#2b3446', '#0b0e14'], piano: ['#701818', '#140404'], store: ['#c0601e', '#3a1a08'], balcony: ['#79aed6', '#2a4a64'],
+  plain: ['#6a645e', '#24211e'], luxe: ['#3a2d1a', '#0c0905'], counter: ['#5a3a24', '#1a110a'], street: ['#9a5a2a', '#24140a'],
+  lips: ['#c2185b', '#4a0a22'], gold: ['#d6a443', '#4a3410'], nude: ['#d8a48f', '#6b4337'], mint: ['#7fc8b5', '#24524a'],
+  shelf: ['#f0d5d8', '#9c6b72'], phone: ['#3b2d5c', '#0d0a16'],
+};
+const GRAY = new Set(['gray']);
+const MOVE = { new: 'New', held: 'Held', strengthened: 'Strengthened', sharpened: 'Sharpened', narrowed: 'Narrowed', recast: 'Recast' };
+const STATUS = { emerging: 'Emerging', tested: 'Tested', settled: 'Settled' };
+const S = { f: 0, v: null, lens: null, sel: null, focus: null, playing: null };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const desk = () => window.matchMedia('(min-width: 980px)').matches;
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const F = () => DATA.feeders[S.f];
+const topP = (p) => Math.max(1, Math.round(p));
+const med = (a) => { const s = [...a].sort((x, y) => x - y); if (!s.length) return null; const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+/* ---------- memory: rank in lane, resistance, viewpoint state ---------- */
+function memory(f, v) {
+  const n = f.runs > 1 ? Math.min(f.posts.length, v * 10) : f.posts.length;
+  const ps = f.posts.slice(0, n).map((p, i) => ({ ...p, i, run: f.runs > 1 ? Math.floor(i / 10) + 1 : 1 }));
+  const score = (p) => (p.pct_fixed != null ? p.pct_fixed : p.rank_final);
+  [...ps].sort((a, b) => score(a) - score(b)).forEach((p, k) => { p.rank = k + 1; });
+  ps.forEach((p) => { p.pct = p.pct_fixed != null ? p.pct_fixed : (p.rank / n) * 100; });
+  ps.forEach((p, i) => {
+    let ripple = 0, stopper = null, shortOf = 0;
+    for (let j = i - 1; j >= 0; j--) { if (ps[j].pct > p.pct) ripple++; else { stopper = ps[j]; break; } }
+    for (let j = i - 1; j >= 0; j--) { if (ps[j].pct < p.pct) shortOf++; else break; }
+    Object.assign(p, { ripple, stopper, shortOf });
+    const s = stopper;
+    let label = 'In the mix';
+    if (i === 0) label = 'First in memory';
+    else if (ripple === i && p.pct <= 10) label = 'New ceiling';
+    else if (ripple >= 5 && p.pct <= 25) label = 'Breakout';
+    else if (ripple >= 4 && p.pct > 25) label = 'Broke a lull';
+    else if (ripple <= 1 && p.pct <= 25 && s && s.pct <= 15) label = 'Strong company';
+    else if (shortOf >= 5 && p.pct > 50) label = 'Left behind';
+    let line;
+    if (i === 0) line = 'Nothing earlier in memory to measure it against.';
+    else if (ripple > 0 && s) line = `Beat ${ripple} in a row, then hit ${s.title} (top ${topP(s.pct)}%).`;
+    else if (ripple > 0) line = `Beat all ${ripple} posts before it.`;
+    else line = `Didn’t beat the post before it, ${s.title} (top ${topP(s.pct)}%).` + (shortOf > 1 ? ` ${shortOf} in a row sit above it.` : '');
+    p.res = { label, line, good: ['New ceiling', 'Breakout', 'Strong company', 'Broke a lull'].includes(label) };
+  });
+  const byId = Object.fromEntries(ps.map((p) => [p.id, p]));
+  const vps = f.viewpoints.map((vp) => {
+    const ks = Object.keys(vp.history).map(Number).filter((k) => k <= v).sort((a, b) => a - b);
+    if (!ks.length) return null;
+    const h = vp.history[ks[ks.length - 1]];
+    const keep = (a) => a.filter((id) => byId[id]);
+    const core = keep(vp.core), contrast = keep(vp.contrast), exception = keep(vp.exception);
+    return { ...vp, core, contrast, exception, ks, born: ks[0], status: h.status, movement: ks.includes(v) ? h.movement : 'held',
+      coreMed: med(core.map((id) => byId[id].pct)), contrastMed: med(contrast.map((id) => byId[id].pct)) };
+  }).filter(Boolean);
+  const covered = new Set(vps.flatMap((x) => [...x.core, ...x.contrast, ...x.exception]));
+  const loose = ps.filter((p) => !covered.has(p.id)).map((p) => p.id);
+  const allMed = med(ps.map((p) => p.pct));
+  return { posts: ps, byId, vps, loose, n: ps.length, allMed };
+}
+
+/* ---------- mock reel covers ---------- */
+function art(kind) {
+  const P = (cx, s) => `<circle cx="${cx}" cy="${40 - 18 * s}" r="${4.6 * s}"/><path d="M${cx - 9 * s} 41 Q${cx - 9 * s} ${40 - 11 * s} ${cx} ${40 - 11.5 * s} Q${cx + 9 * s} ${40 - 11 * s} ${cx + 9 * s} 41Z"/>`;
+  let g = '';
+  if (kind === 'p1') g = P(15, 1.2);
+  else if (kind === 'p2') g = P(10, 1) + P(21, 1.05);
+  else if (kind === 'p3') g = P(6.5, 0.85) + P(23.5, 0.85) + P(15, 1.05);
+  else if (kind === 'car') g = '<path d="M2 36 L4.5 30.5 Q7 27 12 27 L19 27 Q23 27 26 30.5 L28.5 36 Z"/><circle cx="8" cy="36.5" r="2.6" fill="#000"/><circle cx="22.5" cy="36.5" r="2.6" fill="#000"/><rect x="5" y="31" width="20" height="1" fill="rgba(120,170,255,.55)"/>';
+  else if (kind === 'product') g = '<rect x="12.5" y="17" width="5" height="18" rx="1.2"/><rect x="12" y="13" width="6" height="5" rx="1" fill="rgba(255,255,255,.35)"/>';
+  else if (kind === 'arm') g = '<path d="M-2 30 Q10 24 32 26 L32 34 Q10 33 -2 38Z"/>';
+  else if (kind === 'ui') g = '<rect x="4" y="16" width="14" height="4" rx="2" fill="rgba(255,255,255,.18)"/><rect x="11" y="22" width="15" height="4" rx="2" fill="rgba(251,113,133,.35)"/><rect x="4" y="28" width="10" height="4" rx="2" fill="rgba(255,255,255,.18)"/><circle cx="7" cy="36" r="2" fill="rgba(255,255,255,.25)"/><circle cx="13" cy="36" r="2" fill="rgba(255,255,255,.25)"/><circle cx="19" cy="36" r="2" fill="rgba(255,255,255,.25)"/>';
+  return `<svg class="art" viewBox="0 0 30 40" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><g fill="rgba(0,0,0,.5)">${g}</g></svg>`;
+}
+function heat(p) { return p.pct <= 5 ? 4 : p.pct <= 10 ? 3 : p.pct <= 25 ? 2 : p.pct <= 50 ? 1 : 0; }
+function tile(p, cls = '', extra = '') {
+  const g = SCENES[p.scene] || SCENES.plain;
+  const cap = p.hook.length > 70 ? p.hook.slice(0, 68) + '…' : p.hook;
+  return `<button type="button" class="tile h${heat(p)} ${cls}" data-id="${p.id}" style="--g1:${g[0]};--g2:${g[1]};--dl:-${((p.i * 7) % 13) / 5}s;${extra}" aria-label="${esc(p.title)}, top ${topP(p.pct)}%, ${esc(p.res.label)}">
+    <span class="face ${GRAY.has(p.scene) ? 'gray' : ''}">${art(p.art)}<span class="cap">${esc(cap)}</span>${p.pct <= 25 ? `<span class="badge">${topP(p.pct)}%</span>` : ''}${p.length ? `<span class="dur">▶ ${esc(p.length.replace(/^0(\d:)/, '$1'))}</span>` : ''}<span class="sweep"></span></span>
+    <span class="ring"></span><span class="flag"></span></button>`;
+}
+
+/* ---------- header, stance, lenses ---------- */
+function renderTop() {
+  const f = F(), M = S.M;
+  $('feeders').innerHTML = DATA.feeders.map((x, k) => `<button type="button" data-f="${k}" aria-pressed="${k === S.f}"><span class="av"></span>@${esc(x.handle)} <small>${x.kind}</small></button>`).join('');
+  $('cells').innerHTML = Array.from({ length: f.cap }, (_, k) => { const p = M.posts[k]; return `<i class="${p ? (p.run === S.v && f.runs > 1 ? 'new' : 'on') : ''}"></i>`; }).join('');
+  $('memcap').innerHTML = `<b>${M.n}</b>/100 ${f.unit} · 90 days`;
+  $('replay').hidden = f.runs < 2;
+  $('replay').textContent = S.playing ? 'Stop' : 'Replay memory';
+  $('stanceEyebrow').innerHTML = `<b>@${esc(f.handle)}</b> · what this feed stands for · after run ${S.v}`;
+  const st = S.v === f.runs ? f.stance : [f.runNotes[S.v].head + '.', 'The memory as it stood after run ' + S.v + '. ' + f.runNotes[S.v].body];
+  $('stanceHead').textContent = st[0];
+  $('stanceBody').textContent = st[1];
+  $('source').textContent = `Sample data. ${f.source} Thumbnails are mock covers built from each postcard’s on-screen hook and scene. Viewpoints, angles and reader lines are hand-written stand-ins for what the run-of-10 reader would produce.`;
+}
+function renderLenses() {
+  const M = S.M;
+  const chip = (id, title, status, pct, sub) => `<button type="button" class="lens ${S.lens && S.lens !== id ? 'dim' : ''}" data-lens="${id}" aria-pressed="${S.lens === id}">
+      <b>${esc(title)}</b><span class="row">${status ? `<span class="st ${status}"></span>` : ''}${pct != null ? `<span class="bar2"><i style="width:${Math.max(4, 100 - pct)}%"></i></span>top ${topP(pct)}%` : esc(sub)}</span></button>`;
+  $('lenses').innerHTML = M.vps.map((v) => chip(v.id, v.title, v.status, v.coreMed)).join('') +
+    (M.loose.length ? chip('loose', 'Not explained yet', null, null, `${M.loose.length} posts`) : '');
+  const lb = $('lensbar');
+  if (!S.lens) { lb.hidden = true; return; }
+  lb.hidden = false;
+  if (S.lens === 'loose') {
+    lb.innerHTML = `<div><h2>Not explained yet</h2><div class="nums">${M.loose.length} posts no viewpoint accounts for. They stay open instead of being forced into a story.</div></div><button type="button" class="pill ghost" data-clearlens>Clear</button>`;
+    return;
+  }
+  const v = M.vps.find((x) => x.id === S.lens);
+  lb.innerHTML = `<div><h2>${esc(v.title)}</h2><div class="nums"><span><b>top ${topP(v.coreMed)}%</b> ${esc(v.coreLabel)}</span>${v.contrastMed != null ? `<span><b class="w">top ${topP(v.contrastMed)}%</b> ${esc(v.contrastLabel)}</span>` : `<span><b class="w">top ${topP(M.allMed)}%</b> the account overall</span>`}<span>${STATUS[v.status]} · ${MOVE[v.movement]} at run ${S.v}</span></div></div>
+    <div style="display:flex;gap:8px">${desk() ? '' : `<button type="button" class="pill" data-focuslens="${v.id}">Read</button>`}<button type="button" class="pill ghost" data-clearlens>Clear</button></div>`;
+}
+
+/* ---------- the wall ---------- */
+function renderWall(enterRun) {
+  const f = F(), M = S.M;
+  const runs = f.runs > 1 ? S.v : 1;
+  let h = '';
+  for (let r = runs; r >= 1; r--) {
+    const ps = M.posts.filter((p) => p.run === r).reverse();
+    const hi = ps.filter((p) => p.pct <= 25).length;
+    const note = f.runNotes[String(r)];
+    h += `<div class="run"><button type="button" class="runhead" data-run="${r}" aria-current="${S.focus && S.focus.type === 'run' && S.focus.v === r}"><b>RUN ${r}</b><span>${esc(note.head)}</span><em>${hi} of ${ps.length} in the top 25%</em></button>
+      <div class="grid">${ps.map((p, k) => tile(p, r === enterRun ? 'enter' : '', r === enterRun ? `--ed:${k * 70}ms` : '')).join('')}</div></div>`;
+  }
+  $('wall').innerHTML = h;
+  decorate(false);
+}
+function decorate(wave) {
+  const M = S.M; const sel = S.sel && M.byId[S.sel];
+  let role = null;
+  if (S.lens === 'loose') role = { core: new Set(M.loose), contrast: new Set(), exc: new Set() };
+  else if (S.lens) { const v = M.vps.find((x) => x.id === S.lens); role = { core: new Set(v.core), contrast: new Set(v.contrast), exc: new Set(v.exception) }; }
+  const beaten = new Map(), above = new Set(); let stop = null;
+  if (sel) {
+    for (let j = sel.i - 1, k = 0; j >= sel.i - sel.ripple; j--, k++) beaten.set(M.posts[j].id, k);
+    if (sel.stopper) stop = sel.stopper.id;
+    for (let j = sel.i - 1; j >= sel.i - sel.shortOf; j--) above.add(M.posts[j].id);
+  }
+  document.querySelectorAll('#wall .tile').forEach((t) => {
+    const id = t.dataset.id; const c = t.classList;
+    c.toggle('sel', id === S.sel);
+    c.toggle('core', !!role && role.core.has(id));
+    c.toggle('contrast', !!role && role.contrast.has(id));
+    c.toggle('exc', !!role && role.exc.has(id));
+    c.toggle('out', !!role && !role.core.has(id) && !role.contrast.has(id) && !role.exc.has(id) && id !== S.sel);
+    c.toggle('beaten', beaten.has(id));
+    c.toggle('stopper', id === stop);
+    c.toggle('above', above.has(id) && id !== stop);
+    c.remove('wave');
+    if (beaten.has(id)) t.style.setProperty('--wd', `${beaten.get(id) * 55}ms`);
+    if (id === stop) t.style.setProperty('--wd', `${(sel.ripple) * 55 + 80}ms`);
+  });
+  if (wave && sel && !reduce) {
+    void document.body.offsetWidth;
+    document.querySelectorAll('#wall .tile.beaten, #wall .tile.stopper').forEach((t) => t.classList.add('wave'));
+  }
+}
+
+/* ---------- panel views ---------- */
+function twinOf(id) { const M = S.M; return F().twins.find((t) => (t.a === id || t.b === id) && M.byId[t.a] && M.byId[t.b]); }
+function postView(p) {
+  const M = S.M; const f = F();
+  const vps = M.vps.filter((v) => v.core.includes(p.id) || v.contrast.includes(p.id) || v.exception.includes(p.id));
+  const tw = twinOf(p.id);
+  const other = tw ? M.byId[tw.a === p.id ? tw.b : tw.a] : null;
+  const g = SCENES[p.scene] || SCENES.plain;
+  const frames = (p.flow || []).slice(0, 8);
+  const statN = p.ripple > 0 ? p.ripple : (p.shortOf > 0 ? p.shortOf : 0);
+  return `<div class="pv">
+    <div class="hero-thumb">${tile(p, 'static')}
+      <div style="display:grid;gap:10px">
+        <div class="meta">Run ${p.run} · post ${p.i + 1} · ${esc(p.age)}${p.length ? ' · ' + esc(p.length) : ''}</div>
+        <h2>${esc(p.title)}</h2>
+        <div><span class="reschip ${p.res.good ? '' : 'w'}">${esc(p.res.label)}</span></div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="bigstat"><span class="n ${p.pct <= 25 ? 'r' : ''}">top ${topP(p.pct)}%</span><span class="l">${p.pct_fixed != null ? `placed · ${p.views}× usual views` : `#${p.rank} of ${M.n} reels in memory`}</span></div>
+      <div class="bigstat"><span class="n">${p.ripple > 0 ? p.ripple : p.i === 0 ? '–' : p.shortOf}</span><span class="l">${p.ripple > 0 ? 'beaten in a row' : p.i === 0 ? 'first post' : 'in a row above it'}</span></div>
+    </div>
+    <div class="resline">${esc(p.res.line)}</div>
+    <p class="feeling">${esc(p.feeling)}</p>
+    <div class="angle"><div><span>Speaks for</span><span>${esc(p.speaks)}</span></div><div><span>Pokes at</span><span>${esc(p.pokes)}</span></div></div>
+    <p class="reader"><b>Reader.</b> ${esc(p.line)}</p>
+    ${frames.length ? `<div class="sec"><span class="eyebrow">What happens · ${frames.length} beats</span><div class="strip">${frames.map((b, k) => `<div class="frame"><div class="fx ${GRAY.has(p.scene) ? 'gray' : ''}" style="--g1:${g[0]};--g2:${g[1]};filter:${GRAY.has(p.scene) ? 'grayscale(1)' : ''} hue-rotate(${k * 9}deg)">${art(p.art)}<em>${esc(b.t || '•')}</em></div><p>${esc(b.beat)}</p></div>`).join('')}</div></div>` : `<div class="sec"><span class="eyebrow">Caption</span><p class="reader">“${esc(p.hook)}”</p></div>`}
+    ${other ? `<div class="sec"><span class="eyebrow">Its twin</span><div class="twin">${tile(p, 'static')}<p><b>top ${topP(p.pct)}% vs top ${topP(other.pct)}%</b>${esc(tw.line)}</p>${tile(other)}</div></div>` : ''}
+    ${vps.length ? `<div class="sec"><span class="eyebrow">Viewpoints it belongs to</span><div class="chips">${vps.map((v) => `<button type="button" class="chip vp" data-focuslens="${v.id}">${esc(v.title)}${v.contrast.includes(p.id) ? ' · other side' : v.exception.includes(p.id) ? ' · exception' : ''}</button>`).join('')}</div></div>` : `<div class="sec"><span class="eyebrow">Viewpoints</span><p class="reader">No viewpoint explains this post yet.</p></div>`}
+    ${p.named && p.named.length ? `<div class="sec"><span class="eyebrow">Named in it</span><div class="chips">${p.named.slice(0, 12).map((n) => `<span class="chip">${esc(n)}</span>`).join('')}</div></div>` : ''}
+  </div>`;
+}
+function minis(ids, max = 6) {
+  const M = S.M;
+  return `<div class="minis">${ids.slice(0, max).map((id) => { const p = M.byId[id]; return `<div class="mini">${tile(p)}<p><b>top ${topP(p.pct)}%</b>${esc(p.feeling)}</p></div>`; }).join('')}</div>`;
+}
+function lensView(id) {
+  const M = S.M; const f = F();
+  if (id === 'loose') return `<div class="pv"><span class="eyebrow">Open questions</span><h2>Not explained yet</h2><p class="lede">${M.loose.length} posts no viewpoint accounts for. The reader keeps them open instead of forcing them into a story. Some landed well. A crew at a restaurant can land without saying anything.</p>${minis(M.loose, 12)}</div>`;
+  const v = M.vps.find((x) => x.id === id);
+  const hist = Array.from({ length: f.runs }, (_, k) => { const r = k + 1; const h = v.history[r]; const on = r >= v.born && r <= S.v; return `<span class="${r === S.v && h ? 'cur' : on ? 'on' : ''}">R${r} ${on ? (h ? MOVE[h.movement] : 'Held') : '·'}</span>`; }).join('');
+  return `<div class="pv">
+    <span class="eyebrow">${STATUS[v.status]} · ${MOVE[v.movement]} at run ${S.v}</span>
+    <h2>${esc(v.title)}</h2>
+    <div class="vs"><div class="bigstat"><span class="n r">top ${topP(v.coreMed)}%</span><span class="l">${esc(v.coreLabel)} · ${v.core.length}</span></div>
+      ${v.contrastMed != null ? `<div class="bigstat"><span class="n">top ${topP(v.contrastMed)}%</span><span class="l">${esc(v.contrastLabel)} · ${v.contrast.length}</span></div>` : `<div class="bigstat"><span class="n">top ${topP(M.allMed)}%</span><span class="l">the account overall</span></div>`}</div>
+    <p class="lede">${esc(v.body)}</p>
+    <div class="sec"><span class="eyebrow">Where it holds</span>${minis(v.core)}</div>
+    ${v.contrast.length ? `<div class="sec"><span class="eyebrow">The other side</span>${minis(v.contrast)}</div>` : ''}
+    ${v.exception.length ? `<div class="sec"><span class="eyebrow">Where it breaks</span>${minis(v.exception)}</div>` : ''}
+    <div class="sec"><span class="eyebrow">How the reader got here</span><div class="hist">${hist}</div></div>
+  </div>`;
+}
+function runView(r) {
+  const M = S.M; const f = F();
+  const ps = M.posts.filter((p) => p.run === r);
+  const note = f.runNotes[String(r)];
+  const wave = [...ps].sort((a, b) => b.ripple - a.ripple || a.pct - b.pct)[0];
+  const miss = [...ps].sort((a, b) => b.pct - a.pct)[0];
+  const pair = f.twins.find((t) => ps.some((p) => p.id === t.a) && ps.some((p) => p.id === t.b));
+  const moved = M.vps.filter((v) => v.ks.includes(r));
+  const atRun = memory(f, r);
+  const m = (p, em, b, txt) => `<div class="moment">${tile(p)}<p><em>${em}</em><b>${b}</b>${esc(txt)}</p></div>`;
+  return `<div class="pv">
+    <span class="eyebrow">Run ${r} · ${ps.length} new ${f.unit}${r === f.runs ? ' · latest' : ''}</span>
+    <h2>${esc(note.head)}</h2>
+    <p class="lede">${esc(note.body)}</p>
+    ${wave && wave.ripple ? m(wave, 'Biggest wave', `${esc(wave.title)} beat ${wave.ripple} in a row`, wave.feeling) : ''}
+    ${miss && miss !== wave ? m(miss, 'The miss', `${esc(miss.title)}, top ${topP(miss.pct)}%`, miss.feeling) : ''}
+    ${pair ? `<div class="sec"><span class="eyebrow">The pair that explains the run</span><div class="twin">${tile(M.byId[pair.a])}<p><b>top ${topP(M.byId[pair.a].pct)}% vs top ${topP(M.byId[pair.b].pct)}%</b>${esc(pair.line)}</p>${tile(M.byId[pair.b])}</div></div>` : ''}
+    ${moved.length ? `<div class="sec"><span class="eyebrow">What the reader learned</span><div class="chips">${moved.map((v) => { const h = v.history[r]; const vv = atRun.vps.find((x) => x.id === v.id); return `<button type="button" class="chip vp" data-focuslens="${v.id}">${MOVE[h.movement]}: ${esc(vv ? vv.title : v.title)}</button>`; }).join('')}</div></div>` : ''}
+  </div>`;
+}
+function viewHTML() {
+  const fo = S.focus; const M = S.M;
+  if (!fo) return runView(S.v);
+  if (fo.type === 'post' && M.byId[fo.id]) return postView(M.byId[fo.id]);
+  if (fo.type === 'lens' && (fo.id === 'loose' || M.vps.find((v) => v.id === fo.id))) return lensView(fo.id);
+  if (fo.type === 'run' && fo.v <= S.v) return runView(fo.v);
+  return runView(S.v);
+}
+function renderPanel() {
+  if (desk()) { $('panel').innerHTML = viewHTML(); $('panel').scrollTop = 0; }
+  else if ($('sheet').classList.contains('open')) { $('sheetBody').innerHTML = viewHTML(); $('sheet').scrollTop = 0; }
+  document.querySelectorAll('.runhead').forEach((b) => b.setAttribute('aria-current', String(!!S.focus && S.focus.type === 'run' && S.focus.v === +b.dataset.run)));
+}
+function openSheet() { $('sheetBody').innerHTML = viewHTML(); $('sheet').classList.add('open'); $('scrim').classList.add('open'); $('peek').hidden = true; $('sheet').scrollTop = 0; }
+function closeSheet() { $('sheet').classList.remove('open'); $('scrim').classList.remove('open'); }
+function renderPeek() {
+  const p = S.sel && S.M.byId[S.sel];
+  if (desk() || !p) { $('peek').hidden = true; return; }
+  $('peek').hidden = false;
+  $('peek').innerHTML = `${tile(p, 'static')}<div style="min-width:0"><b>${esc(p.title)}</b><span>top ${topP(p.pct)}% · <i>${esc(p.res.label)}</i> · ${p.ripple ? `beat ${p.ripple} in a row` : p.i === 0 ? 'first post' : `${p.shortOf} above it`}</span></div><button type="button" class="pill" data-openpost="${p.id}">Read</button>`;
+}
+
+/* ---------- state changes ---------- */
+function load(f, v, enterRun) {
+  S.f = f; S.v = v; S.M = memory(F(), v);
+  if (S.lens && S.lens !== 'loose' && !S.M.vps.find((x) => x.id === S.lens)) S.lens = null;
+  if (S.sel && !S.M.byId[S.sel]) S.sel = null;
+  renderTop(); renderLenses(); renderWall(enterRun); renderPanel(); renderPeek();
+}
+function selectPost(id, fromPanel) {
+  S.sel = id; S.focus = { type: 'post', id };
+  decorate(true); renderPanel(); renderPeek();
+  if (fromPanel) { const t = document.querySelector(`#wall .tile[data-id="${id}"]`); if (t && desk()) t.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); }
+}
+function setLens(id, focus) {
+  S.lens = S.lens === id && !focus ? null : id;
+  if (S.lens) S.focus = { type: 'lens', id: S.lens };
+  renderLenses(); decorate(false); renderPanel();
+}
+document.addEventListener('click', (e) => {
+  const q = (sel) => e.target.closest(sel);
+  let b;
+  if ((b = q('[data-f]'))) { stopPlay(); S.lens = null; S.sel = null; S.focus = null; closeSheet(); const k = +b.dataset.f; load(k, DATA.feeders[k].runs); return; }
+  if ((b = q('#replay'))) { S.playing ? stopPlay() : startPlay(); return; }
+  if ((b = q('[data-openpost]'))) { S.focus = { type: 'post', id: b.dataset.openpost }; openSheet(); return; }
+  if ((b = q('[data-clearlens]'))) { S.lens = null; renderLenses(); decorate(false); if (S.focus && S.focus.type === 'lens') { S.focus = null; renderPanel(); } return; }
+  if ((b = q('[data-focuslens]'))) { setLens(b.dataset.focuslens, true); if (!desk()) openSheet(); return; }
+  if ((b = q('[data-lens]'))) { setLens(b.dataset.lens, false); return; }
+  if ((b = q('[data-run]'))) { S.focus = { type: 'run', v: +b.dataset.run }; renderPanel(); if (!desk()) openSheet(); return; }
+  if ((b = q('#closeSheet')) || (b = q('#scrim'))) { closeSheet(); renderPeek(); return; }
+  if ((b = q('.tile[data-id]'))) {
+    if (b.classList.contains('static')) return;
+    const inSheet = !!e.target.closest('#sheet'), inPanel = !!e.target.closest('#panel');
+    selectPost(b.dataset.id, inPanel || inSheet);
+    if (inSheet) { $('sheetBody').innerHTML = viewHTML(); $('sheet').scrollTop = 0; $('peek').hidden = true; }
+    return;
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeSheet(); renderPeek(); }
+  const t = e.target.closest && e.target.closest('#wall .tile');
+  if (t && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault(); const p = S.M.byId[t.dataset.id];
+    const j = Math.max(0, Math.min(S.M.n - 1, p.i + (e.key === 'ArrowLeft' ? 1 : -1)));
+    const id = S.M.posts[j].id; selectPost(id); const nt = document.querySelector(`#wall .tile[data-id="${id}"]`); if (nt) nt.focus();
+  }
+});
+function startPlay() {
+  const f = F(); if (f.runs < 2) return;
+  S.playing = true; S.sel = null; S.lens = null; closeSheet(); let v = 1;
+  S.focus = { type: 'run', v }; load(S.f, v, v);
+  S.timer = setInterval(() => { v++; if (v > f.runs) { stopPlay(); return; } S.focus = { type: 'run', v }; load(S.f, v, v); }, 2600);
+  $('replay').textContent = 'Stop';
+}
+function stopPlay() { clearInterval(S.timer); S.timer = null; if (S.playing) { S.playing = null; $('replay').textContent = 'Replay memory'; } }
+let rz; let wasDesk = desk();
+window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (desk() !== wasDesk) { wasDesk = desk(); closeSheet(); renderLenses(); renderPanel(); renderPeek(); } }, 120); });
+
+/* first frame: latest run, the Andheri / UP pair told by the run story */
+load(0, DATA.feeders[0].runs);
+</script>
+
+</body>
+</html>

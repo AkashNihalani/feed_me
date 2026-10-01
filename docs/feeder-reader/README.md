@@ -1,4 +1,32 @@
-# Feeder Reader: memory model and Memory Skyline prototype
+# Feeder Reader: memory model and prototypes
+
+**Current prototype: `feeder-wall.html`** (built by `build_feeder_wall.py`).
+The feed as a living wall: one row per run of ten, newest on top. Posts glow
+by where they landed and dim when they landed low. Tapping a post sends a wave
+through every post it beat and marks the post that stopped it. Viewpoint lenses
+light the wall. Each post opens to its angle, a storyboard of its beats and
+its twin. Thumbnails are mock covers built from each postcard's hook and scene.
+
+### The angle layer (added after review)
+
+Topics don't explain landings ("it's set in Mumbai"). The angle does. For each
+new post, the run-of-10 reader writes:
+
+- **Speaks for**: whose experience the post voices ("every Mumbaikar").
+- **Pokes at**: who or what the joke is on ("Andheri East", "his own flex").
+- **The feeling**: the thing the audience recognises, in one line
+  ("Being in a bad place has a postcode").
+
+Readings become **viewpoints**: a stance the account takes, with a "lands
+when" side and an "other side". Each one comes with code-computed medians, for
+example "laughing at his own city: top 28%" against "pointing at elsewhere:
+top 57%". A post that landed but carries no angle (O Pedro, Baskin Robbins)
+stays "not explained yet". It isn't credited to a theme it merely appears in.
+
+The angle is interpretation, so it lives in the reader run with memory in
+hand, not in the performance-blind postcard.
+
+## Earlier prototype: `memory-skyline.html`
 
 `memory-skyline.html` is a self-contained prototype (open it in a browser). It
 runs on the repo's sample data: the 40 Anuj postcards and ranks from
