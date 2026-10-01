@@ -1,5 +1,26 @@
 # Feeder Reader: memory model and prototypes
 
+**Current prototype: `feeder-reader.html`** (built by `build_feeder_reader.py`,
+which reads the data embedded in `feeder-wall.html`). It answers four
+questions with three screens and no in-page expansion:
+
+| Question | Where it's answered |
+|---|---|
+| What is the account posting? | **Now**: the latest run in plain words plus three read cards |
+| Where did each post land? | Everywhere. Higher cover = landed better (the "podium"); rose = top of this account |
+| How often does it recur? | **Series**: each recurring thing (a creator's IP, a brand's campaign or product line) as a row, ×count |
+| When did it happen? | **Series**: one dot per post on the 90-day timeline, with run bands |
+
+Posts and series open as overlays (a sheet on phones), never by pushing the
+page around. The reader's unit of insight is the **series**: what it literally
+is, how many times it ran, when, where each one landed, and one plain verdict
+with numbers ("3 of 4 in the top 20%").
+
+The pipeline implication: each new D7 post gets assigned to a series (or
+starts a new one, or stays a one-off) when its postcard is written. Code
+computes counts, dates and landings per series. The reader writes the series
+description and verdict and updates them every run.
+
 **Current prototype: `feeder-wall.html`** (built by `build_feeder_wall.py`).
 The feed as a living wall: one row per run of ten, newest on top. Posts glow
 by where they landed and dim when they landed low. Tapping a post sends a wave
