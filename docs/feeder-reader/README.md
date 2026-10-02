@@ -1,43 +1,41 @@
 # Feeder Reader: memory model and prototypes
 
 **Current prototype: `feeder-reader.html`** (built by `build_feeder_reader.py`,
-which reads the data embedded in `feeder-wall.html`). One screen: the wall.
-Every reel in memory is on it, one row per run of ten, newest on top. Nothing
-lives on a separate page. Insight comes as layers you switch on over the wall.
+which reads the data embedded in `feeder-wall.html`). One screen, two parts.
+
+**The hero** is the reader's dispatch for the run you pick ("Back with the
+boys"), three numbers (top-25% count, best reel, longest streak beaten) and
+the **pulse**: every reel in memory on one line, oldest to newest, higher =
+ranked higher. Run bands sit under it, each with its typical rank, and the
+best of each run is pinned with its cover. Picking a run slides a highlight
+over its band. Tapping any reel draws its level line on the pulse: back
+through every reel it beat, until it reaches one that did better.
+
+**The wall** is the feed itself, laid out like an Instagram grid: newest
+first, with each run as a divider. "By rank" re-sorts the same covers into
+tiers (top 10%, top 25%, top half, bottom half) with one animated move. The
+layers go on top of it:
 
 | Layer | What the tiles show | Tap a reel | Tap a chip |
 |---|---|---|---|
-| **Bite** | bite word, ▲ out-bit N in a row, ▼ N in a row bit harder | a wave runs back through everything it out-bit and stops at the reel that bit harder | lights every reel in that bite band |
-| **Why** | what decided the bite: the idea, the moment, the faces or the craft | lights every reel decided the same way | the reader on that driver for this account |
-| **Bits** | which recurring thing it is (the account's IP, campaign or product line) | lights every other go at the same bit: how often, and when | the reader on that bit |
+| **Rank** | #rank, ▲ beat the last N in a row, ▼ the last N did better | the trace counts back through the feed, across runs, numbering each reel it beat, and flags the one that did better | lights every reel in that tier |
+| **Why** | what decided its rank: the idea, the moment, the faces or the craft | lights every reel decided the same way | the reader on that driver |
+| **Bits** | which recurring thing it is (an IP, a campaign, a product line) | lights every other go at the same bit, on the wall and on the pulse | the reader on that bit |
 
-Above the wall sits the **dispatch**: the reader's note on the run you're
-looking at ("Back with the boys"), with a pip bar of the run's bite. Picking a
-run lights its row. A floating **reader card** carries the take for whatever
-is tapped. "Open" sends the cover into a detail sheet with the take, the bite
-chart, the driver and every other go at the same bit.
+A floating **reader card** carries the take for whatever is tapped. "Open"
+sends the cover into a detail sheet.
 
-**Bite** is the Feed Me word for where a reel landed at day 7 against the
-account's own memory (it replaces "resistance" in all user-facing copy):
-
-| Word | Band |
-|---|---|
-| Devoured | top 10% |
-| Bit hard | top 25% |
-| Nibbled | top half |
-| Left on the plate | bottom half |
-
-"Out-bit the 20 before it" is the ripple. "9 in a row bit harder" is shortOf.
-The reel that ends a ripple is the one that "bit harder".
+**Language.** Feed Me is about Instagram feeds, so the copy stays in plain
+feed terms: rank, top 10%, top quarter, bottom half, "beat the last 20",
+"the last 9 did better", "kept scrolling". No food metaphors.
 
 **The reader's voice.** Every take is written for someone who has never seen
-the reel. It says what happens first, then why it got the bite it got, with a
-number only where it settles the point. It sounds like someone who has watched
-the whole feed: cheeky, specific, and in the feed's own nouns ("the BMW he
-can't stop roasting himself about", "Andheri East is a commute every
-Mumbaikar has suffered"). It never sounds like a marketing report. Each take
-names one **driver**, which the run-of-10 reader should output alongside the
-take:
+the reel. It says what happens first, then why it ranked where it did, with a
+number only where it settles the point. It sounds like someone who has
+watched the whole feed: cheeky, specific, in the feed's own nouns ("the BMW
+he can't stop roasting himself about"). It never sounds like a marketing
+report. Each take names one **driver**, which the run-of-10 reader should
+output alongside the take:
 
 - **the idea**: was the joke or premise itself any good;
 - **the moment**: was something already in the air (Mother's Day, a meme, a
@@ -46,27 +44,29 @@ take:
 - **the craft**: length, pacing, format, where the brand sits.
 
 That is how the reader separates "the celebrity always lands" from "the
-campaign hype carried it" from "the content itself was good". Driver medians
-are code-computed per account, so a claim like "all nine reels with his crew
-landed in his top half" is checkable.
+campaign hype carried it" from "the content itself was good". Code computes
+how each driver ranks per account, so a claim like "all nine reels with his
+crew landed in his top half" can be checked.
 
 **Plain labels.** Postcard titles ("Reframe with punchline") are internal.
 Every post also carries a `label` that says what happens ("“I’m in a bad
 place” → “Andheri East”"). All user-facing copy uses labels.
 
 **Motion.** Springs are simulated and sampled into native `linear()` easing
-curves, falling back to cubic-béziers. Rows pop in as they scroll into view.
-Layer tags wave across the wall in posting order when you switch layers. A
-tapped reel sends a sweep back through what it out-bit. Covers fly into the
-detail sheet and back. Ripples work on tap, and covers tilt with a glare on
-fine pointers only. Everything is disabled under reduced motion.
+curves, falling back to cubic-béziers. The pulse line draws itself in and its
+pins drop onto their peaks. Covers pop in as they scroll into view. Layer tags
+wave across the wall in posting order when you switch layers. The trace hops
+cover to cover along a rail with a running count. Re-sorting by rank moves
+every cover to its new place. Covers fly into the detail sheet and back.
+Ripples work on tap, and covers tilt with a glare on fine pointers only.
+Everything is disabled under reduced motion.
 
 The pipeline implication: each new D7 post gets a label, a driver, a take and
 a bit (series), or it stays a one-off, when its run is read. Code computes
 bands, ripples, counts and dates. The reader writes the takes, bit takes and
 run dispatch, and rewrites the bit takes every run.
 
-**Current prototype: `feeder-wall.html`** (built by `build_feeder_wall.py`).
+**Earlier prototype: `feeder-wall.html`** (built by `build_feeder_wall.py`).
 The feed as a living wall: one row per run of ten, newest on top. Posts glow
 by where they landed and dim when they landed low. Tapping a post sends a wave
 through every post it beat and marks the post that stopped it. Viewpoint lenses
@@ -114,7 +114,7 @@ per-post reader lines in it are hand-written stand-ins for model output.
 
 - **Rank**: D7 position among the same lane's posts in memory (newest 100, or
   all posts in 90 days when fewer). Shown as "top N%".
-- **Bite** (called resistance in code), looking back through the same lane in posting order:
+- **Beat streak** (called resistance in code), looking back through the same lane in posting order:
   - `ripple`: how many posts in a row this one beat;
   - `stopper`: the first post it did not beat, with that post's rank;
   - `shortOf`: how many posts in a row ranked above it.

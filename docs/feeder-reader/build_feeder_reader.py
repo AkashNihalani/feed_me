@@ -1,4 +1,4 @@
-"""Build data for the Feeder Reader prototype: one wall with Bite / Why / Bits layers.
+"""Build data for the Feeder Reader prototype: a pulse hero and one feed wall with Rank / Why / Bits layers.
 
 Starts from the data embedded in feeder-wall.html (postcards, covers, reader
 lines) and adds:
@@ -224,24 +224,24 @@ assert len(A_LABELS) == 40 and len(L_LABELS) == 10
 
 # ---------------------------------------------------------------- the Feeder Reader's voice
 # Written as someone who has watched every reel: context first, opinion second,
-# numbers only where they settle the argument. Drivers say what decided the bite:
+# numbers only where they settle the argument. Drivers say what decided where it landed:
 # idea (the joke/premise), moment (something already in the air), faces (who's in it),
 # craft (length, pacing, format).
 A_TAKE = {
     'a0': ('idea', 'He sleeps through the nationwide emergency-alert test because he “doesn’t wake up before 2 PM”. Everyone got that alert, so the moment was free, but the reel is just him jolting awake in bed. Nothing for anyone to grab.'),
-    'a1': ('idea', 'The same guy hears an alarm twice: as a Delhi guy (panic, shouting) and as a Mumbai guy (a shrug). A city stereotype his crowd has seen a hundred times. Polite nibble.'),
+    'a1': ('idea', 'The same guy hears an alarm twice: as a Delhi guy (panic, shouting) and as a Mumbai guy (a shrug). A city stereotype his crowd has seen a hundred times. Middle of the pack.'),
     'a2': ('idea', 'He plays two flatmates who decide to move in, then trade confessions (“I drank your milk”, “I dream about my own funeral”) and break into a hand-slap routine. A dark swerve, but nobody in his crowd knows these two guys.'),
     'a3': ('idea', 'He lectures “Arjun bhai” that scrolling reels isn’t a job, then a Zomato notification cuts in as the punchline. The joke lives in a phone banner you have to read in a second. And it’s Anuj getting preachy, which his crowd never orders.'),
     'a4': ('moment', 'A Blinkit ad, dropped right before Mother’s Day: his mom asks for help with WhatsApp, he’s “too busy being a macro influencer”, so she adopts an AI helper instead, and he has to order her a boAt watch to win her back. A brand deal that is actually a story, on the right weekend. The best-fed reel of the 90 days.'),
     'a5': ('craft', 'District ad: his friend mixes up Michael Jordan and Michael Jackson on the way to a concert. A one-line joke stretched to a minute, and the brand only appears on the end card.'),
-    'a6': ('idea', 'He and Ruhee Dosani play creators whose one reel hit 10 million. Suddenly it’s an “IP”, there are brand calls, and they still can’t pay the café bill. Every creator watching has met these two, or been them. Devoured.'),
+    'a6': ('idea', 'He and Ruhee Dosani play creators whose one reel hit 10 million. Suddenly it’s an “IP”, there are brand calls, and they still can’t pay the café bill. Every creator watching has met these two, or been them. Top 10%.'),
     'a7': ('faces', 'A real roadside fight between a scooter rider and a cab driver. Anuj walks in, makes them do breathing exercises, waves Kokilaben hospital at them and forces a three-way hug. Real strangers make it; at over a minute it runs out of road.'),
-    'a8': ('idea', 'First look at his new matte-black BMW, captioned “we get it bro 🙏”. He rolls his eyes at his own flex before you can. That pre-emptive roast is the whole trick, and it bit hard.'),
+    'a8': ('idea', 'First look at his new matte-black BMW, captioned “we get it bro 🙏”. He rolls his eyes at his own flex before you can. That pre-emptive roast is the whole trick. Top quarter.'),
     'a9': ('idea', 'Telling the girls about last night while skipping the part where he cheated. The guilty bit flashes to black and white. One expression doing all the work, and it isn’t enough.'),
     'a10': ('faces', 'A diss-track battle at a roadside cosmetics stall. The shopkeeper says “Boom” after every verse and picks the winner. The shopkeeper steals it; the reel is long enough that most people never meet him.'),
     'a11': ('idea', 'Girls sharing life updates (big drama, tears) vs boys (a shrug), all played by him in wigs. A premise the internet has done to death.'),
-    'a12': ('idea', 'He leans off his balcony, chats with a worker on the bamboo scaffolding and hands him some cash. Sweet. But there’s no joke and no point of view, so there’s nothing to bite.'),
-    'a13': ('idea', 'South Bombay rich kids find out there’s a world outside Bombay and panic on a night street. A very Mumbai jab, played by the whole crew. Nibbled, just outside his top quarter.'),
+    'a12': ('idea', 'He leans off his balcony, chats with a worker on the bamboo scaffolding and hands him some cash. Sweet. But there’s no joke and no point of view, so there’s nothing to send to the group chat.'),
+    'a13': ('idea', 'South Bombay rich kids find out there’s a world outside Bombay and panic on a night street. A very Mumbai jab, played by the whole crew. Just outside his top quarter.'),
     'a14': ('moment', 'He plays Parle’s marketing team milking the “Melodi” meme (Modi + Meloni): a FLAMES chart on a whiteboard, cash held to his ear like a phone, an “Italy expansion proposal”. The internet was already laughing at that meme; he gave it a boardroom. #2 of 40.'),
     'a15': ('craft', 'He gets a parking complaint and blames “the new driver”, who doesn’t exist, all the way down to the basement. A great lie stretched over 90 seconds of hallway.'),
     'a16': ('idea', 'A sponsored Startup Village panel: is college worth it, Claude Code or Codex, favourite subreddits. It’s an event recap with Anuj in it, not an Anuj reel, and his crowd treated it that way. Dead last.'),
@@ -253,76 +253,76 @@ A_TAKE = {
     'a22': ('idea', 'A sponsored Lotto x H&M jersey lookbook: ball tricks, rooftop poses, no joke. It looks great. His crowd came for jokes and scrolled. #38 of 40.'),
     'a23': ('idea', '“My parents don’t appreciate me.” His real mom, off camera, teases his self-praise until he announces it’s going on Instagram. Real banter, but once again Anuj is the one getting roasted.'),
     'a24': ('idea', 'His rich friend explains his “humble beginnings”: no food in the canteen, dad begging colleagues for help… dad got into racing. A good target, played solo in two profile shots. Just missed.'),
-    'a25': ('idea', 'The BMW again, posed at a petrol pump: “y’all just have to get used to these for some time”. The eye-rolling caption carries it again; it out-bit the 10 reels before it and pulled a slow week back up.'),
+    'a25': ('idea', 'The BMW again, posed at a petrol pump: “y’all just have to get used to these for some time”. The eye-rolling caption carries it again; it beat the 10 reels before it and pulled a slow week back up.'),
     'a26': ('craft', 'A one-second clip of a forearm tattoo that says “Mauli”. Blink and it’s over, so people did.'),
     'a27': ('idea', '“Comics when they get hired to act but suddenly have writing inputs”: one actor loses it, the others hold him back. An industry in-joke with no reveal at the end.'),
-    'a28': ('faces', 'He and a friend at Baskin Robbins in Mumbai tasting a Dubai chocolate sundae. Zero jokes, still nibbled. People like hanging out with him, not just laughing at him.'),
+    'a28': ('faces', 'He and a friend at Baskin Robbins in Mumbai tasting a Dubai chocolate sundae. Zero jokes, still his top third. People like hanging out with him, not just laughing at him.'),
     'a29': ('idea', 'A 14-second piano performance. Lovely. Not what anyone came for. #39 of 40.'),
     'a30': ('idea', '“Watching Obsession: Delhi”: a loud Delhi voice roasts him from the back seat. Delhi-vs-Mumbai again, and again just short.'),
-    'a31': ('moment', '“Practicing for when Ronaldo loses yet another World Cup”: it’s rigged, it’s for Messi, he’s FIFA’s boy. Fan grief everyone has heard from that one friend, timed to football season. It out-bit the 16 reels before it.'),
+    'a31': ('moment', '“Practicing for when Ronaldo loses yet another World Cup”: it’s rigged, it’s for Messi, he’s FIFA’s boy. Fan grief everyone has heard from that one friend, timed to football season. It beat the 16 reels before it.'),
     'a32': ('moment', '₹248 crore for a 750-metre flyover that’s still unfinished, ranted into a plaster bust like it’s a phone. The anger is real and the issue is real, but he’s angry here, not funny.'),
-    'a33': ('faces', 'Three friends at O Pedro, a Goan restaurant in Mumbai: coconut prawns, burrata, a shouted “O Pedro baby!”. No joke, all vibe, and it bit hard.'),
-    'a34': ('faces', 'A Broadway store-launch teaser: a shouting match in the store, a woman introduced as “Anuj’s PA”, a record scratch, “Not Anuj’s PA”. A brand deal with an actual joke in it. Nibbled.'),
-    'a35': ('faces', 'The office crew: one friend pulls off his sock, another takes it for a tissue and blows her nose in it. Gross, quick, and very “this happened in our office”. Devoured: it out-bit the 20 reels before it.'),
-    'a36': ('idea', 'Five seconds. “I’m in a bad place right now.” “Damn. Andheri East.” Every Mumbaikar has been stuck there. Bit hard; only the sock prank right before it bit harder.'),
+    'a33': ('faces', 'Three friends at O Pedro, a Goan restaurant in Mumbai: coconut prawns, burrata, a shouted “O Pedro baby!”. No joke, all vibe, and it made his top 20%.'),
+    'a34': ('faces', 'A Broadway store-launch teaser: a shouting match in the store, a woman introduced as “Anuj’s PA”, a record scratch, “Not Anuj’s PA”. A brand deal with an actual joke in it, and it held his top half.'),
+    'a35': ('faces', 'The office crew: one friend pulls off his sock, another takes it for a tissue and blows her nose in it. Gross, quick, and very “this happened in our office”. Top 10%, and it beat the 20 reels before it.'),
+    'a36': ('idea', 'Five seconds. “I’m in a bad place right now.” “Damn. Andheri East.” Every Mumbaikar has been stuck there. Top 15%; only the sock prank right before it did better.'),
     'a37': ('faces', 'Turf football with the boys: big trash talk, then he slides feet-first into the net. The crew does the heavy lifting again.'),
     'a38': ('faces', 'Four people in office clothes huddle over “our pitch”… it’s a Ludo game. He tagged half a creative agency’s worth of friends, and they showed up.'),
-    'a39': ('idea', 'The Andheri joke’s twin: “I’m in a bad state” → “UP”. A pun on a state, not a feeling anyone in Mumbai has. All 9 reels before it bit harder.'),
+    'a39': ('idea', 'The Andheri joke’s twin: “I’m in a bad state” → “UP”. A pun on a state, not a feeling anyone in Mumbai has. All 9 reels before it did better.'),
 }
 L_TAKE = {
-    'l0': ('faces', 'Talks to “the council of makeup lovers” and lets the product show up on a hand gesture. It reads like a group chat, not an ad. Bit hard.'),
+    'l0': ('faces', 'Talks to “the council of makeup lovers” and lets the product show up on a hand gesture. It reads like a group chat, not an ad. Top quarter.'),
     'l1': ('craft', 'A “downloading in progress” screen overlay, the look loading in. A slow burner: it kept climbing after day one.'),
     'l2': ('faces', 'First person: “Wearing the golden hour on my lips.” A face wearing the claim instead of a product making it.'),
     'l3': ('craft', 'Eyeliner packshot: “When your eyeliner does it all.” Just the product on screen, doing a job nobody watched it do.'),
-    'l4': ('idea', '“TLDR: your lashes finally got the main character…” The mascara is the hero even with a face in frame. Left on the plate, like every eye-makeup reel this run.'),
-    'l5': ('idea', '“We celebrate your skin and skincare…” in a phone-screen overlay. Warm, generic, nibbled.'),
-    'l6': ('craft', 'Mascara wand packshot: “This wand came to work.” It kept climbing after day one and still got left on the plate.'),
-    'l7': ('faces', '“Her day’s packed, but a refreshing Ice D…” A woman’s busy day first, the product second. 3.7× their usual views. Devoured.'),
-    'l8': ('moment', 'First-job confusion, captioned in Bengali. A real life moment for a regional crowd. Nibbled.'),
+    'l4': ('idea', '“TLDR: your lashes finally got the main character…” The mascara is the hero even with a face in frame. Bottom half, like every eye-makeup reel this run.'),
+    'l5': ('idea', '“We celebrate your skin and skincare…” in a phone-screen overlay. Warm, generic, middle of the pack.'),
+    'l6': ('craft', 'Mascara wand packshot: “This wand came to work.” It kept climbing after day one and still finished in the bottom half.'),
+    'l7': ('faces', '“Her day’s packed, but a refreshing Ice D…” A woman’s busy day first, the product second. 3.7× their usual views. Best of the run.'),
+    'l8': ('moment', 'First-job confusion, captioned in Bengali. A real life moment for a regional crowd. Top half.'),
     'l9': ('idea', 'A product pun (“instants that look Eyeconic”) over a screen overlay. The lowest of the run.'),
 }
 A_BITS = {
-    'biz': ('Roasting his own industry', 'Anuj is a creator who works with brands, so he roasts creators and brand people from the inside: Parle’s marketing team milking the Melodi meme, creators who hit 10M once and start saying “IP”, an urgent pitch that’s a Ludo game. Half his crowd works in this world. 3 of 4 bit hard or better; the miss (actors who suddenly have “writing inputs”) never lands a reveal.'),
-    'football': ('Football heartbreak', 'Football as personal grief: Ronaldo “robbed” by FIFA, Mbappé watching PSG win without him, trash talk on the turf that ends with him in the net. 2 of 3 bit hard. It works when he’s the wounded fan; the sponsored jersey lookbook is football too, and it was left on the plate.'),
-    'crew': ('The crew being idiots', 'His friends doing dumb things: the sock-for-a-tissue office prank, South Bombay kids panicking outside their bubble, a Clubhouse room falling apart. The sock prank out-bit 20 reels. The Clubhouse one crammed six celebrities and a rap verse into one joke and sank.'),
+    'biz': ('Roasting his own industry', 'Anuj is a creator who works with brands, so he roasts creators and brand people from the inside: Parle’s marketing team milking the Melodi meme, creators who hit 10M once and start saying “IP”, an urgent pitch that’s a Ludo game. Half his crowd works in this world. 3 of 4 made his top quarter; the miss (actors who suddenly have “writing inputs”) never lands a reveal.'),
+    'football': ('Football heartbreak', 'Football as personal grief: Ronaldo “robbed” by FIFA, Mbappé watching PSG win without him, trash talk on the turf that ends with him in the net. 2 of 3 made his top quarter. It works when he’s the wounded fan; the sponsored jersey lookbook is football too, and it came #38 of 40.'),
+    'crew': ('The crew being idiots', 'His friends doing dumb things: the sock-for-a-tissue office prank, South Bombay kids panicking outside their bubble, a Clubhouse room falling apart. The sock prank beat the 20 reels before it. The Clubhouse one crammed six celebrities and a rap verse into one joke and sank.'),
     'bmw': ('The BMW (pre-roasted)', 'He bought a matte-black BMW M340i and keeps posting it, always with a caption that rolls its eyes first: “we get it bro”, then “y’all just have to get used to these”. That eye-roll is the trick. Both landed in his top third.'),
     'food': ('Eating out with friends', 'Eating out in Mumbai with friends: O Pedro, Baskin Robbins. Not a single joke, and both still landed in his top third. His crowd likes hanging out with him, not just laughing at him.'),
-    'place': ('5-second place puns', 'New in run 4: five-second jokes that end on a place name. “Bad place” → Andheri East bit hard. “Bad state” → UP was left on the plate. Andheri East is a commute every Mumbaikar has suffered; UP is just wordplay. One more try will tell us whether this is a format or a fluke.'),
-    'street': ('Loose on the street', 'Anuj with real strangers: forcing a hug at a road fight, lying to a parking attendant about a driver who doesn’t exist, hosting rap battles and roasts. All four nibbled, none bit hard. The strangers are gold; the reels run a minute too long.'),
-    'city': ('Delhi vs Mumbai', 'City jabs: Mumbai shrugs while Delhi panics at an alarm, a Delhi voice roasting him, a rant about a ₹248 crore flyover. The alarm one nibbled; the other two were left on the plate. City stereotypes are a nibble at best for him.'),
-    'brand': ('Brand deals', 'Five sponsored reels and the widest spread in the feed: #1 and #40. Blinkit wrote him into a Mother’s Day story where an AI replaces him as the son: devoured. Broadway gave him a scene (“Not Anuj’s PA”). Lotto x H&M (a lookbook) and Startup Village (a panel Q&A) gave him a format with no joke, and his crowd scrolled. Hire the bit, not the face.'),
-    'both': ('Playing both sides', 'He plays both people in a conversation with jump cuts: flatmates moving in, girls’ vs boys’ life updates, the rich friend’s “humble beginnings”. All three left on the plate. The format doesn’t carry anything on its own.'),
-    'solo': ('Just Anuj, about Anuj', 'Just him and his own day: sleeping through the emergency alert, reviewing drinking glasses, a tattoo, a piano take, cash for a scaffolding worker. Six reels, none made his top half. Without someone to roast, there’s nothing to bite.'),
-    'family': ('Getting told off at home', 'Somebody at home tells Anuj off: his dad (played by him, in black and white) calls his videos “waahiyat”, his mom teases his self-praise, a friend says reels aren’t a job. His crowd follows him to watch him roast everyone else. Flip it and they don’t bite: all three in his bottom quarter.'),
+    'place': ('5-second place puns', 'New in run 4: five-second jokes that end on a place name. “Bad place” → Andheri East made his top 15%. “Bad state” → UP sank to #35. Andheri East is a commute every Mumbaikar has suffered; UP is just wordplay. One more try will tell us whether this is a format or a fluke.'),
+    'street': ('Loose on the street', 'Anuj with real strangers: forcing a hug at a road fight, lying to a parking attendant about a driver who doesn’t exist, hosting rap battles and roasts. All four in his top half, none in the top quarter. The strangers are gold; the reels run a minute too long.'),
+    'city': ('Delhi vs Mumbai', 'City jabs: Mumbai shrugs while Delhi panics at an alarm, a Delhi voice roasting him, a rant about a ₹248 crore flyover. The alarm one held his top half; the other two sank below it. City stereotypes are middle-of-the-pack at best for him.'),
+    'brand': ('Brand deals', 'Five sponsored reels and the widest spread in the feed: #1 and #40. Blinkit wrote him into a Mother’s Day story where an AI replaces him as the son: #1 of 40. Broadway gave him a scene (“Not Anuj’s PA”). Lotto x H&M (a lookbook) and Startup Village (a panel Q&A) gave him a format with no joke, and his crowd scrolled. Hire the bit, not the face.'),
+    'both': ('Playing both sides', 'He plays both people in a conversation with jump cuts: flatmates moving in, girls’ vs boys’ life updates, the rich friend’s “humble beginnings”. All three in his bottom half. The format doesn’t carry anything on its own.'),
+    'solo': ('Just Anuj, about Anuj', 'Just him and his own day: sleeping through the emergency alert, reviewing drinking glasses, a tattoo, a piano take, cash for a scaffolding worker. Six reels, none made his top half. Without someone to roast, there’s nothing to send to the group chat.'),
+    'family': ('Getting told off at home', 'Somebody at home tells Anuj off: his dad (played by him, in black and white) calls his videos “waahiyat”, his mom teases his self-praise, a friend says reels aren’t a job. His crowd follows him to watch him roast everyone else. Flip it and they keep scrolling: all three in his bottom quarter.'),
 }
 L_BITS = {
-    'skin': ('Her day, then the product', 'Skincare built around a woman’s day: Ice D’s “her day’s packed” post was devoured; “we celebrate your skin” nibbled.'),
-    'people': ('Talking to people', 'Captions that talk to people: the “council of makeup lovers” bit hard; first-job confusion in Bengali nibbled.'),
-    'eye': ('Eyeliner & mascara as the star', 'Liner and mascara as the main character: “your eyeliner does it all”, “this wand came to work”, “your lashes got the main character”, “Eyeconic” instants. Four reels, all left on the plate. Their biggest lane this run, and their weakest.'),
-    'oneoff': ('One-offs', 'Posted once this run: a golden-hour lip look (bit hard) and a “downloading” overlay (nibbled).'),
+    'skin': ('Her day, then the product', 'Skincare built around a woman’s day: Ice D’s “her day’s packed” post was their best of the run; “we celebrate your skin” held the top half.'),
+    'people': ('Talking to people', 'Captions that talk to people: the “council of makeup lovers” made the top quarter; first-job confusion in Bengali held the top half.'),
+    'eye': ('Eyeliner & mascara as the star', 'Liner and mascara as the main character: “your eyeliner does it all”, “this wand came to work”, “your lashes got the main character”, “Eyeconic” instants. Four reels, all in the bottom half. Their biggest lane this run, and their weakest.'),
+    'oneoff': ('One-offs', 'Posted once this run: a golden-hour lip look (top quarter) and a “downloading” overlay (top half).'),
 }
 A_DISPATCH = {
-    'all': ('The read so far', 'His crowd comes to watch Anuj roast everyone else: his own industry, his own BMW, his own city. They bite hardest when his friends are in it. They leave it on the plate when he’s alone, preachy, or the one getting told off.'),
-    1: ('Blinkit fed the whole feed', 'The Mother’s Day Blinkit ad, where his mom swaps him for an AI helper because he’s “too busy being an influencer”, became the best-fed reel of the 90 days. The creators-who-went-viral-once sketch with Ruhee Dosani was devoured too. The BMW debuted pre-roasted (“we get it bro”) and bit hard. Everything where it’s just him at home (sleeping through the alert, getting lectured about reels) was left on the plate.'),
-    2: ('The Melodi run', 'His Parle-marketing-team parody, riding the Melodi meme, took the second-biggest bite of the 90 days. Street bits with strangers (a rap battle at a cosmetics stall, a made-up driver, a bathrobe roast) all nibbled. The sponsored Startup Village panel came dead last: #40.'),
-    3: ('A quiet week at home', 'Seven of ten left on the plate: glasses reviewed with sad violins, mom’s teasing, a tattoo, a piano take. Anuj alone, about Anuj. The second BMW reel saved the week, out-biting the 10 before it. The Lotto x H&M jersey lookbook came #38.'),
-    4: ('Back with the boys', 'Six of ten bit hard or better. The office crew’s sock-as-a-tissue prank out-bit the 20 reels before it; the Ronaldo-was-robbed rant out-bit 16. He tried a new 5-second format twice: “bad place” → Andheri East bit hard, “bad state” → UP was left on the plate.'),
+    'all': ('The read so far', 'His crowd comes to watch Anuj roast everyone else: his own industry, his own BMW, his own city. They show up hardest when his friends are in it. They keep scrolling when he’s alone, preachy, or the one getting told off.'),
+    1: ('Blinkit carried the run', 'The Mother’s Day Blinkit ad, where his mom swaps him for an AI helper because he’s “too busy being an influencer”, became the best-fed reel of the 90 days. The creators-who-went-viral-once sketch with Ruhee Dosani made his top 10% too. The BMW debuted pre-roasted (“we get it bro”) and made the top quarter. Everything where it’s just him at home (sleeping through the alert, getting lectured about reels) sank to the bottom half.'),
+    2: ('The Melodi run', 'His Parle-marketing-team parody, riding the Melodi meme, landed #2 of the 90 days. Street bits with strangers (a rap battle at a cosmetics stall, a made-up driver, a bathrobe roast) all held the top half, none higher. The sponsored Startup Village panel came dead last: #40.'),
+    3: ('A quiet week at home', 'Seven of ten in his bottom half: glasses reviewed with sad violins, mom’s teasing, a tattoo, a piano take. Anuj alone, about Anuj. The second BMW reel saved the week, beating the 10 before it. The Lotto x H&M jersey lookbook came #38.'),
+    4: ('Back with the boys', 'Six of ten in his top quarter. The office crew’s sock-as-a-tissue prank beat the 20 reels before it; the Ronaldo-was-robbed rant beat 16. He tried a new 5-second format twice: “bad place” → Andheri East made his top 15%, “bad state” → UP sank to #35.'),
 }
 L_DISPATCH = {
-    'all': ('The read so far', 'Ten reels in and the pattern is loud: Lakmé gets bitten when a woman’s day leads and the product follows. When the eyeliner or mascara is the main character, the crowd scrolls. Captions only so far, so treat it as a first sighting.'),
-    1: ('Her day beat the packshot', 'Nine of ten beat their usual views (about 2× on average), but not equally. The Ice D post about a woman’s packed day pulled 3.7× and was devoured. All four eye-makeup reels, where the eyeliner or mascara is the hero, were left on the plate.'),
+    'all': ('The read so far', 'Ten reels in and the pattern is loud: Lakmé lands when a woman’s day leads and the product follows. When the eyeliner or mascara is the main character, the crowd scrolls. Captions only so far, so treat it as a first sighting.'),
+    1: ('Her day beat the packshot', 'Nine of ten beat their usual views (about 2× on average), but not equally. The Ice D post about a woman’s packed day pulled 3.7× and topped the run. All four eye-makeup reels, where the eyeliner or mascara is the hero, finished in the bottom half.'),
 }
 A_DRIVERS = {
-    'idea': 'Most of his feed lives or dies on the idea. Roasting a world he’s part of (creators, his BMW, Andheri East) bites. Being the one roasted (dad, mom, a lecture) or having no joke at all (piano, a lookbook) gets left on the plate.',
-    'moment': 'Five reels rode something already in the air: Mother’s Day (Blinkit), the Melodi meme (Parle), Ronaldo vs Messi, Mbappé leaving Madrid, a flyover scandal. Three bit hard, including #1 and #2. The moment opens the door; the bit still has to walk through. The flyover rant was angry, not funny, and stalled.',
-    'faces': 'Put him with people and the floor rises: the office crew (sock, Ludo), the turf boys, strangers on the street, friends at a restaurant. All nine landed in his top half and four bit hard. Nobody in this group was left on the plate.',
-    'craft': 'Five reels lost on execution, not the idea: too long (a 90-second parking lie, 88 seconds about glasses), too short (a one-second tattoo), too busy (the Clubhouse mashup), or the brand hiding on the end card. None bit hard.',
+    'idea': 'Most of his feed lives or dies on the idea. Roasting a world he’s part of (creators, his BMW, Andheri East) lands. Being the one roasted (dad, mom, a lecture) or having no joke at all (piano, a lookbook) gets scrolled past.',
+    'moment': 'Five reels rode something already in the air: Mother’s Day (Blinkit), the Melodi meme (Parle), Ronaldo vs Messi, Mbappé leaving Madrid, a flyover scandal. Three made his top quarter, including #1 and #2. The moment opens the door; the bit still has to walk through. The flyover rant was angry, not funny, and stalled.',
+    'faces': 'Put him with people and the floor rises: the office crew (sock, Ludo), the turf boys, strangers on the street, friends at a restaurant. All nine landed in his top half and four made the top quarter. None of them sank to the bottom half.',
+    'craft': 'Five reels lost on execution, not the idea: too long (a 90-second parking lie, 88 seconds about glasses), too short (a one-second tattoo), too busy (the Clubhouse mashup), or the brand hiding on the end card. None made the top quarter.',
 }
 L_DRIVERS = {
-    'faces': 'A person leading the post (the makeup-lovers “council”, “my lips”, her packed day) is where Lakmé got bitten: all three in the top quarter.',
+    'faces': 'A person leading the post (the makeup-lovers “council”, “my lips”, her packed day) is where Lakmé landed: all three in the top quarter.',
     'idea': 'Product-as-hero captions (“your lashes got the main character”, “Eyeconic” instants) and a generic skin post: none made the top quarter.',
     'craft': 'Packshots and overlays: the eyeliner and mascara-wand packshots, a “downloading” screen. A slow climb at best.',
-    'moment': 'One real-life moment (first-job confusion, in Bengali). Nibbled.',
+    'moment': 'One real-life moment (first-job confusion, in Bengali). Top half.',
 }
 A_PRIMER = 'Anuj (@anuj.mp4) is a Mumbai comedy creator: crew sketches, street bits with strangers, a BMW he can’t stop roasting himself about, and the odd brand deal. 40 reels since May 1, ranked against each other at day 7.'
 L_PRIMER = 'Lakmé (@lakmeindia) is one of India’s oldest beauty brands. Ten reels so far, read from captions only, so the reader is still getting to know them.'
