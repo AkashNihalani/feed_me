@@ -3,34 +3,16 @@
 import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, Trophy } from 'lucide-react';
+import { BookOpenText, LayoutGrid, Trophy } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppHaptics } from '@/lib/haptics';
 import { PILL_SPRING } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
-type NavIconProps = {
-  size?: number;
-  className?: string;
-  strokeWidth?: number;
-};
-
-function FundNavIcon({ size = 20, className = '' }: NavIconProps) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn('flex items-center justify-center font-black leading-none tracking-[-0.04em]', className)}
-      style={{ fontSize: size + 1, transform: 'translateY(1px)' }}
-    >
-      ₹
-    </span>
-  );
-}
-
 const NAV_ITEMS = [
   { label: 'Feed', href: '/', icon: LayoutGrid },
   { label: 'Lead', href: '/lead', icon: Trophy },
-  { label: 'Fund', href: '/profile', icon: FundNavIcon },
+  { label: 'Read', href: '/read', icon: BookOpenText },
 ];
 
 function primaryTabHref(pathname: string | null) {
@@ -95,7 +77,7 @@ export default function BottomNav() {
     try {
       if (!pathname || pathname === '/login') return;
       const tabHref = primaryTabHref(pathname);
-      const isTab = tabHref === '/' || tabHref === '/lead' || tabHref === '/profile';
+      const isTab = tabHref === '/' || tabHref === '/lead' || tabHref === '/read' || tabHref === '/profile';
       if (!isTab) return;
       const existing = sessionStorage.getItem('feedme:last-tab');
       const intent = sessionStorage.getItem('feedme:intent');
@@ -108,17 +90,17 @@ export default function BottomNav() {
   useEffect(() => {
     router.prefetch('/');
     router.prefetch('/lead');
-    router.prefetch('/profile');
+    router.prefetch('/read');
   }, [router]);
 
   useEffect(() => () => {
     if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
   }, []);
 
-  if (pathname === '/login' || pathname?.startsWith('/command') || pathname?.startsWith('/drop') || pathname?.startsWith('/visit') || pathname?.startsWith('/read')) return null;
+  if (pathname === '/login' || pathname?.startsWith('/command') || pathname?.startsWith('/drop') || pathname?.startsWith('/visit') || pathname?.startsWith('/read/')) return null;
 
   return (
-    <div className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
+    <div data-fm-bottom-nav="true" className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
       <div className="fm-depth-chrome fm-depth-chrome--nav pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[22px] lg:px-1 lg:py-1">
         <div ref={trackRef} className="relative grid grid-cols-3 gap-0.5">
           {activeIndex >= 0 && (

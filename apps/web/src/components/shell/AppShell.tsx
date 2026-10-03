@@ -36,12 +36,13 @@ const HeaderLayerContext = createContext<{
   setCompressed: (compressed: boolean) => void;
 } | null>(null);
 function isTabRoute(pathname: string) {
-  return pathname === '/' || pathname === '/lead' || pathname === '/fire' || pathname === '/profile';
+  return pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/fire' || pathname === '/profile';
 }
 
 function headerIdForPathname(pathname: string) {
   if (pathname === '/') return 'feed';
   if (pathname === '/lead') return 'lead';
+  if (pathname === '/read') return 'read';
   if (pathname === '/fire') return 'fire';
   if (pathname === '/profile') return 'fund';
   return null;
@@ -164,7 +165,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         '--fm-desktop-header-chrome-height': '168px',
         '--fm-mobile-header-chrome-compressed-height': '68px',
       } as CSSProperties
-    : undefined;
+    : currentHeaderId === 'read'
+      ? {
+          '--fm-mobile-header-chrome-height': '152px',
+          '--fm-desktop-header-chrome-height': '80px',
+          '--fm-mobile-header-chrome-compressed-height': '68px',
+        } as CSSProperties
+      : undefined;
   const headerLayerValue = useMemo(() => ({
     currentId: currentHeaderId,
     element: headerLayerElement,
