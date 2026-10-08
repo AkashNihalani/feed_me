@@ -1,0 +1,74 @@
+{
+  "_note": "Hand-written placeholders for the Read feed page (one row per feeder the reader has read). anuj.mp4 mirrors readerPreview.json; the other three are stand-ins grounded in a couple of post cards each, until their real reads exist.",
+  "feeders": {
+    "anuj.mp4": {
+      "run": 4,
+      "posts": 40,
+      "who": "A man far too sure of himself, and a crowd that loves watching it backfire.",
+      "head": "Wrong and loud beats right and loud",
+      "rules": [
+        { "law": "He needs people in the frame.", "carry": [6, 10], "held": [20, 22], "move": "held" },
+        { "law": "He has to be the problem.", "carry": [6, 10], "held": [14, 17], "move": "sharpened" },
+        { "law": "The joke has to be his crowd’s life.", "carry": [4, 10], "held": [8, 9], "move": "sharpened" }
+      ],
+      "moves": [
+        { "move": "sharpened", "law": "He has to be the problem.", "line": "Same-day rants: Ronaldo “rigged” came 5th, the flyover 30th." },
+        { "move": "sharpened", "law": "The joke has to be his crowd’s life.", "line": "“Andheri East” came 6th; “UP” came 35th." },
+        { "move": "dropped", "law": "Mumbai vs Delhi is a lane.", "line": "City takes stalled. Folded into “his crowd’s life”." }
+      ],
+      "call": { "verdict": "called", "text": "When the crew comes back, the floor comes back.", "line": "Four crew posts, all in his top quarter." },
+      "next": "His next brand deal makes his top 10 only if it casts his ego."
+    },
+    "sufimotiwala": {
+      "run": 4,
+      "posts": 40,
+      "who": "A fashion historian with a grudge, roasting the red carpet one name-check at a time.",
+      "head": "The Met Gala made him; the family saga kept him",
+      "rules": [
+        { "law": "The roast lands when he knows more than the room.", "carry": [5, 10], "held": [11, 13], "move": "sharpened" },
+        { "law": "Desi craft on a global carpet is his home turf.", "carry": [3, 10], "held": [7, 8], "move": "held" },
+        { "law": "Family sagas outlast single looks.", "carry": [2, 10], "held": [3, 3], "move": "born" }
+      ],
+      "moves": [
+        { "move": "sharpened", "law": "The roast lands when he knows more than the room.", "line": "“The Met Gala should just be called the Indian Gala”: a dozen name-checks deep, and it landed." },
+        { "move": "born", "law": "Family sagas outlast single looks.", "line": "Three “new icon enters our dynasty” posts, all in his top half." }
+      ],
+      "call": { "verdict": "open", "text": "The dynasty series keeps climbing.", "line": "One more episode will tell." },
+      "next": "Whether the saga holds without a wedding to hang it on."
+    },
+    "rohitraghv_": {
+      "run": 3,
+      "posts": 30,
+      "who": "The friend who does everyone’s most insufferable impression, and a crowd that tags who it’s about.",
+      "head": "Lalit Modi’s podcast flex carried the run",
+      "rules": [
+        { "law": "Parody a real flexer, not a made-up type.", "carry": [5, 10], "held": [9, 11], "move": "sharpened" },
+        { "law": "Pop-culture TV is his safest lane.", "carry": [3, 10], "held": [8, 10], "move": "held" },
+        { "law": "A list needs a plea at the end.", "carry": [1, 10], "held": [4, 6], "move": "broke" }
+      ],
+      "moves": [
+        { "move": "sharpened", "law": "Parody a real flexer, not a made-up type.", "line": "Lalit Modi “casually flexing in every answer” beat everything before it." },
+        { "move": "broke", "law": "A list needs a plea at the end.", "line": "The teen-drama list had the plea and still sat mid-table." }
+      ],
+      "call": { "verdict": "missed", "text": "The teen-drama list makes his top 10.", "line": "It came 14th of 30. The plea wasn’t enough." },
+      "next": "Whether a second real-person parody repeats the Modi landing."
+    },
+    "srishtigargg": {
+      "run": 4,
+      "posts": 40,
+      "who": "A sad-girl diary that brands pay to be the punchline of.",
+      "head": "Google Maps paid for her best sad-girl post",
+      "rules": [
+        { "law": "Her loneliness is the hook; the brand is the punchline.", "carry": [4, 10], "held": [9, 11], "move": "sharpened" },
+        { "law": "Voiceover diaries beat talking to camera.", "carry": [3, 10], "held": [7, 9], "move": "held" },
+        { "law": "A friend dragging her out sells the brand.", "carry": [2, 10], "held": [4, 4], "move": "born" }
+      ],
+      "moves": [
+        { "move": "born", "law": "A friend dragging her out sells the brand.", "line": "“My best friend never leaves the house” turned an Ask Maps plug into her best post of the run." },
+        { "move": "sharpened", "law": "Her loneliness is the hook; the brand is the punchline.", "line": "The Maps post and the Copenhagen café diary both landed in her top quarter." }
+      ],
+      "call": { "verdict": "called", "text": "Her next paid post lands if it stays a diary entry.", "line": "The Ask Maps post did, and came 3rd of 40." },
+      "next": "Whether a brand that isn’t a lifestyle app fits the diary."
+    }
+  }
+}

@@ -170,19 +170,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         '--fm-desktop-header-chrome-height': '168px',
         '--fm-mobile-header-chrome-compressed-height': '68px',
       } as CSSProperties
-    : currentHeaderId === 'feed'
+    : currentHeaderId === 'read' || currentHeaderId === 'feed'
       ? {
           '--fm-mobile-header-chrome-height': '152px',
           '--fm-desktop-header-chrome-height': '168px',
           '--fm-mobile-header-chrome-compressed-height': '68px',
         } as CSSProperties
-      : currentHeaderId === 'read'
-        ? {
-            '--fm-mobile-header-chrome-height': '152px',
-            '--fm-desktop-header-chrome-height': '80px',
-            '--fm-mobile-header-chrome-compressed-height': '68px',
-          } as CSSProperties
-        : undefined;
+      : undefined;
   const headerLayerValue = useMemo(() => ({
     currentId: currentHeaderId,
     element: headerLayerElement,

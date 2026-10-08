@@ -1,19 +1,26 @@
 /* The Read tab engine: the approved prototype's plain JS, mounted and torn down by ReadTab. Kept as JS (not TS)
    so the prototype code stays byte-for-byte reviewable against docs/feeder-reader/feeder-reader.html. */
 /*
- * The Read tab's engine: the Read prototype's script, run imperatively against the static markup that
- * readMarkup.ts renders into the app header capsule (#rd-hdr), the page (#rd-main) and the fixed layer
- * (#rd-layer). What changed in the port, and nothing else:
+ * The Read tab's engine: the Read prototype's script, run imperatively against the page (#rd-main), the
+ * fixed layer (#rd-layer, markup from readMarkup.ts) and the readout row of the header. What changed in the
+ * port, and nothing else:
  *   - every id carries an rd- prefix (other tabs share the document);
  *   - the prototype's own tab bar is the app's bottom nav ([data-fm-bottom-nav]);
- *   - the header geometry is the app capsule's (see ht/hb), and the phone/desktop breakpoint is 1023/1024px;
- *   - setCompact also drives the app header's compression (setCompressed);
+ *   - the header is the app's, drawn by React (ReadHeader: the title row #rd-hdr and Lead's story rail of
+ *     feeds and feeders under it). React owns which feeder is read: it mounts the engine on one (initial)
+ *     and switches it with the show(k) the mount returns. The engine tells the header what it is showing
+ *     (onHeader), fills the readout (#rd-hread) and toggles `reading` on #rd-hdr; the view switch
+ *     (data-drop) goes through the engine's own click router. The header folds as Lead's does, at every
+ *     width (setCompact, which drives the app's compression through setCompressed), and the phone/desktop
+ *     breakpoint is 1023/1024px;
  *   - stand-ins and flying copies go into the tab's fixed layer instead of <body>;
  *   - everything a mount starts (listeners, observers, timers, frames, motion, stand-ins, the sheet's scroll
- *     lock) is undone by the cleanup it returns, and mounting again renders from scratch.
+ *     lock, the readout) is undone by the unmount it returns, and mounting again renders from scratch.
  */
 
-const SCENES = {
+
+// the colours of each drawn cover's scene (also the board's stand-in for a sample post's cover)
+export const SCENES = {
   bedroom: ['#80573a', '#1f140d'], night: ['#22357a', '#3b2810'], car: ['#1f5753', '#081716'], garage: ['#323b4e', '#06070a'],
   office: ['#5c7590', '#18202a'], turf: ['#45a856', '#0d3519'], restaurant: ['#b05e30', '#2a150a'], icecream: ['#f2aac2', '#7a3550'],
   studio: ['#cfcfca', '#6a6a65'], gray: ['#a0a0a0', '#141414'], home: ['#9c805f', '#30271c'], party: ['#6538b0', '#140926'],
@@ -23,7 +30,7 @@ const SCENES = {
   shelf: ['#f2d9dc', '#986870'], phone: ['#433366', '#0c0915'],
 };
 
-export function mountReader({ data, layer, setCompressed }) {
+export function mountReader({ data, layer, setCompressed, onHeader, initial = 0 }) {
 /* Everything below runs per mount. The prototype's code keeps its own (top-level) indentation, so its
    multi-line template strings stay byte-for-byte what they were. */
 let alive = true;
@@ -59,11 +66,17 @@ let RM = mqReduce.matches;
 if (mqReduce.addEventListener) listen(mqReduce, 'change', (e) => { RM = e.matches; });
 const mqPhone = matchMedia('(max-width: 1023px)');
 const phone = () => mqPhone.matches;
-/* the app's chrome. The header is the app's glass capsule (#rd-hdr is its content box): on a phone its top
-   moves with the safe area, it is 152px tall and clipped to 68px when compressed; on desktop it is one 80px
-   row whose bottom (+8) is where the sticky lens sits. The tab bar is the app's own bottom nav. */
-const ht = () => $('rd-hdr').getBoundingClientRect().top;
-const hb = () => { const h = $('rd-hdr'), b = h ? h.getBoundingClientRect().bottom : 0; return b ? b + 8 : 108; };
+/* the app's chrome. The header is the app's glass capsule: its top moves with the safe area; it is 152px tall
+   on a phone and 168px on desktop, and folds to its top 68px (the title row) as you scroll down. Its height
+   comes from the engine's own state, so a measure taken right after a fold already sees where it is going.
+   hb() is 8px under it: where the desktop lens sticks. hbc() is the same line with the header folded: where
+   the header's panel drops, and where every scroll the page makes for you lands things (it folds the
+   header). The tab bar is the app's own bottom nav. */
+const cap = () => { const h = $('rd-hdr'); return h ? h.closest('.fm-depth-chrome--header') : null; };
+const ht = () => { const c = cap(); return c ? c.getBoundingClientRect().top : 10; };
+const hh = () => (S.compact ? 68 : phone() ? 152 : 168);
+const hb = () => ht() + hh() + 8;
+const hbc = () => ht() + 76;
 const navTop = () => { const n = document.querySelector('[data-fm-bottom-nav]'), r = n && n.getBoundingClientRect(); return r && r.height ? r.top : innerHeight - 88; };
 const fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
 const SOFT = 'cubic-bezier(.16,.9,.2,1)';
@@ -89,7 +102,7 @@ const IC = {
 };
 
 /* ---------- state ---------- */
-const S = { f: 0, layer: 'read', sort: 'recent', sel: null, pick: null, drop: null, take: '', stack: [], compact: false, tr: null };
+const S = { f: DATA.feeders[initial] ? initial : 0, layer: 'read', sort: 'recent', sel: null, pick: null, drop: null, take: '', stack: [], compact: false, tr: null, rule: null };
 let ovOpen = false;
 let bodyLock = false, bodyPrev = '';
 
@@ -114,22 +127,47 @@ function model(fi) {
     return items.length ? { ...s, items, med: med(items.map((p) => p.pct)), first: items[0].date, last: items[items.length - 1].date } : null;
   }).filter(Boolean).sort((a, b) => (a.id === 'oneoff') - (b.id === 'oneoff') || a.med - b.med);
   const calm = Math.max(2, Math.round(n / 8));
+  // the reader: its rules (the account), its run reads, and the concepts the wall groups by. A feeder without one
+  // falls back to its series and run dispatches
+  const rd = f.reader || null;
   const runs = Array.from({ length: runCount }, (_, k) => {
-    const r = k + 1, items = ps.filter((p) => p.run === r), md = med(items.map((p) => p.rank));
-    return { r, items, md, typical: Math.floor(md + 0.5), top: items.filter((p) => p.pct <= 25).length, best: [...items].sort((a, b) => a.rank - b.rank)[0], d: (f.dispatch || {})[String(r)] || { head: 'Run ' + r, body: 'Not read yet.' } };
+    const r = k + 1, items = ps.filter((p) => p.run === r), md = med(items.map((p) => p.rank)), rr = rd && rd.runs ? rd.runs[String(r)] || null : null;
+    const d = (f.dispatch || {})[String(r)] || { head: 'Run ' + r, body: 'Not read yet.' };
+    return { r, items, md, typical: Math.floor(md + 0.5), top: items.filter((p) => p.pct <= 25).length, best: [...items].sort((a, b) => a.rank - b.rank)[0], rr, d: rr ? { head: rr.head, body: d.body } : d };
   });
   runs.forEach((R, k) => { const P = runs[k - 1]; R.prev = P || null; const dm = P ? P.md - R.md : 0; R.dir = !P ? 'first' : dm >= calm ? 'up' : dm <= -calm ? 'down' : 'level'; });
   runs.forEach((R) => { R.tp = Math.max(1, Math.round(med(R.items.map((p) => p.pct)))); R.low = R.items.filter((p) => p.pct > 50).length; });
   const byId = Object.fromEntries(ps.map((p) => [p.id, p]));
-  const reps = (f.repeats || []).map((x) => { const items = x.posts.map((id) => byId[id]).filter(Boolean).sort((a, b) => a.i - b.i); return { ...x, items, ids: new Set(x.posts), med: med(items.map((p) => p.pct)) }; });
-  const Mo = { f, n, posts: ps, byId, series, sById: Object.fromEntries(series.map((s) => [s.id, s])), runs, reps, rById: Object.fromEntries(reps.map((x) => [x.id, x])) };
+  const conSrc = rd && rd.concepts ? rd.concepts : series.map((s) => ({ id: s.id, name: s.name, short: s.pill || s.name, read: s.say || s.take || '', posts: s.items.map((p) => p.id) }));
+  // Repeats: most-posted concept first; a tie goes to the one that lands better
+  const cons = conSrc.map((c) => {
+    const items = c.posts.map((id) => byId[id]).filter(Boolean).sort((a, b) => a.i - b.i);
+    return items.length ? { ...c, short: c.short || c.name, items, ids: new Set(items.map((p) => p.id)), med: med(items.map((p) => p.pct)), first: items[0].date, last: items[items.length - 1].date } : null;
+  }).filter(Boolean).sort((a, b) => b.items.length - a.items.length || a.med - b.med);
+  cons.forEach((c) => c.items.forEach((p) => { p.concept = c.id; }));
+  /* a rule's weight, from the posts it names: lands (it says these should land), sinks (these should sink). Reach =
+     how many posts it speaks for; held = how often the post did what the rule said; carry = how many of the
+     account's top-quarter posts it explains; breaks = the posts that did the opposite. The board ranks rules by
+     carry, then by how often they hold, then by reach, and a rule's number is its place on the board */
+  const half = n / 2, quarter = Math.max(1, Math.round(n / 4));
+  const weigh = (r) => {
+    const L = (r.lands || r.proof || []).filter((id) => byId[id]), Sk = (r.sinks || r.against || []).filter((id) => byId[id]), rk = (id) => byId[id].rank;
+    const held = L.filter((id) => rk(id) <= half).length + Sk.filter((id) => rk(id) > half).length, calls = L.length + Sk.length;
+    const brokenBy = [...L.filter((id) => rk(id) > half), ...Sk.filter((id) => rk(id) <= half)];
+    const items = [...new Set([...L, ...Sk])].map((id) => byId[id]).sort((a, b) => a.i - b.i);
+    return { ...r, L, Sk, calls, held, reach: items.length, carry: L.filter((id) => rk(id) <= quarter).length, quarter, brokenBy, items, ids: new Set(items.map((p) => p.id)), rate: calls ? held / calls : 0 };
+  };
+  const rules = (rd && rd.rules ? rd.rules : []).map(weigh).sort((a, b) => b.carry - a.carry || b.rate - a.rate || b.reach - a.reach).map((r, k) => ({ ...r, n: k + 1 }));
+  const retired = (rd && rd.retired ? rd.retired : []).map(weigh);
+  const ruleById = Object.fromEntries([...rules, ...retired.map((r) => ({ ...r, gone: true }))].map((r) => [r.id, r]));
+  const Mo = { f, n, rd, posts: ps, byId, series, sById: Object.fromEntries(series.map((s) => [s.id, s])), runs, cons, cById: Object.fromEntries(cons.map((c) => [c.id, c])), rules, retired, ruleById };
   CACHE.set(fi, Mo);
   return Mo;
 }
 const M = () => model(S.f);
 
 /* ---------- words: plain feed language ---------- */
-const RANKW = ['Below 50%', 'Top 50%', 'Top 25%', 'Top 10%'];
+const RANKW = ['Bottom half', 'Top half', 'Top 25%', 'Top 10%'];
 const RANKV = [
   (w, n, they) => `Below ${w} own middle of the last ${n}. ${they} saw it and kept scrolling.`,
   (w) => `Above ${w} middle, outside the top quarter. Did the job, didn’t travel.`,
@@ -139,11 +177,16 @@ const RANKV = [
 const DRV = { idea: ['The idea', 'Idea'], moment: ['The moment', 'Moment'], faces: ['The faces', 'Faces'], craft: ['The craft', 'Craft'] };
 const DRVQ = { idea: 'whether the joke itself was any good', moment: 'something already in the air', faces: 'who’s in it', craft: 'how it’s made: length, pace, format' };
 const SHORT = { biz: 'Own industry', football: 'Football', crew: 'The crew', bmw: 'The BMW', food: 'Eating out', place: 'Place puns', street: 'Street', city: 'Delhi v Mumbai', brand: 'Brand deal', both: 'Both sides', solo: 'Solo', family: 'Told off', skin: 'Her day', people: 'People', eye: 'Eye hero', oneoff: 'One-off' };
-const LAYERN = { read: 'Read', repeat: 'Repeat', rank: 'Rank' };
-/* the lens's three tabs: Read and Repeat keep the feed newest first, Rank puts it best first */
-const TABS = [['read', 'Read'], ['repeat', 'Repeat'], ['rank', 'Rank']];
-const TAB_ATTR = { read: 'data-layer="read" data-sort="recent"', repeat: 'data-layer="repeat"', rank: 'data-sort="rank"' };
-const lensKey = () => (S.sort === 'rank' ? 'rank' : S.layer);
+/* the lens's three tabs, each its own order of the same wall: Runs (newest first, a breaker per run), Repeats
+   (grouped by the idea at each post's core, most-posted first), Ranks (best first, a divider per band) */
+const TABS = [['runs', 'Runs'], ['repeats', 'Repeats'], ['ranks', 'Ranks']];
+const SORT_OF = { runs: 'recent', repeats: 'concept', ranks: 'rank' };
+const LENS_OF = { recent: 'runs', concept: 'repeats', rank: 'ranks' };
+const lensKey = () => LENS_OF[S.sort] || 'runs';
+/* a rule's move, in plain words, and whether it reads for (up) or against (dn) the rule */
+const MOVE = { born: ['New', 'up'], sharpened: ['Stronger', 'up'], held: ['Held', ''], tweaked: ['Narrowed', ''], strains: ['Strained', 'dn'], breaks: ['Broke', 'dn'], dropped: ['Dropped', 'dn'], backs: ['Backed', 'up'], none: ['No change', ''] };
+const moveW = (m) => (MOVE[m] || [m, ''])[0];
+const moveC = (m) => (MOVE[m] || ['', ''])[1];
 const tabIx = (k) => TABS.findIndex(([v]) => v === k);
 /* Top % is the app's unit: where a post sits in this account's own memory, lower is stronger */
 const pcx = (p) => Math.max(1, Math.round(p.pct));
@@ -163,20 +206,19 @@ function shade(v) {
 }
 const shadeVars = (v) => { const x = shade(v); return `--c:${x.c};--tx:${x.tx};--gc:${x.gc};--gi:${x.gi}`; };
 const RAMP = `linear-gradient(90deg, ${[1, 8, 15, 22, 29, 36, 43, 50, 60, 70, 85, 100].map((v) => `${shade(v).c} ${(((v - 1) / 99) * 100).toFixed(1)}%`).join(', ')})`;
-const AV = ['linear-gradient(135deg, #fb7185, #7c3aed)', 'linear-gradient(135deg, #f9a8d4, #be123c)'];
 const who = () => M().f.who;
 const they = () => (who() === 'his' ? 'His crowd' : 'Their crowd');
 const word = (p) => RANKW[p.band];
-const beatShort = (p) => (p.i === 0 ? 'First in memory' : p.ripple ? `▲ beat the last ${p.ripple}` : `▼ last ${p.shortOf} did better`);
+const beatShort = (p) => (p.i === 0 ? 'First in memory' : p.ripple ? (p.ripple === p.i ? `Beat all ${p.ripple} before it` : `Beat the ${p.ripple} before it`) : p.shortOf === 1 ? 'The one before it did better' : `The ${p.shortOf} before it did better`);
 function beatLine(p) {
   const Mo = M(), q = p.stopper, many = Mo.runs.length > 1;
   if (p.i === 0) return 'First reel in memory, so there’s nothing before it to beat.';
   if (p.ripple === p.i) return `Beat all <b>${p.i}</b> reels before it. A new high for the feed.`;
-  if (p.ripple > 0) return `Beat the <b>${plural(p.ripple, 'post')}</b> before it, going back through ${many && q.run !== p.run ? 'earlier runs' : 'the feed'} until <b>${esc(q.label)}</b>${many ? ` (run ${q.run}, top ${pcx(q)}%)` : ` (top ${pcx(q)}%)`}, which did better.`;
-  if (p.shortOf === 1) return `<b>${esc(q.label)}</b>, right before it, did better (top ${pcx(q)}%).`;
+  if (p.ripple > 0) return `Beat the <b>${plural(p.ripple, 'post')}</b> before it, going back through ${many && q.run !== p.run ? 'earlier runs' : 'the feed'} until <b>${esc(q.label)}</b>${many ? ` (run ${q.run}, ${rkw(q).toLowerCase()})` : ` (${rkw(q).toLowerCase()})`}, which did better.`;
+  if (p.shortOf === 1) return `<b>${esc(q.label)}</b>, right before it, did better (${rkw(q).toLowerCase()}).`;
   return `The <b>${p.shortOf}</b> reels in a row before it all did better.`;
 }
-const note = () => { const Mo = M(); return `Sample data. Covers are mock thumbnails built from each postcard’s on-screen hook and scene. ${Mo.f.dateNote || ''} Rank = where a reel landed at day 7 against ${Mo.f.who} own last ${Mo.n}. Takes, bits and run reads are hand-written stand-ins for the run-of-10 reader.`; };
+const note = () => { const Mo = M(); return `Sample data. ${Mo.posts.some((p) => p.thumb) ? 'Covers are the reels’ own thumbnails.' : 'Covers are mock thumbnails built from each postcard’s on-screen hook and scene.'} ${Mo.f.dateNote || ''} Rank = where a reel landed at day 7 against ${Mo.f.who} own last ${Mo.n}. Rules, run reads and post mortems are hand-written placeholders for the feeder reader.`; };
 
 /* ---------- covers ---------- */
 function art(kind) {
@@ -195,26 +237,26 @@ function tile(p, o = {}) {
   const g = SCENES[p.scene] || SCENES.plain;
   const hook = p.hook || '', cap = hook.length > 72 ? hook.slice(0, 70) + '…' : hook;
   const still = !!o.still, tag = still ? 'div' : 'button';
-  const attrs = still ? 'aria-hidden="true"' : `type="button" data-post="${p.id}" aria-label="${esc(p.label)}, top ${pcx(p)}%, ${esc(beatShort(p).replace(/[▲▼] /, ''))}"`;
-  return `<${tag} ${attrs} class="tile b${p.band} ${o.cls || ''}" data-pid="${p.id}" style="--g1:${g[0]};--g2:${g[1]};${o.style || ''}"><span class="face ${p.scene === 'gray' ? 'gray' : ''}">${art(p.art)}${o.nocap ? '' : `<span class="cap"><span>${esc(cap)}</span></span>`}${o.res ? '<svg class="rl" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M3 8.5h18M8.5 3l3 5.5M14.5 3l3 5.5" stroke-linecap="round"/><path d="M10 12.2v5l4.2-2.5z" fill="#fff" stroke="none"/></svg>' : ''}${o.badge ? `<span class="br b${p.band}">${pcx(p)}%</span>` : ''}${o.pc ? `<span class="pcv">${pcx(p)}<span>%</span></span>` : ''}${o.res ? '<span class="mk"></span>' : ''}</span><span class="ring"></span>${o.extra || ''}</${tag}>`;
+  const attrs = still ? 'aria-hidden="true"' : `type="button" data-post="${p.id}" aria-label="${esc(p.label)}, ${rkw(p)}, ${esc(beatShort(p))}"`;
+  return `<${tag} ${attrs} class="tile b${p.band} ${o.cls || ''}" data-pid="${p.id}" style="--g1:${g[0]};--g2:${g[1]};${o.style || ''}"><span class="face ${p.scene === 'gray' ? 'gray' : ''}${p.thumb ? ' img' : ''}">${p.thumb ? `<img class="cov" src="${p.thumb}" alt="" decoding="async" draggable="false">` : art(p.art)}${o.nocap || p.thumb ? '' : `<span class="cap"><span>${esc(cap)}</span></span>`}${o.badge ? `<span class="br b${p.band}">${rkw(p)}</span>` : ''}${o.pc ? `<span class="pcv">${rkw(p)}</span>` : ''}${o.res ? '<span class="mk"></span>' : ''}</span><span class="ring"></span>${o.extra || ''}</${tag}>`;
 }
 function stack(items, o = {}) {
   const sorted = [...items].sort((a, b) => a.pct - b.pct), lead = sorted[0], rest = sorted.slice(1, 3);
-  const edge = (q, c) => { const g = SCENES[q.scene] || SCENES.plain; return `<i class="e ${c}" style="--g1:${g[0]};--g2:${g[1]}"></i>`; };
+  const edge = (q, c) => { const g = SCENES[q.scene] || SCENES.plain; return `<i class="e ${c}" style="--g1:${g[0]};--g2:${g[1]}${q.thumb ? `;background:center/cover url(${q.thumb})` : ''}"></i>`; };
   return `<span class="stack"${o.w ? ` style="--sw:${o.w}px"` : ''}>${rest[1] ? edge(rest[1], 'e2') : ''}${rest[0] ? edge(rest[0], 'e1') : ''}${tile(lead, { still: true, nocap: !o.cap, cls: 'lit' })}${o.nocount ? '' : `<b class="cnt">×${items.length}</b>`}</span>`;
 }
 function podium(items, o = {}) {
   const n = items.length;
-  const lines = [[10, 'TOP 10%', 't10'], [25, 'TOP 25%', 't25'], [50, 'TOP 50%', '']].map(([y, l, c]) => `<span class="gl ${c}" style="--gy:${y}"><span>${l}</span></span>`).join('');
+  const lines = [[10, 'TOP 10%', 't10'], [25, 'TOP 25%', 't25'], [50, 'TOP HALF', '']].map(([y, l, c]) => `<span class="gl ${c}" style="--gy:${y}"><span>${l}</span></span>`).join('');
   return `<div class="pod" style="--n:${n};${o.style || ''}">${lines}${items.map((p, k) => `<div class="col" style="--y:${Math.min(100, p.pct).toFixed(1)};--k:${k}">${tile(p, { nocap: n > 6 || o.nocap, badge: n <= 6, cls: (p.id === o.cur ? 'cur ' : '') + 'lit', style: `--k:${k}` })}</div>`).join('')}</div>
-    <div class="podd" style="--n:${n}">${items.map((p) => `<span class="${p.band >= 2 ? 'hi' : ''}">${n > 6 ? pcx(p) + '%' : fd(p.date)}</span>`).join('')}</div>`;
+    <div class="podd" style="--n:${n}">${items.map((p) => `<span class="${p.band >= 2 ? 'hi' : ''}">${n > 6 ? ord(p.rank) : fd(p.date)}</span>`).join('')}</div>`;
 }
 function fixPods(root = document) { qa('.pod', root).forEach((pod) => { const t = pod.querySelector('.tile'); if (t && t.offsetHeight) pod.style.setProperty('--th', t.offsetHeight + 'px'); }); }
 
 /* ---------- the lens's track: three equal tabs, one indicator that only ever translates ---------- */
 function tabsHTML(id) {
   const k = lensKey();
-  return `<div class="tabs" id="${id}" role="group" aria-label="What the wall shows" style="--i:${tabIx(k)};--td:0ms"><span class="ind" aria-hidden="true"><span class="ind-l">${TABS.map(([, l]) => `<span>${l}</span>`).join('')}</span></span>${TABS.map(([v, l]) => `<button type="button" data-lens="${v}" ${TAB_ATTR[v]} aria-pressed="${v === k}"><span class="tl">${l}</span></button>`).join('')}</div>`;
+  return `<div class="tabs" id="${id}" role="group" aria-label="What the wall shows" style="--i:${tabIx(k)};--td:0ms"><span class="ind" aria-hidden="true"><span class="ind-l">${TABS.map(([, l]) => `<span>${l}</span>`).join('')}</span></span>${TABS.map(([v, l]) => `<button type="button" data-lens="${v}" aria-pressed="${v === k}"><span class="tl">${l}</span></button>`).join('')}</div>`;
 }
 /* the indicator's curve, and when along it a trip reaches a given share of its length */
 const IND = [0.45, 0, 0.15, 1];
@@ -258,6 +300,7 @@ function pillScroll(row) {
   return Math.max(0, right - (row.clientWidth - pr));
 }
 function swapPills(row, dir) {
+  return;
   if (!row) return;
   const html = chipsHTML(), key = pillKey(), host = row.parentNode, older = qa(':scope > .chips.ghost', host);
   clearTimeout(row._pe); row.style.pointerEvents = '';
@@ -293,9 +336,9 @@ function swapPills(row, dir) {
 const mqNarrow = matchMedia('(max-width: 369px)');
 const DESC = () => {
   const k = lensKey(), n = mqNarrow.matches;
-  if (k === 'rank') return 'By where it landed · <b>best first</b>';
-  if (k === 'repeat') return n ? 'Repeats · <b>newest first</b>' : 'What keeps coming back · <b>newest first</b>';
-  return n ? `${who() === 'his' ? 'His' : 'Their'} series · <b>newest first</b>` : `What ${who() === 'his' ? 'he keeps' : 'they keep'} making · <b>newest first</b>`;
+  if (k === 'ranks') return 'By where it landed · <b>best first</b>';
+  if (k === 'repeats') return n ? 'By idea · <b>most posted first</b>' : `What ${who() === 'his' ? 'he keeps' : 'they keep'} making · <b>most posted first</b>`;
+  return n ? 'Runs of 10 · <b>newest first</b>' : 'Run by run · <b>newest first</b>';
 };
 /* A line of words that rolls over in its window: the old words leave first (up, if you moved along the track
    to the right), then the new ones come in from the other side. Changing your mind before the new words have
@@ -325,7 +368,6 @@ function rollText(el, html, dir) {
   anim(n, [{ opacity: 0, transform: `translateY(${-up * 5}px)` }, { opacity: 1, transform: 'none' }], { dur: 480, delay: 160 });
 }
 const rollDesc = (el, dir) => rollText(el, DESC(), dir);
-const hlensHTML = () => `<span class="hl-w"><i aria-hidden="true">${LAYERN.repeat}</i><span>${LAYERN[lensKey()]}</span></span>${IC.chev}`;
 /* a pill's pressed state changes in place: its fill and label cross-fade, the row keeps its scroll,
    and a pill that sits half off the edge slides fully into view */
 function syncPressed(reveal) {
@@ -343,20 +385,33 @@ function showPill(row, b) {
 }
 
 /* ---------- header ---------- */
-function renderHeader() {
-  const Mo = M();
-  $('rd-hscope').textContent = '@' + Mo.f.handle;
-  $('rd-hmeta').textContent = `${Mo.n} of 100 posts · ranked at day 7`;
-  $('rd-hcircles').innerHTML = DATA.feeders.map((x, k) => `<button type="button" class="fc ${k === S.f ? 'on' : ''}" data-f="${k}" aria-pressed="${k === S.f}" aria-label="@${esc(x.handle)}"><span class="av" style="background:${AV[k % AV.length]}">${esc(x.handle.slice(0, 2).toUpperCase())}</span><span class="fl">${esc(x.handle)}</span></button>`).join('');
-  $('rd-hlens').innerHTML = hlensHTML();
-}
+function renderHeader() { tellHeader(); }
+/* what the header shows (which feeder, which view of the wall, how many posts) is React's to draw */
+function tellHeader() { if (onHeader) onHeader({ f: S.f, lens: lensKey(), n: M().n }); }
 function setCompact(c) {
-  if (!phone()) c = false;
-  else if (S.sel || S.pick != null || S.drop) c = true;
+  // a panel open under the header, or a pick being read on a phone, holds the header folded
+  if (S.drop || (phone() && (S.sel || S.pick != null))) c = true;
   if (c === S.compact) return;
   S.compact = c;
-  $('rd-hdr').classList.toggle('compact', c);
   setCompressed(c);
+  placeLens();
+}
+/* The desktop lens sticks 8px under the header, wherever the header's bottom is (--rd-hb on the page). The
+   fold moves that line by 100px in one step, so a lens that is stuck there is played from where it was to
+   where it is now, on the header's own curve, and glides with the header's edge instead of jumping. (The
+   header's panel needs no such line: an open panel holds the header folded, so it always drops from there.) */
+let lensFlip = null;
+function placeLens() {
+  const main = $('rd-main'), v = phone() ? '' : Math.round(hb()) + 'px';
+  if (!main || main.style.getPropertyValue('--rd-hb') === v) return;
+  const lens = $('rd-lens'), go = !!v && !!lens && !RM, from = go ? lens.getBoundingClientRect().top : 0;
+  if (lensFlip) { lensFlip.cancel(); lensFlip = null; }
+  if (v) main.style.setProperty('--rd-hb', v); else main.style.removeProperty('--rd-hb');
+  if (!go) return;
+  const dy = from - lens.getBoundingClientRect().top;
+  if (Math.abs(dy) < 1) return;
+  const a = lens.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.32,.72,0,1)' });
+  lensFlip = a; a.onfinish = a.oncancel = () => { if (lensFlip === a) lensFlip = null; };
 }
 function openDrop(kind) {
   S.drop = kind; setCompact(true);
@@ -373,18 +428,20 @@ function closeDrop() {
   if (!S.drop) return;
   qa(`[data-drop="${S.drop}"]`).forEach((t) => t.setAttribute('aria-expanded', 'false'));
   S.drop = null; $('rd-hdrop').classList.remove('on');
-  lensOn(); spyBand();
+  if (scrollY <= 30) setCompact(false);
+  spyBand();
 }
-/* the header's lens button shows once the real lens has scrolled away, and stays while its panel is open */
-function lensOn() { const l = $('rd-lens'); $('rd-hdr').classList.toggle('lens-on', phone() && !!l && (S.drop === 'lens' || l.getBoundingClientRect().bottom < ht() + 68)); }
 /* Rank: the band you are reading through, marked on the jump pills (in the lens and in the header's panel).
    The dividers' places are layout positions (never a transition's transform), cached until the page's
    height changes, so the check on each animation frame of a scroll only compares numbers. */
 const SPY = { cur: null, tops: null, goal: null, goalUntil: 0 };
+/* each order's dividers on the wall, and the data key that names them: a run's breaker, a concept's, a band's */
+const DIV = { recent: ['.rbk', 'rbk'], concept: ['.cdiv', 'cdiv'], rank: ['.bdiv', 'bdiv'] };
 function spyBand(force) {
+  return;
   let cur = null;
-  if (S.sort === 'rank' && $('rd-feed')) {
-    if (!SPY.tops) { const w = $('rd-wall'); SPY.tops = qa('#rd-feed > .bdiv').map((d) => [d.dataset.bdiv, w.offsetTop + d.offsetTop]); }
+  if ($('rd-feed')) {
+    if (!SPY.tops) { const w = $('rd-wall'), [sel, key] = DIV[S.sort]; SPY.tops = qa(`#rd-feed > ${sel}`).filter((d) => d.offsetParent).map((d) => [d.dataset[key], w.offsetTop + d.offsetTop]); }
     const line = scrollY + 40 + (phone() ? viewTop() : hb() + $('rd-lens').offsetHeight);
     SPY.tops.forEach(([b, t]) => { if (t <= line) cur = b; });
     // scrolled to the very bottom, the last band can never reach the line: the last divider on screen is the one you are in
@@ -395,7 +452,7 @@ function spyBand(force) {
   }
   if (cur === SPY.cur && !force) return;
   const moved = cur !== SPY.cur; SPY.cur = cur;
-  qa('#rd-chips .chip.jump, #rd-chips2 .chip.jump').forEach((c) => c.classList.toggle('here', c.dataset.band === cur));
+  qa('#rd-chips .chip.jump, #rd-chips2 .chip.jump').forEach((c) => c.classList.toggle('here', c.dataset.jump === cur));
   // the marked pill slides into view if it sits off the edge of its row (not while a row is still handing off)
   if (moved && cur != null) qa('#rd-chips, #rd-chips2').forEach((row) => { const c = row.querySelector('.chip.here'); if (c && !row.parentNode.querySelector('.chips.ghost') && row.getClientRects().length) showPill(row, c); });
 }
@@ -413,7 +470,7 @@ function bloom(items, o = {}) {
   let s = ring(50, 'b50') + (o.rings ? ring(25, 'b25') : '');
   for (let k = 0; k < n; k++) {
     const p = items[k];
-    s += p ? `<path class="pt m${p.band}${o.on === p.id ? ' on' : ''}" d="${wedge(k, BLEN(p.pct))}" style="--k:${k}"${o.tap ? ` data-petal="${p.id}"` : ''}><title>${esc(p.label)}, top ${pcx(p)}%</title></path>` : `<path class="pt e" d="${wedge(k, 0.2)}"/>`;
+    s += p ? `<path class="pt m${p.band}${o.on === p.id ? ' on' : ''}" d="${wedge(k, BLEN(p.pct))}" style="--k:${k}"${o.tap ? ` data-petal="${p.id}"` : ''}><title>${esc(p.label)}, ${rkw(p)}</title></path>` : `<path class="pt e" d="${wedge(k, 0.2)}"/>`;
   }
   s += `<circle class="bv" cx="${c}" cy="${c}" r="${R}"/>`;
   if (o.labels) items.forEach((p, k) => {
@@ -424,22 +481,77 @@ function bloom(items, o = {}) {
   return `<svg class="bloom ${o.cls || ''}" viewBox="0 0 ${S} ${S}" aria-hidden="true">${s}${o.center || ''}</svg>`;
 }
 function trajRun() { const Mo = M(); return Mo.runs[(S.tr || Mo.runs.length) - 1] || Mo.runs[Mo.runs.length - 1]; }
-function trajHTML() {
-  const Mo = M(), n = Mo.runs.length, R = trajRun();
-  const slots = Array.from({ length: 10 }, (_, k) => {
-    const r = k + 1, X = Mo.runs[k];
-    if (X) {
-      return `<button type="button" class="tj-b ${r === R.r ? 'sel' : ''} ${r === n ? 'cur' : ''}" data-tr="${r}" aria-pressed="${r === R.r}" style="${shadeVars(X.tp)}" aria-label="Run ${r}, ${span(X.items[0].date, X.items[X.items.length - 1].date)}: ${esc(X.d.head)}. Typical post top ${X.tp}%"><span class="tj-c"><i class="tj-f"></i><span class="tj-v">${X.tp}<span>%</span></span><span class="tj-u">typ</span></span><small>Run ${r}</small></button>`;
-    }
-    if (r === n + 1) return `<span class="tj-b next" role="img" aria-label="Run ${r} starts with the next post"><span class="tj-c"><span class="tj-v">0<span>/10</span></span></span><small>Next</small></span>`;
-    return `<span class="tj-b empty" aria-hidden="true"><span class="tj-c"></span><small>Run ${r}</small></span>`;
-  }).join('');
-  return `<section class="traj" id="rd-traj" aria-labelledby="rd-tj-k">
-    <div class="tj-hd"><span class="tj-k" id="rd-tj-k"><i></i>The trajectory</span><span class="tj-m">${n} of 10 runs · ${Mo.n} posts</span></div>
-    <div class="tj-runs" role="group" aria-label="Runs, oldest first. The colour shows how strong each run was.">${slots}</div>
-    <div class="tj-key" aria-hidden="true"><span class="tj-kl">Top 1%</span><span class="tj-ramp" style="--ramp:${RAMP}"><i class="mid"></i>${Mo.runs.map((X) => `<i class="tk ${X.r === R.r ? 'on' : ''}" data-r="${X.r}" style="left:${(((X.tp - 1) / 99) * 100).toFixed(1)}%"></i>`).join('')}</span><span class="tj-kl">Bottom</span></div>
-    <div class="tj-body" id="rd-tjbody">${trajBody(R)}</div>
-  </section>`;
+/* ---------- the rules: the account, as the reader understands it right now (the page's hero) ----------
+   Lead's grammar, for rules: a board. The reader's line on the account heads it; under it every rule is a row,
+   ranked by how much of the account's best work it explains. A row reads at a glance (the law, how far it
+   carries, how often it held, how far it reaches, how often it broke) and opens in place into its proof: the
+   wins it explains, the flops it calls, the posts that break it, and its life run by run. */
+const pad2 = (k) => String(k).padStart(2, '0');
+// a number that rolls up into place (Lead's SlotText): the digits sit in a window and rise into it
+const slot = (v) => `<span class="slt"><span>${v}</span></span>`;
+function ruleRow(r) {
+  const Mo = M(), last = (r.life || [])[(r.life || []).length - 1], born = (r.life || [])[0];
+  const throne = !r.gone && r.n === 1, strength = r.gone ? 0 : Math.max(0.06, r.carry / r.quarter);
+  const mv = r.gone ? `<span class="mv dn">Dropped · run ${last ? last.run : Mo.runs.length}</span>` : `<span class="mv ${moveC(r.status)}">${esc(moveW(r.status))} · run ${Mo.runs.length}</span>`;
+  const st = (cls, v, u, l, bar) => `<span class="rbd-st ${cls}"><b>${slot(v)}${u ? `<small>${u}</small>` : ''}</b>${bar != null ? `<i class="rbd-bar"><i style="--v:${bar.toFixed(3)}"></i></i>` : ''}<em>${l}</em></span>`;
+  return `<div class="rbd-row ${throne ? 'throne' : ''} ${r.gone ? 'gone' : ''}" data-ru="${r.id}">
+    <button type="button" class="rbd-hd" data-rsel="${r.id}" aria-expanded="false" aria-label="${esc(r.law)} ${r.gone ? 'Dropped.' : `Carries ${r.carry} of his top ${r.quarter}. Held ${r.held} of ${r.calls}.`} Show the proof">
+      <span class="rbd-fill" style="--s:${strength.toFixed(3)}" aria-hidden="true"></span>
+      ${throne ? '<span class="rbd-crown" aria-hidden="true"></span>' : ''}
+      <span class="rbd-n" aria-hidden="true">${r.gone ? '×' : pad2(r.n)}</span>
+      <span class="rbd-main"><b class="rbd-law">${esc(r.law)}</b><span class="rbd-cap">${mv}<span class="sep">·</span><span>born run ${born ? born.run : 1}</span><span class="rbd-mini">${r.gone ? '' : `<span class="sep">·</span>held ${r.held}/${r.calls}<span class="sep">·</span>${r.brokenBy.length ? `${plural(r.brokenBy.length, 'break')}` : 'unbroken'}`}</span></span></span>
+      ${r.gone ? st('c', '—', '', 'retired') : st('c', r.carry, `/${r.quarter}`, `of his top ${r.quarter}`)}
+      ${st('h', r.held, `/${r.calls}`, 'held', r.calls ? r.held / r.calls : 0)}
+      ${st('r', r.reach, `/${Mo.n}`, 'posts it speaks for', r.reach / Mo.n)}
+      ${st('x', r.brokenBy.length, '', r.brokenBy.length === 1 ? 'post breaks it' : 'posts break it')}
+      <span class="rbd-cv" aria-hidden="true">${IC.chev}</span>
+    </button>
+    <div class="rbd-x" hidden></div>
+  </div>`;
+}
+/* a row, opened: why it holds, its proof in two lanes, the posts that break it, how the reader got here */
+function ruleOpen(r) {
+  const Mo = M(), cur = Mo.runs.length, brk = new Set(r.brokenBy);
+  const lane = (ids) => ids.filter((id) => !brk.has(id)).map((id) => Mo.byId[id]).sort((a, b) => a.rank - b.rank);
+  const pf = (p, cls) => `<button type="button" class="rbx-pf ${cls}" data-post="${p.id}" aria-label="${esc(p.label)}, ${ord(p.rank)} of ${Mo.n}. Post mortem">${tile(p, { still: true, nocap: true, cls: 'lit' })}<b>${ord(p.rank)}</b></button>`;
+  const up = lane(r.L), dn = lane(r.Sk), br = r.brokenBy.map((id) => Mo.byId[id]).sort((a, b) => a.rank - b.rank);
+  const life = (r.life || []).map((x) => `<li class="${moveC(x.move)} ${x.run === cur ? 'now' : ''}"><i></i><b>Run ${x.run}</b><span>${esc(moveW(x.move))}</span><p>${esc(x.line)}</p></li>`).join('');
+  return `<div class="rbx">
+    <p class="rbx-bc">${esc(r.gone ? r.line : r.because)}</p>
+    ${up.length || dn.length ? `<div class="rbx-lanes">
+      ${up.length ? `<div class="rbx-lane up"><span class="k">The wins it explains · ${up.length}</span><div class="rbx-strip">${up.map((p) => pf(p, 'up')).join('')}</div></div>` : ''}
+      ${dn.length ? `<div class="rbx-lane dn"><span class="k">The flops it calls · ${dn.length}</span><div class="rbx-strip">${dn.map((p) => pf(p, 'dn')).join('')}</div></div>` : ''}
+    </div>` : ''}
+    <div class="rbx-brk"><span class="k">${br.length ? `Where it breaks · ${br.length}` : 'Where it breaks'}</span>${br.length ? br.map((p) => `<button type="button" class="rbx-b" data-post="${p.id}">${tile(p, { still: true, nocap: true, cls: 'lit' })}<span><b>${ord(p.rank)} · ${esc(p.label)}</b>${esc((r.breaks || {})[p.id] || '')}</span></button>`).join('') : `<p class="rbx-none">Nothing has broken it yet: ${r.calls} calls, ${r.held} held.</p>`}</div>
+    <div class="rbx-life"><span class="k">How the reader got here</span><ol>${life}</ol></div>
+    ${r.gone ? '' : `<div class="rbx-ft"><button type="button" class="tj-go" data-rule="${r.id}" aria-pressed="${S.pick === r.id}">Light it up on the wall${IC.chev}</button></div>`}
+  </div>`;
+}
+function rulesHTML() { return boardHTML(); }
+/* open a rule in place: the rows under it (and the wall) glide down to make room while its proof rises in behind
+   them; opening another closes the last in the same glide; tapping it again closes it */
+function glideBelow(change, ms = 620) {
+  const els = qa('#rd-rules .rbd-row, #rd-rules .rbd-foot, .lens-head, #rd-lens, #rd-ins, #rd-feed > *'), vh = innerHeight;
+  const near = (r) => r.height > 0 && r.bottom > -80 && r.top < vh + 80;
+  const before = new Map(els.map((el) => [el, el.getBoundingClientRect()]));
+  change();
+  if (RM) return;
+  before.forEach((a, el) => { const b = el.getBoundingClientRect(), dy = a.top - b.top; if (Math.abs(dy) > 1 && (near(a) || near(b))) el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: Math.min(760, ms + Math.abs(dy) * 0.25), easing: `cubic-bezier(${OPEN})`, composite: 'add' }); });
+}
+function setRule(id) {
+  const r = M().ruleById[id]; if (!r) return;
+  buzz();
+  const was = S.rule, open = was !== id;
+  const row = (k) => document.querySelector(`#rd-rules .rbd-row[data-ru="${k}"]`);
+  const set = (k, on, rule) => { const el = row(k); if (!el) return; const x = el.querySelector('.rbd-x'); x.innerHTML = on ? ruleOpen(rule) : ''; x.hidden = !on; el.toggleAttribute('data-open', on); el.querySelector('.rbd-hd').setAttribute('aria-expanded', String(on)); };
+  S.rule = open ? id : null;
+  glideBelow(() => { if (was) set(was, false); if (open) set(id, true, r); });
+  if (!open || RM) return;
+  const x = row(id).querySelector('.rbd-x');
+  qa('.rbx-bc, .rbx-lane, .rbx-brk, .rbx-life, .rbx-ft', x).forEach((el, k) => rise(el, { y: 12, dur: 640, delay: 140 + k * 80 }));
+  qa('.rbx-pf', x).forEach((el, k) => anim(el, [{ opacity: 0, transform: 'translateY(10px) scale(.92)' }, { opacity: 1, transform: 'none' }], { dur: 560, delay: 260 + k * 45 }));
+  const top = row(id).getBoundingClientRect().top, want = phone() ? hbc() + 8 : hbc() + 16;
+  if (top < want || top > innerHeight * 0.55) quietTo(scrollY + top - want);
 }
 const dur = (x) => { if (!x) return ''; if (/^\d+:\d\d$/.test(x)) return x; const n = parseFloat(x); if (!isFinite(n) || n <= 0) return ''; const v = Math.round(n); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
 /* the three numbers, for one post: where it landed, its streak against the posts before it, when it went up */
@@ -455,35 +567,22 @@ function postStats(p) {
   ];
 }
 /* the post card: what the post is, in the reader's words, with a way to open it or follow it on the wall */
+/* what a post did to the rules, as small chips: R1 · Backs */
+function fxChips(p) {
+  const Mo = M(), fx = ((p.mortem || {}).fx || []).filter((x) => x.r && Mo.ruleById[x.r]);
+  return fx.map((x) => `<span class="fxc ${moveC(x.m)}"><b>R${Mo.ruleById[x.r].n || x.r.slice(1)}</b>${moveW(x.m)}</span>`).join('');
+}
 function cardHTML(p, mode) {
-  const Mo = M(), R = Mo.runs[p.run - 1], nth = R.items.indexOf(p) + 1, sr = Mo.sById[p.series], dv = DRV[p.driver];
+  const Mo = M(), R = Mo.runs[p.run - 1], nth = R.items.indexOf(p) + 1, c = Mo.cById[p.concept];
   const head = mode === 'run'
     ? `<span class="pk r">Best of run ${R.r}</span><span class="pk-h">Tap any petal</span>`
     : `<span class="pk">Post ${nth} of ${R.items.length}</span><button type="button" class="pk-x" data-unpick aria-label="Back to run ${R.r}">Run ${R.r}${IC.x}</button>`;
-  return `<div class="pci"><div class="pcover">${tile(p, { still: true, pc: true })}</div><div class="pcb"><div class="pch">${head}</div><b class="pct">${esc(p.label)}</b><p class="pctk">${esc(p.take || '')}</p></div></div>
-    <div class="pcs">${sr ? `<span>${esc(sr.pill || sr.name)}</span>` : ''}${dv ? `<span><i class="sw d-${p.driver}"></i>Decided by ${dv[0].toLowerCase()}</span>` : ''}</div>
-    <div class="pca"><button type="button" class="pc-open" data-open="${p.id}">Open post</button><button type="button" class="pc-trace" data-trace="${p.id}">Trace on the wall${IC.r}</button></div>`;
+  return `<div class="pci"><div class="pcover">${tile(p, { still: true, pc: true })}</div><div class="pcb"><div class="pch">${head}</div><b class="pct">${esc(p.label)}</b><p class="pctk">${esc((p.mortem || {}).why || p.take || '')}</p></div></div>
+    <div class="pcs">${c ? `<span>${esc(c.short)}</span>` : ''}${fxChips(p)}${p.paid ? '<span>Paid</span>' : ''}</div>
+    <div class="pca"><button type="button" class="pc-open" data-open="${p.id}">Post mortem</button><button type="button" class="pc-trace" data-trace="${p.id}">Trace on the wall${IC.r}</button></div>`;
 }
-function trajBody(R) {
-  const Mo = M(), h = who(), P = R.prev, d = P ? P.tp - R.tp : 0, S0 = 240;
-  const move = !P ? 'first run' : R.dir === 'level' ? `level with run ${P.r}` : `<i class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</i> vs run ${P.r}`;
-  const bits = [...new Set(R.items.map((p) => p.series))].map((id) => ({ s: Mo.sById[id], a: R.items.filter((p) => p.series === id).sort((x, y) => x.pct - y.pct) })).filter((x) => x.s).sort((x, y) => x.a[0].pct - y.a[0].pct);
-  const center = `<g class="bcg run"><text class="bc" x="${S0 / 2}" y="${S0 / 2 + 6}">${R.tp}<tspan dx="1" class="bcp">%</tspan></text><text class="bcs" x="${S0 / 2}" y="${S0 / 2 + 22}">TYPICAL</text></g><g class="bcg post"><text class="bc" id="rd-bcpv" x="${S0 / 2}" y="${S0 / 2 + 6}"></text><text class="bcs" x="${S0 / 2}" y="${S0 / 2 + 22}">THIS POST</text></g>`;
-  const runL = [
-    `<b class="${R.top >= 3 ? 'r' : ''}">${R.top}<small>/${R.items.length}</small></b><span>in ${h} top 25%</span><em>${P ? `run ${P.r}: ${P.top}` : 'first run'}</em>`,
-    `<b>${R.low}<small>/${R.items.length}</small></b><span>in ${h} bottom half</span><em>${P ? `run ${P.r}: ${P.low}` : 'first run'}</em>`,
-    `<b class="${R.best.band >= 2 ? 'r' : ''}">${pcx(R.best)}<small>%</small></b><span>best post</span><em>${esc(R.best.label)}</em>`,
-  ];
-  return `<div class="tr-hd"><p class="tj-head">${esc(R.d.head)}</p><span class="tr-meta">Run ${R.r} · ${span(R.items[0].date, R.items[R.items.length - 1].date)} · ${move}</span></div>
-    <div class="tr-main">
-      <div class="tr-bloom" id="rd-trbloom">${bloom(R.items, { size: S0, pad: 20, hole: 44, rings: 1, labels: true, tap: true, center, cls: 'big' })}</div>
-      <div class="tr-stats" id="rd-trstats">${runL.map((x, k) => `<div class="tsc" style="--i:${k}"><div class="tsl run"${k === 2 ? ` data-petal="${R.best.id}"` : ''}>${x}</div><div class="tsl post" aria-hidden="true"></div></div>`).join('')}</div>
-    </div>
-    <div class="tr-card" id="rd-trcard" aria-live="polite">${cardHTML(R.best, 'run')}</div>
-    <p class="tj-sup ${R.d.body.length > 260 ? 'clamp' : ''}" id="rd-trsup">${esc(R.d.body)}</p>${R.d.body.length > 260 ? '<button type="button" class="tj-more" data-more aria-expanded="false">More</button>' : ''}
-    <div class="tr-mix"><span class="k">What it was made of</span><div class="rs-chips">${bits.map(({ s, a }) => `<button type="button" class="mx" data-pickbit="${s.id}" aria-pressed="false" aria-label="${esc(s.pill || s.name)}: ${a.map((p) => 'top ' + pcx(p) + '%').join(', ')}. Light it up on the wall."><span class="cl"><span>${esc(s.pill || s.name)}</span><span aria-hidden="true">${esc(s.pill || s.name)}</span></span>${a.map((p) => `<em class="m${p.band}"><span>${pcx(p)}%</span><span aria-hidden="true">${pcx(p)}%</span></em>`).join('')}</button>`).join('')}</div></div>
-    <div class="tr-foot"><button type="button" class="tj-go" data-wallrun="${R.r}">Its ${R.items.length} posts on the wall${IC.chev}</button></div>`;
-}
+/* a run's read, opened under its breaker on the wall: the bloom of its ten posts, then the reader on the run */
+function runBody(R) { return ''; }
 /* tap a petal: the post steps forward in the bloom, the centre and the three numbers become that post's,
    and its card fills in below, so you can read what it is without leaving the top. Tap it again (or the
    bloom, or Esc) to go back to the run. */
@@ -504,14 +603,15 @@ function pickPetal(id) {
   setCard(p, 'post', box.querySelector(`.pt[data-petal="${id}"]`));
   if (phone()) {
     const c = $('rd-trcard').getBoundingClientRect(), bot = navTop() - 14;
-    const pt = box.querySelector(`.pt[data-petal="${id}"]`).getBoundingClientRect(), room = pt.top - ($('rd-hdr').getBoundingClientRect().bottom + 10);
+    const pt = box.querySelector(`.pt[data-petal="${id}"]`).getBoundingClientRect(), room = pt.top - (ht() + hh() + 10);
     const need = Math.min(c.bottom - bot, room);
     if (need > 8) quietTo(scrollY + need);
   }
 }
-function unpickPetal() {
+function unpickPetal(quiet) {
   const box = $('rd-trbloom'); if (!box || !box.classList.contains('picking')) return;
-  buzz(); box.dataset.on = ''; box.classList.remove('picking');
+  if (!quiet) buzz();
+  box.dataset.on = ''; box.classList.remove('picking');
   qa('.pt.on, .bl.on', box).forEach((x) => x.classList.remove('on'));
   $('rd-trstats').classList.remove('post');
   setCard(trajRun().best, 'run');
@@ -538,34 +638,35 @@ function flyPetal(pt, cv) {
   const an = g.animate([{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width}, ${a.height / b.height})`, opacity: 0.95 }, { opacity: 0.85, offset: 0.6 }, { transform: 'none', opacity: 0 }], { duration: 600, easing: SOFT });
   an.onfinish = an.oncancel = () => g.remove();
 }
-/* pick another run: its bloom and read settle in where the last ones were */
-function setTr(r, scrollUp) {
-  const Mo = M(), cur = trajRun();
-  if (!Mo.runs[r - 1]) return;
-  if (scrollUp) { const t = $('rd-traj'), top = phone() ? $('rd-hdr').getBoundingClientRect().top + 76 : hb() + 8; quietTo(scrollY + t.getBoundingClientRect().top - top); }
-  if (cur.r === r) { if (!scrollUp) wallRun(r); return; }
-  buzz(); S.tr = r;
-  qa('#rd-traj .tj-b[data-tr]').forEach((b) => { const on = +b.dataset.tr === r; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); });
-  qa('#rd-traj .tk').forEach((k) => k.classList.toggle('on', +k.dataset.r === r));
-  const body = $('rd-tjbody');
-  const swap = () => flipWall(() => { body.innerHTML = trajBody(Mo.runs[r - 1]); }, () => { if (RM) return; qa(':scope > *', body).forEach((el, k) => rise(el, { y: 8, dur: 480, delay: k * 45 })); growBloom(body); });
-  if (RM) { swap(); return; }
-  const a = body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'cubic-bezier(.4, 0, 1, 1)', fill: 'forwards' });
-  a.onfinish = () => { if (!alive) return; swap(); a.cancel(); };
+/* Tap a run's breaker: its read opens right there, under the breaker, and the posts below glide down to make
+   room; the read comes in piece by piece behind them. One run is open at a time: opening another closes the last
+   (in the same glide). Tap the breaker again to close it. */
+function toggleRun(r, o = {}) {
+  const Mo = M(); if (!Mo.runs[r - 1]) return;
+  const was = S.tr, open = was !== r;
+  buzz(); unpickPetal(true);
+  const box = (k) => document.querySelector(`.rbk[data-rbk="${k}"] .rbk-x`);
+  const set = (k, on) => { const b = box(k); if (!b) return; b.innerHTML = on ? runBody(Mo.runs[k - 1]) : ''; b.hidden = !on; if (on) mountBoard(b); const rb = b.closest('.rbk'); rb.toggleAttribute('data-open', on); rb.querySelector('.rbk-hd').setAttribute('aria-expanded', String(on)); };
+  S.tr = open ? r : null;
+  flipWall(() => { if (was) set(was, false); if (open) set(r, true); }, () => {
+    if (!open) return;
+    const b = box(r);
+    if (o.scroll !== false) { const rb = b.closest('.rbk'), top = phone() ? hbc() : hbc() + $('rd-lens').offsetHeight + 8; quietTo(scrollY + rb.getBoundingClientRect().top - top); }
+    if (RM) return;
+    qa('.mur > .lk-p, .mur > .call, .mur > .lk-sec:last-child', b).forEach((el, k) => rise(el, { y: 12, dur: 620, delay: 260 + k * 70 }));
+  }, `cubic-bezier(${OPEN})`);
+}
+/* a run's box on the rules: the wall goes to Runs and that run opens */
+function runJump(r) {
+  if (S.sort !== 'recent') setSort('recent');
+  const go = () => { if (S.tr !== r) toggleRun(r); else { const rb = document.querySelector(`.rbk[data-rbk="${r}"]`); if (rb) quietTo(scrollY + rb.getBoundingClientRect().top - (phone() ? hbc() : hbc() + $('rd-lens').offsetHeight + 8)); } };
+  const left = MORPH.until - performance.now();
+  if (left > 0) setTimeout(go, left + 40); else go();
 }
 /* petals grow out from the centre, one after another in posting order */
 function growBloom(root, d0 = 0) {
   if (RM) return;
   qa('.bloom .pt:not(.e)', root).forEach((pt) => anim(pt, [{ transform: 'scale(.15)', opacity: 0 }, { transform: 'none', opacity: 1 }], { dur: 700, delay: d0 + (+pt.style.getPropertyValue('--k') || 0) * 55, ease: 'cubic-bezier(.2, .8, .2, 1)' }));
-}
-/* from the read at the top to the run's posts on the wall */
-function wallRun(r) {
-  if (S.sort !== 'recent') setSort('recent');
-  const b = document.querySelector(`.rbk[data-rbk="${r}"]`); if (!b) return;
-  const top = phone() ? $('rd-hdr').getBoundingClientRect().top + 76 : hb() + $('rd-lens').offsetHeight + 8;
-  quietTo(scrollY + b.getBoundingClientRect().top - top);
-  if (RM) return;
-  setTimeout(() => qa('#rd-feed .tile[data-post]').filter((t) => M().byId[t.dataset.post].run === r).forEach((t, k) => anim(t, [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: rest(t), transform: 'none' }], { dur: 520, delay: k * 35 })), 380);
 }
 /* anything that changes height above the wall: snapshot, change, then let the wall glide to its new place.
    The glide is added on top of whatever else is moving a piece (composite: add), so it can never fight an
@@ -588,22 +689,26 @@ function flipWall(change, after, ease = GLIDE, dur = 0) {
 function lensHTML() {
   return `<div class="lens-head"><span class="tj-k"><i></i>Every post</span><span class="kd" id="rd-kd"></span></div><div class="lens" id="rd-lens">${tabsHTML('rd-lenssw')}<div class="pillrow"><div class="chips" id="rd-chips" role="group"></div></div></div><div class="ins" id="rd-ins" hidden></div>`;
 }
+/* every tab's pills jump to its dividers: a run, a concept, a band; the one you are reading through is marked */
 function chipsHTML() {
-  const Mo = M(), pr = (v) => String(S.pick) === String(v);
-  const bars = (items) => `<span class="mp" aria-hidden="true">${items.map((p) => `<i class="m${p.band}"></i>`).join('')}</span>`;
-  const lab = (t) => `<span class="cl"><span>${t}</span><span aria-hidden="true">${t}</span></span>`;
-  if (S.sort === 'rank') return [3, 2, 1, 0].map((b) => { const k = Mo.posts.filter((p) => p.band === b).length; return k ? `<button type="button" class="chip jump${SPY.cur === String(b) ? ' here' : ''}" data-band="${b}" aria-label="Jump to ${RANKW[b]}, ${plural(k, 'post')}"><i class="sw m${b}"></i>${lab(RANKW[b])}<em>${k}</em>${IC.chev.replace('<svg ', '<svg class="jv" ')}</button>` : ''; }).join('');
-  if (S.layer === 'repeat') return Mo.reps.map((x) => `<button type="button" class="chip" data-pick="${x.id}" aria-pressed="${pr(x.id)}">${bars(x.items)}${lab(esc(x.name))}</button>`).join('');
-  return Mo.series.map((x) => `<button type="button" class="chip" data-pick="${x.id}" aria-pressed="${pr(x.id)}">${bars(x.items)}${lab(esc(x.pill || x.name))}</button>`).join('');
-}
-function pickedSet() {
-  if (S.pick == null || S.sort !== 'recent') return null;
   const Mo = M();
-  return S.layer === 'repeat' ? Mo.rById[S.pick] || null : Mo.sById[S.pick] || null;
+  const bars = (items) => `<span class="mp" aria-hidden="true">${items.slice(0, 10).map((p) => `<i class="m${p.band}"></i>`).join('')}</span>`;
+  const lab = (t) => `<span class="cl"><span>${t}</span><span aria-hidden="true">${t}</span></span>`;
+  const jv = IC.chev.replace('<svg ', '<svg class="jv" ');
+  const chip = (key, label, inner, aria) => `<button type="button" class="chip jump${SPY.cur === key ? ' here' : ''}" data-jump="${key}" aria-label="${aria}">${inner}${lab(label)}${jv}</button>`;
+  if (S.sort === 'rank') return [3, 2, 1, 0].map((b) => { const k = Mo.posts.filter((p) => p.band === b).length; return k ? chip(String(b), RANKW[b], `<i class="sw m${b}"></i>`, `Jump to ${RANKW[b]}, ${plural(k, 'post')}`).replace(`${jv}</button>`, `<em>${k}</em>${jv}</button>`) : ''; }).join('');
+  if (S.sort === 'concept') return Mo.cons.map((c) => chip(c.id, esc(c.short), bars(c.items), `Jump to ${esc(c.name)}, ${plural(c.items.length, 'post')}`).replace(`${jv}</button>`, `<em>${c.items.length}</em>${jv}</button>`)).join('');
+  return [...Mo.runs].reverse().map((R) => chip(String(R.r), `Run ${R.r}`, `<i class="sw rs" style="${shadeVars(R.tp)}"></i>`, `Jump to run ${R.r}: ${esc(R.d.head)}`)).join('');
+}
+/* what is lit on the wall: a rule's posts (from the rules), any order */
+function pickedSet() {
+  if (S.pick == null) return null;
+  const r = M().ruleById[S.pick];
+  return r && r.items ? r : null;
 }
 function insHTML() {
   const x = pickedSet(); if (!x) return '';
-  return `<div class="ins-hd"><b>${esc(x.pill || x.name)}</b><span>${plural(x.items.length, 'post')}</span><button type="button" class="rd-x" data-clear aria-label="Clear">${IC.x}</button></div><p>${esc(x.say || x.take || '')}</p><div class="ins-film">${x.items.map((p) => `<button type="button" class="ifm" data-sel="${p.id}" aria-label="${esc(p.label)}, top ${pcx(p)}%. Trace it.">${tile(p, { still: true, nocap: true, pc: true })}<span class="ifm-t">${esc(p.label)}</span></button>`).join('')}</div>`;
+  return `<div class="ins-hd"><span class="ins-n">Rule ${pad2(x.n)}</span><b>${esc(x.law)}</b><button type="button" class="rd-x" data-clear aria-label="Clear">${IC.x}</button></div>`;
 }
 /* The insight card under the pills. Opening, it comes down with the gap: the wall glides down and the card
    slides out from under the pill row on the same curve, its bottom edge riding just above the wall, so the
@@ -687,14 +792,15 @@ function renderLens(animate, dir = 0) {
   swapPills($('rd-chips'), go ? dir : 0); swapPills($('rd-chips2'), go ? dir : 0);
   rollDesc($('rd-kd'), go ? dir || 1 : 0); rollDesc($('rd-kd2'), go ? dir || 1 : 0);
   spyBand(true);
-  const lab = S.sort === 'rank' ? 'Jump to a band' : S.layer === 'repeat' ? 'Light up a repeat' : 'Light up a series';
+  const lab = S.sort === 'rank' ? 'Jump to a band' : S.sort === 'concept' ? 'Jump to an idea' : 'Jump to a run';
   qa('#rd-chips, #rd-chips2').forEach((r) => r.setAttribute('aria-label', lab));
-  const hw = $('rd-hlens').querySelector('.hl-w'); if (hw) rollText(hw, LAYERN[lensKey()], go ? dir || 1 : 0); else $('rd-hlens').innerHTML = hlensHTML();
+  tellHeader();
 }
 function goBand(b) {
   buzz();
-  const d = document.querySelector(`#rd-feed > .bdiv[data-bdiv="${b}"]`); if (!d) return;
-  const top = phone() ? $('rd-hdr').getBoundingClientRect().top + 76 : hb() + $('rd-lens').offsetHeight + 8;
+  const [sel, key] = DIV[S.sort];
+  const d = qa(`#rd-feed > ${sel}`).find((x) => x.dataset[key] === String(b)); if (!d) return;
+  const top = phone() ? hbc() : hbc() + $('rd-lens').offsetHeight + 8;
   const dy = d.getBoundingClientRect().top - top;
   SPY.goal = String(b); SPY.goalUntil = performance.now() + 250;
   quietTo(scrollY + dy);
@@ -737,35 +843,51 @@ function toggleBand(b) {
 }
 
 /* ---------- the wall ---------- */
+/* a post on the wall: where it landed, its streak (Runs), and in Ranks the rule that put it there */
+function ruleTag(p) {
+  const Mo = M(), x = ((p.mortem || {}).fx || []).find((f) => f.r && Mo.ruleById[f.r] && !Mo.ruleById[f.r].gone);
+  if (!x) return '';
+  // rose when the rule is why it landed, dark when the rule is why it sank
+  const r = Mo.ruleById[x.r];
+  return `<span class="tg trl ${p.pct > 50 ? 'dn' : 'up'}">R${r.n}</span>`;
+}
 function wtile(p) {
-  const tags = `<span class="tg tb b${p.band}">${pcx(p)}%</span>${p.i > 0 ? `<span class="tg tr ${p.ripple ? 'up' : 'dn'}">${p.ripple ? '▲' + p.ripple : '▼' + p.shortOf}</span>` : ''}`;
-  return tile(p, { res: true, extra: tags });
+  return tile(p, { res: true, extra: `<span class="rkp${p.band >= 2 ? ' hi' : ''}" aria-hidden="true">${rkw(p)}</span>` });
+}
+function runInk(tp) {
+  const t = Math.min(100, Math.max(1, tp));
+  if (t <= 50) return `rgb(${mix([245, 245, 241], [255, 23, 79], Math.pow((50 - t) / 49, 0.8))})`;
+  return `rgba(245,245,241,${(0.62 - Math.min(1, (t - 50) / 40) * 0.3).toFixed(2)})`;
 }
 function breakerHTML(R) {
-  const Mo = M(), latest = R.r === Mo.runs.length && Mo.runs.length > 1, d = R.prev ? R.prev.tp - R.tp : 0;
-  const delta = R.dir === 'first' ? 'first run' : R.dir === 'level' ? `level with run ${R.prev.r}` : `<i class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</i> vs run ${R.prev.r}`;
+  const Mo = M(), latest = R.r === Mo.runs.length && Mo.runs.length > 1;
   return `<div class="rbk" data-rbk="${R.r}">
-    <button type="button" class="rbk-hd" data-tropen="${R.r}" aria-label="Run ${R.r}, ${esc(R.d.head)}, typical post top ${R.tp}%. Open its read at the top.">
-      <span class="rbk-bk" style="${shadeVars(R.tp)}"><b>${R.tp}<span>%</span></b></span>
-      <span class="rbk-l"><span class="k">${latest ? '<i class="live" aria-hidden="true"></i>' : ''}Run ${R.r} · ${span(R.items[0].date, R.items[R.items.length - 1].date)}</span><b>${esc(R.d.head)}</b></span>
-      <span class="rbk-r">${delta}</span>
+    <button type="button" class="rbk-hd" data-tropen="${R.r}" aria-haspopup="dialog" aria-label="Run ${R.r}: ${esc(R.d.head)}. Typical post ${rkv(R.tp)}. Open my read of this run.">
+      <span class="rbk-n" style="--c:${runInk(R.tp)}" aria-hidden="true">${pad2(R.r)}</span>
+      <span class="rbk-l"><span class="k">Run ${R.r} · ${span(R.items[0].date, R.items[R.items.length - 1].date)}${latest ? '<em>Latest</em>' : ''}</span><b>${esc(R.d.head)}</b></span>
+      <span class="rbk-p${R.tp <= 25 ? ' r' : ''}"><em>Typical</em>${rkv(R.tp)}</span>
+      <span class="rbk-go" aria-hidden="true">${IC.r}</span>
     </button>
+    <div class="rbk-x" hidden></div>
   </div>`;
 }
+/* a concept's divider in Repeats: the idea, how often, how it usually lands, and the reader's line on it */
+function cdivHTML(c) { return ideaDivHTML(c); }
 function feedHTML() {
   const Mo = M(), W = Mo.f.bands || {};
-  const bdivs = [3, 2, 1, 0].map((b) => { const k = Mo.posts.filter((p) => p.band === b).length; return k ? `<div class="bdiv" data-bdiv="${b}"><div class="bd-hd"><span class="bd-n"><small>${b ? 'Top' : 'Below'}</small>${[50, 50, 25, 10][b]}<i>%</i></span><span class="sub">${plural(k, 'post')}</span>${W[b] ? `<button type="button" class="bd-more" data-bdmore="${b}" aria-expanded="false" aria-label="Why ${RANKW[b]}: what’s in it and why it lands here">Why here${IC.chev}</button>` : ''}</div>${W[b] ? `<p class="bd-h">${esc(W[b].head)}</p><div class="bd-x"><span class="k">What’s in it</span><p>${esc(W[b].what)}</p><span class="k">Why it lands here</span><p>${esc(W[b].why)}</p></div>` : ''}</div>` : ''; });
-  return Mo.runs.map(breakerHTML).join('') + bdivs.join('') + Mo.posts.map(wtile).join('');
+  const bdivs = [3, 2, 1, 0].map((b) => { const k = Mo.posts.filter((p) => p.band === b).length; return k ? `<div class="bdiv" data-bdiv="${b}"><div class="bd-hd"><span class="bd-n">${RANKW[b]}</span><span class="sub">${plural(k, 'post')}</span>${W[b] ? `<button type="button" class="bd-more" data-bdmore="${b}" aria-expanded="false" aria-label="Why ${RANKW[b]}: what’s in it and why it lands here">Why here${IC.chev}</button>` : ''}</div>${W[b] ? `<p class="bd-h">${esc(W[b].head)}</p><div class="bd-x"><span class="k">What’s in it</span><p>${esc(W[b].what)}</p><span class="k">Why it lands here</span><p>${esc(W[b].why)}</p></div>` : ''}</div>` : ''; });
+  return Mo.runs.map(breakerHTML).join('') + Mo.cons.map(cdivHTML).join('') + bdivs.join('') + Mo.posts.map(wtile).join('');
 }
 function applySort() {
   const feed = $('rd-feed'); if (!feed) return;
-  const Mo = M(), posted = S.sort === 'recent';
-  const wall = $('rd-wall'); wall.classList.toggle('S-recent', posted); wall.classList.toggle('S-rank', !posted);
+  const Mo = M(), posted = S.sort === 'recent', grouped = S.sort === 'concept';
+  const wall = $('rd-wall'); wall.classList.toggle('S-recent', posted); wall.classList.toggle('S-concept', grouped); wall.classList.toggle('S-rank', S.sort === 'rank');
   const T = new Map(qa('.tile[data-post]', feed).map((t) => [t.dataset.post, t])), order = [];
   if (posted) for (let r = Mo.runs.length; r >= 1; r--) { order.push(feed.querySelector(`[data-rbk="${r}"]`)); Mo.posts.filter((p) => p.run === r).reverse().forEach((p) => order.push(T.get(p.id))); }
+  else if (grouped) Mo.cons.forEach((c) => { order.push(feed.querySelector(`[data-cdiv="${c.id}"]`)); [...c.items].reverse().forEach((p) => order.push(T.get(p.id))); });
   else for (let b = 3; b >= 0; b--) { const a = Mo.posts.filter((p) => p.band === b).sort((x, y) => x.pct - y.pct); if (!a.length) continue; order.push(feed.querySelector(`[data-bdiv="${b}"]`)); a.forEach((p) => order.push(T.get(p.id))); }
   order.forEach((x) => x && feed.appendChild(x));
-  feed.classList.toggle('ranked', !posted);
+  feed.classList.toggle('ranked', S.sort === 'rank'); feed.classList.toggle('grouped', grouped);
   SPY.tops = null;
 }
 /* ---------- changing the order: the wall turns over under a lens that stays put ----------
@@ -787,7 +909,7 @@ const byLine = (c) => c.tagName === 'P' && !c.classList.contains('bd-h');
 const bparts = (el) => [...el.children].flatMap((c) => (c.classList.contains('bd-x') ? (getComputedStyle(c).display === 'none' ? [] : [...c.children]) : [c]));
 /* while the order changes, the browser must not drag the page along with whichever post it was anchoring to */
 function holdAnchor(ms) {
-  const set = (v) => { document.documentElement.style.overflowAnchor = v; const w = $('rd-wall'); if (w) w.style.overflowAnchor = v; };
+  const set = (v) => { const w = $('rd-wall'); if (w) w.style.overflowAnchor = v; };
   // a shorter hold never cuts a longer one short
   const end = performance.now() + ms; if (MORPH.anchorEnd > end && MORPH.anchor) return;
   MORPH.anchorEnd = end;
@@ -795,16 +917,15 @@ function holdAnchor(ms) {
 }
 /* where the wall can be seen from: under the header, or under the header's panel while it is open */
 function viewTop() {
-  if (!phone()) return hb() - 8;
-  if (S.drop === 'lens') return $('rd-hdrop').getBoundingClientRect().bottom;
-  return $('rd-hdr').getBoundingClientRect().top + (S.compact ? 68 : 152);
+  if (phone() && S.drop === 'lens') return $('rd-hdrop').getBoundingClientRect().bottom;
+  return ht() + hh();
 }
 // script-made motion on a piece of the wall (the CSS lit wave and transitions are left alone)
 const own = (el) => el.getAnimations().filter((a) => !(window.CSSTransition && a instanceof CSSTransition) && !(window.CSSAnimation && a instanceof CSSAnimation));
 function morphWall(change) {
   const lens = $('rd-lens'), lh = document.querySelector('.lens-head'), wall = $('rd-wall');
   const panel = phone() && S.drop === 'lens' ? $('rd-hdrop') : null;
-  const inside = !!lens && (phone() ? lens.getBoundingClientRect().bottom < ht() + 68 : lh.getBoundingClientRect().bottom < hb());
+  const inside = !!lens && (phone() ? lens.getBoundingClientRect().bottom < ht() + hh() : lh.getBoundingClientRect().bottom < hb());
   const below = () => { const i = $('rd-ins'); return (i && !i.hidden ? i : wall).getBoundingClientRect().top; };
   // down inside the wall, the new order opens at its top: right under the header's panel if you switched from it
   // (the panel stays open over the real lens), right under the stuck lens on desktop (it stays stuck at hb()), and
@@ -812,7 +933,7 @@ function morphWall(change) {
   const jump = () => {
     if (!inside) return false;
     hdrLock = performance.now() + 900; acc = 0;
-    if (phone()) setCompact(true);
+    setCompact(true);
     const dy = panel ? below() - (panel.getBoundingClientRect().bottom + 8) : phone() ? lh.getBoundingClientRect().top - (ht() + 80) : below() - (hb() + lens.offsetHeight);
     scrollTo({ top: Math.max(0, scrollY + dy), behavior: 'instant' });
     return true;
@@ -820,14 +941,14 @@ function morphWall(change) {
   holdAnchor(RM ? 80 : 2200);
   if (RM) { change(); const j = jump(); MORPH.until = 0; SPY.tops = null; spyBand(true); return { jumped: j, t: 0 }; }
   const vh = innerHeight, v0 = viewTop(), vis = (b, top) => b.height > 0 && b.bottom > top + 2 && b.top < vh;
-  const pool = () => qa('#rd-traj, .lens-head, #rd-lens, #rd-ins, #rd-feed > *');
-  const parts = '#rd-traj, .lens-head, #rd-lens, #rd-ins, #rd-feed > *, #rd-feed > .bdiv > *, #rd-feed > .bdiv > .bd-x > *';
+  const pool = () => qa('#rd-rules, .lens-head, #rd-lens, #rd-ins, #rd-feed > *');
+  const parts = '#rd-rules, .lens-head, #rd-lens, #rd-ins, #rd-feed > *, #rd-feed > .bdiv > *, #rd-feed > .bdiv > .bd-x > *';
   // 1. what is showing, as it looks right now
   const A = new Map();
   pool().forEach((el) => {
     const b = el.getBoundingClientRect(); if (!vis(b, v0)) return;
     const cs = getComputedStyle(el), s = { b, op: +cs.opacity };
-    if (el.matches('.rbk, .bdiv, #rd-ins')) {
+    if (el.matches('.rbk, .bdiv, .cdiv, #rd-ins')) {
       Object.assign(s, { node: el.cloneNode(true), pt: cs.paddingTop, bt: cs.borderTop });
       if (el.matches('.bdiv')) s.kids = bparts(el).map((c) => {
         const k = getComputedStyle(c), ops = c.classList.contains('mw-lines') ? qa(':scope > .mw-w', c).map((w) => +getComputedStyle(w).opacity) : null;
@@ -976,7 +1097,7 @@ function turnMorph(L, revert) {
   }, () => {});
   return { jumped: false, t: left };
 }
-const wallSig = () => `${S.f}|${S.sort}|${S.sel}|${S.pick}|${S.pick != null ? S.layer : ''}`;
+const wallSig = () => `${S.f}|${S.sort}|${S.sel}|${S.pick}`;
 // where an element is headed once this change settles: its resting opacity (a dimmed tile stays dimmed)
 function rest(el) { el.style.transition = 'none'; const v = +getComputedStyle(el).opacity; el.style.transition = ''; return v; }
 /* arriving: the opacity comes up early and the lift settles slowly, so a piece reads as soon as it starts */
@@ -1063,6 +1184,13 @@ let wallIO;
 function revealWall() {
   if (wallIO) wallIO.disconnect();
   if (RM || !('IntersectionObserver' in window)) return;
+  // what is on screen when the read arrives comes in at once (so no frame of it shows first), after the
+  // trajectory and the lens have started (enterPage), in reading order; the rest rises as you scroll to it
+  const tiles = qa('#rd-feed > .tile, #rd-feed > .rbk'), vh = innerHeight;
+  const now = tiles.map((t) => [t, t.getBoundingClientRect()]).filter(([, r]) => r.height && r.bottom > 0 && r.top < vh - 24)
+    .sort(([, a], [, b]) => a.top - b.top || a.left - b.left).map(([t]) => t);
+  now.forEach((t, k) => anim(t, [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: rest(t), transform: 'none' }], { dur: 640, delay: 600 + Math.min(k * 28, 380) }));
+  const shown = new Set(now);
   let batch = [], raf = 0;
   wallIO = new IntersectionObserver((es) => {
     es.forEach((e) => { if (e.isIntersecting) { wallIO.unobserve(e.target); batch.push(e.target); } });
@@ -1074,11 +1202,11 @@ function revealWall() {
       batch = [];
     });
   }, { rootMargin: '0px 0px -24px 0px', threshold: 0.05 });
-  qa('#rd-feed > .tile, #rd-feed > .rbk').forEach((t) => wallIO.observe(t));
+  tiles.forEach((t) => { if (!shown.has(t)) wallIO.observe(t); });
 }
 function hits(q) {
   const x = pickedSet(); if (!x) return false;
-  return S.layer === 'repeat' ? x.ids.has(q.id) : q.series === x.id;
+  return x.ids.has(q.id);
 }
 function decorate(wave) {
   const wall = $('rd-wall'); if (!wall) return;
@@ -1140,8 +1268,10 @@ function playTrail(p, opts = {}) {
   const end = up ? p.stopper : Mo.posts[p.i - n - 1] || null;
   const T = (q) => feed.querySelector(`.tile[data-post="${q.id}"]`);
   if (opts.scroll) {
-    // fit the whole trail between the compact header (or the sticky lens) and the tab bar; if it is taller, follow the count down
-    const top = phone() ? $('rd-hdr').getBoundingClientRect().top + 70 : hb() + $('rd-lens').offsetHeight + 8;
+    // fit the whole trail between the folded header (or the lens stuck under it) and the tab bar; if it is taller, follow
+    // the count down. The header is held folded for the fit, so the room it measures is the room there will be
+    hold();
+    const top = phone() ? ht() + 70 : hbc() + $('rd-lens').offsetHeight + 8;
     const bot = navTop() - 6;
     const rs = [p, ...chain, end].filter(Boolean).map((q) => laid(T(q)));
     const t0 = Math.min(...rs.map((r) => r.top)) - 4, b0 = Math.max(...rs.map((r) => r.bottom)) + 22, room = bot - top;
@@ -1195,17 +1325,17 @@ function picked() {
   const Mo = M(), f = Mo.f, his = f.who;
   if (S.sel) {
     const p = Mo.byId[S.sel];
-    const sub = `Top ${pcx(p)}% · ` + (p.i === 0 ? 'first in memory' : p.ripple ? `<i class="up">▲</i> ${p.ripple === p.i ? `beat all ${p.ripple}` : `beat the last ${p.ripple}`}` : `<i class="dn">▼</i> last ${p.shortOf} did better`);
+    const sub = `${rkw(p)} · ${esc(beatShort(p).toLowerCase())}`;
     return { lead: tile(p, { still: true, nocap: true, cls: 'lit' }), title: p.label, sub, act: `<button type="button" class="rd-open" data-open="${p.id}">Open</button>`, take: p.take };
   }
   const x = pickedSet(); if (!x) return null;
-  const hard = x.items.filter((q) => q.band >= 2).length;
-  return { lead: stack(x.items, { w: 34, nocount: true }), title: x.pill || x.name, sub: `${plural(x.items.length, 'post')} · ${hard} in ${his} top 25%`, act: S.layer === 'read' ? `<button type="button" class="rd-open" data-oseries="${x.id}">Every go</button>` : '', take: x.say || x.take || '' };
+  const lands = (x.proof || []).length, sinks = (x.against || []).length;
+  return { lead: stack(x.items, { w: 34, nocount: true }), title: `Rule ${pad2(x.n)} · ${x.law}`, sub: `${x.L.length} should land · ${x.Sk.length} should sink`, act: '', take: x.because || '' };
 }
 function renderReadout() {
   const r = picked(), hdr = $('rd-hdr'), was = hdr.classList.contains('reading');
   hdr.classList.toggle('reading', !!r);
-  if (!r) { if (S.drop === 'take') closeDrop(); setCompact(scrollY < 40 ? false : S.compact); return; }
+  if (!r) { if (S.drop === 'take') closeDrop(); setCompact(scrollY <= 30 ? false : S.compact); return; }
   if (phone()) setCompact(true);
   const el = $('rd-hread'), html = `<span class="rd-v">${r.lead}</span><button type="button" class="rd-t" data-drop="take" aria-expanded="${S.drop === 'take'}" aria-label="${esc(r.title)}. Show the reader’s take"><b>${esc(r.title)}</b><span>${r.sub}</span></button>${r.act}<button type="button" class="rd-x" data-clear aria-label="Clear">${IC.x}</button>`;
   if (el._h !== html) {
@@ -1228,7 +1358,7 @@ function renderReadout() {
 }
 function renderFocusUI(mode) {
   renderReadout();
-  qa('.mx[data-pickbit]').forEach((m) => m.setAttribute('aria-pressed', String(S.sort === 'recent' && S.layer === 'read' && S.pick === m.dataset.pickbit)));
+  qa('#rd-rules [data-rule]').forEach((m) => { const on = S.pick === m.dataset.rule; m.setAttribute('aria-pressed', String(on)); m.firstChild.textContent = on ? 'Lit on the wall' : 'Light it up on the wall'; });
   renderIns(mode);
 }
 
@@ -1250,24 +1380,28 @@ function pick(v) {
   decorate(true); syncPressed(true); renderFocusUI();
 }
 function clearFocus() { letGo(); S.sel = null; S.pick = null; decorate(false); syncPressed(); renderFocusUI(); }
-/* one way in from the track: which tab, and which way along it. A series picked from elsewhere (the
-   trajectory's "What it was made of") rides along, so the switch and the pick are one change. */
-function setLens(k, pk) {
-  const cur = lensKey(); if (tabIx(k) < 0) return;
-  if (k === cur) { if (pk != null) pick(pk); return; }
-  const dir = Math.sign(tabIx(k) - tabIx(cur));
-  if (k === 'rank') setSort('rank', dir);
-  else if (S.sort === 'rank') { S.layer = k; setSort('recent', dir, pk); }
-  else setLayer(k, dir, pk);
+/* one way in from the track: which tab, and which way along it. Each tab is its own order of the wall */
+function setLens(k) {
+  const cur = lensKey(); if (tabIx(k) < 0 || k === cur) return;
+  setSort(SORT_OF[k], Math.sign(tabIx(k) - tabIx(cur)));
 }
-function setLayer(l, dir, pk) {
-  if (l === S.layer) return;
-  const d = dir || Math.sign(tabIx(l) - tabIx(S.layer)) || 1;
-  if (pk != null) { letGo(); S.sel = null; }
-  S.layer = l; buzz(); S.pick = pk ?? null;
-  renderLens(true, d); decorate(true); renderFocusUI();
+/* a rule, from the rules: its posts light up on the wall (in whichever order the wall is in), and the wall comes
+   into view under the lens */
+function lightRule(id) {
+  const on = String(S.pick) !== String(id);
+  pick(id);
+  if (!on) return;
+  const lh = document.querySelector('#rd-main .lens-head'); if (!lh) return;
+  quietTo(scrollY + lh.getBoundingClientRect().top - (phone() ? hbc() : hbc() + 8));
 }
-/* Read/Repeat and Rank change the wall's order: the wall turns over in one sweep (morphWall). With a pick
+/* a run's read closes at once (leaving Runs: the breaker is going anyway, and the switch's own sweep covers it) */
+function closeRunNow() {
+  if (!S.tr) return;
+  const b = document.querySelector(`.rbk[data-rbk="${S.tr}"] .rbk-x`);
+  if (b) { b.innerHTML = ''; b.hidden = true; const rb = b.closest('.rbk'); rb.removeAttribute('data-open'); rb.querySelector('.rbk-hd').setAttribute('aria-expanded', 'false'); }
+  S.tr = null;
+}
+/* Runs, Repeats and Ranks change the wall's order: the wall turns over in one sweep (morphWall). With a pick
    riding along, the insight card and the lit posts are part of the new layout and arrive with the sweep,
    so the card's own glide never pulls on posts the sweep is moving. Switched from the header's panel while
    down in the wall, the panel stays open and the new order starts right under it. */
@@ -1275,30 +1409,24 @@ function setSort(v, dir, pk) {
   if (v === S.sort) return;
   const L = MORPH.last, pre = wallSig(); SPY.goal = null;
   if (pk != null) { letGo(); S.sel = null; }
-  S.sort = v; buzz(); clearTrail(true); S.pick = pk ?? null;
+  S.sort = v; buzz(); clearTrail(true); if (pk != null) S.pick = pk;
   renderLens(true, dir || (v === 'rank' ? 1 : -1));
-  const change = () => { applySort(); decorate(false); renderFocusUI('place'); };
+  const change = () => { if (v !== 'recent') closeRunNow(); applySort(); decorate(false); renderFocusUI('place'); };
   const live = L && !RM && performance.now() < MORPH.until && L.anims.every((a) => a.playState !== 'idle') && L.ghosts.every((g) => g.isConnected);
   const sig = wallSig(), turn = live && (L.dir > 0 ? sig === L.pre : sig === L.post);
   // changed your mind while the wall is still turning over: it turns back (or on again) from where it is
-  let r;
-  if (turn) r = turnMorph(L, change);
-  else { r = morphWall(change); if (MORPH.last) { MORPH.last.pre = pre; MORPH.last.post = sig; } }
+  void turn; const r = RM ? (change(), { t: 0 }) : flipSort(change);
   if (S.sel && v === 'recent') TR.timers.push(setTimeout(() => playTrail(M().byId[S.sel]), RM ? 0 : r.t + 60));
-}
-function pickBit(id) {
-  if (lensKey() !== 'read') { setLens('read', id); return; }
-  pick(id);
 }
 /* A tap anywhere off the highlight gets you out. On the wall that tap is used up; a control
    elsewhere also does its own job. */
 function outsideTap(e) {
   if (ovOpen) return false;
   const t = e.target;
-  if (S.drop && !t.closest('#rd-hdrop, #rd-hdr')) { closeDrop(); return true; }
+  if (S.drop && !t.closest('#rd-hdrop, #rd-hdr, #rd-rail')) { closeDrop(); return true; }
   const lit = !!S.sel || S.pick != null;
   if (!lit) return false;
-  if (t.closest('#rd-hdr, #rd-hdrop, #rd-lens, [data-fm-bottom-nav], #rd-ins, #rd-traj, .bd-more')) return false;
+  if (t.closest('#rd-hdr, #rd-rail, #rd-hdrop, #rd-lens, [data-fm-bottom-nav], #rd-ins, #rd-rules, .rbk-x, .bd-more')) return false;
   const tl = t.closest('#rd-feed .tile[data-post]'), inWall = !!t.closest('#rd-wall');
   if (lit) {
     if (tl && tl.matches('.sel, .beat, .above, .stop, .hit')) return false;
@@ -1332,38 +1460,38 @@ function resChart(p, compact) {
     if (p.ripple > 0 || p.shortOf >= 2) s += `<text class="lb" style="--ld:${ld + 300}ms" x="${((xThis + xEnd) / 2).toFixed(1)}" y="${(p.ripple > 0 ? yP - 6 : 7).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="${col}" font-family="JetBrains Mono, monospace">${p.ripple > 0 ? `beat ${p.ripple}` : `${p.shortOf} did better`}</text>`;
   }
   s += `<line x1="0" x2="${W}" y1="${H - 6}" y2="${H - 6}" stroke="rgba(255,255,255,.12)"/>`;
-  const svg = `<svg class="ch" viewBox="0 -4 ${W} ${H + 14}" role="img" aria-label="${esc(beatShort(p).replace(/[▲▼] /, ''))}">${s}</svg>`;
+  const svg = `<svg class="ch" preserveAspectRatio="xMinYMax meet" viewBox="0 -4 ${W} ${H + 14}" role="img" aria-label="${esc(beatShort(p).replace(/[▲▼] /, ''))}">${s}</svg>`;
   if (compact) return svg;
   return `<div class="box res">${svg}<p>${beatLine(p)}</p><div class="key"><span><i style="background:var(--rose)"></i>It beat these</span><span><i style="background:var(--down)"></i>These did better</span><span><i style="background:var(--ink)"></i>This reel</span></div></div>`;
 }
+/* the post mortem: one post, dissected. What it was, why it landed where it did, and what it did to the rules,
+   then the evidence: the streak against the reels before it, what happens in it, every go at its idea */
 function postView(p) {
-  const Mo = M(), f = Mo.f, s = Mo.sById[p.series], sib = s.items, nth = sib.indexOf(p) + 1, his = f.who;
+  const Mo = M(), c = Mo.cById[p.concept], sib = c ? c.items : [p], m = p.mortem || null, R = Mo.runs[p.run - 1], nth = R.items.indexOf(p) + 1;
   const beats = (p.flow || []).slice(0, 6);
-  return `<div class="pv">
-    <div class="ph">${tile(p, { still: true, cls: 'hero lit' })}
-      <div class="info"><button type="button" class="chip vpc" data-series="${s.id}">${esc(s.pill || s.name)} <em>${s.id === 'oneoff' ? 'one-off' : `${nth} of ${sib.length}`}</em></button>
-        <h2>${esc(p.label)}</h2><span class="sub">${fd(p.date)} · ${Mo.runs.length > 1 ? `Run ${p.run} · ` : ''}${p.length ? esc(p.length) + ' · ' : ''}reel</span>
-        <div class="rkb"><div class="big b${p.band}"><small>top </small>${pcx(p)}<small>%</small></div><div class="track"><i style="--to:${Math.min(100, p.pct)}%"></i></div><div class="tl2"><span>${his.toUpperCase()} BEST</span><span>${word(p).toUpperCase()}</span><span>WORST</span></div></div></div></div>
-    <section class="sec rv"><span class="k">The reader’s take</span><p class="why">${esc(p.take)}</p></section>
-    <section class="sec rv"><span class="k"><span>Against the reels before it</span><span class="bw ${p.ripple ? 'b2' : 'b0'}">${beatShort(p)}</span></span>${resChart(p)}</section>
-    <section class="sec rv"><span class="k">What decided it</span><div class="box"><span class="bw d-${p.driver}" style="justify-self:start">${DRV[p.driver] ? DRV[p.driver][0] : ''}: ${DRVQ[p.driver] || ''}</span><p>${esc((f.drivers || {})[p.driver] || '')}</p></div></section>
-    ${beats.length ? `<section class="sec rv"><span class="k">What happens in it</span><ol class="beats">${beats.map((b) => `<li><span>${esc(b.t || '•')}</span><span>${esc(b.beat)}</span></li>`).join('')}</ol></section>` : `<section class="sec rv"><span class="k">Caption</span><p class="why" style="color:var(--ink-2)">“${esc(p.hook)}”</p></section>`}
-    ${sib.length > 1 ? `<section class="sec rv"><span class="k"><span>${s.id === 'oneoff' ? 'Other one-offs' : `Every go at “${esc(s.name)}”`}</span><span>higher = ranked higher</span></span>${podium(sib, { cur: p.id, style: `--ph:${phone() ? 160 : 180}px;--tw:86px` })}</section>` : ''}
+  const fx = m ? (m.fx || []).filter((x) => x.m !== 'none').map((x) => { const r = x.r && Mo.ruleById[x.r]; return `<li><span class="${moveC(x.m)}">${esc(moveW(x.m))}</span>${r ? `<b>${r.gone ? 'Dropped: ' : ''}${esc(r.law)}</b>` : ''}${esc(x.line)}</li>`; }).join('') : '';
+  const streak = p.i === 0 ? ['—', 'first in memory'] : p.ripple ? [`Beat ${p.ripple}`, p.ripple === p.i ? 'every post before it' : 'posts before it', 'r'] : [`${p.shortOf}<small> did better</small>`, p.shortOf === 1 ? 'right before it' : 'in a row before it'];
+  return `<div class="pv lkp pv2">
+    <div class="pv2-l rv">
+      <div class="pv2-cv">${tile(p, { still: true, nocap: true, cls: 'hero lit' })}</div>
+      ${bmx([[rkw(p), 'where it landed', p.band >= 2 ? 'r' : ''], [`${ord(p.rank)}<small> of ${Mo.n}</small>`, 'in his memory'], streak])}
+    </div>
+    <div class="pv2-r">
+      <div class="pv2-hd rv">${ktop(`${Mo.runs.length > 1 ? `Run ${p.run} · ` : ''}post ${nth} of ${R.items.length}`, `${fd(p.date)}${p.length ? ' · ' + esc(dur(p.length) || p.length) : ''}${p.paid ? ' · paid' : ''}`, p.band >= 2 ? 'r' : '')}<h2>${esc(p.label)}</h2></div>
+      <section class="sec rv">${m ? `<span class="k">Why it landed here</span><p class="lk-p">${esc(m.why)}</p><span class="k">What it was</span><p class="lk-fp">${esc(m.what)}</p>` : `<p class="lk-p">${esc(p.take)}</p>`}</section>
+      ${fx ? `<section class="sec rv"><span class="k">What it did to my rules</span><ul class="lk-ch">${fx}</ul></section>` : ''}
+      <section class="sec rv"><span class="k">Against the posts before it</span><div class="lk-res res">${resChart(p, true)}</div><p class="lk-fp">${beatLine(p)}</p></section>
+      ${beats.length ? `<section class="sec rv"><span class="k">What happens in it</span><ol class="beats">${beats.map((b) => `<li><span>${esc(b.t || '•')}</span><span>${esc(b.beat)}</span></li>`).join('')}</ol></section>` : p.hook ? `<section class="sec rv"><span class="k">On screen</span><p class="lk-fp">“${esc(p.hook)}”</p></section>` : ''}
+      ${c && sib.length > 1 ? `<section class="sec rv"><button type="button" class="pr" data-concept="${c.id}"><span class="pr-x">×${sib.length}</span><span class="pr-t"><span class="pr-k"><em>An idea ${who() === 'his' ? 'he keeps' : 'they keep'} making · go ${sib.indexOf(p) + 1} of ${sib.length}</em></span><strong>${esc(c.name)}</strong></span>${IC.r}</button></section>` : ''}
+    </div>
   </div>`;
 }
-function seriesView(s) {
-  const hard = s.items.filter((p) => p.band >= 2).length;
-  return `<div class="pv">
-    <div class="shero rv">${stack(s.items, { cap: true })}<div style="display:grid;gap:12px"><span class="k">${s.id === 'oneoff' ? 'One-offs' : `A bit ${who() === 'his' ? 'he keeps' : 'they keep'} doing`}</span><h2 style="font-size:clamp(30px,3.6vw,44px);line-height:.98;letter-spacing:-.045em">${esc(s.pill || s.name)}</h2><span class="bw b${band(s.med)}" style="justify-self:start">Typical: top ${pc(s.med)}%</span></div></div>
-    <div class="stats4 rv"><div><span class="k">Goes</span><strong>×${s.items.length}</strong></div><div><span class="k">First</span><strong>${fd(s.first)}</strong></div><div><span class="k">Latest</span><strong>${fd(s.last)}</strong></div><div><span class="k">In top 25%</span><strong class="${hard ? 'r' : ''}">${hard} of ${s.items.length}</strong></div></div>
-    <section class="sec rv"><span class="k">The read</span><p class="verdict">${esc(s.say || s.take)}</p></section>
-    <section class="sec rv"><span class="k"><span>Every go, in order</span><span>higher = ranked higher · tap one</span></span>${podium(s.items, { style: `--ph:${phone() ? 180 : 210}px;--tw:96px` })}</section>
-  </div>`;
-}
-const ovTitle = (e) => (e.type === 'post' ? M().byId[e.id].label : M().sById[e.id].pill || M().sById[e.id].name);
+/* an idea the account keeps making: how often, how it usually lands, the reader's line, every go at it */
+function conceptView(c) { return ideaView(c); }
+const ovTitle = (e) => (e.type === 'post' ? M().byId[e.id].label : e.type === 'run' ? `Run ${e.id}` : M().cById[e.id].short);
 function renderOv() {
   const top = S.stack[S.stack.length - 1], Mo = M();
-  $('rd-obody').innerHTML = top.type === 'post' ? postView(Mo.byId[top.id]) : seriesView(Mo.sById[top.id]);
+  $('rd-obody').innerHTML = top.type === 'post' ? postView(Mo.byId[top.id]) : top.type === 'run' ? runView(Mo.runs[top.id - 1]) : conceptView(Mo.cById[top.id]);
   $('rd-obody').scrollTop = 0; $('rd-shd').classList.remove('stuck');
   $('rd-miniTitle').textContent = ovTitle(top);
   const prev = S.stack[S.stack.length - 2];
@@ -1371,7 +1499,7 @@ function renderOv() {
   let acts = '';
   if (top.type === 'post') { const p = Mo.byId[top.id], o = Mo.posts[p.i - 1], n = Mo.posts[p.i + 1]; acts += `<button type="button" class="ib" ${o ? `data-step="${o.id}"` : 'disabled'} aria-label="Older reel">${IC.l}</button><button type="button" class="ib" ${n ? `data-step="${n.id}"` : 'disabled'} aria-label="Newer reel">${IC.r}</button>`; }
   $('rd-acts').innerHTML = acts + `<button type="button" class="ib" id="rd-closeOv" aria-label="Close">${IC.x}</button>`;
-  fixPods($('rd-obody'));
+  fixPods($('rd-obody')); mountBoard($('rd-obody'));
   qa('#rd-obody .rv').forEach((el, k) => rise(el, { y: 14, dur: 520, delay: 160 + k * 70 }));
 }
 function fly(src, a, b, dur, done) {
@@ -1382,34 +1510,65 @@ function fly(src, a, b, dur, done) {
   const an = c.animate([{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width}, ${a.height / b.height})` }, { transform: 'none' }], { duration: dur, easing: SOFT, fill: 'forwards' });
   an.onfinish = () => { if (done) done(); c.remove(); };
 }
-function openEntry(entry, src) {
+function openEntry(entry, src, home) {
   hideTip(); buzz(); closeDrop();
-  if (ovOpen) { S.stack.push(entry); swapOv(1); return; }
+  if (ovOpen) { const from = entry.type === 'post' && !RM ? flyFrom(entry.id, src) : null; S.stack.push(entry); swapOv(1, from && { ...from, p: M().byId[entry.id] }); return; }
+  const from = entry.type === 'post' && !RM ? flyFrom(entry.id, src) : null;
+  const org = !from && src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
   S.stack = [entry];
   renderOv();
   const ov = $('rd-ov'), sheet = $('rd-sheet'), scrim = $('rd-scrim');
   [sheet, scrim].forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
-  sheet.style.transform = '';
+  qa('.cfly').forEach((g) => g.getAnimations().forEach((a) => a.cancel()));
+  sheet.style.transform = ''; sheet.style.transformOrigin = '';
   ov.classList.add('on'); ov.setAttribute('aria-hidden', 'false'); ovOpen = true;
   // in the app the page scrolls on the root element, so that is what the sheet locks
   if (!bodyLock) { bodyLock = true; bodyPrev = document.documentElement.style.overflow; }
   document.documentElement.style.overflow = 'hidden';
+  FLY.id = entry.type === 'post' ? entry.id : null; FLY.el = null;
   if (RM) { sheet.style.opacity = 1; scrim.style.opacity = 1; return; }
   sheet.style.opacity = '';
-  const srcTile = src && src.classList && src.classList.contains('tile') ? src : null;
-  const target = $('rd-obody').querySelector('.tile.hero');
-  const a = srcTile ? srcTile.getBoundingClientRect() : null, b = target ? target.getBoundingClientRect() : null;
-  scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out', fill: 'forwards' });
-  sheet.animate(phone() ? [{ opacity: 1, transform: 'translateY(100%)' }, { opacity: 1, transform: 'none' }] : [{ opacity: 0, transform: 'translateY(18px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 520, easing: SOFT, fill: 'forwards' });
-  if (a && b && a.width && b.width) { target.style.opacity = 0; fly(srcTile, a, b, 520, () => { target.style.opacity = ''; }); }
+  // measured with the sheet at rest, before anything moves it
+  const to = from ? heroRect() : null, sr = sheet.getBoundingClientRect();
+  scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 420, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+  if (phone()) sheet.animate([{ opacity: 1, transform: 'translateY(100%)' }, { opacity: 1, transform: 'none' }], { duration: 700, easing: EZ.sheet, fill: 'forwards' });
+  else {
+    // the sheet grows out of what you tapped
+    const o = from ? from.r : org;
+    if (o) sheet.style.transformOrigin = `${(o.left + o.width / 2 - sr.left).toFixed(0)}px ${(o.top + o.height / 2 - sr.top).toFixed(0)}px`;
+    sheet.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, offset: 0.4 }, { opacity: 1, transform: 'none' }], { duration: 640, easing: EZ.sheet, fill: 'forwards' });
+  }
+  if (from && to) {
+    const p = M().byId[entry.id], g = cardAt(p, from.r, from.rad);
+    FLY.el = home || from.el; setAway(from.el.closest('.pk-v') ? FLY.el : from.el);
+    to.hero.style.visibility = 'hidden';
+    flyCard(g, from.r, from.rad, to.r, to.rad, { dur: 640, ease: EZ.fly, land: () => { to.hero.style.visibility = ''; to.hero.classList.add('landed'); } });
+  }
 }
-function swapOv(dir) {
+function swapOv(dir, from) {
   const body = $('rd-obody');
   if (RM) { renderOv(); return; }
-  body.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-dir * 20}px)` }], { duration: 160, easing: 'ease-in', fill: 'forwards' }).onfinish = () => {
+  body.getAnimations().forEach((x) => x.cancel());
+  if (from && dir > 0) {
+    // a cover tapped inside the sheet lifts out while the read under it gives way, then lands as the new hero
+    const g = cardAt(from.p, from.r, from.rad);
+    g.animate([{ transform: 'none' }, { transform: 'scale(1.06)' }], { duration: 150, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' });
+    body.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 150, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).onfinish = () => {
+      if (!alive) { g.remove(); return; }
+      renderOv(); body.getAnimations().forEach((x) => x.cancel());
+      const to = heroRect();
+      body.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' });
+      g.getAnimations().forEach((x) => x.cancel());
+      const a = from.r, s = 1.06, la = { left: a.left - (a.width * (s - 1)) / 2, top: a.top - (a.height * (s - 1)) / 2, width: a.width * s, height: a.height * s };
+      if (to) { to.hero.style.visibility = 'hidden'; flyCard(g, la, from.rad * s, to.r, to.rad, { dur: 620, ease: EZ.fly, land: () => { to.hero.style.visibility = ''; to.hero.classList.add('landed'); } }); }
+      else g.remove();
+    };
+    return;
+  }
+  body.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-dir * 24}px)` }], { duration: 170, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).onfinish = () => {
     if (!alive) return;
     renderOv(); body.getAnimations().forEach((x) => x.cancel());
-    body.animate([{ opacity: 0, transform: `translateX(${dir * 20}px)` }, { opacity: 1, transform: 'none' }], { duration: 420, easing: SOFT });
+    body.animate([{ opacity: 0, transform: `translateX(${dir * 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 520, easing: EZ.sheet });
   };
 }
 function stepTo(id, dir) { S.stack[S.stack.length - 1] = { type: 'post', id }; buzz(); swapOv(dir); }
@@ -1417,14 +1576,32 @@ function closeOv() {
   if (!ovOpen) return;
   ovOpen = false; buzz();
   const ov = $('rd-ov'), sheet = $('rd-sheet'), scrim = $('rd-scrim');
-  const done = () => { ov.classList.remove('on'); ov.setAttribute('aria-hidden', 'true'); if (bodyLock) document.documentElement.style.overflow = bodyPrev; bodyLock = false; sheet.style.transform = ''; [sheet, scrim].forEach((el) => el.getAnimations().forEach((x) => x.cancel())); sheet.style.opacity = ''; scrim.style.opacity = ''; };
-  if (RM) { done(); return; }
-  const top = S.stack[S.stack.length - 1], hero = $('rd-obody').querySelector('.tile.hero');
-  const dest = top && top.type === 'post' ? qa(`#rd-feed .tile[data-post="${top.id}"]`).find((t) => { const r = t.getBoundingClientRect(); return r.width && r.bottom > 0 && r.top < innerHeight; }) : null;
-  if (hero && dest) { const a = hero.getBoundingClientRect(), b = dest.getBoundingClientRect(); hero.style.opacity = 0; dest.style.opacity = 0; fly(hero, a, b, 360, () => { dest.style.opacity = ''; }); }
-  scrim.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 280, easing: 'ease-in', fill: 'forwards' });
+  const done = () => { ov.classList.remove('on'); ov.setAttribute('aria-hidden', 'true'); if (bodyLock) document.documentElement.style.overflow = bodyPrev; bodyLock = false; sheet.style.transform = ''; sheet.style.transformOrigin = ''; [sheet, scrim].forEach((el) => el.getAnimations().forEach((x) => x.cancel())); sheet.style.opacity = ''; scrim.style.opacity = ''; };
+  if (RM) { setAway(null); done(); return; }
+  const top = S.stack[S.stack.length - 1], body = $('rd-obody');
+  const hero = top && top.type === 'post' ? body.querySelector('.tile.hero') : null;
+  const home = hero ? homeFor(top.id) : null;
+  if (!home) qa('.v15-away').forEach((x) => { x.classList.remove('v15-away'); x.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' }); });
+  if (hero && home) {
+    let a = hero.getBoundingClientRect(); const ra = pxR(hero, a), br = body.getBoundingClientRect();
+    // the hero scrolled away inside the sheet: the cover leaves from the top of what you can see instead
+    const gone = a.bottom < br.top + 40;
+    if (gone) a = { left: a.left, top: br.top + 12, width: a.width, height: a.height };
+    const p = M().byId[top.id], g = cardAt(p, a, ra);
+    hero.style.visibility = 'hidden';
+    const keep = home.el.classList.contains('v15-away') ? null : home.el;
+    if (keep) keep.style.visibility = 'hidden';
+    flyCard(g, a, ra, home.r, pxR(home.el, home.r), { dur: 560, ease: EZ.home, fadeIn: gone, land: () => { if (keep) keep.style.visibility = ''; setAway(null); landPulse(home.el.closest('.tile, .dk-c, .lc, .pr, .evr') || home.el); } });
+  }
+  scrim.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 440, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
   const cur = getComputedStyle(sheet).transform;
-  sheet.animate(phone() ? [{ opacity: 1, transform: cur === 'none' ? 'none' : cur }, { opacity: 1, transform: 'translateY(100%)' }] : [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(14px) scale(.98)' }], { duration: 300, easing: 'cubic-bezier(.4,0,.7,.2)', fill: 'forwards' }).onfinish = () => { if (alive) done(); };
+  let an;
+  if (phone()) an = sheet.animate([{ opacity: 1, transform: cur === 'none' ? 'none' : cur }, { opacity: 1, transform: 'translateY(100%)' }], { duration: 440, easing: EZ.away, fill: 'forwards' });
+  else {
+    if (home) { const sr = sheet.getBoundingClientRect(); sheet.style.transformOrigin = `${(home.r.left + home.r.width / 2 - sr.left).toFixed(0)}px ${(home.r.top + home.r.height / 2 - sr.top).toFixed(0)}px`; }
+    an = sheet.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.94)' }], { duration: 340, easing: EZ.away, fill: 'forwards' });
+  }
+  an.onfinish = () => { if (alive) done(); };
 }
 (function dragSheet() {
   const sh = $('rd-sheet'); let y0 = null, dy = 0, t0 = 0;
@@ -1440,7 +1617,7 @@ function showTip(el) {
   if (!fine || ovOpen) return;
   const p = M().byId[el.dataset.post]; if (!p) return;
   const t = $('rd-tip');
-  t.innerHTML = `${tile(p, { still: true, nocap: true, cls: 'lit' })}<div><b>${esc(p.label)}</b><span>${fd(p.date)} · top ${pcx(p)}% · ${beatShort(p)}</span></div>`;
+  t.innerHTML = `${tile(p, { still: true, nocap: true, cls: 'lit' })}<div><b>${esc(p.label)}</b><span>${fd(p.date)} · ${rkw(p)} · ${esc(beatShort(p).toLowerCase())}</span></div>`;
   const r = el.getBoundingClientRect();
   t.style.left = Math.min(innerWidth - 300, Math.max(10, r.left + r.width / 2 - 145)) + 'px';
   t.style.top = (r.top - 84 < 120 ? r.bottom + 10 : r.top - 84) + 'px';
@@ -1450,16 +1627,825 @@ function hideTip() { $('rd-tip').classList.remove('on'); }
 listen(document, 'pointerover', (e) => { const el = e.target.closest('#rd-feed .tile[data-post]'); if (el) showTip(el); });
 listen(document, 'pointerout', (e) => { if (e.target.closest('#rd-feed .tile')) hideTip(); });
 
+/* ---------- the read, v13: every component answers its own question, in bold, at full width ----------
+   The formula, tested: posts that hit two rules against posts that missed one.
+   A rule: what is it worth (two ledges, the second falls by what missing it costs), what happens in the posts
+   that made it, and how I got there run by run.
+   What the details say: patterns read off the posts themselves, as a stack of cards you tap through.
+   A run, or an idea he keeps making: one pop-up, the same frame for both. Its posts rise one after another to
+   the height each landed (the trajectory), then what it taught me.
+   Ranks already shows where things landed; none of this repeats it. */
+let FSEQ = 0;
+const PDATA = new Map();
+let boardIO = null;
+
+/* the words for a rank: strong posts by how near the top, weak ones by how near the bottom */
+const bot = (p) => Math.max(1, Math.round(100 - p.pct + 100 / M().n));
+const rkw = (p) => (p.pct <= 50 ? `Top ${pcx(p)}%` : `Bottom ${bot(p)}%`);
+const rkv = (v) => (v <= 50 ? `Top ${Math.max(1, Math.round(v))}%` : `Bottom ${Math.max(1, Math.round(100 - v + 100 / M().n))}%`);
+const STATUSW = { born: 'New in run', sharpened: 'Stronger after run', held: 'Held through run', tweaked: 'Narrowed in run', strains: 'Strained in run', breaks: 'Broke in run', dropped: 'Dropped in run', backs: 'Backed in run' };
+const VERDICT = { called: 'It held', missed: 'It didn’t hold', open: 'Still open' };
+const byIds = (ids) => (ids || []).map((id) => M().byId[id]).filter(Boolean);
+const byRank = (a) => [...a].sort((x, y) => x.rank - y.rank);
+const mx = (cols) => `<div class="lk-mx">${cols.map(([b, l, c]) => `<span><b class="${c || ''}">${b}</b>${l}</span>`).join('')}</div>`;
+const bmx = (cols) => `<div class="bmx">${cols.map(([b, l, c]) => `<span><b class="${c || ''}">${b}</b><em>${l}</em></span>`).join('')}</div>`;
+const ktop = (l, r, cl = '', cr = '') => `<div class="lk-top"><span class="${cl}">${l}</span><span class="${cr}">${r}</span></div>`;
+const medPct = (a) => med(a.map((p) => p.pct));
+const places = (pts) => Math.round((pts * M().n) / 100);
+const tAt = (pct) => { const lo = 100 / M().n; return clamp01((pct - lo) / (100 - lo)); };
+const cover = (p) => (p.thumb ? `<img src="${p.thumb}" alt="" decoding="async" draggable="false">` : `<span class="cv-f" style="--g1:${(SCENES[p.scene] || SCENES.plain)[0]};--g2:${(SCENES[p.scene] || SCENES.plain)[1]}"></span>`);
+const words = (t) => String(t).split(/\s+/).filter(Boolean).map((w, j) => `<span class="w"><span style="--j:${j}">${w}</span></span>`).join(' ');
+function syncRuleBtns(root) { qa('[data-rule]', root).forEach((m) => { const on = S.pick === m.dataset.rule; m.setAttribute('aria-pressed', String(on)); m.firstChild.textContent = on ? 'Lit on the wall' : 'Light it up on the wall'; }); }
+// which of my live rules a post carries, and which it misses
+function sig(p) { let has = 0, miss = 0; M().rules.forEach((r) => { if (r.L.includes(p.id)) has++; else if (r.Sk.includes(p.id)) miss++; }); return { has, miss }; }
+
+/* ---------- a deck: posts fanned on a ledge; the front card is the strongest case ---------- */
+function deck(ps, cls) {
+  return `<span class="dk ${cls}" style="--n:${ps.length}">${ps.map((p, k) => `<button type="button" class="dk-c" data-post="${p.id}" style="--i:${k};z-index:${ps.length - k}" aria-label="${esc(p.label)}, ${rkw(p)}">${cover(p)}<span class="dk-r">${rkw(p)}</span></button>`).join('')}</span>`;
+}
+
+/* ---------- the formula, tested ---------- */
+function formulaHTML() {
+  const Mo = M(), half = Mo.n / 2;
+  const two = byRank(Mo.posts.filter((p) => { const s = sig(p); return s.has >= 2 && !s.miss; }));
+  const miss = byRank(Mo.posts.filter((p) => sig(p).miss > 0)).reverse();
+  if (two.length < 3 || miss.length < 3) return '';
+  const up = two.filter((p) => p.rank <= half).length, dn = miss.filter((p) => p.rank > half).length;
+  // the posts that bear it out first, the exceptions last (dimmed)
+  const order = (all, ok) => [...all.filter(ok), ...all.filter((p) => !ok(p))];
+  const row = (cls, n, of, text, all, ok) => `<div class="fm-row ${cls}"><span class="fm-big"><b data-to="${n}">${n}</b><small>of ${of}</small></span><p>${text}</p><div class="fm-dk">${deck(order(all, ok), cls === 'up' ? 'r' : 'w').replace(/class="dk-c" data-post="(\w+)"/g, (m, id) => (ok(Mo.byId[id]) ? m : `class="dk-c off" data-post="${id}"`))}</div></div>`;
+  return `<div class="fm" data-fm>
+    ${row('up', up, two.length, 'posts that hit two of my rules landed in his <b>top half</b>.', two, (p) => p.rank <= half)}
+    ${row('dn', dn, miss.length, 'posts that missed one sank into his <b>bottom half</b>.', miss, (p) => p.rank > half)}
+  </div>`;
+}
+
+/* ---------- a rule: what it is worth, what happens in its posts, how I got there ---------- */
+const whyOf = (p) => (p.mortem && p.mortem.why) || p.line || p.take || '';
+function evidenceHTML(r, gone) {
+  const Mo = M(), brk = new Set(r.brokenBy);
+  const land = byRank(byIds(r.L).filter((p) => !brk.has(p.id))).slice(0, 2);
+  const sink = byRank(byIds(r.Sk).filter((p) => !brk.has(p.id))).reverse().slice(0, 1);
+  const br = byRank(byIds(r.brokenBy)).slice(0, 1);
+  const row = (p, tag, cls, text) => `<button type="button" class="evr ${cls}" data-post="${p.id}"><span class="evr-i">${cover(p)}</span><span class="evr-t"><span class="evr-k"><b>${rkw(p)}</b><em>${tag}</em></span><strong>${esc(p.label)}</strong><span class="evr-x">${esc(text)}</span></span></button>`;
+  const rows = [...land.map((p) => row(p, gone ? 'It named it' : 'Has it, landed', 'up', whyOf(p))), ...sink.map((p) => row(p, 'Lacks it, sank', 'dn', whyOf(p))), ...br.map((p) => row(p, 'Breaks it', 'x', (r.breaks || {})[p.id] || whyOf(p)))];
+  return rows.length ? `<div class="ev"><span class="k">What happens in them</span>${rows.join('')}</div>` : '';
+}
+function lifeHTML(r) {
+  const life = r.life || []; if (!life.length) return '';
+  return `<div class="lf"><span class="k">How I got here</span><ol>${life.map((x, k) => `<li class="${moveC(x.move)}${k === life.length - 1 ? ' last' : ''}"><span class="lf-h"><b>Run ${x.run}</b><em>${esc(moveW(x.move))}</em></span><p>${esc(x.line)}</p></li>`).join('')}</ol></div>`;
+}
+function plateHTML(r, gone) {
+  const Mo = M(), N = Mo.runs.length, life = r.life || [];
+  const has = byRank(byIds(r.L)), lacks = byRank(byIds(r.Sk)).reverse();
+  const mh = has.length ? medPct(has) : null, ml = lacks.length ? medPct(lacks) : null;
+  const w = mh != null && ml != null ? places(ml - mh) : null;
+  const id = 'dp' + (++FSEQ); PDATA.set(id, { r, has, lacks, mh, ml, w });
+  const body = gone ? String(r.line || '').replace(/^Dropped in run \d+\.\s*/, '') : r.because;
+  const alt = (v) => (v / 100).toFixed(4);
+  const ledge = (ps, v, cls, lab) => `<div class="dp-l ${cls}" style="--a:${alt(v)}">${deck(ps, cls === 'has' ? 'r' : 'w')}<i class="dp-rule"></i><span class="dp-lab"><b>${lab}</b> · ${ps.length} · ${rkv(v)}</span><span class="dp-cap" aria-hidden="true"></span></div>`;
+  const ev = evidenceHTML(r, gone), lf = lifeHTML(r), evN = (ev.match(/class="evr /g) || []).length;
+  const fold = (key, label, count, html) => (html ? `<button type="button" class="rk-fb" data-fold="${key}" aria-expanded="false"><span>${label}</span><b>${count}</b><i aria-hidden="true"></i></button>` : '');
+  const kick = gone ? `<em class="dn">Dropped</em>${life.length ? ` · Runs ${life[0].run}–${life[life.length - 1].run}` : ''}` : `<em>Rule ${pad2(r.n)}</em> · ${STATUSW[r.status] || 'Held through run'} ${N}`;
+  const big = w != null ? [String(w), Math.abs(w) === 1 ? 'place' : 'places'] : ['—', 'no misses yet'];
+  const meta = gone ? `<span>It never moved him</span>${has.length ? ` · <span>named <b>${has.length}</b></span>` : ''}` : `<span>With it <b class="r">${rkv(mh)}</b></span>${ml != null ? ` · <span>without <b>${rkv(ml)}</b></span>` : ''}`;
+  const bid = 'rlb' + FSEQ;
+  return `<article class="rp rl-i${gone ? ' gone' : ''}" data-rs="${r.id}">
+    <button type="button" class="rl-hd" aria-expanded="false" aria-controls="${bid}">
+      <span class="rl-n${gone ? ' dim' : ''}"><b>${gone && w == null ? '0' : big[0]}</b><small>${gone && w == null ? 'places' : big[1]}</small></span>
+      <span class="rl-t"><span class="rl-k">${kick}</span><span class="rs-law">${esc(r.law)}</span><span class="rl-m">${meta}</span></span>
+      <i class="rl-x" aria-hidden="true"></i>
+    </button>
+    <div class="rl-bd" id="${bid}" hidden><div class="rl-in">
+      <p class="rs-bc">${esc(body)}</p>
+      <div class="dp${w == null ? ' solo' : ''}" data-dp="${id}" style="--wf:${w == null ? 0 : clamp01(w / Mo.n).toFixed(3)}" role="group" aria-label="${w != null ? `Posts with it typically land ${rkv(mh)}; without it, ${rkv(ml)}. Missing it costs ${w} places.` : `Its posts typically land ${rkv(mh)}.`}">
+        <i class="dp-g t"><span>His best</span></i><i class="dp-g b"><span>His worst</span></i>
+        ${has.length ? ledge(has, mh, 'has', gone ? 'What it named' : 'With it') : ''}
+        ${lacks.length ? ledge(lacks, ml, 'lacks', 'Without it') : ''}
+        ${w != null ? `<div class="dp-w" style="--a:${alt(mh)};--b:${alt(ml)}"><i class="dp-drop"></i><span class="dp-v"><b class="dp-num">${w}</b><small>${Math.abs(w) === 1 ? 'place' : 'places'}</small></span><em>${w >= 0 ? 'what missing it costs' : 'it works the other way'}</em></div>` : `<div class="dp-w none" style="--a:${alt(mh)};--b:${alt(mh)}"><span class="dp-v"><b class="dp-num">0</b><small>places</small></span><em>${gone ? 'it never moved him' : 'nothing without it yet'}</em></div>`}
+      </div>
+      <div class="rl-ctl">
+        <div class="rk-fbs">${fold('ev', gone ? 'What it named' : 'What happens in them', evN, ev)}${fold('lf', 'How I got here', `${life.length} ${life.length === 1 ? 'run' : 'runs'}`, lf)}</div>
+        <div class="rs-ft"><span>Speaks for <b>${r.reach}</b> of ${Mo.n}</span><span><b>${r.carry}</b> of his top ${r.quarter}</span><span>Held <b>${r.held}</b> of ${r.calls}</span>${gone ? '' : `<button type="button" class="rs-go" data-rule="${r.id}" aria-pressed="${S.pick === r.id}">Light it up on the wall${IC.r}</button>`}</div>
+      </div>
+      ${ev ? `<div class="rk-fold" data-fbody="ev" hidden>${ev}</div>` : ''}
+      ${lf ? `<div class="rk-fold" data-fbody="lf" hidden>${lf}</div>` : ''}
+    </div></div>
+  </article>`;
+}
+function openHTML() {
+  const op = M().rd.open || []; if (!op.length) return '';
+  const bid = 'rlb' + (++FSEQ);
+  return `<article class="rp rl-i open" data-rs="open">
+    <button type="button" class="rl-hd" aria-expanded="false" aria-controls="${bid}">
+      <span class="rl-n dim"><b>${op.length}</b><small>${op.length === 1 ? 'question' : 'questions'}</small></span>
+      <span class="rl-t"><span class="rl-k"><em class="dn">Still open</em></span><span class="rs-law">What I can’t call yet</span><span class="rl-m">${esc(String(op[0].q).split(/[.?]/)[0])}${op.length > 1 ? ` · and ${op.length - 1} more` : ''}</span></span>
+      <i class="rl-x" aria-hidden="true"></i>
+    </button>
+    <div class="rl-bd" id="${bid}" hidden><div class="rl-in">
+      ${op.map((o) => `<div class="oq"><p>${esc(o.q)}</p><div class="oq-dk">${deck(byRank(byIds(o.posts)), 'q')}</div></div>`).join('')}
+    </div></div>
+  </article>`;
+}
+
+/* ---------- what the details say: patterns read off the posts themselves ---------- */
+function secsOf(p) {
+  const x = String(p.length || '');
+  let m = x.match(/^(\d+):(\d\d)$/); if (m) return +m[1] * 60 + +m[2];
+  m = x.match(/^(\d+(?:\.\d+)?)s?$/); if (m) return +m[1];
+  const f = p.flow || [], t = f.length ? String(f[f.length - 1].t).match(/(\d+):(\d\d)\s*$/) : null;
+  return t ? +t[1] * 60 + +t[2] : null;
+}
+function insightsData() {
+  const Mo = M(), ps = Mo.posts, half = Mo.n / 2, out = [];
+  const typ = (a) => Math.round(med(a.map((p) => p.rank)));
+  const low = (a) => a.filter((p) => p.rank > half).length;
+  const names = (a, k = 3) => a.slice(0, k).map((p) => p.label.charAt(0).toLowerCase() + p.label.slice(1)).join('; ');
+  // 1. what carries a post
+  const DRVH = { moment: 'Riding a moment', faces: 'Riding who’s in it', idea: 'On the idea alone', craft: 'Leaning on craft' };
+  const DRVL = { moment: 'a moment', faces: 'who’s in it', idea: 'the idea alone', craft: 'craft' };
+  const g = Object.keys(DRVH).map((k) => ({ k, ps: byRank(ps.filter((p) => p.driver === k)) })).filter((x) => x.ps.length >= 3).map((x) => ({ ...x, t: typ(x.ps) })).sort((a, b) => a.t - b.t);
+  if (g.length >= 2 && g[g.length - 1].t - g[0].t >= Mo.n * 0.25) {
+    const a = g[0], b = g[g.length - 1];
+    out.push({ tag: 'What carries a post', head: `${DRVH[a.k]}, he lands ${ord(a.t)}. ${DRVH[b.k]}, ${ord(b.t)}.`, proof: `His typical landing by what carries the post: ${g.map((x) => `${DRVL[x.k]} ${ord(x.t)} (${x.ps.length})`).join(', ')}.`, mx: [[ord(a.t), DRVL[a.k], 'r'], [ord(b.t), DRVL[b.k]]], posts: a.ps, cover: a.ps[0] });
+  }
+  // 2. who it is for
+  const lost = byRank(ps.filter((p) => /^(unclear|nobody)/i.test(String(p.speaks || '').trim())));
+  if (lost.length >= 3 && low(lost) / lost.length >= 0.8) out.push({ tag: 'Who it’s for', head: 'When I can’t tell who it’s for, it sinks.', proof: `${low(lost)} of ${lost.length} landed in his bottom half: ${names(lost.slice().reverse())}.`, mx: [[`${low(lost)}/${lost.length}`, 'sank', 'r'], [ord(typ(lost)), 'typical landing']], posts: lost.slice().reverse(), cover: lost[lost.length - 1] });
+  // 3. hooks that talk straight at you
+  const AT = /\b(guys|pov|bhai|bhaiya|y'?all)\b/i, at = byRank(ps.filter((p) => AT.test(p.hook || '')));
+  if (at.length >= 4 && low(at) / at.length >= 0.7) {
+    const toks = [...new Set(at.map((p) => (String(p.hook).match(AT) || [''])[0].toLowerCase().replace("y'all", 'y’all').replace('yall', 'y’all')))].slice(0, 4).map((t) => `“${t === 'pov' ? 'POV' : t}”`);
+    out.push({ tag: 'The hook', head: 'Hooks that talk at the camera mostly sink.', proof: `${toks.join(', ')}: ${low(at)} of ${at.length} of those hooks landed in his bottom half.`, mx: [[`${low(at)}/${at.length}`, 'sank', 'r'], [ord(typ(at)), 'typical landing']], posts: at.slice().reverse(), cover: at[at.length - 1] });
+  }
+  // 4. one bit of slang, both ends of his memory
+  const SL = ['rn', 'bro', 'fr', 'lowkey', 'ngl', 'yaar', 'literally'];
+  const sl = SL.map((t) => ({ t, ps: byRank(ps.filter((p) => new RegExp(`\\b${t}\\b`, 'i').test(p.hook || ''))) })).filter((x) => x.ps.length >= 3).map((x) => ({ ...x, span: x.ps[x.ps.length - 1].rank - x.ps[0].rank })).sort((a, b) => b.span - a.span)[0];
+  if (sl && sl.span >= half) out.push({ tag: 'The slang', head: `“${sl.t}” isn’t the joke. What comes before it is.`, proof: sl.ps.map((p) => `“${String(p.hook).trim()}” came ${ord(p.rank)}`).join('. ') + '.', mx: [[ord(sl.ps[0].rank), 'best', 'r'], [ord(sl.ps[sl.ps.length - 1].rank), 'worst']], posts: sl.ps, cover: sl.ps[0] });
+  // 5. length
+  const withS = ps.map((p) => ({ p, s: secsOf(p) })).filter((x) => x.s != null);
+  const sh = byRank(withS.filter((x) => x.s <= 20).map((x) => x.p)), lg = byRank(withS.filter((x) => x.s >= 60).map((x) => x.p));
+  if (sh.length >= 3 && lg.length >= 3) {
+    const ts = typ(sh), tl = typ(lg), close = Math.abs(ts - tl) <= Mo.n * 0.1;
+    out.push({ tag: 'Length', head: close ? 'Length doesn’t decide it.' : ts < tl ? 'Short wins.' : 'Long wins.', proof: `Under 20 seconds (${sh.length} posts) he typically lands ${ord(ts)}. Over a minute (${lg.length}), ${ord(tl)}.`, mx: [[ord(ts), 'under 20s', ts <= tl ? 'r' : ''], [ord(tl), 'over a minute', tl < ts ? 'r' : '']], posts: [...sh.slice(0, 3), ...lg.slice(0, 3)], cover: sh[0] });
+  }
+  return out;
+}
+const slots = (t) => String(t).split(/\s+/).filter(Boolean).map((w, j) => `<span class="ws"><span style="--j:${j}">${esc(w)}</span></span>`).join(' ');
+function insightsHTML() {
+  const L = insightsData(); if (L.length < 2) return '';
+  const n = L.length;
+  return `<section class="dt" data-dt aria-roledescription="carousel" aria-label="What the details say">
+    <div class="dt-hd"><span class="tj-k"><i></i>What the details say</span><span class="dt-ct"><b>01</b> / ${pad2(n)}</span></div>
+    <span class="dt-bar" aria-hidden="true">${L.map((_, k) => `<i class="${k ? '' : 'on'}"><b></b></i>`).join('')}</span>
+    <div class="dt-track" tabindex="0">
+      ${L.map((x, k) => `<article class="dt-s${k ? '' : ' on'}" data-k="${k}" aria-roledescription="slide" aria-label="${k + 1} of ${n}: ${esc(x.tag)}">
+        <div class="dt-tx">
+          <span class="dt-tag">${esc(x.tag)}</span>
+          <div class="dt-big">${x.mx.map(([v, l, c], j) => `<span class="dt-n ${j ? 'w' : 'r'}"><b><span>${esc(v)}</span></b><em>${esc(l)}</em></span>`).join('<i class="dt-vs">vs</i>')}</div>
+          <h3 class="dt-h">${slots(x.head)}</h3>
+          <p class="dt-p">${esc(x.proof)}</p>
+        </div>
+        <div class="dt-dk"><span class="dt-l">The posts behind it · ${x.posts.length}</span>${deck(x.posts, 'r')}</div>
+      </article>`).join('')}
+    </div>
+    <div class="dt-ft"><span>${fine ? 'Click' : 'Tap or swipe'} for the next</span><span class="dt-nav"><button type="button" class="dt-b" data-dtgo="-1" aria-label="Previous">${IC.l}</button><button type="button" class="dt-b" data-dtgo="1" aria-label="Next">${IC.r}</button></span></div>
+  </section>`;
+}
+function rulesDeckHTML() {
+  const Mo = M();
+  return `<section class="rl" data-rl aria-label="My rules">
+    <div class="rl-key"><span>What missing it costs</span><span>Tap a rule to open it</span></div>
+    ${Mo.rules.map((r) => plateHTML(r)).join('')}${Mo.retired.map((r) => plateHTML(r, true)).join('')}${openHTML()}
+  </section>`;
+}
+function boardHTML() {
+  const Mo = M(), rd = Mo.rd; if (!rd || !Mo.rules.length) return '';
+  const n = Mo.runs.length, sub = String(rd.whoSub || '').replace(/\s*[^.!?]*funniest when[^.!?]*[.!?]\s*$/i, '');
+  return `<section class="rules bd" id="rd-rules" aria-labelledby="rd-ru-who">
+    <div class="bd-top">
+      <span class="tj-k"><i></i>The read on @${esc(Mo.f.handle)} · ${n} ${n === 1 ? 'run' : 'runs'} · ${Mo.n} posts</span>
+      <h2 class="lk-who" id="rd-ru-who">${esc(rd.who)}</h2>
+      ${sub ? `<p class="lk-p">${esc(sub)}</p>` : ''}
+    </div>
+    <div class="bdh"><span class="tj-k"><i></i>The rules · ${Mo.rules.length} live${Mo.retired.length ? `, ${Mo.retired.length} dropped` : ''}</span>${rd.formula ? `<h3>${esc(rd.formula)}</h3>` : ''}</div>
+    ${formulaHTML()}
+    ${rulesDeckHTML()}
+    ${insightsHTML()}
+  </section>`;
+}
+
+/* ---------- a run, or an idea he keeps making: one pop-up frame ----------
+   Its posts rise off the floor one after another, in posting order, each to the height it landed in his memory:
+   the skyline of covers is the trajectory. Then what it taught me. */
+const SKY = new Map();
+function skyHTML(items, o = {}) {
+  const id = 'sk' + (++FSEQ), n = items.length, best = byRank(items)[0], worst = byRank(items)[n - 1];
+  SKY.set(id, { items, typ: o.typ, prev: o.prev });
+  return `<div class="sky" data-sky="${id}" role="group" aria-label="${esc(o.label || '')} Post by post. Typical ${rkv(o.typ)}${o.prev != null ? `; ${o.prevLabel} was ${rkv(o.prev)}` : ''}.">
+    <div class="sky-hd"><span class="k">${o.kick || 'Post by post'}</span><span class="sky-key"><i class="ty"></i>Typical${o.prev != null ? `<i class="g"></i>${esc(o.prevLabel)}` : ''}<i class="h"></i>Half</span></div>
+    <div class="sky-st">
+      <span class="sky-ax t">Top</span><span class="sky-ax b">Bottom</span>
+      <i class="sky-ln h"><span>Half</span></i>
+      ${o.prev != null ? `<i class="sky-ln g"></i>` : ''}<i class="sky-ln ty"></i>
+      <span class="dk sky-dk" style="--n:${n}">${items.map((p, k) => `<button type="button" class="dk-c b${p.band}${p === best ? ' best' : ''}${p === worst && n > 2 ? ' worst' : ''}" data-post="${p.id}" style="--i:${k};z-index:${k + 1}" aria-label="${k + 1}: ${esc(p.label)}, ${rkw(p)}">${cover(p)}<span class="dk-r">${rkw(p)}</span><span class="sky-n">${k + 1}</span></button>`).join('')}</span>
+    </div>
+    <div class="sky-ft"><span>${o.first || 'First post'}</span><span>${fine ? 'Hover' : 'Slide across'} for each</span><span>${o.last || 'Latest'}</span></div>
+  </div>`;
+}
+function laySky(el) {
+  const st = el.querySelector('.sky-st'), W = st.clientWidth, D = SKY.get(el.dataset.sky); if (!W || !D) return;
+  const ph = W < 600, n = D.items.length, cw = ph ? clampN(Math.round(W / (n * 0.7 + 0.3)), 48, 70) : clampN(Math.round(W / 11), 88, 128), ch = Math.round(cw * 1.25), span = ph ? 236 : clampN(Math.round(W * 0.2), 200, 260);
+  const stride = n > 1 ? Math.min(cw + (ph ? 10 : 22), (W - cw) / (n - 1)) : 0, x0 = (W - (stride * (n - 1) + cw)) / 2;
+  const yOf = (v) => (1 - tAt(v)) * span;
+  st.style.height = span + ch + 8 + 'px';
+  qa('.sky-dk .dk-c', st).forEach((c, k) => { Object.assign(c.style, { left: (x0 + k * stride).toFixed(1) + 'px', bottom: yOf(D.items[k].pct).toFixed(1) + 'px', width: cw + 'px', height: ch + 'px' }); });
+  const put = (cls, v) => { const l = st.querySelector('.sky-ln.' + cls); if (l && v != null) { l.style.bottom = yOf(v).toFixed(1) + 'px'; l.dataset.y = yOf(v); } };
+  put('h', 50); put('ty', D.typ); put('g', D.prev);
+  el.classList.toggle('tight', stride < cw - 4);
+}
+// a rule's memory: every post it has named, run by run, as its cover; solid ring = it did what the rule said,
+// dashed and faded = it broke it; this run's are the big red ones
+function memRow(r, R, x) {
+  const Mo = M(), half = Mo.n / 2, named = (p) => r.L.includes(p.id) || r.Sk.includes(p.id), ok = (p) => (r.L.includes(p.id) ? p.rank <= half : p.rank > half);
+  const groups = Mo.runs.slice(0, R.r).map((Rk) => {
+    const g = Rk.items.filter(named), now = Rk.r === R.r;
+    return `<span class="lg-g${now ? ' now' : ''}"><span class="lg-cs">${g.length ? g.map((p) => `<button type="button" class="lc ${ok(p) ? 'ok' : 'no'}" data-post="${p.id}" aria-label="${esc(p.label)}, ${rkw(p)}, ${ok(p) ? 'held' : 'broke it'}">${cover(p)}</button>`).join('') : '<i class="none"></i>'}</span><em>Run ${Rk.r}</em></span>`;
+  }).join('');
+  return `<li class="mu"><span class="mu-m ${moveC(x.m)}">${esc(moveW(x.m))}</span><div class="mu-b"><b>${esc(r.law)}</b><span class="lg">${groups}</span><p>${esc(x.line)}</p></div></li>`;
+}
+function runView(R) {
+  const Mo = M(), rr = R.rr, P = R.prev, latest = R.r === Mo.runs.length && Mo.runs.length > 1;
+  const row = (o, k, cls) => { const p = o && Mo.byId[o.id]; return p ? `<button type="button" class="pr ${cls}" data-post="${p.id}"><span class="pr-i">${cover(p)}</span><span class="pr-t"><span class="pr-k"><b>${rkw(p)}</b><em>${k} · post ${R.items.indexOf(p) + 1}</em></span><strong>${esc(o.line)}</strong></span>${IC.r}</button>` : ''; };
+  const rows = rr ? (rr.changed || []).map((x) => { const r = Mo.ruleById[x.r]; return r ? memRow(r, R, x) : ''; }).join('') : '';
+  const st = rr && rr.settled;
+  return `<div class="pv lkp lks run mur">
+    <div class="lks-hero rv">
+      <div class="lks-hd">${ktop(`Run ${R.r} · ${span(R.items[0].date, R.items[R.items.length - 1].date)}`, latest ? 'Latest' : `${R.items.length} posts`, 'r')}<h2>${esc(R.d.head)}</h2></div>
+      ${bmx([[rkv(R.tp), 'typical post', R.tp <= 25 ? 'r' : ''], [`${R.top}<small>/${R.items.length}</small>`, 'in his top quarter', R.top >= 3 ? 'r' : ''], P ? [rkv(P.tp), `run ${P.r}’s typical`] : ['—', 'first run']])}
+    </div>
+    <section class="sec rv lks-sky">${skyHTML(R.items, { typ: R.tp, prev: P ? P.tp : null, prevLabel: P ? `Run ${P.r}` : '', label: `Run ${R.r}.` })}</section>
+    ${rr ? `<section class="sec rv lks-a"><span class="k">Why it went this way</span><p class="lk-p">${esc(rr.why)}</p><div class="prs">${row(rr.bit, 'Bit hardest', 'up')}${row(rr.left, 'Left', 'dn')}</div></section>
+    ${rows ? `<section class="sec rv lks-b"><span class="k">What run ${R.r} did to my rules</span><span class="mu-key"><i class="ok"></i>Did what the rule said<i class="no"></i>Broke it</span><ol class="mu-l">${rows}</ol></section>` : ''}
+    ${st ? `<section class="sec rv call lks-c ${st.verdict}"><span class="k">After run ${st.run} I said</span><p class="lk-said">“${esc(st.call)}”</p><p class="call-v"><b class="stamp">${VERDICT[st.verdict] || ''}</b>${esc(st.line)}</p></section>` : ''}
+    ${rr.watch ? `<section class="sec rv lks-d"><span class="k">Watching next</span><p class="lk-said">${esc(rr.watch)}</p></section>` : ''}` : `<section class="sec rv lks-a"><p class="lk-p">${esc(R.d.body)}</p></section>`}
+  </div>`;
+}
+function ideaStats(c) {
+  const Mo = M(), n = c.items.length, ranked = byRank(c.items);
+  const mp = med(c.items.map((p) => p.pct)), hard = c.items.filter((p) => p.band >= 2).length;
+  let trend = null;
+  if (n >= 4) {
+    const h = Math.floor(n / 2), a = Math.round(med(c.items.slice(0, h).map((p) => p.rank))), b = Math.round(med(c.items.slice(n - h).map((p) => p.rank))), d = a - b, flat = Math.abs(d) < Mo.n * 0.12;
+    trend = { a, b, word: flat ? 'Holding steady' : d > 0 ? 'Getting better' : 'Wearing out', cls: flat ? '' : d > 0 ? 'r' : 'w' };
+  }
+  const rs = Mo.rules.map((r) => ({ r, has: c.items.filter((p) => r.L.includes(p.id)).length, lacks: c.items.filter((p) => r.Sk.includes(p.id)).length }));
+  return { n, best: ranked[0], worst: ranked[n - 1], mp, hard, trend, carries: rs.filter((x) => x.has >= 2).sort((a, b) => b.has - a.has).slice(0, 2), misses: rs.filter((x) => x.lacks >= 2).sort((a, b) => b.lacks - a.lacks).slice(0, 1) };
+}
+function ideaDivHTML(c) {
+  const I = ideaStats(c), paid = c.items.filter((p) => p.paid).length, law = (r) => esc(String(r.law).replace(/\.$/, ''));
+  const go = (p, k, cls) => `<button type="button" class="cd-e ${cls}" data-post="${p.id}"><span class="cd-ei">${cover(p)}</span><span class="cd-et"><em>${k}</em><b>${rkw(p)}</b><span>${esc(p.label)}</span></span></button>`;
+  return `<div class="cdiv" data-cdiv="${c.id}">
+    <div class="cd-l">
+      <div class="cd-hd"><b class="cd-x">×${I.n}</b><span class="cd-t"><span class="sub">An idea ${who() === 'his' ? 'he keeps' : 'they keep'} making · ${span(c.first, c.last)}${paid ? ` · ${paid} paid` : ''}</span><b>${esc(c.name)}</b></span></div>
+      <p class="cd-r">${esc(c.read)}</p>
+      ${I.carries.length || I.misses.length ? `<div class="cd-ru">${I.carries.map((x) => `<span class="up"><b>${x.has}/${I.n}</b>have “${law(x.r)}”</span>`).join('')}${I.misses.map((x) => `<span class="dn"><b>${x.lacks}/${I.n}</b>miss “${law(x.r)}”</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="cd-rt">
+      <div class="cd-mx">
+        <span><b class="${I.mp <= 25 ? 'r' : ''}">${rkv(I.mp)}</b><em>typical go</em></span>
+        <span><b class="${I.hard * 2 >= I.n ? 'r' : ''}">${I.hard}<small>/${I.n}</small></b><em>in his top quarter</em></span>
+        ${I.trend ? `<span><b class="${I.trend.cls}">${I.trend.word}</b><em>first goes ${ord(I.trend.a)} → latest ${ord(I.trend.b)}</em></span>` : ''}
+      </div>
+      <div class="cd-ex">${go(I.best, 'Best go', 'up')}${I.n > 1 ? go(I.worst, 'Worst go', 'dn') : ''}</div>
+    </div>
+  </div>`;
+}
+// from a post's pop-up: the wall turns to Repeats and stops at that idea
+function goIdea(id) {
+  const was = ovOpen; if (was) closeOv();
+  setTimeout(() => {
+    const turn = S.sort !== 'concept'; if (turn) setSort('concept', -1);
+    setTimeout(() => { const d = document.querySelector(`#rd-feed > .cdiv[data-cdiv="${id}"]`); if (d) quietTo(scrollY + d.getBoundingClientRect().top - (phone() ? hbc() : hbc() + $('rd-lens').offsetHeight + 8)); }, turn && !RM ? 760 : 0);
+  }, was && !RM ? 340 : 0);
+}
+
+/* ---------- living it: each piece plays once, the first time it is in view ---------- */
+function mountBoard(root = document) {
+  qa('.sky', root).forEach(laySky);
+  if (!RM && 'IntersectionObserver' in window) {
+    if (!boardIO) boardIO = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { boardIO.unobserve(e.target); play(e.target); } }), { threshold: 0.35 });
+    qa('.dp:not([data-seen]), .fm:not([data-seen]), .sky:not([data-seen]), .mu-l:not([data-seen]), .dt:not([data-seen])', root).forEach((el) => { el.dataset.seen = '1'; el.classList.add('pre'); boardIO.observe(el); });
+  }
+  qa('.dt', root).forEach(mountDt);
+  if (root === document || root.id === 'rd-main') sizeRows();
+}
+function boardOff() { if (boardIO) { boardIO.disconnect(); boardIO = null; } PDATA.clear(); hidePeek(true); }
+function play(el) {
+  el.classList.remove('pre');
+  if (el.classList.contains('dp')) playDrop(el);
+  else if (el.classList.contains('fm')) playFormula(el);
+  else if (el.classList.contains('sky')) playSky(el);
+  else if (el.classList.contains('dt')) { const s0 = el.querySelector('.dt-s.on'); if (s0) { s0.classList.remove('on'); void s0.offsetWidth; s0.classList.add('on'); const dk = s0.querySelector('.dk'); if (dk) deal(dk, 300); } }
+  else playMem(el);
+}
+const roll = (b, to, dur, delay) => { const t0 = performance.now() + delay; b.textContent = '0'; const step = (t) => { const k = clamp01((t - t0) / dur), e = bez(k, [0.65, 0, 0.35, 1]); b.textContent = String(Math.round(to * e)); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); };
+const deal = (dk, d0) => qa('.dk-c', dk).forEach((c, k) => anim(c, [{ opacity: 0, transform: `translateX(${-k * 100}%)` }, { opacity: c.classList.contains('off') ? 0.4 : 1, offset: 0.3 }, { opacity: c.classList.contains('off') ? 0.4 : 1, transform: 'none' }], { dur: 640, delay: d0 + k * 32, ease: 'cubic-bezier(.2,.8,.2,1)' }));
+/* the drop: the decks are dealt, then the ledge without the ingredient falls to where those posts actually land; the
+   arrow falls with it and the count runs to what missing the rule costs */
+function playDrop(el) {
+  const D = PDATA.get(el.dataset.dp); if (!D) return;
+  qa('.dk', el).forEach((dk, j) => deal(dk, 80 + j * 140));
+  const has = el.querySelector('.dp-l.has'), lacks = el.querySelector('.dp-l.lacks'), w = el.querySelector('.dp-w');
+  const T = 640, DROP = 1050, E = 'cubic-bezier(.7,0,.25,1)';
+  qa('.dp-lab', el).forEach((l) => anim(l, [{ opacity: 0 }, { opacity: 1 }], { dur: 420, delay: T + DROP - 200 }));
+  if (has && lacks && D.w != null) {
+    // on a phone the ledges stack; the fall is the part that is the rule's weight
+    const dy = phone() ? (+el.style.getPropertyValue('--wf') || 0) * 150 : lacks.offsetTop - has.offsetTop;
+    anim(lacks, [{ transform: `translateY(${-dy}px)` }, { transform: 'none' }], { dur: DROP, delay: T, ease: E });
+    anim(w.querySelector('.dp-drop'), [{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], { dur: DROP, delay: T, ease: E });
+    anim(w.querySelector('.dp-v'), [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { dur: 500, delay: T + 120 });
+    anim(w.querySelector('em'), [{ opacity: 0 }, { opacity: 1 }], { dur: 420, delay: T + DROP - 100 });
+    roll(w.querySelector('.dp-num'), D.w, DROP, T);
+  } else if (w) anim(w, [{ opacity: 0 }, { opacity: 1 }], { dur: 420, delay: T });
+}
+function playFormula(el) {
+  qa('.fm-row', el).forEach((row, j) => {
+    const d0 = j * 260;
+    rise(row.querySelector('p'), { y: 8, dur: 560, delay: d0 + 80 });
+    deal(row.querySelector('.dk'), d0 + 200);
+    const b = row.querySelector('.fm-big b'); roll(b, +b.dataset.to, 900, d0 + 200);
+  });
+}
+/* post by post: the covers rise off the floor one after another in posting order, each to the height it landed,
+   so the run plays out as a skyline; then the typical line moves from where the last run's sat to this one's */
+function playSky(el) {
+  const cs = qa('.sky-dk .dk-c', el);
+  cs.forEach((c, k) => { const y = parseFloat(c.style.bottom) || 0; anim(c, [{ opacity: 0, transform: `translateY(${y + 24}px)` }, { opacity: 1, offset: 0.3 }, { opacity: 1, transform: 'none' }], { dur: 760, delay: 120 + k * 110, ease: 'cubic-bezier(.2,.8,.2,1)' }); });
+  const end = 120 + cs.length * 110 + 500, g = el.querySelector('.sky-ln.g'), t = el.querySelector('.sky-ln.ty');
+  anim(el.querySelector('.sky-ln.h'), [{ opacity: 0 }, { opacity: 1 }], { dur: 400, delay: 80 });
+  if (g) anim(g, [{ opacity: 0 }, { opacity: 1 }], { dur: 360, delay: end });
+  if (t) { const dy = g ? +t.dataset.y - +g.dataset.y : 0; anim(t, [{ opacity: 0, transform: `translateY(${dy}px)` }, { opacity: 1, transform: `translateY(${dy}px)`, offset: 0.2 }, { opacity: 1, transform: 'none' }], { dur: 1250, delay: end + 160, ease: 'cubic-bezier(.65,0,.2,1)' }); }
+}
+/* my memory updating: each rule's evidence from this run drops in, then the move stamps; my old call is checked */
+function playMem(el) {
+  qa('.mu', el).forEach((row, j) => {
+    const d0 = 80 + j * 240;
+    rise(row, { y: 10, dur: 520, delay: d0 });
+    const cs = qa('.lg-g.now .lc', row);
+    cs.forEach((c, k) => anim(c, [{ opacity: 0, transform: 'translateY(-14px) scale(.8)' }, { opacity: 1, transform: 'none' }], { dur: 480, delay: d0 + 260 + k * 90, ease: 'cubic-bezier(.2,.8,.2,1)' }));
+    anim(row.querySelector('.mu-m'), [{ opacity: 0, transform: 'scale(1.3)' }, { opacity: 1, transform: 'none' }], { dur: 380, delay: d0 + 320 + cs.length * 90, ease: 'cubic-bezier(.2,.8,.2,1)' });
+  });
+  const s = el.closest('.mur') && el.closest('.mur').querySelector('.stamp');
+  if (s) anim(s, [{ opacity: 0, transform: 'rotate(-8deg) scale(1.35)' }, { opacity: 1, transform: 'rotate(-3deg) scale(1)' }], { dur: 420, delay: 80 + qa('.mu', el).length * 240 + 700, ease: 'cubic-bezier(.2,.8,.2,1)' });
+}
+
+/* ---------- the details: the track scrolls natively (a swipe, a wheel, a key), a tap anywhere off the posts moves
+   to the next, and the panel that lands plays its own entrance (numbers rise, words rise, the deck deals) ---------- */
+function mountDt(sec) {
+  if (sec._dt) return; sec._dt = { k: 0 };
+  const tr = sec.querySelector('.dt-track');
+  let t = 0;
+  listen(tr, 'scroll', () => { if (t) return; t = requestAnimationFrame(() => { t = 0; dtSync(sec); }); }, { passive: true });
+  listen(tr, 'keydown', (e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); dtGo(sec, e.key === 'ArrowRight' ? 1 : -1); } });
+}
+function dtSync(sec) {
+  const tr = sec.querySelector('.dt-track'), n = qa('.dt-s', tr).length, k = clampN(Math.round(tr.scrollLeft / Math.max(1, tr.clientWidth)), 0, n - 1);
+  if (k === sec._dt.k) return;
+  sec._dt.k = k; buzz();
+  qa('.dt-s', tr).forEach((s0, j) => s0.classList.toggle('on', j === k));
+  qa('.dt-bar i', sec).forEach((b, j) => { b.classList.toggle('on', j === k); b.classList.toggle('done', j < k); });
+  const ct = sec.querySelector('.dt-ct b'); if (ct) ct.textContent = pad2(k + 1);
+  const dk = qa('.dt-s', tr)[k].querySelector('.dk'); if (dk && !RM) deal(dk, 260);
+}
+function dtGo(sec, d) {
+  const tr = sec.querySelector('.dt-track'), n = qa('.dt-s', tr).length, k = (sec._dt.k + d + n) % n;
+  tr.scrollTo({ left: k * tr.clientWidth, behavior: RM ? 'auto' : 'smooth' });
+}
+const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
+let rzT = 0;
+listen(window, 'resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { qa('.sky').forEach(laySky); }, 120); });
+listen(window, 'scroll', () => { if (PK && PK.classList.contains('on') && !RF) { hidePeek(true); qa('.dk').forEach(unriffle); } }, { passive: true });
+
+/* ---------- a deck under a finger: the card under it comes forward, and on a phone a big peek of it rises above;
+   let go and the peek stays a moment, a tap on it opens the post ---------- */
+let RF = null, PK = null, pkHide = 0;
+function peek() {
+  if (PK && PK.isConnected) return PK;
+  PK = document.createElement('button'); PK.type = 'button'; PK.className = 'pk-v'; PK.setAttribute('aria-hidden', 'true'); PK.tabIndex = -1;
+  PK.innerHTML = '<span class="pk-i"></span><span class="pk-t"><b></b><span></span><em>Open</em></span>';
+  layer.appendChild(PK); return PK;
+}
+function showPeek(card) {
+  const p = M().byId[card.dataset.post]; if (!p) return;
+  const v = peek(); clearTimeout(pkHide);
+  v._card = card;
+  if (v._id !== p.id) { v._id = p.id; v.querySelector('.pk-i').innerHTML = cover(p); const b = v.querySelector('b'); b.textContent = rkw(p); b.className = p.band >= 2 ? 'r' : ''; v.querySelector('.pk-t > span').textContent = p.label; }
+  const r = card.getBoundingClientRect(), w = v.offsetWidth || 300, h = v.offsetHeight || 150;
+  const x = clampN(r.left + r.width / 2 - w / 2, 10, innerWidth - w - 10), y = r.top - h - 18 > hbc() + 6 ? r.top - h - 18 : r.bottom + 14;
+  const to = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
+  if (!v.classList.contains('on')) { v.style.transition = 'none'; v.style.transform = to; void v.offsetWidth; v.style.transition = ''; v.classList.add('on'); } else v.style.transform = to;
+}
+function hidePeek(now) { clearTimeout(pkHide); const go = () => { if (PK) { PK.classList.remove('on'); PK._id = null; } }; if (now) go(); else pkHide = setTimeout(go, 2600); }
+function riffle(dk, x) {
+  const cs = qa('.dk-c', dk); if (!cs.length) return null;
+  const r = dk.getBoundingClientRect(); let best = cs[0], bd = 1e9;
+  cs.forEach((c) => { const b = c.getBoundingClientRect(), d = Math.abs(x - (b.left + Math.min(b.width, 22) / 2)); if (x >= b.left - 4 && d < bd) { bd = d; best = c; } });
+  if (x < r.left) best = cs[0];
+  cs.forEach((c) => c.classList.toggle('up', c === best)); dk.classList.add('riff');
+  const cap = dk.parentNode.querySelector('.dp-cap'), p = M().byId[best.dataset.post];
+  if (cap && p) { cap.textContent = `${rkw(p)} · ${p.label}`; dk.parentNode.classList.add('capped'); }
+  return best;
+}
+function unriffle(dk) { dk.classList.remove('riff'); qa('.dk-c.up', dk).forEach((c) => c.classList.remove('up')); if (dk.parentNode) dk.parentNode.classList.remove('capped'); }
+listen(document, 'pointerdown', (e) => {
+  const dk = e.target.closest && e.target.closest('.dk');
+  if (!(e.target.closest && e.target.closest('.pk-v'))) hidePeek(true);
+  RF = dk && e.pointerType !== 'mouse' ? { dk, x: e.clientX, y: e.clientY, id: e.pointerId, on: false } : null;
+}, { passive: true });
+listen(document, 'pointermove', (e) => {
+  if (RF && e.pointerId === RF.id) {
+    const dx = e.clientX - RF.x, dy = e.clientY - RF.y;
+    if (!RF.on && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { RF = null; return; }
+    if (!RF.on && Math.abs(dx) > 6) RF.on = true;
+    if (RF.on) { const c = riffle(RF.dk, e.clientX); if (c && c !== RF.c) { RF.c = c; showPeek(c); buzz(); } }
+    return;
+  }
+  if (e.pointerType !== 'mouse' || !fine) return;
+  const dk = e.target.closest && e.target.closest('.dk');
+  qa('.dk').forEach((d) => { if (d !== dk && d.querySelector('.dk-c.up')) unriffle(d); });
+  if (dk) riffle(dk, e.clientX);
+}, { passive: true });
+listen(document, 'pointerup', () => { if (RF && RF.on) { RF.dk._riffled = performance.now(); const dk = RF.dk; setTimeout(() => unriffle(dk), 2600); hidePeek(); } RF = null; }, { passive: true });
+listen(document, 'pointercancel', () => { if (RF) { unriffle(RF.dk); hidePeek(true); } RF = null; }, { passive: true });
+// a tap right after a riffle is the riffle ending; a tap on the peek opens what it shows; a post tapped anywhere in
+// the read or a run's read opens itself (an open run's box carries data-open, which the router would otherwise
+// take for a card's Open button)
+function boardClick(e) {
+  const lt = e.target.closest('[data-drop="lens"]');
+  if (lt) { lnmOpen(lt, e.detail === 0); return true; }
+  const rh = e.target.closest('.rl-hd');
+  if (rh) { rlToggle(rh); return true; }
+  const fb = e.target.closest('[data-fold]');
+  if (fb) { toggleFold(fb); return true; }
+  const nb = e.target.closest('[data-dtgo]');
+  if (nb) { dtGo(nb.closest('.dt'), +nb.dataset.dtgo); return true; }
+  const sl = e.target.closest('.dt-s');
+  if (sl && !e.target.closest('.dk')) { dtGo(sl.closest('.dt'), 1); return true; }
+  const pv = e.target.closest('.pk-v');
+  if (pv) { const id = pv._id; if (id) openEntry({ type: 'post', id }, pv.querySelector('.pk-i'), pv._card); hidePeek(true); return true; }
+  const dk = e.target.closest('.dk');
+  if (dk && performance.now() - (dk._riffled || 0) < 400) return true;
+  const b = e.target.closest('#rd-rules [data-post], #rd-obody .lks [data-post]');
+  if (b && M().byId[b.dataset.post]) { hideTip(); hidePeek(true); openEntry({ type: 'post', id: b.dataset.post }, b); return true; }
+  return false;
+}
+
+/* ---------- the wall changes order without letting go of a single cover ----------
+   v15: slower and settled. Every cover on screen before or after lifts off its slot (a touch smaller while it
+   travels, so neighbours never pile up), glides on one long ease-out curve and lands. The wave runs from the
+   top of the screen down, so the eye follows it; covers arriving from off screen rise in behind the wave.
+   Dividers that are gone fade where they were; new ones come up into their place once the covers pass. */
+function flipSort(change) {
+  const vh = innerHeight, vis = (r) => r && r.height > 0 && r.bottom > -20 && r.top < vh + 20;
+  qa('.cfly').forEach((g) => g.getAnimations().forEach((a) => a.finish()));
+  const els = qa('#rd-feed > .tile, #rd-feed > .rbk, #rd-feed > .cdiv, #rd-feed > .bdiv');
+  const before = new Map(els.map((el) => [el, el.getBoundingClientRect()]));
+  els.forEach((el) => el.getAnimations().forEach((a) => { if (a.id === 'fs') a.cancel(); }));
+  if (wallIO) { wallIO.disconnect(); wallIO = null; }
+  const wall0 = $('rd-wall').getBoundingClientRect().top;
+  holdAnchor(1800);
+  change();
+  const lensH = phone() ? 0 : ($('rd-lens') ? $('rd-lens').offsetHeight + 8 : 0), line = hbc() + lensH + 8;
+  if (wall0 < line - 40) { const w = $('rd-wall').getBoundingClientRect(); scrollTo({ top: scrollY + w.top - line, behavior: 'auto' }); hold(); }
+  const after = new Map(els.map((el) => [el, el.getBoundingClientRect()]));
+  els.forEach((el) => {
+    if (el.classList.contains('tile')) return;
+    const a = before.get(el), b = after.get(el);
+    if (!vis(a) || b.height) return;
+    const g = el.cloneNode(true); g.classList.add('fs-g'); g.inert = true; g.setAttribute('aria-hidden', 'true');
+    Object.assign(g.style, { position: 'fixed', left: a.left + 'px', top: a.top + 'px', width: a.width + 'px', height: a.height + 'px', margin: '0', zIndex: 4, pointerEvents: 'none', display: 'block' });
+    layer.appendChild(g);
+    const an = g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    an.onfinish = an.oncancel = () => g.remove();
+  });
+  const top0 = Math.max(0, line - 20), DUR = phone() ? 900 : 960, WAVE = phone() ? 200 : 240;
+  const waveAt = (r) => Math.round(clamp01((r.top - top0) / Math.max(1, vh - top0)) * WAVE + clamp01(r.left / innerWidth) * 36);
+  let T = 0;
+  els.forEach((el) => {
+    const a = before.get(el), b = after.get(el);
+    if (!b.height || (!vis(a) && !vis(b))) return;
+    const was = vis(a) && a.height;
+    const delay = waveAt(was ? (a.top < b.top ? a : b) : b);
+    let end = 0;
+    if (el.classList.contains('tile')) {
+      if (was) {
+        const dx = a.left - b.left, dy = a.top - b.top, d = Math.hypot(dx, dy);
+        if (d < 1) return;
+        el.animate([{ transform: `translate3d(${dx}px, ${dy}px, 0)` }, { transform: 'translate3d(0,0,0)' }], { duration: DUR, delay, easing: EZ.wall, fill: 'backwards', id: 'fs' });
+        if (d > 40) {
+          const s = (1 - Math.min(0.08, d / 4000)).toFixed(3);
+          el.animate([{ scale: '1', easing: 'cubic-bezier(.45,0,.55,1)' }, { scale: s, offset: 0.36, easing: 'cubic-bezier(.3,0,.15,1)' }, { scale: '1' }], { duration: DUR, delay, easing: 'linear', fill: 'backwards', id: 'fs' });
+        }
+        end = delay + DUR;
+      } else {
+        const d2 = delay + 160;
+        el.animate([{ opacity: 0, transform: 'translate3d(0, 30px, 0) scale(.94)' }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)' }], { duration: DUR - 80, delay: d2, easing: EZ.wall, fill: 'backwards', id: 'fs' });
+        end = d2 + DUR - 80;
+      }
+    } else if (!was) {
+      // a new divider comes up as the old ones go, so the covers never travel through an empty wall
+      const d2 = Math.round(delay * 0.5) + 90;
+      el.animate([{ opacity: 0, transform: 'translate3d(0, 14px, 0)' }, { opacity: 1, transform: 'translate3d(0,0,0)' }], { duration: 620, delay: d2, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'backwards', id: 'fs' });
+      end = d2 + 620;
+    } else {
+      const dy = a.top - b.top;
+      if (Math.abs(dy) >= 1) { el.animate([{ transform: `translate3d(0, ${dy}px, 0)` }, { transform: 'translate3d(0,0,0)' }], { duration: DUR, delay, easing: EZ.wall, fill: 'backwards', id: 'fs' }); end = delay + DUR; }
+    }
+    T = Math.max(T, end);
+  });
+  MORPH.last = null; MORPH.until = performance.now() + T;
+  return { t: T };
+}
+
+/* ---------- v15: motion curves ----------
+   A damped spring, written out as a linear() curve so the compositor runs it: z is the damping (1 = no bounce),
+   k how far it has settled by the end. Browsers without linear() get a close cubic-bezier. */
+const LIN = !!(window.CSS && CSS.supports && CSS.supports('animation-timing-function', 'linear(0, 1)'));
+function spring(z, k = 6.5, n = 60) {
+  const wd = Math.sqrt(Math.max(0, 1 - z * z)), pts = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (k * i) / n, w = a / z;
+    const x = z < 1 ? 1 - Math.exp(-a) * (Math.cos(w * wd) + (z / wd) * Math.sin(w * wd)) : 1 - (1 + a) * Math.exp(-a);
+    pts.push(i === n ? 1 : +x.toFixed(4));
+  }
+  return `linear(${pts.join(', ')})`;
+}
+const EZ = {
+  fly: LIN ? spring(0.82) : 'cubic-bezier(.2,.9,.1,1)',      // a cover leaving its slot for the sheet
+  home: LIN ? spring(0.9, 7) : 'cubic-bezier(.22,.88,.14,1)', // the cover going back into its slot
+  sheet: LIN ? spring(1, 7.5) : 'cubic-bezier(.16,.9,.2,1)',
+  clip: 'cubic-bezier(.3,.75,.2,1)',
+  wall: 'cubic-bezier(.42,0,.12,1)',                           // the wall: eases off its slot, lands soft
+  away: 'cubic-bezier(.4,0,.6,1)',
+};
+
+/* ---------- v15: a post opens out of the cover you tapped, and closes back into it ----------
+   The cover lifts off its slot and grows into the sheet's hero while the sheet comes up behind it; the slot
+   stays empty while the post is open. Closing sends the cover back into that same slot (the page first brings
+   the slot on screen if it slid under the header), then the slot takes it back. Everything is measured at the
+   sheet's resting layout, so the cover never lands out of frame. A post opened inside the sheet (a run's covers,
+   its rows) flies the same way from where it was tapped. */
+const FLY = { el: null, id: null };
+const pxR = (el, r) => { const v = getComputedStyle(el).borderTopLeftRadius || '0'; return v.endsWith('%') ? (parseFloat(v) / 100) * Math.min(r.width, r.height) : parseFloat(v) || 0; };
+function coverEl(el) {
+  if (!el || !el.isConnected || !el.matches) return null;
+  if (el.matches('.tile, .dk-c, .lc, .pk-i, .pr-i, .evr-i')) return el;
+  return el.querySelector('.pr-i, .evr-i, .pk-i, .face, img, .cv-f');
+}
+function safeBand() {
+  const h = document.getElementById('rd-hdr'), hb = h ? h.getBoundingClientRect().bottom + 10 : 0;
+  let t = Math.max(hbc(), hb) + 6;
+  // on a laptop the lens bar sticks under the header once the wall is up
+  const L = $('rd-lens'), lr = L && L.getBoundingClientRect();
+  if (lr && lr.height && lr.top < t + 24 && lr.bottom > 0) t = Math.max(t, lr.bottom + 8);
+  return [t, navTop() - 8];
+}
+function onScreen(el) {
+  if (!el || !el.isConnected) return null;
+  const r = el.getBoundingClientRect(); if (!r.width || !r.height) return null;
+  if (el.closest('#rd-hread, #rd-obody, .pk-v')) return r.bottom > 0 && r.top < innerHeight ? r : null;
+  const [t, b] = safeBand();
+  return r.top >= t - r.height * 0.2 && r.bottom <= b + r.height * 0.2 && r.right > 0 && r.left < innerWidth ? r : null;
+}
+function flyFrom(id, src) {
+  let el = coverEl(src), r = onScreen(el);
+  if (!r) { el = document.querySelector(`#rd-hread .tile[data-pid="${id}"]`); r = onScreen(el); }
+  return r ? { el, r, rad: pxR(el, r) } : null;
+}
+// the post's cover as a loose card, laid over the page at rect a
+function cardAt(p, a, rad) {
+  const g = document.createElement('div'); g.className = 'cfly'; g.setAttribute('aria-hidden', 'true');
+  g.innerHTML = cover(p);
+  const im = g.querySelector('img'); if (im) { im.decoding = 'sync'; im.loading = 'eager'; }
+  Object.assign(g.style, { left: a.left + 'px', top: a.top + 'px', width: a.width + 'px', height: a.height + 'px', borderRadius: rad + 'px' });
+  layer.appendChild(g);
+  return g;
+}
+// move a loose card from rect a (radius ra) to rect b (radius rb): one uniform scale, clipped to each end's shape
+function flyCard(g, a, ra, b, rb, o = {}) {
+  Object.assign(g.style, { left: b.left + 'px', top: b.top + 'px', width: b.width + 'px', height: b.height + 'px', borderRadius: '0' });
+  const s = Math.max(a.width / b.width, a.height / b.height);
+  const dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
+  const ix = Math.max(0, (b.width - a.width / s) / 2), iy = Math.max(0, (b.height - a.height / s) / 2);
+  const dur = o.dur || 620;
+  const mv = g.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }], { duration: dur, easing: o.ease || EZ.fly, fill: 'both' });
+  g.animate([{ clipPath: `inset(${iy}px ${ix}px round ${ra / s}px)` }, { clipPath: `inset(0px 0px round ${rb}px)` }], { duration: dur * 0.8, easing: EZ.clip, fill: 'both' });
+  if (o.fadeIn) g.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * 0.3, easing: 'ease-out', fill: 'backwards' });
+  mv.onfinish = () => {
+    if (o.land) o.land();
+    // the card hands over to the real thing: it fades off what is now sitting exactly under it
+    const f = g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: 'ease-out', fill: 'forwards' });
+    f.onfinish = f.oncancel = () => g.remove();
+  };
+  mv.oncancel = () => { if (o.land) o.land(); g.remove(); };
+  return mv;
+}
+function heroRect() {
+  const hero = $('rd-obody').querySelector('.tile.hero'); if (!hero) return null;
+  const rv = hero.closest('.rv');
+  if (rv) { rv.getAnimations().forEach((x) => x.cancel()); const bx = rv.querySelector('.bmx'); if (bx && !RM) rise(bx, { y: 14, dur: 560, delay: 300 }); }
+  const r = hero.getBoundingClientRect();
+  return r.width ? { hero, r, rad: pxR(hero, r) } : null;
+}
+function setAway(el) { qa('.v15-away').forEach((x) => { if (x !== el) x.classList.remove('v15-away'); }); if (el) el.classList.add('v15-away'); }
+function landPulse(el) {
+  if (!el || RM) return;
+  el.animate([{ filter: 'brightness(1.35)' }, { filter: 'brightness(1)' }], { duration: 520, easing: 'ease-out' });
+}
+// where a closing post goes home: the slot it came out of, else its cover on the wall if that is on screen
+function homeFor(id) {
+  let el = FLY.id === id && FLY.el && FLY.el.isConnected && !FLY.el.closest('#rd-obody') ? FLY.el : null;
+  if (el && el.closest('.pk-v')) el = null;
+  if (el && !el.closest('#rd-hread')) {
+    let r = el.getBoundingClientRect();
+    const [t, b] = safeBand();
+    if (r.width && (r.top < t || r.bottom > b)) {
+      // it slid under the header (or the nav): bring it back on screen, under the scrim, before it flies home
+      const want = t + Math.max(0, (b - t - r.height) / 2);
+      hold(); scrollTo(0, Math.max(0, scrollY + r.top - want));
+      r = el.getBoundingClientRect();
+    }
+    if (r.width) return { el: coverEl(el) || el, r: (coverEl(el) || el).getBoundingClientRect() };
+  }
+  const w = document.querySelector(`#rd-feed .tile[data-post="${id}"]`), wr = onScreen(w);
+  return wr ? { el: w, r: wr } : null;
+}
+// rows of the read get their real size remembered once, so a jump past them lands where it means to
+function sizeRows() {
+  const rs = $('rd-rules'); if (!rs || rs._sized) return; rs._sized = true;
+  rs.classList.add('cv-on');
+  requestAnimationFrame(() => requestAnimationFrame(() => rs.classList.remove('cv-on')));
+}
+
+/* ---------- v17: the rules, one under another ----------
+   Each rule is one row, like a run's breaker on the wall: what missing it costs, big, then the rule. Tap it and it
+   opens right there; the one that was open closes, and the row you tapped glides up to the top while it opens, so
+   you never hunt for it. What happens in its posts and how I got to it stay folded until asked. */
+function rlSet(it, open) {
+  const hd = it.querySelector('.rl-hd'), bd = it.querySelector('.rl-bd');
+  hd.setAttribute('aria-expanded', String(open)); it.classList.toggle('on', open);
+  bd.hidden = !open; bd.style.height = ''; bd.style.overflow = '';
+}
+function rlToggle(hd) {
+  const it = hd.closest('.rl-i'), list = it.closest('.rl'), open = hd.getAttribute('aria-expanded') !== 'true';
+  const bd = it.querySelector('.rl-bd'), others = qa('.rl-i.on', list).filter((o) => o !== it);
+  buzz(); hold();
+  if (RM) { others.forEach((o) => rlSet(o, false)); rlSet(it, open); if (open) { const r = hd.getBoundingClientRect(), line = hbc() + 8; if (r.top < line || r.top > innerHeight * 0.45) scrollTo(0, scrollY + r.top - line); } return; }
+  if (it._rlA) cancelAnimationFrame(it._rlA);
+  const y0 = hd.getBoundingClientRect().top;
+  // the ones closing: from their height to nothing
+  const shut = others.map((o) => { const b = o.querySelector('.rl-bd'); const h = b.offsetHeight; b.style.overflow = 'hidden'; o.querySelector('.rl-hd').setAttribute('aria-expanded', 'false'); o.classList.remove('on'); return { o, b, h }; });
+  let h1 = 0;
+  if (open) { bd.hidden = false; bd.style.height = 'auto'; h1 = bd.offsetHeight; bd.style.overflow = 'hidden'; bd.style.height = '0px'; hd.setAttribute('aria-expanded', 'true'); it.classList.add('on'); qa('.rl-in > *', bd).forEach((el, j) => rise(el, { y: 18, dur: 560, delay: 120 + j * 70 })); }
+  else { h1 = bd.offsetHeight; bd.style.overflow = 'hidden'; hd.setAttribute('aria-expanded', 'false'); it.classList.remove('on'); }
+  // opening: the tapped row travels to just under the header while everything resizes around it
+  const line = hbc() + 8, yT = open && (y0 > innerHeight * 0.4 || shut.length) ? Math.max(line, Math.min(y0, line)) : y0;
+  const dur = open ? 620 : 420, t0 = performance.now();
+  const step = (t) => {
+    const k = clamp01((t - t0) / dur), e = bez(k, [0.22, 0.86, 0.26, 1]);
+    shut.forEach((x) => { x.b.style.height = (x.h * (1 - e)).toFixed(1) + 'px'; });
+    bd.style.height = (open ? h1 * e : h1 * (1 - e)).toFixed(1) + 'px';
+    if (open) { const want = y0 + (yT - y0) * e, now = hd.getBoundingClientRect().top; if (Math.abs(now - want) > 0.5) scrollTo(0, scrollY + now - want); }
+    if (k < 1) { it._rlA = requestAnimationFrame(step); return; }
+    it._rlA = 0;
+    shut.forEach((x) => rlSet(x.o, false));
+    rlSet(it, open);
+  };
+  it._rlA = requestAnimationFrame(step);
+}
+function toggleFold(btn) {
+  const s0 = btn.closest('.rl-i'), body = s0 && s0.querySelector(`[data-fbody="${btn.dataset.fold}"]`); if (!body) return;
+  const open = body.hidden; body.hidden = !open; btn.setAttribute('aria-expanded', String(open)); buzz();
+  if (open && !RM) qa('.evr, .lf li', body).forEach((el, j) => rise(el, { y: 14, dur: 520, delay: 40 + j * 55 }));
+}
+
+/* ---------- v18: the view menu grows out of its own button ----------
+   The header's view button does not drop a copy of the page's lens. The button itself opens: its face stays
+   exactly where it was (the current view, the chevron turning over), and the box it sits in widens to the left
+   and grows down to show the other two views, each with a line on what it does. Pick one and its name rolls
+   into the face while the box closes back into the button; then the wall turns (and comes into view if it was
+   off screen). A tap outside, Escape or a scroll closes it the same way. */
+const LNM = { el: null, tr: null, y: 0 };
+const lnmDesc = (k) => (k === 'ranks' ? 'By where it landed · best first' : k === 'repeats' ? `What ${who() === 'his' ? 'he keeps' : 'they keep'} making · most posted first` : 'Run by run · newest first');
+function lnmOpen(tr, keys) {
+  if (LNM.el) { lnmClose(); return; }
+  const r = tr.getBoundingClientRect(); if (!r.width) return;
+  closeDrop(); hideTip(); hidePeek(true); buzz();
+  const cur = lensKey(), others = TABS.filter(([k]) => k !== cur);
+  // as wide as the button: the other views drop straight down out of it, in the same column as its label
+  const W = Math.round(r.width), H = Math.round(r.height) + 6 + others.length * 40 + 6;
+  const m = document.createElement('div');
+  m.className = 'lnm'; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', 'Show the wall by');
+  Object.assign(m.style, { top: r.top + 'px', right: (innerWidth - r.right) + 'px', width: W + 'px', height: H + 'px', fontFamily: getComputedStyle(tr).fontFamily });
+  // the face sits on the right, where the button is; the list rides the box's left edge as it widens, so its words
+  // are always read from their start
+  m.innerHTML = `<i class="lnm-bg" aria-hidden="true"></i><i class="lnm-rule" aria-hidden="true"></i><div class="lnm-list" style="width:${W}px;top:${Math.round(r.height)}px">${others.map(([k, l]) => `<button type="button" role="menuitem" class="lnm-o" data-lnm="${k}"><span>${l}</span></button>`).join('')}</div><div class="lnm-in" style="width:${r.width}px;height:${r.height}px"></div>`;
+  // the face: the button's own insides, in the same place, so nothing about it moves when it opens
+  const face = tr.cloneNode(true);
+  ['data-drop', 'aria-haspopup', 'aria-expanded', 'aria-label', 'style', 'tabindex'].forEach((a) => face.removeAttribute(a));
+  face.classList.add('lnm-face'); face.setAttribute('data-lnm-x', ''); face.setAttribute('aria-label', 'Close'); face.tabIndex = -1;
+  const cs = getComputedStyle(tr);
+  Object.assign(face.style, { width: r.width + 'px', height: r.height + 'px', font: cs.font, letterSpacing: cs.letterSpacing, textTransform: cs.textTransform, color: cs.color });
+  qa('.lnm-o', m).forEach((o) => Object.assign(o.style, { font: cs.font, letterSpacing: cs.letterSpacing, textTransform: cs.textTransform }));
+  m.querySelector('.lnm-in').appendChild(face);
+  layer.appendChild(m);
+  LNM.el = m; LNM.tr = tr; LNM.y = scrollY;
+  tr.style.visibility = 'hidden'; tr.setAttribute('aria-expanded', 'true');
+  listen(m, 'click', (e) => {
+    e.stopPropagation();
+    const o = e.target.closest('[data-lnm]'); if (o) { lnmPick(o.dataset.lnm); return; }
+    if (e.target.closest('[data-lnm-x]')) lnmClose();
+  });
+  listen(m, 'keydown', (e) => {
+    const os = qa('.lnm-o', m), i = os.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); lnmClose(); tr.focus(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); os[(i + (e.key === 'ArrowDown' ? 1 : -1) + os.length) % os.length].focus(); }
+  });
+  const chev = face.querySelector('svg');
+  if (RM) { if (chev) chev.style.transform = 'rotate(180deg)'; }
+  else {
+    m.animate([{ height: r.height + 'px', borderRadius: '14px', boxShadow: '0 0 0 rgba(0,0,0,0)' }, { height: H + 'px', borderRadius: '16px', boxShadow: '0 22px 44px -18px rgba(0,0,0,.95), 0 0 34px -22px rgba(255,23,79,.6)' }], { duration: 560, easing: EZ.sheet });
+    m.querySelector('.lnm-bg').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out', fill: 'backwards' });
+    qa('.lnm-o', m).forEach((o, i) => anim(o, [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }], { dur: 420, delay: 90 + i * 55 }));
+    if (chev) chev.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(180deg)' }], { duration: 480, easing: EZ.sheet, fill: 'forwards' });
+  }
+  if (keys) requestAnimationFrame(() => { const o = m.querySelector('.lnm-o'); if (o) o.focus({ preventScroll: true }); });
+}
+function lnmClose(to) {
+  const m = LNM.el, tr = LNM.tr; if (!m) return;
+  LNM.el = null; tr.setAttribute('aria-expanded', 'false');
+  const done = () => { m.remove(); tr.style.visibility = ''; };
+  if (RM) { done(); return; }
+  const face = m.querySelector('.lnm-face'), chev = face && face.querySelector('svg');
+  if (to) {
+    // the new view's name rolls into the face, the way the button's own label rolls
+    const slot = face.querySelector('span > span');
+    if (slot) {
+      const dir = tabIx(to) >= tabIx(lensKey()) ? 1 : -1, nx = slot.cloneNode(true);
+      nx.textContent = (TABS.find(([k]) => k === to) || [])[1] || ''; slot.parentNode.appendChild(nx);
+      slot.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: `translateY(${-dir * 110}%)`, opacity: 0 }], { duration: 340, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+      nx.animate([{ transform: `translateY(${dir * 110}%)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 480, easing: SOFT });
+    }
+  }
+  qa('.lnm-o', m).forEach((o) => o.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease-in', fill: 'forwards' }));
+  if (chev) chev.animate([{ transform: 'rotate(180deg)' }, { transform: 'rotate(0deg)' }], { duration: 380, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' });
+  const r = tr.getBoundingClientRect(), a = m.animate([{ height: m.offsetHeight + 'px', borderRadius: '16px' }, { height: r.height + 'px', borderRadius: '14px', boxShadow: '0 0 0 rgba(0,0,0,0)' }], { duration: 380, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' });
+  m.querySelector('.lnm-bg').animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
+  a.onfinish = () => setTimeout(done, to ? 120 : 0);
+}
+function lnmPick(k) {
+  buzz();
+  const cur = lensKey();
+  lnmClose(k === cur ? null : k);
+  if (k === cur) return;
+  // the wall turns once the box has mostly closed, so the two never fight for the same frames
+  setTimeout(() => {
+    if (!alive) return;
+    setLens(k);
+    const lens = $('rd-lens'), w = $('rd-wall').getBoundingClientRect();
+    if (w.top > innerHeight * 0.62 || w.bottom < hbc()) { const t = (lens || $('rd-wall')).getBoundingClientRect().top; quietTo(scrollY + t - hbc() - 6); }
+  }, RM ? 0 : 300);
+}
+listen(document, 'pointerdown', (e) => { if (LNM.el && !e.target.closest('.lnm, [data-drop="lens"]')) lnmClose(); }, { capture: true, passive: true });
+listen(window, 'scroll', () => { if (LNM.el && Math.abs(scrollY - LNM.y) > 8) lnmClose(); }, { passive: true });
+listen(window, 'resize', () => { if (LNM.el) lnmClose(); });
+listen(document, 'keydown', (e) => { if (e.key === 'Escape' && LNM.el) { lnmClose(); if (LNM.tr) LNM.tr.focus(); } });
+
 /* ---------- page ---------- */
 function render(enter) {
-  renderHeader();
-  $('rd-main').innerHTML = trajHTML() + lensHTML() + `<section class="wall S-${S.sort}" id="rd-wall" aria-label="Every post"><div class="feed" id="rd-feed">${feedHTML()}</div><svg class="tlines" id="rd-tlines" aria-hidden="true"></svg><span class="thead" id="rd-thead" aria-hidden="true"></span></section><p class="foot">${esc(note())}</p>`;
-  renderLens(false); applySort(); decorate(false); renderFocusUI(); revealWall();
+  renderHeader(); boardOff();
+  $('rd-main').innerHTML = rulesHTML() + lensHTML() + `<section class="wall S-${S.sort}" id="rd-wall" aria-label="Every post"><div class="feed" id="rd-feed">${feedHTML()}</div><svg class="tlines" id="rd-tlines" aria-hidden="true"></svg><span class="thead" id="rd-thead" aria-hidden="true"></span></section><p class="foot">${esc(note())}</p>`;
+  mountBoard($('rd-main')); renderLens(false); applySort(); decorate(false); renderFocusUI(); revealWall();
   if (enter !== false && !RM) {
-    qa('#rd-traj .tj-b').forEach((b, k) => rise(b, { y: 8, dur: 560, delay: 60 + k * 36 }));
-    qa('#rd-traj .tj-f').forEach((f, k) => anim(f, [{ transform: 'scaleX(0)' }, { transform: 'none' }], { dur: 820, delay: 240 + k * 110, ease: 'cubic-bezier(.18, .86, .22, 1)' }));
-    qa('#rd-tjbody > *').forEach((el, k) => rise(el, { y: 12, dur: 620, delay: 360 + k * 70 }));
-    growBloom($('rd-trbloom'), 520);
+    // the board arrives the way Lead's does: the reader's line word by word, then each rule's row rising in rank
+    // order, its strength filling in behind it and its numbers rolling up into place
+    const ru = $('rd-rules');
+    if (ru) {
+      const who = ru.querySelector('.rbd-who');
+      if (who) { who.innerHTML = who.textContent.split(' ').map((w) => `<span class="w">${esc(w)}</span>`).join(' '); qa('.w', who).forEach((w, k) => rise(w, { y: 18, dur: 820, delay: 80 + k * 45 })); }
+      qa('.rbd-top .tj-k, .rbd-sub', ru).forEach((el, k) => rise(el, { y: 10, dur: 700, delay: k ? 560 : 0 }));
+      qa('.rbd-bh, .rbd-cols', ru).forEach((el, k) => rise(el, { y: 10, dur: 640, delay: 700 + k * 60 }));
+      qa('.rbd-row', ru).forEach((row, k) => {
+        const d = 820 + k * 90;
+        anim(row, [{ opacity: 0, transform: 'translateY(22px)' }, { opacity: 1, transform: 'none' }], { dur: 760, delay: d });
+        const f = row.querySelector('.rbd-fill'); if (f) anim(f, [{ transform: 'scaleX(0)', opacity: 0 }, { opacity: 1, offset: 0.5 }, { transform: `scaleX(${+f.style.getPropertyValue('--s') || 0})`, opacity: 1 }], { dur: 1100, delay: d + 160 });
+        const c = row.querySelector('.rbd-crown'); if (c) anim(c, [{ opacity: 0 }, { opacity: 1 }], { dur: 900, delay: d + 300 });
+        qa('.slt > span', row).forEach((x, j) => anim(x, [{ transform: 'translateY(105%)' }, { transform: 'none' }], { dur: 720, delay: d + 220 + j * 70 }));
+        qa('.rbd-bar > i', row).forEach((x, j) => anim(x, [{ transform: 'scaleX(0)' }, { transform: `scaleX(${+x.style.getPropertyValue('--v') || 0})` }], { dur: 1000, delay: d + 300 + j * 80 }));
+      });
+      qa('.rbd-foot > *, .rbd-note', ru).forEach((el, k) => rise(el, { y: 10, dur: 680, delay: 1300 + k * 80 }));
+    }
   }
 }
 function switchFeeder(k) {
@@ -1468,32 +2454,43 @@ function switchFeeder(k) {
   MORPH.until = 0; MORPH.last = null; INS.settle = 0; clearTimeout(INS.wait);
   clearTimeout(MORPH.anchor); MORPH.anchor = 0; MORPH.anchorEnd = 0; document.documentElement.style.overflowAnchor = '';
   qa('.ins-g, .mw-g').forEach((g) => g.remove());
-  Object.assign(S, { f: k, sel: null, pick: null, sort: 'recent', layer: 'read', tr: null }); SPY.cur = null; SPY.goal = null;
+  Object.assign(S, { f: k, sel: null, pick: null, sort: 'recent', layer: 'read', tr: null, rule: null }); SPY.cur = null; SPY.goal = null;
+  tellHeader();
   buzz();
-  const main = $('rd-main'), go = () => { scrollTo({ top: 0 }); render(); };
-  if (RM) { go(); return; }
-  const a = main.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-in', fill: 'forwards' });
-  a.onfinish = () => { if (!alive) return; go(); a.cancel(); };
+  // the tab has already played the old read's leave (ReadTab, readMotion): the next one builds in at once
+  scrollTo({ top: 0 });
+  render();
+  enterPage();
+}
+/* how a read arrives, on a fresh mount and after a switch: never as one block. The trajectory's card rises
+   while its own entrance plays inside it (render: boxes, fills, the run's read, the bloom); the lens's kicker
+   and the lens follow a beat apart; the wall comes in after them, tile by tile (revealWall) */
+function enterPage() {
+  if (RM) return;
+  const t = $('rd-rules'), lh = document.querySelector('#rd-main .lens-head'), ln = $('rd-lens');
+  if (t) anim(t, [{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { dur: 720 });
+  if (lh) rise(lh, { y: 14, dur: 680, delay: t ? 900 : 440 });
+  if (ln) rise(ln, { y: 14, dur: 680, delay: t ? 970 : 510 });
 }
 
 /* ---------- events ---------- */
 listen(document, 'click', (e) => {
   if (outsideTap(e)) return;
+  if (boardClick(e)) return;
   const q = (s) => e.target.closest(s); let b;
-  if ((b = q('[data-f]'))) { switchFeeder(+b.dataset.f); return; }
   if ((b = q('[data-drop]'))) { const k = b.dataset.drop; if (S.drop === k) closeDrop(); else openDrop(k); return; }
   if ((b = q('[data-clear]'))) { buzz(); clearFocus(); return; }
   if ((b = q('[data-more]'))) { const p = $('rd-trsup'), open = p.classList.toggle('clamp'); b.textContent = open ? 'More' : 'Less'; b.setAttribute('aria-expanded', String(!open)); return; }
-  if ((b = q('[data-tr]'))) { setTr(+b.dataset.tr); return; }
+  if ((b = q('[data-runjump]'))) { runJump(+b.dataset.runjump); return; }
+  if ((b = q('[data-rule]'))) { lightRule(b.dataset.rule); return; }
+  if ((b = q('[data-rsel]'))) { setRule(b.dataset.rsel); return; }
   if ((b = q('[data-bdmore]'))) { toggleBand(+b.dataset.bdmore); return; }
-  if ((b = q('[data-band]'))) { goBand(+b.dataset.band); return; }
-  if ((b = q('[data-tropen]'))) { setTr(+b.dataset.tropen, true); return; }
-  if ((b = q('[data-wallrun]'))) { wallRun(+b.dataset.wallrun); return; }
+  if ((b = q('[data-jump]'))) { goBand(b.dataset.jump); return; }
+  if ((b = q('[data-tropen]'))) { openEntry({ type: 'run', id: +b.dataset.tropen }, b); return; }
   if ((b = q('[data-unpick]'))) { unpickPetal(); return; }
   if ((b = q('[data-petal]'))) { pickPetal(b.dataset.petal); return; }
   if ((b = q('#rd-trbloom'))) { unpickPetal(); return; }
   if ((b = q('[data-trace]'))) { selectPost(b.dataset.trace, { scroll: true }); return; }
-  if ((b = q('[data-pickbit]'))) { pickBit(b.dataset.pickbit); return; }
   if ((b = q('[data-fm-bottom-nav]'))) return; // the app's nav does its own job (and its own haptics)
   if ((b = q('[data-lens]'))) { setLens(b.dataset.lens); return; }
   if ((b = q('[data-pick]'))) { pick(b.dataset.pick); if (S.drop === 'lens') closeDrop(); return; }
@@ -1501,11 +2498,10 @@ listen(document, 'click', (e) => {
   if ((b = q('[data-back]'))) { S.stack.pop(); swapOv(-1); return; }
   if ((b = q('[data-step]'))) { const cur = M().byId[S.stack[S.stack.length - 1].id], nx = M().byId[b.dataset.step]; stepTo(nx.id, nx.i > cur.i ? 1 : -1); return; }
   if ((b = q('[data-open]'))) { const id = b.dataset.open, own = b.closest('#rd-trcard'); openEntry({ type: 'post', id }, own ? own.querySelector('.pcover .tile') : document.querySelector(`#rd-feed .tile[data-post="${id}"]`)); return; }
-  if ((b = q('[data-oseries]'))) { openEntry({ type: 'series', id: b.dataset.oseries }, null); return; }
   if ((b = q('[data-sel]'))) { const id = b.dataset.sel; if (S.sel === id) openEntry({ type: 'post', id }, document.querySelector(`#rd-feed .tile[data-post="${id}"]`)); else selectPost(id, { scroll: true }); return; }
   if ((b = q('#rd-feed .tile[data-post]'))) { const id = b.dataset.post; if (S.sel === id) openEntry({ type: 'post', id }, b); else selectPost(id, { scroll: true }); return; }
   if ((b = q('[data-post]'))) { openEntry({ type: 'post', id: b.dataset.post }, b); return; }
-  if ((b = q('[data-series]'))) { openEntry({ type: 'series', id: b.dataset.series }, b); return; }
+  if ((b = q('[data-concept]'))) { goIdea(b.dataset.concept); return; }
 });
 listen(document, 'keydown', (e) => {
   if (e.key === 'Escape') {
@@ -1522,10 +2518,10 @@ listen(document, 'keydown', (e) => {
   }
 });
 let lastY = 0, acc = 0, ticking = false, hdrLock = 0;
-/* a scroll the page makes for you keeps the header compact, whichever way it goes */
+/* a scroll the page makes for you keeps the header folded, whichever way it goes */
+function hold() { hdrLock = performance.now() + 1000; acc = 0; setCompact(true); }
 function quietTo(top) {
-  hdrLock = performance.now() + 1000; acc = 0;
-  if (phone()) setCompact(true);
+  hold();
   scrollTo({ top: Math.max(0, top), behavior: RM ? 'auto' : 'smooth' });
 }
 let lastScrollAt = 0;
@@ -1533,23 +2529,22 @@ function onScroll() {
   const y = scrollY, dy = y - lastY; lastY = y;
   // a scroll that starts after a jump's own scroll has come to rest is yours: the jump lets go of its mark
   const t = performance.now(); if (SPY.goal != null && t > SPY.goalUntil && t - lastScrollAt > 180) SPY.goal = null; lastScrollAt = t;
-  if (phone()) {
-    if (performance.now() < hdrLock) acc = 0;
-    else if (y < 40) { acc = 0; setCompact(false); }
-    else { if ((dy > 0 && acc < 0) || (dy < 0 && acc > 0)) acc = 0; acc += dy; if (acc > 80) { setCompact(true); acc = 0; } else if (acc < -56) { setCompact(false); acc = 0; } }
-    lensOn();
-  }
+  // the header folds as Lead's does: 150px down folds it, 64px back up opens it, and the top 30px keep it open
+  if (performance.now() < hdrLock) acc = 0;
+  else if (y <= 30) { acc = 0; setCompact(false); }
+  else { if ((dy > 0 && acc < 0) || (dy < 0 && acc > 0)) acc = 0; acc += dy; if (acc > 150) { setCompact(true); acc = 0; } else if (acc < -64) { setCompact(false); acc = 0; } }
   spyBand();
 }
 listen(window, 'scroll', () => { if (ticking) return; ticking = true; requestAnimationFrame(() => { ticking = false; onScroll(); }); }, { passive: true });
 let rz;
 listen(window, 'resize', () => {
   clearTimeout(rz);
-  rz = setTimeout(() => { fixPods(); setCompact(S.compact); renderFocusUI(); SPY.tops = null; spyBand(true); if (S.sel && S.sort === 'recent' && trailOn()) playTrail(M().byId[S.sel]); rollDesc($('rd-kd'), 0); rollDesc($('rd-kd2'), 0); }, 160);
+  rz = setTimeout(() => { fixPods(); setCompact(S.compact); placeLens(); renderFocusUI(); SPY.tops = null; spyBand(true); if (S.sel && S.sort === 'recent' && trailOn()) playTrail(M().byId[S.sel]); rollDesc($('rd-kd'), 0); rollDesc($('rd-kd2'), 0); }, 160);
 });
 if (document.fonts) document.fonts.ready.then(() => { if (alive) fixPods(); });
 freshChrome();
 render();
+enterPage();
 // anything that changes the page's height (the card, a run's read) moves the dividers: the spy re-reads them
 if ('ResizeObserver' in window) { ro = new ResizeObserver(() => { if (!alive) return; SPY.tops = null; spyBand(); }); ro.observe($('rd-main')); }
 
@@ -1565,19 +2560,22 @@ function quietLayer() {
   S.drop = null; qa('[data-drop]').forEach((t) => t.setAttribute('aria-expanded', 'false'));
   if (d) { d.classList.remove('on'); d.innerHTML = ''; }
   if (tip) { tip.classList.remove('on'); tip.innerHTML = ''; }
-  qa(':scope > .pfly, :scope > .fly, :scope > .ins-g', layer).forEach((n) => n.remove());
+  qa(':scope > .pfly, :scope > .fly, :scope > .ins-g, :scope > .cfly, :scope > .lnm, :scope > .fs-g', layer).forEach((n) => n.remove());
+  try { if (LNM.tr) LNM.tr.style.visibility = ''; LNM.el = null; } catch (_) { /* not mounted that far */ }
+  qa('.v15-away').forEach((x) => x.classList.remove('v15-away'));
   if (bodyLock) { document.documentElement.style.overflow = bodyPrev; bodyLock = false; }
   if (MORPH.anchor) { clearTimeout(MORPH.anchor); MORPH.anchor = 0; MORPH.anchorEnd = 0; document.documentElement.style.overflowAnchor = ''; }
 }
 function freshChrome() {
   quietLayer();
   const hdr = $('rd-hdr'), hr = $('rd-hread');
-  hdr.classList.remove('compact', 'reading', 'lens-on');
+  hdr.classList.remove('reading');
   if (hr) { hr.innerHTML = ''; hr._h = undefined; }
-  setCompressed(false);
+  S.compact = false; setCompressed(false);
+  placeLens();
 }
 
-return function cleanup() {
+function cleanup() {
   if (!alive) return;
   alive = false;
   offs.splice(0).forEach((off) => off());
@@ -1585,6 +2583,7 @@ return function cleanup() {
   frames.forEach((id) => window.cancelAnimationFrame(id)); frames.clear();
   if (wallIO) { wallIO.disconnect(); wallIO = null; }
   if (ro) { ro.disconnect(); ro = null; }
+  boardOff();
   // the script's own motion on the tab's pieces (CSS transitions and keyframes belong to the stylesheet)
   const roots = [$('rd-main'), layer, $('rd-hdr')].filter(Boolean);
   document.getAnimations().forEach((a) => {
@@ -1594,6 +2593,13 @@ return function cleanup() {
   });
   // the sheet, the header's panel, the tip, every stand-in and flying copy, the page's scroll lock
   quietLayer();
-  const main = $('rd-main'); if (main) qa('.mw-g, .chips.ghost, .ins-old', main).forEach((n) => n.remove());
-};
+  const main = $('rd-main'); if (main) { qa('.mw-g, .chips.ghost, .ins-old', main).forEach((n) => n.remove()); main.style.removeProperty('--rd-hb'); main.style.pointerEvents = ''; }
+  // the readout (React may move on to a feeder Read has nothing on while the tab stays on screen)
+  const hdr = $('rd-hdr'), hr = $('rd-hread');
+  if (hdr) hdr.classList.remove('reading');
+  if (hr) { hr.innerHTML = ''; hr._h = undefined; }
+}
+/* React's handle on the mount: switch the feeder being read (once the tab has played the old one out), and
+   undo everything */
+return { show: (k) => { if (alive && DATA.feeders[k]) switchFeeder(k); }, unmount: cleanup };
 }

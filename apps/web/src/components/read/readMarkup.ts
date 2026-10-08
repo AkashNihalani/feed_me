@@ -1,15 +1,7 @@
 /* Static markup for the Read tab, verbatim from the approved prototype with every id prefixed rd- (other tabs
-   share the document). The engine (readerEngine.ts) fills these in; readTab.css styles them under .rd.
-   The prototype's own bottom nav (.appnav) and <main> are not here: the app provides both. */
-
-/* the header row(s), rendered inside the app's header capsule as <div class="rd rd-head"> */
-export const HEADER_HTML = `<header class="hdr" id="rd-hdr" aria-label="Read">
-  <div class="hrow">
-    <div class="hbase"><span class="htitle">Read</span><i class="hdiv" aria-hidden="true"></i><span class="hscope" id="rd-hscope"></span><span class="hmeta" id="rd-hmeta"></span><button type="button" class="hlens" id="rd-hlens" data-drop="lens" aria-expanded="false" aria-label="Layers and filters"></button></div>
-    <div class="hread" id="rd-hread" aria-live="polite"></div>
-  </div>
-  <div class="hcircles" id="rd-hcircles" role="group" aria-label="Accounts"></div>
-</header>`;
+   share the document). The engine (readerEngine.js) fills it in; readTab.css styles it under .rd.
+   The prototype's own header, bottom nav (.appnav) and <main> are not here: the app provides all three
+   (the header is ReadHeader). */
 
 /* body-level overlays, rendered into <div class="rd rd-layer" id="rd-layer">: the panel that drops under the
    header, the detail sheet, the desktop hover tip, and the svg gradient the blooms' vignette uses */
