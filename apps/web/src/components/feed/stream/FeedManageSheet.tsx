@@ -3,7 +3,8 @@
 /* ─────────────────────────────────────────────────────────────
    FEED MANAGE SHEET — every change to your feeds, behind the
    scope bar's Manage button. What it offers follows the scope:
-     all feeds → start a feed, the plan and its slots, your feeds
+     all feeds → start a feed, the plan and its slots, the app's
+                 appearance (light · dark · auto), your feeds
      a feed     → add a feeder, its Brief, export, delete it
      a feeder   → make them the anchor, their page, remove them
    Opened with the create intent (the empty state's button) it
@@ -37,11 +38,15 @@ import {
   ArrowUp,
   ArrowUpRight,
   ChevronRight,
+  Contrast,
   CreditCard,
   Crown,
   Download,
   FileText,
+  Moon,
   Plus,
+  Sun,
+  SunMoon,
   Trash2,
   UserMinus,
   X,
@@ -55,6 +60,7 @@ import { feedInitials, normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { useAppHaptics } from '@/lib/haptics';
 import { BEAT_EASE_CSS, BEAT_LEAVE_EASE } from '@/lib/motion';
 import { setTabScope } from '@/lib/tabScope';
+import { setThemePreference, useResolvedTheme, useThemePreference, type ThemePreference } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { cleanHandle, feedBriefTextOf, useFeedManage, type SlotSummary } from './useFeedManage';
 
@@ -91,7 +97,7 @@ const ROOT_STYLE = {
   background: 'transparent',
   color: 'var(--ms-text)',
   '--ms-sheet': 'var(--st-surface-2, #16161a)',
-  '--ms-chip': 'rgba(255, 255, 255, 0.06)',
+  '--ms-chip': 'rgb(var(--fm-fg-rgb, 255 255 255) / 0.06)',
   '--ms-line': 'var(--st-line, rgba(255, 255, 255, 0.09))',
   '--ms-text': 'var(--st-text, #ffffff)',
   '--ms-text-2': 'var(--st-text-2, rgba(255, 255, 255, 0.65))',
@@ -186,7 +192,7 @@ function RowIcon({ tone, children }: { tone: Tone; children: ReactNode }) {
       className={cn(
         'relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-transform duration-150 ease-out group-active:scale-[0.94]',
         tone === 'primary' && 'border-transparent bg-(--fm-accent) text-white',
-        (tone === 'danger' || tone === 'anchor') && 'border-[rgb(var(--fm-accent-rgb)/0.28)] bg-[rgb(var(--fm-accent-rgb)/0.12)] text-(--fm-accent-bright)',
+        (tone === 'danger' || tone === 'anchor') && 'border-[rgb(var(--fm-accent-rgb)/0.28)] bg-[rgb(var(--fm-accent-rgb)/0.12)] text-(--fm-accent-text)',
         tone === 'plain' && 'border-(--ms-line) bg-(--ms-chip) text-(--ms-text-2)',
       )}
     >
@@ -217,15 +223,15 @@ function Row({ icon, media, tone = 'plain', label, support, alert = false, trail
       {/* the press: an overlay that fades, so nothing repaints its background */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[14px] bg-white/[0.06] opacity-0 transition-opacity duration-150 group-hover:opacity-70 group-active:opacity-100 group-disabled:opacity-0"
+        className="pointer-events-none absolute inset-0 rounded-[14px] bg-fg/[0.06] opacity-0 transition-opacity duration-150 group-hover:opacity-70 group-active:opacity-100 group-disabled:opacity-0"
       />
       {media ?? <RowIcon tone={tone}>{icon}</RowIcon>}
       <span className="relative min-w-0 flex-1">
-        <span className={cn('block truncate text-[16px] font-semibold leading-5', tone === 'danger' ? 'text-(--fm-accent-bright)' : 'text-(--ms-text)')}>
+        <span className={cn('block truncate text-[16px] font-semibold leading-5', tone === 'danger' ? 'text-(--fm-accent-text)' : 'text-(--ms-text)')}>
           {label}
         </span>
         {support ? (
-          <span className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', alert ? 'text-(--fm-accent-bright)' : 'text-(--ms-text-2)')}>
+          <span className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', alert ? 'text-(--fm-accent-text)' : 'text-(--ms-text-2)')}>
             {support}
           </span>
         ) : null}
@@ -317,7 +323,7 @@ function AddFeederRow({ value, adding, error, added, blocked, slots, onChange, o
       }}
       className="group/add relative flex min-h-[56px] items-center gap-3 rounded-[14px] px-3 py-2"
     >
-      <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-[14px] bg-white/[0.045] opacity-0 transition-opacity duration-150 group-focus-within/add:opacity-100" />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-[14px] bg-fg/[0.045] opacity-0 transition-opacity duration-150 group-focus-within/add:opacity-100" />
       <RowIcon tone="primary">
         <span className="text-[16px] font-black leading-none">@</span>
       </RowIcon>
@@ -347,7 +353,7 @@ function AddFeederRow({ value, adding, error, added, blocked, slots, onChange, o
         <span
           id={supportId}
           aria-live="polite"
-          className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', error && !adding ? 'text-(--fm-accent-bright)' : 'text-(--ms-text-2)')}
+          className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', error && !adding ? 'text-(--fm-accent-text)' : 'text-(--ms-text-2)')}
         >
           {support}
         </span>
@@ -361,6 +367,85 @@ function AddFeederRow({ value, adding, error, added, blocked, slots, onChange, o
         <ArrowUp size={16} strokeWidth={2.6} />
       </button>
     </form>
+  );
+}
+
+/* the app's theme: three choices in a sunken track, the current one under a rose pill that glides to it (transform
+   only). A pick redraws the app as a circle growing out of the button (lib/theme) */
+const THEMES: ReadonlyArray<{ value: ThemePreference; label: string; Icon: typeof Sun }> = [
+  { value: 'light', label: 'Light', Icon: Sun },
+  { value: 'dark', label: 'Dark', Icon: Moon },
+  { value: 'auto', label: 'Auto, match this device', Icon: SunMoon },
+];
+
+function AppearanceRow({ onPick }: { onPick: () => void }) {
+  const preference = useThemePreference();
+  const resolved = useResolvedTheme();
+  const at = Math.max(0, THEMES.findIndex((theme) => theme.value === preference));
+  const buttons = useRef<Array<HTMLButtonElement | null>>([]);
+  const support = preference === 'auto' ? `Follows this device · ${resolved === 'dark' ? 'dark' : 'light'}` : preference === 'dark' ? 'Always dark' : 'Always light';
+
+  const pick = (index: number) => {
+    const next = THEMES[index];
+    const button = buttons.current[index];
+    if (!next || next.value === preference) return;
+    onPick();
+    const rect = button?.getBoundingClientRect();
+    setThemePreference(next.value, rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : undefined);
+  };
+
+  return (
+    <div className="relative flex min-h-[56px] w-full items-center gap-3 rounded-[14px] px-3 py-2">
+      <RowIcon tone="plain">
+        <Contrast size={17} strokeWidth={2.3} />
+      </RowIcon>
+      <span className="relative min-w-0 flex-1">
+        <span className="block truncate text-[16px] font-semibold leading-5 text-(--ms-text)">Appearance</span>
+        <span className="mt-0.5 block truncate text-[12px] font-medium leading-4 text-(--ms-text-2)">{support}</span>
+      </span>
+      <div
+        role="radiogroup"
+        aria-label="Appearance"
+        className="relative grid h-9 w-[126px] shrink-0 grid-cols-3 rounded-[14px] border border-(--ms-line) bg-(--fm-well) p-[3px] shadow-(--fm-well-shade)"
+        onKeyDown={(event) => {
+          const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+          if (!step) return;
+          event.preventDefault();
+          const next = (at + step + THEMES.length) % THEMES.length;
+          buttons.current[next]?.focus();
+          pick(next);
+        }}
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] w-[calc((100%-6px)/3)] rounded-[10px] bg-(--fm-accent) shadow-[inset_0_1px_0_rgb(255_255_255/0.28)] transition-transform duration-300 ease-[cubic-bezier(0.16,0.9,0.2,1)]"
+          style={{ transform: `translateX(${at * 100}%)` }}
+        />
+        {THEMES.map(({ value, label, Icon }, index) => {
+          const on = index === at;
+          return (
+            <button
+              key={value}
+              ref={(node) => {
+                buttons.current[index] = node;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={label}
+              tabIndex={on ? 0 : -1}
+              onClick={() => pick(index)}
+              className={cn(
+                'relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] outline-none [-webkit-tap-highlight-color:transparent] transition-[color,scale] duration-200 ease-out active:scale-[0.92] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--fm-accent-bright)',
+                on ? 'text-white' : 'text-(--ms-text-2)',
+              )}
+            >
+              <Icon size={16} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -382,7 +467,7 @@ function ConfirmView({ title, body, action, working, busy, blocked, error, cance
     <div className="px-3 pb-1 pt-2">
       <div className="text-[22px] font-black leading-[1.1] tracking-[-0.04em] text-(--ms-text)">{title}</div>
       <p className="mt-2 text-[14px] font-medium leading-5 text-(--ms-text-2)">{body}</p>
-      {error ? <p role="alert" className="mt-3 text-[12px] font-semibold leading-4 text-(--fm-accent-bright)">{error}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-[12px] font-semibold leading-4 text-(--fm-accent-text)">{error}</p> : null}
       <div className="mt-5 grid grid-cols-2 gap-2">
         <button
           ref={cancelRef}
@@ -824,6 +909,7 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
           trailing={<Chevron />}
           onClick={openFund}
         />
+        <AppearanceRow onPick={tap} />
         {feeds === null ? (
           <div className="px-3 pb-2 pt-4 text-[12px] font-medium text-(--ms-text-3)">Loading your feeds…</div>
         ) : feeds.length > 0 ? (
@@ -888,7 +974,7 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
 
   const sheet = mounted ? (
     <div ref={rootRef} className="fm-stream" style={{ ...ROOT_STYLE, pointerEvents: panelOpen ? 'auto' : 'none' }} inert={overlayOpen}>
-      <div aria-hidden="true" className="absolute inset-0 touch-none bg-black/60" style={dimStyle} onClick={requestClose} />
+      <div aria-hidden="true" className="absolute inset-0 touch-none bg-(--fm-scrim)" style={dimStyle} onClick={requestClose} />
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end lg:justify-center lg:p-8">
         <section
           ref={panelRef}
@@ -898,12 +984,12 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
           tabIndex={-1}
           className={cn(
             'pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-t-[28px] border border-b-0 border-(--ms-line) bg-(--ms-sheet) text-(--ms-text) outline-none',
-            'max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_24px)] shadow-[0_-24px_64px_-32px_rgba(0,0,0,0.9)] [--ms-off:100%] sm:max-w-[560px]',
-            'lg:max-h-[min(720px,calc(100dvh_-_64px))] lg:w-[460px] lg:rounded-[28px] lg:border-b lg:shadow-[0_32px_80px_-28px_rgba(0,0,0,0.9)] lg:[--ms-off:calc(50vh_+_50%)]',
+            'max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_24px)] shadow-(--st-panel-shadow) [--ms-off:100%] sm:max-w-[560px]',
+            'lg:max-h-[min(720px,calc(100dvh_-_64px))] lg:w-[460px] lg:rounded-[28px] lg:border-b lg:shadow-(--st-panel-shadow-lg) lg:[--ms-off:calc(50vh_+_50%)]',
           )}
           style={panelStyle}
         >
-          <div aria-hidden="true" className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-white/20 lg:hidden" />
+          <div aria-hidden="true" className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-fg/20 lg:hidden" />
           <header className="flex shrink-0 items-start gap-3 px-5 pb-2 pt-3 lg:pt-5">
             {view === 'feeder' && feeder ? (
               <span className="relative mt-0.5 block h-11 w-11 shrink-0 overflow-hidden rounded-full">

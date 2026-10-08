@@ -24,14 +24,14 @@ function SectionHeader({ label, kicker, title, first, count, best, order, width,
     <div data-clip="" className="relative flex items-end justify-between gap-4 overflow-hidden px-[var(--st-inset)] pb-3.5" style={{ width, height }}>
       {first ? null : <span aria-hidden="true" className="absolute inset-x-[var(--st-inset)] top-2 h-px bg-[var(--st-line)]" />}
       <h2 aria-label={`${label}, ${counted}`} className="min-w-0">
-        <span className="block text-[12px] font-black uppercase leading-none tracking-[0.22em] text-[var(--fm-accent-bright)]">{kicker}</span>
+        <span className="block text-[12px] font-black uppercase leading-none tracking-[0.22em] text-[var(--fm-accent-text)]">{kicker}</span>
         <span className={cn('mt-2 block truncate font-black leading-[0.9] tracking-[-0.04em] text-[var(--st-text)]', wide ? 'text-[40px]' : 'text-[28px]')}>
           {title}
         </span>
       </h2>
       <div aria-hidden="true" className="flex shrink-0 flex-col items-end gap-1.5 pb-0.5">
         {ranked ? (
-          <span className="inline-flex items-baseline gap-1 rounded-full bg-[rgb(var(--fm-accent-rgb)/0.14)] px-2.5 py-1 font-black leading-none text-[var(--fm-accent-bright)]">
+          <span className="inline-flex items-baseline gap-1 rounded-full bg-[rgb(var(--fm-accent-rgb)/0.14)] px-2.5 py-1 font-black leading-none text-[var(--fm-accent-text)]">
             <span className="text-[10px] uppercase tracking-[0.14em]">Best</span>
             <span className={cn('tabular-nums tracking-[-0.03em]', wide ? 'text-[16px]' : 'text-[14px]')}>{formatTopPercent(best)}</span>
           </span>

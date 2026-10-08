@@ -7,6 +7,7 @@ import { getSupabase, User } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { useAppHaptics } from '@/lib/haptics';
+import { setThemePreference, useResolvedTheme } from '@/lib/theme';
 import { AppHeader, usePageReady } from '@/components/shell/AppShell';
 import {
   FUND_ALERT_THRESHOLD_KEY,
@@ -485,7 +486,7 @@ function FundPageContent({ embedded = false }: FundPageProps = {}) {
     { collapseDistance: 220, expandDistance: 120, topGuard: 54 },
   );
 
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const isDarkMode = useResolvedTheme() === 'dark';
   const [alertThreshold, setAlertThreshold] = useState(25);
   const [isDraggingSlider, setIsDraggingSlider] = useState(false);
   const [thresholdLocked, setThresholdLocked] = useState(true);
@@ -865,19 +866,7 @@ function FundPageContent({ embedded = false }: FundPageProps = {}) {
         .finally(() => setFundDataReady(true));
     }
 
-    // Default to dark mode unless user explicitly set 'light'
-    const savedTheme = localStorage.getItem('theme');
-    const shouldBeDark = savedTheme !== 'light';
-    setIsDarkMode(shouldBeDark);
-    if (shouldBeDark) {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-      document.documentElement.style.colorScheme = 'dark';
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('light');
-      document.documentElement.style.colorScheme = 'light';
-    }
+    // the theme is lib/theme's (set before first paint): nothing to apply here
   }, [router]);
 
   useEffect(() => {
@@ -2152,34 +2141,11 @@ function FundPageContent({ embedded = false }: FundPageProps = {}) {
                       <span className="text-[12px] font-black uppercase tracking-[0.14em] text-foreground/70 dark:text-white/70">Lights Out</span>
                     </div>
                     <div ref={themeToggleRef} className="cursor-pointer group" onClick={() => {
-                      const newIsDarkMode = !isDarkMode;
-                      // Get toggle position for ripple origin
+                      // the switch grows out of the toggle (lib/theme draws it); the old ripple overlay is retired
                       const rect = themeToggleRef.current?.getBoundingClientRect();
                       const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
                       const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                      // Create ripple at zero radius
-                      setThemeRipple({ active: false, x, y, toDark: newIsDarkMode });
-                      // Trigger expansion in next frame
-                      requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {
-                          setThemeRipple({ active: true, x, y, toDark: newIsDarkMode });
-                        });
-                      });
-                      // Switch theme classes after ripple covers enough area
-                      setTimeout(() => {
-                        setIsDarkMode(newIsDarkMode);
-                        if (newIsDarkMode) {
-                          document.documentElement.classList.add('dark');
-                          document.documentElement.classList.remove('light');
-                          document.documentElement.style.colorScheme = 'dark';
-                          localStorage.setItem('theme', 'dark');
-                        } else {
-                          document.documentElement.classList.remove('dark');
-                          document.documentElement.classList.add('light');
-                          document.documentElement.style.colorScheme = 'light';
-                          localStorage.setItem('theme', 'light');
-                        }
-                      }, 260);
+                      setThemePreference(isDarkMode ? 'light' : 'dark', { x, y });
                     }}>
                       <div className="group-active:scale-90 transition-transform duration-200"><HardwareToggle active={isDarkMode} /></div>
                     </div>

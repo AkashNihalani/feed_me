@@ -1,0 +1,59 @@
+/* Lead's own surfaces, shadows and glows. Light is written first (the default theme); html.dark below holds the
+   values Lead has always had, so dark draws exactly as it did. Ink and hairlines come from the app's --fm-fg, and
+   the pictures (with the white type on their dark scrims) look the same in both themes, so neither reads these. */
+.fm-lead {
+  --ld-ground: #ffffff;                 /* the board's frame */
+  --ld-panel: #ffffff;                  /* the board's sections and the tape */
+  --ld-raised: #fafbfc;                 /* an open row */
+  --ld-deep: #fafbfc;                   /* the wire and the post mortem */
+  --ld-deep-rgb: 250 251 252;
+  --ld-thumb: var(--fm-media);          /* behind a row's thumbnail */
+  --ld-chip-well: rgb(11 11 15 / 0.03); /* a row's chevron */
+  --ld-cta-well: #ffffff;               /* the post mortem's way to the wall */
+  --ld-floor: rgb(15 23 42 / 0.3);      /* the shadow pooled under the post stack */
+  /* rose glows read pink on white: weaker here */
+  --ld-throne-glow: 0.08;
+  --ld-glow-dot: 0 0 8px rgb(var(--fm-accent-rgb) / 0.35);
+  --ld-glow-bar: 0 0 16px rgb(var(--fm-accent-rgb) / 0.2);
+  --ld-glow-throne: 0 0 14px rgb(var(--fm-accent-rgb) / 0.22);
+  --ld-glow-node: 0 0 10px rgb(var(--fm-accent-rgb) / 0.32);
+  /* dark casts heavy black; light casts soft slate */
+  --ld-shadow-board: 0 1px 2px rgb(15 23 42 / 0.04), 0 24px 56px -32px rgb(15 23 42 / 0.18);
+  --ld-shadow-thumb: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 18px -12px rgb(15 23 42 / 0.24);
+  --ld-shadow-landing: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 18px -12px rgb(15 23 42 / 0.24);
+  --ld-shadow-proof: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
+  --ld-shadow-proof-lg: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
+  --ld-shadow-tile: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
+  --ld-shadow-poster: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
+  --ld-shadow-stack: 0 2px 4px rgb(15 23 42 / 0.06), 0 24px 48px -24px rgb(15 23 42 / 0.32);
+}
+
+html.dark .fm-lead {
+  --ld-ground: #050505;
+  --ld-panel: #070707;
+  --ld-raised: #0a0a0a;
+  --ld-deep: #060606;
+  --ld-deep-rgb: 6 6 6;
+  --ld-thumb: #101010;
+  --ld-chip-well: rgb(0 0 0 / 0.2);
+  --ld-cta-well: rgb(0 0 0 / 0.3);
+  --ld-floor: rgb(0 0 0 / 0.62);
+  --ld-throne-glow: .14;
+  --ld-glow-dot: 0 0 14px rgb(var(--fm-accent-rgb) / .8);
+  --ld-glow-bar: 0 0 34px rgb(var(--fm-accent-rgb) / .48);
+  --ld-glow-throne: 0 0 26px rgb(var(--fm-accent-rgb) / .46);
+  --ld-glow-node: 0 0 18px rgb(var(--fm-accent-rgb) / .78);
+  --ld-shadow-board: 0 32px 80px -46px rgba(0, 0, 0, .98);
+  --ld-shadow-thumb: 0 14px 28px -16px rgba(0, 0, 0, .9);
+  --ld-shadow-landing: 0 12px 26px -12px rgba(0, 0, 0, .9);
+  --ld-shadow-proof: 0 24px 48px -28px rgba(0, 0, 0, .95);
+  --ld-shadow-proof-lg: 0 30px 54px -30px rgba(0, 0, 0, .98);
+  --ld-shadow-tile: 0 22px 44px -26px rgba(0, 0, 0, .95);
+  --ld-shadow-poster: 0 26px 50px -28px rgba(0, 0, 0, .95);
+  --ld-shadow-stack: 0 34px 78px -36px rgba(0, 0, 0, .98);
+}
+
+/* A title on a picture keeps dark's shade in light too: the light letterpress (globals) is for ink on paper. */
+.fm-lead .fm-depth-title.ld-on-media {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}

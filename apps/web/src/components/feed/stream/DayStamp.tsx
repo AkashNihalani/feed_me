@@ -73,7 +73,7 @@ function DayStamp({ day, slot, count, hidden, width }: DayStampProps) {
       data-shown={parts && !hidden ? '' : undefined}
       className="st-stamp pointer-events-none flex h-full w-full flex-col items-end justify-center text-right"
     >
-      <Swap value={(parts?.kicker ?? '').toUpperCase()} className="text-[13px] font-black leading-none tracking-[0.22em] text-[var(--fm-accent-bright)]" />
+      <Swap value={(parts?.kicker ?? '').toUpperCase()} className="text-[13px] font-black leading-none tracking-[0.22em] text-[var(--fm-accent-text)]" />
       {/* the numeral: a full line box (leading 1) so no glyph ever reaches past it */}
       <Swap value={date} step={1} className="mt-2 font-black leading-none tracking-[-0.06em] tabular-nums text-[var(--st-text)]" style={{ fontSize: numeral }} />
       <Swap value={month} step={2} className="mt-1 text-[22px] font-bold leading-none tracking-[-0.02em] text-[var(--st-text-2)]" />

@@ -211,13 +211,13 @@ function PostSheet({ post, feeder, onClose }: PostSheetProps) {
       className="fm-stream fixed inset-0 z-[200] flex items-end justify-center lg:items-center lg:p-8"
       style={{ pointerEvents: open ? undefined : 'none' }}
     >
-      <div ref={dimRef} aria-hidden="true" onClick={onClose} className="absolute inset-0 touch-none bg-black/70" />
+      <div ref={dimRef} aria-hidden="true" onClick={onClose} className="absolute inset-0 touch-none bg-black/70 light:bg-(--fm-scrim)" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative flex max-h-[calc(100dvh-env(safe-area-inset-top)-16px)] w-full flex-col overflow-hidden rounded-t-[28px] bg-[var(--st-surface-2)] text-[var(--st-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_-30px_80px_-30px_rgba(0,0,0,0.9)] lg:h-[min(88dvh,840px)] lg:max-h-none lg:w-auto lg:max-w-[min(1180px,100%)] lg:flex-row lg:rounded-[28px] lg:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_40px_120px_-30px_rgba(0,0,0,0.95)]"
+        className="relative flex max-h-[calc(100dvh-env(safe-area-inset-top)-16px)] w-full flex-col overflow-hidden rounded-t-[28px] bg-[var(--st-surface-2)] text-[var(--st-text)] shadow-(--st-sheet-shadow) lg:h-[min(88dvh,840px)] lg:max-h-none lg:w-auto lg:max-w-[min(1180px,100%)] lg:flex-row lg:rounded-[28px] lg:shadow-(--st-sheet-shadow-lg)"
       >
         {/* a phone's handle: drag the sheet down by its top */}
         <div

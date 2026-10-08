@@ -102,13 +102,13 @@ export default function ReadHeader({
                 animate="center"
                 exit={reduce ? { opacity: 0, transition: { duration: 0 } } : 'exit'}
                 transition={reduce ? { duration: 0 } : SLOT_SPRING}
-                className="absolute inset-0 grid place-items-center text-white"
+                className="absolute inset-0 grid place-items-center text-fg"
               >
                 {viewLabel}
               </motion.span>
             </AnimatePresence>
           </span>
-          <ChevronDown className="h-3.5 w-3.5 text-white/54" aria-hidden="true" />
+          <ChevronDown className="h-3.5 w-3.5 text-fg/54" aria-hidden="true" />
         </motion.button>
       ) : null}
     </AnimatePresence>

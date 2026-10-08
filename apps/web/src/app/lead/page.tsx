@@ -26,6 +26,7 @@ import { normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { BEAT_ARRIVE_S, BEAT_CONTAINER, BEAT_HIDDEN, BEAT_ITEM, BEAT_LEAVE_EASE, BEAT_LEAVE_S, BEAT_SHOWN, beatArrive, beatLeave } from '@/lib/motion';
 import { getTabScope, setTabScope, useTabScope, useTabScopeTransition, type TabScope } from '@/lib/tabScope';
 import { cn } from '@/lib/utils';
+import './lead.css';
 
 const TIMEFRAMES = [7, 30, 60, 90] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
@@ -682,18 +683,18 @@ const TAPE_CSS = `
 
 function TapeChip({ event }: { event: TapeEvent }) {
   return (
-    <span className="mr-6 flex shrink-0 items-center gap-2 border-r border-white/[0.07] pr-6 last:border-0">
-      <span className={cn('text-[8px]', event.dir === 'up' ? 'text-[var(--fm-accent-bright)]' : event.dir === 'down' ? 'text-white/30' : 'text-white/40')}>
+    <span className="mr-6 flex shrink-0 items-center gap-2 border-r border-fg/[0.07] pr-6 last:border-0">
+      <span className={cn('text-[8px]', event.dir === 'up' ? 'text-[var(--fm-accent-text)]' : event.dir === 'down' ? 'text-fg/30 light:text-fg/44' : 'text-fg/40')}>
         {event.dir === 'up' ? '▲' : event.dir === 'down' ? '▼' : '●'}
       </span>
-      <span className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.12em] text-white/52">{event.text}</span>
+      <span className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.12em] text-fg/52">{event.text}</span>
       <span className={cn(
         'whitespace-nowrap rounded-[8px] px-1.5 py-0.5 text-[9px] font-black tabular-nums tracking-[0.06em]',
         event.dir === 'up'
           ? 'bg-[var(--fm-accent)]/90 text-white'
           : event.dir === 'down'
-            ? 'border border-white/8 bg-white/[0.05] text-white/44'
-            : 'border border-white/8 bg-white/[0.03] text-white/56',
+            ? 'border border-fg/8 bg-fg/[0.05] text-fg/44'
+            : 'border border-fg/8 bg-fg/[0.03] text-fg/56',
       )}>{event.value}</span>
     </span>
   );
@@ -705,7 +706,7 @@ function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: number }) {
   const duration = Math.max(22, events.length * 4.2);
 
   return (
-    <div data-testid="lead-v3-tape" className="relative mb-3 overflow-hidden rounded-[16px] border border-white/[0.08] bg-[#070707] py-2.5">
+    <div data-testid="lead-v3-tape" className="relative mb-3 overflow-hidden rounded-[16px] border border-fg/[0.08] bg-(--ld-panel) py-2.5">
       <style>{TAPE_CSS}</style>
       {reduce ? (
         <div className="flex overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -730,8 +731,8 @@ function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: number }) {
           </motion.div>
         </AnimatePresence>
       )}
-      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-[linear-gradient(90deg,#070707,transparent)]" />
-      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-[linear-gradient(270deg,#070707,transparent)]" />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-[linear-gradient(90deg,var(--ld-panel),transparent)]" />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-[linear-gradient(270deg,var(--ld-panel),transparent)]" />
     </div>
   );
 }
@@ -774,10 +775,10 @@ function composeFeederWireLine(posts: TrackedPost[]): string | null {
 function WireLine({ line, dealId }: { line: string | null; dealId: number }) {
   if (!line) return null;
   return (
-    <div data-testid="lead-v3-wire" className="flex items-center gap-3 border-b border-white/[0.08] bg-[#060606] px-4 py-3 sm:px-5">
+    <div data-testid="lead-v3-wire" className="flex items-center gap-3 border-b border-fg/[0.08] bg-(--ld-deep) px-4 py-3 sm:px-5">
       <span className="shrink-0 rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-white">Wire</span>
       <AnimatePresence mode="popLayout" initial={false}>
-        <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="min-w-0 text-[11px] font-bold leading-snug text-white/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[12px]">{line}</motion.p>
+        <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="min-w-0 text-[11px] font-bold leading-snug text-fg/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[12px]">{line}</motion.p>
       </AnimatePresence>
     </div>
   );
@@ -912,7 +913,7 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
               <span className="rounded-full border border-white/12 bg-black/40 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-white/64">{card.hint}</span>
             </div>
             <div>
-              <div className="fm-depth-title flex items-end font-black leading-[0.78] tracking-[-0.05em] text-white">
+              <div className="fm-depth-title ld-on-media flex items-end font-black leading-[0.78] tracking-[-0.05em] text-white">
                 {card.valuePrefix ? <span className="mr-2 pb-1 text-[12px] tracking-normal text-white/50">{card.valuePrefix}</span> : null}
                 <SlotText value={card.value} className="text-[48px] tabular-nums sm:text-[64px]" />
                 {card.valueSuffix ? <span className="ml-1 pb-1 text-[26px] text-[var(--fm-accent-bright)]">{card.valueSuffix}</span> : null}
@@ -942,7 +943,7 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
 function RowThumb({ row, throne }: { row: BoardRow; throne: boolean }) {
   return (
     <span className={cn(
-      'relative block shrink-0 overflow-hidden rounded-[14px] border border-white/12 bg-[#101010] shadow-[0_14px_28px_-16px_rgba(0,0,0,.9)]',
+      'relative block shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)',
       throne ? 'h-[72px] w-[58px] rounded-[16px] sm:h-[84px] sm:w-[67px]' : 'h-[56px] w-[45px]',
     )}>
       {!row.anchorThumb && (
@@ -957,7 +958,7 @@ function RowThumb({ row, throne }: { row: BoardRow; throne: boolean }) {
 
 function RowVerdict({ row }: { row: BoardRow }) {
   return (
-    <span className={cn('text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-[var(--fm-accent-bright)]' : 'text-white/34')}>
+    <span className={cn('text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-[var(--fm-accent-text)]' : 'text-fg/34')}>
       <SlotText value={row.verdict} align="left" />
     </span>
   );
@@ -967,7 +968,7 @@ function RowVerdict({ row }: { row: BoardRow }) {
    entrants — the market grammar, never green/red. */
 function MoveChip({ move, className }: { move: number | null; className?: string }) {
   if (move == null) {
-    return <span className={cn('inline-flex shrink-0 items-center rounded-[7px] bg-white/[0.07] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-white/44', className)}>new</span>;
+    return <span className={cn('inline-flex shrink-0 items-center rounded-[7px] bg-fg/[0.07] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-fg/44', className)}>new</span>;
   }
   const up = move > 0;
   const down = move < 0;
@@ -975,7 +976,7 @@ function MoveChip({ move, className }: { move: number | null; className?: string
     <span
       className={cn(
         'inline-flex shrink-0 items-center gap-0.5 text-[9px] font-black tabular-nums leading-none',
-        up ? 'text-[var(--fm-accent-bright)]' : down ? 'text-white/36' : 'text-white/28',
+        up ? 'text-[var(--fm-accent-text)]' : down ? 'text-fg/36' : 'text-fg/28',
         className,
       )}
     >
@@ -993,12 +994,12 @@ function MetricLedger({ row }: { row: BoardRow }) {
     { label: row.followerDelta == null ? 'Followers' : 'Follower move', value: row.followerDelta == null ? compactNumber(row.followers) : signedNumber(row.followerDelta), multiple: null },
   ];
   return (
-    <motion.dl variants={BEAT_ITEM} className="order-3 -mx-4 flex min-w-0 overflow-x-auto border-y border-white/[0.08] px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:order-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-7 lg:overflow-visible lg:border-y-0 lg:border-l lg:border-white/[0.08] lg:px-0 lg:pl-7 [&::-webkit-scrollbar]:hidden">
+    <motion.dl variants={BEAT_ITEM} className="order-3 -mx-4 flex min-w-0 overflow-x-auto border-y border-fg/[0.08] px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:order-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-7 lg:overflow-visible lg:border-y-0 lg:border-l lg:border-fg/[0.08] lg:px-0 lg:pl-7 [&::-webkit-scrollbar]:hidden">
       {metrics.map((metric) => (
-        <div key={metric.label} className="min-w-[118px] border-r border-white/[0.08] py-4 pr-4 last:border-r-0 lg:min-w-0 lg:border-r-0 lg:py-0 lg:pr-0">
-          <dt className="truncate text-[8px] font-black uppercase tracking-[0.2em] text-white/30">{metric.label}</dt>
-          <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-white sm:text-[26px]"><SlotText value={metric.value} /></dd>
-          <div className="mt-2 text-[8px] font-black tabular-nums text-white/34">
+        <div key={metric.label} className="min-w-[118px] border-r border-fg/[0.08] py-4 pr-4 last:border-r-0 lg:min-w-0 lg:border-r-0 lg:py-0 lg:pr-0">
+          <dt className="truncate text-[8px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44">{metric.label}</dt>
+          <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
+          <div className="mt-2 text-[8px] font-black tabular-nums text-fg/34">
             {metric.multiple == null ? 'raw movement' : `${formatMultiple(metric.multiple)} usual`}
           </div>
         </div>
@@ -1024,40 +1025,40 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
         initial={reduce ? false : 'hidden'}
         animate="visible"
         onClick={onCollapse}
-        className="relative isolate cursor-pointer overflow-hidden border-t border-white/[0.1] bg-[#0a0a0a] p-4 sm:p-6 lg:min-h-[360px]"
+        className="relative isolate cursor-pointer overflow-hidden border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6 lg:min-h-[360px]"
       >
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-[0_0_34px_rgb(var(--fm-accent-rgb)/.48)]" />
-        <div className="pointer-events-none absolute -bottom-14 left-3 select-none text-[164px] font-black leading-none tracking-[-0.1em] text-white/[0.025] sm:text-[210px]">0{row.rank}</div>
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-bar)" />
+        <div className="pointer-events-none absolute -bottom-14 left-3 select-none text-[164px] font-black leading-none tracking-[-0.1em] text-fg/[0.025] sm:text-[210px]">0{row.rank}</div>
 
         <motion.div variants={BEAT_ITEM} className="relative grid gap-6 lg:grid-cols-[210px_minmax(240px,.78fr)_minmax(400px,1.3fr)] lg:items-center lg:gap-8">
           <div className="order-1 min-w-0">
-            <div className="flex items-center justify-between gap-3 text-[8px] font-black uppercase tracking-[0.18em] text-white/24">
+            <div className="flex items-center justify-between gap-3 text-[8px] font-black uppercase tracking-[0.18em] text-fg/24 light:text-fg/40">
               <span>
                 {row.postCount} posts · {days}D
                 {row.prevPostCount != null ? (
-                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-[var(--fm-accent-bright)]/70' : 'text-white/20')}>
+                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-[var(--fm-accent-text)]/70' : 'text-fg/20 light:text-fg/40')}>
                     {row.postCount === row.prevPostCount ? 'same pace' : row.postCount > row.prevPostCount ? `up from ${row.prevPostCount}` : `down from ${row.prevPostCount}`}
                   </i>
                 ) : null}
               </span>
-              <i className="not-italic text-white/16">tap outside media to close</i>
+              <i className="not-italic text-fg/16 light:text-fg/36">tap outside media to close</i>
             </div>
 
             <div className="mt-5 flex items-end gap-4 lg:mt-7 lg:block">
               <div className="min-w-0">
-                <div className="text-[8px] font-black uppercase tracking-[0.2em] text-white/30">Range · best post</div>
-                <div className="fm-depth-title mt-2 flex items-end font-black leading-[0.68] tracking-[-0.08em] text-white">
-                  <span className="mr-2 pb-2 text-[11px] tracking-normal text-white/40">TOP</span>
+                <div className="text-[8px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44">Range · best post</div>
+                <div className="fm-depth-title mt-2 flex items-end font-black leading-[0.68] tracking-[-0.08em] text-fg">
+                  <span className="mr-2 pb-2 text-[11px] tracking-normal text-fg/40">TOP</span>
                   <SlotText value={percentLabel(row.best)} className="text-[74px] tabular-nums sm:text-[96px] lg:text-[108px]" />
-                  {row.best != null ? <span className="ml-1 pb-1 text-[30px] tracking-normal text-[var(--fm-accent-bright)] lg:text-[40px]">%</span> : null}
+                  {row.best != null ? <span className="ml-1 pb-1 text-[30px] tracking-normal text-[var(--fm-accent-text)] lg:text-[40px]">%</span> : null}
                 </div>
               </div>
-              <div className="shrink-0 border-l border-white/10 pl-4 lg:mt-4 lg:border-l-0 lg:border-t lg:border-white/10 lg:pl-0 lg:pt-4">
-                <div className="fm-depth-title flex items-baseline text-[30px] font-black leading-none tracking-[-0.05em] text-white/56">
+              <div className="shrink-0 border-l border-fg/10 pl-4 lg:mt-4 lg:border-l-0 lg:border-t lg:border-fg/10 lg:pl-0 lg:pt-4">
+                <div className="fm-depth-title flex items-baseline text-[30px] font-black leading-none tracking-[-0.05em] text-fg/56">
                   <SlotText value={percentLabel(row.floor)} className="tabular-nums" />
-                  {row.floor != null ? <i className="ml-0.5 not-italic text-[15px] text-white/30">%</i> : null}
+                  {row.floor != null ? <i className="ml-0.5 not-italic text-[15px] text-fg/30 light:text-fg/44">%</i> : null}
                 </div>
-                <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">floor · weakest post</div>
+                <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-fg/30 light:text-fg/44">floor · weakest post</div>
               </div>
             </div>
           </div>
@@ -1066,8 +1067,8 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
 
           <motion.div variants={BEAT_ITEM} className="order-2 min-w-0 lg:order-3">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/32">Posts behind the number</span>
-              <span className="text-[8px] font-black uppercase tracking-[0.16em] text-white/20">Best first</span>
+              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-fg/32">Posts behind the number</span>
+              <span className="text-[8px] font-black uppercase tracking-[0.16em] text-fg/20 light:text-fg/40">Best first</span>
             </div>
             {row.proofPosts.length ? (
               <>
@@ -1084,7 +1085,7 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
                       }}
                       data-testid={'lead-v3-proof-mobile-' + index}
                       aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
-                      className="relative aspect-[4/5] w-[58%] min-w-[58%] snap-center overflow-hidden rounded-[22px] border border-white/12 bg-black shadow-[0_24px_48px_-28px_rgba(0,0,0,.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+                      className="relative aspect-[4/5] w-[58%] min-w-[58%] snap-center overflow-hidden rounded-[22px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-proof) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
                     >
                       {post.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
@@ -1115,7 +1116,7 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
                       initial={reduce ? false : { opacity: 0, transform: `translateY(${index * 10 + 14}px)` }}
                       animate={{ opacity: 1, transform: `translateY(${index * 10}px)` }}
                       transition={reduce ? { duration: 0 } : beatArrive(index + 1)}
-                      className="group relative aspect-[4/5] w-full max-w-[200px] flex-1 overflow-hidden rounded-[22px] border border-white/12 bg-black shadow-[0_30px_54px_-30px_rgba(0,0,0,.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+                      className="group relative aspect-[4/5] w-full max-w-[200px] flex-1 overflow-hidden rounded-[22px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-proof-lg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
                     >
                       {post.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
@@ -1131,7 +1132,7 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
                 </div>
               </>
             ) : (
-              <div className="flex h-[180px] items-center justify-center border-y border-white/[0.07] text-[9px] font-black uppercase tracking-[0.18em] text-white/26">No tracked media in this window</div>
+              <div className="flex h-[180px] items-center justify-center border-y border-fg/[0.07] text-[9px] font-black uppercase tracking-[0.18em] text-fg/26 light:text-fg/44">No tracked media in this window</div>
             )}
           </motion.div>
         </motion.div>
@@ -1157,18 +1158,18 @@ function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[
   }, [rows, selectedId]);
 
   return (
-    <section aria-labelledby="lead-v3-board-title" className="min-w-0 max-w-full overflow-hidden bg-[#070707]">
-      <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] px-4 py-4 sm:px-5">
+    <section aria-labelledby="lead-v3-board-title" className="min-w-0 max-w-full overflow-hidden bg-(--ld-panel)">
+      <div className="flex items-center justify-between gap-4 border-b border-fg/[0.08] px-4 py-4 sm:px-5">
         <div>
-          <h2 id="lead-v3-board-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-bright)]">Feederboard</h2>
-          <p className="mt-1 text-[10px] font-bold leading-snug text-white/50">Ranked on the typical post · tap a row for the receipts</p>
+          <h2 id="lead-v3-board-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feederboard</h2>
+          <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">Ranked on the typical post · tap a row for the receipts</p>
         </div>
-        <div className="shrink-0 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/46">
+        <div className="shrink-0 text-right text-[9px] font-black uppercase tracking-[0.12em] text-fg/46">
           TOP % · lower is stronger
         </div>
       </div>
 
-      <div className="hidden grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-end gap-4 border-b border-white/[0.07] px-5 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-white/24 lg:grid">
+      <div className="hidden grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-end gap-4 border-b border-fg/[0.07] px-5 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-fg/24 light:text-fg/40 lg:grid">
         <span>Rank</span><span>Feed / feeder</span><span>Typical post</span><span>Shift</span><span>Peak vs usual</span><span>Last posted</span><span />
       </div>
 
@@ -1191,7 +1192,7 @@ function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[
                 transition={reduce
                   ? { layout: LADDER_SPRING, duration: 0.12 }
                   : { layout: LADDER_SPRING, ...beatArrive(row.rank) }}
-                className="border-b border-white/[0.07] last:border-b-0"
+                className="border-b border-fg/[0.07] last:border-b-0"
               >
                 <button
                   type="button"
@@ -1201,10 +1202,10 @@ function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[
                   className={cn(
                     'relative isolate block w-full overflow-hidden text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]',
                     throne
-                      ? 'bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/.14),transparent_44%),linear-gradient(90deg,rgba(255,255,255,.035),rgba(255,255,255,.01))]'
+                      ? 'bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%),linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.035),rgb(var(--fm-fg-rgb)/.01))]'
                       : selected
-                        ? 'bg-white/[0.03]'
-                        : 'hover:bg-white/[0.022]',
+                        ? 'bg-fg/[0.03]'
+                        : 'hover:bg-fg/[0.022]',
                   )}
                 >
                   <motion.span
@@ -1214,7 +1215,7 @@ function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[
                     animate={{ scaleX: strength, opacity: [0, 1, throne ? 0.07 : 0.04] }}
                     transition={reduce ? { duration: 0 } : { scaleX: { delay: 0.18 + (row.rank - 1) * 0.08, duration: 1, ease: SOFT_EASE }, opacity: { delay: 0.18 + (row.rank - 1) * 0.08, duration: 1, ease: SOFT_EASE, times: [0, 0.55, 1] } }}
                   />
-                  {throne ? <motion.span initial={reduce ? false : { opacity: 0 }} animate={{ opacity: [0, 1, 0.6] }} transition={reduce ? { duration: 0 } : { duration: 1, ease: SOFT_EASE }} className="absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-[0_0_26px_rgb(var(--fm-accent-rgb)/.46)]" /> : null}
+                  {throne ? <motion.span initial={reduce ? false : { opacity: 0 }} animate={{ opacity: [0, 1, 0.6] }} transition={reduce ? { duration: 0 } : { duration: 1, ease: SOFT_EASE }} className="absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" /> : null}
 
                   {/* mobile / tablet row */}
                   <div className={cn(
@@ -1226,39 +1227,39 @@ function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[
                     <span className="relative h-full">
                       <span className={cn(
                         'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]',
-                        throne ? 'text-[54px] text-[var(--fm-accent)]/[0.16]' : 'text-[44px] text-white/[0.055]',
+                        throne ? 'text-[54px] text-[var(--fm-accent)]/[0.16]' : 'text-[44px] text-fg/[0.055]',
                       )}>{String(row.rank).padStart(2, '0')}</span>
                     </span>
                     <RowThumb row={row} throne={throne} />
                     <span className="min-w-0">
                       <span className="flex min-w-0 items-center gap-1.5">
-                        <span className={cn('truncate font-black leading-none tracking-[-0.02em] text-white', throne ? 'text-[17px]' : 'text-[15px]')}>{row.name}</span>
+                        <span className={cn('truncate font-black leading-none tracking-[-0.02em] text-fg', throne ? 'text-[17px]' : 'text-[15px]')}>{row.name}</span>
                         <MoveChip move={row.rankMove} />
                       </span>
                       <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-[9px] font-black uppercase tracking-[0.11em] text-white/52">{row.caption}</span>
-                        <span className="text-white/16">·</span>
+                        <span className="truncate text-[9px] font-black uppercase tracking-[0.11em] text-fg/52">{row.caption}</span>
+                        <span className="text-fg/16">·</span>
                         <RowVerdict row={row} />
                       </span>
                     </span>
                     <span className="flex items-center gap-2 text-right">
                       <span className="min-w-0">
-                        <span className="block text-[8px] font-black uppercase tracking-[0.13em] text-white/52">Typical</span>
-                        <span className={cn('fm-depth-title mt-1 block font-black tabular-nums leading-none text-white', throne ? 'text-[32px]' : 'text-[24px]')}>
+                        <span className="block text-[8px] font-black uppercase tracking-[0.13em] text-fg/52">Typical</span>
+                        <span className={cn('fm-depth-title mt-1 block font-black tabular-nums leading-none text-fg', throne ? 'text-[32px]' : 'text-[24px]')}>
                           <SlotText value={percentLabel(row.typical)} />
-                          {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-bright)]">%</i>}
+                          {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
                         </span>
                         <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[11px] font-black tabular-nums leading-none">
                           {row.typicalShift != null && row.typicalShift !== 0 ? (
-                            <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-[var(--fm-accent-bright)]' : 'text-white/40')}>
+                            <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : 'text-fg/40')}>
                               <i className="not-italic text-[8px]">{row.typicalShift > 0 ? '▲' : '▼'}</i>
                               <SlotText value={String(Math.abs(row.typicalShift))} />
                             </span>
                           ) : null}
-                          <span className="text-[10px] text-white/48"><SlotText value={formatMultiple(row.peak)} /> <i className="not-italic text-[8px] uppercase tracking-[0.08em] text-white/44">peak</i></span>
+                          <span className="text-[10px] text-fg/48"><SlotText value={formatMultiple(row.peak)} /> <i className="not-italic text-[8px] uppercase tracking-[0.08em] text-fg/44">peak</i></span>
                         </span>
                       </span>
-                      <ChevronDown className={cn('h-4 w-4 shrink-0 text-white/36 transition-transform duration-300', selected && 'rotate-180 text-white')} />
+                      <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-300', selected && 'rotate-180 text-fg')} />
                     </span>
                   </div>
 
@@ -1270,53 +1271,53 @@ function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[
                     <span className="relative h-full">
                       <span className={cn(
                         'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]',
-                        throne ? 'text-[64px] text-[var(--fm-accent)]/[0.16]' : 'text-[50px] text-white/[0.055]',
+                        throne ? 'text-[64px] text-[var(--fm-accent)]/[0.16]' : 'text-[50px] text-fg/[0.055]',
                       )}>{String(row.rank).padStart(2, '0')}</span>
                     </span>
                     <span className="flex min-w-0 items-center gap-3.5">
                       <RowThumb row={row} throne={throne} />
                       <span className="min-w-0">
                         <span className="flex min-w-0 items-center gap-2">
-                          <span className={cn('truncate font-black leading-none tracking-[-0.02em] text-white', throne ? 'text-[18px]' : 'text-[16px]')}>{row.name}</span>
+                          <span className={cn('truncate font-black leading-none tracking-[-0.02em] text-fg', throne ? 'text-[18px]' : 'text-[16px]')}>{row.name}</span>
                           <MoveChip move={row.rankMove} />
                         </span>
                         <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-white/34">{row.caption}</span>
-                          <span className="text-white/16">·</span>
+                          <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{row.caption}</span>
+                          <span className="text-fg/16">·</span>
                           <RowVerdict row={row} />
                         </span>
                       </span>
                     </span>
                     <span className="min-w-0">
-                      <span className={cn('fm-depth-title block font-black tabular-nums leading-none text-white', throne ? 'text-[36px]' : 'text-[28px]')}>
+                      <span className={cn('fm-depth-title block font-black tabular-nums leading-none text-fg', throne ? 'text-[36px]' : 'text-[28px]')}>
                         <SlotText value={percentLabel(row.typical)} />
-                        {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-bright)]">%</i>}
+                        {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
                       </span>
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-white/24">median · {row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
+                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">median · {row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
                     </span>
                     <span className="min-w-0">
                       <span className={cn(
                         'fm-depth-title flex items-baseline gap-1 font-black tabular-nums leading-none',
                         throne ? 'text-[28px]' : 'text-[24px]',
-                        row.typicalShift == null ? 'text-white/30' : row.typicalShift > 0 ? 'text-[var(--fm-accent-bright)]' : row.typicalShift < 0 ? 'text-white/44' : 'text-white/60',
+                        row.typicalShift == null ? 'text-fg/30' : row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : row.typicalShift < 0 ? 'text-fg/44' : 'text-fg/60',
                       )}>
                         {row.typicalShift != null && row.typicalShift !== 0 ? <i className="not-italic text-[0.45em]">{row.typicalShift > 0 ? '▲' : '▼'}</i> : null}
                         <SlotText value={row.typicalShift == null ? '—' : String(Math.abs(row.typicalShift))} />
                       </span>
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-white/24">
+                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">
                         {row.typicalShift == null ? 'no prior window' : row.typicalShift === 0 ? `level · prev ${days}D` : `places ${row.typicalShift > 0 ? 'stronger' : 'softer'} · prev ${days}D`}
                       </span>
                     </span>
                     <span className="min-w-0">
-                      <SlotText value={formatMultiple(row.peak)} className="block text-[21px] font-black tabular-nums leading-none text-[var(--fm-accent-bright)]" />
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-white/24">vs its usual</span>
+                      <SlotText value={formatMultiple(row.peak)} className="block text-[21px] font-black tabular-nums leading-none text-[var(--fm-accent-text)]" />
+                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">vs its usual</span>
                     </span>
                     <span className="min-w-0">
-                      <SlotText value={lastPostedLabel(row.lastPostedAt)} className="block text-[15px] font-black tabular-nums leading-none text-white/60" />
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-white/24">{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
+                      <SlotText value={lastPostedLabel(row.lastPostedAt)} className="block text-[15px] font-black tabular-nums leading-none text-fg/60" />
+                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
                     </span>
-                    <span className="grid h-7 w-7 place-items-center rounded-full border border-white/10 bg-black/20">
-                      <ChevronDown className={cn('h-4 w-4 text-white/36 transition-transform duration-300', selected && 'rotate-180 text-white')} />
+                    <span className="grid h-7 w-7 place-items-center rounded-full border border-fg/10 bg-(--ld-chip-well)">
+                      <ChevronDown className={cn('h-4 w-4 text-fg/36 transition-transform duration-300', selected && 'rotate-180 text-fg')} />
                     </span>
                   </div>
                 </button>
@@ -1342,15 +1343,15 @@ function GrowthWindows({ windows, days, dealId }: { windows: GrowthWindow[]; day
     Math.abs(window.delta ?? 0) >= Math.abs(windows[bestIndex]?.delta ?? 0) ? index : bestIndex
   ), 0);
   return (
-    <section aria-labelledby="lead-v3-windows-title" className="relative isolate overflow-hidden border-t border-white/[0.09] bg-[#070707] p-5 sm:p-6 lg:p-7">
+    <section aria-labelledby="lead-v3-windows-title" className="relative isolate overflow-hidden border-t border-fg/[0.09] bg-(--ld-panel) p-5 sm:p-6 lg:p-7">
       <div className="flex items-end justify-between gap-6">
         <div>
-          <div className="flex items-center gap-2 text-white/44"><Users className="h-4 w-4" /><span className="text-[8px] font-black uppercase tracking-[0.22em]">Follower windows</span></div>
-          <h2 id="lead-v3-windows-title" className="mt-2 text-[22px] font-black leading-none tracking-[-0.035em] text-white sm:text-[26px]">What landed, when.</h2>
+          <div className="flex items-center gap-2 text-fg/44"><Users className="h-4 w-4" /><span className="text-[8px] font-black uppercase tracking-[0.22em]">Follower windows</span></div>
+          <h2 id="lead-v3-windows-title" className="mt-2 text-[22px] font-black leading-none tracking-[-0.035em] text-fg sm:text-[26px]">What landed, when.</h2>
         </div>
         <div className="text-right">
-          <SlotText value={hasDelta ? signedNumber(total) : '—'} className="fm-depth-title text-[38px] font-black tabular-nums leading-[0.78] tracking-[-0.045em] text-white sm:text-[50px]" />
-          <div className="mt-2 text-[8px] font-black uppercase tracking-[0.18em] text-white/28">{days}D net new</div>
+          <SlotText value={hasDelta ? signedNumber(total) : '—'} className="fm-depth-title text-[38px] font-black tabular-nums leading-[0.78] tracking-[-0.045em] text-fg sm:text-[50px]" />
+          <div className="mt-2 text-[8px] font-black uppercase tracking-[0.18em] text-fg/28 light:text-fg/44">{days}D net new</div>
         </div>
       </div>
 
@@ -1360,17 +1361,17 @@ function GrowthWindows({ windows, days, dealId }: { windows: GrowthWindow[]; day
           initial={reduce ? false : { scaleX: 0, opacity: 0 }}
           animate={{ scaleX: 1, opacity: 1 }}
           transition={reduce ? { duration: 0 } : { duration: 0.8, ease: SOFT_EASE }}
-          className="pointer-events-none absolute left-5 right-5 top-[51px] h-px origin-left bg-white/[0.13]"
+          className="pointer-events-none absolute left-5 right-5 top-[51px] h-px origin-left bg-fg/[0.13]"
         />
         <motion.div key={dealId} variants={BEAT_CONTAINER} initial={reduce ? false : 'hidden'} animate="visible" className="grid min-w-max auto-cols-[210px] grid-flow-col lg:min-w-0 lg:auto-cols-fr">
           {windows.map((window, index) => {
             const highlighted = index === highlightIndex;
             return (
               <motion.article key={window.id} variants={BEAT_ITEM} className="relative min-h-[168px] snap-start px-5 first:pl-1 last:pr-1">
-                <div className="text-[8px] font-black uppercase tracking-[0.17em] text-white/34">{window.range}</div>
-                <span className={cn('absolute top-[47px] h-[9px] w-[9px] rounded-full border-2 border-[#070707]', highlighted ? 'bg-[var(--fm-accent)] shadow-[0_0_18px_rgb(var(--fm-accent-rgb)/.78)]' : 'bg-white/36')} />
-                <SlotText value={signedNumber(window.delta)} className={cn('fm-depth-title mt-10 block text-[28px] font-black tabular-nums leading-none tracking-[-0.035em]', highlighted ? 'text-[var(--fm-accent-bright)]' : 'text-white')} />
-                <div className="mt-2 text-[7px] font-black uppercase tracking-[0.15em] text-white/24">Window {window.index} · {window.postCount} posts</div>
+                <div className="text-[8px] font-black uppercase tracking-[0.17em] text-fg/34">{window.range}</div>
+                <span className={cn('absolute top-[47px] h-[9px] w-[9px] rounded-full border-2 border-(--ld-panel)', highlighted ? 'bg-[var(--fm-accent)] shadow-(--ld-glow-node)' : 'bg-fg/36')} />
+                <SlotText value={signedNumber(window.delta)} className={cn('fm-depth-title mt-10 block text-[28px] font-black tabular-nums leading-none tracking-[-0.035em]', highlighted ? 'text-[var(--fm-accent-text)]' : 'text-fg')} />
+                <div className="mt-2 text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">Window {window.index} · {window.postCount} posts</div>
                 <div className="mt-4 flex -space-x-3">
                   {window.posts.map((post) => (
                     <a
@@ -1381,7 +1382,7 @@ function GrowthWindows({ windows, days, dealId }: { windows: GrowthWindow[]; day
                       onClick={(event) => {
                         if (!post.postUrl) event.preventDefault();
                       }}
-                      className="h-14 shrink-0 aspect-[4/5] overflow-hidden rounded-[14px] border-2 border-[#070707] bg-white/[0.04] shadow-[0_12px_26px_-12px_rgba(0,0,0,.9)] transition-transform hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+                      className="h-14 shrink-0 aspect-[4/5] overflow-hidden rounded-[14px] border-2 border-(--ld-panel) bg-fg/[0.04] shadow-(--ld-shadow-landing) transition-transform hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
                       aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
                     >
                       {post.thumbnailUrl ? (
@@ -1390,7 +1391,7 @@ function GrowthWindows({ windows, days, dealId }: { windows: GrowthWindow[]; day
                       ) : null}
                     </a>
                   ))}
-                  {!window.posts.length ? <span className="pt-2 text-[8px] font-black uppercase tracking-[0.14em] text-white/18">No landings</span> : null}
+                  {!window.posts.length ? <span className="pt-2 text-[8px] font-black uppercase tracking-[0.14em] text-fg/18 light:text-fg/40">No landings</span> : null}
                 </div>
               </motion.article>
             );
@@ -1464,9 +1465,9 @@ function FeederboardCards({
   if (!posts.length) return null;
 
   return (
-    <section aria-label="Feederboard views" className="relative isolate overflow-hidden bg-[#070707] px-4 pb-5 pt-3 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
+    <section aria-label="Feederboard views" className="relative isolate overflow-hidden bg-(--ld-panel) px-4 pb-5 pt-3 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
       <div className="flex justify-end">
-        <div className="grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-white/[0.07] bg-black/38 shadow-[inset_0_2px_10px_rgba(0,0,0,.38)] sm:min-w-[272px]">
+        <div className="grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[272px]">
           {FEEDERBOARD_VIEWS.map((option) => (
             <button
               key={option.id}
@@ -1479,7 +1480,7 @@ function FeederboardCards({
                 'relative grid h-full place-items-center rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors sm:text-[11px]',
                 view === option.id
                   ? 'text-white'
-                  : 'text-white/36 hover:text-white/72',
+                  : 'text-fg/36 hover:text-fg/72',
               )}
             >
               {view === option.id ? <motion.span layoutId="lead-v3-feederboard-pill" className="pointer-events-none absolute inset-[3px] rounded-[8px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)]" transition={reduce ? REDUCED_RAIL_TRANSITION : HOF_PILL_SPRING} /> : null}
@@ -1506,7 +1507,7 @@ function FeederboardCards({
                 animate={{ opacity: 1, y: 0 }}
                 transition={reduce ? REDUCED_RAIL_TRANSITION : { duration: 0.24, delay: Math.min(index * 0.024, 0.12), ease: SOFT_EASE }}
                 data-testid={`lead-v3-feederboard-fact-${fact.kind}`}
-                className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-black shadow-[0_22px_44px_-26px_rgba(0,0,0,.95)] sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
+                className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
               >
                 {fact.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
@@ -1534,7 +1535,7 @@ function FeederboardCards({
                   onClick={(event) => { if (!post.postUrl) event.preventDefault(); }}
                   data-testid={`lead-v3-feederboard-record-${index + 1}`}
                   aria-label={post.postUrl ? `Open tracked post ranked ${index + 1} by ${display.label}` : `Tracked post ranked ${index + 1} by ${display.label}`}
-                  className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-black shadow-[0_22px_44px_-26px_rgba(0,0,0,.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
+                  className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
                 >
                   {post.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
@@ -1544,14 +1545,14 @@ function FeederboardCards({
                   <span className="absolute left-2.5 top-2.5 grid h-7 min-w-7 place-items-center rounded-md bg-black/62 px-1.5 text-[11px] font-black tabular-nums text-white/88 backdrop-blur-sm">{index + 1}</span>
                   <span className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/72 backdrop-blur-sm">{activeFeedId === 'all' ? post.feedName : (post.latestCheckpoint || 'latest').toUpperCase()}</span>
                   <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
-                    <div className="fm-depth-title text-[28px] font-black tabular-nums leading-[0.9] tracking-[-0.04em] text-white sm:text-[30px]">{display.value}</div>
+                    <div className="fm-depth-title ld-on-media text-[28px] font-black tabular-nums leading-[0.9] tracking-[-0.04em] text-white sm:text-[30px]">{display.value}</div>
                     <div className="mt-2 text-[10px] font-black text-white/78">@{normalizeHandle(post.handle) || post.feedName.toLowerCase()}</div>
                     <div className="mt-1 text-[10px] leading-[1.3] text-white/54 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{display.label} · {(post.latestCheckpoint || 'latest').toUpperCase()} read</div>
                   </div>
                 </motion.a>
               );
             })}
-            {!cards.length ? <div className="flex h-[300px] w-full items-center justify-center text-center text-[10px] font-black uppercase tracking-[0.16em] text-white/28">{view === 'feats' ? 'No contextual facts in this scope' : 'No tracked posts in this scope'}</div> : null}
+            {!cards.length ? <div className="flex h-[300px] w-full items-center justify-center text-center text-[10px] font-black uppercase tracking-[0.16em] text-fg/28 light:text-fg/44">{view === 'feats' ? 'No contextual facts in this scope' : 'No tracked posts in this scope'}</div> : null}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -1572,7 +1573,7 @@ function ClimbChip({ post }: { post: TrackedPost }) {
   if (trajectory == null || Math.abs(trajectory) < 3 || post.firstPercentile == null) return null;
   const up = trajectory > 0;
   return (
-    <span className={cn('inline-flex shrink-0 items-center gap-1 text-[8px] font-black tabular-nums tracking-[0.08em]', up ? 'text-[var(--fm-accent-bright)]' : 'text-white/36')}>
+    <span className={cn('inline-flex shrink-0 items-center gap-1 text-[8px] font-black tabular-nums tracking-[0.08em]', up ? 'text-[var(--fm-accent-text)]' : 'text-fg/36')}>
       <span className="text-[7px]">{up ? '▲' : '▼'}</span>
       {percentLabel(post.firstPercentile)}%→{percentLabel(post.latestPercentile)}%
     </span>
@@ -1595,8 +1596,8 @@ function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse:
       transition={reduce ? { duration: 0 } : { duration: BEAT_ARRIVE_S, ease: SOFT_EASE }}
       className="overflow-hidden"
     >
-      <div onClick={onCollapse} className="relative cursor-pointer border-t border-white/[0.1] bg-[#0a0a0a] p-4 sm:p-6">
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-[0_0_34px_rgb(var(--fm-accent-rgb)/.48)]" />
+      <div onClick={onCollapse} className="relative cursor-pointer border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-bar)" />
         <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-7">
           <a
             href={post.postUrl || '#'}
@@ -1607,7 +1608,7 @@ function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse:
               if (!post.postUrl) event.preventDefault();
             }}
             aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
-            className="relative mx-auto block aspect-[4/5] w-[62%] max-w-[200px] overflow-hidden rounded-[20px] border border-white/12 bg-black shadow-[0_26px_50px_-28px_rgba(0,0,0,.95)] sm:mx-0 sm:w-full"
+            className="relative mx-auto block aspect-[4/5] w-[62%] max-w-[200px] overflow-hidden rounded-[20px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-poster) sm:mx-0 sm:w-full"
           >
             {post.thumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
@@ -1617,10 +1618,10 @@ function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse:
             <span className="absolute bottom-3 left-3 text-[12px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
           </a>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-fg/30 light:text-fg/44">
               <span>{post.mediaType} · {postDateLabel(post)}</span>
               {post.firstCheckpoint && post.firstPercentile != null ? (
-                <span className="text-white/44">
+                <span className="text-fg/44">
                   {post.firstCheckpoint} top {percentLabel(post.firstPercentile)}% → {(post.latestCheckpoint || '').toUpperCase()} top {percentLabel(post.latestPercentile)}%
                 </span>
               ) : (
@@ -1630,9 +1631,9 @@ function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse:
             <dl className="mt-4 grid grid-cols-3 gap-4">
               {metrics.map((metric) => (
                 <div key={metric.label} className="min-w-0">
-                  <dt className="truncate text-[8px] font-black uppercase tracking-[0.18em] text-white/30">{metric.label}</dt>
-                  <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-white sm:text-[26px]"><SlotText value={metric.value} /></dd>
-                  <div className="mt-2 text-[8px] font-black tabular-nums text-white/34">{metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`}</div>
+                  <dt className="truncate text-[8px] font-black uppercase tracking-[0.18em] text-fg/30 light:text-fg/44">{metric.label}</dt>
+                  <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
+                  <div className="mt-2 text-[8px] font-black tabular-nums text-fg/34">{metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`}</div>
                 </div>
               ))}
             </dl>
@@ -1648,13 +1649,13 @@ function FeederboardPostRows({ posts, days, selectedKey, onSelect }: { posts: Tr
   const ranked = [...posts].sort(bestFirst).slice(0, 10);
 
   return (
-    <section aria-labelledby="lead-v3-postladder-title" className="min-w-0 max-w-full overflow-hidden bg-[#070707]">
-      <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] px-4 py-4 sm:px-5">
+    <section aria-labelledby="lead-v3-postladder-title" className="min-w-0 max-w-full overflow-hidden bg-(--ld-panel)">
+      <div className="flex items-center justify-between gap-4 border-b border-fg/[0.08] px-4 py-4 sm:px-5">
         <div>
-          <h2 id="lead-v3-postladder-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-bright)]">Feederboard · posts</h2>
-          <p className="mt-1 text-[9px] font-bold text-white/28">This account&apos;s posts compete · tap a row for the receipts</p>
+          <h2 id="lead-v3-postladder-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feederboard · posts</h2>
+          <p className="mt-1 text-[9px] font-bold text-fg/28 light:text-fg/44">This account&apos;s posts compete · tap a row for the receipts</p>
         </div>
-        <div className="shrink-0 text-right text-[8px] font-black uppercase tracking-[0.16em] text-white/24">{days}D · lower is stronger</div>
+        <div className="shrink-0 text-right text-[8px] font-black uppercase tracking-[0.16em] text-fg/24 light:text-fg/40">{days}D · lower is stronger</div>
       </div>
 
       <LayoutGroup id="lead-v3-postladder">
@@ -1675,7 +1676,7 @@ function FeederboardPostRows({ posts, days, selectedKey, onSelect }: { posts: Tr
                 transition={reduce
                   ? { layout: LADDER_SPRING, duration: 0.12 }
                   : { layout: LADDER_SPRING, ...beatArrive(rank) }}
-                className="border-b border-white/[0.07] last:border-b-0"
+                className="border-b border-fg/[0.07] last:border-b-0"
               >
                 <button
                   type="button"
@@ -1685,11 +1686,11 @@ function FeederboardPostRows({ posts, days, selectedKey, onSelect }: { posts: Tr
                   className={cn(
                     'relative isolate block w-full overflow-hidden text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]',
                     throne
-                      ? 'bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/.14),transparent_44%),linear-gradient(90deg,rgba(255,255,255,.035),rgba(255,255,255,.01))]'
-                      : selected ? 'bg-white/[0.03]' : 'hover:bg-white/[0.022]',
+                      ? 'bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%),linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.035),rgb(var(--fm-fg-rgb)/.01))]'
+                      : selected ? 'bg-fg/[0.03]' : 'hover:bg-fg/[0.022]',
                   )}
                 >
-                  {throne ? <span className="absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-[0_0_26px_rgb(var(--fm-accent-rgb)/.46)]" /> : null}
+                  {throne ? <span className="absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" /> : null}
                   <div className={cn(
                     'relative z-10 grid items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4',
                     throne
@@ -1699,33 +1700,33 @@ function FeederboardPostRows({ posts, days, selectedKey, onSelect }: { posts: Tr
                     <span className="relative h-full">
                       <span className={cn(
                         'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]',
-                        throne ? 'text-[54px] text-[var(--fm-accent)]/[0.16]' : 'text-[44px] text-white/[0.055]',
+                        throne ? 'text-[54px] text-[var(--fm-accent)]/[0.16]' : 'text-[44px] text-fg/[0.055]',
                       )}>{String(rank).padStart(2, '0')}</span>
                     </span>
                     <span className={cn(
-                      'relative block shrink-0 overflow-hidden rounded-[14px] border border-white/12 bg-[#101010] shadow-[0_14px_28px_-16px_rgba(0,0,0,.9)]',
+                      'relative block shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)',
                       throne ? 'h-[72px] w-[58px] rounded-[16px] sm:h-[84px] sm:w-[67px]' : 'h-[56px] w-[45px]',
                     )}>
                       <CrossfadeImage src={post.thumbnailUrl} />
                     </span>
                     <span className="min-w-0">
-                      <span className={cn('block truncate font-black capitalize leading-none tracking-[-0.02em] text-white', throne ? 'text-[17px]' : 'text-[15px]')}>{post.mediaType} · {postDateLabel(post)}</span>
+                      <span className={cn('block truncate font-black capitalize leading-none tracking-[-0.02em] text-fg', throne ? 'text-[17px]' : 'text-[15px]')}>{post.mediaType} · {postDateLabel(post)}</span>
                       <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-white/34">{(post.latestCheckpoint || '').toUpperCase()} read</span>
-                        <span className="text-white/16">·</span>
+                        <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{(post.latestCheckpoint || '').toUpperCase()} read</span>
+                        <span className="text-fg/16">·</span>
                         <ClimbChip post={post} />
                       </span>
                     </span>
                     <span className="flex items-center gap-2 text-right">
                       <span className="min-w-0">
-                        <span className="block text-[7px] font-black uppercase tracking-[0.15em] text-white/26">Placed</span>
-                        <span className={cn('fm-depth-title mt-1 block font-black tabular-nums leading-none text-white', throne ? 'text-[32px]' : 'text-[24px]')}>
+                        <span className="block text-[7px] font-black uppercase tracking-[0.15em] text-fg/26 light:text-fg/44">Placed</span>
+                        <span className={cn('fm-depth-title mt-1 block font-black tabular-nums leading-none text-fg', throne ? 'text-[32px]' : 'text-[24px]')}>
                           <SlotText value={percentLabel(post.latestPercentile)} />
-                          {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-bright)]">%</i>}
+                          {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
                         </span>
-                        <span className="mt-1 block text-[9px] font-black tabular-nums text-[var(--fm-accent-bright)]/80"><SlotText value={formatMultiple(post.rankingMultiple)} /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-white/22">usual</i></span>
+                        <span className="mt-1 block text-[9px] font-black tabular-nums text-[var(--fm-accent-text)]/80"><SlotText value={formatMultiple(post.rankingMultiple)} /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-fg/22 light:text-fg/40">usual</i></span>
                       </span>
-                      <ChevronDown className={cn('h-4 w-4 shrink-0 text-white/36 transition-transform duration-300', selected && 'rotate-180 text-white')} />
+                      <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-300', selected && 'rotate-180 text-fg')} />
                     </span>
                   </div>
                 </button>
@@ -1736,7 +1737,7 @@ function FeederboardPostRows({ posts, days, selectedKey, onSelect }: { posts: Tr
             );
           })}
           {!ranked.length ? (
-            <div className="flex h-[140px] items-center justify-center text-[9px] font-black uppercase tracking-[0.18em] text-white/26">No tracked posts in this window</div>
+            <div className="flex h-[140px] items-center justify-center text-[9px] font-black uppercase tracking-[0.18em] text-fg/26 light:text-fg/44">No tracked posts in this window</div>
           ) : null}
         </div>
       </LayoutGroup>
@@ -1850,17 +1851,17 @@ function PostCardStack({ cards, activeIndex, onAdvance }: { cards: StackCard[]; 
   }, [reduce, signature, state.exitKey, state.exits.length, state.signature]);
 
   if (!count) {
-    return <div className="flex h-[320px] items-center justify-center rounded-[28px] border border-dashed border-white/10 text-[9px] font-black uppercase tracking-[0.18em] text-white/24">No tracked posts in this window</div>;
+    return <div className="flex h-[320px] items-center justify-center rounded-[28px] border border-dashed border-fg/10 text-[9px] font-black uppercase tracking-[0.18em] text-fg/24 light:text-fg/40">No tracked posts in this window</div>;
   }
 
   return (
     <div className="relative min-w-0">
       <div className="pointer-events-none absolute inset-x-3 top-3 z-[70] flex items-center justify-between gap-3 sm:static sm:pointer-events-auto sm:mb-3 sm:px-0">
         <div>
-          <div className="hidden text-[9px] font-black uppercase tracking-[0.2em] text-white/30 sm:block">Latest drops</div>
-          <div className="text-[11px] font-black leading-none text-white/76 sm:mt-1 sm:text-[13px]">Tap to move the stack</div>
+          <div className="hidden text-[9px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44 sm:block">Latest drops</div>
+          <div className="text-[11px] font-black leading-none text-white/76 sm:mt-1 sm:text-[13px] sm:text-fg/76">Tap to move the stack</div>
         </div>
-        <motion.span key={activeCardIndex} initial={reduce ? false : { y: 6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: reduce ? 0.15 : 0.22, ease: SOFT_EASE }} className="rounded-full border border-white/10 bg-black/42 px-2.5 py-1 text-[9px] font-black tracking-[0.13em] text-white/66 backdrop-blur-sm sm:bg-white/[0.05] sm:text-white/44">{activeCardIndex + 1}/{count}</motion.span>
+        <motion.span key={activeCardIndex} initial={reduce ? false : { y: 6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: reduce ? 0.15 : 0.22, ease: SOFT_EASE }} className="rounded-full border border-white/10 bg-black/42 px-2.5 py-1 text-[9px] font-black tracking-[0.13em] text-white/66 backdrop-blur-sm sm:border-fg/10 sm:bg-fg/[0.05] sm:text-fg/44">{activeCardIndex + 1}/{count}</motion.span>
       </div>
 
       <motion.button
@@ -1872,7 +1873,7 @@ function PostCardStack({ cards, activeIndex, onAdvance }: { cards: StackCard[]; 
         aria-label="Advance the post mortem stack"
         data-testid="lead-v3-postmortem-stack"
       >
-        <motion.span aria-hidden="true" className="absolute bottom-4 left-[5%] h-14 w-[82%] rounded-full bg-black/62 blur-2xl" animate={reduce ? undefined : { opacity: [0.2, 0.34, 0.2], scaleX: [0.92, 1, 0.92] }} transition={{ duration: 1.6, repeat: Infinity, ease: SOFT_EASE }} />
+        <motion.span aria-hidden="true" className="absolute bottom-4 left-[5%] h-14 w-[82%] rounded-full bg-(--ld-floor) blur-2xl" animate={reduce ? undefined : { opacity: [0.2, 0.34, 0.2], scaleX: [0.92, 1, 0.92] }} transition={{ duration: 1.6, repeat: Infinity, ease: SOFT_EASE }} />
         {visibleCards.map((card, index) => {
           const order = (index - activeCardIndex + count) % count;
           const isFront = order === 0;
@@ -1897,7 +1898,7 @@ function PostCardStack({ cards, activeIndex, onAdvance }: { cards: StackCard[]; 
             <motion.div
               key={card.id}
               data-stack-order={order}
-              className={cn('absolute bottom-1.5 left-0 top-1.5 aspect-[4/5] origin-center overflow-hidden rounded-[28px] border bg-[#0b0b0b] shadow-[0_34px_78px_-36px_rgba(0,0,0,.98)]', coveredByExit ? 'border-transparent' : 'border-white/12')}
+              className={cn('absolute bottom-1.5 left-0 top-1.5 aspect-[4/5] origin-center overflow-hidden rounded-[28px] border bg-[#0b0b0b] shadow-(--ld-shadow-stack)', coveredByExit ? 'border-transparent' : 'border-white/12')}
               initial={false}
               animate={{ x: pose.x, y: pose.y, scale: pose.scale, opacity: coveredByExit ? 0 : pose.opacity, zIndex: pose.zIndex }}
               transition={transition}
@@ -1984,7 +1985,7 @@ function PostMortemStatement({ value, reduce }: { value: string; reduce: boolean
   return (
     <div className="relative mt-3 h-[116px] max-w-full sm:h-[120px] lg:h-[192px]">
       <style>{POST_MORTEM_SLOT_CSS}</style>
-      <h2 id="lead-v3-postmortem-title" aria-label={slotText.current} className={cn('fm-depth-title absolute inset-0 font-black leading-[0.96] tracking-[-0.055em] text-white', postMortemHeadlineSize(slotText.current))}>
+      <h2 id="lead-v3-postmortem-title" aria-label={slotText.current} className={cn('fm-depth-title absolute inset-0 font-black leading-[0.96] tracking-[-0.055em] text-fg', postMortemHeadlineSize(slotText.current))}>
         {reduce ? <motion.span key={slotText.current} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>{slotText.current}</motion.span> : <>
           {changing ? <PostMortemSentenceLayer value={slotText.previous} revision={slotText.revision} leaving /> : null}
           <PostMortemSentenceLayer value={slotText.current} revision={slotText.revision} leaving={false} />
@@ -2003,35 +2004,35 @@ function PostMortem({ cards, deck, stats, days }: { cards: StackCard[]; deck: Po
   const scope = active?.handle ? `@${normalizeHandle(active.handle)}` : active?.feedName || 'FEED';
   const advance = () => setActiveIndex((current) => deck.length ? (current + 1) % deck.length : 0);
   const callToAction = (
-    <Link href="/fire" data-testid="lead-v3-postmortem-link" className="group inline-flex items-center gap-2.5 rounded-full border border-white/12 bg-black/30 px-4 py-2.5 transition-colors hover:border-[var(--fm-accent)]/50 hover:text-white">
-      <Flame className="h-4 w-4 text-[var(--fm-accent-bright)]" />
-      <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/64 transition-colors group-hover:text-white">Open the wall · day by day</span>
-      <ChevronRight className="h-3.5 w-3.5 text-white/36 transition-transform group-hover:translate-x-0.5" />
+    <Link href="/fire" data-testid="lead-v3-postmortem-link" className="group inline-flex items-center gap-2.5 rounded-full border border-fg/12 bg-(--ld-cta-well) px-4 py-2.5 transition-colors hover:border-[var(--fm-accent)]/50 hover:text-fg">
+      <Flame className="h-4 w-4 text-[var(--fm-accent-text)]" />
+      <span className="text-[9px] font-black uppercase tracking-[0.15em] text-fg/64 transition-colors group-hover:text-fg">Open the wall · day by day</span>
+      <ChevronRight className="h-3.5 w-3.5 text-fg/36 transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
   return (
-    <section aria-labelledby="lead-v3-postmortem-title" className="relative isolate min-h-[500px] overflow-hidden border-t border-white/[0.09] bg-[#060606] p-5 sm:p-7 lg:p-9">
+    <section aria-labelledby="lead-v3-postmortem-title" className="relative isolate min-h-[500px] overflow-hidden border-t border-fg/[0.09] bg-(--ld-deep) p-5 sm:p-7 lg:p-9">
       <span className="pointer-events-none absolute inset-0 scale-105 opacity-[0.13]">
         <CrossfadeImage src={cards[activeCardIndex]?.thumbnailUrl || null} />
       </span>
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,#060606_0%,rgba(6,6,6,.97)_34%,rgba(6,6,6,.74)_68%,rgba(6,6,6,.9))]" />
-      <div className="pointer-events-none absolute -bottom-10 left-2 select-none text-[180px] font-black leading-none tracking-[-0.08em] text-white/[0.025] sm:text-[260px]">PM</div>
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgb(var(--ld-deep-rgb))_0%,rgb(var(--ld-deep-rgb)/.97)_34%,rgb(var(--ld-deep-rgb)/.74)_68%,rgb(var(--ld-deep-rgb)/.9))]" />
+      <div className="pointer-events-none absolute -bottom-10 left-2 select-none text-[180px] font-black leading-none tracking-[-0.08em] text-fg/[0.025] sm:text-[260px]">PM</div>
 
       <div className="relative grid gap-3 lg:grid-cols-[minmax(480px,46fr)_minmax(0,54fr)] lg:items-center lg:gap-[clamp(56px,5vw,80px)]">
         <div className="relative min-w-0">
-          <div className="text-[9px] font-black uppercase tracking-[0.22em] text-white/48">Post Mortem · {scope} · {days}D</div>
+          <div className="text-[9px] font-black uppercase tracking-[0.22em] text-fg/48">Post Mortem · {scope} · {days}D</div>
           {active ? (
             <>
-              <motion.span key={active.tag} initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0.15 : 0.16, ease: SOFT_EASE }} className="mt-3 inline-flex rounded-full border border-[var(--fm-accent-bright)]/32 bg-[var(--fm-accent)]/16 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.15em] text-[var(--fm-accent-bright)]">{active.tag}</motion.span>
+              <motion.span key={active.tag} initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0.15 : 0.16, ease: SOFT_EASE }} className="mt-3 inline-flex rounded-full border border-[var(--fm-accent-text)]/32 bg-[var(--fm-accent)]/16 light:bg-[var(--fm-accent)]/[0.08] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.15em] text-[var(--fm-accent-text)]">{active.tag}</motion.span>
               <PostMortemStatement value={active.statement} reduce={reduce} />
-              {active.proof ? <motion.p key={active.proof} initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0.15 : 0.18, delay: reduce ? 0 : 0.16, ease: SOFT_EASE }} className="max-w-[32rem] text-[13px] font-black leading-[1.25] text-white/58">{active.proof}</motion.p> : null}
+              {active.proof ? <motion.p key={active.proof} initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0.15 : 0.18, delay: reduce ? 0 : 0.16, ease: SOFT_EASE }} className="max-w-[32rem] text-[13px] font-black leading-[1.25] text-fg/58">{active.proof}</motion.p> : null}
             </>
-          ) : <p className="mt-5 text-[14px] font-black text-white/52">No proven trigger in this window.</p>}
+          ) : <p className="mt-5 text-[14px] font-black text-fg/52">No proven trigger in this window.</p>}
 
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.09] pt-3 text-[9px] font-black uppercase tracking-[0.14em] text-white/32 lg:mt-7 lg:pt-4">
-            <span><b className="mr-1 text-[15px] text-white">{compactNumber(totalPosts)}</b> posts</span>
-            <span><b className="mr-1 text-[15px] text-white">{best == null ? '—' : `${percentLabel(best)}%`}</b> best</span>
-            <span><b className="mr-1 text-[15px] text-white">{formatMultiple(peak)}</b> peak</span>
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-fg/[0.09] pt-3 text-[9px] font-black uppercase tracking-[0.14em] text-fg/32 lg:mt-7 lg:pt-4">
+            <span><b className="mr-1 text-[15px] text-fg">{compactNumber(totalPosts)}</b> posts</span>
+            <span><b className="mr-1 text-[15px] text-fg">{best == null ? '—' : `${percentLabel(best)}%`}</b> best</span>
+            <span><b className="mr-1 text-[15px] text-fg">{formatMultiple(peak)}</b> peak</span>
             <span>{days}D</span>
           </div>
 
@@ -2053,7 +2054,7 @@ function LoadingState() {
     <div className="flex min-h-[55vh] items-center justify-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
         <motion.span className="mx-auto block h-2 w-2 rounded-full bg-[var(--fm-accent)]" animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1, 0.8] }} transition={{ duration: 1.4, repeat: Infinity }} />
-        <div className="mt-4 text-[9px] font-black uppercase tracking-[0.22em] text-white/30">Building the board</div>
+        <div className="mt-4 text-[9px] font-black uppercase tracking-[0.22em] text-fg/30 light:text-fg/44">Building the board</div>
       </motion.div>
     </div>
   );
@@ -2289,8 +2290,8 @@ export default function LeadBoardPage() {
       ref={pageScrollRef}
       data-testid="lead-v3-page"
       className={cn(
-        'fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(76px+env(safe-area-inset-top))] text-white',
-        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-[#030303]',
+        'fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(76px+env(safe-area-inset-top))] text-fg',
+        useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-(--fm-page)',
         useBrowserPageScroll
           ? 'min-h-[100lvh] overflow-x-hidden overflow-y-visible'
           : 'h-[var(--fm-app-height,100dvh)] overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]',
@@ -2321,9 +2322,9 @@ export default function LeadBoardPage() {
         {loading && !feeds.length ? <LoadingState /> : error ? (
           <div className="flex min-h-[55vh] items-center justify-center px-6 text-center">
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-white/58">Board unavailable</div>
-              <p className="mt-3 text-[12px] font-bold text-white/32">{error}</p>
-              <Link href="/" className="mt-6 inline-flex rounded-full border border-white/12 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-white/52 hover:text-white">Return to Feed</Link>
+              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-fg/58">Board unavailable</div>
+              <p className="mt-3 text-[12px] font-bold text-fg/32">{error}</p>
+              <Link href="/" className="mt-6 inline-flex rounded-full border border-fg/12 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-fg/52 hover:text-fg">Return to Feed</Link>
             </div>
           </div>
         ) : rows.length ? (
@@ -2331,11 +2332,11 @@ export default function LeadBoardPage() {
             <LeadTape events={tapeEvents} dealId={dealId} />
 
             <section aria-labelledby="lead-v3-leaders-title" className="min-w-0 max-w-full">
-              <h2 id="lead-v3-leaders-title" className="mb-3 flex items-center gap-2 px-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/76"><span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-[0_0_14px_rgb(var(--fm-accent-rgb)/.8)]" />Today&apos;s leaders</h2>
+              <h2 id="lead-v3-leaders-title" className="mb-3 flex items-center gap-2 px-1 text-[10px] font-black uppercase tracking-[0.18em] text-fg/76"><span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-(--ld-glow-dot)" />Today&apos;s leaders</h2>
               <LeadersStrip cards={leaderCards} />
             </section>
 
-            <div className="relative mt-4 min-w-0 max-w-full overflow-hidden rounded-[28px] border border-white/[0.09] bg-[#050505] shadow-[0_32px_80px_-46px_rgba(0,0,0,.98)]">
+            <div className="relative mt-4 min-w-0 max-w-full overflow-hidden rounded-[28px] border border-fg/[0.09] bg-(--ld-ground) shadow-(--ld-shadow-board)">
               <WireLine line={wireLine} dealId={dealId} />
               {/* Scope switches re-deal the ladder: the outgoing rows cascade
                   out top-down (each row's own staggered exit) while the new
@@ -2361,8 +2362,8 @@ export default function LeadBoardPage() {
         ) : (
           <div className="flex min-h-[55vh] items-center justify-center text-center">
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-white/58">No feeds to compare yet</div>
-              <p className="mt-3 text-[12px] font-bold text-white/30">Add feeders in Feed, then this board will fill itself.</p>
+              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-fg/58">No feeds to compare yet</div>
+              <p className="mt-3 text-[12px] font-bold text-fg/30 light:text-fg/44">Add feeders in Feed, then this board will fill itself.</p>
             </div>
           </div>
         )}

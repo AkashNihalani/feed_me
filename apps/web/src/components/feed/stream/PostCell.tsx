@@ -417,8 +417,8 @@ function PostCell({
         {winner && !card ? (
           <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 z-[4] shadow-[inset_0_0_0_1.5px_var(--fm-accent-bright)]', grid ? 'rounded-[6px]' : 'rounded-[28px]')} />
         ) : null}
-        {/* the wide Day view's column out of the spotlight: dimmed */}
-        {row ? <span aria-hidden="true" className="st-dim pointer-events-none absolute inset-0 z-[5] bg-black" /> : null}
+        {/* the wide Day view's column out of the spotlight: it recedes into the page (dimmed on dark, washed out on light) */}
+        {row ? <span aria-hidden="true" className="st-dim pointer-events-none absolute inset-0 z-[5] bg-black light:bg-[var(--st-bg)]" /> : null}
         {grid ? (
           <button
             type="button"

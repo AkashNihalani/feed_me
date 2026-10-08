@@ -15,7 +15,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { memo, type CSSProperties } from 'react';
-import { shade } from '@/components/read/readShade';
+import { UNRANKED_SHADE, shade } from '@/components/read/readShade';
 import { STREAM_CHECKPOINTS, formatTopPercent, type StreamCheckpoint, type StreamResult } from '@/lib/feedStream/contract';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
@@ -25,9 +25,6 @@ export type CheckpointTrailProps = {
   latest: StreamCheckpoint | null;
   size: 'sm' | 'md';
 };
-
-// a read that landed without a rank (rare): the run boxes' empty fill
-const UNRANKED = { c: 'rgb(29, 29, 35)', tx: 'rgba(255, 255, 255, 0.7)', gc: 'transparent', gi: '0.08' };
 
 function CheckpointTrail({ results, latest, size }: CheckpointTrailProps) {
   const md = size === 'md';
@@ -60,13 +57,13 @@ function CheckpointTrail({ results, latest, size }: CheckpointTrailProps) {
 
         const top = result.topPercent;
         const ranked = top != null && Number.isFinite(top);
-        const tone = ranked ? shade(top) : UNRANKED;
+        const tone = ranked ? shade(top) : UNRANKED_SHADE;
         const now = checkpoint === latest;
         const style: CSSProperties = {
           background: tone.c,
           color: tone.tx,
           boxShadow: [
-            now ? 'inset 0 0 0 1.5px rgba(255, 255, 255, 0.62)' : null,
+            now ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null,
             `inset 0 1px 0 rgba(255, 255, 255, ${tone.gi})`,
             md && tone.gc !== 'transparent' ? `0 0 18px ${tone.gc}` : null,
           ].filter(Boolean).join(', '),

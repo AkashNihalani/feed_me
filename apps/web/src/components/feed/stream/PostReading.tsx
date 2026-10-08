@@ -92,7 +92,7 @@ export function PostWho({ post, feeder, size, titleId }: { post: StreamPost; fee
   const meta = postMeta(post, feeder);
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <span className={cn('relative shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.16)]', stage ? 'h-11 w-11' : 'h-10 w-10')}>
+      <span className={cn('relative shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgb(var(--fm-fg-rgb)/0.16)]', stage ? 'h-11 w-11' : 'h-10 w-10')}>
         <FeederStoryAvatar feeder={feeder ?? { handle: post.handle, profilePicUrl: null }} className={stage ? 'text-[16px]' : 'text-[14px]'} />
       </span>
       <div className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ function PostReading({ post, feeder, size, withHeader = true, titleId }: PostRea
             className={cn(
               'mt-3 flex items-start font-black leading-[0.82] tracking-[-0.05em] tabular-nums',
               look.numeral,
-              winner ? 'text-[var(--fm-accent-bright)]' : 'text-[var(--st-text)]',
+              winner ? 'text-[var(--fm-accent-text)]' : 'text-[var(--st-text)]',
             )}
           >
             {value}
@@ -148,7 +148,7 @@ function PostReading({ post, feeder, size, withHeader = true, titleId }: PostRea
         <p className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 font-medium leading-snug text-[var(--st-text-2)]', look.note)}>
           {landed ? (
             <span className="inline-flex items-center gap-1.5 text-[var(--st-text)]">
-              {landed.today ? <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-[var(--fm-accent-bright)]" /> : null}
+              {landed.today ? <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-[var(--fm-accent-text)]" /> : null}
               {landed.text}
             </span>
           ) : null}

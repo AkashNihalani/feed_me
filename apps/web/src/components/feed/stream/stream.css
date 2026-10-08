@@ -26,26 +26,41 @@
   /* the bottom gradient over media: the colour, and its channels for the eased fall-off (.st-scrim) */
   --st-scrim: rgba(0, 0, 0, 0.88);
   --st-scrim-rgb: 0 0 0;
+  /* the profile card in the Day view: its surface, the rose glow over its face, and what sits raised inside it */
+  --st-card: var(--st-surface);
+  --st-card-glow: 0.16;
+  --st-card-inset: var(--st-surface-2);
+  /* what lifts off the page: the post sheet (phone / wide) and the manage panel (phone / wide) */
+  --st-sheet-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 -30px 80px -30px rgba(0, 0, 0, 0.9);
+  --st-sheet-shadow-lg: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 40px 120px -30px rgba(0, 0, 0, 0.95);
+  --st-panel-shadow: 0 -24px 64px -32px rgba(0, 0, 0, 0.9);
+  --st-panel-shadow-lg: 0 32px 80px -28px rgba(0, 0, 0, 0.9);
   /* how far a row's content sits in from its box (day headers, the scope bar); the scroller may override it */
   --st-inset: 4px;
   --st-ease: cubic-bezier(0.16, 0.9, 0.2, 1);
   color: var(--st-text);
 }
 
-/* Light, for later (the stream is dark-only for now). Media keeps its dark scrim and light type in both themes:
-   .st-on-media pins the text tokens wherever type sits over a picture.
-
+/* Light: the app's light page (globals --fm-page), white raised pieces, ink at the same contrast the dark type has on
+   black (hence 0.7 / 0.56, not dark's 0.65 / 0.45). Media keeps its dark scrim and light type in both themes:
+   .st-on-media pins the text tokens wherever type sits over a picture. */
 html.light .fm-stream {
   color-scheme: light;
   --st-bg: #f4f7f9;
-  --st-surface: #e8ecf0;
+  --st-surface: #e6eaef;
   --st-surface-2: #ffffff;
-  --st-line: rgba(15, 23, 42, 0.09);
+  --st-line: rgba(11, 11, 15, 0.09);
   --st-text: #0b0b0f;
-  --st-text-2: rgba(11, 11, 15, 0.65);
-  --st-text-3: rgba(11, 11, 15, 0.45);
+  --st-text-2: rgba(11, 11, 15, 0.7);
+  --st-text-3: rgba(11, 11, 15, 0.56);
+  --st-card: #ffffff;
+  --st-card-glow: 0.1;
+  --st-card-inset: #f1f4f7;
+  --st-sheet-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 -24px 64px -28px rgba(15, 23, 42, 0.28);
+  --st-sheet-shadow-lg: inset 0 0 0 1px rgba(11, 11, 15, 0.06), 0 40px 100px -30px rgba(15, 23, 42, 0.34);
+  --st-panel-shadow: 0 -20px 56px -28px rgba(15, 23, 42, 0.26);
+  --st-panel-shadow-lg: 0 32px 80px -28px rgba(15, 23, 42, 0.32);
 }
-*/
 
 /* over a picture the type is light, whatever the theme (the scrim under it keeps it legible) */
 .st-on-media {
@@ -53,6 +68,15 @@ html.light .fm-stream {
   --st-text-2: rgba(255, 255, 255, 0.65);
   --st-text-3: rgba(255, 255, 255, 0.45);
   --st-line: rgba(255, 255, 255, 0.18);
+  /* and so is the app's ink, rose stays the bright one, and the Top % ramp keeps its dark end (globals' light
+     values are for a light page, not for a dark scrim) */
+  --fm-fg: #ffffff;
+  --fm-fg-rgb: 255 255 255;
+  --fm-accent-text: var(--fm-accent-bright);
+  --fm-shade-mid: rgb(84 84 92);
+  --fm-shade-lo: rgb(30 30 35);
+  --fm-shade-tx-mid: rgb(255 255 255 / 0.9);
+  --fm-shade-tx-lo: rgb(255 255 255 / 0.54);
   color: #ffffff;
 }
 
@@ -222,10 +246,20 @@ html.light .fm-stream {
     var(--st-surface, #0e0e11);
 }
 
+html.light .st-placeholder {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 55%),
+    var(--st-surface, #e6eaef);
+}
+
 /* a still placeholder dot or bar in the profile while its numbers load */
 .st-bone {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.07);
+}
+
+html.light .st-bone {
+  background: rgba(11, 11, 15, 0.07);
 }
 
 

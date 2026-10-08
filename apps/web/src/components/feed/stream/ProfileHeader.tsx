@@ -69,8 +69,8 @@ const ORDERS: ReadonlyArray<{ value: FeedOrder; label: string; Icon: LucideIcon 
 const FORMAT_NAME: Record<StreamMediaType, string> = { reel: 'Reels', carousel: 'Carousels', image: 'Images', unknown: 'Posts' };
 // a feed's badge: the rail's light disc, its initials in rose
 const DISC_BG = 'radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg, #f7f7f8, #cfd3dc)';
-// the card: the surface, lit rose from above the face
-const CARD_BG = 'radial-gradient(90% 55% at 50% 0%, rgb(var(--fm-accent-rgb) / 0.16), transparent 70%), var(--st-surface)';
+// the card: its surface (stream.css --st-card), lit rose from above the face
+const CARD_BG = 'radial-gradient(90% 55% at 50% 0%, rgb(var(--fm-accent-rgb) / var(--st-card-glow)), transparent 70%), var(--st-card)';
 const EASE = 'ease-[cubic-bezier(0.16,0.9,0.2,1)]';
 const MARKER = 'text-[10px] font-black uppercase leading-none tracking-[0.14em] text-[var(--st-text-3)]';
 const ACTION = 'flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-[14px] bg-[var(--st-surface-2)] px-3 text-[14px] font-bold text-[var(--st-text)] shadow-[inset_0_0_0_1px_var(--st-line)] outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
@@ -158,7 +158,7 @@ function Stack({ box, items }: { box: number; items: Array<{ key: string; draw: 
         return (
           <span
             key={item.key}
-            className="absolute block overflow-hidden rounded-full shadow-[0_0_0_3px_var(--st-cut)]"
+            className="absolute block overflow-hidden rounded-full shadow-[0_0_0_3px_var(--st-cut)] light:shadow-[0_0_0_3px_var(--st-cut),0_10px_22px_-12px_rgb(15_23_42/0.35)]"
             style={{ width: spot.px, height: spot.px, left: spot.at, top: spot.at, zIndex: items.length - index }}
           >
             {item.draw(spot.px, index === 0)}
@@ -188,7 +188,7 @@ function FaceBlock({ kind, size, scope, feeder, feeds, faces, fresh, lastPostAt 
         {fresh ? (
           <span aria-hidden="true" className="st-story-ring absolute inset-0 rounded-full" />
         ) : (
-          <span aria-hidden="true" className="absolute inset-[1.5px] rounded-full shadow-[inset_0_0_0_1.5px_rgba(255,255,255,0.2)]" />
+          <span aria-hidden="true" className="absolute inset-[1.5px] rounded-full shadow-[inset_0_0_0_1.5px_rgb(var(--fm-fg-rgb)/0.2)]" />
         )}
         <span className="absolute block overflow-hidden rounded-full" style={{ inset: RING }}>
           <FeederStoryAvatar feeder={face} className={size === 'card' ? 'text-[34px]' : 'text-[28px]'} />
@@ -237,7 +237,7 @@ function TodayLine({ today, center = false }: { today: StreamProfile['today'] | 
   const live = today.posts + today.results > 0;
   return (
     <p className={cn('flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-[18px] text-[var(--st-text-2)]', center && 'justify-center')}>
-      {live ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent-bright)]" /> : null}
+      {live ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent-text)]" /> : null}
       <span className="truncate">
         <b className="font-bold text-[var(--st-text)]">Today</b>
         {' · '}
@@ -285,7 +285,7 @@ function StatsRow({ profile, center, className }: { profile: StreamProfile | nul
             {stat.value ?? <span className="st-bone mt-1 inline-block h-3.5 w-10 align-top" />}
           </span>
           <span className="mt-1 block max-w-full truncate text-[12px] font-medium leading-4 text-[var(--st-text-2)]">{stat.label}</span>
-          <span className={cn('mt-0.5 block h-[14px] max-w-full truncate text-[10px] font-bold leading-[14px]', stat.note?.up ? 'text-[var(--fm-accent-bright)]' : 'text-[var(--st-text-3)]')}>
+          <span className={cn('mt-0.5 block h-[14px] max-w-full truncate text-[10px] font-bold leading-[14px]', stat.note?.up ? 'text-[var(--fm-accent-text)]' : 'text-[var(--st-text-3)]')}>
             {stat.note?.text ?? ''}
           </span>
         </div>
@@ -335,7 +335,7 @@ function Highlight({ item, onOpenPost }: { item: StreamHighlight; onOpenPost: (k
       className="group flex w-[72px] shrink-0 flex-col items-center rounded-[14px] outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
     >
       <span className="relative block h-[62px] w-[62px] shrink-0">
-        <span aria-hidden="true" className="absolute inset-0 rounded-full shadow-[inset_0_0_0_1.5px_rgba(255,255,255,0.2)]" />
+        <span aria-hidden="true" className="absolute inset-0 rounded-full shadow-[inset_0_0_0_1.5px_rgb(var(--fm-fg-rgb)/0.2)]" />
         <span className="absolute inset-[4.5px] block overflow-hidden rounded-full bg-[var(--st-surface)] transition-transform duration-200 ease-out group-data-[pressed]:scale-[0.94]">
           {picture ? (
             // eslint-disable-next-line @next/next/no-img-element -- the stable media proxy, not a static asset
@@ -368,7 +368,7 @@ function HighlightBone() {
   return (
     <span aria-hidden="true" className="flex w-[72px] shrink-0 flex-col items-center">
       <span className="relative block h-[62px] w-[62px] shrink-0">
-        <span className="absolute inset-0 rounded-full shadow-[inset_0_0_0_1.5px_rgba(255,255,255,0.1)]" />
+        <span className="absolute inset-0 rounded-full shadow-[inset_0_0_0_1.5px_rgb(var(--fm-fg-rgb)/0.1)]" />
         <span className="st-bone absolute inset-[4.5px] rounded-full" />
       </span>
       <span className="st-bone mt-[17px] block h-2 w-10" />
@@ -389,7 +389,7 @@ function Highlights({ items, loading, center, onOpenPost }: { items: StreamHighl
 }
 
 function WeekBox({ week, latest, big }: { week: Week | null; latest: boolean; big: boolean }) {
-  const ring = latest ? 'inset 0 0 0 1.5px var(--fm-accent-bright)' : null;
+  const ring = latest ? 'inset 0 0 0 1.5px var(--fm-accent-text)' : null;
   const when = week ? `Week of ${dayLabel(week.start).long}` : 'Before the window';
   if (!week || !ranked(week.typical)) {
     return (
@@ -515,7 +515,7 @@ function OrderTabs({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
             role="tab"
             aria-selected={on}
             onClick={() => pick(value)}
-            className="group flex h-full min-w-0 items-center justify-center px-2 outline-none [-webkit-tap-highlight-color:transparent] focus-visible:bg-white/[0.05]"
+            className="group flex h-full min-w-0 items-center justify-center px-2 outline-none [-webkit-tap-highlight-color:transparent] focus-visible:bg-fg/[0.05]"
           >
             <span className={cn('flex min-w-0 items-center gap-1.5 text-[14px] font-bold leading-none text-[var(--st-text)] transition-[opacity,scale] duration-300 group-active:scale-[0.96]', EASE, on ? 'opacity-100' : 'opacity-45')}>
               <Icon className="h-4 w-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
@@ -526,7 +526,7 @@ function OrderTabs({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
       })}
       <span
         aria-hidden="true"
-        className={cn('pointer-events-none absolute bottom-0 left-0 h-[2px] w-1/2 bg-[var(--fm-accent-bright)] transition-transform duration-300', EASE)}
+        className={cn('pointer-events-none absolute bottom-0 left-0 h-[2px] w-1/2 bg-[var(--fm-accent-text)] transition-transform duration-300', EASE)}
         style={{ transform: order === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
       />
     </div>
@@ -545,7 +545,7 @@ function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
     <div
       role="tablist"
       aria-label="Order"
-      className="relative grid h-9 w-[240px] max-w-full grid-cols-2 rounded-[14px] border border-white/[0.07] bg-black/38 p-[3px] shadow-[inset_0_2px_10px_rgba(0,0,0,.38)]"
+      className="relative grid h-9 w-[240px] max-w-full grid-cols-2 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) p-[3px] shadow-(--fm-well-shade)"
     >
       <span
         aria-hidden="true"
@@ -561,7 +561,7 @@ function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
             role="tab"
             aria-selected={on}
             onClick={() => pick(value)}
-            className="relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] px-2 text-[12px] font-bold leading-none text-white outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]"
+            className={cn('relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] px-2 text-[12px] font-bold leading-none outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]', on ? 'text-white' : 'text-fg')}
           >
             <span className={cn('truncate transition-opacity duration-300', on ? 'opacity-100' : 'opacity-60')}>{label}</span>
           </button>
@@ -659,8 +659,9 @@ function ProfileCard({ scope, title, subtitle, feeder, feeds, faces, profile, fr
   return (
     <section
       aria-label={title}
-      className="st-profile-card relative flex h-full flex-col items-center justify-between overflow-hidden rounded-[28px] px-5 pb-4 pt-5 text-center shadow-[inset_0_0_0_1px_var(--st-line)]"
-      style={{ width, background: CARD_BG, '--st-cut': 'var(--st-surface)' } as CSSProperties}
+      className="st-profile-card relative flex h-full flex-col items-center justify-between overflow-hidden rounded-[28px] px-5 pb-4 pt-5 text-center shadow-[inset_0_0_0_1px_var(--st-line)] light:shadow-[inset_0_0_0_1px_var(--st-line),0_18px_40px_-26px_rgb(15_23_42/0.3)]"
+      // inside the card, what is raised sits in the card's own inset tone (on light: grey on a white card)
+      style={{ width, background: CARD_BG, '--st-cut': 'var(--st-card)', '--st-surface-2': 'var(--st-card-inset)' } as CSSProperties}
     >
       <div className="flex w-full flex-col items-center">
         <FaceBlock kind={kind} size="card" scope={scope} feeder={feeder} feeds={feeds} faces={faces} fresh={fresh} lastPostAt={profile?.lastPostAt ?? null} />

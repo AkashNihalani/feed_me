@@ -191,18 +191,21 @@ const tabIx = (k) => TABS.findIndex(([v]) => v === k);
 /* Top % is the app's unit: where a post sits in this account's own memory, lower is stronger */
 const pcx = (p) => Math.max(1, Math.round(p.pct));
 /* the shade of a run, from its typical post against his own middle (top 50%): above the middle it
-   reddens continuously toward the Feed card's crimson (top 1%), below it it darkens. So top 5% and
-   top 20% never share a shade, and the brightest red is earned. */
-const SH_HI = [247, 24, 82], SH_MID = [84, 84, 92], SH_LO = [30, 30, 35];
-const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+   reddens continuously toward the Feed card's crimson (top 1%), below it it recedes into the page (darkens on
+   dark, pales on light). So top 5% and top 20% never share a shade, and the brightest red is earned.
+   The colours are CSS mixes of the theme's ramp (--fm-shade-*, globals.css), the same as readShade.ts: a theme
+   switch recolours every run at once, with nothing to re-render. */
+const pctOf = (t) => `${(t * 100).toFixed(1)}%`;
+// a toward b by t, in sRGB (what the old per-channel mix did)
+const mix = (a, b, t) => `color-mix(in srgb, ${a}, ${b} ${pctOf(t)})`;
 function shade(v) {
   const t = Math.min(100, Math.max(1, v));
   if (t <= 50) {
     const k = Math.pow((50 - t) / 49, 0.9), g = Math.max(0, (k - 0.35) / 0.65);
-    return { c: `rgb(${mix(SH_MID, SH_HI, k)})`, tx: '#fff', gc: g ? `rgba(247,24,82,${(g * 0.6).toFixed(2)})` : 'transparent', gi: (0.1 + g * 0.24).toFixed(2) };
+    return { c: mix('var(--fm-shade-mid)', 'var(--fm-shade-hi)', k), tx: 'var(--fm-shade-tx-hi)', gc: g ? `rgba(247,24,82,${(g * 0.6).toFixed(2)})` : 'transparent', gi: (0.1 + g * 0.24).toFixed(2) };
   }
   const w = Math.min(1, (t - 50) / 35);
-  return { c: `rgb(${mix(SH_MID, SH_LO, w)})`, tx: `rgba(255,255,255,${(0.9 - w * 0.36).toFixed(2)})`, gc: 'transparent', gi: '0.08' };
+  return { c: mix('var(--fm-shade-mid)', 'var(--fm-shade-lo)', w), tx: mix('var(--fm-shade-tx-mid)', 'var(--fm-shade-tx-lo)', w), gc: 'transparent', gi: '0.08' };
 }
 const shadeVars = (v) => { const x = shade(v); return `--c:${x.c};--tx:${x.tx};--gc:${x.gc};--gi:${x.gi}`; };
 const RAMP = `linear-gradient(90deg, ${[1, 8, 15, 22, 29, 36, 43, 50, 60, 70, 85, 100].map((v) => `${shade(v).c} ${(((v - 1) / 99) * 100).toFixed(1)}%`).join(', ')})`;
@@ -854,10 +857,12 @@ function ruleTag(p) {
 function wtile(p) {
   return tile(p, { res: true, extra: `<span class="rkp${p.band >= 2 ? ' hi' : ''}" aria-hidden="true">${rkw(p)}</span>` });
 }
+/* a breaker's number: the page's white (ink on light) reddening toward the page's red above the middle, fading
+   below it; theme tokens, so it follows a theme switch */
 function runInk(tp) {
   const t = Math.min(100, Math.max(1, tp));
-  if (t <= 50) return `rgb(${mix([245, 245, 241], [255, 23, 79], Math.pow((50 - t) / 49, 0.8))})`;
-  return `rgba(245,245,241,${(0.62 - Math.min(1, (t - 50) / 40) * 0.3).toFixed(2)})`;
+  if (t <= 50) return mix('var(--lk-white)', 'var(--lk-red)', Math.pow((50 - t) / 49, 0.8));
+  return `rgb(var(--lk-white-rgb) / calc(${(0.62 - Math.min(1, (t - 50) / 40) * 0.3).toFixed(2)} * var(--ta)))`;
 }
 function breakerHTML(R) {
   const Mo = M(), latest = R.r === Mo.runs.length && Mo.runs.length > 1;
@@ -1447,7 +1452,7 @@ function resChart(p, compact) {
   bars.forEach((q, k) => {
     const x = 4 + k * bw + bw * 0.16, w = bw * 0.68, y = hy(q), h = H - 6 - y;
     const isBeat = q.i < p.i && q.i >= p.i - p.ripple, isAbove = q.i < p.i && q.i >= p.i - p.shortOf, isStop = p.stopper && q.id === p.stopper.id;
-    const fill = q.id === p.id ? 'var(--ink)' : isBeat ? 'var(--rose)' : isStop || isAbove ? 'rgba(228,228,231,.82)' : 'var(--s3)';
+    const fill = q.id === p.id ? 'var(--ink)' : isBeat ? 'var(--rose)' : isStop || isAbove ? 'rgb(var(--down-rgb) / .82)' : 'var(--s3)';
     s += `<rect class="b" style="--d:${(p.i - q.i) * 38 + 150}ms" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(2, h).toFixed(1)}" rx="${Math.min(3, w / 2).toFixed(1)}" fill="${fill}"/>`;
     if (isStop) { s += `<text class="lb" style="--ld:${(p.i - q.i) * 38 + 650}ms" x="${(x + w / 2).toFixed(1)}" y="${(y - 7).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--down)" font-family="JetBrains Mono, monospace" letter-spacing="1">DID BETTER</text>`; lx = x + w + 2; }
     if (q.id === p.id) s += `<text class="lb" style="--ld:200ms" x="${(x + w / 2).toFixed(1)}" y="${H + 8}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)" font-family="JetBrains Mono, monospace" letter-spacing="1">THIS</text>`;
@@ -1455,11 +1460,11 @@ function resChart(p, compact) {
   const xThis = 4 + (bars.length - 1) * bw + bw * 0.16;
   const xEnd = p.ripple > 0 ? (lx ?? 4) : 4 + (bars.length - 1 - p.shortOf) * bw + bw * 0.1;
   if (p.i > 0 && xThis - xEnd > 2) {
-    const len = Math.round(xThis - xEnd), col = p.ripple > 0 ? 'var(--rose)' : 'rgba(228,228,231,.75)', ld = Math.min(p.ripple || p.shortOf, 25) * 38 + 500;
+    const len = Math.round(xThis - xEnd), col = p.ripple > 0 ? 'var(--rose)' : 'rgb(var(--down-rgb) / .75)', ld = Math.min(p.ripple || p.shortOf, 25) * 38 + 500;
     s += `<line class="ln2" style="--lo:${xEnd < xThis - 2 ? '100%' : '0%'};--ld:${ld}ms" x1="${(xThis - 2).toFixed(1)}" y1="${yP.toFixed(1)}" x2="${xEnd.toFixed(1)}" y2="${yP.toFixed(1)}" stroke="${col}" stroke-width="1.6" stroke-linecap="round"/>`;
     if (p.ripple > 0 || p.shortOf >= 2) s += `<text class="lb" style="--ld:${ld + 300}ms" x="${((xThis + xEnd) / 2).toFixed(1)}" y="${(p.ripple > 0 ? yP - 6 : 7).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="${col}" font-family="JetBrains Mono, monospace">${p.ripple > 0 ? `beat ${p.ripple}` : `${p.shortOf} did better`}</text>`;
   }
-  s += `<line x1="0" x2="${W}" y1="${H - 6}" y2="${H - 6}" stroke="rgba(255,255,255,.12)"/>`;
+  s += `<line x1="0" x2="${W}" y1="${H - 6}" y2="${H - 6}" stroke="rgb(var(--fg-rgb) / .12)"/>`;
   const svg = `<svg class="ch" preserveAspectRatio="xMinYMax meet" viewBox="0 -4 ${W} ${H + 14}" role="img" aria-label="${esc(beatShort(p).replace(/[▲▼] /, ''))}">${s}</svg>`;
   if (compact) return svg;
   return `<div class="box res">${svg}<p>${beatLine(p)}</p><div class="key"><span><i style="background:var(--rose)"></i>It beat these</span><span><i style="background:var(--down)"></i>These did better</span><span><i style="background:var(--ink)"></i>This reel</span></div></div>`;
@@ -2375,7 +2380,8 @@ function lnmOpen(tr, keys) {
   const chev = face.querySelector('svg');
   if (RM) { if (chev) chev.style.transform = 'rotate(180deg)'; }
   else {
-    m.animate([{ height: r.height + 'px', borderRadius: '14px', boxShadow: '0 0 0 rgba(0,0,0,0)' }, { height: H + 'px', borderRadius: '16px', boxShadow: '0 22px 44px -18px rgba(0,0,0,.95), 0 0 34px -22px rgba(255,23,79,.6)' }], { duration: 560, easing: EZ.sheet });
+    // it opens into its own resting shadow (readTab.css, --lnm-shadow), whichever theme is on
+    m.animate([{ height: r.height + 'px', borderRadius: '14px', boxShadow: '0 0 0 rgba(0,0,0,0)' }, { height: H + 'px', borderRadius: '16px', boxShadow: getComputedStyle(m).boxShadow }], { duration: 560, easing: EZ.sheet });
     m.querySelector('.lnm-bg').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out', fill: 'backwards' });
     qa('.lnm-o', m).forEach((o, i) => anim(o, [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }], { dur: 420, delay: 90 + i * 55 }));
     if (chev) chev.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(180deg)' }], { duration: 480, easing: EZ.sheet, fill: 'forwards' });

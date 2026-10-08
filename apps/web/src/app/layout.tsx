@@ -8,25 +8,9 @@ import PerfHud from "@/components/PerfHud";
 import MediaFallback from "@/components/MediaFallback";
 import { appFont } from "@/lib/fonts";
 import { getSiteUrl } from "@/lib/site-url";
+import { THEME_BOOTSTRAP_SCRIPT, THEME_COLORS } from "@/lib/themeBootstrap";
 
 const metadataBase = new URL(getSiteUrl());
-const themeBootstrapScript = `
-(() => {
-  try {
-    const savedTheme = localStorage.getItem('theme');
-    const isDark = savedTheme !== 'light';
-    const root = document.documentElement;
-    root.classList.toggle('dark', isDark);
-    root.classList.toggle('light', !isDark);
-    root.style.colorScheme = isDark ? 'dark' : 'light';
-  } catch {
-    const root = document.documentElement;
-    root.classList.add('dark');
-    root.classList.remove('light');
-    root.style.colorScheme = 'dark';
-  }
-})();
-`;
 
 export const metadata: Metadata = {
   metadataBase,
@@ -86,7 +70,8 @@ export const viewport: Viewport = {
   userScalable: false,
   interactiveWidget: "resizes-content",
   viewportFit: "cover",
-  themeColor: "#000000",
+  // light by default; the bootstrap script retints it to the theme in use before first paint
+  themeColor: THEME_COLORS.light,
 };
 
 export default function RootLayout({
@@ -97,7 +82,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${appFont.variable} h-full min-h-[100dvh] w-full overflow-x-hidden bg-background`}>
       <body className="antialiased bg-background h-full min-h-[100dvh] w-full overflow-hidden transition-colors duration-300">
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
         <main className="h-full min-h-[100dvh] w-full overflow-hidden">
           <AppShell>{children}</AppShell>
         </main>

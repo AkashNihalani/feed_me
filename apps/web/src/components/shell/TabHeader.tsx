@@ -33,6 +33,7 @@ import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import SlotText from '@/components/SlotText';
 import { feedInitials, titleCase } from '@/lib/feedLabels';
 import { BEAT_ARRIVE_S, BEAT_EASE, BEAT_EASE_CSS, BEAT_LEAVE_EASE, BEAT_LEAVE_S, BEAT_START_S, HEADER_ROUTE_MORPH, beatArrive, beatLeave } from '@/lib/motion';
+import { useResolvedTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 export const SOFT_EASE = BEAT_EASE;
@@ -54,7 +55,8 @@ export const SLOT_ROLL = {
 };
 
 // the surface of the 44px control on the right of the title row
-export const HEADER_CONTROL = 'relative z-10 flex h-11 shrink-0 touch-manipulation items-center justify-center gap-1 overflow-hidden rounded-[14px] border border-white/[0.09] bg-black/38 font-black uppercase text-white shadow-[inset_0_2px_10px_rgba(0,0,0,.38)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
+// (a sunken well: --fm-well* are the theme's, globals.css)
+export const HEADER_CONTROL = 'relative z-10 flex h-11 shrink-0 touch-manipulation items-center justify-center gap-1 overflow-hidden rounded-[14px] border border-(--fm-well-edge) bg-(--fm-well) font-black uppercase text-fg shadow-(--fm-well-shade) outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
 
 /* Every circle in the rail sits in one fixed box, the size of the one you're on, so nothing in the rail ever changes
    size: the one you're on is the plate at full size, the rest are the same plate scaled down. Only transform and
@@ -274,7 +276,7 @@ function WedgeButton({ active, current, armed, leaving, reduce, onBack }: { acti
       tabIndex={active ? 0 : -1}
       data-rail-all={active ? '' : undefined}
       onClick={onBack}
-      className={cn(ITEM_CLASS, 'disabled:cursor-default focus-visible:rounded-[18px] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#090909]')}
+      className={cn(ITEM_CLASS, 'disabled:cursor-default focus-visible:rounded-[18px] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#090909] light:focus-visible:ring-offset-(--fm-page)')}
       aria-label={active ? 'Back to all feeds' : 'All feeds'}
     >
       <Plate lit={lit} marked={false} armed={armed} reduce={reduce}>
@@ -579,10 +581,10 @@ function TabHeader({
             <div className={cn('absolute inset-0 flex items-center justify-between gap-2', baseClassName)}>
               <div className="flex min-w-0 items-center gap-2.5">
                 {/* the tab's name: switching tabs rolls only the letters that differ (LEAD → READ moves one) */}
-                <h1 className="fm-depth-title shrink-0 text-[22px] font-black leading-[0.88] tracking-[0.12em] text-white lg:text-[26px] lg:tracking-[0.14em]">
+                <h1 className="fm-depth-title shrink-0 text-[22px] font-black leading-[0.88] tracking-[0.12em] text-fg lg:text-[26px] lg:tracking-[0.14em]">
                   <SlotText value={title} align="left" />
                 </h1>
-                <div className="flex h-7 min-w-0 flex-col justify-center border-l border-white/10 pl-2.5">
+                <div className="flex h-7 min-w-0 flex-col justify-center border-l border-fg/10 pl-2.5">
                   {eyebrow ? (
                     <div className="hidden lg:block">
                       <TitleSlot
@@ -590,7 +592,7 @@ function TabHeader({
                         leaving={leaving}
                         reduce={reduce}
                         travel={6}
-                        className="truncate text-[8px] font-black uppercase leading-none tracking-[0.18em] text-[var(--fm-accent-bright)]"
+                        className="truncate text-[8px] font-black uppercase leading-none tracking-[0.18em] text-[var(--fm-accent-text)]"
                       />
                     </div>
                   ) : null}
@@ -598,7 +600,7 @@ function TabHeader({
                     text={leaving ? null : label}
                     leaving={leaving}
                     reduce={reduce}
-                    className="max-w-[150px] truncate text-[14px] font-black leading-none tracking-[-0.025em] text-white/88 sm:max-w-[210px] sm:text-[16px] lg:mt-0.5"
+                    className="max-w-[150px] truncate text-[14px] font-black leading-none tracking-[-0.025em] text-fg/88 sm:max-w-[210px] sm:text-[16px] lg:mt-0.5"
                   />
                 </div>
               </div>
@@ -783,8 +785,12 @@ const MENU_PAD = 6;
 const MENU_APPLY_MS = 300;
 // a pick the tab doesn't take stops being worn after this
 const MENU_PICK_KEEP_MS = 1800;
+// literal per theme: framer can't interpolate a var() inside a shadow
 const MENU_SHADOW_REST = '0px 0px 0px 0px rgba(0, 0, 0, 0), 0px 0px 0px 0px rgba(255, 23, 79, 0)';
-const MENU_SHADOW_OPEN = '0px 22px 44px -18px rgba(0, 0, 0, 0.95), 0px 0px 34px -22px rgba(255, 23, 79, 0.6)';
+const MENU_SHADOW_OPEN = {
+  dark: '0px 22px 44px -18px rgba(0, 0, 0, 0.95), 0px 0px 34px -22px rgba(255, 23, 79, 0.6)',
+  light: '0px 22px 44px -18px rgba(15, 23, 42, 0.3), 0px 0px 34px -22px rgba(255, 23, 79, 0.32)',
+} as const;
 
 type MenuBox<T> = { top: number; right: number; width: number; height: number; scrollY: number; others: T[]; keys: boolean };
 
@@ -801,7 +807,7 @@ function ValueSlot({ text, dir, roomy, reduce }: { text: string; dir: number; ro
           animate="center"
           exit={reduce ? { transform: 'translate3d(0, 0%, 0)' } : 'exit'}
           transition={reduce ? { duration: 0 } : SLOT_SPRING}
-          className="absolute inset-0 grid place-items-center tabular-nums text-white"
+          className="absolute inset-0 grid place-items-center tabular-nums text-fg"
         >
           {text}
         </motion.span>
@@ -812,6 +818,7 @@ function ValueSlot({ text, dir, roomy, reduce }: { text: string; dir: number; ro
 
 function TimeframePicker<T extends string | number>({ value, options, pending, label, name, onChange }: { value: T; options: readonly T[]; pending: boolean; label: (value: T) => string; name?: string; onChange: (value: T) => void }) {
   const reduce = Boolean(useReducedMotion());
+  const theme = useResolvedTheme();
   const roomy = isRoomy(options, label);
   const panelId = useId();
   // the button's place, read from its slot (the button itself may be mid-press, scaled)
@@ -928,13 +935,13 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
           id={panelId}
           role="menu"
           aria-label={name ?? 'Time range'}
-          className="fixed z-[160] overflow-hidden text-white [-webkit-tap-highlight-color:transparent]"
-          style={{ top: box.top, right: box.right, width: box.width, backgroundColor: 'rgba(0, 0, 0, 0.38)' }}
+          className="fixed z-[160] overflow-hidden text-fg [-webkit-tap-highlight-color:transparent]"
+          style={{ top: box.top, right: box.right, width: box.width, backgroundColor: 'var(--fm-well)' }}
           initial={reduce ? false : { height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST }}
           animate={{
             height: box.height + MENU_PAD * 2 + box.others.length * MENU_ROW,
             borderRadius: 16,
-            boxShadow: MENU_SHADOW_OPEN,
+            boxShadow: MENU_SHADOW_OPEN[theme],
             transition: reduce ? { duration: 0 } : MENU_OPEN,
           }}
           exit={reduce
@@ -944,12 +951,12 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
           {/* the menu's own surface, coming up over the button's */}
           <motion.span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(22,16,19,.985),rgba(6,6,7,.975))] backdrop-blur-[18px]"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,250,251,.985),rgba(255,255,255,.975))] backdrop-blur-[18px] dark:bg-[linear-gradient(180deg,rgba(22,16,19,.985),rgba(6,6,7,.975))]"
             initial={reduce ? false : { opacity: 0 }}
             animate={{ opacity: 1, transition: reduce ? { duration: 0 } : { duration: 0.22, ease: 'easeOut' } }}
             exit={reduce ? undefined : { opacity: [1, 1, 0], transition: { duration: 0.4, times: [0, 0.6, 1] } }}
           />
-          <span aria-hidden="true" className="pointer-events-none absolute left-[10px] right-[10px] h-px bg-white/[0.08]" style={{ top: box.height }} />
+          <span aria-hidden="true" className="pointer-events-none absolute left-[10px] right-[10px] h-px bg-fg/[0.08]" style={{ top: box.height }} />
           <div className="absolute left-0 z-[1] grid gap-[2px] px-1 py-[6px]" style={{ top: box.height, width: box.width }}>
             {box.others.map((option, index) => (
               <motion.button
@@ -977,7 +984,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
                     optionRefs.current[event.key === 'Home' ? 0 : box.others.length - 1]?.focus();
                   }
                 }}
-                className="grid h-[38px] w-full touch-manipulation place-items-center rounded-[11px] text-[16px] font-black uppercase leading-none tabular-nums tracking-[-0.02em] text-white/[0.58] outline-none transition-[background-color,color,scale] duration-150 focus-visible:bg-white/[0.08] focus-visible:text-white active:scale-[0.96] active:bg-[rgb(255_23_79/0.85)] active:text-white"
+                className="grid h-[38px] w-full touch-manipulation place-items-center rounded-[11px] text-[16px] font-black uppercase leading-none tabular-nums tracking-[-0.02em] text-fg/[0.58] outline-none transition-[background-color,color,scale] duration-150 focus-visible:bg-fg/[0.08] focus-visible:text-fg active:scale-[0.96] active:bg-[rgb(255_23_79/0.85)] active:text-white"
               >
                 {label(option)}
               </motion.button>
@@ -989,7 +996,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             tabIndex={-1}
             aria-label="Close"
             onClick={() => setOpen(false)}
-            className="absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 text-[16px] font-black uppercase tracking-[-0.02em] text-white outline-none"
+            className="absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 text-[16px] font-black uppercase tracking-[-0.02em] text-fg outline-none"
             style={{ width: box.width, height: box.height }}
           >
             <ValueSlot text={label(shown)} dir={roll.dir} roomy={roomy} reduce={reduce} />
@@ -999,11 +1006,11 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
               animate={{ transform: 'rotate(180deg)', transition: reduce ? { duration: 0 } : { duration: 0.48, ease: MENU_SPRING } }}
               exit={reduce ? undefined : { transform: 'rotate(0deg)', transition: MENU_CLOSE }}
             >
-              <ChevronDown className="h-3.5 w-3.5 text-white/54" aria-hidden="true" />
+              <ChevronDown className="h-3.5 w-3.5 text-fg/54" aria-hidden="true" />
             </motion.span>
           </button>
           {/* its edge: the button's hairline and inner shade, all the way round */}
-          <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[3] rounded-[inherit] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.09),inset_0_2px_10px_rgba(0,0,0,0.38)]" />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[3] rounded-[inherit] shadow-[inset_0_0_0_1px_var(--fm-well-edge),var(--fm-well-shade)]" />
         </motion.div>
       ) : null}
     </AnimatePresence>,
@@ -1027,7 +1034,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
       >
         <ValueSlot text={label(shown)} dir={roll.dir} roomy={roomy} reduce={reduce} />
         <span className="grid place-items-center">
-          <ChevronDown className="h-3.5 w-3.5 text-white/54" aria-hidden="true" />
+          <ChevronDown className="h-3.5 w-3.5 text-fg/54" aria-hidden="true" />
         </span>
       </button>
       {menu}
@@ -1040,7 +1047,7 @@ export function TimeframeControl<T extends string | number>({ id, value, options
     <>
       <TimeframePicker value={value} options={options} pending={pending} label={label} name={name} onChange={onChange} />
       <div
-        className="hidden h-11 shrink-0 rounded-[14px] border border-white/[0.07] bg-black/38 shadow-[inset_0_2px_10px_rgba(0,0,0,.38)] sm:grid"
+        className="hidden h-11 shrink-0 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:grid"
         style={{ width: options.length * (isRoomy(options, label) ? 66 : 46), gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
         role="group"
         aria-label={name ?? 'Time range'}
@@ -1052,7 +1059,7 @@ export function TimeframeControl<T extends string | number>({ id, value, options
             onClick={() => onChange(option)}
             aria-busy={pending}
             aria-pressed={value === option}
-            className={cn('relative grid h-full place-items-center rounded-[10px] text-[13px] font-black uppercase leading-none tracking-[0.06em] transition-colors', value === option ? 'text-white' : 'text-white/52 hover:text-white/72')}
+            className={cn('relative grid h-full place-items-center rounded-[10px] text-[13px] font-black uppercase leading-none tracking-[0.06em] transition-colors', value === option ? 'text-white' : 'text-fg/52 hover:text-fg/72')}
           >
             {value === option ? <motion.span layoutId={`${id}-timeframe-pill`} className="pointer-events-none absolute inset-[3px] rounded-[10px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.32)]" transition={PILL_SPRING} /> : null}
             <span className="relative z-10">{label(option)}</span>

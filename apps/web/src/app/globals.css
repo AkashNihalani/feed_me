@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #f4f7f9;
   --foreground: #000000;
   --border-color: #000000;
 
@@ -50,6 +50,40 @@
   --fm-chrome-border: rgba(255, 255, 255, 0.62);
   --fm-chrome-border-top: rgba(255, 255, 255, 0.82);
   --fm-nav-bg: rgba(255, 255, 255, 0.52);
+  /* ── THEME TOKENS ──────────────────────────────────────────────
+     Light lives here (the default theme); html.dark below swaps them.
+     A surface that themes itself reads these instead of white/black:
+       --fm-fg          the ink: type, hairlines, faint fills. Tailwind
+                        `fg` (text-fg/60, border-fg/10, bg-fg/[0.04])
+       --fm-accent-text the accent as type and marks on the page
+                        (rose-400 pops on black but is too faint on
+                        white, so light uses the brand rose)
+       --fm-well*       a control's sunken track (segmented controls,
+                        the header's 44px control)
+       --fm-raised      a sheet or menu over the page
+       --fm-media       behind a picture while it loads
+       --fm-scrim       the dim behind a sheet
+       --fm-shadow-rgb  the colour drop shadows are cast in
+       --fm-shade-*     the Top % ramp (readShade): crimson at the top,
+                        receding into the page below the middle
+     Over a picture, type stays white on its dark scrim in both themes. */
+  --fm-fg: #0b0b0f;
+  --fm-fg-rgb: 11 11 15;
+  --fm-accent-text: #E11D48;
+  --fm-accent-text-rgb: 225 29 72;
+  --fm-well: rgb(11 11 15 / 0.045);
+  --fm-well-edge: rgb(11 11 15 / 0.07);
+  --fm-well-shade: inset 0 1px 2px rgb(15 23 42 / 0.06);
+  --fm-raised: #ffffff;
+  --fm-media: #e4e7ec;
+  --fm-scrim: rgb(15 23 42 / 0.3);
+  --fm-shadow-rgb: 15 23 42;
+  --fm-shade-hi: rgb(247 24 82);
+  --fm-shade-mid: rgb(113 113 122);
+  --fm-shade-lo: rgb(224 227 232);
+  --fm-shade-tx-hi: #ffffff;
+  --fm-shade-tx-mid: rgb(11 11 15 / 0.84);
+  --fm-shade-tx-lo: rgb(11 11 15 / 0.5);
   --fm-mobile-header-chrome-height: 128px;
   --fm-desktop-header-chrome-height: 112px;
   --fm-mobile-header-chrome-compressed-height: 78px;
@@ -60,7 +94,7 @@
 
 /* Explicit Light Mode */
 html.light {
-  --background: #f9fafb;
+  --background: #f4f7f9;
   --foreground: #000000;
   --border-color: #000000;
   --fm-dashboard-accent: var(--fm-accent);
@@ -83,6 +117,22 @@ html.dark {
 
   --fm-page: #030303;
 
+  --fm-fg: #ffffff;
+  --fm-fg-rgb: 255 255 255;
+  --fm-accent-text: #FB7185;
+  --fm-accent-text-rgb: 251 113 133;
+  --fm-well: rgb(0 0 0 / 0.38);
+  --fm-well-edge: rgb(255 255 255 / 0.09);
+  --fm-well-shade: inset 0 2px 10px rgb(0 0 0 / 0.38);
+  --fm-raised: #16161a;
+  --fm-media: #000000;
+  --fm-scrim: rgb(0 0 0 / 0.6);
+  --fm-shadow-rgb: 0 0 0;
+  --fm-shade-mid: rgb(84 84 92);
+  --fm-shade-lo: rgb(30 30 35);
+  --fm-shade-tx-mid: rgb(255 255 255 / 0.9);
+  --fm-shade-tx-lo: rgb(255 255 255 / 0.54);
+
   /* Dark: keep content evident behind the frost */
   --fm-chrome-bg: rgba(6, 6, 6, 0.44);
   --fm-chrome-border: rgba(255, 255, 255, 0.08);
@@ -90,8 +140,9 @@ html.dark {
   --fm-nav-bg: rgba(8, 8, 8, 0.5);
 }
 
+/* only before the theme script has run (it always sets .light or .dark) */
 @media (prefers-color-scheme: dark) {
-  :root:not(.light) {
+  :root:not(.light):not(.dark) {
     --background: #000000;
     --foreground: #FFFFFF;
     --border-color: #FFFFFF;
@@ -100,8 +151,18 @@ html.dark {
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
+
+/* a theme switch drawn from a control (lib/theme): the new theme grows out of it as a circle over the old one, so the
+   browser's default crossfade is off for it */
+html[data-theme-reveal]::view-transition-old(root),
+html[data-theme-reveal]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
 
 @theme inline {
+  --color-fg: var(--fm-fg);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-border-color: var(--border-color);
