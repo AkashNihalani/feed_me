@@ -5,6 +5,21 @@ import { RefObject, useEffect, useState } from 'react';
 // Small noise floor so a stray sub-pixel scroll event never flips direction.
 const DIRECTION_NOISE = 4;
 
+/* A jump the page makes itself (Feed's zoom or new pick landing somewhere else on the page) is not a direction: the
+   header never folds or unfolds because of which way it went. 'keep': the header stays as it is; 'place': it shows
+   where the page landed (folded in the posts, open near the top). Open at the very top either way. The scroll
+   events within a moment of the mark are the jump's.
+   `at`: where the page is landing, for a jump made later than it is seen (Feed holds the scroll through a move on
+   WebKit and hands it over when it lands): the header answers now, as if the page were already there */
+export type ScrollJump = 'keep' | 'place';
+let jump: { mode: ScrollJump; until: number; at: number | null } | null = null;
+const jumpListeners = new Set<() => void>();
+
+export function markScrollJump(mode: ScrollJump = 'keep', ms = 180, at: number | null = null) {
+  jump = { mode, until: performance.now() + ms, at };
+  if (at != null) jumpListeners.forEach((listener) => listener());
+}
+
 type CollapseOptions = {
   // How far you must scroll DOWN (px) before the header collapses.
   collapseDistance?: number;
@@ -66,10 +81,18 @@ export function useCompressedOnScroll(
       const expandAt = expandDistance ?? viewport() * 0.6;
       const guard = topGuard ?? 56;
 
-      const y = read();
+      const live = jump && performance.now() < jump.until ? jump : null;
+      const y = live?.at ?? read();
       const delta = y - lastY;
 
-      if (y <= guard) {
+      if (live) {
+        // the page's own jump: no direction taken from it, the next scroll measures from here
+        if (y <= guard) state = false;
+        else if (live.mode === 'place') state = y > guard + collapseAt;
+        anchor = y;
+        lastY = y;
+        dir = 0;
+      } else if (y <= guard) {
         // Always fully expanded at the top.
         state = false;
         anchor = y;
@@ -98,9 +121,11 @@ export function useCompressedOnScroll(
 
     sync();
     source.addEventListener('scroll', onScroll, { passive: true });
+    jumpListeners.add(sync);
 
     return () => {
       source.removeEventListener('scroll', onScroll);
+      jumpListeners.delete(sync);
       if (raf) window.cancelAnimationFrame(raf);
     };
   }, [scrollRef, useBrowserPageScroll, collapseDistance, expandDistance, topGuard]);

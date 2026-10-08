@@ -15,6 +15,11 @@ const NAV_ITEMS = [
   { label: 'Read', href: '/read', icon: BookOpenText },
 ];
 
+// the routes AppTabHost keeps alive: between these a switch is just which tab shows
+function isKeptAliveTab(pathname: string | null) {
+  return pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/fire' || pathname === '/profile';
+}
+
 function primaryTabHref(pathname: string | null) {
   return pathname === '/fire' ? '/lead' : pathname;
 }
@@ -97,11 +102,14 @@ export default function BottomNav() {
     if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
   }, []);
 
-  if (pathname === '/login' || pathname?.startsWith('/command') || pathname?.startsWith('/drop') || pathname?.startsWith('/visit') || pathname?.startsWith('/read/')) return null;
+  if (pathname === '/login' || pathname?.startsWith('/command') || pathname?.startsWith('/drop') || pathname?.startsWith('/visit') || pathname?.startsWith('/read/') || pathname?.startsWith('/living-world')) return null;
 
   return (
     <div data-fm-bottom-nav="true" className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
-      <div className="fm-depth-chrome fm-depth-chrome--nav pointer-events-auto flex items-center gap-0.5 px-1 py-1 lg:rounded-[22px] lg:px-1 lg:py-1">
+      {/* the bar's shadow, on a still plate behind it rather than on the glass itself (globals.css, .fm-chrome-shadow) */}
+      <div className="relative pointer-events-auto">
+      <span aria-hidden="true" className="fm-chrome-shadow rounded-[28px] lg:rounded-[22px]" />
+      <div className="fm-depth-chrome fm-depth-chrome--nav flex items-center gap-0.5 px-1 py-1 lg:rounded-[22px] lg:px-1 lg:py-1">
         <div ref={trackRef} className="relative grid grid-cols-3 gap-0.5">
           {activeIndex >= 0 && (
             <motion.span
@@ -130,7 +138,7 @@ export default function BottomNav() {
                 onClick={(event) => {
                   play(isActive ? 'navReselect' : 'navSwitch');
                   const isModifiedClick = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
-                  if (isActive && item.href === '/' && typeof window !== 'undefined' && window.location.search.includes('id=')) {
+                  if (isActive && item.href === '/') {
                     event.preventDefault();
                     window.dispatchEvent(new CustomEvent('feedme:feed-tab-reselect'));
                   }
@@ -138,6 +146,14 @@ export default function BottomNav() {
                     sessionStorage.setItem('feedme:intent', item.href);
                     sessionStorage.setItem('feedme:intent-ts', String(Date.now()));
                   } catch {}
+                  if (!isActive && !isModifiedClick && isKeptAliveTab(pathname)) {
+                    // Every tab is already built and kept alive (AppTabHost), so moving between them needs no trip to
+                    // the server: the URL changes in place (Next keeps usePathname in step with pushState) and the switch
+                    // starts on the tap, instead of after the route's payload (and the auth proxy) answer, a beat
+                    // later on wifi and longer on a phone's network
+                    event.preventDefault();
+                    window.history.pushState(null, '', item.href);
+                  }
                   if (!isActive && !isModifiedClick) {
                     setPendingHref({ href: item.href, fromPathname: pathname });
                     if (pendingResetTimerRef.current != null) window.clearTimeout(pendingResetTimerRef.current);
@@ -163,6 +179,7 @@ export default function BottomNav() {
             );
           })}
         </div>
+      </div>
       </div>
     </div>
   );

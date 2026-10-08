@@ -29,6 +29,37 @@ export const SWITCH_CLOCK_MS = 260;
 export const SWITCH_CLOCK_S = SWITCH_CLOCK_MS / 1000;
 export const SWITCH_CLOCK_CSS_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
+// ── The page beat ────────────────────────────────────────────────────────────
+// ONE clock for everything that arrives or leaves when a page changes what it shows (a pick on the story rail, a
+// board re-dealt): the header's circles, the page's pieces and the rail's ring all move on it, so the circles and
+// the rows they summon land together. Quick and light, the way Feed's tiles settle: pieces arrive a BEAT_STEP apart
+// (at most BEAT_MAX_STEPS steps, so a long list never trails), each settling on BEAT_ARRIVE; they leave faster, on
+// BEAT_LEAVE. Animate it as opacity plus a transform STRING (framer runs those on the compositor).
+export const BEAT_EASE = [0.16, 0.9, 0.2, 1] as const;
+export const BEAT_LEAVE_EASE = [0.45, 0, 0.2, 1] as const;
+export const BEAT_EASE_CSS = 'cubic-bezier(0.16, 0.9, 0.2, 1)';
+export const BEAT_ARRIVE_S = 0.48;
+export const BEAT_LEAVE_S = 0.26;
+export const BEAT_START_S = 0.04;
+export const BEAT_STEP_S = 0.04;
+export const BEAT_MAX_STEPS = 8;
+export const beatDelay = (step: number) => BEAT_START_S + Math.min(Math.max(step, 0), BEAT_MAX_STEPS) * BEAT_STEP_S;
+// a piece arriving at its step / leaving at its step (leaves are half as far apart)
+export const beatArrive = (step: number) => ({ duration: BEAT_ARRIVE_S, ease: BEAT_EASE, delay: beatDelay(step) });
+export const beatLeave = (step: number) => ({ duration: BEAT_LEAVE_S, ease: BEAT_LEAVE_EASE, delay: Math.min(Math.max(step, 0), 6) * (BEAT_STEP_S / 2) });
+// a list whose items arrive on the beat (wrap in BEAT_CONTAINER, give each child BEAT_ITEM)
+export const BEAT_CONTAINER = {
+  hidden: {},
+  visible: { transition: { staggerChildren: BEAT_STEP_S, delayChildren: BEAT_START_S } },
+} as const;
+export const BEAT_ITEM = {
+  hidden: { opacity: 0, transform: 'translateY(12px)' },
+  visible: { opacity: 1, transform: 'translateY(0px)', transition: { duration: BEAT_ARRIVE_S, ease: BEAT_EASE } },
+} as const;
+// one piece settling in on its own at a step (a row, a card): the same move as BEAT_ITEM
+export const BEAT_HIDDEN = { opacity: 0, transform: 'translateY(12px)' } as const;
+export const BEAT_SHOWN = { opacity: 1, transform: 'translateY(0px)' } as const;
+
 export const PAGE_DISSOLVE = {
   initial: { opacity: 0 },
   animate: {

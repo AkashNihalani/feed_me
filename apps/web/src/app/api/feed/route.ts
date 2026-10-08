@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { privateJsonResponse } from '@/lib/privateJsonResponse';
+import { instagramLinkLive } from '@/lib/server/instagramLink';
 import {
   invalidateServerRouteCacheByPrefix,
   withServerRouteCache,
@@ -370,7 +371,7 @@ function normalizeFeedBundlePayload(payload: unknown): FeedBundlePayload {
           return {
             handle: String(feederRow.handle ?? ''),
             isAnchor: feederRow.isAnchor === true,
-            profilePicUrl: profilePicUrl && !profilePicUrl.includes('unavatar.io/instagram')
+            profilePicUrl: profilePicUrl && !profilePicUrl.includes('unavatar.io/instagram') && instagramLinkLive(profilePicUrl)
               ? buildProfileImageProxyUrl(profilePicUrl)
               : null,
             thumbnailUrl: postKey
@@ -975,7 +976,8 @@ async function getLegacyFeedBundle(userId: string): Promise<FeedBundlePayload> {
       return {
         handle: feeder.handle,
         isAnchor: feeder.role === 'anchor',
-        profilePicUrl: feeder.profile_pic_url && !feeder.profile_pic_url.includes('unavatar.io/instagram')
+        // an expired link draws the initials straight away rather than a request that can only fail
+        profilePicUrl: feeder.profile_pic_url && !feeder.profile_pic_url.includes('unavatar.io/instagram') && instagramLinkLive(feeder.profile_pic_url)
           ? buildProfileImageProxyUrl(feeder.profile_pic_url)
           : null,
         thumbnailUrl: feederThumbnail.get(feeder.id) || null,

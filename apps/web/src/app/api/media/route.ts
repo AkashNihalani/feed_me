@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createHash, createHmac } from 'crypto';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient as createServerSupabaseClient } from '@/lib/supabase/server';
+import { instagramLinkLive } from '@/lib/server/instagramLink';
 
 export const runtime = 'nodejs';
 
@@ -53,14 +54,21 @@ function isVideoRole(assetRole: string): boolean {
   return role === 'preview_5s' || role === 'video';
 }
 
+// a carousel slide (carousel_01 …): a picture or a video, whichever the slide is
+function slideIndexOf(assetRole: string): number | null {
+  const match = /^carousel_(\d+)$/.exec((assetRole || '').trim().toLowerCase());
+  return match ? Number(match[1]) : null;
+}
+
 function expectedContentPrefix(assetRole: string): string {
   const role = (assetRole || 'thumbnail').trim().toLowerCase();
+  if (slideIndexOf(role) != null) return '';
   if (isVideoRole(role)) return 'video/';
   return 'image/';
 }
 
 function maxBytesForRole(assetRole: string): number {
-  return isVideoRole(assetRole) ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  return isVideoRole(assetRole) || slideIndexOf(assetRole) != null ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
 }
 
 function candidatePostKeys(postKey: string): string[] {
@@ -87,6 +95,14 @@ function privateMediaHeaders(extra?: HeadersInit): Headers {
   }
   headers.set('vary', 'Cookie');
   return headers;
+}
+
+// an Instagram link past its expiry: the CDN would only answer 403, so it isn't asked (the page draws its cover)
+function expiredSourceResponse(): Response {
+  return new Response('source expired', {
+    status: 404,
+    headers: privateMediaHeaders({ 'cache-control': 'private, max-age=300' }),
+  });
 }
 
 function signedRedirectCacheControl(expiresSeconds: number): string {
@@ -171,45 +187,44 @@ async function fetchStoredAsset(
 ): Promise<Response | null> {
   const role = (assetRole || 'thumbnail').trim().toLowerCase();
   const candidateRoles = role === 'thumbnail' ? THUMBNAIL_ASSET_ROLES : [role];
-  const needsVideoResponse = isVideoRole(role);
-  const needsImageResponse = !needsVideoResponse;
+  const anyMedia = slideIndexOf(role) != null;
+  const needsVideoResponse = !anyMedia && isVideoRole(role);
+  const needsImageResponse = !anyMedia && !needsVideoResponse;
 
-  for (const candidatePostKey of postKeyCandidates) {
-    for (const candidateRole of candidateRoles) {
-      const { data, error } = await sb
-        .from('post_media_assets')
-        .select('storage_provider,storage_bucket,storage_path,mime_type,status,purge_after,source_url,updated_at')
-        .eq('post_key', candidatePostKey)
-        .eq('asset_role', candidateRole)
-        .in('status', ['active', 'purge_pending', 'pending_capture'])
-        .order('updated_at', { ascending: false })
-        .limit(8);
+  // every candidate key and role in one read, then taken in the same preference order (key first, then role,
+  // newest first) the lookups used to walk one query at a time
+  const { data, error } = await sb
+    .from('post_media_assets')
+    .select('post_key,asset_role,storage_provider,storage_bucket,storage_path,mime_type,status,purge_after,source_url,updated_at')
+    .in('post_key', postKeyCandidates)
+    .in('asset_role', candidateRoles)
+    .in('status', ['active', 'purge_pending', 'pending_capture'])
+    .order('updated_at', { ascending: false })
+    .limit(64);
+  if (error || !data?.length) return null;
 
-      if (error || !data?.length) {
-        continue;
-      }
-      for (const row of data) {
-        if (row.purge_after && new Date(row.purge_after).getTime() <= Date.now()) {
-          continue;
-        }
-        if (row.storage_provider === 'r2') {
-          const contentType = typeof row.mime_type === 'string' ? row.mime_type.toLowerCase() : '';
-          if (
-            (!needsImageResponse || !contentType || contentType.startsWith('image/'))
-            && (!needsVideoResponse || !contentType || contentType.startsWith('video/'))
-          ) {
-            const signedUrl = resolveSignedR2MediaUrl(row);
-            if (!signedUrl) continue;
-            return new Response(null, {
-              status: 302,
-              headers: privateMediaHeaders({
-                location: signedUrl.url,
-                'cache-control': signedRedirectCacheControl(signedUrl.expiresSeconds),
-              }),
-            });
-          }
-        }
-      }
+  const rank = (row: { post_key?: string | null; asset_role?: string | null }) =>
+    postKeyCandidates.indexOf(row.post_key || '') * candidateRoles.length + candidateRoles.indexOf(row.asset_role || '');
+  const rows = data.slice().sort((left, right) => rank(left) - rank(right));
+  for (const row of rows) {
+    if (row.purge_after && new Date(row.purge_after).getTime() <= Date.now()) {
+      continue;
+    }
+    if (row.storage_provider !== 'r2') continue;
+    const contentType = typeof row.mime_type === 'string' ? row.mime_type.toLowerCase() : '';
+    if (
+      (!needsImageResponse || !contentType || contentType.startsWith('image/'))
+      && (!needsVideoResponse || !contentType || contentType.startsWith('video/'))
+    ) {
+      const signedUrl = resolveSignedR2MediaUrl(row);
+      if (!signedUrl) continue;
+      return new Response(null, {
+        status: 302,
+        headers: privateMediaHeaders({
+          location: signedUrl.url,
+          'cache-control': signedRedirectCacheControl(signedUrl.expiresSeconds),
+        }),
+      });
     }
   }
 
@@ -238,6 +253,12 @@ async function fetchPostSourceUrl(
     if (error || !data) continue;
 
     const row = data as PostSourceRow;
+    const slide = slideIndexOf(role);
+    if (slide != null) {
+      const source = Array.isArray(row.carousel_urls) ? row.carousel_urls[slide - 1] : null;
+      if (typeof source === 'string' && source.trim()) return source.trim();
+      continue;
+    }
     if (isVideoRole(role)) {
       const videoUrl = typeof row.video_url === 'string' && row.video_url.trim() ? row.video_url.trim() : null;
       if (videoUrl) return videoUrl;
@@ -545,6 +566,9 @@ export async function GET(req: NextRequest) {
         return stored;
       }
       const sourceUrl = await fetchPostSourceUrl(sb, postKeyCandidates, assetRole || 'thumbnail');
+      if (sourceUrl && !instagramLinkLive(sourceUrl)) {
+        return expiredSourceResponse();
+      }
       if (sourceUrl) {
         return fetchRemoteAssetForRole(sourceUrl, assetRole || 'thumbnail');
       }
@@ -560,6 +584,10 @@ export async function GET(req: NextRequest) {
 
   if (!raw) {
     return new Response('missing url', { status: 400 });
+  }
+
+  if (!instagramLinkLive(raw)) {
+    return expiredSourceResponse();
   }
 
   if (!await profileImageUrlBelongsToUser(sb, feedIds, raw)) {

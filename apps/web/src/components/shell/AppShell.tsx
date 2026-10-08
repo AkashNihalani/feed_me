@@ -16,6 +16,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { HEADER_ROUTE_MORPH, PAGE_SURFACE_MOTION, ROUTE_CONTENT_SETTLE } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import AppTabHost from './AppTabHost';
+import { TabHeaderHost } from './TabHeader';
 
 type PageReadyContextValue = {
   isRoutePresent: boolean;
@@ -108,8 +109,10 @@ export function AppHeader({ id, children, compressed }: AppHeaderProps) {
 
 function RouteTransitionLayer({
   children,
+  animateArrival = true,
 }: {
   children: ReactNode;
+  animateArrival?: boolean;
 }) {
   const reduceMotion = Boolean(useReducedMotion());
   const reportReady = useCallback(() => {}, []);
@@ -128,7 +131,7 @@ function RouteTransitionLayer({
         animate={reduceMotion
           ? { opacity: 1, transition: { duration: 0.01 } }
           : PAGE_SURFACE_MOTION.animate}
-        className="col-start-1 row-start-1 h-full min-h-[100dvh] w-full bg-[var(--fm-page)]"
+        className="col-start-1 row-start-1 h-full min-h-[100dvh] min-w-0 w-full bg-[var(--fm-page)]"
         style={{
           willChange: reduceMotion ? undefined : 'opacity',
           pointerEvents: 'auto',
@@ -136,9 +139,9 @@ function RouteTransitionLayer({
       >
         <motion.div
           data-route-content="true"
-          initial={reduceMotion ? false : ROUTE_CONTENT_SETTLE.initial}
-          animate={reduceMotion ? { opacity: 1, y: 0, transition: { duration: 0.01 } } : ROUTE_CONTENT_SETTLE.animate}
-          className="h-full min-h-[100dvh] w-full"
+          initial={reduceMotion || !animateArrival ? false : ROUTE_CONTENT_SETTLE.initial}
+          animate={reduceMotion || !animateArrival ? { opacity: 1, y: 0, transition: { duration: 0.01 } } : ROUTE_CONTENT_SETTLE.animate}
+          className="h-full min-h-[100dvh] min-w-0 w-full"
           style={{ willChange: reduceMotion ? undefined : 'opacity, transform' }}
         >
           {children}
@@ -156,7 +159,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [headerLayerElement, setHeaderLayerElement] = useState<HTMLDivElement | null>(null);
   const [headerCompression, setHeaderCompression] = useState({ pathname: '', compressed: false });
   const setHeaderCompressed = useCallback((compressed: boolean) => {
-    setHeaderCompression({ pathname, compressed });
+    setHeaderCompression((current) => (
+      current.pathname === pathname && current.compressed === compressed ? current : { pathname, compressed }
+    ));
   }, [pathname]);
   const headerCompressed = headerCompression.pathname === pathname && headerCompression.compressed;
   const shellStyle = currentHeaderId === 'lead'
@@ -165,10 +170,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
         '--fm-desktop-header-chrome-height': '168px',
         '--fm-mobile-header-chrome-compressed-height': '68px',
       } as CSSProperties
-    : currentHeaderId === 'read'
+    : currentHeaderId === 'read' || currentHeaderId === 'feed'
       ? {
           '--fm-mobile-header-chrome-height': '152px',
-          '--fm-desktop-header-chrome-height': '80px',
+          '--fm-desktop-header-chrome-height': '168px',
           '--fm-mobile-header-chrome-compressed-height': '68px',
         } as CSSProperties
       : undefined;
@@ -185,6 +190,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         className="fm-app-shell-root relative h-full min-h-[100dvh] w-full bg-[var(--fm-page)]"
         style={shellStyle}
       >
+        {pathname.startsWith('/living-world') ? (
+          <style>{'nextjs-portal { display: none !important; }'}</style>
+        ) : null}
         <div
           className={cn(
             'pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
@@ -198,12 +206,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 headerCompressed && 'fm-depth-chrome--header-compressed',
               )}
             >
-              <div ref={setHeaderLayerElement} className="relative h-full overflow-hidden" />
+              <div className="relative h-full overflow-hidden">
+                {/* the tabs that share one header (Lead, Read): drawn once here and adapted as you switch */}
+                <TabHeaderHost tab={currentHeaderId} onCompressed={setHeaderCompressed} />
+                {/* the tabs that bring their own (AppHeader portals into this) */}
+                <div ref={setHeaderLayerElement} className="relative h-full overflow-hidden" />
+              </div>
             </div>
           </div>
         </div>
-        <div className="grid h-full min-h-[100dvh] w-full">
-          <RouteTransitionLayer key={routeLayerKey}>
+        <div className="grid h-full min-h-[100dvh] min-w-0 w-full">
+          <RouteTransitionLayer key={routeLayerKey} animateArrival={hasTabChrome}>
             {hasTabChrome ? <AppTabHost pathname={pathname} /> : children}
           </RouteTransitionLayer>
         </div>

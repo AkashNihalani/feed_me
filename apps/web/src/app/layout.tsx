@@ -5,6 +5,8 @@ import BottomNav from "@/components/BottomNav";
 import PwaNotificationsBridge from "@/components/PwaNotificationsBridge";
 import AppShell from "@/components/shell/AppShell";
 import PerfHud from "@/components/PerfHud";
+import MediaFallback from "@/components/MediaFallback";
+import { appFont } from "@/lib/fonts";
 import { getSiteUrl } from "@/lib/site-url";
 
 const metadataBase = new URL(getSiteUrl());
@@ -93,7 +95,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="h-full min-h-[100dvh] w-full overflow-x-hidden bg-background">
+    <html lang="en" suppressHydrationWarning className={`${appFont.variable} h-full min-h-[100dvh] w-full overflow-x-hidden bg-background`}>
       <body className="antialiased bg-background h-full min-h-[100dvh] w-full overflow-hidden transition-colors duration-300">
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
         <main className="h-full min-h-[100dvh] w-full overflow-hidden">
@@ -102,6 +104,7 @@ export default function RootLayout({
         <PwaNotificationsBridge />
         <BottomNav />
         <StatusBar />
+        <MediaFallback />
         <PerfHud />
       </body>
     </html>

@@ -1,8 +1,9 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { Activity, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
+import { Activity, memo, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { SWITCH_CLOCK_CSS_EASE, SWITCH_CLOCK_MS } from '@/lib/motion';
+import { arrivePieces } from '@/lib/pageArrival';
 
 const tabLoaders = {
   feed: () => import('@/components/tabs/FeedTab'),
@@ -58,6 +59,12 @@ function scheduleIdle(callback: () => void) {
   const id = window.setTimeout(callback, 700);
   return () => window.clearTimeout(id);
 }
+
+// A tab's subtree never re-renders because another tab was picked: a switch only flips which Activity is visible.
+// (A tab still re-renders on its own state, and on the router hooks it reads itself.)
+const TabBody = memo(function TabBody({ component: TabComponent }: { component: ComponentType }) {
+  return <TabComponent />;
+});
 
 function TabFallback() {
   return <div className="min-h-[100dvh] w-full bg-[var(--fm-page)]" />;
@@ -123,13 +130,20 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
   useIsomorphicLayoutEffect(() => {
     if (prevTabRef.current === activeTab) return;
     prevTabRef.current = activeTab;
-    window.scrollTo(0, 0);
 
     const el = tabElsRef.current[activeTab];
+    // a tab that keeps its own place in the page (Feed) has already put the scroll back, before this runs
+    if (!el?.querySelector('[data-tab-scroll="own"]')) window.scrollTo(0, 0);
     if (!el) return;
     if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return;
     }
+
+    // Never the tab as one block where it can be helped: a tab that plays its own arrival (Read) is left to it, and
+    // a tab whose pieces are marked [data-arrive] (Lead) has them rise one after another on the page beat, under the
+    // one header adapting above. Only tabs with neither still settle in whole.
+    if (el.querySelector('[data-tab-arrival="own"]')) return;
+    if (arrivePieces(el) > 0) return;
 
     el.style.transition = 'none';
     el.style.transform = 'translateY(10px)';
@@ -160,7 +174,6 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
     <div data-active-tab={activeTab} className="min-h-[100dvh] w-full">
       {TAB_RENDER_ORDER.map((key) => {
         if (!renderedTabs.has(key)) return null;
-        const TabComponent = TAB_COMPONENTS[key];
         const isActive = key === activeTab;
         return (
           <Activity key={key} name={`tab-${key}`} mode={isActive ? 'visible' : 'hidden'}>
@@ -175,7 +188,7 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
               }}
               className="min-h-[100dvh] w-full"
             >
-              <TabComponent />
+              <TabBody component={TAB_COMPONENTS[key]} />
             </div>
           </Activity>
         );

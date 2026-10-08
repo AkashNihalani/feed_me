@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght;600;700;800;900&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -453,7 +452,8 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: "Space Grotesk", sans-serif;
+  /* the one typeface, self-hosted by next/font (lib/fonts sets --fm-font on <html>) */
+  font-family: var(--fm-font, "Space Grotesk"), sans-serif;
   transition: background 0.3s, color 0.3s;
   overflow: hidden;
   min-height: 100dvh;
@@ -852,14 +852,16 @@ html.fm-fire-root-scroll body {
   overscroll-behavior-y: contain;
 }
 
+/* Feed's today zoom in the installed app: one post per swipe, snapped by the page itself. The snapport is the band
+   between the folded header and the nav, which Feed measures and sets (--fm-feed-snap-top / -bottom) */
 html.fm-feed-root-scroll {
   overflow-y: auto !important;
   overflow-x: hidden !important;
   height: auto !important;
   scroll-behavior: auto;
   scroll-snap-type: y mandatory;
-  scroll-padding-top: var(--fm-feed-header-height, 188px);
-  scroll-padding-bottom: calc(var(--fm-feed-bottom-clearance, 120px) + env(safe-area-inset-bottom) + 14px);
+  scroll-padding-top: var(--fm-feed-snap-top, calc(78px + env(safe-area-inset-top)));
+  scroll-padding-bottom: var(--fm-feed-snap-bottom, calc(86px + env(safe-area-inset-bottom)));
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -871,23 +873,9 @@ html.fm-feed-root-scroll body > main {
 
 html.fm-feed-root-scroll body {
   scroll-snap-type: y mandatory;
-  scroll-padding-top: var(--fm-feed-header-height, 188px);
-  scroll-padding-bottom: calc(var(--fm-feed-bottom-clearance, 120px) + env(safe-area-inset-bottom) + 14px);
+  scroll-padding-top: var(--fm-feed-snap-top, calc(78px + env(safe-area-inset-top)));
+  scroll-padding-bottom: var(--fm-feed-snap-bottom, calc(86px + env(safe-area-inset-bottom)));
   overscroll-behavior-y: contain;
-}
-
-html.fm-reader-root-scroll {
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  height: auto !important;
-  scroll-behavior: auto;
-  overscroll-behavior-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-html.fm-reader-root-scroll body,
-html.fm-reader-root-scroll body > main {
-  min-height: 100lvh;
 }
 
 .fm-mobile-browser-immersive .fm-feed-immersive-panel {
@@ -971,6 +959,44 @@ html.fm-reader-root-scroll body > main {
     0 -1px 0 rgba(0, 0, 0, 0.5) inset,
     0 8px 16px rgba(0, 0, 0, 0.4),
     0 18px 34px -10px rgba(0, 0, 0, 0.58);
+}
+
+/* The two floating bars wear no outer shadow of their own. Under a live backdrop blur, WebKit renders the element's
+   outer shadow again every frame the page scrolls behind it: on the iPhone sim it was most of a fling's dropped frames
+   (52 → 15 with it gone, the blur kept). The header's clip-path already hides its outer shadow, so it simply has
+   none; the nav's is drawn by a still plate behind it (.fm-chrome-shadow), the same shadow, never redrawn. The inset
+   hairlines stay on the glass. */
+.fm-depth-chrome--header,
+.fm-depth-chrome--nav {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.03) inset;
+}
+
+.dark .fm-depth-chrome--header,
+.dark .fm-depth-chrome--nav {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.5) inset;
+}
+
+.fm-chrome-shadow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.03),
+    0 16px 34px -10px rgba(0, 0, 0, 0.12);
+}
+
+.dark .fm-chrome-shadow {
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.4),
+    0 18px 34px -10px rgba(0, 0, 0, 0.58);
+}
+
+html[data-perf-noshadow] .fm-chrome-shadow {
+  box-shadow: none !important;
 }
 
 .fm-solid-chrome::before,
@@ -1421,8 +1447,7 @@ html[data-perf-nopanelfx] .fm-solid-panel::before {
 }
 
 html.fm-feed-root-scroll,
-html.fm-fire-root-scroll,
-html.fm-reader-root-scroll {
+html.fm-fire-root-scroll {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
@@ -1430,9 +1455,7 @@ html.fm-reader-root-scroll {
 html.fm-feed-root-scroll::-webkit-scrollbar,
 html.fm-feed-root-scroll body::-webkit-scrollbar,
 html.fm-fire-root-scroll::-webkit-scrollbar,
-html.fm-fire-root-scroll body::-webkit-scrollbar,
-html.fm-reader-root-scroll::-webkit-scrollbar,
-html.fm-reader-root-scroll body::-webkit-scrollbar {
+html.fm-fire-root-scroll body::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;

@@ -1,0 +1,448 @@
+/* ─────────────────────────────────────────────────────────────
+   FEED STREAM — the colours and the few shared classes the
+   stream's drawn pieces (components/feed/stream/*) are built from.
+
+   The tokens sit on .fm-stream: the scroller's root carries it,
+   and so does anything that portals out of it (the post sheet,
+   the view menu). .fm-stream never paints a background itself,
+   so a portal root can wear it over the whole app.
+
+   Only opacity and transform ever move here, nothing loops, and
+   nothing blurs: type over a picture is kept legible by the scrim
+   and by plates, never by a backdrop filter.
+   ───────────────────────────────────────────────────────────── */
+
+.fm-stream {
+  color-scheme: dark;
+  --st-bg: #030303;
+  /* tiles and placeholders */
+  --st-surface: #0e0e11;
+  /* raised: the sheet, rows, the menu */
+  --st-surface-2: #16161a;
+  --st-line: rgba(255, 255, 255, 0.09);
+  --st-text: #ffffff;
+  --st-text-2: rgba(255, 255, 255, 0.65);
+  --st-text-3: rgba(255, 255, 255, 0.45);
+  /* the bottom gradient over media: the colour, and its channels for the eased fall-off (.st-scrim) */
+  --st-scrim: rgba(0, 0, 0, 0.88);
+  --st-scrim-rgb: 0 0 0;
+  /* how far a row's content sits in from its box (day headers, the scope bar); the scroller may override it */
+  --st-inset: 4px;
+  --st-ease: cubic-bezier(0.16, 0.9, 0.2, 1);
+  color: var(--st-text);
+}
+
+/* Light, for later (the stream is dark-only for now). Media keeps its dark scrim and light type in both themes:
+   .st-on-media pins the text tokens wherever type sits over a picture.
+
+html.light .fm-stream {
+  color-scheme: light;
+  --st-bg: #f4f7f9;
+  --st-surface: #e8ecf0;
+  --st-surface-2: #ffffff;
+  --st-line: rgba(15, 23, 42, 0.09);
+  --st-text: #0b0b0f;
+  --st-text-2: rgba(11, 11, 15, 0.65);
+  --st-text-3: rgba(11, 11, 15, 0.45);
+}
+*/
+
+/* over a picture the type is light, whatever the theme (the scrim under it keeps it legible) */
+.st-on-media {
+  --st-text: #ffffff;
+  --st-text-2: rgba(255, 255, 255, 0.65);
+  --st-text-3: rgba(255, 255, 255, 0.45);
+  --st-line: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+/* a post's media never offers the iOS callout, a selection or a drag ghost */
+.fm-stream img,
+.fm-stream video {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* a post's picture develops once it has loaded and decoded, over its feeder's tone (PostMedia marks it; one already in
+   the cache shows at once, never re-developing). Opacity only, and short: a grid scrolled fast develops dozens at once,
+   and each one moving is a layer of its own inside a rounded clip for as long as it moves. An even curve, not the
+   stream's ease-out: that one is half done in its first frame, so a picture arriving under the eye (a scroll slowing
+   down) came up as a pop, and a few of them in a row read as the page jittering */
+.st-img {
+  opacity: 0;
+  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.st-img[data-loaded] {
+  opacity: 1;
+}
+
+/* one from the cache (PostMedia): no develop */
+.st-img[data-instant] {
+  transition: none;
+}
+
+/* a post with no picture (PostCover): the feeder's tone lit from the top, and their initials cut large and faint.
+   The box sizes the monogram (container units); a small tile keeps the tone alone, a chip shows the initials plainly */
+.st-cover {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  border-radius: inherit;
+  container-type: size;
+  background:
+    radial-gradient(130% 78% at 22% 0%, rgb(255 255 255 / 0.09) 0%, rgb(255 255 255 / 0) 62%),
+    linear-gradient(165deg, var(--st-cover-from, #2b2f36) 0%, var(--st-cover-to, #0a0b0d) 82%);
+}
+
+.st-cover-mono {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  font-size: min(46cqw, 30cqh);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  white-space: nowrap;
+  color: rgb(255 255 255 / 0.075);
+  pointer-events: none;
+  user-select: none;
+}
+
+@container (max-width: 95px) {
+  .st-cover-mono { display: none; }
+}
+
+.st-cover--bare {
+  container-type: normal;
+}
+
+.st-cover--chip .st-cover-mono {
+  display: block;
+  top: 50%;
+  font-size: 34cqw;
+  letter-spacing: -0.02em;
+  color: rgb(255 255 255 / 0.55);
+}
+
+/* a carousel's dots and count (PostMedia, Slides): put up as its post comes to rest in the Day view, they fade in */
+.st-controls-in {
+  animation: st-controls-in 240ms ease-out both;
+}
+
+@keyframes st-controls-in {
+  from { opacity: 0; }
+}
+
+/* a preview clip fades in over its poster only once a frame has been presented */
+.st-video {
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+
+.st-video[data-playing] {
+  opacity: 1;
+}
+
+/* the bottom scrim: an eased fall-off (no hard band where it ends), so white type reads over any picture */
+.st-scrim {
+  background: linear-gradient(
+    to top,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.9) 0%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.84) 12%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.72) 25%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.55) 38%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.37) 51%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.21) 64%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.09) 78%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.02) 90%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0) 100%
+  );
+}
+
+/* the grid covers' bottom scrim: shorter and softer, so the number reads and the picture stays bright */
+.st-scrim-soft {
+  background: linear-gradient(
+    to top,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.68) 0%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.58) 16%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.42) 34%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.24) 54%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.1) 74%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0) 100%
+  );
+}
+
+/* the top scrim under a 2×2's face and handle */
+.st-scrim-top {
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.52) 0%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.3) 40%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0.1) 72%,
+    rgb(var(--st-scrim-rgb, 0 0 0) / 0) 100%
+  );
+}
+
+/* the rose story ring round a big face: a still gradient cut to a 3px ring, so the gap inside it is see-through
+   (a mask on a still element: painted once, never per frame) */
+.st-story-ring {
+  background: linear-gradient(135deg, #fda4af 0%, #fb7185 30%, #e11d48 66%, #9f1239 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+}
+
+/* the profile card (the today zoom's first card) sizes to its box. Its Lead / Read / settings actions always show
+   (the settings are the only way to feeds, feeders, the plan and the appearance from here); with them its rows need
+   598px, and a short card lets go of its least needed rows instead: all feeds' "Today" line first, then the week
+   strip, then the highlights */
+.st-profile-card {
+  container-type: size;
+}
+
+@container (max-height: 621px) {
+  .st-profile-card .st-pc-today { display: none; }
+}
+
+@container (max-height: 597px) {
+  .st-profile-card .st-pc-strip { display: none; }
+}
+
+@container (max-height: 535px) {
+  .st-profile-card .st-pc-highlights { display: none; }
+}
+
+/* a block standing in for a post while its day loads: the surface with a faint, still sheen (no shimmer) */
+.st-placeholder {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 55%),
+    var(--st-surface, #0e0e11);
+}
+
+/* a still placeholder dot or bar in the profile while its numbers load */
+.st-bone {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .st-img,
+  .st-video,
+  .st-ambient {
+    transition: none;
+  }
+
+  .st-controls-in {
+    animation: none;
+  }
+}
+
+/* the post sheet's body. A phone: the poster small beside the number, then the trail, the results, the counts and
+   the way out, one under another. A wide screen: the poster large on the left, the rest down its right side. */
+.st-sheet-grid {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-areas:
+    "poster lead"
+    "trail trail"
+    "runs runs"
+    "stats stats"
+    "go go";
+  column-gap: 16px;
+  row-gap: 20px;
+  align-items: end;
+}
+
+.st-sheet-grid > [data-area="poster"] { grid-area: poster; }
+.st-sheet-grid > [data-area="lead"] { grid-area: lead; }
+.st-sheet-grid > [data-area="trail"] { grid-area: trail; }
+.st-sheet-grid > [data-area="runs"] { grid-area: runs; }
+.st-sheet-grid > [data-area="stats"] { grid-area: stats; }
+.st-sheet-grid > [data-area="go"] { grid-area: go; }
+
+@media (min-width: 1024px) {
+  .st-sheet-grid {
+    grid-template-columns: 300px minmax(0, 1fr);
+    /* the last row takes whatever height the poster has over the rest, so the right column never spreads out */
+    grid-template-rows: auto auto auto auto auto 1fr;
+    grid-template-areas:
+      "poster lead"
+      "poster trail"
+      "poster runs"
+      "poster stats"
+      "poster go"
+      "poster .";
+    column-gap: 28px;
+    row-gap: 18px;
+    align-items: start;
+  }
+}
+
+/* a carousel's slides: its own horizontal snap scroller (the page's vertical swipe passes through untouched) */
+.st-slides {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+.st-slides::-webkit-scrollbar {
+  display: none;
+}
+
+.st-slide {
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+/* the Day view's date beside the posts (DayStamp): it eases in when there is a day to show, out over the profile
+   card and while a zoom flies (opacity and a short slide only) */
+/* the Day view's date: away, it waits past the screen's left edge; shown, it slides in (no fade) */
+.st-stamp {
+  transform: translate3d(calc(-100% - 64px), 0, 0);
+  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.st-stamp[data-shown] {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-stamp {
+    transition: none;
+  }
+}
+
+/* a framed post's ambient wash (PostMedia, Ambient): the picture shrunk to a few dozen pixels and stretched over the
+   box (the stretch is the blur; no filter here), scaled past its edges so it never shows a rim. Nothing here moves */
+.st-ambient {
+  transform: scale(1.18);
+  opacity: 0;
+  /* the pictures' even curve (.st-img): it can come up under the eye too */
+  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.st-ambient[data-ready] {
+  opacity: 1;
+}
+
+/* in a post's 4:5 frame (PostMedia): a picture 4:5 or wider shows whole, letterboxed over the ambient wash; a taller
+   one (a reel, a 3:4 post) fills the frame. Decided once, when the picture loads */
+.st-framed .st-img[data-shape="wide"] {
+  object-fit: contain;
+}
+
+/* a DayStamp line changing (Swap): the old copy rises away as the new one rises in, in one grid cell, no mask */
+.st-swap-in {
+  animation: st-swap-in 520ms var(--st-ease, ease-out) both;
+  animation-delay: var(--st-swap-delay, 0ms);
+}
+
+.st-swap-out {
+  opacity: 0;
+  animation: st-swap-out 300ms cubic-bezier(0.45, 0, 0.2, 1) both;
+  animation-delay: var(--st-swap-delay, 0ms);
+}
+
+/* ── a post on the Feed (PostCell): a box at its place, its layers boxes inside it ──────────────────────────── */
+
+.st-cell {
+  position: absolute;
+}
+
+.st-cell > [data-layer] {
+  position: absolute;
+}
+
+/* the post a move centres on flies above the rest */
+.st-cell[data-focal] {
+  z-index: 3;
+}
+
+/* the old view's leftovers during a move, and the chrome it is leaving: unseen unless the move lets them go from
+   where they stood (its animation holds them there). They sit under everything else, so what arrives comes in over
+   them, the way photos replace each other in iPhone Photos, never over a gap */
+.st-cell[data-gone],
+.st-cell > [data-layer$="-out"] {
+  opacity: 0;
+  pointer-events: none;
+}
+.st-cell[data-gone] {
+  z-index: -1;
+}
+
+/* a move into a view: the post's chrome (a card's foot, a tile's number) comes in a piece at a time as it lands */
+.st-cell[data-arriving] [data-st] {
+  animation: st-arrive 420ms var(--st-ease, ease-out) backwards;
+  animation-delay: calc(var(--st-arrive-at, 260ms) + var(--i, 0) * 45ms);
+}
+
+@keyframes st-arrive {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+}
+
+/* the wide Day view's spotlight: the row on the focus line reads, its pieces coming in one after another, the way it
+   reads; the rest of the column is dimmed, its reading away */
+.st-row [data-reading] .st-settle {
+  opacity: 0;
+  transform: translate3d(20px, 0, 0);
+  transition:
+    opacity 160ms cubic-bezier(0.4, 0, 1, 1),
+    transform 200ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.st-row[data-spot] [data-reading] .st-settle {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 420ms var(--st-ease, ease-out) calc(60ms + var(--i, 0) * 55ms),
+    transform 560ms var(--st-ease, ease-out) calc(60ms + var(--i, 0) * 55ms);
+}
+
+.st-row .st-dim {
+  opacity: 0.55;
+  transition: opacity 380ms var(--st-ease, ease-out);
+}
+
+.st-row[data-lit] .st-dim {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-cell[data-arriving] [data-st] {
+    animation: none;
+  }
+
+  .st-row [data-reading] .st-settle,
+  .st-row[data-spot] [data-reading] .st-settle,
+  .st-row .st-dim {
+    transition: none;
+  }
+}
+
+@keyframes st-swap-in {
+  from { opacity: 0; transform: translate3d(0, 0.32em, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes st-swap-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate3d(0, -0.32em, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-swap-in,
+  .st-swap-out {
+    animation-duration: 1ms;
+  }
+}

@@ -7,7 +7,7 @@
    profile pic when we have one, seeded gradient + initials when not.
    ───────────────────────────────────────────────────────────── */
 
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 
 const STORY_GRADIENTS = [
@@ -43,6 +43,9 @@ export default function FeederStoryAvatar({
   style?: CSSProperties;
 }) {
   const [from, to] = storyGradientForHandle(feeder.handle);
+  // a profile pic that won't load (an expired Instagram link) falls back to the initials, as if there were none
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const picUrl = feeder.profilePicUrl && feeder.profilePicUrl !== failedUrl ? feeder.profilePicUrl : null;
   return (
     <span
       className={cn(
@@ -55,14 +58,16 @@ export default function FeederStoryAvatar({
         ...style,
       }}
     >
-      {feeder.profilePicUrl ? (
+      {picUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- remote feeder media
         <img
-          src={feeder.profilePicUrl}
+          src={picUrl}
           alt={`@${feeder.handle}`}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
           decoding="async"
+          data-media-fallback="off"
+          onError={() => setFailedUrl(picUrl)}
         />
       ) : (
         <span className="relative z-10">{feederInitials(feeder.handle)}</span>
