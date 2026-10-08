@@ -713,8 +713,9 @@ export function useTabHeader(tab: string, config: TabHeaderConfig) {
   });
 }
 
-// the tabs that wear this header (the others still bring their own through AppHeader)
-const TAB_HEADER_TABS = new Set(['lead', 'read', 'feed']);
+// the tabs that wear this header (the others still bring their own through AppHeader: a tab listed here that
+// doesn't would keep the last tab's header drawn over its own)
+const TAB_HEADER_TABS = new Set(['read', 'feed']);
 
 export function TabHeaderHost({ tab, onCompressed }: { tab: string | null; onCompressed: (compressed: boolean) => void }) {
   const reduce = Boolean(useReducedMotion());
