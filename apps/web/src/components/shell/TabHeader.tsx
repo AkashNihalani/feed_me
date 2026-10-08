@@ -25,7 +25,7 @@
    the scope lets go of its name; they return with the page.
    ───────────────────────────────────────────────────────────── */
 
-import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type Ref, type SyntheticEvent } from 'react';
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
@@ -713,9 +713,8 @@ export function useTabHeader(tab: string, config: TabHeaderConfig) {
   });
 }
 
-// the tabs that wear this header (the others still bring their own through AppHeader: a tab listed here that
-// doesn't would keep the last tab's header drawn over its own)
-const TAB_HEADER_TABS = new Set(['read', 'feed']);
+// the tabs that wear this header (the others still bring their own through AppHeader)
+const TAB_HEADER_TABS = new Set(['lead', 'read', 'feed']);
 
 export function TabHeaderHost({ tab, onCompressed }: { tab: string | null; onCompressed: (compressed: boolean) => void }) {
   const reduce = Boolean(useReducedMotion());
@@ -762,104 +761,210 @@ export function TabHeaderHost({ tab, onCompressed }: { tab: string | null; onCom
   );
 }
 
-/* ── the time range: a rolling dropdown on a phone, a segmented track from sm up ── */
+/* ── the time range: a button that grows into its menu on a phone, a segmented track from sm up ── */
 
 /* the same control serves any short choice (Lead's 30D, Feed's TODAY · WEEK · 30D · 90D): a value's label defaults
    to the time range's "30D", and labels longer than that widen the trigger, its menu and the track's segments */
 const timeframeLabel = (value: string | number) => `${value}D`;
 const isRoomy = <T extends string | number>(options: readonly T[], label: (value: T) => string) => options.some((option) => label(option).length > 3);
 
+/* On a phone the choice is a button that grows down into its menu, as Read's view switch does (readerEngine,
+   lnmOpen): a box laid exactly over the button wears its face (the value and the chevron, where they were; the button
+   itself hides under it), so nothing moves as it opens; then it grows down to show the other values under a hairline,
+   one after another. A pick rolls its value into the face while the box closes back into the button, and reaches the
+   tab once the box has mostly closed, so the change (a zoom, on Feed) never fights the menu for frames. A tap
+   outside, Escape or a scroll closes it the same way. Read's curves and sizes. */
+// a critically damped spring: Read's sheet (readerEngine, EZ.sheet)
+const MENU_SPRING = (t: number) => (t >= 1 ? 1 : 1 - (1 + 7.5 * t) * Math.exp(-7.5 * t));
+const MENU_OPEN = { duration: 0.56, ease: MENU_SPRING };
+const MENU_CLOSE = { duration: 0.38, ease: [0.32, 0.72, 0, 1] as const };
+const MENU_ROW = 40;
+const MENU_PAD = 6;
+const MENU_APPLY_MS = 300;
+// a pick the tab doesn't take stops being worn after this
+const MENU_PICK_KEEP_MS = 1800;
+const MENU_SHADOW_REST = '0px 0px 0px 0px rgba(0, 0, 0, 0), 0px 0px 0px 0px rgba(255, 23, 79, 0)';
+const MENU_SHADOW_OPEN = '0px 22px 44px -18px rgba(0, 0, 0, 0.95), 0px 0px 34px -22px rgba(255, 23, 79, 0.6)';
+
+type MenuBox<T> = { top: number; right: number; width: number; height: number; scrollY: number; others: T[]; keys: boolean };
+
+// a value in its slot, rolling when it changes (the button's face, and the open menu's)
+function ValueSlot({ text, dir, roomy, reduce }: { text: string; dir: number; roomy: boolean; reduce: boolean }) {
+  return (
+    <span className={cn('relative grid h-[1.08em] shrink-0 place-items-center overflow-hidden leading-none', roomy ? 'w-[68px]' : 'w-8')}>
+      <AnimatePresence initial={false} custom={dir}>
+        <motion.span
+          key={text}
+          custom={dir}
+          variants={SLOT_ROLL}
+          initial={reduce ? false : 'enter'}
+          animate="center"
+          exit={reduce ? { transform: 'translate3d(0, 0%, 0)' } : 'exit'}
+          transition={reduce ? { duration: 0 } : SLOT_SPRING}
+          className="absolute inset-0 grid place-items-center tabular-nums text-white"
+        >
+          {text}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
 function TimeframePicker<T extends string | number>({ value, options, pending, label, name, onChange }: { value: T; options: readonly T[]; pending: boolean; label: (value: T) => string; name?: string; onChange: (value: T) => void }) {
   const reduce = Boolean(useReducedMotion());
   const roomy = isRoomy(options, label);
   const panelId = useId();
+  // the button's place, read from its slot (the button itself may be mid-press, scaled)
+  const slotRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const onChangeRef = useRef(onChange);
+  const timersRef = useRef<number[]>([]);
+  const refocusRef = useRef(false);
+  // the box while it is on screen: opening, open, or closing back into the button
+  const [box, setBox] = useState<MenuBox<T> | null>(null);
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<{ top: number; right: number } | null>(null);
-  const others = options.filter((option) => option !== value);
+  // a pick on its way: worn by the face and the button until the tab has it
+  const [picked, setPicked] = useState<T | null>(null);
+  if (picked !== null && picked === value) setPicked(null);
+  const shown = picked ?? value;
+  // which way the value rolls: a step on through the options comes up from below
+  const [roll, setRoll] = useState({ shown, dir: 1 });
+  if (roll.shown !== shown) setRoll({ shown, dir: options.indexOf(shown) >= options.indexOf(roll.shown) ? 1 : -1 });
 
+  useIsomorphicLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  useEffect(() => () => timersRef.current.forEach((timer) => window.clearTimeout(timer)), []);
+
+  // while it is open: a tap outside, Escape, a scroll or the window changing closes it (back into the button); opened
+  // from the keys, the first value has the focus
   useEffect(() => {
-    if (!open) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      optionRefs.current[0]?.focus();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [value, open]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-
+    if (!open || !box) return undefined;
+    const close = () => setOpen(false);
     const closeFromOutside = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (target && !triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
+      if (target && !slotRef.current?.contains(target) && !menuRef.current?.contains(target)) close();
     };
     const closeFromKeyboard = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setOpen(false);
-      triggerRef.current?.focus();
+      refocusRef.current = true;
+      close();
     };
-    const closeFromViewportChange = () => setOpen(false);
-
-    document.addEventListener('pointerdown', closeFromOutside);
+    const closeFromScroll = () => {
+      if (Math.abs(window.scrollY - box.scrollY) > 8) close();
+    };
+    document.addEventListener('pointerdown', closeFromOutside, true);
     document.addEventListener('keydown', closeFromKeyboard);
-    window.addEventListener('orientationchange', closeFromViewportChange);
+    window.addEventListener('scroll', closeFromScroll, { passive: true });
+    window.addEventListener('resize', close);
+    window.addEventListener('orientationchange', close);
+    const frame = box.keys ? window.requestAnimationFrame(() => optionRefs.current[0]?.focus({ preventScroll: true })) : 0;
     return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
+      document.removeEventListener('pointerdown', closeFromOutside, true);
       document.removeEventListener('keydown', closeFromKeyboard);
-      window.removeEventListener('orientationchange', closeFromViewportChange);
+      window.removeEventListener('scroll', closeFromScroll);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('orientationchange', close);
+      if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [open]);
+  }, [open, box]);
 
-  const toggle = () => {
-    if (open) {
+  const toggle = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (box) {
       setOpen(false);
       return;
     }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setPlacement({
-      top: Math.min(rect.bottom - 12, window.innerHeight - 160),
-      right: Math.max(12, window.innerWidth - rect.right),
+    const rect = slotRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width) return;
+    // a click with no pointer behind it (Enter, Space) came from the keys: focus goes into the menu and back
+    const keys = event.detail === 0;
+    refocusRef.current = keys;
+    setBox({
+      top: rect.top,
+      right: window.innerWidth - rect.right,
+      width: rect.width,
+      height: rect.height,
+      scrollY: window.scrollY,
+      others: options.filter((option) => option !== value),
+      keys,
     });
     setOpen(true);
   };
 
-  const moveFocus = (index: number, direction: number) => {
-    optionRefs.current[(index + direction + others.length) % others.length]?.focus();
+  const pick = (option: T) => {
+    if (option === shown) {
+      setOpen(false);
+      return;
+    }
+    // the face rolls to it first, then the box closes round it (a frame later, so the closing box wears the new value)
+    setPicked(option);
+    window.requestAnimationFrame(() => setOpen(false));
+    timersRef.current.push(
+      window.setTimeout(() => onChangeRef.current(option), reduce ? 0 : MENU_APPLY_MS),
+      window.setTimeout(() => setPicked((current) => (current === option ? null : current)), MENU_APPLY_MS + MENU_PICK_KEEP_MS),
+    );
   };
 
-  const panelHeight = others.length * 44 + 16;
+  const moveFocus = (index: number, step: number) => {
+    const count = box?.others.length ?? 0;
+    if (count) optionRefs.current[(index + step + count) % count]?.focus();
+  };
+
   const menu = typeof document !== 'undefined' ? createPortal(
-    <AnimatePresence>
-      {open && placement ? (
+    <AnimatePresence
+      onExitComplete={() => {
+        setBox(null);
+        if (!refocusRef.current) return;
+        refocusRef.current = false;
+        window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
+      }}
+    >
+      {open && box ? (
         <motion.div
-          ref={panelRef}
+          key="menu"
+          ref={menuRef}
           id={panelId}
           role="menu"
           aria-label={name ?? 'Time range'}
-          initial={{ height: reduce ? panelHeight : 12 }}
-          animate={{ height: panelHeight }}
-          exit={{ height: reduce ? panelHeight : 12 }}
-          transition={reduce
-            ? { duration: 0 }
-            : { type: 'spring', stiffness: 360, damping: 36, mass: 0.9 }}
-          className="fixed z-[160] overflow-hidden rounded-[14px] border border-white/[0.11] bg-[linear-gradient(180deg,rgba(20,16,18,.98),rgba(5,5,5,.96))] text-white shadow-[0_24px_60px_-22px_rgba(0,0,0,.98),0_0_38px_-24px_rgb(var(--fm-accent-rgb)/.76)] backdrop-blur-[18px]"
-          style={{ top: placement.top, right: placement.right, width: roomy ? 96 : 76, willChange: reduce ? undefined : 'height' }}
+          className="fixed z-[160] overflow-hidden text-white [-webkit-tap-highlight-color:transparent]"
+          style={{ top: box.top, right: box.right, width: box.width, backgroundColor: 'rgba(0, 0, 0, 0.38)' }}
+          initial={reduce ? false : { height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST }}
+          animate={{
+            height: box.height + MENU_PAD * 2 + box.others.length * MENU_ROW,
+            borderRadius: 16,
+            boxShadow: MENU_SHADOW_OPEN,
+            transition: reduce ? { duration: 0 } : MENU_OPEN,
+          }}
+          exit={reduce
+            ? { opacity: 0, transition: { duration: 0 } }
+            : { height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST, transition: MENU_CLOSE }}
         >
-          <div className="grid gap-1 px-px pb-1 pt-[14px]">
-            {others.map((option, index) => (
-              <button
-                key={option}
+          {/* the menu's own surface, coming up over the button's */}
+          <motion.span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(22,16,19,.985),rgba(6,6,7,.975))] backdrop-blur-[18px]"
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1, transition: reduce ? { duration: 0 } : { duration: 0.22, ease: 'easeOut' } }}
+            exit={reduce ? undefined : { opacity: [1, 1, 0], transition: { duration: 0.4, times: [0, 0.6, 1] } }}
+          />
+          <span aria-hidden="true" className="pointer-events-none absolute left-[10px] right-[10px] h-px bg-white/[0.08]" style={{ top: box.height }} />
+          <div className="absolute left-0 z-[1] grid gap-[2px] px-1 py-[6px]" style={{ top: box.height, width: box.width }}>
+            {box.others.map((option, index) => (
+              <motion.button
+                key={String(option)}
                 ref={(node) => { optionRefs.current[index] = node; }}
                 type="button"
                 role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  triggerRef.current?.focus();
-                  onChange(option);
+                initial={reduce ? false : { opacity: 0, transform: 'translateY(-10px)' }}
+                animate={{
+                  opacity: 1,
+                  transform: 'translateY(0px)',
+                  transition: reduce ? { duration: 0 } : { duration: 0.42, delay: 0.09 + index * 0.055, ease: SOFT_EASE },
                 }}
+                exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.14, ease: 'easeIn' } }}
+                onClick={() => pick(option)}
                 onKeyDown={(event) => {
                   if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
                     event.preventDefault();
@@ -869,15 +974,36 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
                     moveFocus(index, -1);
                   } else if (event.key === 'Home' || event.key === 'End') {
                     event.preventDefault();
-                    optionRefs.current[event.key === 'Home' ? 0 : others.length - 1]?.focus();
+                    optionRefs.current[event.key === 'Home' ? 0 : box.others.length - 1]?.focus();
                   }
                 }}
-                className="relative grid h-10 w-full touch-manipulation place-items-center overflow-hidden rounded-[10px] text-[16px] font-black tabular-nums tracking-[-0.03em] text-white/60 outline-none transition-[background-color,color,transform] duration-150 active:scale-[0.94] active:bg-[var(--fm-accent)]/70 active:text-white focus-visible:bg-[var(--fm-accent)]/70 focus-visible:text-white focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]"
+                className="grid h-[38px] w-full touch-manipulation place-items-center rounded-[11px] text-[16px] font-black uppercase leading-none tabular-nums tracking-[-0.02em] text-white/[0.58] outline-none transition-[background-color,color,scale] duration-150 focus-visible:bg-white/[0.08] focus-visible:text-white active:scale-[0.96] active:bg-[rgb(255_23_79/0.85)] active:text-white"
               >
                 {label(option)}
-              </button>
+              </motion.button>
             ))}
           </div>
+          {/* the face: the button's own insides, where they were */}
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Close"
+            onClick={() => setOpen(false)}
+            className="absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 text-[16px] font-black uppercase tracking-[-0.02em] text-white outline-none"
+            style={{ width: box.width, height: box.height }}
+          >
+            <ValueSlot text={label(shown)} dir={roll.dir} roomy={roomy} reduce={reduce} />
+            <motion.span
+              className="grid place-items-center"
+              initial={reduce ? false : { transform: 'rotate(0deg)' }}
+              animate={{ transform: 'rotate(180deg)', transition: reduce ? { duration: 0 } : { duration: 0.48, ease: MENU_SPRING } }}
+              exit={reduce ? undefined : { transform: 'rotate(0deg)', transition: MENU_CLOSE }}
+            >
+              <ChevronDown className="h-3.5 w-3.5 text-white/54" aria-hidden="true" />
+            </motion.span>
+          </button>
+          {/* its edge: the button's hairline and inner shade, all the way round */}
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[3] rounded-[inherit] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.09),inset_0_2px_10px_rgba(0,0,0,0.38)]" />
         </motion.div>
       ) : null}
     </AnimatePresence>,
@@ -885,41 +1011,24 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
   ) : null;
 
   return (
-    <div className="shrink-0 sm:hidden">
+    <div ref={slotRef} className="shrink-0 sm:hidden">
       <button
         ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-label={name ? `${name}: ${label(value)}` : `Time range: ${value} days`}
+        aria-label={name ? `${name}: ${label(shown)}` : `Time range: ${shown} days`}
         aria-busy={pending}
         onClick={toggle}
+        // under the box while the menu is out (the box wears its face), so nothing moves
+        style={box ? { visibility: 'hidden' } : undefined}
         className={cn(HEADER_CONTROL, roomy ? 'w-[108px]' : 'w-[76px]', 'text-[16px] tracking-[-0.02em] transition-transform duration-150 active:scale-[0.97]')}
       >
-        <span className={cn('relative grid h-[1.08em] shrink-0 place-items-center overflow-hidden leading-none', roomy ? 'w-[68px]' : 'w-8')}>
-          <AnimatePresence initial={false} custom={1}>
-            <motion.span
-              key={value}
-              custom={1}
-              variants={SLOT_ROLL}
-              initial={reduce ? false : 'enter'}
-              animate="center"
-              exit={reduce ? { transform: 'translate3d(0, 0%, 0)' } : 'exit'}
-              transition={reduce ? { duration: 0 } : SLOT_SPRING}
-              className="absolute inset-0 grid place-items-center tabular-nums text-white"
-            >
-              {label(value)}
-            </motion.span>
-          </AnimatePresence>
-        </span>
-        <motion.span
-          animate={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          transition={reduce ? { duration: 0.1 } : { type: 'spring', stiffness: 520, damping: 40, mass: 0.7 }}
-          className="grid place-items-center"
-        >
+        <ValueSlot text={label(shown)} dir={roll.dir} roomy={roomy} reduce={reduce} />
+        <span className="grid place-items-center">
           <ChevronDown className="h-3.5 w-3.5 text-white/54" aria-hidden="true" />
-        </motion.span>
+        </span>
       </button>
       {menu}
     </div>
