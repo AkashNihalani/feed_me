@@ -1,8 +1,9 @@
 'use client';
 
-import { memo, useEffect, useMemo, useState } from 'react';
-import { animate, motion, useMotionValue, useReducedMotion } from 'framer-motion';
+import { memo, useEffect, useMemo } from 'react';
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'framer-motion';
 import { Eye, Film, Heart, Image as ImageIcon, Layers, MessageCircle } from 'lucide-react';
+import { BEAT_HIDDEN, BEAT_SHOWN, beatArrive } from '@/lib/motion';
 import { EngagementAverageMediaType, EngagementAverageRow } from './dashboardTypes';
 
 type MetricKey = 'avg_likes' | 'avg_comments' | 'avg_views';
@@ -22,6 +23,12 @@ const METRIC_META = {
   avg_comments: { label: 'Comms', Icon: MessageCircle },
   avg_views: { label: 'Views', Icon: Eye },
 } satisfies Record<MetricKey, { label: string; Icon: typeof Heart }>;
+
+const METRIC_KEYS = Object.keys(METRIC_META) as MetricKey[];
+// formatCompact runs on every frame of a count-up: one formatter, not a new Intl object per call
+const COUNT_FORMAT = new Intl.NumberFormat('en-US');
+const COUNT_CHIP_HIDDEN = { opacity: 0, transform: 'translateY(-4px)' } as const;
+const COUNT_CHIP_SHOWN = { opacity: 1, transform: 'translateY(0px)' } as const;
 
 function emptyRow(mediaType: DisplayMediaType): DisplayEngagementAverageRow {
   return {
@@ -45,25 +52,25 @@ function formatCompact(value: number): string {
     const next = rounded / 1_000;
     return `${next >= 10 ? next.toFixed(1) : next.toFixed(2)}`.replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1') + 'K';
   }
-  return new Intl.NumberFormat('en-US').format(rounded);
+  return COUNT_FORMAT.format(rounded);
 }
 
 function AnimatedMetricValue({ value, muted }: { value: number | null; muted?: boolean }) {
   const reduceMotion = useReducedMotion();
   const motionValue = useMotionValue(value ?? 0);
-  const [displayValue, setDisplayValue] = useState(value ?? 0);
+  // rendered straight from the motion value (framer writes textContent): the count-up no longer re-renders the cell
+  // every frame
+  const displayText = useTransform(motionValue, formatCompact);
 
   useEffect(() => {
     if (value == null) return undefined;
 
-    const unsubscribe = motionValue.on('change', (latest) => setDisplayValue(latest));
     const controls = animate(motionValue, value, {
       duration: reduceMotion ? 0.01 : 0.58,
       ease: [0.22, 1, 0.36, 1],
     });
 
     return () => {
-      unsubscribe();
       controls.stop();
     };
   }, [motionValue, reduceMotion, value]);
@@ -79,7 +86,7 @@ function AnimatedMetricValue({ value, muted }: { value: number | null; muted?: b
       animate={{ opacity: muted ? 0.58 : 1 }}
       className="tabular-nums"
     >
-      {formatCompact(displayValue)}
+      {displayText}
     </motion.span>
   );
 }
@@ -119,8 +126,8 @@ function FeedEngagementAverages({ rows }: { rows: EngagementAverageRow[] }) {
         </div>
         <motion.div
           key={totalPosts}
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={COUNT_CHIP_HIDDEN}
+          animate={COUNT_CHIP_SHOWN}
           transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
           className="shrink-0 rounded-full bg-[var(--fm-accent)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_9px_20px_-10px_rgb(var(--fm-accent-rgb)/0.72)] sm:px-3.5 sm:py-1.5 sm:text-[10px] lg:px-4 lg:py-2 lg:text-[12px]"
         >
@@ -131,7 +138,7 @@ function FeedEngagementAverages({ rows }: { rows: EngagementAverageRow[] }) {
       <div className="relative z-10 mt-3 flex min-h-0 flex-1 flex-col overflow-hidden border-y border-black/7 dark:border-white/8">
         <div className="grid shrink-0 grid-cols-[minmax(96px,1.1fr)_repeat(3,minmax(54px,1fr))] items-center gap-2 border-b border-black/6 px-1 py-2.5 text-[8px] font-black uppercase tracking-[0.14em] text-foreground/36 dark:border-white/8 dark:text-white/30 sm:text-[10px]">
           <span>Type</span>
-          {(Object.keys(METRIC_META) as MetricKey[]).map((metricKey) => {
+          {METRIC_KEYS.map((metricKey) => {
             const { label, Icon } = METRIC_META[metricKey];
             return (
               <span key={metricKey} className="flex items-center justify-end gap-1">
@@ -146,13 +153,13 @@ function FeedEngagementAverages({ rows }: { rows: EngagementAverageRow[] }) {
           {normalizedRows.map((row, index) => {
             const { label, Icon } = MEDIA_META[row.media_type];
 
+            // fixed MEDIA_ORDER, so nothing ever re-sorts: no `layout`. The rows settle in on the page beat.
             return (
               <motion.div
                 key={row.media_type}
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: index * 0.035, ease: [0.22, 1, 0.36, 1] }}
+                initial={BEAT_HIDDEN}
+                animate={BEAT_SHOWN}
+                transition={beatArrive(index)}
                 className="grid min-h-[58px] flex-1 grid-cols-[minmax(96px,1.1fr)_repeat(3,minmax(54px,1fr))] items-center gap-2 px-1 py-2.5 sm:min-h-[64px]"
               >
                 <div className="flex min-w-0 items-center gap-2.5">

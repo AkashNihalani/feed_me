@@ -32,15 +32,17 @@ function formatCompact(val: string): string {
 
 export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, onMakeAnchor, onRemove, onOpenFeed }: FeederRowProps) {
   return (
+    // `layout` stays: the rows reflow on add/remove inside FeedDetailV2's `motion.div layout` grid, which would
+    // stretch them during its size animation without it. Press feedback is CSS `scale` (composes with framer's
+    // inline transform; the transition is scale-only so framer's own transform writes are untouched).
     <motion.div
       layout
       initial={{ opacity: 0, scale: 0.88 }}
       animate={{ opacity: 1, scale: 1, y: 0, zIndex: isAnchor ? 50 : 1 }}
       exit={{ opacity: 0, scale: 0.88 }}
-      whileTap={{ scale: 0.985 }}
       transition={{ type: 'spring', stiffness: 300, damping: 26, mass: 0.8, layout: { type: 'spring', stiffness: 300, damping: 26, mass: 0.8 } }}
       className={cn(
-        'fm-depth-glass group relative flex flex-col justify-between overflow-hidden rounded-[22px] p-4',
+        'fm-depth-glass group relative flex flex-col justify-between overflow-hidden rounded-[22px] p-4 transition-[scale] duration-150 active:scale-[0.985]',
         isAnchor && 'ring-1 ring-[var(--fm-accent)]/35'
       )}
     >
@@ -82,28 +84,28 @@ export default function FeederRow({ handle, isAnchor, profilePicUrl, metrics, on
       {/* Actions */}
       <div className="relative z-10 mt-auto flex items-center justify-between gap-2 border-t border-black/5 pt-2.5 dark:border-white/6">
         {!isAnchor ? (
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onMakeAnchor}
-            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-foreground/60 transition-all hover:text-foreground dark:hover:text-white">
+          <button onClick={onMakeAnchor}
+            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-foreground/60 transition-all hover:scale-[1.05] hover:text-foreground active:scale-[0.95] dark:hover:text-white">
             <Crown size={14} strokeWidth={3} />Make Anchor
-          </motion.button>
+          </button>
         ) : (
-          <motion.span animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          // static: the old opacity pulse ran forever
+          <span
             className="inline-flex items-center gap-1.5 rounded-full border border-[var(--fm-accent-bright)] bg-[var(--fm-accent)] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_6px_12px_-8px_rgb(var(--fm-accent-rgb)/0.3)]">
             <Target size={14} strokeWidth={3} />Tracking
-          </motion.span>
+          </span>
         )}
         <div className="flex items-center gap-1.5">
-          <motion.button
-            whileTap={{ scale: 0.96 }}
+          <button
             onClick={onOpenFeed}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--fm-accent)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_6px_14px_rgb(var(--fm-accent-rgb)/0.22)]"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--fm-accent)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_6px_14px_rgb(var(--fm-accent-rgb)/0.22)] transition-transform duration-150 active:scale-[0.96]"
           >
             <ExternalLink size={13} strokeWidth={2.6} />
             All Posts
-          </motion.button>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={onRemove} className="fm-depth-chip rounded-[10px] p-1.5 text-foreground/50 transition-colors">
+          </button>
+          <button onClick={onRemove} className="fm-depth-chip rounded-[10px] p-1.5 text-foreground/50 transition-[color,background-color,border-color,scale] duration-150 active:scale-[0.9]">
             <Trash2 size={14} strokeWidth={2.5} />
-          </motion.button>
+          </button>
         </div>
       </div>
     </motion.div>

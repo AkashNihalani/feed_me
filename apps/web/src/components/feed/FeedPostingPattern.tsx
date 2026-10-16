@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ArrowDown,
@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BEAT_ARRIVE_S, BEAT_EASE_CSS, BEAT_MAX_STEPS, beatArrive, beatDelay, beatLeave } from '@/lib/motion';
 import { PostingPatternPayload, Timeframe } from './dashboardTypes';
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -28,13 +29,81 @@ type Props = {
 };
 
 const EASE = [0.22, 1, 0.36, 1] as const;
-const SPRING = { type: 'spring' as const, stiffness: 300, damping: 26, mass: 0.8 };
 const LAYOUT_SPRING = { type: 'spring' as const, stiffness: 280, damping: 30, mass: 0.86 };
+
+// Swaps (a value, the headline, the lower panel) run on the page beat as opacity plus ONE transform string, which
+// framer hands to the compositor; independent y/scale props would tick on the main thread.
+const SWAP_HIDDEN = { opacity: 0, transform: 'translateY(10px) scale(0.98)' } as const;
+const SWAP_SHOWN = { opacity: 1, transform: 'translateY(0px) scale(1)' } as const;
+const SWAP_GONE = { opacity: 0, transform: 'translateY(-8px) scale(0.98)' } as const;
 const ENTRY_EXIT = {
-  initial: { opacity: 0, y: 10, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -8, scale: 0.98 },
+  initial: SWAP_HIDDEN,
+  animate: { ...SWAP_SHOWN, transition: beatArrive(0) },
+  exit: { ...SWAP_GONE, transition: beatLeave(0) },
 } as const;
+const PANEL_ENTRY_EXIT = {
+  initial: { opacity: 0, transform: 'translateY(14px) scale(0.985)' },
+  animate: { opacity: 1, transform: 'translateY(0px) scale(1)', transition: beatArrive(0) },
+  exit: { opacity: 0, transform: 'translateY(-10px) scale(0.985)', transition: beatLeave(0) },
+} as const;
+const CHIP_EXIT = { opacity: 0, transform: 'translateY(10px) scale(0.96)', transition: beatLeave(0) } as const;
+const CELL_EXIT = { opacity: 0, transform: 'translateY(10px) scale(0.97)', transition: beatLeave(0) } as const;
+// Rows and media chips keep a position-only layout glide (they genuinely reorder when the ranking flips). Their exit
+// is opacity-only so it never fights the projection transform.
+const REORDER_TRANSITION = { layout: LAYOUT_SPRING, opacity: { duration: 0.18, ease: EASE } } as const;
+
+// a sweep across a strip: index 0 → the first beat step, the last index → the last, however many bars there are
+function sweepStep(index: number, count: number): number {
+  return count > 1 ? (index / (count - 1)) * BEAT_MAX_STEPS : 0;
+}
+
+function reducedMotionPreferred(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+const BAR_DEAL_ID = 'fm-bar-deal';
+
+/**
+ * Bars sit at their real size (static height/width). A bar whose size changes is re-dealt: it grows back out of its
+ * base on the page beat with ONE transform animation (compositor-only; no height/width tween, no per-frame JS). The
+ * first pass grows every bar when `growOnMount`, otherwise it only notes the resting sizes.
+ * Bars carry data-bar (key), data-bar-size (what counts as a change), data-bar-step (their slot on the beat) and
+ * data-bar-axis="x" to grow from the left edge instead of the base.
+ */
+function useBarDeal(rootRef: RefObject<HTMLElement | null>, trigger: unknown, growOnMount: boolean) {
+  const sizesRef = useRef<Map<string, string> | null>(null);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const bars = Array.from(root.querySelectorAll<HTMLElement>('[data-bar]'));
+    const previous = sizesRef.current;
+    const next = new Map<string, string>();
+    for (const bar of bars) next.set(bar.dataset.bar ?? '', bar.dataset.barSize ?? '');
+    sizesRef.current = next;
+    if ((!previous && !growOnMount) || reducedMotionPreferred()) return;
+
+    for (const bar of bars) {
+      const key = bar.dataset.bar ?? '';
+      const size = next.get(key) ?? '';
+      if (!(Number(size) > 0) || previous?.get(key) === size) continue;
+      for (const running of bar.getAnimations()) {
+        if (running.id === BAR_DEAL_ID) running.cancel();
+      }
+      const axis = bar.dataset.barAxis === 'x' ? 'X' : 'Y';
+      bar.animate(
+        [{ transform: `scale${axis}(0)` }, { transform: `scale${axis}(1)` }],
+        {
+          id: BAR_DEAL_ID,
+          duration: BEAT_ARRIVE_S * 1000,
+          delay: beatDelay(Number(bar.dataset.barStep) || 0) * 1000,
+          easing: BEAT_EASE_CSS,
+          fill: 'backwards',
+        },
+      );
+    }
+  }, [growOnMount, rootRef, trigger]);
+}
 
 /* ── Media icon (lucide, not emoji) ── */
 
@@ -127,10 +196,10 @@ function buildHeadline(p: PostingPatternPayload, tf: Timeframe): string {
 
 /* ── Dot grouping for activity strip ── */
 
-type DotGroup = { label: string; days: Array<{ day: string; count: number }> };
+type DotGroup = { label: string; days: Array<{ day: string; count: number; index: number }> };
 
 function groupDots(rhythmDays: PostingPatternPayload['rhythm_days'], tf: Timeframe): DotGroup[] {
-  const days = rhythmDays.map((d) => ({ day: d.day_ist, count: Math.max(0, d.post_count) }));
+  const days = rhythmDays.map((d, index) => ({ day: d.day_ist, count: Math.max(0, d.post_count), index }));
 
   if (tf === '7D') {
     return days.map((d) => {
@@ -204,12 +273,15 @@ function statSpanClass(total: number, index: number): string {
   return 'col-span-2 sm:col-span-1';
 }
 
+// `step` staggers sibling values on the beat, so a re-dealt card settles in reading order.
 function AnimatedValue({
   value,
   className,
+  step = 0,
 }: {
   value: string;
   className?: string;
+  step?: number;
 }) {
   const reduceMotion = useReducedMotion();
 
@@ -222,10 +294,9 @@ function AnimatedValue({
       <AnimatePresence initial={false} mode="popLayout">
         <motion.span
           key={value}
-          initial={{ opacity: 0, y: 10, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -8, scale: 0.98 }}
-          transition={SPRING}
+          initial={SWAP_HIDDEN}
+          animate={{ ...SWAP_SHOWN, transition: beatArrive(step) }}
+          exit={{ ...SWAP_GONE, transition: beatLeave(step) }}
           className={cn('block', className)}
         >
           {value}
@@ -273,9 +344,14 @@ function StatusDot({ status }: { status: PostingPatternPayload['feeder_rows'][nu
 
 /* ── Component ── */
 
-export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props) {
+function FeedPostingPattern({ pattern, timeframe = '7D' }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const reduceMotion = Boolean(prefersReducedMotion);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // every bar on the card (activity strip, media fills, contributor bars) grows in on the beat on arrival, and
+  // re-deals when a new pattern / timeframe changes its size
+  const barTrigger = useMemo(() => ({ pattern, timeframe }), [pattern, timeframe]);
+  useBarDeal(cardRef, barTrigger, true);
   const maxCount = useMemo(() => {
     const counts = pattern?.rhythm_days?.map((d) => Math.max(0, d.post_count)) ?? [];
     return Math.max(1, ...counts);
@@ -350,7 +426,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
   const windowDays = timeframeDays(timeframe);
 
   return (
-    <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
+    <div ref={cardRef} className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
       <div className="relative z-10 flex h-full min-h-0 flex-col">
 
         {/* ── Label ── */}
@@ -361,7 +437,6 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
           <motion.p
             key={headline}
             {...(reduceMotion ? {} : ENTRY_EXIT)}
-            transition={SPRING}
             className="mt-2 text-[clamp(15px,3vw,20px)] font-black leading-[1.25] tracking-[-0.04em] text-foreground dark:text-white"
           >
             {headline}
@@ -369,8 +444,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
         </AnimatePresence>
 
         {/* ── Activity Strip ── */}
-        <motion.div
-          layout
+        <div
           className={cn(
             'mt-3.5 rounded-[14px] px-2.5 py-2.5 sm:px-3',
             'bg-black/[0.03] border border-black/[0.04]',
@@ -378,30 +452,31 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
             'dark:bg-white/[0.03] dark:border-white/[0.04]',
             'dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.3)]',
           )}
-          transition={{ layout: LAYOUT_SPRING }}
         >
           <div className="flex items-end gap-[3px] sm:gap-1" style={{ height: useCompactDots ? 28 : 36 }}>
             {dotGroups.map((group, gi) => (
               <div key={gi} className="flex flex-1 items-end gap-[2px]">
-                {group.days.map((d, di) => {
+                {group.days.map((d) => {
                   const hasPosts = d.count > 0;
                   const sizePct = hasPosts ? 30 + (d.count / maxCount) * 70 : 0;
+                  const restingHeight = useCompactDots ? 2 : 4;
                   return (
-                    <motion.div
+                    <div
                       key={d.day}
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{
-                        height: hasPosts ? `${sizePct}%` : useCompactDots ? 2 : 4,
-                        opacity: hasPosts ? 1 : 0.2,
-                      }}
-                      transition={{ ...SPRING, delay: Math.min((gi * group.days.length + di) * 0.015, 0.3) }}
+                      data-bar={`day:${d.day}`}
+                      data-bar-size={hasPosts ? sizePct.toFixed(2) : restingHeight}
+                      data-bar-step={sweepStep(d.index, totalDays)}
                       className={cn(
-                        'flex-1 rounded-[6px]',
+                        'flex-1 origin-bottom rounded-[6px]',
                         hasPosts
                           ? 'bg-[var(--fm-accent)] shadow-[0_0_8px_rgb(var(--fm-accent-rgb)/0.2)] dark:shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.3)]'
                           : 'bg-black/8 dark:bg-white/10 rounded-full',
                       )}
-                      style={{ minHeight: hasPosts ? 4 : undefined }}
+                      style={{
+                        height: hasPosts ? `${sizePct}%` : restingHeight,
+                        minHeight: hasPosts ? 4 : undefined,
+                        opacity: hasPosts ? undefined : 0.2,
+                      }}
                       title={`${d.count} post${d.count === 1 ? '' : 's'} · ${d.day}`}
                     />
                   );
@@ -422,29 +497,20 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
               </div>
             ))}
           </div>
-        </motion.div>
+        </div>
 
         {/* ── Stat Chips ── */}
-        <motion.div
-          layout
+        <div
           className={cn(
             'mt-3 grid gap-1.5 sm:gap-2',
             statGridClass(statCount),
           )}
-          transition={{ layout: LAYOUT_SPRING }}
         >
           <AnimatePresence initial={false} mode="popLayout">
             <motion.div
               key="cadence"
-              layout
               initial={false}
-              exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96, y: 10 }}
-              transition={{
-                layout: LAYOUT_SPRING,
-                opacity: { duration: 0.18, ease: EASE },
-                scale: { duration: 0.22, ease: EASE },
-                y: { duration: 0.22, ease: EASE },
-              }}
+              exit={reduceMotion ? undefined : CHIP_EXIT}
               className={cn(CHIP_CLASS, statSpanClass(statCount, 0), 'min-h-[84px] sm:min-h-[76px]')}
             >
               <div className={cn(CHIP_LABEL, 'flex min-h-[20px] items-center justify-center gap-1')}>
@@ -452,53 +518,43 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                 Cadence
               </div>
               <div className={CHIP_VALUE}>
-                <AnimatedValue value={formatCadence(pattern.posts_per_week_current)} className="inline tabular-nums" />
+                <AnimatedValue value={formatCadence(pattern.posts_per_week_current)} className="inline tabular-nums" step={0} />
                 <span className="ml-0.5 text-[10px] font-black text-foreground/45 dark:text-white/40 sm:text-[12px]">/wk</span>
               </div>
             </motion.div>
 
             <motion.div
               key="gap"
-              layout
               initial={false}
-              exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96, y: 10 }}
-              transition={{
-                layout: LAYOUT_SPRING,
-                opacity: { duration: 0.18, ease: EASE },
-                scale: { duration: 0.22, ease: EASE },
-                y: { duration: 0.22, ease: EASE },
-              }}
+              exit={reduceMotion ? undefined : CHIP_EXIT}
               className={cn(CHIP_CLASS, statSpanClass(statCount, 1), 'min-h-[84px] sm:min-h-[76px]')}
             >
               <div className={cn(CHIP_LABEL, 'flex min-h-[20px] items-center justify-center gap-1')}>
                 <Clock className="h-2.5 w-2.5" strokeWidth={2.8} />
                 Avg gap
               </div>
-              <AnimatedValue value={formatGapShort(pattern.usual_gap_hours)} className={cn(CHIP_VALUE, 'tabular-nums')} />
+              <AnimatedValue value={formatGapShort(pattern.usual_gap_hours)} className={cn(CHIP_VALUE, 'tabular-nums')} step={1} />
             </motion.div>
 
           {mediaMix.map((item, i) => {
             const isTop = item.pct === topMediaPct && mediaMix.length > 1;
             return (
               <motion.div
-                layout
+                layout="position"
                 key={item.type}
                 initial={false}
-                exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96, y: 10 }}
-                transition={{
-                  layout: LAYOUT_SPRING,
-                  opacity: { duration: 0.18, ease: EASE },
-                  scale: { duration: 0.22, ease: EASE },
-                  y: { duration: 0.22, ease: EASE },
-                }}
+                exit={reduceMotion ? undefined : { opacity: 0 }}
+                transition={REORDER_TRANSITION}
                 className={cn(CHIP_CLASS, statSpanClass(statCount, i + 2), 'relative min-h-[84px] overflow-hidden sm:min-h-[76px]')}
               >
-                {/* Fill bar showing share */}
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${item.pct}%` }}
-                  transition={{ duration: 0.6, ease: EASE, delay: 0.35 + i * 0.05 }}
-                  className="pointer-events-none absolute inset-y-0 left-0 rounded-[14px] bg-[var(--fm-accent)]/[0.07] dark:bg-[var(--fm-accent)]/[0.12]"
+                {/* Fill bar showing share (static width; grows in via scaleX on the beat) */}
+                <div
+                  data-bar={`mix:${item.type}`}
+                  data-bar-size={item.pct}
+                  data-bar-step={4 + i}
+                  data-bar-axis="x"
+                  className="pointer-events-none absolute inset-y-0 left-0 origin-left rounded-[14px] bg-[var(--fm-accent)]/[0.07] dark:bg-[var(--fm-accent)]/[0.12]"
+                  style={{ width: `${item.pct}%` }}
                 />
                 {/* Top accent bar for the dominant media type */}
                 {isTop && (
@@ -514,12 +570,12 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                   <MediaGlyph type={item.type} strokeWidth={2.6} className="h-2.5 w-2.5" />
                   {mediaLabel(item.type)}
                 </div>
-                <AnimatedValue value={`${item.pct}%`} className={cn(CHIP_VALUE, 'tabular-nums relative z-10')} />
+                <AnimatedValue value={`${item.pct}%`} className={cn(CHIP_VALUE, 'tabular-nums relative z-10')} step={i + 2} />
               </motion.div>
             );
           })}
           </AnimatePresence>
-        </motion.div>
+        </div>
 
         {/* ── Lower Section ── */}
         <div className="relative mt-3 flex min-h-[158px] flex-1 flex-col overflow-hidden border-t border-black/6 pt-3 dark:border-white/[0.06] sm:min-h-[166px] lg:min-h-[172px]">
@@ -528,10 +584,9 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
               /* POSTING FINGERPRINT — single feeder or no breakdown */
               <motion.div
                 key="fingerprint"
-                initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.985 }}
-                transition={SPRING}
+                initial={reduceMotion ? false : PANEL_ENTRY_EXIT.initial}
+                animate={PANEL_ENTRY_EXIT.animate}
+                exit={reduceMotion ? undefined : PANEL_ENTRY_EXIT.exit}
                 className="absolute inset-x-0 top-3 bottom-0 flex min-h-0 flex-col"
               >
                 <div className="flex items-center gap-1.5">
@@ -578,10 +633,9 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
               /* TOP CONTRIBUTORS — multiple feeders */
               <motion.div
                 key="contributors"
-                initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.985 }}
-                transition={SPRING}
+                initial={reduceMotion ? false : PANEL_ENTRY_EXIT.initial}
+                animate={PANEL_ENTRY_EXIT.animate}
+                exit={reduceMotion ? undefined : PANEL_ENTRY_EXIT.exit}
                 className="absolute inset-x-0 top-3 bottom-0 flex min-h-0 flex-col"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -604,16 +658,11 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
 
                       return (
                         <motion.div
-                          layout
+                          layout="position"
                           key={row.feeder_id}
                           initial={false}
-                          exit={reduceMotion ? undefined : { opacity: 0, x: -10, scale: 0.985 }}
-                          transition={{
-                            layout: LAYOUT_SPRING,
-                            opacity: { duration: 0.18, ease: EASE },
-                            x: { duration: 0.22, ease: EASE },
-                            scale: { duration: 0.22, ease: EASE },
-                          }}
+                          exit={reduceMotion ? undefined : { opacity: 0 }}
+                          transition={REORDER_TRANSITION}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex min-w-0 items-center gap-1.5">
@@ -646,6 +695,7 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                                         : 'quiet'
                                       : `${formatCadence(row.posts_per_week_current)}/wk`
                                   }
+                                  step={ri}
                                 />
                               </span>
                               {showDelta && <DeltaPill value={row.delta_percent!} />}
@@ -657,16 +707,19 @@ export default function FeedPostingPattern({ pattern, timeframe = '7D' }: Props)
                               'bg-black/[0.05] dark:bg-white/[0.06]',
                             )}
                           >
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: isDormant ? '2%' : `${barPct}%` }}
-                              transition={{ duration: 0.6, ease: EASE, delay: 0.28 + ri * 0.06 }}
+                            {/* static width; grows in via scaleX on the beat */}
+                            <div
+                              data-bar={`row:${row.feeder_id}`}
+                              data-bar-size={isDormant ? 2 : barPct.toFixed(2)}
+                              data-bar-step={3 + ri}
+                              data-bar-axis="x"
                               className={cn(
-                                'absolute inset-y-0 left-0 rounded-full',
+                                'absolute inset-y-0 left-0 origin-left rounded-full',
                                 isDormant
                                   ? 'bg-foreground/10 dark:bg-white/8'
                                   : 'bg-gradient-to-r from-[var(--fm-accent)]/85 to-[var(--fm-accent)] shadow-[0_0_10px_rgb(var(--fm-accent-rgb)/0.22)] dark:shadow-[0_0_12px_rgb(var(--fm-accent-rgb)/0.32)]',
                               )}
+                              style={{ width: isDormant ? '2%' : `${barPct}%` }}
                             />
                           </div>
                         </motion.div>
@@ -700,15 +753,8 @@ function FingerprintCell({
 }) {
   return (
     <motion.div
-      layout
       initial={false}
-      exit={{ opacity: 0, scale: 0.97, y: 10 }}
-      transition={{
-        layout: LAYOUT_SPRING,
-        opacity: { duration: 0.18, ease: EASE },
-        scale: { duration: 0.22, ease: EASE },
-        y: { duration: 0.22, ease: EASE },
-      }}
+      exit={CELL_EXIT}
       className={cn(
         'relative flex min-h-[62px] items-center gap-2 rounded-[14px] px-2.5 py-2 sm:min-h-[64px] sm:gap-2.5 sm:rounded-[14px] sm:px-2.5 sm:py-2.5 lg:min-h-[66px]',
         'bg-black/[0.02] border border-black/[0.04]',
@@ -740,3 +786,8 @@ function FingerprintCell({
     </motion.div>
   );
 }
+
+const MemoizedFeedPostingPattern = memo(FeedPostingPattern);
+MemoizedFeedPostingPattern.displayName = 'FeedPostingPattern';
+
+export default MemoizedFeedPostingPattern;

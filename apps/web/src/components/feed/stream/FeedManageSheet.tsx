@@ -59,6 +59,7 @@ import { formatCount, type StreamScope } from '@/lib/feedStream/contract';
 import { feedInitials, normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { useAppHaptics } from '@/lib/haptics';
 import { BEAT_EASE_CSS, BEAT_LEAVE_EASE } from '@/lib/motion';
+import { ms } from '@/lib/tempo';
 import { setTabScope } from '@/lib/tabScope';
 import { setThemePreference, useResolvedTheme, useThemePreference, type ThemePreference } from '@/lib/theme';
 import { cn } from '@/lib/utils';
@@ -77,9 +78,11 @@ export type FeedManageSheetProps = {
 
 /* ── motion ────────────────────────────────────────────────── */
 
-const OPEN_MS = 380;
-const CLOSE_MS = 280;
-const SWAP_MS = 320;
+// at the app's tempo (lib/tempo); the unmount waits on CLOSE_MS, so it follows
+const OPEN_MS = ms(380);
+const CLOSE_MS = ms(280);
+const SWAP_MS = ms(320);
+const TOAST_MS = ms(240);
 const EASE_OPEN = BEAT_EASE_CSS; // cubic-bezier(0.16, 0.9, 0.2, 1)
 const EASE_CLOSE = `cubic-bezier(${BEAT_LEAVE_EASE.join(', ')})`;
 
@@ -1031,7 +1034,7 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
         style={{
           opacity: dialogError ? 1 : 0,
           transform: dialogError ? 'translateY(0px)' : 'translateY(-8px)',
-          transition: `opacity 240ms ${EASE_OPEN}, transform 240ms ${EASE_OPEN}`,
+          transition: `opacity ${TOAST_MS}ms ${EASE_OPEN}, transform ${TOAST_MS}ms ${EASE_OPEN}`,
           pointerEvents: dialogError ? 'auto' : 'none',
         }}
       >

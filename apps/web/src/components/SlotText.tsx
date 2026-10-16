@@ -8,15 +8,53 @@
    with the weighted vertical slot animation, then settle to static text.
    `align="right"` diffs from the units glyph (numbers), `align="left"` from
    the first glyph (words). Reduced motion -> plain text swap.
+
+   A slot text rolls in the render that changes it (the value it is leaving
+   is kept as state set while rendering) and every slot text that rolled
+   settles in the same task, on one shared timer: a page of numbers changing
+   together costs one extra render, not two per number. On WebKit the roll
+   waits at its start for the frame that draws it (lib/webkitMotion), so it
+   plays with everything else the switch set moving.
+
+   `delay` starts the roll later (a row's beat in a list re-dealt top first,
+   components/lead/ledgerMotion): the shared settle waits for the latest roll
+   to finish, so nothing settles in the middle of a cascade.
    ───────────────────────────────────────────── */
 
-import { CSSProperties, useEffect, useState } from 'react';
+import { CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
+import { ms } from '@/lib/tempo';
 
-const SLOT_STAGGER_MS = 24;
+// the stagger is played out by TEMPO here (it reaches the CSS as --fm-slot-delay, not stretched again there); the
+// faces' 420ms roll and their 34ms offset are stretched in globals.css (.fm-slot-roll), and the settle waits for that
+const SLOT_STAGGER_MS = ms(24);
 const SLOT_MAX_STAGGER_STEPS = 10;
-const SLOT_SETTLE_MS = 420 + 34 + SLOT_MAX_STAGGER_STEPS * SLOT_STAGGER_MS + 60;
+const SLOT_SETTLE_MS = ms(420) + ms(34) + SLOT_MAX_STAGGER_STEPS * SLOT_STAGGER_MS + 60;
+
+// the rolls that started together settle together, once the last of them has finished (a roll joining later moves
+// the settle on, so none is cut short)
+const settling = new Set<() => void>();
+let settleTimer = 0;
+let settleAt = 0;
+function settleLater(settle: () => void, delay: number) {
+  settling.add(settle);
+  const at = performance.now() + SLOT_SETTLE_MS + delay;
+  if (!settleTimer || at > settleAt) {
+    window.clearTimeout(settleTimer);
+    settleAt = at;
+    settleTimer = window.setTimeout(() => {
+      settleTimer = 0;
+      const all = [...settling];
+      settling.clear();
+      all.forEach((one) => one());
+    }, at - performance.now());
+  }
+  return () => {
+    settling.delete(settle);
+  };
+}
 
 type SlotAlign = 'left' | 'right';
 
@@ -54,35 +92,44 @@ export default function SlotText({
   value,
   align = 'right',
   className,
+  delay = 0,
 }: {
   value: string;
   align?: SlotAlign;
   className?: string;
+  // ms before the roll starts
+  delay?: number;
 }) {
   const reduce = Boolean(useReducedMotion());
-  const [slotText, setSlotText] = useState({ previous: value, current: value, revision: 0 });
+  // the delay a roll started with stays its own (a later render with another delay doesn't re-time a roll under way)
+  const [slotText, setSlotText] = useState({ previous: value, current: value, revision: 0, delay });
+
+  if (slotText.current !== value) setSlotText({ previous: slotText.current, current: value, revision: slotText.revision + 1, delay });
+
+  // on WebKit a roll waits at its start until the frame that draws it is on screen
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el || !slotText.revision || !holdsFlights()) return undefined;
+    el.style.setProperty('--fm-slot-play', 'paused');
+    return afterDrawn(() => el.style.removeProperty('--fm-slot-play'));
+  }, [slotText.revision]);
 
   useEffect(() => {
-    if (slotText.current === value) return;
-    let frame = 0;
-    frame = requestAnimationFrame(() => {
-      setSlotText((current) => (
-        current.current === value
-          ? current
-          : { previous: current.current, current: value, revision: current.revision + 1 }
-      ));
+    if (slotText.previous === slotText.current) return undefined;
+    const settle = () => setSlotText((current) => (
+      current.revision === slotText.revision ? { ...current, previous: current.current } : current
+    ));
+    if (!holdsFlights()) return settleLater(settle, slotText.delay);
+    // on WebKit the roll starts once its frame is on screen: so does the clock that settles it
+    let stop = () => {};
+    const cancel = afterDrawn(() => {
+      stop = settleLater(settle, slotText.delay);
     });
-    return () => cancelAnimationFrame(frame);
-  }, [value, slotText]);
-
-  useEffect(() => {
-    if (slotText.previous === slotText.current) return;
-    const timeout = window.setTimeout(() => {
-      setSlotText((current) => (
-        current.revision === slotText.revision ? { ...current, previous: current.current } : current
-      ));
-    }, SLOT_SETTLE_MS);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      cancel();
+      stop();
+    };
   }, [slotText]);
 
   if (reduce) return <span className={className}>{value}</span>;
@@ -90,7 +137,7 @@ export default function SlotText({
   const glyphs = glyphsFor(slotText.previous, slotText.current, align);
 
   return (
-    <span className={cn('fm-slot-roll', className)} aria-label={slotText.current}>
+    <span ref={rootRef} className={cn('fm-slot-roll', className)} aria-label={slotText.current} style={slotText.delay ? ({ '--fm-slot-base': `${slotText.delay}ms` } as CSSProperties) : undefined}>
       {glyphs.map((glyph) => (
         <span
           key={glyph.key}

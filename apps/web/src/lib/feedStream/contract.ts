@@ -476,6 +476,7 @@ export type PostSheetProps = {
 export type FeedControlProps = {
   mode: FeedMode;
   onModeChange: (mode: FeedMode) => void;
-  // a zoom about to be taken (the pointer on it, a press): the feed gets it ready
-  onModeIntent?: (mode: FeedMode) => void;
+  // zooms about to be taken (the pointer on one, a press; the phone's chip opening its menu: all the others): the
+  // feed gets them ready
+  onModeIntent?: (modes: readonly FeedMode[]) => void;
 };

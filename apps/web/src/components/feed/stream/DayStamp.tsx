@@ -25,6 +25,7 @@
 
 import { memo, useState, type CSSProperties } from 'react';
 import { groupParts, istDay } from '@/lib/feedStream/contract';
+import { ms } from '@/lib/tempo';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
@@ -41,7 +42,8 @@ export type DayStampProps = {
 function Swap({ value, step = 0, className, style }: { value: string; step?: number; className?: string; style?: CSSProperties }) {
   const [shown, setShown] = useState<{ current: string; previous: string | null; turn: number }>({ current: value, previous: null, turn: 0 });
   if (shown.current !== value) setShown({ current: value, previous: shown.current, turn: shown.turn + 1 });
-  const delay = { '--st-swap-delay': `${step * 50}ms` } as CSSProperties;
+  // at the app's tempo here (stream.css takes it as it is)
+  const delay = { '--st-swap-delay': `${step * ms(50)}ms` } as CSSProperties;
   return (
     <span className={cn('relative inline-grid justify-items-end', className)} style={style}>
       {shown.previous !== null ? (

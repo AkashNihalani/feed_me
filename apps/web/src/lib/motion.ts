@@ -1,5 +1,8 @@
 // Shared framer-motion tokens. Use these so animations feel identical across
 // surfaces (feeder grid, fire desktop grid, etc.) instead of drifting per-page.
+// Times are written at their designed pace and played out by TEMPO (lib/tempo).
+
+import { ms, sec, slowSpring } from '@/lib/tempo';
 
 export const GRID_LAYOUT_SPRING = {
   type: 'spring',
@@ -25,7 +28,7 @@ export const PAGE_EXIT_EASE = [0.42, 0, 1, 1] as const;
 // coordinated motion, not three elements on private timers. The bottom-nav
 // pill keeps its spring — it's the gesture's initiator, and its settle time
 // already lands within this window.
-export const SWITCH_CLOCK_MS = 260;
+export const SWITCH_CLOCK_MS = ms(260);
 export const SWITCH_CLOCK_S = SWITCH_CLOCK_MS / 1000;
 export const SWITCH_CLOCK_CSS_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
@@ -38,10 +41,10 @@ export const SWITCH_CLOCK_CSS_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 export const BEAT_EASE = [0.16, 0.9, 0.2, 1] as const;
 export const BEAT_LEAVE_EASE = [0.45, 0, 0.2, 1] as const;
 export const BEAT_EASE_CSS = 'cubic-bezier(0.16, 0.9, 0.2, 1)';
-export const BEAT_ARRIVE_S = 0.48;
-export const BEAT_LEAVE_S = 0.26;
-export const BEAT_START_S = 0.04;
-export const BEAT_STEP_S = 0.04;
+export const BEAT_ARRIVE_S = sec(0.48);
+export const BEAT_LEAVE_S = sec(0.26);
+export const BEAT_START_S = sec(0.04);
+export const BEAT_STEP_S = sec(0.04);
 export const BEAT_MAX_STEPS = 8;
 export const beatDelay = (step: number) => BEAT_START_S + Math.min(Math.max(step, 0), BEAT_MAX_STEPS) * BEAT_STEP_S;
 // a piece arriving at its step / leaving at its step (leaves are half as far apart)
@@ -68,7 +71,7 @@ export const PAGE_DISSOLVE = {
   },
   exit: {
     opacity: 0,
-    transition: { duration: 0.22, ease: PAGE_EXIT_EASE },
+    transition: { duration: sec(0.22), ease: PAGE_EXIT_EASE },
   },
 } as const;
 
@@ -121,7 +124,7 @@ export const HEADER_ROUTE_MORPH = {
     opacity: 0,
     y: 0,
     scale: 1,
-    transition: { duration: 0.12, ease: GRID_ITEM_EASE },
+    transition: { duration: sec(0.12), ease: GRID_ITEM_EASE },
   },
 } as const;
 
@@ -134,9 +137,9 @@ export const HEADER_COLLAPSE_SPRING = {
 
 export const GRID_ITEM_TRANSITION = {
   layout: GRID_LAYOUT_SPRING,
-  opacity: { duration: 0.18, ease: GRID_ITEM_EASE },
-  y: { duration: 0.24, ease: GRID_ITEM_EASE },
-  scale: { duration: 0.24, ease: GRID_ITEM_EASE },
+  opacity: { duration: sec(0.18), ease: GRID_ITEM_EASE },
+  y: { duration: sec(0.24), ease: GRID_ITEM_EASE },
+  scale: { duration: sec(0.24), ease: GRID_ITEM_EASE },
 } as const;
 
 // ── Canonical "slot" element motion ─────────────────────────────────────────
@@ -149,16 +152,16 @@ export const GRID_ITEM_TRANSITION = {
 // Stagger cadence shared by the container variant AND surfaces that animate each
 // element on its own mount (per-tile delay), so the slot rhythm reads the same
 // whether a list is driven by a container or by per-item entrances.
-export const SLOT_STAGGER_STEP = 0.05;
-export const SLOT_STAGGER_MAX = 0.28;
+export const SLOT_STAGGER_STEP = sec(0.05);
+export const SLOT_STAGGER_MAX = sec(0.28);
 
 export const SLOT_CONTAINER = {
   hidden: {},
   visible: {
-    transition: { staggerChildren: SLOT_STAGGER_STEP, delayChildren: 0.03 },
+    transition: { staggerChildren: SLOT_STAGGER_STEP, delayChildren: sec(0.03) },
   },
   exit: {
-    transition: { staggerChildren: 0.022, staggerDirection: -1 },
+    transition: { staggerChildren: sec(0.022), staggerDirection: -1 },
   },
 } as const;
 
@@ -169,16 +172,16 @@ export const SLOT_ITEM = {
     opacity: 1,
     scale: 1,
     transition: {
-      opacity: { duration: 0.22, ease: GRID_ITEM_EASE },
-      y: { type: 'spring', stiffness: 320, damping: 32, mass: 0.88 },
-      scale: { duration: 0.26, ease: GRID_ITEM_EASE },
+      opacity: { duration: sec(0.22), ease: GRID_ITEM_EASE },
+      y: slowSpring({ type: 'spring', stiffness: 320, damping: 32, mass: 0.88 } as const),
+      scale: { duration: sec(0.26), ease: GRID_ITEM_EASE },
     },
   },
   exit: {
     y: 12,
     opacity: 0,
     scale: 0.985,
-    transition: { duration: 0.18, ease: PAGE_EXIT_EASE },
+    transition: { duration: sec(0.18), ease: PAGE_EXIT_EASE },
   },
 } as const;
 
@@ -193,7 +196,7 @@ export const PANEL_TILE_VARIANT = SLOT_ITEM;
 export const HEADER_STAGGER_CONTAINER = {
   initial: {},
   animate: {
-    transition: { staggerChildren: 0.05, delayChildren: 0.02 },
+    transition: { staggerChildren: sec(0.05), delayChildren: sec(0.02) },
   },
 } as const;
 
@@ -201,6 +204,6 @@ export const HEADER_ROW = {
   initial: { opacity: 0 },
   animate: {
     opacity: 1,
-    transition: { duration: 0.22, ease: GRID_ITEM_EASE },
+    transition: { duration: sec(0.22), ease: GRID_ITEM_EASE },
   },
 } as const;

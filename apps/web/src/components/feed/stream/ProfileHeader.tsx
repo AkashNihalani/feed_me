@@ -72,6 +72,8 @@ const DISC_BG = 'radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0
 // the card: its surface (stream.css --st-card), lit rose from above the face
 const CARD_BG = 'radial-gradient(90% 55% at 50% 0%, rgb(var(--fm-accent-rgb) / var(--st-card-glow)), transparent 70%), var(--st-card)';
 const EASE = 'ease-[cubic-bezier(0.16,0.9,0.2,1)]';
+// a glide at the app's tempo (lib/tempo)
+const GLIDE = 'duration-[calc(300ms*var(--fm-tempo))]';
 const MARKER = 'text-[10px] font-black uppercase leading-none tracking-[0.14em] text-[var(--st-text-3)]';
 const ACTION = 'flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-[14px] bg-[var(--st-surface-2)] px-3 text-[14px] font-bold text-[var(--st-text)] shadow-[inset_0_0_0_1px_var(--st-line)] outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
 
@@ -517,7 +519,7 @@ function OrderTabs({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
             onClick={() => pick(value)}
             className="group flex h-full min-w-0 items-center justify-center px-2 outline-none [-webkit-tap-highlight-color:transparent] focus-visible:bg-fg/[0.05]"
           >
-            <span className={cn('flex min-w-0 items-center gap-1.5 text-[14px] font-bold leading-none text-[var(--st-text)] transition-[opacity,scale] duration-300 group-active:scale-[0.96]', EASE, on ? 'opacity-100' : 'opacity-45')}>
+            <span className={cn('flex min-w-0 items-center gap-1.5 text-[14px] font-bold leading-none text-[var(--st-text)] transition-[opacity,scale] duration-[calc(300ms*var(--fm-tempo)),300ms] group-active:scale-[0.96]', EASE, on ? 'opacity-100' : 'opacity-45')}>
               <Icon className="h-4 w-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
               <span className="truncate">{label}</span>
             </span>
@@ -526,7 +528,7 @@ function OrderTabs({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
       })}
       <span
         aria-hidden="true"
-        className={cn('pointer-events-none absolute bottom-0 left-0 h-[2px] w-1/2 bg-[var(--fm-accent-text)] transition-transform duration-300', EASE)}
+        className={cn('pointer-events-none absolute bottom-0 left-0 h-[2px] w-1/2 bg-[var(--fm-accent-text)] transition-transform', GLIDE, EASE)}
         style={{ transform: order === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
       />
     </div>
@@ -549,7 +551,7 @@ function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
     >
       <span
         aria-hidden="true"
-        className={cn('pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] w-[calc(50%-3px)] rounded-[10px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)] transition-transform duration-300', EASE)}
+        className={cn('pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] w-[calc(50%-3px)] rounded-[10px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)] transition-transform', GLIDE, EASE)}
         style={{ transform: order === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
       />
       {ORDERS.map(({ value, label }) => {
@@ -563,7 +565,7 @@ function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
             onClick={() => pick(value)}
             className={cn('relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] px-2 text-[12px] font-bold leading-none outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]', on ? 'text-white' : 'text-fg')}
           >
-            <span className={cn('truncate transition-opacity duration-300', on ? 'opacity-100' : 'opacity-60')}>{label}</span>
+            <span className={cn('truncate transition-opacity', GLIDE, on ? 'opacity-100' : 'opacity-60')}>{label}</span>
           </button>
         );
       })}

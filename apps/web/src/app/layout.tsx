@@ -5,6 +5,7 @@ import BottomNav from "@/components/BottomNav";
 import PwaNotificationsBridge from "@/components/PwaNotificationsBridge";
 import AppShell from "@/components/shell/AppShell";
 import PerfHud from "@/components/PerfHud";
+import PerfProbe from "@/components/PerfProbe";
 import MediaFallback from "@/components/MediaFallback";
 import { appFont } from "@/lib/fonts";
 import { getSiteUrl } from "@/lib/site-url";
@@ -91,6 +92,9 @@ export default function RootLayout({
         <StatusBar />
         <MediaFallback />
         <PerfHud />
+        {/* the smoothness probe never ships to production visitors: the dev server and preview deployments only (a
+            local build asks for it with FM_PROBE=1; VERCEL_ENV alone won't do, `vercel env pull` writes production) */}
+        {process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'preview' || process.env.FM_PROBE === '1' ? <PerfProbe /> : null}
       </body>
     </html>
   );

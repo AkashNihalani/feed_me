@@ -95,7 +95,7 @@ html.light .fm-stream {
    down) came up as a pop, and a few of them in a row read as the page jittering */
 .st-img {
   opacity: 0;
-  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity calc(320ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .st-img[data-loaded] {
@@ -154,7 +154,7 @@ html.light .fm-stream {
 
 /* a carousel's dots and count (PostMedia, Slides): put up as its post comes to rest in the Day view, they fade in */
 .st-controls-in {
-  animation: st-controls-in 240ms ease-out both;
+  animation: st-controls-in calc(240ms * var(--fm-tempo)) ease-out both;
 }
 
 @keyframes st-controls-in {
@@ -164,7 +164,7 @@ html.light .fm-stream {
 /* a preview clip fades in over its poster only once a frame has been presented */
 .st-video {
   opacity: 0;
-  transition: opacity 240ms ease-out;
+  transition: opacity calc(240ms * var(--fm-tempo)) ease-out;
 }
 
 .st-video[data-playing] {
@@ -341,7 +341,7 @@ html.light .st-bone {
 /* the Day view's date: away, it waits past the screen's left edge; shown, it slides in (no fade) */
 .st-stamp {
   transform: translate3d(calc(-100% - 64px), 0, 0);
-  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform calc(620ms * var(--fm-tempo)) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .st-stamp[data-shown] {
@@ -360,7 +360,7 @@ html.light .st-bone {
   transform: scale(1.18);
   opacity: 0;
   /* the pictures' even curve (.st-img): it can come up under the eye too */
-  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity calc(320ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .st-ambient[data-ready] {
@@ -375,13 +375,14 @@ html.light .st-bone {
 
 /* a DayStamp line changing (Swap): the old copy rises away as the new one rises in, in one grid cell, no mask */
 .st-swap-in {
-  animation: st-swap-in 520ms var(--st-ease, ease-out) both;
+  animation: st-swap-in calc(520ms * var(--fm-tempo)) var(--st-ease, ease-out) both;
+  /* set by DayStamp, already at the app's tempo */
   animation-delay: var(--st-swap-delay, 0ms);
 }
 
 .st-swap-out {
   opacity: 0;
-  animation: st-swap-out 300ms cubic-bezier(0.45, 0, 0.2, 1) both;
+  animation: st-swap-out calc(300ms * var(--fm-tempo)) cubic-bezier(0.45, 0, 0.2, 1) both;
   animation-delay: var(--st-swap-delay, 0ms);
 }
 
@@ -412,10 +413,16 @@ html.light .st-bone {
   z-index: -1;
 }
 
+/* the tab opening, until its first screen's posts are in: the layer's cells held unseen (the profile above them
+   stays), then they come in a ring at a time (FeedStream's arrival) */
+[data-holding] > .st-cell {
+  opacity: 0;
+}
+
 /* a move into a view: the post's chrome (a card's foot, a tile's number) comes in a piece at a time as it lands */
 .st-cell[data-arriving] [data-st] {
-  animation: st-arrive 420ms var(--st-ease, ease-out) backwards;
-  animation-delay: calc(var(--st-arrive-at, 260ms) + var(--i, 0) * 45ms);
+  animation: st-arrive calc(420ms * var(--fm-tempo)) var(--st-ease, ease-out) backwards;
+  animation-delay: calc((var(--st-arrive-at, 260ms) + var(--i, 0) * 45ms) * var(--fm-tempo));
 }
 
 @keyframes st-arrive {
@@ -431,21 +438,21 @@ html.light .st-bone {
   opacity: 0;
   transform: translate3d(20px, 0, 0);
   transition:
-    opacity 160ms cubic-bezier(0.4, 0, 1, 1),
-    transform 200ms cubic-bezier(0.4, 0, 1, 1);
+    opacity calc(160ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 1, 1),
+    transform calc(200ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 1, 1);
 }
 
 .st-row[data-spot] [data-reading] .st-settle {
   opacity: 1;
   transform: none;
   transition:
-    opacity 420ms var(--st-ease, ease-out) calc(60ms + var(--i, 0) * 55ms),
-    transform 560ms var(--st-ease, ease-out) calc(60ms + var(--i, 0) * 55ms);
+    opacity calc(420ms * var(--fm-tempo)) var(--st-ease, ease-out) calc((60ms + var(--i, 0) * 55ms) * var(--fm-tempo)),
+    transform calc(560ms * var(--fm-tempo)) var(--st-ease, ease-out) calc((60ms + var(--i, 0) * 55ms) * var(--fm-tempo));
 }
 
 .st-row .st-dim {
   opacity: 0.55;
-  transition: opacity 380ms var(--st-ease, ease-out);
+  transition: opacity calc(380ms * var(--fm-tempo)) var(--st-ease, ease-out);
 }
 
 .st-row[data-lit] .st-dim {

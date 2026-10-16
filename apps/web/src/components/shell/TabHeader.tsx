@@ -25,27 +25,30 @@
    the scope lets go of its name; they return with the page.
    ───────────────────────────────────────────────────────────── */
 
-import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type SyntheticEvent } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
+import { press } from '@/components/feed/stream/press';
+import { FAN_MS, Ledger } from '@/components/motion/Ledger';
+import { CARRY_EASE_CSS, carryCurve } from '@/lib/feedStream/motion';
+import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
 import SlotText from '@/components/SlotText';
 import { feedInitials, titleCase } from '@/lib/feedLabels';
-import { BEAT_ARRIVE_S, BEAT_EASE, BEAT_EASE_CSS, BEAT_LEAVE_EASE, BEAT_LEAVE_S, BEAT_START_S, HEADER_ROUTE_MORPH, beatArrive, beatLeave } from '@/lib/motion';
+import { BEAT_EASE, BEAT_LEAVE_EASE, BEAT_LEAVE_S, HEADER_ROUTE_MORPH, beatArrive, beatLeave } from '@/lib/motion';
+import { ms, sec, slowSpring } from '@/lib/tempo';
 import { useResolvedTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 export const SOFT_EASE = BEAT_EASE;
 export const LEAVE_EASE = [0.4, 0, 1, 1] as const;
-// a glide on the beat (a badge moving to the front, the wedge turning), without a step's delay
-const GLIDE = { duration: BEAT_ARRIVE_S, ease: BEAT_EASE } as const;
-const ARM_SPRING = { type: 'spring', stiffness: 360, damping: 30, mass: 0.8 } as const;
-const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34, mass: 0.82 } as const;
-export const SLOT_SPRING = { type: 'spring', stiffness: 540, damping: 42, mass: 0.7 } as const;
+export const SLOT_SPRING = slowSpring({ type: 'spring', stiffness: 540, damping: 42, mass: 0.7 } as const);
 const REDUCED = { duration: 0.14, ease: SOFT_EASE } as const;
-const FEEDER_SLOT = 94;
 const RING_R = 45;
+// the rail re-dealt (a feed opening or closing) is one glide, the ledger's fan (already at the app's tempo): the wedge
+// turns with it
+const RAIL_MOVE_MS = FAN_MS;
 
 // a value rolling in its slot: a step forward comes up from below, a step back comes down
 export const SLOT_ROLL = {
@@ -59,58 +62,91 @@ export const SLOT_ROLL = {
 export const HEADER_CONTROL = 'relative z-10 flex h-11 shrink-0 touch-manipulation items-center justify-center gap-1 overflow-hidden rounded-[14px] border border-(--fm-well-edge) bg-(--fm-well) font-black uppercase text-fg shadow-(--fm-well-shade) outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
 
 /* Every circle in the rail sits in one fixed box, the size of the one you're on, so nothing in the rail ever changes
-   size: the one you're on is the plate at full size, the rest are the same plate scaled down. Only transform and
-   opacity move, and always as whole values (transform strings, on HTML elements), which framer hands to the
-   compositor: the circles hold 60fps even while the page under them is busy re-rendering. */
-const PLATE = 'relative grid h-[64px] w-[64px] place-items-center rounded-full p-1 lg:h-[76px] lg:w-[76px]';
+   size: the one you're on is the plate at full size, the rest are the same plate scaled down. Every circle is built
+   whole, ring and all, before anything is tapped: a pick only moves what is already there, on the compositor
+   (transform and opacity: CSS transitions and WAAPI), so nothing is added to the page, laid out or painted afresh in
+   the frames the motion plays in. */
+const PLATE = 'relative grid h-[64px] w-[64px] place-items-center rounded-full p-1 [will-change:transform] lg:h-[76px] lg:w-[76px]';
 const PLATE_LIT = 'bg-[#FFE4EA] shadow-[0_10px_26px_-20px_rgb(var(--fm-accent-rgb)/0.85)] dark:bg-[#3F0F1B]';
 const PLATE_REST = 'bg-black/[0.07] dark:bg-white/[0.11]';
 const PLATE_MARKED = 'bg-[linear-gradient(140deg,rgb(var(--fm-accent-rgb)/0.9),rgb(var(--fm-accent-rgb)/0.28))]';
-// the plate's colour: rest, marked and lit are three layers that cross-fade (opacity, on the compositor) rather than
-// one background repainted every frame
+// the plate's colour: rest, marked and lit are three layers that cross-fade (opacity) rather than one background
+// repainted every frame
 const PLATE_LAYER = 'pointer-events-none absolute inset-0 rounded-full';
-const PLATE_LAYER_FADE = 'transition-opacity duration-500 ease-out';
-// a badge gliding to its new place on the rail (and the wedge turning with it): quick, so the badge is at the front
-// before its feeders fan out of it
-const BADGE_GLIDE_MS = 420;
-const BADGE_GLIDE = { duration: BADGE_GLIDE_MS / 1000, ease: BEAT_EASE } as const;
 // a resting plate: 60 of 64px on a phone, 70 of 76px on desktop
 const PLATE_REST_SCALE = 0.93;
-const PLATE_GLIDE = { duration: 0.5, ease: BEAT_EASE } as const;
-// a tap presses the face in (CSS, on the face, so it never fights the motion on the plate or the button)
-const FACE_PRESS = 'transition-transform duration-150 ease-out group-active:scale-[0.95]';
+/* One clock for a pick: the plate settling, its ground, the label and the glow lighting all run this long, and the
+   ring draws round on a little more of it. The curve is Feed's carry curve: moving from the first frame, at its
+   fastest midway, never a jolt at the start. (A curve that does most of its travel in its first frames showed a
+   late first frame as a jump, then crawled: the ring "stuttered" in.) */
+const PICK_MS = ms(520);
+const PICK_EASE = CARRY_EASE_CSS;
+// what was tapped while its page leaves swells a touch, with a little give
+const ARMED_EASE = 'cubic-bezier(0.34, 1.4, 0.64, 1)';
+const pickFade = (reduce: boolean) => (reduce ? undefined : `opacity ${PICK_MS}ms ${PICK_EASE}`);
+/* A tap presses the face in. Not CSS :active: on iOS it holds for the whole touch, a swipe of the rail included, so
+   the circle a swipe started on shrank while the rail moved and sprang back at the lift. `press` (Feed's) presses a
+   beat after a finger lands and lets go the moment the touch becomes a swipe. */
+const FACE_PRESS = 'transition-transform duration-150 ease-out group-data-[pressed]:scale-[0.95]';
+// a circle reached from the keys shows it on its face (inside the circle: the rail's scroll would clip a ring outside it)
+const FACE_FOCUS = 'group-focus-visible:ring-2 group-focus-visible:ring-inset group-focus-visible:ring-[var(--fm-accent-bright)]';
 
-const ITEM_CLASS = 'group flex w-[70px] shrink-0 flex-col items-center gap-1 border-0 bg-transparent p-0 text-inherit outline-none [user-select:none] [-webkit-tap-highlight-color:transparent] lg:w-[82px] lg:gap-[5px]';
-const LABEL_CLASS = 'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9px] font-black leading-none transition-colors duration-300 lg:text-[10px]';
+// each circle is a layer of its own (the rail moves them), stacked first over last so a circle coming out of the one
+// before it comes out from behind it
+const ITEM_CLASS = 'group relative flex w-[70px] shrink-0 flex-col items-center gap-1 border-0 bg-transparent p-0 text-inherit outline-none [user-select:none] [will-change:transform] [-webkit-tap-highlight-color:transparent] lg:w-[82px] lg:gap-[5px]';
+const LABEL_CLASS = 'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9px] font-black leading-none lg:text-[10px]';
 const LABEL_LIT = 'text-[var(--fm-accent)] dark:text-[var(--fm-accent-bright)]';
 const LABEL_REST = 'text-black/42 dark:text-white/44';
 
 export type HeaderFeeder = { handle: string; profilePicUrl?: string | null };
 export type HeaderFeed = { id: string; title: string; feeders: HeaderFeeder[] };
 
-// leaving the rail starts half a beat in, so the frame that commits the change is done before anything moves
-const railLeave = (index: number) => {
-  const leave = beatLeave(index);
-  return { ...leave, delay: BEAT_START_S / 2 + leave.delay };
-};
+/* On WebKit a pick's CSS fades start their clocks in the frame that commits them, before that frame reaches the
+   screen (lib/webkitMotion): after a heavy commit (Read lands its page with the pick) their start was lost. A pick's
+   fades inside `ref` are held at their start and set going once the frame is on screen. */
+function useHeldPick(ref: { current: HTMLElement | null }, key: unknown) {
+  const first = useRef(true);
+  useIsomorphicLayoutEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return undefined;
+    }
+    const el = ref.current;
+    if (!el || !holdsFlights() || typeof CSSTransition === 'undefined') return undefined;
+    // only the fades this pick started (one already under way from an earlier pick keeps going)
+    const fades = el.getAnimations({ subtree: true }).filter((animation) => animation instanceof CSSTransition && (animation.pending || Number(animation.currentTime ?? 0) < 20));
+    if (!fades.length) return undefined;
+    fades.forEach((fade) => {
+      fade.pause();
+      fade.currentTime = 0;
+    });
+    return afterDrawn(() => fades.forEach((fade) => fade.play()));
+  }, [key]);
+}
 
 /* a circle's plate: full size and lit for the one you're on, scaled down for the rest; armed (tapped, waiting for
    the page) it swells a touch */
 function Plate({ lit, marked, armed, reduce, children }: { lit: boolean; marked: boolean; armed: boolean; reduce: boolean; children: ReactNode }) {
   const scale = (lit ? 1 : PLATE_REST_SCALE) * (armed && !reduce ? 1.06 : 1);
-  const fade = reduce ? '' : PLATE_LAYER_FADE;
+  const fade = pickFade(reduce);
   return (
-    <motion.span
-      className={PLATE}
-      initial={false}
-      animate={{ transform: `scale(${scale})` }}
-      transition={reduce ? { duration: 0 } : armed ? ARM_SPRING : PLATE_GLIDE}
-    >
-      <span aria-hidden="true" className={cn(PLATE_LAYER, fade, PLATE_REST, !lit && !marked ? 'opacity-100' : 'opacity-0')} />
-      <span aria-hidden="true" className={cn(PLATE_LAYER, fade, PLATE_MARKED, !lit && marked ? 'opacity-100' : 'opacity-0')} />
-      <span aria-hidden="true" className={cn(PLATE_LAYER, fade, PLATE_LIT, lit ? 'opacity-100' : 'opacity-0')} />
+    <span className={PLATE} style={{ transform: `scale(${scale})`, transition: reduce ? undefined : `transform ${PICK_MS}ms ${armed ? ARMED_EASE : PICK_EASE}` }}>
+      <span aria-hidden="true" className={cn(PLATE_LAYER, PLATE_REST)} style={{ opacity: !lit && !marked ? 1 : 0, transition: fade }} />
+      <span aria-hidden="true" className={cn(PLATE_LAYER, PLATE_MARKED)} style={{ opacity: !lit && marked ? 1 : 0, transition: fade }} />
+      <span aria-hidden="true" className={cn(PLATE_LAYER, PLATE_LIT)} style={{ opacity: lit ? 1 : 0, transition: fade }} />
       {children}
-    </motion.span>
+    </span>
+  );
+}
+
+/* a circle's name: grey, and rose for the one you're on — two copies cross-fading (a colour change would repaint) */
+function RailLabel({ text, lit, reduce, className }: { text: string; lit: boolean; reduce: boolean; className: string }) {
+  const fade = pickFade(reduce);
+  return (
+    <span className="grid w-full">
+      <span className={cn(LABEL_CLASS, className, LABEL_REST, '[grid-area:1/1]')} style={{ opacity: lit ? 0 : 1, transition: fade }}>{text}</span>
+      <span aria-hidden="true" className={cn(LABEL_CLASS, className, LABEL_LIT, '[grid-area:1/1]')} style={{ opacity: lit ? 1 : 0, transition: fade }}>{text}</span>
+    </span>
   );
 }
 
@@ -118,8 +154,8 @@ function Plate({ lit, marked, armed, reduce, children }: { lit: boolean; marked:
    An SVG stroke drawing itself on (its dash offset redrawn every frame) is main-thread paint: it lags whenever the
    page is busy. So the ring is built from parts that only ever rotate: two half-rings, each turning into its own
    half of the circle behind a window that shows only that half, and a dot at each end for the round caps. Every
-   moving part is a rotation the browser runs on the compositor (WAAPI). The angle follows the page beat's curve
-   across the whole circle, sampled into keyframes. */
+   moving part is a rotation (or a cap's opacity) the browser runs on the compositor (WAAPI). Every circle has its
+   ring, drawn back, from the start: a pick sweeps it round (or back) and adds nothing to the page. */
 
 function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
   const along = (t: number, a: number, b: number) => 3 * (1 - t) * (1 - t) * t * a + 3 * (1 - t) * t * t * b + t * t * t;
@@ -135,9 +171,10 @@ function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
   };
 }
 
-const RING_SAMPLES = 30;
-const RING_DRAW_MS = Math.round((BEAT_ARRIVE_S + 0.18) * 1000);
-const RING_UNDRAW_MS = 420;
+const RING_SAMPLES = 36;
+// the ring sweeps round on the carry curve, a touch longer than the rest of the pick; it draws back quicker, evenly
+const RING_DRAW_MS = ms(600);
+const RING_UNDRAW_MS = ms(380);
 
 function ringFrames(angleAt: (t: number) => number) {
   const first: Keyframe[] = [];
@@ -153,48 +190,68 @@ function ringFrames(angleAt: (t: number) => number) {
   return { first, second, lead };
 }
 
-const beatCurve = cubicBezier(BEAT_EASE[0], BEAT_EASE[1], BEAT_EASE[2], BEAT_EASE[3]);
-const leaveCurve = cubicBezier(LEAVE_EASE[0], LEAVE_EASE[1], LEAVE_EASE[2], LEAVE_EASE[3]);
-const RING_DRAW = ringFrames((t) => 360 * beatCurve(t));
-const RING_UNDRAW = ringFrames((t) => 360 * (1 - leaveCurve(t)));
+const undrawCurve = cubicBezier(0.4, 0, 0.6, 1);
+const RING_DRAW = ringFrames((t) => 360 * carryCurve(t));
+const RING_UNDRAW = ringFrames((t) => 360 * (1 - undrawCurve(t)));
+// the ring at rest, drawn round or drawn back (what each part shows once a sweep is over)
+const RING_POSE = {
+  on: { first: 'rotate(0deg)', second: 'rotate(0deg)', lead: 'rotate(360deg)', caps: 1 },
+  off: { first: 'rotate(-180deg)', second: 'rotate(-180deg)', lead: 'rotate(0deg)', caps: 0 },
+};
 const RING_ARC = 'block h-full w-full';
 const RING_CAP = 'absolute left-1/2 top-[1.25%] h-[7.5%] w-[7.5%] -translate-x-1/2 rounded-full bg-[var(--fm-accent)]';
 
-function RingDraw({ reduce, leaving }: { reduce: boolean; leaving: boolean }) {
+function RingDraw({ on, reduce }: { on: boolean; reduce: boolean }) {
   const first = useRef<HTMLSpanElement | null>(null);
   const second = useRef<HTMLSpanElement | null>(null);
   const lead = useRef<HTMLSpanElement | null>(null);
   const start = useRef<HTMLSpanElement | null>(null);
+  const end = useRef<HTMLSpanElement | null>(null);
+  // the sweep it started last (kept here: asking the parts for their animations would restyle mid-switch)
+  const drawing = useRef<Animation[]>([]);
+  const shown = useRef(on);
 
   useIsomorphicLayoutEffect(() => {
-    const parts = [first.current, second.current, lead.current, start.current];
-    if (parts.some((part) => !part)) return;
-    parts.forEach((part) => part?.getAnimations().forEach((animation) => animation.cancel()));
-    // reduced motion: the ring is simply there (the parts rest drawn)
-    if (reduce) return;
-    const frames = leaving ? RING_UNDRAW : RING_DRAW;
-    const timing: KeyframeAnimationOptions = leaving
-      ? { duration: RING_UNDRAW_MS, easing: 'linear', fill: 'forwards' }
-      : { duration: RING_DRAW_MS, delay: BEAT_START_S * 1000, easing: 'linear', fill: 'both' };
-    first.current?.animate(frames.first, timing);
-    second.current?.animate(frames.second, timing);
-    lead.current?.animate(frames.lead, timing);
-    // the round cap where the ring starts: there as soon as it starts, gone as it finishes drawing back
-    start.current?.animate(
-      leaving ? [{ opacity: 1 }, { opacity: 1, offset: 0.92 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1, offset: 0.04 }, { opacity: 1 }],
-      timing,
-    );
-  }, [leaving, reduce]);
+    if (shown.current === on) return undefined;
+    shown.current = on;
+    const parts = [first.current, second.current, lead.current, start.current, end.current];
+    if (parts.some((part) => !part)) return undefined;
+    drawing.current.forEach((animation) => animation.cancel());
+    drawing.current = [];
+    // reduced motion: the ring is simply there or not (its parts take their pose)
+    if (reduce) return undefined;
+    const frames = on ? RING_DRAW : RING_UNDRAW;
+    // each part rests in its new pose (its style): the sweep only fills in until it gets there
+    const timing: KeyframeAnimationOptions = { duration: on ? RING_DRAW_MS : RING_UNDRAW_MS, easing: 'linear', fill: 'backwards' };
+    const caps: Keyframe[] = on
+      ? [{ opacity: 0 }, { opacity: 1, offset: 0.04 }, { opacity: 1 }]
+      : [{ opacity: 1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }];
+    drawing.current = [
+      first.current!.animate(frames.first, timing),
+      second.current!.animate(frames.second, timing),
+      lead.current!.animate(frames.lead, timing),
+      start.current!.animate(caps, timing),
+      end.current!.animate(caps, timing),
+    ];
+    // on WebKit the sweep waits at its start for the frame that draws it (a heavy one, on Read)
+    if (!holdsFlights()) return undefined;
+    const sweep = drawing.current;
+    sweep.forEach((animation) => animation.pause());
+    return afterDrawn(() => sweep.forEach((animation) => {
+      if (animation.playState === 'paused') animation.play();
+    }));
+  }, [on, reduce]);
 
+  const pose = on ? RING_POSE.on : RING_POSE.off;
   return (
     <>
-      {/* the faint track the ring draws along */}
-      <svg className="absolute inset-0 block h-full w-full" viewBox="0 0 100 100">
+      {/* the faint track the ring draws along: there while the ring is */}
+      <svg className="absolute inset-0 block h-full w-full" viewBox="0 0 100 100" style={{ opacity: on ? 1 : 0, transition: reduce ? undefined : `opacity ${PICK_MS}ms ${PICK_EASE}` }}>
         <circle cx="50" cy="50" r={RING_R} fill="none" stroke="rgb(var(--fm-accent-rgb)/0.22)" strokeWidth="7.5" />
       </svg>
       {/* the right half: a half-ring turning into view, top round to bottom */}
       <span className="absolute inset-y-0 right-0 w-1/2 overflow-hidden">
-        <span ref={first} className="absolute inset-y-0 right-0 w-[200%] origin-center">
+        <span ref={first} className="absolute inset-y-0 right-0 w-[200%] origin-center" style={{ transform: pose.first }}>
           <svg className={RING_ARC} viewBox="0 0 100 100">
             <path d="M 50 5 A 45 45 0 0 1 50 95" fill="none" stroke="var(--fm-accent)" strokeWidth="7.5" />
           </svg>
@@ -202,91 +259,79 @@ function RingDraw({ reduce, leaving }: { reduce: boolean; leaving: boolean }) {
       </span>
       {/* the left half: bottom round to top */}
       <span className="absolute inset-y-0 left-0 w-1/2 overflow-hidden">
-        <span ref={second} className="absolute inset-y-0 left-0 w-[200%] origin-center">
+        <span ref={second} className="absolute inset-y-0 left-0 w-[200%] origin-center" style={{ transform: pose.second }}>
           <svg className={RING_ARC} viewBox="0 0 100 100">
             <path d="M 50 95 A 45 45 0 0 1 50 5" fill="none" stroke="var(--fm-accent)" strokeWidth="7.5" />
           </svg>
         </span>
       </span>
       {/* the round caps: one where the ring starts, one riding its leading end */}
-      <span ref={start} className={RING_CAP} />
-      <span ref={lead} className="absolute inset-0 origin-center">
-        <span className={RING_CAP} />
+      <span ref={start} className={RING_CAP} style={{ opacity: pose.caps }} />
+      <span ref={lead} className="absolute inset-0 origin-center" style={{ transform: pose.lead }}>
+        <span ref={end} className={RING_CAP} style={{ opacity: pose.caps }} />
       </span>
     </>
   );
 }
 
-/* the rose ring round what you're on: it draws on when you pick it and draws itself back when you pick something
-   else (the old one drawing back as the new one draws on). Only the stroke moves: no bloom, no glow fading in */
-function StoryRing({ reduce, leaving = false, glow = true }: { reduce: boolean; leaving?: boolean; glow?: boolean }) {
+/* the rose ring round what you're on: it sweeps round when you pick it and back when you pick something else (the
+   old one drawing back as the new one draws on), and its soft glow comes up and goes with it, on the pick's clock */
+function StoryRing({ on, reduce, glow = true }: { on: boolean; reduce: boolean; glow?: boolean }) {
   return (
     <>
-      {glow && !leaving ? (
-        <span aria-hidden="true" className="pointer-events-none absolute inset-[2px] rounded-full shadow-[0_3px_8px_-1px_rgb(var(--fm-accent-rgb)/0.42)]" />
+      {glow ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-[2px] rounded-full shadow-[0_3px_8px_-1px_rgb(var(--fm-accent-rgb)/0.42)]"
+          style={{ opacity: on ? 1 : 0, transition: reduce ? undefined : `opacity ${PICK_MS}ms ${PICK_EASE}` }}
+        />
       ) : null}
       <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-10">
-        <RingDraw reduce={reduce} leaving={leaving} />
+        <RingDraw on={on} reduce={reduce} />
       </span>
     </>
   );
-}
-
-/* a ring that was on: kept a moment after it goes off, so it can draw itself back instead of vanishing */
-function useRingState(on: boolean): 'on' | 'leaving' | 'off' {
-  const [last, setLast] = useState(on);
-  const [leaving, setLeaving] = useState(false);
-  if (on !== last) {
-    setLast(on);
-    setLeaving(!on);
-  }
-  useEffect(() => {
-    if (!leaving) return undefined;
-    const timer = window.setTimeout(() => setLeaving(false), RING_UNDRAW_MS);
-    return () => window.clearTimeout(timer);
-  }, [leaving]);
-  return on ? 'on' : leaving ? 'leaving' : 'off';
 }
 
 /* what you tapped, while the page leaves: the ring's faint track, waiting for the ring to draw */
-function ArmTrack() {
+function ArmTrack({ reduce }: { reduce: boolean }) {
   return (
-    <motion.span
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 z-10"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3, ease: SOFT_EASE }}
-    >
+    <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 z-10', !reduce && 'fm-rail-come')}>
       <svg className="block h-full w-full overflow-visible" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r={RING_R} fill="none" stroke="rgb(var(--fm-accent-rgb)/0.32)" strokeWidth="7.5" />
       </svg>
-    </motion.span>
+    </span>
   );
 }
 
 /* the wedge: "Feeds" while you're looking at all of them, "Back" once you've opened one */
-function WedgeButton({ active, current, armed, leaving, reduce, onBack }: { active: boolean; current: boolean; armed: boolean; leaving: boolean; reduce: boolean; onBack: () => void }) {
+const WedgeButton = memo(function WedgeButton({ active, current, armed, leaving, reduce, onBack }: { active: boolean; current: boolean; armed: boolean; leaving: boolean; reduce: boolean; onBack: () => void }) {
   const lit = (current && !leaving) || armed;
-  const ring = useRingState(current);
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useHeldPick(ref, `${lit}|${active}`);
   return (
     <button
+      ref={ref}
       type="button"
-      disabled={!active}
+      // not `disabled`: Back taken from the keys would drop the focus to the page as the button turns off
+      aria-disabled={!active}
       tabIndex={active ? 0 : -1}
       data-rail-all={active ? '' : undefined}
-      onClick={onBack}
-      className={cn(ITEM_CLASS, 'disabled:cursor-default focus-visible:rounded-[18px] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#090909] light:focus-visible:ring-offset-(--fm-page)')}
+      onClick={() => {
+        if (active) onBack();
+      }}
+      {...(active ? press : {})}
+      className={cn(ITEM_CLASS, 'z-[40] aria-disabled:cursor-default')}
       aria-label={active ? 'Back to all feeds' : 'All feeds'}
     >
       <Plate lit={lit} marked={false} armed={armed} reduce={reduce}>
-        {ring !== 'off' ? <StoryRing reduce={reduce} leaving={leaving || ring === 'leaving'} glow={false} /> : armed ? <ArmTrack /> : null}
-        <span className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white', active && FACE_PRESS)} style={{ background: 'var(--lead-wedge-surface)' }}>
-          <motion.span
+        <StoryRing on={current && !leaving} reduce={reduce} glow={false} />
+        {armed ? <ArmTrack reduce={reduce} /> : null}
+        <span className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white', active && FACE_PRESS, FACE_FOCUS)} style={{ background: 'var(--lead-wedge-surface)' }}>
+          {/* it turns to point back as a feed opens, on the rail's clock */}
+          <span
             className="grid h-[38px] w-[38px] place-items-center leading-none lg:h-[42px] lg:w-[42px]"
-            initial={false}
-            animate={{ transform: active ? 'rotate(180deg)' : 'rotate(0deg)' }}
-            transition={reduce ? REDUCED : BADGE_GLIDE}
+            style={{ transform: active ? 'rotate(180deg)' : 'rotate(0deg)', transition: reduce ? undefined : `transform ${RAIL_MOVE_MS}ms ${PICK_EASE}` }}
           >
             <svg aria-hidden viewBox="0 0 42 42" className="block h-[38px] w-[38px] lg:h-[42px] lg:w-[42px]">
               <path
@@ -298,39 +343,38 @@ function WedgeButton({ active, current, armed, leaving, reduce, onBack }: { acti
                 strokeLinejoin="round"
               />
             </svg>
-          </motion.span>
+          </span>
         </span>
       </Plate>
-      <span className={cn(LABEL_CLASS, 'uppercase', lit ? LABEL_LIT : LABEL_REST)}>{active ? 'BACK' : 'FEEDS'}</span>
+      <RailLabel text={active ? 'BACK' : 'FEEDS'} lit={lit} reduce={reduce} className="uppercase" />
     </button>
   );
-}
+});
 
-type FeedBadgeProps = { feed: HeaderFeed; marked: boolean; selected: boolean; armed: boolean; leaving: boolean; reduce: boolean; ariaLabel: string; onClick: () => void };
-
-/* a feed: its initials in the badge. Opening it, the badge glides to the front (the rail's own glide, on the
-   compositor: see TabHeader) while the others fade; closing it, they fade back in around it */
-const FeedBadge = forwardRef<HTMLButtonElement, FeedBadgeProps>(function FeedBadge({ feed, marked, selected, armed, leaving, reduce, ariaLabel, onClick }, ref) {
+/* a feed: its initials in the badge. Opening it, the badge travels to the front while the other feeds fold away, and
+   its feeders fan out from behind it (the rail is a ledger in fan mode: components/motion/Ledger) */
+const FeedBadge = memo(function FeedBadge({ feed, marked, selected, armed, leaving, reduce, ariaLabel, stack, onPick }: { feed: HeaderFeed; marked: boolean; selected: boolean; armed: boolean; leaving: boolean; reduce: boolean; ariaLabel: string; stack: number; onPick: (id: string) => void }) {
   const lit = (selected && !leaving) || armed;
-  const ring = useRingState(selected);
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useHeldPick(ref, lit);
   return (
-    <motion.button
+    <button
       ref={ref}
       type="button"
+      data-ledger={`rail:feed:${feed.id}`}
       data-rail-badge={feed.id}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'scale(0.9)' }}
-      animate={reduce ? { opacity: 1 } : { opacity: 1, transform: 'scale(1)' }}
-      exit={reduce ? { opacity: 0, transition: REDUCED } : { opacity: 0, transform: 'scale(0.9)', transition: railLeave(0) }}
-      transition={reduce ? REDUCED : BADGE_GLIDE}
-      onClick={onClick}
+      onClick={() => onPick(feed.id)}
+      {...press}
       className={ITEM_CLASS}
+      style={{ zIndex: stack }}
       aria-pressed={selected}
       aria-label={ariaLabel}
     >
       <Plate lit={lit} marked={marked} armed={armed} reduce={reduce}>
-        {ring !== 'off' ? <StoryRing reduce={reduce} leaving={leaving || ring === 'leaving'} /> : armed ? <ArmTrack /> : null}
+        <StoryRing on={selected && !leaving} reduce={reduce} />
+        {armed ? <ArmTrack reduce={reduce} /> : null}
         <span
-          className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white text-[12px] font-black leading-none dark:border-[var(--fm-ink)]', FACE_PRESS)}
+          className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white text-[12px] font-black leading-none dark:border-[var(--fm-ink)]', FACE_PRESS, FACE_FOCUS)}
           style={{
             color: 'var(--fm-accent)',
             background: 'radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc)',
@@ -339,76 +383,75 @@ const FeedBadge = forwardRef<HTMLButtonElement, FeedBadgeProps>(function FeedBad
           {feedInitials(feed.title)}
         </span>
       </Plate>
-      <span className={cn(LABEL_CLASS, 'uppercase', lit ? LABEL_LIT : LABEL_REST)}>{titleCase(feed.title)}</span>
-    </motion.button>
+      <RailLabel text={titleCase(feed.title)} lit={lit} reduce={reduce} className="uppercase" />
+    </button>
   );
 });
 
-type FeederCircleProps = { feeder: HeaderFeeder; index: number; marked: boolean; selected: boolean; armed: boolean; leaving: boolean; reduce: boolean; ariaLabel: string; onClick: () => void };
-
-/* a feeder: flies out of its feed's badge when the feed opens, and back into it when it closes, one after another,
-   a beat step apart (the badge glides on step 0, the first feeder on step 1), the way the page's rows rise */
-const FeederCircle = forwardRef<HTMLButtonElement, FeederCircleProps>(function FeederCircle({ feeder, index, marked, selected, armed, leaving, reduce, ariaLabel, onClick }, ref) {
+/* a feeder: fans out from behind the circle before it when its feed opens (the first from behind the feed's badge),
+   one after another, and folds back behind it as the feed closes */
+const FeederCircle = memo(function FeederCircle({ feeder, marked, selected, armed, leaving, reduce, ariaLabel, stack, onPick }: { feeder: HeaderFeeder; marked: boolean; selected: boolean; armed: boolean; leaving: boolean; reduce: boolean; ariaLabel: string; stack: number; onPick: (handle: string) => void }) {
   const lit = (selected && !leaving) || armed;
-  const ring = useRingState(selected);
-  // where it flies from and back to: its feed's badge, at the front of the rail
-  const away = `translateX(${-FEEDER_SLOT * (index + 1)}px) scale(0.7)`;
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useHeldPick(ref, lit);
   return (
-    <motion.button
+    <button
       ref={ref}
       type="button"
-      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: away }}
-      animate={reduce ? { opacity: 1 } : { opacity: 1, transform: 'translateX(0px) scale(1)' }}
-      exit={reduce ? { opacity: 0, transition: REDUCED } : { opacity: 0, transform: away, transition: railLeave(index) }}
-      transition={reduce ? REDUCED : beatArrive(index + 1)}
-      onClick={onClick}
+      data-ledger={`rail:feeder:${feeder.handle}`}
       data-rail-feeder={feeder.handle}
+      onClick={() => onPick(feeder.handle)}
+      {...press}
       className={ITEM_CLASS}
+      style={{ zIndex: stack }}
       aria-pressed={selected}
       aria-label={ariaLabel}
     >
       <Plate lit={lit} marked={marked} armed={armed} reduce={reduce}>
-        {ring !== 'off' ? <StoryRing reduce={reduce} leaving={leaving || ring === 'leaving'} /> : armed ? <ArmTrack /> : null}
-        <span className={cn('relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[var(--fm-accent-deeper)] dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[var(--fm-accent-soft)]', FACE_PRESS)}>
-          <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} />
+        <StoryRing on={selected && !leaving} reduce={reduce} />
+        {armed ? <ArmTrack reduce={reduce} /> : null}
+        <span className={cn('relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#fce7f3,#fff1f2)] text-[var(--fm-accent-deeper)] dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)] dark:text-[var(--fm-accent-soft)]', FACE_PRESS, FACE_FOCUS)}>
+          {/* decoded ahead (TabHeader), and asked for at once: a face never arrives after its circle */}
+          <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} loading="eager" />
         </span>
       </Plate>
-      <span className={cn(LABEL_CLASS, 'lowercase', lit ? LABEL_LIT : LABEL_REST)}>
-        {feeder.handle}
-      </span>
-    </motion.button>
+      <RailLabel text={feeder.handle} lit={lit} reduce={reduce} className="lowercase" />
+    </button>
   );
 });
 
 /* a line of the title row: the new one rises in as the old one goes; while a page leaves, the old one lets go a
-   beat into the leave and the new one waits for the page. An exiting line keeps the props of its last render, so
-   whether the page is leaving reaches it through AnimatePresence's custom */
+   beat into the leave and the new one waits for the page. The two share one cell while they cross (no stylesheet
+   popped in and out of the page mid-switch, as popLayout does). An exiting line keeps the props of its last render,
+   so whether the page is leaving reaches it through AnimatePresence's custom */
 type SlotCustom = { leaving: boolean; travel: number; reduce: boolean };
 const TITLE_SLOT = {
   exit: ({ leaving, travel, reduce }: SlotCustom) => (reduce
     ? { opacity: 0, transition: { duration: 0.12 } }
-    : { opacity: 0, transform: `translateY(${-travel * 0.8}px)`, transition: { duration: BEAT_LEAVE_S, delay: leaving ? 0.18 : 0, ease: BEAT_LEAVE_EASE } }),
+    : { opacity: 0, transform: `translateY(${-travel * 0.8}px)`, transition: { duration: BEAT_LEAVE_S, delay: leaving ? sec(0.18) : 0, ease: BEAT_LEAVE_EASE } }),
 };
 
 function TitleSlot({ text, leaving, reduce, className, travel = 10 }: { text: string | null; leaving: boolean; reduce: boolean; className: string; travel?: number }) {
   const custom: SlotCustom = { leaving, travel, reduce };
   return (
-    <AnimatePresence mode="popLayout" initial={false} custom={custom}>
-      {text ? (
-        <motion.div
-          key={text}
-          custom={custom}
-          variants={TITLE_SLOT}
-          initial={reduce ? { opacity: 0 } : { opacity: 0, transform: `translateY(${travel}px)` }}
-          animate={{ opacity: 1, transform: 'translateY(0px)' }}
-          exit="exit"
-          transition={reduce ? { duration: 0.14 } : beatArrive(0)}
-          className={className}
-        >
-          {text}
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    <div className="grid min-w-0">
+      <AnimatePresence initial={false} custom={custom}>
+        {text ? (
+          <motion.div
+            key={text}
+            custom={custom}
+            variants={TITLE_SLOT}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, transform: `translateY(${travel}px)` }}
+            animate={{ opacity: 1, transform: 'translateY(0px)' }}
+            exit="exit"
+            transition={reduce ? { duration: 0.14 } : beatArrive(0)}
+            className={cn('[grid-area:1/1]', className)}
+          >
+            {text}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -478,45 +521,9 @@ function TabHeader({
   railId,
 }: TabHeaderConfig & { tab: string }) {
   const reduce = Boolean(useReducedMotion());
-  const railScrollRef = useRef<HTMLDivElement | null>(null);
   const activeFeed = feeds && feedId ? feeds.find((feed) => feed.id === feedId) || null : null;
   const isMarked = (feederHandle: string) => Boolean(marked?.(feederHandle));
   const nameFeeder = (feederHandle: string) => (feederLabel ? feederLabel(feederHandle) : `@${feederHandle}`);
-
-  /* The badge's glide. When the rail changes what it holds (a feed opened or closed, the feeds arriving), every
-     badge still on it is measured where it now sits, set back to where it was, and played to its place: one
-     transform per badge, run by the browser on the compositor (WAAPI), so it holds 60fps whatever the page is doing.
-     (framer's layout animation did this on the main thread, and slowly.) Opening or closing a feed also starts the
-     rail from its front, folded into the same measure so the glide accounts for the scroll. */
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const badgeAt = useRef(new Map<string, number>());
-  const shownFeedId = useRef(feedId);
-  useIsomorphicLayoutEffect(() => {
-    const track = trackRef.current;
-    const scroller = railScrollRef.current;
-    if (!track || !scroller) return;
-    const scrolledFrom = scroller.scrollLeft;
-    if (shownFeedId.current !== feedId) {
-      shownFeedId.current = feedId;
-      scroller.scrollLeft = 0;
-    }
-    const scrolledTo = scroller.scrollLeft;
-    const next = new Map<string, number>();
-    track.querySelectorAll<HTMLElement>('[data-rail-badge]').forEach((badge) => {
-      const id = badge.dataset.railBadge || '';
-      const at = badge.offsetLeft;
-      next.set(id, at);
-      const was = badgeAt.current.get(id);
-      if (was == null || reduce) return;
-      const from = (was - scrolledFrom) - (at - scrolledTo);
-      if (Math.abs(from) < 1) return;
-      badge.animate(
-        [{ transform: `translateX(${from}px)` }, { transform: 'translateX(0px)' }],
-        { duration: BADGE_GLIDE_MS, easing: BEAT_EASE_CSS, composite: 'add' },
-      );
-    });
-    badgeAt.current = next;
-  }, [feedId, feeds]);
 
   // every face on the rail is fetched and decoded ahead, so a feeder flying out of its badge never waits on (or
   // decodes mid-flight) its picture
@@ -546,6 +553,24 @@ function TabHeader({
     else if (button.dataset.railAll != null) onIntent({ feedId: null, handle: null });
   };
 
+  // what the rail holds: the feeds, or the open feed's badge and its feeders (while the feeds load, the feeders it had)
+  const railFeeds = !feeds ? [] : activeFeed ? [activeFeed] : feeds;
+  const railFeeders = !feeds ? pendingFeeders : activeFeed ? activeFeed.feeders : [];
+  // (their own kind of ids: a page's lists use feed:… too, and a lookup on the page must never land in the header)
+  const railIds = [...railFeeds.map((feed) => `rail:feed:${feed.id}`), ...railFeeders.map((feeder) => `rail:feeder:${feeder.handle}`)];
+  // opening or closing a feed re-deals it (a feeder picked inside a feed only moves the rings)
+  const railDeal = !feeds ? 'loading' : activeFeed ? `feed:${activeFeed.id}` : 'all';
+
+  // the tab's handlers, read when a circle is tapped: the circles keep one stable callback each, so a page publishing
+  // its header again (every render of the page) doesn't re-render a circle that hasn't changed
+  const handlers = useRef({ onAll, onFeed, onFeeder });
+  useIsomorphicLayoutEffect(() => {
+    handlers.current = { onAll, onFeed, onFeeder };
+  });
+  const pickAll = useCallback(() => handlers.current.onAll(), []);
+  const pickFeed = useCallback((id: string) => handlers.current.onFeed(id), []);
+  const pickFeeder = useCallback((feederHandle: string) => handlers.current.onFeeder(feederHandle), []);
+
   const wedge = (
     <WedgeButton
       active={Boolean(activeFeed)}
@@ -553,22 +578,24 @@ function TabHeader({
       armed={armed === 'all'}
       leaving={leaving}
       reduce={reduce}
-      onBack={onAll}
+      onBack={pickAll}
     />
   );
 
+  // first over last: a circle coming out of the one before it comes out from behind it
+  const stackOf = (index: number) => 30 - Math.min(index, 29);
   const circle = (feeder: HeaderFeeder, index: number) => (
     <FeederCircle
       key={`feeder:${feeder.handle}`}
       feeder={feeder}
-      index={index}
       marked={isMarked(feeder.handle)}
       selected={handle === feeder.handle}
       armed={armed === `feeder:${feeder.handle}`}
       leaving={leaving}
       reduce={reduce}
       ariaLabel={nameFeeder(feeder.handle)}
-      onClick={() => onFeeder(feeder.handle)}
+      stack={stackOf(railFeeds.length + index)}
+      onPick={pickFeeder}
     />
   );
 
@@ -622,63 +649,55 @@ function TabHeader({
             {rowOverlay}
           </div>
 
-          {/* the story rail: folds away with the header */}
-          <motion.div
-            id={railId}
-            initial={false}
-            className="min-w-0 overflow-hidden"
-            animate={{
-              transform: compressed ? 'translateY(-14px)' : 'translateY(0px)',
-              clipPath: compressed ? 'inset(0 0 100% 0 round 22px)' : 'inset(0 0 0% 0 round 22px)',
-            }}
-            // the circles unroll from under the title (and roll back up into it) on one curve: no fade
-            transition={{
-              transform: { duration: 0.42, ease: SOFT_EASE },
-              clipPath: { duration: 0.42, ease: SOFT_EASE },
-            }}
-            style={{ pointerEvents: compressed ? 'none' : 'auto' }}
-          >
-            <div className="flex min-w-0 items-start gap-3" onPointerOver={intent} onPointerDown={intent} onFocus={intent} onPointerLeave={() => { intentAt.current = null; }}>
+          {/* The story rail. As the header folds, the circles roll up under the title row: the edge they slide under
+              stays still and only they move (a transform, on the glass's own clock, so they stay inside it); nothing
+              reshapes on the way. The rail itself is a ledger (components/motion/Ledger): opening a feed, its badge
+              travels to the front while the other feeds hand their places to its feeders, one after another, out of
+              the badge, on the beat the page's rows deal on. */}
+          <div id={railId} className="min-w-0 overflow-hidden" style={{ pointerEvents: compressed ? 'none' : 'auto' }}>
+            <div
+              className="flex min-w-0 items-start gap-3"
+              style={{
+                transform: compressed ? 'translate3d(0, calc(-100% - 10px), 0)' : 'translate3d(0, 0, 0)',
+                transition: reduce ? undefined : 'transform 340ms cubic-bezier(0.32, 0.72, 0, 1)',
+              }}
+              onPointerOver={intent}
+              onPointerDown={intent}
+              onFocus={intent}
+              onPointerLeave={() => { intentAt.current = null; }}
+            >
               <div className="hidden sm:block">{wedge}</div>
-              <div ref={railScrollRef} className="hide-scrollbar min-w-0 flex-1 overflow-x-auto pb-0.5 lg:pb-1">
-                <div ref={trackRef} className="relative flex min-w-max items-start gap-2 pr-3 lg:gap-3" role="group" aria-label={activeFeed ? `Feeders in ${titleCase(activeFeed.title)}` : 'Feeds'}>
-                  <div className="sm:hidden">{wedge}</div>
-                  <AnimatePresence initial={false} mode="popLayout">
-                    {!feeds ? (
-                      pendingFeeders.map(circle)
-                    ) : activeFeed ? (
-                      <FeedBadge
-                        key={`feed:${activeFeed.id}`}
-                        feed={activeFeed}
-                        marked={activeFeed.feeders.some((feeder) => isMarked(feeder.handle))}
-                        selected={!handle}
-                        armed={armed === `feed:${activeFeed.id}`}
-                        leaving={leaving}
-                        reduce={reduce}
-                        ariaLabel={handle ? `Show every feeder in ${titleCase(activeFeed.title)}` : `${titleCase(activeFeed.title)}, every feeder`}
-                        onClick={() => onFeed(activeFeed.id)}
-                      />
-                    ) : (
-                      feeds.map((feed) => (
-                        <FeedBadge
-                          key={`feed:${feed.id}`}
-                          feed={feed}
-                          marked={feed.feeders.some((feeder) => isMarked(feeder.handle))}
-                          selected={false}
-                          armed={armed === `feed:${feed.id}`}
-                          leaving={leaving}
-                          reduce={reduce}
-                          ariaLabel={`Open ${titleCase(feed.title)}`}
-                          onClick={() => onFeed(feed.id)}
-                        />
-                      ))
-                    )}
-                    {activeFeed?.feeders.map(circle)}
-                  </AnimatePresence>
-                </div>
-              </div>
+              <Ledger
+                ids={railIds}
+                deal={railDeal}
+                axis="x"
+                fan
+                moveMs={RAIL_MOVE_MS}
+                startOnDeal
+                dealOnMount={false}
+                role="group"
+                label={activeFeed ? `Feeders in ${titleCase(activeFeed.title)}` : 'Feeds'}
+                className="hide-scrollbar flex min-w-0 flex-1 items-start gap-2 overflow-x-auto pb-0.5 pr-3 lg:gap-3 lg:pb-1"
+              >
+                <div className="sm:hidden">{wedge}</div>
+                {railFeeds.map((feed, index) => (
+                  <FeedBadge
+                    key={`feed:${feed.id}`}
+                    stack={stackOf(index)}
+                    feed={feed}
+                    marked={feed.feeders.some((feeder) => isMarked(feeder.handle))}
+                    selected={feed.id === activeFeed?.id && !handle}
+                    armed={armed === `feed:${feed.id}`}
+                    leaving={leaving}
+                    reduce={reduce}
+                    ariaLabel={feed.id !== activeFeed?.id ? `Open ${titleCase(feed.title)}` : handle ? `Show every feeder in ${titleCase(feed.title)}` : `${titleCase(feed.title)}, every feeder`}
+                    onPick={pickFeed}
+                  />
+                ))}
+                {railFeeders.map(circle)}
+              </Ledger>
             </div>
-          </motion.div>
+          </div>
         </div>
     </header>
   );
@@ -745,9 +764,11 @@ export function TabHeaderHost({ tab, onCompressed }: { tab: string | null; onCom
     : picked;
   const compressed = Boolean(shown?.config.compressed);
 
-  useEffect(() => {
+  // in the same commit as the rail (a layout effect: the shell's update lands before the frame), so the glass edge
+  // and the circles folding under the title start together
+  useIsomorphicLayoutEffect(() => {
     if (shown) onCompressed(compressed);
-  }, [Boolean(shown), compressed, onCompressed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [Boolean(shown), compressed, onCompressed]);
 
   if (!shown) return null;
   // arriving from a tab with its own header, it comes in as headers always have; between tabs that share it, it stays
@@ -778,11 +799,15 @@ const isRoomy = <T extends string | number>(options: readonly T[], label: (value
    outside, Escape or a scroll closes it the same way. Read's curves and sizes. */
 // a critically damped spring: Read's sheet (readerEngine, EZ.sheet)
 const MENU_SPRING = (t: number) => (t >= 1 ? 1 : 1 - (1 + 7.5 * t) * Math.exp(-7.5 * t));
-const MENU_OPEN = { duration: 0.56, ease: MENU_SPRING };
-const MENU_CLOSE = { duration: 0.38, ease: [0.32, 0.72, 0, 1] as const };
+const MENU_OPEN = { duration: sec(0.56), ease: MENU_SPRING };
+const MENU_CLOSE = { duration: sec(0.38), ease: [0.32, 0.72, 0, 1] as const };
 const MENU_ROW = 40;
 const MENU_PAD = 6;
-const MENU_APPLY_MS = 300;
+// the pick reaches the tab once the box has mostly closed (on the close's clock)
+const MENU_APPLY_MS = ms(300);
+// a tab whose switch is a heavy render takes the pick once the box has closed (the close's 380ms and its frame), so
+// that render can't stall the close's last stretch
+export const MENU_APPLY_AFTER_CLOSE_MS = ms(380) + 40;
 // a pick the tab doesn't take stops being worn after this
 const MENU_PICK_KEEP_MS = 1800;
 // literal per theme: framer can't interpolate a var() inside a shadow
@@ -816,7 +841,7 @@ function ValueSlot({ text, dir, roomy, reduce }: { text: string; dir: number; ro
   );
 }
 
-function TimeframePicker<T extends string | number>({ value, options, pending, label, name, onChange }: { value: T; options: readonly T[]; pending: boolean; label: (value: T) => string; name?: string; onChange: (value: T) => void }) {
+function TimeframePicker<T extends string | number>({ value, options, pending, label, name, applyMs = MENU_APPLY_MS, onChange }: { value: T; options: readonly T[]; pending: boolean; label: (value: T) => string; name?: string; applyMs?: number; onChange: (value: T) => void }) {
   const reduce = Boolean(useReducedMotion());
   const theme = useResolvedTheme();
   const roomy = isRoomy(options, label);
@@ -909,8 +934,8 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
     setPicked(option);
     window.requestAnimationFrame(() => setOpen(false));
     timersRef.current.push(
-      window.setTimeout(() => onChangeRef.current(option), reduce ? 0 : MENU_APPLY_MS),
-      window.setTimeout(() => setPicked((current) => (current === option ? null : current)), MENU_APPLY_MS + MENU_PICK_KEEP_MS),
+      window.setTimeout(() => onChangeRef.current(option), reduce ? 0 : applyMs),
+      window.setTimeout(() => setPicked((current) => (current === option ? null : current)), applyMs + MENU_PICK_KEEP_MS),
     );
   };
 
@@ -953,8 +978,8 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,250,251,.985),rgba(255,255,255,.975))] backdrop-blur-[18px] dark:bg-[linear-gradient(180deg,rgba(22,16,19,.985),rgba(6,6,7,.975))]"
             initial={reduce ? false : { opacity: 0 }}
-            animate={{ opacity: 1, transition: reduce ? { duration: 0 } : { duration: 0.22, ease: 'easeOut' } }}
-            exit={reduce ? undefined : { opacity: [1, 1, 0], transition: { duration: 0.4, times: [0, 0.6, 1] } }}
+            animate={{ opacity: 1, transition: reduce ? { duration: 0 } : { duration: sec(0.22), ease: 'easeOut' } }}
+            exit={reduce ? undefined : { opacity: [1, 1, 0], transition: { duration: sec(0.4), times: [0, 0.6, 1] } }}
           />
           <span aria-hidden="true" className="pointer-events-none absolute left-[10px] right-[10px] h-px bg-fg/[0.08]" style={{ top: box.height }} />
           <div className="absolute left-0 z-[1] grid gap-[2px] px-1 py-[6px]" style={{ top: box.height, width: box.width }}>
@@ -968,9 +993,9 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
                 animate={{
                   opacity: 1,
                   transform: 'translateY(0px)',
-                  transition: reduce ? { duration: 0 } : { duration: 0.42, delay: 0.09 + index * 0.055, ease: SOFT_EASE },
+                  transition: reduce ? { duration: 0 } : { duration: sec(0.42), delay: sec(0.09 + index * 0.055), ease: SOFT_EASE },
                 }}
-                exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.14, ease: 'easeIn' } }}
+                exit={reduce ? undefined : { opacity: 0, transition: { duration: sec(0.14), ease: 'easeIn' } }}
                 onClick={() => pick(option)}
                 onKeyDown={(event) => {
                   if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
@@ -1003,7 +1028,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             <motion.span
               className="grid place-items-center"
               initial={reduce ? false : { transform: 'rotate(0deg)' }}
-              animate={{ transform: 'rotate(180deg)', transition: reduce ? { duration: 0 } : { duration: 0.48, ease: MENU_SPRING } }}
+              animate={{ transform: 'rotate(180deg)', transition: reduce ? { duration: 0 } : { duration: sec(0.48), ease: MENU_SPRING } }}
               exit={reduce ? undefined : { transform: 'rotate(0deg)', transition: MENU_CLOSE }}
             >
               <ChevronDown className="h-3.5 w-3.5 text-fg/54" aria-hidden="true" />
@@ -1042,26 +1067,101 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
   );
 }
 
-export function TimeframeControl<T extends string | number>({ id, value, options, pending = false, label = timeframeLabel, name, onChange }: { id: string; value: T; options: readonly T[]; pending?: boolean; label?: (value: T) => string; name?: string; onChange: (value: T) => void }) {
+/* The selected range's pill moves on the spring it always had (stiffness 420, damping 34, mass 0.82: settled in about a
+   third of a second, no visible overshoot), sampled once here into keyframes, so it plays as a compositor transform
+   (WAAPI) and a page busy re-rendering under it can't hold it up. The samples keep the spring's shape; only its
+   total time is played out by TEMPO. */
+const PILL_MOVE = (() => {
+  const step = 1 / 1000;
+  let x = 0;
+  let v = 0;
+  let t = 0;
+  const path = [0];
+  while (t < 1) {
+    v += ((-420 * (x - 1) - 34 * v) / 0.82) * step;
+    x += v * step;
+    t += step;
+    path.push(x);
+    if (Math.abs(1 - x) < 0.0005 && Math.abs(v) < 0.02) break;
+  }
+  const samples = 32;
+  return { ms: ms(t * 1000), at: Array.from({ length: samples + 1 }, (_, k) => (k === samples ? 1 : path[Math.round((k / samples) * (path.length - 1))])) };
+})();
+
+// how far along the spring is, a fraction of its time in
+function pillProgress(time: number) {
+  const at = PILL_MOVE.at;
+  const exact = Math.max(0, Math.min(1, time)) * (at.length - 1);
+  const k = Math.min(at.length - 2, Math.floor(exact));
+  return at[k] + (at[k + 1] - at[k]) * (exact - k);
+}
+
+// the pill over the option at `position` (fractions are on the way): one cell over is its own width plus the gaps
+const pillPlace = (position: number) => `translateX(calc(${position.toFixed(4)} * (100% + 6px)))`;
+
+function TimeframePill({ index, count }: { index: number; count: number }) {
+  const reduce = Boolean(useReducedMotion());
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const move = useRef<{ from: number; to: number; animation: Animation | null }>({ from: index, to: index, animation: null });
+  useIsomorphicLayoutEffect(() => {
+    const el = ref.current;
+    const last = move.current;
+    if (!el || last.to === index) return;
+    // a pill still on its way sets off again from where it is
+    let from = last.to;
+    if (last.animation && last.animation.playState === 'running') {
+      from = last.from + (last.to - last.from) * pillProgress(Number(last.animation.currentTime ?? 0) / PILL_MOVE.ms);
+      last.animation.cancel();
+    }
+    const animation = reduce
+      ? null
+      : el.animate(PILL_MOVE.at.map((progress, k) => ({ offset: k / (PILL_MOVE.at.length - 1), transform: pillPlace(from + (index - from) * progress) })), { duration: PILL_MOVE.ms, easing: 'linear' });
+    move.current = { from, to: index, animation };
+  }, [index, reduce]);
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      className="pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] rounded-[10px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.32)]"
+      style={{ width: `calc(${100 / count}% - 6px)`, transform: pillPlace(index) }}
+    />
+  );
+}
+
+export function TimeframeControl<T extends string | number>({ value, options, pending = false, label = timeframeLabel, name, applyMs, onChange }: { id: string; value: T; options: readonly T[]; pending?: boolean; label?: (value: T) => string; name?: string; applyMs?: number; onChange: (value: T) => void }) {
+  // a pick on its way: the pill and the pressed segment move at the tap, in a render of their own, before the tab's
+  // (possibly heavy) switch arrives with the value; worn until the value arrives, or for a while if it never does
+  const [picked, setPicked] = useState<T | null>(null);
+  if (picked !== null && picked === value) setPicked(null);
+  useEffect(() => {
+    if (picked === null) return undefined;
+    const id = window.setTimeout(() => setPicked(null), MENU_PICK_KEEP_MS);
+    return () => window.clearTimeout(id);
+  }, [picked]);
+  const shown = picked ?? value;
+  const index = options.indexOf(shown);
   return (
     <>
-      <TimeframePicker value={value} options={options} pending={pending} label={label} name={name} onChange={onChange} />
+      <TimeframePicker value={value} options={options} pending={pending} label={label} name={name} applyMs={applyMs} onChange={onChange} />
       <div
-        className="hidden h-11 shrink-0 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:grid"
+        className="relative hidden h-11 shrink-0 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:grid"
         style={{ width: options.length * (isRoomy(options, label) ? 66 : 46), gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
         role="group"
         aria-label={name ?? 'Time range'}
       >
+        {index >= 0 ? <TimeframePill index={index} count={options.length} /> : null}
         {options.map((option) => (
           <button
             key={option}
             type="button"
-            onClick={() => onChange(option)}
+            onClick={() => {
+              if (option !== shown) setPicked(option);
+              onChange(option);
+            }}
             aria-busy={pending}
-            aria-pressed={value === option}
-            className={cn('relative grid h-full place-items-center rounded-[10px] text-[13px] font-black uppercase leading-none tracking-[0.06em] transition-colors', value === option ? 'text-white' : 'text-fg/52 hover:text-fg/72')}
+            aria-pressed={shown === option}
+            className={cn('relative grid h-full place-items-center rounded-[10px] text-[13px] font-black uppercase leading-none tracking-[0.06em] transition-colors', shown === option ? 'text-white' : 'text-fg/52 hover:text-fg/72')}
           >
-            {value === option ? <motion.span layoutId={`${id}-timeframe-pill`} className="pointer-events-none absolute inset-[3px] rounded-[10px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.32)]" transition={PILL_SPRING} /> : null}
             <span className="relative z-10">{label(option)}</span>
           </button>
         ))}

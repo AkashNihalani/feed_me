@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   AnimatePresence,
   motion,
   useMotionValue,
   useReducedMotion,
   useSpring,
+  useTransform,
 } from 'framer-motion';
 import { DashboardSummary } from './dashboardTypes';
 import { cn } from '@/lib/utils';
@@ -62,39 +63,31 @@ function ratioToTopPercentile(value: number | null | undefined) {
   return Math.max(1, Math.min(99, Math.round(101 - value * 35)));
 }
 
+// The springs render straight from motion values (framer writes the span's textContent), so a count-up no longer
+// re-renders its row on every frame.
 function AnimatedMultiplier({ value, suffix = 'x' }: { value: number | null; suffix?: string }) {
   const mv = useMotionValue(0);
   const spring = useSpring(mv, { stiffness: 320, damping: 28, mass: 0.9 });
-  const [rendered, setRendered] = useState(value ?? 0);
-
-  useEffect(() => {
-    const unsub = spring.on('change', (v) => setRendered(v));
-    return unsub;
-  }, [spring]);
+  const text = useTransform(spring, (v) => `${v.toFixed(1)}${suffix}`);
 
   useEffect(() => {
     mv.set(value ?? 0);
   }, [mv, value]);
 
   if (value === null) return <>--</>;
-  return <>{rendered.toFixed(1)}{suffix}</>;
+  return <motion.span>{text}</motion.span>;
 }
 
 function AnimatedDelta({ delta }: { delta: number }) {
   const mv = useMotionValue(delta);
   const spring = useSpring(mv, { stiffness: 320, damping: 28, mass: 0.9 });
-  const [rendered, setRendered] = useState(delta);
-
-  useEffect(() => {
-    const unsub = spring.on('change', (v) => setRendered(v));
-    return unsub;
-  }, [spring]);
+  const text = useTransform(spring, (v) => v.toFixed(1));
 
   useEffect(() => {
     mv.set(delta);
   }, [mv, delta]);
 
-  return <>{rendered.toFixed(1)}</>;
+  return <motion.span>{text}</motion.span>;
 }
 
 function TagChip({ tag }: { tag: Tag }) {
@@ -108,9 +101,9 @@ function TagChip({ tag }: { tag: Tag }) {
     <AnimatePresence mode="popLayout" initial={false}>
       <motion.span
         key={tagKey}
-        initial={{ opacity: 0, y: 4, scale: 0.92 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -4, scale: 0.92 }}
+        initial={{ opacity: 0, transform: 'translateY(4px) scale(0.92)' }}
+        animate={{ opacity: 1, transform: 'translateY(0px) scale(1)' }}
+        exit={{ opacity: 0, transform: 'translateY(-4px) scale(0.92)' }}
         transition={{ duration: 0.22, ease: EASE }}
         className={[
           'fm-depth-chip inline-flex min-h-[32px] min-w-[70px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 py-2 leading-none sm:min-h-[36px] sm:min-w-[78px] sm:px-[18px] sm:py-[9px] lg:min-h-[40px] lg:min-w-[86px] lg:px-5 lg:py-2.5',
@@ -215,8 +208,8 @@ function PerformanceRow({
             ? 'bg-foreground/[0.055] dark:bg-white/[0.055]'
             : 'bg-[rgb(var(--fm-accent-rgb)/0.10)] dark:bg-[rgb(var(--fm-accent-rgb)/0.14)]',
         )}
-        initial={reduceMotion ? false : { scaleX: 0 }}
-        animate={{ scaleX: fillPct / 100 }}
+        initial={reduceMotion ? false : { transform: 'scaleX(0)' }}
+        animate={{ transform: `scaleX(${fillPct / 100})` }}
         transition={reduceMotion ? { duration: 0 } : BAR_SPRING}
       />
       <span
@@ -308,15 +301,13 @@ export default function FeedVelocityBars({
           </span>
         </div>
 
-        <motion.ul
-          layout={reduceMotion ? false : true}
-          transition={reduceMotion ? { duration: 0 } : { layout: LAYOUT_SPRING }}
-          className="relative flex min-h-0 flex-1 list-none flex-col gap-2 p-0 sm:gap-2.5 lg:gap-3"
-        >
+        {/* The list never moves or resizes (flex-1 in a fixed tile); only the rows re-sort, and they carry their own
+            layout="position". */}
+        <ul className="relative flex min-h-0 flex-1 list-none flex-col gap-2 p-0 sm:gap-2.5 lg:gap-3">
           {orderedRows.map((row) => (
             <PerformanceRow key={row.key} row={row} reduceMotion={reduceMotion} />
           ))}
-        </motion.ul>
+        </ul>
 
         <div className="mt-2.5 grid shrink-0 grid-cols-[0.95fr_1.1fr_0.95fr] gap-1.5 sm:mt-3 sm:gap-2.5">
           <FooterStat

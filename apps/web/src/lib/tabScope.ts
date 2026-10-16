@@ -10,6 +10,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { startTransition, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { afterDrawn } from '@/lib/webkitMotion';
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -40,16 +41,24 @@ export function useTabScope() {
   return useSyncExternalStore(subscribeTabScope, getTabScope, getTabScope);
 }
 
-/* for a page that is heavy to re-render: it follows the pick in a transition, so its re-render happens in the
-   background and yields to the frames the header is animating, instead of blocking the tap's frame. Coming back on
-   screen it catches up before the first paint */
+/* for a page that is heavy to re-render: it follows the pick once the header's answer to the tap is on screen (the
+   rail's circles and rings already moving, on the compositor, where a heavy page can't hold them up), and then in a
+   transition, so its re-render yields to the frames the header is animating. A heavy commit landing on the rail's
+   first frames was what made the circles start late and jump. Coming back on screen it catches up before the first
+   paint */
 export function useTabScopeTransition() {
   const [current, setCurrent] = useState(getTabScope);
   useIsomorphicLayoutEffect(() => {
     setCurrent(getTabScope());
-    return subscribeTabScope(() => {
-      startTransition(() => setCurrent(getTabScope()));
+    let cancel = () => {};
+    const unsubscribe = subscribeTabScope(() => {
+      cancel();
+      cancel = afterDrawn(() => startTransition(() => setCurrent(getTabScope())));
     });
+    return () => {
+      cancel();
+      unsubscribe();
+    };
   }, []);
   return current;
 }

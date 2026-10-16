@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeedAscentChart from './FeedAscentChart';
 import FeedVelocityBars from './FeedVelocityBars';
@@ -20,8 +20,6 @@ type ActiveFeed = {
 interface FeedDetailV2Props {
   activeFeed: ActiveFeed | null | undefined;
   children: ReactNode;
-  signalFeed?: ReactNode;
-  readerCover?: ReactNode;
   timeframe: Timeframe;
   dashboardData: DashboardPayload | null;
   baselineDashboardData?: DashboardPayload | null;
@@ -182,11 +180,42 @@ function DeferredMobileSection({
   );
 }
 
+// Only the layout for the current viewport mounts: the phone stack below Tailwind's `lg`, the bento grid from `lg`
+// up. The query is `lg` exactly as Tailwind v4's CSS writes it (64rem, 1024px at the default font size), so this
+// switch always agrees with the `lg:` classes inside both layouts.
+const DESKTOP_LAYOUT_QUERY = '(min-width: 64rem)';
+
+let desktopLayoutMediaQuery: MediaQueryList | null = null;
+
+function getDesktopLayoutMediaQuery(): MediaQueryList | null {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
+  if (!desktopLayoutMediaQuery) desktopLayoutMediaQuery = window.matchMedia(DESKTOP_LAYOUT_QUERY);
+  return desktopLayoutMediaQuery;
+}
+
+function subscribeDesktopLayout(onChange: () => void) {
+  const query = getDesktopLayoutMediaQuery();
+  if (!query) return () => {};
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+function getDesktopLayoutSnapshot() {
+  return getDesktopLayoutMediaQuery()?.matches ?? false;
+}
+
+// No viewport on the server: it renders the phone stack, and the client takes over with its real value.
+function getDesktopLayoutServerSnapshot() {
+  return false;
+}
+
+function useDesktopLayout() {
+  return useSyncExternalStore(subscribeDesktopLayout, getDesktopLayoutSnapshot, getDesktopLayoutServerSnapshot);
+}
+
 export default function FeedDetailV2({
   activeFeed,
   children,
-  signalFeed,
-  readerCover,
   timeframe,
   dashboardData,
   baselineDashboardData = null,
@@ -201,6 +230,7 @@ export default function FeedDetailV2({
   const heatmapWeeks = 13;
   const prefersReducedMotion = useReducedMotion();
   const reduceMotion = Boolean(prefersReducedMotion);
+  const isDesktopLayout = useDesktopLayout();
   const staggerContainer = useMemo(() => createStaggerContainer(reduceMotion), [reduceMotion]);
   const tileVariant = useMemo(() => createTileVariant(reduceMotion), [reduceMotion]);
 
@@ -320,53 +350,51 @@ export default function FeedDetailV2({
     >
       <div className="shrink-0" style={{ height: 'var(--fm-mobile-detail-header-offset)', overflowAnchor: 'none' }} />
 
-      {readerCover && (
-        <div className="w-full px-4 pb-3 sm:px-5 lg:px-2 lg:pb-4">
-          <div className="fm-tab-canvas-shell mx-auto w-full max-w-[min(430px,calc(100vw-32px))] lg:max-w-none">
-            {readerCover}
+      {/* One layout at a time (see useDesktopLayout), so the tiles and `children` exist once. The lg:hidden /
+          hidden lg:block classes stay as a guard for a frame where a kept-alive tab hasn't caught up with a
+          resize yet. */}
+      {!isDesktopLayout && (
+        <div className="w-full max-w-full overflow-x-hidden lg:hidden" style={{ paddingBottom: bottomClearance }}>
+          {mobileSections.map((section, sectionIndex) => (
+            <DeferredMobileSection
+              key={section.id}
+              section={section}
+              sectionIndex={sectionIndex}
+              scrollRootRef={scrollRef}
+              usePageScroll={usePageScroll}
+              mobileSnapSections={mobileSnapSections}
+              eager={section.id === 'performance'}
+              reduceMotion={reduceMotion}
+            />
+          ))}
+
+          <div
+            className="mt-2 w-full max-w-full overflow-x-hidden px-4 pb-1 sm:px-5"
+            style={{ contentVisibility: 'auto', containIntrinsicSize: '860px' }}
+          >
+            <div className="mx-auto w-full max-w-[min(430px,calc(100vw-32px))] overflow-x-hidden">
+              <div className="w-full pt-1 pb-4">
+                <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
+                <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <AnimatePresence mode="popLayout">
+                    {children}
+                  </AnimatePresence>
+                </motion.div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="w-full max-w-full overflow-x-hidden lg:hidden" style={{ paddingBottom: bottomClearance }}>
-        {mobileSections.map((section, sectionIndex) => (
-          <DeferredMobileSection
-            key={section.id}
-            section={section}
-            sectionIndex={sectionIndex}
-            scrollRootRef={scrollRef}
-            usePageScroll={usePageScroll}
-            mobileSnapSections={mobileSnapSections}
-            eager={section.id === 'performance'}
-            reduceMotion={reduceMotion}
-          />
-        ))}
-
-        <div
-          className="mt-2 w-full max-w-full overflow-x-hidden px-4 pb-1 sm:px-5"
-          style={{ contentVisibility: 'auto', containIntrinsicSize: '860px' }}
+      {isDesktopLayout && (
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="fm-tab-canvas-shell mx-auto hidden w-full px-2 sm:px-0 transform-gpu lg:block"
+          style={{ paddingBottom: bottomClearance }}
         >
-          <div className="mx-auto w-full max-w-[min(430px,calc(100vw-32px))] overflow-x-hidden">
-            <div className="w-full pt-1 pb-4">
-              <div className="mb-3 border-b border-foreground/10 pb-2 fm-label fm-depth-title">Target Acquisition List</div>
-              <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <AnimatePresence mode="popLayout">
-                  {children}
-                </AnimatePresence>
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <motion.div
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-        className="fm-tab-canvas-shell mx-auto hidden w-full px-2 sm:px-0 transform-gpu lg:block"
-        style={{ paddingBottom: bottomClearance }}
-      >
-        <div className="bento-feed-grid grid gap-2.5 sm:gap-3 lg:gap-3.5">
+          <div className="bento-feed-grid grid gap-2.5 sm:gap-3 lg:gap-3.5">
             <motion.div data-lock-id="ascent" variants={tileVariant} style={{ gridArea: 'ascent' }} className="fm-feed-mobile-panel min-w-0 min-h-[260px] xl:min-h-[272px]">
               {ascentTile}
             </motion.div>
@@ -409,15 +437,8 @@ export default function FeedDetailV2({
                 </motion.div>
               </div>
             </motion.div>
-        </div>
-      </motion.div>
-
-      {signalFeed && (
-        <div className="w-full px-4 sm:px-5 lg:px-2">
-          <div className="fm-tab-canvas-shell mx-auto w-full max-w-[min(430px,calc(100vw-32px))] lg:max-w-none">
-            {signalFeed}
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

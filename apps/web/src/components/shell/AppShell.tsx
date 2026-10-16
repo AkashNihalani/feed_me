@@ -13,6 +13,8 @@ import {
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { motion, useReducedMotion } from 'framer-motion';
+// framer's compositor animations land on their last frame (see lib/motionFinish)
+import '@/lib/motionFinish';
 import { HEADER_ROUTE_MORPH, PAGE_SURFACE_MOTION, ROUTE_CONTENT_SETTLE } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import AppTabHost from './AppTabHost';

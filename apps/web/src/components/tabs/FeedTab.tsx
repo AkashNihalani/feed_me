@@ -21,7 +21,7 @@
    the order and the sheets.
    ───────────────────────────────────────────────────────────── */
 
-import { Suspense, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import FeedControl from '@/components/feed/stream/FeedControl';
 import { FeedEmptyState } from '@/components/feed/stream/FeedEmptyState';
@@ -34,7 +34,7 @@ import { normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { feederLookup, useFeeds, type AppFeed } from '@/lib/feedsStore';
 import { relativeTime, scopeKey, type FeedMode, type FeedOrder, type StreamFeeder, type StreamPost, type StreamScope } from '@/lib/feedStream/contract';
 import { useStreamIndex } from '@/lib/feedStream/store';
-import { readStoredOrder, writeStoredOrder } from '@/lib/feedStream/zoom';
+import { initialMode, readStoredOrder, writeStoredOrder } from '@/lib/feedStream/zoom';
 import { useAppHaptics } from '@/lib/haptics';
 import { acquireRootPageScroll } from '@/lib/rootScrollMode';
 import { getTabScope, setTabScope, useTabScope, useTabScopeTransition, type TabScope } from '@/lib/tabScope';
@@ -169,6 +169,59 @@ function StreamError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/* What the one tab header shows on Feed: FEED · where you are, the zoom control, and the rail. It alone reads the
+   pick as it changes (a tap re-renders this, not the tab, so the rail answers in a light frame); the stream follows
+   once the rail is moving (lib/tabScope). */
+const FeedHeader = memo(function FeedHeader({ feeds, order, mode, compressed, freshHandles, onModeChange, onModeIntent, onIntent }: {
+  feeds: AppFeed[] | null;
+  order: FeedOrder;
+  mode: FeedMode;
+  compressed: boolean;
+  freshHandles: string[] | undefined;
+  onModeChange: (next: FeedMode) => void;
+  onModeIntent: (modes: readonly FeedMode[]) => void;
+  onIntent: (pick: { feedId: string | null; handle: string | null }) => void;
+}) {
+  const live = resolvePick(feeds, useTabScope());
+  const liveFeed = feeds && live.feedId ? feeds.find((feed) => feed.id === live.feedId) ?? null : null;
+  const label = live.handle ? `@${live.handle}` : liveFeed ? titleCase(liveFeed.title) : 'All feeds';
+  const railFeeds = useMemo(() => (feeds ?? []).map((feed) => ({
+    id: feed.id,
+    title: feed.title,
+    feeders: feed.feeders.map((feeder) => ({ handle: normalizeHandle(feeder.handle), profilePicUrl: feeder.profilePicUrl ?? null })),
+  })), [feeds]);
+  const fresh = useMemo(() => new Set((freshHandles ?? []).map((handle) => normalizeHandle(handle))), [freshHandles]);
+  const marked = useCallback((handle: string) => fresh.has(handle), [fresh]);
+
+  // Lead's rail rules: the open feed's badge goes back to the whole feed, a picked feeder tapped again lets go
+  const pickFeed = (id: string | null) => {
+    if (id === resolvePick(feeds, getTabScope()).feedId) return;
+    setTabScope({ feedId: id, handle: null });
+  };
+  const pickFeeder = (handle: string | null) => {
+    const current = resolvePick(feeds, getTabScope());
+    setTabScope({ feedId: current.feedId, handle: handle || null });
+  };
+
+  useTabHeader('feed', {
+    title: 'FEED',
+    eyebrow: order === 'results' ? 'Feed · latest results' : 'Feed · newest posts',
+    label,
+    control: <FeedControl mode={mode} onModeChange={onModeChange} onModeIntent={onModeIntent} />,
+    compressed,
+    // none yet means still loading (the header keeps the rail it has)
+    feeds: railFeeds.length ? railFeeds : null,
+    feedId: liveFeed?.id ?? null,
+    handle: live.handle,
+    marked,
+    onAll: () => pickFeed(null),
+    onFeed: (id) => (id === liveFeed?.id ? pickFeeder(null) : pickFeed(id)),
+    onFeeder: (handle) => pickFeeder(live.handle === handle ? null : handle),
+    onIntent,
+  });
+  return null;
+});
+
 function FeedTabContent() {
   const searchParams = useSearchParams();
   const linkedFeedId = searchParams.get('id');
@@ -182,7 +235,9 @@ function FeedTabContent() {
   const compressed = useCompressedOnScroll(noScroller, true, { collapseDistance: 150, expandDistance: 64, topGuard: 30 });
 
   const [order, setOrder] = useState<FeedOrder>(() => readStoredOrder() ?? 'posted');
-  const [mode, setMode] = useState<FeedMode | null>(null);
+  // the zoom the stream opens on, known before it has measured: the header's control starts on it (not on DAY, sliding
+  // over once the stream says). Only the header reads it, never the server's markup
+  const [mode, setMode] = useState<FeedMode | null>(() => (typeof window === 'undefined' ? null : initialMode(document.documentElement.clientWidth)));
   const [sheetPost, setSheetPost] = useState<StreamPost | null>(null);
   const [manage, setManage] = useState<ManageState>({ open: false, intent: null });
 
@@ -287,33 +342,11 @@ function FeedTabContent() {
     document.title = 'Feed | FeedMe';
   }, []);
 
-  /* ── the header ── */
-
-  const live = resolvePick(feeds, useTabScope());
-  const liveFeed = feeds && live.feedId ? feeds.find((feed) => feed.id === live.feedId) ?? null : null;
-  const label = live.handle ? `@${live.handle}` : liveFeed ? titleCase(liveFeed.title) : 'All feeds';
-  const railFeeds = useMemo(() => (feeds ?? []).map((feed) => ({
-    id: feed.id,
-    title: feed.title,
-    feeders: feed.feeders.map((feeder) => ({ handle: normalizeHandle(feeder.handle), profilePicUrl: feeder.profilePicUrl ?? null })),
-  })), [feeds]);
-  const freshHandles = everyFeed.index?.freshHandles;
-  const fresh = useMemo(() => new Set((freshHandles ?? []).map((handle) => normalizeHandle(handle))), [freshHandles]);
-  const marked = useCallback((handle: string) => fresh.has(handle), [fresh]);
-
-  // Lead's rail rules: the open feed's badge goes back to the whole feed, a picked feeder tapped again lets go
-  const pickFeed = useCallback((id: string | null) => {
-    if (id === resolvePick(feedsRef.current, getTabScope()).feedId) return;
-    setTabScope({ feedId: id, handle: null });
-  }, []);
-  const pickFeeder = useCallback((handle: string | null) => {
-    const current = resolvePick(feedsRef.current, getTabScope());
-    setTabScope({ feedId: current.feedId, handle: handle || null });
-  }, []);
+  /* ── the header (FeedHeader: the one part of Feed that answers a pick at once) ── */
 
   const changeMode = useCallback((next: FeedMode) => streamRef.current?.setMode(next), []);
-  // a zoom or a pick about to be taken: the stream gets its posts and first pictures ready
-  const modeIntent = useCallback((next: FeedMode) => streamRef.current?.warm({ mode: next }), []);
+  // a zoom (or zooms) or a pick about to be taken: the stream gets its posts and first pictures ready
+  const modeIntent = useCallback((modes: readonly FeedMode[]) => streamRef.current?.warm({ modes }), []);
   const pickIntent = useCallback((pick: { feedId: string | null; handle: string | null }) => {
     const current = resolvePick(feedsRef.current, getTabScope());
     // a picked feeder tapped again lets go of it (Lead's rail rules)
@@ -322,23 +355,6 @@ function FeedTabContent() {
     if (scopeKey(scope) === scopeKey(shownRef.current)) return;
     streamRef.current?.warm({ scope });
   }, []);
-
-  useTabHeader('feed', {
-    title: 'FEED',
-    eyebrow: order === 'results' ? 'Feed · latest results' : 'Feed · newest posts',
-    label,
-    control: <FeedControl mode={mode ?? 'today'} onModeChange={changeMode} onModeIntent={modeIntent} />,
-    compressed,
-    // none yet means still loading (the header keeps the rail it has)
-    feeds: railFeeds.length ? railFeeds : null,
-    feedId: liveFeed?.id ?? null,
-    handle: live.handle,
-    marked,
-    onAll: () => pickFeed(null),
-    onFeed: (id) => (id === liveFeed?.id ? pickFeeder(null) : pickFeed(id)),
-    onFeeder: (handle) => pickFeeder(live.handle === handle ? null : handle),
-    onIntent: pickIntent,
-  });
 
   /* ── the order, the sheets, the other tabs ── */
 
@@ -387,6 +403,16 @@ function FeedTabContent() {
 
   return (
     <div data-feed-tab="" className="relative w-full">
+      <FeedHeader
+        feeds={feeds}
+        order={order}
+        mode={mode ?? 'today'}
+        compressed={compressed}
+        freshHandles={everyFeed.index?.freshHandles}
+        onModeChange={changeMode}
+        onModeIntent={modeIntent}
+        onIntent={pickIntent}
+      />
       <FeedStream
         ref={streamRef}
         scope={shownScope}

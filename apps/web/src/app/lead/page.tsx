@@ -1,45 +1,56 @@
 'use client';
 
-// Lead — the merged feederboard.
-// Spine: leaders strip (three different questions) → the Board (media-first
-// rows ranked on TYPICAL post percentile, throne row for rank 1) → follower
-// windows → Post Mortem, which opens the full Fire wall.
-// Every number traces to feeder-posts percentiles/multiples or the ascent
-// series. No generated copy — verdict words are threshold math.
+// Lead — who's winning, in numbers.
+// Spine: Top of the feed (the leaders strip) → the Feederboard (media-first rows
+// ranked on the TYPICAL post percentile, throne row for rank 1) → Hall of Feed
+// (the standout posts: wins, likes, comments, engagement) → Follow-through (the
+// follower curve and its spikes) → Feeding habits (cadence, prime time, the menu).
+// Each section: a short handle (the cheeky name) and one plain line of what it
+// measures. Every number traces to feeder-posts percentiles/multiples or the
+// ascent series. No generated copy — verdict words are threshold math.
 
 import Link from 'next/link';
-import { CSSProperties, startTransition, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  Flame,
-  Users,
-} from 'lucide-react';
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
+import { CSSProperties, Ref, memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { usePageReady } from '@/components/shell/AppShell';
-import { TimeframeControl, useTabHeader } from '@/components/shell/TabHeader';
+import { MENU_APPLY_AFTER_CLOSE_MS, TimeframeControl, useTabHeader } from '@/components/shell/TabHeader';
 import SlotText from '@/components/SlotText';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { normalizeHandle, titleCase } from '@/lib/feedLabels';
-import { BEAT_ARRIVE_S, BEAT_CONTAINER, BEAT_HIDDEN, BEAT_ITEM, BEAT_LEAVE_EASE, BEAT_LEAVE_S, BEAT_SHOWN, beatArrive, beatLeave } from '@/lib/motion';
+import { BEAT_ARRIVE_S, BEAT_CONTAINER, BEAT_HIDDEN, BEAT_ITEM, BEAT_LEAVE_EASE, BEAT_SHOWN, beatArrive, beatLeave } from '@/lib/motion';
 import { getTabScope, setTabScope, useTabScope, useTabScopeTransition, type TabScope } from '@/lib/tabScope';
 import { cn } from '@/lib/utils';
+import { postMoment } from '@/lib/postMoment';
+import { ms, sec } from '@/lib/tempo';
+import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
+import { buildFeederboardFacts } from '@/lib/feederboardFacts';
+import type { LeadActivity } from '@/app/api/lead/activity/route';
+import LeadGrowth from '@/components/lead/LeadGrowth';
+import LeadRhythm from '@/components/lead/LeadRhythm';
+import LeadTiming from '@/components/lead/LeadTiming';
+import LeadFormats from '@/components/lead/LeadFormats';
+import { CrossfadeImage, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
+import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
+import { ascentFromActivity, formatsFor, growthFor, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
 import './lead.css';
 
 const TIMEFRAMES = [7, 30, 60, 90] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
 const SOFT_EASE = [0.16, 0.9, 0.2, 1] as const;
-const LADDER_SPRING = { type: 'spring', stiffness: 400, damping: 36, mass: 0.9 } as const;
-const REDUCED_RAIL_TRANSITION = { duration: 0.14, ease: SOFT_EASE } as const;
-const HOF_PILL_SPRING = { type: 'spring', stiffness: 360, damping: 34, mass: 0.8 } as const;
-const CARD_STACK_EASE = [0.18, 0.88, 0.28, 1] as const;
+// an open row unfolds its three parts one after another (its rows below make room on the ledger's beat)
+const OPEN_CONTAINER = { hidden: {}, visible: {} } as const;
+const OPEN_GRID = { hidden: {}, visible: { transition: { staggerChildren: sec(0.09), delayChildren: sec(0.05) } } } as const;
+const OPEN_ITEM = {
+  hidden: { opacity: 0, transform: 'translateY(16px)' },
+  visible: { opacity: 1, transform: 'translateY(0px)', transition: { duration: sec(0.56), ease: [0.2, 0.7, 0.2, 1] } },
+} as const;
 // how long a loaded board counts as fresh when you come back to the tab (checkpoints land hourly at most)
 const LEAD_FRESH_MS = 5 * 60 * 1000;
-const CARD_MASK_EASE = [0.32, 0.72, 0, 1] as const;
-const CARD_MASK_DURATION = 0.92;
-const CARD_MASK_CLEANUP_MS = 1040;
+// the longest range Lead offers: its activity (and the range before it) covers every shorter one
+const LEAD_SPAN_DAYS = 90;
 
 type MetricTotals = {
   likes?: string | number | null;
@@ -94,22 +105,6 @@ type FeederboardFact = {
   evidencePostKeys: string[];
 };
 
-type PostMortemItem = {
-  id: string;
-  postKey: string;
-  postUrl: string | null;
-  thumbnailUrl: string | null;
-  feedId: string;
-  feedName: string;
-  handle: string;
-  trigger: string;
-  tag: string;
-  statement: string;
-  proof: string | null;
-  supportingPostKeys: string[];
-  priority: number;
-};
-
 type AscentPoint = {
   snapshot_date_ist: string;
   follower_count: number;
@@ -149,15 +144,6 @@ type BoardRow = {
   followerDelta: number | null;
   postCount: number;
   proofPosts: TrackedPost[];
-};
-
-type GrowthWindow = {
-  id: string;
-  index: number;
-  range: string;
-  delta: number | null;
-  postCount: number;
-  posts: Array<TrackedPost & { feedName: string }>;
 };
 
 function numeric(value: unknown) {
@@ -230,28 +216,40 @@ function feedsSignature(feeds: RuntimeFeed[]) {
   ].join('|')).join('||');
 }
 
+/* when a post went out, worked out once per post (the shortcode read is not free, and every window asks) */
+const postTimes = new WeakMap<TrackedPost, number>();
+
 function postTime(post: TrackedPost) {
-  const parsed = Date.parse(post.postedAt || '');
-  return Number.isFinite(parsed) ? parsed : 0;
+  let time = postTimes.get(post);
+  if (time === undefined) {
+    time = postMoment(post.postedAt, post.postUrl) ?? 0;
+    postTimes.set(post, time);
+  }
+  return time;
 }
 
+/* a feed's posts in the selected window, kept per range (see remember): every builder below asks for the same few */
 function postsInWindow(posts: TrackedPost[], days: number) {
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return posts.filter((post) => {
-    const time = postTime(post);
-    return time === 0 || time >= cutoff;
+  return remember(posts, null, `window|${days}`, () => {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return posts.filter((post) => {
+      const time = postTime(post);
+      return time === 0 || time >= cutoff;
+    });
   });
 }
 
 /* The window immediately before the selected one, same length. Every level on
    the page is read against this — that's where the direction comes from. */
 function postsInPriorWindow(posts: TrackedPost[], days: number) {
-  const spanMs = days * 24 * 60 * 60 * 1000;
-  const end = Date.now() - spanMs;
-  const start = end - spanMs;
-  return posts.filter((post) => {
-    const time = postTime(post);
-    return time > 0 && time >= start && time < end;
+  return remember(posts, null, `prior|${days}`, () => {
+    const spanMs = days * 24 * 60 * 60 * 1000;
+    const end = Date.now() - spanMs;
+    const start = end - spanMs;
+    return posts.filter((post) => {
+      const time = postTime(post);
+      return time > 0 && time >= start && time < end;
+    });
   });
 }
 
@@ -278,19 +276,22 @@ function bestFirst(a: TrackedPost, b: TrackedPost) {
   return (numeric(b.comments) * 5 + numeric(b.likes)) - (numeric(a.comments) * 5 + numeric(a.likes));
 }
 
+/* a feed's follower readings in time order, read once per curve */
+function ascentSeries(points: AscentPoint[]) {
+  return remember(points, null, 'series', () => points
+    .map((point) => ({ time: Date.parse(point.snapshot_date_ist), value: numeric(point.follower_count) }))
+    .filter((point) => Number.isFinite(point.time))
+    .sort((a, b) => a.time - b.time));
+}
+
 function ascentDelta(points: AscentPoint[]) {
-  const sorted = [...points]
-    .filter((point) => Number.isFinite(Date.parse(point.snapshot_date_ist)) && Number.isFinite(Number(point.follower_count)))
-    .sort((a, b) => Date.parse(a.snapshot_date_ist) - Date.parse(b.snapshot_date_ist));
+  const sorted = ascentSeries(points);
   if (sorted.length < 2) return null;
-  return numeric(sorted[sorted.length - 1].follower_count) - numeric(sorted[0].follower_count);
+  return sorted[sorted.length - 1].value - sorted[0].value;
 }
 
 function valueAt(points: AscentPoint[], target: number) {
-  const sorted = [...points]
-    .map((point) => ({ time: Date.parse(point.snapshot_date_ist), value: numeric(point.follower_count) }))
-    .filter((point) => Number.isFinite(point.time))
-    .sort((a, b) => a.time - b.time);
+  const sorted = ascentSeries(points);
   if (!sorted.length) return null;
   const prior = sorted.filter((point) => point.time <= target).at(-1);
   return prior?.value ?? sorted.find((point) => point.time >= target)?.value ?? null;
@@ -470,98 +471,80 @@ function buildRows(feeds: RuntimeFeed[], activeFeedId: string, days: number) {
   return rankRows(current, prior);
 }
 
-function growthWindows(feeds: RuntimeFeed[], activeFeedId: string, days: number, feederHandle = ''): GrowthWindow[] {
-  const scopedFeeds = activeFeedId === 'all' ? feeds : feeds.filter((feed) => feed.id === activeFeedId);
-  const inScope = (post: TrackedPost) => !feederHandle || normalizeHandle(post.handle) === feederHandle;
-  const count = days <= 7 ? 1 : 4;
-  const span = days / count;
-  const now = Date.now();
-  const formatter = new Intl.DateTimeFormat('en-US', { day: '2-digit', month: 'short' });
+/* What each part of the page shows for one scope and window, built once (see remember) and shared: the leaders and
+   the board both read the rows, the board, the cards, the facts and the post mortem the scope's posts. */
+function rowsFor(feeds: RuntimeFeed[], activeFeedId: string, days: number) {
+  return remember(feeds, null, `rows|${activeFeedId}|${days}`, () => buildRows(feeds, activeFeedId, days));
+}
 
-  return Array.from({ length: count }, (_, index) => {
-    const start = now - (days - index * span) * 24 * 60 * 60 * 1000;
-    const end = now - (days - (index + 1) * span) * 24 * 60 * 60 * 1000;
-    let delta = 0;
-    let hasDelta = false;
-    for (const feed of scopedFeeds) {
-      const first = valueAt(feed.ascent, start);
-      const last = valueAt(feed.ascent, end);
-      if (first == null || last == null) continue;
-      delta += last - first;
-      hasDelta = true;
-    }
+function tapeFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number) {
+  return remember(feeds, null, `tape|${activeFeedId}|${feederHandle}|${days}`, () => buildTapeEvents(feeds, activeFeedId, feederHandle, days));
+}
 
-    const posts = scopedFeeds
-      .flatMap((feed) => feed.posts
-        .filter((post) => {
-          const time = postTime(post);
-          return inScope(post) && time >= start && time < end;
-        })
-        .map((post) => ({ ...post, feedName: titleCase(feed.title) })))
-      .sort(bestFirst);
+function leadersFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number) {
+  return remember(feeds, null, `leaders|${activeFeedId}|${feederHandle}|${days}`, () => buildLeaderCards(rowsFor(feeds, activeFeedId, days), feeds, activeFeedId, days, feederHandle));
+}
 
-    return {
-      id: `${start}:${end}`,
-      index: index + 1,
-      range: `${formatter.format(new Date(start))} – ${formatter.format(new Date(end))}`.toUpperCase(),
-      delta: hasDelta ? delta : null,
-      postCount: posts.length,
-      posts: posts.filter((post) => post.thumbnailUrl).slice(0, 2),
-    };
+function postsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): ScopedPost[] {
+  return remember(feeds, null, `posts|${activeFeedId}|${feederHandle}|${days}`, () => {
+    const scoped = scopedPostsFor(feeds, activeFeedId, days);
+    return feederHandle ? scoped.filter((post) => normalizeHandle(post.handle) === feederHandle) : scoped;
   });
 }
 
+/* What the facts and the post mortem read: the scope's posts dated in the window by their stored date, 500 at most
+   (as their API routes read them) */
+function factBasis(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number) {
+  return remember(feeds, null, `basis|${activeFeedId}|${feederHandle}|${days}`, () => {
+    const cutoff = Date.now() - days * 86_400_000;
+    return postsFor(feeds, activeFeedId, feederHandle, days).slice(0, 500).filter((post) => {
+      const time = Date.parse(post.postedAt || '');
+      return Number.isFinite(time) && time >= cutoff;
+    });
+  });
+}
+
+/* the facts for one scope and window: the deterministic builder (lib/feederboardFacts) run on what the page already
+   holds, so a switch waits on no request */
+function factsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): FeederboardFact[] {
+  return remember(feeds, null, `facts|${activeFeedId}|${feederHandle}|${days}`, () => buildFeederboardFacts(factBasis(feeds, activeFeedId, feederHandle, days), days) as FeederboardFact[]);
+}
+
+/* Everything a switch could ask for next, built ahead while the page is idle: the scope in view in every range
+   first, then the other scopes in the range in view, then the rest. A switch then only draws. */
+function warmJobs(feeds: RuntimeFeed[], activity: LeadActivity | null, feedId: string, feeder: string, days: number) {
+  const scopes: Array<[string, string]> = [[feedId, feeder], ['all', ''], ...feeds.map((feed): [string, string] => [feed.id, ''])];
+  const open = feeds.find((feed) => feed.id === feedId);
+  for (const one of open?.feeders || []) scopes.push([feedId, normalizeHandle(one.handle)]);
+  const ranges = [days, ...TIMEFRAMES.filter((range) => range !== days)];
+  const order: Array<[string, string, number]> = [
+    ...ranges.map((range): [string, string, number] => [feedId, feeder, range]),
+    ...scopes.map(([id, handle]): [string, string, number] => [id, handle, days]),
+    ...ranges.flatMap((range) => scopes.map(([id, handle]): [string, string, number] => [id, handle, range])),
+  ];
+  const seen = new Set<string>();
+  const jobs: Array<() => void> = [];
+  for (const [id, handle, range] of order) {
+    const key = `${id}|${handle}|${range}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const scope = { feeds, activity, feedId: id, feeder: handle, days: range };
+    jobs.push(
+      () => rowsFor(feeds, id, range),
+      () => leadersFor(feeds, id, handle, range),
+      () => tapeFor(feeds, id, handle, range),
+      () => postsFor(feeds, id, handle, range),
+      () => factsFor(feeds, id, handle, range),
+      () => growthFor(scope),
+      () => rhythmFor(scope),
+      () => timingFor(scope),
+      () => formatsFor(scope),
+    );
+  }
+  return jobs;
+}
+
 /* ── Shared motion primitives ────────────────────────────────────────────── */
-
-/* Media never swaps in a single frame: the incoming image crossfades over the
-   outgoing one inside its fixed frame. */
-function CrossfadeImage({ src, className, eager = false }: { src: string | null; className?: string; eager?: boolean }) {
-  const reduce = Boolean(useReducedMotion());
-  return (
-    <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 block overflow-hidden', className)}>
-      <AnimatePresence initial={false}>
-        {src ? (
-          <motion.img
-            key={src}
-            src={src}
-            alt=""
-            initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'scale(1.06)' }}
-            animate={{ opacity: 1, transform: 'scale(1)' }}
-            exit={{ opacity: 0, transition: { duration: 0.5, ease: SOFT_EASE } }}
-            transition={reduce
-              ? { duration: 0.12 }
-              : { opacity: { duration: 0.68, ease: SOFT_EASE }, transform: { duration: 1.05, ease: SOFT_EASE } }}
-            className="absolute inset-0 h-full w-full object-cover"
-            loading={eager ? 'eager' : 'lazy'}
-            decoding="async"
-          />
-        ) : null}
-      </AnimatePresence>
-    </span>
-  );
-}
-
-/* Short text lines swap with the header scope-label grammar: rise in, lift
-   out (no blur: a filter re-rendered every frame). For values, SlotText does the per-glyph roll instead. */
-function FadeSwap({ value, className }: { value: string; className?: string }) {
-  const reduce = Boolean(useReducedMotion());
-  return (
-    <span className="relative inline-grid min-w-0 max-w-full overflow-hidden align-baseline">
-      <AnimatePresence initial={false} mode="popLayout">
-        <motion.span
-          key={value}
-          initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(8px)' }}
-          animate={{ opacity: 1, transform: 'translateY(0px)' }}
-          exit={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(-7px)' }}
-          transition={{ duration: reduce ? 0.12 : 0.42, ease: SOFT_EASE }}
-          className={cn('col-start-1 row-start-1 block max-w-full truncate', className)}
-        >
-          {value}
-        </motion.span>
-      </AnimatePresence>
-    </span>
-  );
-}
 
 /* ── Chrome ──────────────────────────────────────────────────────────────── */
 
@@ -601,7 +584,7 @@ function LeadHeader({
     title: 'LEAD',
     eyebrow: 'Feederboard',
     label: scopeLabel,
-    control: <TimeframeControl id="lead" value={days} options={TIMEFRAMES} pending={pending} onChange={onDaysChange} />,
+    control: <TimeframeControl id="lead" value={days} options={TIMEFRAMES} pending={pending} applyMs={MENU_APPLY_AFTER_CLOSE_MS} onChange={onDaysChange} />,
     compressed,
     // none yet means still loading (the header keeps the rail it has)
     feeds: railFeeds.length ? railFeeds : null,
@@ -700,13 +683,23 @@ function TapeChip({ event }: { event: TapeEvent }) {
   );
 }
 
-function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: number }) {
+function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: string }) {
   const reduce = Boolean(useReducedMotion());
+  // the tape only runs while it is on screen: a loop nobody can see still costs every frame
+  const tapeRef = useRef<HTMLDivElement | null>(null);
+  const [onScreen, setOnScreen] = useState(true);
+  useEffect(() => {
+    const el = tapeRef.current;
+    if (!el) return undefined;
+    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry.isIntersecting));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [events.length]);
   if (!events.length) return null;
   const duration = Math.max(22, events.length * 4.2);
 
   return (
-    <div data-testid="lead-v3-tape" className="relative mb-3 overflow-hidden rounded-[16px] border border-fg/[0.08] bg-(--ld-panel) py-2.5">
+    <div ref={tapeRef} data-testid="lead-v3-tape" className="relative mb-3 overflow-hidden rounded-[16px] border border-fg/[0.08] bg-(--ld-panel) py-2.5">
       <style>{TAPE_CSS}</style>
       {reduce ? (
         <div className="flex overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -719,8 +712,8 @@ function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: number }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: beatArrive(0) }}
             exit={{ opacity: 0, transition: beatLeave(0) }}
-            className="flex w-max [animation-play-state:running] hover:[animation-play-state:paused]"
-            style={{ animation: `fm-lead-tape-scroll ${duration}s linear infinite` }}
+            className="flex w-max hover:[animation-play-state:paused]"
+            style={{ animation: `fm-lead-tape-scroll ${duration}s linear infinite`, animationPlayState: onScreen ? undefined : 'paused' }}
           >
             <div className="flex pl-4">
               {events.map((event) => <TapeChip key={event.id} event={event} />)}
@@ -772,14 +765,18 @@ function composeFeederWireLine(posts: TrackedPost[]): string | null {
   return parts.length ? `${parts.slice(0, 3).join(' · ')}.` : null;
 }
 
-function WireLine({ line, dealId }: { line: string | null; dealId: number }) {
+function WireLine({ line, dealId }: { line: string | null; dealId: string }) {
   if (!line) return null;
   return (
     <div data-testid="lead-v3-wire" className="flex items-center gap-3 border-b border-fg/[0.08] bg-(--ld-deep) px-4 py-3 sm:px-5">
       <span className="shrink-0 rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-white">Wire</span>
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="min-w-0 text-[11px] font-bold leading-snug text-fg/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[12px]">{line}</motion.p>
-      </AnimatePresence>
+      {/* the old line and the new share one cell (no stylesheet popped in and out mid-switch); two lines' room
+          whatever the line says, so a shorter one doesn't pull the board up */}
+      <div className="grid min-w-0 flex-1">
+        <AnimatePresence initial={false}>
+          <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="[grid-area:1/1] min-h-[2lh] min-w-0 text-[11px] font-bold leading-snug text-fg/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[12px]">{line}</motion.p>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -822,7 +819,7 @@ function buildLeaderCards(rows: BoardRow[], feeds: RuntimeFeed[], activeFeedId: 
       value: percentLabel(currentBest),
       valuePrefix: 'TOP',
       valueSuffix: '%',
-      hint: 'position in the stream',
+      hint: 'in the stream',
       name: position.post.handle ? `@${normalizeHandle(position.post.handle)}` : position.feedName,
       detail: `${(position.post.latestCheckpoint || 'd3').toUpperCase()} · ${proofMetric(position.post)}`,
       thumb: position.post.thumbnailUrl,
@@ -841,11 +838,11 @@ function buildLeaderCards(rows: BoardRow[], feeds: RuntimeFeed[], activeFeedId: 
     value: percentLabel(typical),
     valuePrefix: 'TOP',
     valueSuffix: '%',
-    hint: 'median of the window',
+    hint: 'the median',
     name: feederHandle ? 'its running level' : rows[0] ? `${rows[0].name} leads` : '—',
     detail: `${scopedPosts.length} posts · ${days}D`,
     thumb: null,
-    collage: scopedPosts.slice(0, 3).map(({ post }) => post.thumbnailUrl).filter((url): url is string => Boolean(url)),
+    collage: scopedPosts.map(({ post }) => post.thumbnailUrl).filter((url): url is string => Boolean(url)).slice(0, 4),
     shift: typicalDelta == null || typicalDelta === 0
       ? null
       : { up: typicalDelta > 0, text: `${Math.abs(typicalDelta)} ${typicalDelta > 0 ? 'stronger' : 'softer'} than prior ${days}D` },
@@ -860,17 +857,49 @@ function buildLeaderCards(rows: BoardRow[], feeds: RuntimeFeed[], activeFeedId: 
   const strongestWindowPost = scopedPosts.find(({ post }) => post.thumbnailUrl) || null;
   cards.push({
     key: 'payoff',
-    eyebrow: 'Payoff',
+    eyebrow: 'Gains',
     value: netDelta == null
       ? compactNumber(rows.reduce((sum, row) => sum + row.followers, 0))
       : signedNumber(netDelta),
-    hint: netDelta == null ? 'followers watching' : 'net followers this window',
+    hint: netDelta == null ? 'followers' : 'net followers',
     name: netDelta == null ? 'across the board' : (rows.find((row) => (row.followerDelta ?? 0) > 0)?.name || 'across the board'),
     detail: `${days}D window`,
     thumb: strongestWindowPost?.post.thumbnailUrl || null,
     shift: netDelta == null || priorNet == null
       ? null
       : { up: netDelta >= priorNet, text: `prior window ${signedNumber(priorNet)}` },
+  });
+
+  // the post that climbed furthest between its first read and its latest
+  const climber = scopedPosts
+    .map(({ post }) => ({ post, climb: climbOf(post) ?? 0 }))
+    .filter((entry) => entry.climb > 0)
+    .sort((a, b) => b.climb - a.climb)[0] || null;
+  cards.push({
+    key: 'climber',
+    eyebrow: 'Climber',
+    value: climber ? String(Math.round(climber.climb)) : '—',
+    valuePrefix: climber ? '▲' : undefined,
+    hint: 'places since D1',
+    name: climber?.post.handle ? `@${normalizeHandle(climber.post.handle)}` : 'nothing climbed',
+    detail: climber ? `${percentLabel(climber.post.firstPercentile ?? null)}% → ${percentLabel(climber.post.latestPercentile)}%` : `${days}D window`,
+    thumb: climber?.post.thumbnailUrl || null,
+    shift: null,
+  });
+
+  // the post people talked about most, against its own usual
+  const talked = scopedPosts
+    .filter(({ post }) => post.commentsMultiple != null && post.commentsMultiple > 0)
+    .sort((a, b) => (b.post.commentsMultiple ?? 0) - (a.post.commentsMultiple ?? 0))[0] || null;
+  cards.push({
+    key: 'talked',
+    eyebrow: 'Talked about',
+    value: talked ? formatMultiple(talked.post.commentsMultiple) : '—',
+    hint: 'comments vs usual',
+    name: talked?.post.handle ? `@${normalizeHandle(talked.post.handle)}` : 'no comments read',
+    detail: talked ? `${compactNumber(numeric(talked.post.comments))} comments` : `${days}D window`,
+    thumb: talked?.post.thumbnailUrl || null,
+    shift: null,
   });
 
   return cards;
@@ -885,50 +914,47 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
       variants={BEAT_CONTAINER}
       initial={reduce ? false : 'hidden'}
       animate="visible"
-      className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] lg:grid lg:grid-cols-3 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+      data-reveal="dealt"
+      className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
     >
       {cards.map((card) => (
         <motion.article
           key={card.key}
           variants={BEAT_ITEM}
           data-testid={`lead-v3-leader-${card.key}`}
-          className="relative min-h-[176px] min-w-[74vw] snap-center overflow-hidden rounded-[24px] border border-white/10 bg-[#0a0a0a] sm:min-h-[228px] sm:min-w-[340px] sm:rounded-[26px] lg:min-w-0"
+          className="relative aspect-[4/5] w-[64vw] min-w-[64vw] max-w-[300px] snap-center overflow-hidden rounded-[22px] border border-white/10 bg-[#0a0a0a] sm:w-[260px] sm:min-w-[260px] lg:w-auto lg:min-w-0 lg:max-w-none"
         >
           {card.thumb ? (
-            <CrossfadeImage src={card.thumb} eager />
+            <CrossfadeImage src={card.thumb} eager settle />
           ) : card.collage?.length ? (
-            <div className="absolute inset-0 grid grid-cols-3">
-              {card.collage.map((url, index) => (
-                <span key={`${card.key}:${index}`} className="relative block h-full w-full opacity-40">
-                  <CrossfadeImage src={url} />
+            // a 4:5 card holds four 4:5 pictures exactly
+            <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px">
+              {[0, 1, 2, 3].map((index) => (
+                <span key={`${card.key}:${index}`} className="relative block h-full w-full overflow-hidden bg-white/[0.04] opacity-55">
+                  <CrossfadeImage src={card.collage?.[index] || null} />
                 </span>
               ))}
             </div>
           ) : null}
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,4,4,.62)_0%,rgba(4,4,4,.28)_38%,rgba(4,4,4,.9)_82%)]" />
 
-          <div className="relative z-10 flex h-full min-h-[176px] flex-col justify-between p-4 sm:min-h-[228px] sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-bright)]">{card.eyebrow}</span>
-              <span className="rounded-full border border-white/12 bg-black/40 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-white/64">{card.hint}</span>
+          <div className="relative z-10 flex h-full flex-col justify-between p-3.5 sm:p-4">
+            <div className="min-w-0">
+              <div className="truncate text-[9px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-bright)]">{card.eyebrow}</div>
+              <div className="mt-1 truncate text-[8px] font-black uppercase tracking-[0.14em] text-white/56">{card.hint}</div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="fm-depth-title ld-on-media flex items-end font-black leading-[0.78] tracking-[-0.05em] text-white">
-                {card.valuePrefix ? <span className="mr-2 pb-1 text-[12px] tracking-normal text-white/50">{card.valuePrefix}</span> : null}
-                <SlotText value={card.value} className="text-[48px] tabular-nums sm:text-[64px]" />
-                {card.valueSuffix ? <span className="ml-1 pb-1 text-[26px] text-[var(--fm-accent-bright)]">{card.valueSuffix}</span> : null}
+                {card.valuePrefix ? <span className="mr-1.5 pb-1 text-[11px] tracking-normal text-white/56">{card.valuePrefix}</span> : null}
+                <SlotText value={card.value} className="text-[48px] tabular-nums lg:text-[46px] xl:text-[54px] laptop:text-[40px]" />
+                {card.valueSuffix ? <span className="ml-0.5 pb-1 text-[22px] text-[var(--fm-accent-bright)]">{card.valueSuffix}</span> : null}
               </div>
-              {card.shift ? (
-                <div className={cn('mt-2 flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.13em]', card.shift.up ? 'text-[var(--fm-accent-bright)]' : 'text-white/40')}>
-                  <span className="text-[8px]">{card.shift.up ? '▲' : '▼'}</span>
-                  <FadeSwap value={card.shift.text} />
-                </div>
-              ) : null}
-              <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.09] pt-3">
-                <FadeSwap value={card.name} className="text-[12px] font-black text-white" />
-                <span className="shrink-0">
-                  <FadeSwap value={card.detail} className="text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/56" />
-                </span>
+              <div className={cn('mt-2 h-[12px] truncate text-[8px] font-black uppercase tracking-[0.12em]', card.shift?.up ? 'text-[var(--fm-accent-bright)]' : 'text-white/44')}>
+                {card.shift ? <><span className="mr-1 text-[7px]">{card.shift.up ? '▲' : '▼'}</span><Swap value={card.shift.text} /></> : null}
+              </div>
+              <div className="mt-2.5 border-t border-white/[0.1] pt-2.5">
+                <div className="truncate text-[12px] font-black text-white"><Swap value={card.name} /></div>
+                <div className="mt-1 truncate text-[8px] font-black uppercase tracking-[0.12em] text-white/56"><Swap value={card.detail} /></div>
               </div>
             </div>
           </div>
@@ -940,11 +966,26 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
 
 /* ── Feederboard rows ────────────────────────────────────────────────────── */
 
-function RowThumb({ row, throne }: { row: BoardRow; throne: boolean }) {
+/* bring a piece into view clear of the header (which floats over the page) and the nav below */
+function revealBelowHeader(el: HTMLElement) {
+  const header = document.querySelector('.fm-tab-header-shell')?.getBoundingClientRect();
+  const top = (header?.bottom ?? 0) + 12;
+  const bottom = window.innerHeight - 110;
+  const rect = el.getBoundingClientRect();
+  let delta = 0;
+  if (rect.top < top) delta = rect.top - top;
+  else if (rect.bottom > bottom) delta = Math.min(rect.bottom - bottom, rect.top - top);
+  if (Math.abs(delta) < 2) return;
+  const page = el.closest<HTMLElement>('[data-testid="lead-v3-page"]');
+  if (page && page.scrollHeight > page.clientHeight + 10) page.scrollBy({ top: delta, behavior: 'smooth' });
+  else window.scrollBy({ top: delta, behavior: 'smooth' });
+}
+
+function RowThumb({ row }: { row: BoardRow }) {
   return (
     <span className={cn(
       'relative block shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)',
-      throne ? 'h-[72px] w-[58px] rounded-[16px] sm:h-[84px] sm:w-[67px]' : 'h-[56px] w-[45px]',
+      'h-[56px] w-[45px]',
     )}>
       {!row.anchorThumb && (
         <span className="absolute inset-0 grid place-items-center p-1.5">
@@ -956,32 +997,45 @@ function RowThumb({ row, throne }: { row: BoardRow; throne: boolean }) {
   );
 }
 
-function RowVerdict({ row }: { row: BoardRow }) {
+/* the verdict word, in a box as wide as the longest one: the caption beside it keeps its width as the word rolls */
+function RowVerdict({ row, delay = 0 }: { row: BoardRow; delay?: number }) {
   return (
-    <span className={cn('text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-[var(--fm-accent-text)]' : 'text-fg/34')}>
-      <SlotText value={row.verdict} align="left" />
+    <span className={cn('w-[60px] shrink-0 overflow-hidden text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-[var(--fm-accent-text)]' : 'text-fg/34')}>
+      <SlotText value={row.verdict} align="left" delay={delay} />
     </span>
   );
 }
 
 /* Rank movement vs the prior equal window. Accent up, dim down, NEW for
-   entrants — the market grammar, never green/red. */
+   entrants — the market grammar, never green/red. It sits in a box of its own width whatever it says, so the name
+   beside it never re-truncates as it changes. */
 function MoveChip({ move, className }: { move: number | null; className?: string }) {
   if (move == null) {
-    return <span className={cn('inline-flex shrink-0 items-center rounded-[7px] bg-fg/[0.07] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-fg/44', className)}>new</span>;
+    return <span className={cn('inline-flex w-[30px] shrink-0 items-center', className)}><span className="rounded-[7px] bg-fg/[0.07] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-fg/44">new</span></span>;
   }
   const up = move > 0;
   const down = move < 0;
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-0.5 text-[9px] font-black tabular-nums leading-none',
+        'inline-flex w-[30px] shrink-0 items-center gap-0.5 text-[9px] font-black tabular-nums leading-none',
         up ? 'text-[var(--fm-accent-text)]' : down ? 'text-fg/36' : 'text-fg/28',
         className,
       )}
     >
       <span className="text-[7px]">{up ? '▲' : down ? '▼' : '–'}</span>
       {move === 0 ? '' : Math.abs(move)}
+    </span>
+  );
+}
+
+/* a rolling number in a box at least `min` wide, its digits against the box's right edge: what follows it (a %, a
+   unit) stays put while the number rolls, whatever it rolls to (SlotText's own width is its glyphs', and its display
+   is fixed, so the box is a wrapper) */
+function NumberBox({ value, delay = 0, min = '2ch', className }: { value: string; delay?: number; min?: string; className?: string }) {
+  return (
+    <span className={cn('inline-flex justify-end', className)} style={{ minWidth: min }}>
+      <SlotText value={value} delay={delay} />
     </span>
   );
 }
@@ -994,7 +1048,7 @@ function MetricLedger({ row }: { row: BoardRow }) {
     { label: row.followerDelta == null ? 'Followers' : 'Follower move', value: row.followerDelta == null ? compactNumber(row.followers) : signedNumber(row.followerDelta), multiple: null },
   ];
   return (
-    <motion.dl variants={BEAT_ITEM} className="order-3 -mx-4 flex min-w-0 overflow-x-auto border-y border-fg/[0.08] px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:order-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-7 lg:overflow-visible lg:border-y-0 lg:border-l lg:border-fg/[0.08] lg:px-0 lg:pl-7 [&::-webkit-scrollbar]:hidden">
+    <motion.dl variants={OPEN_ITEM} className="order-3 -mx-4 flex min-w-0 overflow-x-auto border-y border-fg/[0.08] px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:order-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-7 lg:overflow-visible lg:border-y-0 lg:border-l lg:border-fg/[0.08] lg:px-0 lg:pl-7 [&::-webkit-scrollbar]:hidden">
       {metrics.map((metric) => (
         <div key={metric.label} className="min-w-[118px] border-r border-fg/[0.08] py-4 pr-4 last:border-r-0 lg:min-w-0 lg:border-r-0 lg:py-0 lg:pr-0">
           <dt className="truncate text-[8px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44">{metric.label}</dt>
@@ -1008,30 +1062,33 @@ function MetricLedger({ row }: { row: BoardRow }) {
   );
 }
 
-function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; onCollapse: () => void }) {
+/* An open row's receipts. The ref (AnimatePresence's, in popLayout) is its element's: closing, it leaves the flow at
+   once and fades where it was while the rows under it travel up over it (components/lead/ledgerMotion). */
+function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: number; onCollapse: () => void; ref?: Ref<HTMLDivElement> }) {
   const reduce = Boolean(useReducedMotion());
 
   return (
     <motion.div
+      ref={ref}
       data-testid="lead-v3-expansion"
       initial={reduce ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: { duration: 0.16, ease: BEAT_LEAVE_EASE } }}
-      transition={{ duration: reduce ? 0 : 0.2, ease: SOFT_EASE }}
+      exit={{ opacity: 0, transition: { duration: sec(0.16), ease: BEAT_LEAVE_EASE } }}
+      transition={{ duration: reduce ? 0 : sec(0.2), ease: SOFT_EASE }}
       className="overflow-hidden"
     >
       <motion.div
-        variants={BEAT_CONTAINER}
+        variants={OPEN_CONTAINER}
         initial={reduce ? false : 'hidden'}
         animate="visible"
         onClick={onCollapse}
         className="relative isolate cursor-pointer overflow-hidden border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6 lg:min-h-[360px]"
       >
         <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-bar)" />
-        <div className="pointer-events-none absolute -bottom-14 left-3 select-none text-[164px] font-black leading-none tracking-[-0.1em] text-fg/[0.025] sm:text-[210px]">0{row.rank}</div>
+        <div className="pointer-events-none absolute -bottom-14 left-3 select-none text-[164px] font-black leading-none tracking-[-0.1em] text-fg/[0.025] sm:text-[210px]">{rankLabel(row.rank)}</div>
 
-        <motion.div variants={BEAT_ITEM} className="relative grid gap-6 lg:grid-cols-[210px_minmax(240px,.78fr)_minmax(400px,1.3fr)] lg:items-center lg:gap-8">
-          <div className="order-1 min-w-0">
+        <motion.div variants={OPEN_GRID} className="relative grid gap-6 lg:grid-cols-[210px_minmax(240px,.78fr)_minmax(400px,1.3fr)] lg:items-center lg:gap-8">
+          <motion.div variants={OPEN_ITEM} className="order-1 min-w-0">
             <div className="flex items-center justify-between gap-3 text-[8px] font-black uppercase tracking-[0.18em] text-fg/24 light:text-fg/40">
               <span>
                 {row.postCount} posts · {days}D
@@ -1061,11 +1118,11 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
                 <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-fg/30 light:text-fg/44">floor · weakest post</div>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           <MetricLedger row={row} />
 
-          <motion.div variants={BEAT_ITEM} className="order-2 min-w-0 lg:order-3">
+          <motion.div variants={OPEN_ITEM} className="order-2 min-w-0 lg:order-3">
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="text-[8px] font-black uppercase tracking-[0.2em] text-fg/32">Posts behind the number</span>
               <span className="text-[8px] font-black uppercase tracking-[0.16em] text-fg/20 light:text-fg/40">Best first</span>
@@ -1141,263 +1198,319 @@ function RowExpansion({ row, days, onCollapse }: { row: BoardRow; days: number; 
   );
 }
 
-function FeederboardRows({ rows, selectedId, onSelect, days }: { rows: BoardRow[]; selectedId: string; onSelect: (id: string) => void; days: number }) {
-  const reduce = Boolean(useReducedMotion());
-  const listRef = useRef<HTMLDivElement | null>(null);
+/* The Feederboard: feeds (on All) or a feed's feeders ranked on their typical post, or, for one feeder, its own
+   posts competing. One ledger whatever it ranks (components/lead/ledgerMotion): a new scope or window re-deals it
+   as one cascade, first place first (rows that stay travel to their new places, their numbers roll on their place's
+   beat, rows that go hand their places to the ones that come); a row opening makes room. A feeder's ladder always
+   has its ten places (the ones its posts don't fill stay empty), so a window with fewer posts doesn't fold the
+   page under it. */
+const LADDER_PLACES = 10;
+const NO_ROWS: BoardRow[] = [];
 
-  /* When a window/scope switch re-ranks the ladder, follow the row the user
-     had open so it never glides out of the viewport. */
+function rankLabel(rank: number) {
+  return String(rank).padStart(2, '0');
+}
+
+/* the place's numeral, rolling to the row's new rank on its beat; on first place a rose "01" over it fades in on the same
+   beat (opacity on the compositor: the ink itself never changes colour) */
+function RankNumeral({ rank, delay, size }: { rank: number; delay: number; size: string }) {
+  const at = 'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]';
+  return (
+    <span className="relative h-full">
+      <span className={cn(at, size, 'text-fg/[0.055]')}>
+        <SlotText value={rankLabel(rank)} delay={delay} />
+      </span>
+      <span aria-hidden="true" className={cn('ld-throne', at, size, 'text-[var(--fm-accent)]/[0.2]')} style={{ opacity: rank === 1 ? 1 : 0 }}>
+        {rankLabel(1)}
+      </span>
+    </span>
+  );
+}
+
+/* The first place's light and the bar of a row's strength sit behind the row. The light is always there and lit on
+   the row holding first place, so when first place changes hands it passes on the rows' beat instead of jumping. The
+   bar is nearly invisible at rest; it glows as it sweeps to a new length (the ledger plays that). */
+function RowGround({ throne, strength }: { throne: boolean; strength: number }) {
+  return (
+    <>
+      <span aria-hidden="true" className="ld-throne pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%),linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.035),rgb(var(--fm-fg-rgb)/.01))]" style={{ opacity: throne ? 1 : 0 }} />
+      <span
+        aria-hidden="true"
+        data-ledger-sweep=""
+        className={cn('pointer-events-none absolute inset-y-0 left-0 z-0 w-full origin-left', throne ? 'bg-[var(--fm-accent)]/[0.06]' : 'bg-[var(--fm-accent)]/[0.03]')}
+        style={{ transform: `scaleX(${strength.toFixed(3)})`, opacity: throne ? 0.07 : 0.04 }}
+      />
+      <span aria-hidden="true" className="ld-throne pointer-events-none absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" style={{ opacity: throne ? 0.6 : 0 }} />
+    </>
+  );
+}
+
+function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: BoardRow; order: number; selected: boolean; wide: boolean; days: number; onSelect: (id: string) => void }) {
+  const beat = ledgerDelay(order);
+  const strength = row.typical == null ? 0.06 : Math.max(0.06, Math.min(1, (101 - row.typical) / 100));
+  return (
+    <div data-ledger={row.id} data-row-id={row.id} className="relative border-b border-fg/[0.07] last:border-b-0">
+      <button
+        type="button"
+        onClick={() => onSelect(selected ? '' : row.id)}
+        aria-expanded={selected}
+        data-testid={`lead-v3-row-${row.rank}`}
+        className={cn(
+          'relative isolate block w-full overflow-hidden text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]',
+          selected ? 'bg-fg/[0.03]' : 'hover:bg-fg/[0.022]',
+        )}
+        style={{ '--ld-beat': `${beat}ms` } as CSSProperties}
+      >
+        <RowGround throne={row.rank === 1} strength={strength} />
+
+        {/* phone / tablet: the numbers' column has one width on every row and in every window */}
+        {!wide ? <div className="relative z-10 grid min-h-[76px] grid-cols-[34px_45px_minmax(0,1fr)_112px] items-center gap-2.5 px-3 py-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_112px] sm:gap-3 sm:px-4">
+          <RankNumeral rank={row.rank} delay={beat} size="text-[44px]" />
+          <RowThumb row={row} />
+          <span className="min-w-0">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-[15px] font-black leading-none tracking-[-0.02em] text-fg">{row.name}</span>
+              <MoveChip move={row.rankMove} />
+            </span>
+            <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-[9px] font-black uppercase tracking-[0.11em] text-fg/52">{row.caption}</span>
+              <span className="text-fg/16">·</span>
+              <RowVerdict row={row} delay={beat} />
+            </span>
+          </span>
+          <span className="flex min-w-0 items-center justify-end gap-2 text-right">
+            <span className="min-w-0">
+              <span className="block text-[8px] font-black uppercase tracking-[0.13em] text-fg/52">Typical</span>
+              <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
+                <NumberBox value={percentLabel(row.typical)} delay={beat} />
+                {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
+              </span>
+              <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[11px] font-black tabular-nums leading-none">
+                {row.typicalShift != null && row.typicalShift !== 0 ? (
+                  <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : 'text-fg/40')}>
+                    <i className="not-italic text-[8px]">{row.typicalShift > 0 ? '▲' : '▼'}</i>
+                    <SlotText value={String(Math.abs(row.typicalShift))} delay={beat} />
+                  </span>
+                ) : null}
+                <span className="text-[10px] text-fg/48"><NumberBox value={formatMultiple(row.peak)} delay={beat} min="3ch" /> <i className="not-italic text-[8px] uppercase tracking-[0.08em] text-fg/44">peak</i></span>
+              </span>
+            </span>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
+          </span>
+        </div> : null}
+
+        {/* desktop */}
+        {wide ? <div className="relative z-10 grid min-h-[80px] grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-center gap-4 px-5 py-3 laptop:min-h-[70px]">
+          <RankNumeral rank={row.rank} delay={beat} size="text-[50px] laptop:text-[42px]" />
+          <span className="flex min-w-0 items-center gap-3.5">
+            <RowThumb row={row} />
+            <span className="min-w-0">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-[16px] font-black leading-none tracking-[-0.02em] text-fg laptop:text-[15px]">{row.name}</span>
+                <MoveChip move={row.rankMove} />
+              </span>
+              <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{row.caption}</span>
+                <span className="text-fg/16">·</span>
+                <RowVerdict row={row} delay={beat} />
+              </span>
+            </span>
+          </span>
+          <span className="min-w-0">
+            <span className="fm-depth-title flex items-baseline text-[28px] font-black tabular-nums leading-none text-fg laptop:text-[24px]">
+              <NumberBox value={percentLabel(row.typical)} delay={beat} />
+              {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
+            </span>
+            <span className="mt-1.5 block truncate text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">median · {row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
+          </span>
+          <span className="min-w-0">
+            <span className={cn(
+              'fm-depth-title flex items-baseline gap-1 text-[24px] font-black tabular-nums leading-none laptop:text-[21px]',
+              row.typicalShift == null ? 'text-fg/30' : row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : row.typicalShift < 0 ? 'text-fg/44' : 'text-fg/60',
+            )}>
+              {row.typicalShift != null && row.typicalShift !== 0 ? <i className="not-italic text-[0.45em]">{row.typicalShift > 0 ? '▲' : '▼'}</i> : null}
+              <SlotText value={row.typicalShift == null ? '—' : String(Math.abs(row.typicalShift))} delay={beat} />
+            </span>
+            <span className="mt-1.5 block truncate text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">
+              {row.typicalShift == null ? 'no prior window' : row.typicalShift === 0 ? `level · prev ${days}D` : `places ${row.typicalShift > 0 ? 'stronger' : 'softer'} · prev ${days}D`}
+            </span>
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[21px] font-black tabular-nums leading-none text-[var(--fm-accent-text)] laptop:text-[18px]"><SlotText value={formatMultiple(row.peak)} delay={beat} /></span>
+            <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">vs its usual</span>
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[15px] font-black tabular-nums leading-none text-fg/60"><SlotText value={lastPostedLabel(row.lastPostedAt)} delay={beat} /></span>
+            <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
+          </span>
+          <span className="grid h-7 w-7 place-items-center rounded-full border border-fg/10 bg-(--ld-chip-well)">
+            <ChevronDown className={cn('h-4 w-4 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
+          </span>
+        </div> : null}
+      </button>
+      <AnimatePresence initial={false} mode="popLayout">
+        {selected && <RowExpansion key={row.id} row={row} days={days} onCollapse={() => onSelect('')} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedPost; rank: number; order: number; selected: boolean; onSelect: (key: string) => void }) {
+  const beat = ledgerDelay(order);
+  const strength = post.latestPercentile == null ? 0.06 : Math.max(0.06, Math.min(1, (101 - post.latestPercentile) / 100));
+  return (
+    <div data-ledger={`post:${post.postKey}`} className="relative border-b border-fg/[0.07] last:border-b-0">
+      <button
+        type="button"
+        onClick={() => onSelect(selected ? '' : post.postKey)}
+        aria-expanded={selected}
+        data-testid={`lead-v3-post-row-${rank}`}
+        className={cn(
+          'relative isolate block w-full overflow-hidden text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]',
+          selected ? 'bg-fg/[0.03]' : 'hover:bg-fg/[0.022]',
+        )}
+        style={{ '--ld-beat': `${beat}ms` } as CSSProperties}
+      >
+        <RowGround throne={rank === 1} strength={strength} />
+        {/* one height for every place on the ladder, filled or empty (EmptyPlace) */}
+        <div className="relative z-10 grid h-[84px] grid-cols-[34px_45px_minmax(0,1fr)_96px] items-center gap-2.5 px-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_96px] sm:gap-3 sm:px-4">
+          <RankNumeral rank={rank} delay={beat} size="text-[44px]" />
+          <span className="relative block h-[56px] w-[45px] shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)">
+            <CrossfadeImage src={post.thumbnailUrl} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[15px] font-black capitalize leading-none tracking-[-0.02em] text-fg">{post.mediaType} · {postDateLabel(post)}</span>
+            <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{(post.latestCheckpoint || '').toUpperCase()} read</span>
+              <span className="text-fg/16">·</span>
+              <ClimbChip post={post} />
+            </span>
+          </span>
+          <span className="flex min-w-0 items-center justify-end gap-2 text-right">
+            <span className="min-w-0">
+              <span className="block text-[7px] font-black uppercase tracking-[0.15em] text-fg/26 light:text-fg/44">Placed</span>
+              <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
+                <NumberBox value={percentLabel(post.latestPercentile)} delay={beat} />
+                {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
+              </span>
+              <span className="mt-1 block text-[9px] font-black tabular-nums text-[var(--fm-accent-text)]/80"><NumberBox value={formatMultiple(post.rankingMultiple)} delay={beat} min="3ch" /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-fg/22 light:text-fg/40">usual</i></span>
+            </span>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
+          </span>
+        </div>
+      </button>
+      <AnimatePresence initial={false} mode="popLayout">
+        {selected && <PostRowExpansion key={post.postKey} post={post} onCollapse={() => onSelect('')} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* a place the feeder's posts don't fill in this window: its numeral, and (the first one) what the emptiness means */
+function EmptyPlace({ id, rank, note }: { id: string; rank: number; note?: string }) {
+  return (
+    <div data-ledger={id} aria-hidden="true" className="relative border-b border-fg/[0.07] last:border-b-0">
+      {/* as tall as a post's row (PostRowItem), so places filling and emptying never change the ladder's height */}
+      <div className="grid h-[84px] grid-cols-[34px_minmax(0,1fr)] items-center gap-2.5 px-3 sm:grid-cols-[42px_minmax(0,1fr)] sm:gap-3 sm:px-4">
+        <span className="relative h-full">
+          <span className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none text-[44px] font-black tabular-nums leading-none tracking-[-0.08em] text-fg/[0.055]">{rankLabel(rank)}</span>
+        </span>
+        <span className="ml-[57px] flex items-center gap-3">
+          {note ? <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.16em] text-fg/34 light:text-fg/46">{note}</span> : null}
+          <span className="h-px flex-1 border-t border-dashed border-fg/[0.1]" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, selectedPostKey, onSelectPost }: {
+  rows: BoardRow[];
+  posts: TrackedPost[];
+  feeder: string;
+  deal: string;
+  days: number;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  selectedPostKey: string;
+  onSelectPost: (key: string) => void;
+}) {
+  // one form of a row on screen (the phone's or the desktop's)
+  const wide = useWide();
+  const ladder = useMemo(() => (feeder ? [...posts].sort(bestFirst).slice(0, LADDER_PLACES) : []), [feeder, posts]);
+  const shown = feeder ? NO_ROWS : rows;
+  const ids = useMemo(
+    () => (feeder
+      ? [...ladder.map((post) => `post:${post.postKey}`), ...Array.from({ length: LADDER_PLACES - ladder.length }, (_, index) => `empty:${ladder.length + index}`)]
+      : shown.map((row) => row.id)),
+    [feeder, ladder, shown],
+  );
+  const openId = feeder ? (selectedPostKey ? `post:${selectedPostKey}` : '') : selectedId;
+
+  /* When a switch re-ranks the ladder, follow the row that is open once it has landed in its new place, so it never
+     sits out of view; a row just opened is brought into view once it has opened. */
+  const boardRef = useRef<HTMLElement | null>(null);
+  const last = useRef({ deal, openId });
   useEffect(() => {
-    if (!selectedId) return undefined;
+    const was = last.current;
+    last.current = { deal, openId };
+    if (!openId) return undefined;
+    const order = ids.indexOf(openId);
+    if (order < 0) return undefined;
+    const wait = was.deal !== deal ? ledgerDelay(order) + LEDGER_MOVE_MS : was.openId !== openId ? ms(420) : -1;
+    if (wait < 0) return undefined;
     const timeout = window.setTimeout(() => {
-      listRef.current
-        ?.querySelector(`[data-row-id="${CSS.escape(selectedId)}"]`)
-        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }, 460);
+      // the board's own row (the header's rail uses the same kind of ids for its circles)
+      const row = boardRef.current?.querySelector<HTMLElement>(`[data-ledger="${CSS.escape(openId)}"]`);
+      if (row) revealBelowHeader(row);
+    }, wait);
     return () => window.clearTimeout(timeout);
-  }, [rows, selectedId]);
+  }, [deal, ids, openId]);
+
+  // one line on a phone beside the scale's note (a tap on a row opens its receipts)
+  const subtitle = feeder
+    ? `${ladder.length} ${ladder.length === 1 ? 'post competes' : 'posts compete'} in ${days}D`
+    : 'Ranked on the typical post';
 
   return (
-    <section aria-labelledby="lead-v3-board-title" className="min-w-0 max-w-full overflow-hidden bg-(--ld-panel)">
+    <section ref={boardRef} aria-labelledby="lead-v3-board-title" className="min-w-0 max-w-full overflow-hidden bg-(--ld-panel)">
       <div className="flex items-center justify-between gap-4 border-b border-fg/[0.08] px-4 py-4 sm:px-5">
-        <div>
+        <div className="min-w-0">
           <h2 id="lead-v3-board-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feederboard</h2>
-          <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">Ranked on the typical post · tap a row for the receipts</p>
+          <p className="mt-1 overflow-hidden whitespace-nowrap text-[10px] font-bold leading-snug text-fg/50"><Swap value={subtitle} className="truncate align-top" /><span className="hidden sm:inline"> · tap a row for the receipts</span></p>
         </div>
         <div className="shrink-0 text-right text-[9px] font-black uppercase tracking-[0.12em] text-fg/46">
           TOP % · lower is stronger
         </div>
       </div>
 
-      <div className="hidden grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-end gap-4 border-b border-fg/[0.07] px-5 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-fg/24 light:text-fg/40 lg:grid">
-        <span>Rank</span><span>Feed / feeder</span><span>Typical post</span><span>Shift</span><span>Peak vs usual</span><span>Last posted</span><span />
-      </div>
+      {wide ? (
+        feeder ? (
+          <div key="posts" ref={holdArrival} className="lead-swap-in grid grid-cols-[42px_45px_minmax(0,1fr)_96px] items-end gap-3 border-b border-fg/[0.07] px-4 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-fg/24 light:text-fg/40">
+            <span>Rank</span><span>Post</span><span /><span className="pr-6 text-right">Placed</span>
+          </div>
+        ) : (
+          <div key="rows" ref={holdArrival} className="lead-swap-in grid grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-end gap-4 border-b border-fg/[0.07] px-5 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-fg/24 light:text-fg/40">
+            <span>Rank</span><span>Feed / feeder</span><span>Typical post</span><span>Shift</span><span>Peak vs usual</span><span>Last posted</span><span />
+          </div>
+        )
+      ) : null}
 
-      <LayoutGroup id="lead-v3-board">
-        <div ref={listRef}>
-          {rows.map((row) => {
-            const selected = row.id === selectedId;
-            const throne = row.rank === 1;
-            const strength = row.typical == null ? 0.06 : Math.max(0.06, Math.min(1, (101 - row.typical) / 100));
-            return (
-              <motion.div
-                key={row.id}
-                data-row-id={row.id}
-                layout="position"
-                initial={reduce ? false : { y: 22, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={reduce
-                  ? { opacity: 0, transition: { duration: 0.12 } }
-                  : { y: -16, opacity: 0, transition: beatLeave(row.rank - 1) }}
-                transition={reduce
-                  ? { layout: LADDER_SPRING, duration: 0.12 }
-                  : { layout: LADDER_SPRING, ...beatArrive(row.rank) }}
-                className="border-b border-fg/[0.07] last:border-b-0"
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(selected ? '' : row.id)}
-                  aria-expanded={selected}
-                  data-testid={`lead-v3-row-${row.rank}`}
-                  className={cn(
-                    'relative isolate block w-full overflow-hidden text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]',
-                    throne
-                      ? 'bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%),linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.035),rgb(var(--fm-fg-rgb)/.01))]'
-                      : selected
-                        ? 'bg-fg/[0.03]'
-                        : 'hover:bg-fg/[0.022]',
-                  )}
-                >
-                  <motion.span
-                    aria-hidden="true"
-                    className={cn('absolute inset-y-0 left-0 z-0 w-full origin-left', throne ? 'bg-[var(--fm-accent)]/[0.06]' : 'bg-[var(--fm-accent)]/[0.03]')}
-                    initial={reduce ? false : { scaleX: 0 }}
-                    animate={{ scaleX: strength, opacity: [0, 1, throne ? 0.07 : 0.04] }}
-                    transition={reduce ? { duration: 0 } : { scaleX: { delay: 0.18 + (row.rank - 1) * 0.08, duration: 1, ease: SOFT_EASE }, opacity: { delay: 0.18 + (row.rank - 1) * 0.08, duration: 1, ease: SOFT_EASE, times: [0, 0.55, 1] } }}
-                  />
-                  {throne ? <motion.span initial={reduce ? false : { opacity: 0 }} animate={{ opacity: [0, 1, 0.6] }} transition={reduce ? { duration: 0 } : { duration: 1, ease: SOFT_EASE }} className="absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" /> : null}
-
-                  {/* mobile / tablet row */}
-                  <div className={cn(
-                    'relative z-10 grid items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4 lg:hidden',
-                    throne
-                      ? 'min-h-[100px] grid-cols-[34px_58px_minmax(0,1fr)_auto] sm:grid-cols-[42px_67px_minmax(0,1fr)_auto]'
-                      : 'min-h-[76px] grid-cols-[34px_45px_minmax(0,1fr)_auto] sm:grid-cols-[42px_45px_minmax(0,1fr)_auto]',
-                  )}>
-                    <span className="relative h-full">
-                      <span className={cn(
-                        'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]',
-                        throne ? 'text-[54px] text-[var(--fm-accent)]/[0.16]' : 'text-[44px] text-fg/[0.055]',
-                      )}>{String(row.rank).padStart(2, '0')}</span>
-                    </span>
-                    <RowThumb row={row} throne={throne} />
-                    <span className="min-w-0">
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span className={cn('truncate font-black leading-none tracking-[-0.02em] text-fg', throne ? 'text-[17px]' : 'text-[15px]')}>{row.name}</span>
-                        <MoveChip move={row.rankMove} />
-                      </span>
-                      <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-[9px] font-black uppercase tracking-[0.11em] text-fg/52">{row.caption}</span>
-                        <span className="text-fg/16">·</span>
-                        <RowVerdict row={row} />
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-2 text-right">
-                      <span className="min-w-0">
-                        <span className="block text-[8px] font-black uppercase tracking-[0.13em] text-fg/52">Typical</span>
-                        <span className={cn('fm-depth-title mt-1 block font-black tabular-nums leading-none text-fg', throne ? 'text-[32px]' : 'text-[24px]')}>
-                          <SlotText value={percentLabel(row.typical)} />
-                          {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
-                        </span>
-                        <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[11px] font-black tabular-nums leading-none">
-                          {row.typicalShift != null && row.typicalShift !== 0 ? (
-                            <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : 'text-fg/40')}>
-                              <i className="not-italic text-[8px]">{row.typicalShift > 0 ? '▲' : '▼'}</i>
-                              <SlotText value={String(Math.abs(row.typicalShift))} />
-                            </span>
-                          ) : null}
-                          <span className="text-[10px] text-fg/48"><SlotText value={formatMultiple(row.peak)} /> <i className="not-italic text-[8px] uppercase tracking-[0.08em] text-fg/44">peak</i></span>
-                        </span>
-                      </span>
-                      <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-300', selected && 'rotate-180 text-fg')} />
-                    </span>
-                  </div>
-
-                  {/* desktop row */}
-                  <div className={cn(
-                    'relative z-10 hidden grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-center gap-4 px-5 py-3 lg:grid',
-                    throne ? 'min-h-[104px]' : 'min-h-[80px]',
-                  )}>
-                    <span className="relative h-full">
-                      <span className={cn(
-                        'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]',
-                        throne ? 'text-[64px] text-[var(--fm-accent)]/[0.16]' : 'text-[50px] text-fg/[0.055]',
-                      )}>{String(row.rank).padStart(2, '0')}</span>
-                    </span>
-                    <span className="flex min-w-0 items-center gap-3.5">
-                      <RowThumb row={row} throne={throne} />
-                      <span className="min-w-0">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className={cn('truncate font-black leading-none tracking-[-0.02em] text-fg', throne ? 'text-[18px]' : 'text-[16px]')}>{row.name}</span>
-                          <MoveChip move={row.rankMove} />
-                        </span>
-                        <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{row.caption}</span>
-                          <span className="text-fg/16">·</span>
-                          <RowVerdict row={row} />
-                        </span>
-                      </span>
-                    </span>
-                    <span className="min-w-0">
-                      <span className={cn('fm-depth-title block font-black tabular-nums leading-none text-fg', throne ? 'text-[36px]' : 'text-[28px]')}>
-                        <SlotText value={percentLabel(row.typical)} />
-                        {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
-                      </span>
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">median · {row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
-                    </span>
-                    <span className="min-w-0">
-                      <span className={cn(
-                        'fm-depth-title flex items-baseline gap-1 font-black tabular-nums leading-none',
-                        throne ? 'text-[28px]' : 'text-[24px]',
-                        row.typicalShift == null ? 'text-fg/30' : row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : row.typicalShift < 0 ? 'text-fg/44' : 'text-fg/60',
-                      )}>
-                        {row.typicalShift != null && row.typicalShift !== 0 ? <i className="not-italic text-[0.45em]">{row.typicalShift > 0 ? '▲' : '▼'}</i> : null}
-                        <SlotText value={row.typicalShift == null ? '—' : String(Math.abs(row.typicalShift))} />
-                      </span>
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">
-                        {row.typicalShift == null ? 'no prior window' : row.typicalShift === 0 ? `level · prev ${days}D` : `places ${row.typicalShift > 0 ? 'stronger' : 'softer'} · prev ${days}D`}
-                      </span>
-                    </span>
-                    <span className="min-w-0">
-                      <SlotText value={formatMultiple(row.peak)} className="block text-[21px] font-black tabular-nums leading-none text-[var(--fm-accent-text)]" />
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">vs its usual</span>
-                    </span>
-                    <span className="min-w-0">
-                      <SlotText value={lastPostedLabel(row.lastPostedAt)} className="block text-[15px] font-black tabular-nums leading-none text-fg/60" />
-                      <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
-                    </span>
-                    <span className="grid h-7 w-7 place-items-center rounded-full border border-fg/10 bg-(--ld-chip-well)">
-                      <ChevronDown className={cn('h-4 w-4 text-fg/36 transition-transform duration-300', selected && 'rotate-180 text-fg')} />
-                    </span>
-                  </div>
-                </button>
-                <AnimatePresence initial={false} mode="popLayout">
-                  {selected && <RowExpansion key={row.id} row={row} days={days} onCollapse={() => onSelect('')} />}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })}
-        </div>
-      </LayoutGroup>
-    </section>
-  );
-}
-
-/* ── Follower windows ────────────────────────────────────────────────────── */
-
-function GrowthWindows({ windows, days, dealId }: { windows: GrowthWindow[]; days: number; dealId: number }) {
-  const reduce = Boolean(useReducedMotion());
-  const total = windows.reduce((sum, window) => sum + (window.delta ?? 0), 0);
-  const hasDelta = windows.some((window) => window.delta != null);
-  const highlightIndex = windows.reduce((bestIndex, window, index) => (
-    Math.abs(window.delta ?? 0) >= Math.abs(windows[bestIndex]?.delta ?? 0) ? index : bestIndex
-  ), 0);
-  return (
-    <section aria-labelledby="lead-v3-windows-title" className="relative isolate overflow-hidden border-t border-fg/[0.09] bg-(--ld-panel) p-5 sm:p-6 lg:p-7">
-      <div className="flex items-end justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-2 text-fg/44"><Users className="h-4 w-4" /><span className="text-[8px] font-black uppercase tracking-[0.22em]">Follower windows</span></div>
-          <h2 id="lead-v3-windows-title" className="mt-2 text-[22px] font-black leading-none tracking-[-0.035em] text-fg sm:text-[26px]">What landed, when.</h2>
-        </div>
-        <div className="text-right">
-          <SlotText value={hasDelta ? signedNumber(total) : '—'} className="fm-depth-title text-[38px] font-black tabular-nums leading-[0.78] tracking-[-0.045em] text-fg sm:text-[50px]" />
-          <div className="mt-2 text-[8px] font-black uppercase tracking-[0.18em] text-fg/28 light:text-fg/44">{days}D net new</div>
-        </div>
-      </div>
-
-      <div className="relative mt-7 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <motion.div
-          aria-hidden="true"
-          initial={reduce ? false : { scaleX: 0, opacity: 0 }}
-          animate={{ scaleX: 1, opacity: 1 }}
-          transition={reduce ? { duration: 0 } : { duration: 0.8, ease: SOFT_EASE }}
-          className="pointer-events-none absolute left-5 right-5 top-[51px] h-px origin-left bg-fg/[0.13]"
-        />
-        <motion.div key={dealId} variants={BEAT_CONTAINER} initial={reduce ? false : 'hidden'} animate="visible" className="grid min-w-max auto-cols-[210px] grid-flow-col lg:min-w-0 lg:auto-cols-fr">
-          {windows.map((window, index) => {
-            const highlighted = index === highlightIndex;
-            return (
-              <motion.article key={window.id} variants={BEAT_ITEM} className="relative min-h-[168px] snap-start px-5 first:pl-1 last:pr-1">
-                <div className="text-[8px] font-black uppercase tracking-[0.17em] text-fg/34">{window.range}</div>
-                <span className={cn('absolute top-[47px] h-[9px] w-[9px] rounded-full border-2 border-(--ld-panel)', highlighted ? 'bg-[var(--fm-accent)] shadow-(--ld-glow-node)' : 'bg-fg/36')} />
-                <SlotText value={signedNumber(window.delta)} className={cn('fm-depth-title mt-10 block text-[28px] font-black tabular-nums leading-none tracking-[-0.035em]', highlighted ? 'text-[var(--fm-accent-text)]' : 'text-fg')} />
-                <div className="mt-2 text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">Window {window.index} · {window.postCount} posts</div>
-                <div className="mt-4 flex -space-x-3">
-                  {window.posts.map((post) => (
-                    <a
-                      key={post.postKey}
-                      href={post.postUrl || '#'}
-                      target={post.postUrl ? '_blank' : undefined}
-                      rel={post.postUrl ? 'noreferrer' : undefined}
-                      onClick={(event) => {
-                        if (!post.postUrl) event.preventDefault();
-                      }}
-                      className="h-14 shrink-0 aspect-[4/5] overflow-hidden rounded-[14px] border-2 border-(--ld-panel) bg-fg/[0.04] shadow-(--ld-shadow-landing) transition-transform hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
-                      aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
-                    >
-                      {post.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-                        <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
-                      ) : null}
-                    </a>
-                  ))}
-                  {!window.posts.length ? <span className="pt-2 text-[8px] font-black uppercase tracking-[0.14em] text-fg/18 light:text-fg/40">No landings</span> : null}
-                </div>
-              </motion.article>
-            );
-          })}
-        </motion.div>
-      </div>
+      <Ledger ids={ids} deal={deal} version={`${openId}|${wide}`} anchor={openId || undefined}>
+        {feeder
+          ? [
+              ...ladder.map((post, order) => (
+                <PostRowItem key={post.postKey} post={post} rank={order + 1} order={order} selected={post.postKey === selectedPostKey} onSelect={onSelectPost} />
+              )),
+              ...ids.slice(ladder.length).map((id, index) => <EmptyPlace key={id} id={id} rank={ladder.length + index + 1} note={index === 0 ? `No other posts in ${days}D` : undefined} />),
+            ]
+          : shown.map((row, order) => (
+              <BoardRowItem key={row.id} row={row} order={order} selected={row.id === selectedId} wide={wide} days={days} onSelect={onSelect} />
+            ))}
+      </Ledger>
+      {!feeder && !shown.length ? (
+        <div className="flex h-[140px] items-center justify-center text-[9px] font-black uppercase tracking-[0.18em] text-fg/26 light:text-fg/44">No feeds to rank yet</div>
+      ) : null}
     </section>
   );
 }
@@ -1405,18 +1518,38 @@ function GrowthWindows({ windows, days, dealId }: { windows: GrowthWindow[]; day
 /* ── Feederboard views — facts and ranked posts across the current scope ─── */
 
 type ScopedPost = TrackedPost & { feedName: string };
+const NO_POSTS: ScopedPost[] = [];
 
 function scopedPostsFor(feeds: RuntimeFeed[], activeFeedId: string, days: number): ScopedPost[] {
-  const scoped = activeFeedId === 'all' ? feeds : feeds.filter((feed) => feed.id === activeFeedId);
-  return scoped.flatMap((feed) => postsInWindow(feed.posts, days).map((post) => ({ ...post, feedName: titleCase(feed.title) })));
+  return remember(feeds, null, `scoped|${activeFeedId}|${days}`, () => {
+    const scoped = activeFeedId === 'all' ? feeds : feeds.filter((feed) => feed.id === activeFeedId);
+    return scoped.flatMap((feed) => postsInWindow(feed.posts, days).map((post) => ({ ...post, feedName: titleCase(feed.title) })));
+  });
 }
 
 const FEEDERBOARD_VIEWS = [
-  { id: 'feats', label: 'Feats' },
-  { id: 'er', label: 'Eng.', ariaLabel: 'Engagement rate' },
-  { id: 'comments', label: 'Comments' },
-  { id: 'likes', label: 'Likes' },
+  { id: 'feats', label: 'Wins', ariaLabel: 'Wins' },
+  { id: 'likes', label: 'Likes', ariaLabel: 'Most liked' },
+  { id: 'comments', label: 'Comments', ariaLabel: 'Most talked about' },
+  { id: 'er', label: 'Eng.', ariaLabel: 'Most engaged' },
 ] as const;
+
+/* a win's handle: what kind of thing happened, in a word or two (the facts themselves are lib/feederboardFacts) */
+const WIN_LABEL: Record<string, string> = {
+  'above-streak': 'Hot streak',
+  'checkpoint-climb': 'Climber',
+  'busiest-day': 'Busiest day',
+  'publishing-run': 'On a roll',
+  'format-run': 'Format win',
+  'format-time': 'Sweet spot',
+  'post-concentration': 'Comment magnet',
+  'feeder-participation': 'Team effort',
+  'feeder-concentration': 'Carried the chat',
+  'response-imbalance': 'Talking point',
+  'quiet-breakout': 'Comeback',
+};
+// a run of misses is worth knowing (the Feederboard's verdicts show it) but isn't a win
+const NOT_A_WIN = new Set(['below-streak']);
 
 type FeederboardViewId = (typeof FEEDERBOARD_VIEWS)[number]['id'];
 type FeederboardRankedViewId = Exclude<FeederboardViewId, 'feats'>;
@@ -1433,25 +1566,23 @@ function recordDisplay(post: ScopedPost, metric: FeederboardRankedViewId) {
   return { value: formatEngagementRate(post.engagementRate), label: 'engagement rate' };
 }
 
-function FeederboardCards({
-  feeds,
-  activeFeedId,
-  activeFeeder,
-  days,
-  facts,
-}: {
+const FeederboardCards = memo(function FeederboardCards(props: {
   feeds: RuntimeFeed[];
   activeFeedId: string;
   activeFeeder: string;
   days: number;
-  facts: FeederboardFact[];
 }) {
-  const reduce = Boolean(useReducedMotion());
-  const [view, setView] = useState<FeederboardViewId>('feats');
-  const posts = useMemo(
-    () => scopedPostsFor(feeds, activeFeedId, days).filter((post) => !activeFeeder || normalizeHandle(post.handle) === activeFeeder),
-    [activeFeedId, activeFeeder, days, feeds],
+  // on screen it takes a switch with the rest of the page; off screen, once the switch has played (see useHeldNear)
+  const live = useMemo(
+    () => ({ feeds: props.feeds, activeFeedId: props.activeFeedId, activeFeeder: props.activeFeeder, days: props.days }),
+    [props.feeds, props.activeFeedId, props.activeFeeder, props.days],
   );
+  const [nearRef, { feeds, activeFeedId, activeFeeder, days }] = useHeldNear(live);
+  const facts = useMemo(() => factsFor(feeds, activeFeedId, activeFeeder, days).filter((fact) => !NOT_A_WIN.has(fact.kind)), [feeds, activeFeedId, activeFeeder, days]);
+  const [view, setView] = useState<FeederboardViewId>('feats');
+  const posts = postsFor(feeds, activeFeedId, activeFeeder, days);
+  // the posts a win stands on, by key: the card shows its pictured post's Top % and how far over its usual it went
+  const postByKey = useMemo(() => new Map(posts.map((post) => [post.postKey, post])), [posts]);
   const records = useMemo(() => {
     if (view === 'feats') return [];
     return [...posts]
@@ -1461,104 +1592,141 @@ function FeederboardCards({
   }, [posts, view]);
 
   const cards = view === 'feats' ? facts : records;
+  // a card is the post it shows: the same post read the same way in the next deal stays (and travels), anything else
+  // hands its place over
+  const ids = useMemo(
+    () => (view === 'feats'
+      ? facts.map((fact) => `fact:${fact.kind}:${fact.evidencePostKeys[0] ?? fact.headline}`)
+      : records.map((post) => `${view}:${post.postKey}`)),
+    [facts, records, view],
+  );
+  const viewIndex = FEEDERBOARD_VIEWS.findIndex((option) => option.id === view);
+  // on WebKit the pill's glide waits for the frame that draws the new cards, so it plays whole with their deal
+  const pillRef = useRef<HTMLSpanElement | null>(null);
+  useLayoutEffect(() => {
+    const pill = pillRef.current;
+    if (!pill || !holdsFlights()) return undefined;
+    const glides = pill.getAnimations();
+    glides.forEach((glide) => {
+      glide.pause();
+      glide.currentTime = 0;
+    });
+    return afterDrawn(() => glides.forEach((glide) => glide.play()));
+  }, [viewIndex]);
 
-  if (!posts.length) return null;
+  // the band keeps its place on the page when it grows or shrinks by a row of cards: what is under it travels
+  const bandRef = useRef<HTMLElement | null>(null);
+  useEffect(() => (bandRef.current ? keepBelow(bandRef.current) : undefined), []);
+  const ref = useCallback((el: HTMLElement | null) => {
+    bandRef.current = el;
+    nearRef(el);
+  }, [nearRef]);
 
   return (
-    <section aria-label="Feederboard views" className="relative isolate overflow-hidden bg-(--ld-panel) px-4 pb-5 pt-3 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
-      <div className="flex justify-end">
-        <div className="grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[272px]">
+    <section ref={ref} aria-labelledby="lead-v3-hall-title" className="lead-band relative isolate overflow-hidden border-t border-fg/[0.08] bg-(--ld-panel) px-4 pb-5 pt-4 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h2 id="lead-v3-hall-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Hall of Feed</h2>
+          <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">The posts that carried the feed · {days}D</p>
+        </div>
+        <div className="relative grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[272px]">
+          {/* one pill, carried to the picked view (a transform on the compositor) */}
+          <span
+            ref={pillRef}
+            aria-hidden="true"
+            className="ld-pill pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] rounded-[8px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)]"
+            style={{ width: 'calc(25% - 6px)', transform: `translateX(calc(${viewIndex} * (100% + 6px)))` }}
+          />
           {FEEDERBOARD_VIEWS.map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => setView(option.id)}
-              aria-label={'ariaLabel' in option ? option.ariaLabel : option.label}
+              aria-label={option.ariaLabel}
               aria-pressed={view === option.id}
               data-testid={`lead-v3-feederboard-view-${option.id}`}
               className={cn(
-                'relative grid h-full place-items-center rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors sm:text-[11px]',
-                view === option.id
-                  ? 'text-white'
-                  : 'text-fg/36 hover:text-fg/72',
+                'relative grid h-full place-items-center rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors duration-[calc(300ms*var(--fm-tempo))] sm:text-[11px]',
+                view === option.id ? 'text-white' : 'text-fg/36 hover:text-fg/72',
               )}
             >
-              {view === option.id ? <motion.span layoutId="lead-v3-feederboard-pill" className="pointer-events-none absolute inset-[3px] rounded-[8px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)]" transition={reduce ? REDUCED_RAIL_TRANSITION : HOF_PILL_SPRING} /> : null}
               <span className="relative z-10">{option.label}</span>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-6 min-h-[300px] lg:min-h-[360px]">
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.div
-            key={`${view}:${activeFeedId}:${activeFeeder}:${days}:${facts.map((fact) => fact.kind).join(':')}`}
-            initial={reduce ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
-            transition={reduce ? REDUCED_RAIL_TRANSITION : { duration: 0.24, ease: SOFT_EASE }}
-            className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
-          >
-            {view === 'feats' ? facts.map((fact, index) => (
-              <motion.article
-                key={fact.kind}
-                initial={reduce ? false : { opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={reduce ? REDUCED_RAIL_TRANSITION : { duration: 0.24, delay: Math.min(index * 0.024, 0.12), ease: SOFT_EASE }}
-                data-testid={`lead-v3-feederboard-fact-${fact.kind}`}
-                className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
-              >
-                {fact.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-                  <img src={fact.thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" loading="lazy" decoding="async" />
-                ) : null}
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
-                <span className="absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--fm-accent-bright)] backdrop-blur-sm">{fact.kind.replace(/-/g, ' ')}</span>
-                {fact.postUrl ? <a href={fact.postUrl} target="_blank" rel="noreferrer" aria-label="Open fact evidence on Instagram" className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/78 backdrop-blur-sm">Instagram</a> : null}
-                <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
-                  <div className="text-[20px] font-black leading-[1.02] tracking-[-0.035em] text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[22px]">{fact.headline}</div>
-                  <div className="mt-2 text-[10px] font-bold leading-[1.3] text-white/78 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{fact.detail}</div>
-                </div>
-              </motion.article>
-            )) : records.map((post, index) => {
-              const display = recordDisplay(post, view);
-              return (
-                <motion.a
-                  key={post.postKey}
-                  initial={reduce ? false : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={reduce ? REDUCED_RAIL_TRANSITION : { duration: 0.24, delay: Math.min(index * 0.024, 0.12), ease: SOFT_EASE }}
-                  href={post.postUrl || '#'}
-                  target={post.postUrl ? '_blank' : undefined}
-                  rel={post.postUrl ? 'noreferrer' : undefined}
-                  onClick={(event) => { if (!post.postUrl) event.preventDefault(); }}
-                  data-testid={`lead-v3-feederboard-record-${index + 1}`}
-                  aria-label={post.postUrl ? `Open tracked post ranked ${index + 1} by ${display.label}` : `Tracked post ranked ${index + 1} by ${display.label}`}
-                  className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
-                >
-                  {post.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-                    <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" loading="lazy" decoding="async" />
-                  ) : null}
-                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
-                  <span className="absolute left-2.5 top-2.5 grid h-7 min-w-7 place-items-center rounded-md bg-black/62 px-1.5 text-[11px] font-black tabular-nums text-white/88 backdrop-blur-sm">{index + 1}</span>
-                  <span className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/72 backdrop-blur-sm">{activeFeedId === 'all' ? post.feedName : (post.latestCheckpoint || 'latest').toUpperCase()}</span>
-                  <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
-                    <div className="fm-depth-title ld-on-media text-[28px] font-black tabular-nums leading-[0.9] tracking-[-0.04em] text-white sm:text-[30px]">{display.value}</div>
-                    <div className="mt-2 text-[10px] font-black text-white/78">@{normalizeHandle(post.handle) || post.feedName.toLowerCase()}</div>
-                    <div className="mt-1 text-[10px] leading-[1.3] text-white/54 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{display.label} · {(post.latestCheckpoint || 'latest').toUpperCase()} read</div>
+      <div className="relative mt-5 min-h-[300px] lg:min-h-[360px]">
+        {/* the cards turn over left to right, a beat a card (components/lead/ledgerMotion) */}
+        <Ledger
+          ids={ids}
+          deal={`${view}|${activeFeedId}|${activeFeeder}|${days}`}
+          axis="x"
+          startOnDeal
+          className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+        >
+          {view === 'feats' ? facts.map((fact, order) => {
+            // the post the card shows (its picture is the run's strongest post), else the strongest of the evidence
+            const evidence = fact.evidencePostKeys.map((key) => postByKey.get(key)).filter((post): post is ScopedPost => Boolean(post));
+            const hero = evidence.find((post) => post.thumbnailUrl && post.thumbnailUrl === fact.thumbnailUrl)
+              ?? [...evidence].sort(bestFirst)[0]
+              ?? null;
+            return (
+            <article
+              key={ids[order]}
+              data-ledger={ids[order]}
+              data-testid={`lead-v3-feederboard-fact-${fact.kind}`}
+              className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
+            >
+              <CrossfadeImage src={fact.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
+              <span className="absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--fm-accent-bright)]">{WIN_LABEL[fact.kind] ?? fact.kind.replace(/-/g, ' ')}</span>
+              {fact.postUrl ? <a href={fact.postUrl} target="_blank" rel="noreferrer" aria-label="Open the post on Instagram" className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/78">Instagram</a> : null}
+              <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
+                {/* the post it stands on, in numbers (what the old post mortem showed) */}
+                {hero && hero.latestPercentile != null ? (
+                  <div className="mb-1.5 flex items-baseline gap-2 text-white">
+                    <span className="fm-depth-title ld-on-media text-[13px] font-black tabular-nums">TOP {percentLabel(hero.latestPercentile)}<i className="not-italic text-[var(--fm-accent-bright)]">%</i></span>
+                    {hero.rankingMultiple != null ? <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/64">{formatMultiple(hero.rankingMultiple)} usual</span> : null}
                   </div>
-                </motion.a>
-              );
-            })}
-            {!cards.length ? <div className="flex h-[300px] w-full items-center justify-center text-center text-[10px] font-black uppercase tracking-[0.16em] text-fg/28 light:text-fg/44">{view === 'feats' ? 'No contextual facts in this scope' : 'No tracked posts in this scope'}</div> : null}
-          </motion.div>
-        </AnimatePresence>
+                ) : null}
+                <div className="text-[20px] font-black leading-[1.02] tracking-[-0.035em] text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[22px]">{fact.headline}</div>
+                <div className="mt-2 text-[10px] font-bold leading-[1.3] text-white/78 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{fact.detail}</div>
+              </div>
+            </article>
+            );
+          }) : records.map((post, index) => {
+            const display = recordDisplay(post, view);
+            return (
+              <a
+                key={ids[index]}
+                data-ledger={ids[index]}
+                href={post.postUrl || '#'}
+                target={post.postUrl ? '_blank' : undefined}
+                rel={post.postUrl ? 'noreferrer' : undefined}
+                onClick={(event) => { if (!post.postUrl) event.preventDefault(); }}
+                data-testid={`lead-v3-feederboard-record-${index + 1}`}
+                aria-label={post.postUrl ? `Open tracked post ranked ${index + 1} by ${display.label}` : `Tracked post ranked ${index + 1} by ${display.label}`}
+                className="group relative block aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
+              >
+                <CrossfadeImage src={post.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
+                <span className="absolute left-2.5 top-2.5 grid h-7 min-w-7 place-items-center rounded-md bg-black/62 px-1.5 text-[11px] font-black tabular-nums text-white/88">{index + 1}</span>
+                <span className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/72">{activeFeedId === 'all' ? post.feedName : (post.latestCheckpoint || 'latest').toUpperCase()}</span>
+                <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
+                  <div className="fm-depth-title ld-on-media text-[28px] font-black tabular-nums leading-[0.9] tracking-[-0.04em] text-white sm:text-[30px]">{display.value}</div>
+                  <div className="mt-2 text-[10px] font-black text-white/78">@{normalizeHandle(post.handle) || post.feedName.toLowerCase()}</div>
+                  <div className="mt-1 text-[10px] leading-[1.3] text-white/54 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{display.label} · {(post.latestCheckpoint || 'latest').toUpperCase()} read</div>
+                </div>
+              </a>
+            );
+          })}
+        </Ledger>
+        {!cards.length ? <div ref={holdArrival} className="ld-late-in absolute inset-0 flex items-center justify-center text-center text-[10px] font-black uppercase tracking-[0.16em] text-fg/28 light:text-fg/44">{view === 'feats' ? 'No wins in this window yet' : 'No tracked posts in this window'}</div> : null}
       </div>
     </section>
   );
-}
+});
 
 /* ── Feeder altitude: the posts become the competitors ───────────────────── */
 
@@ -1580,7 +1748,7 @@ function ClimbChip({ post }: { post: TrackedPost }) {
   );
 }
 
-function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse: () => void }) {
+function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onCollapse: () => void; ref?: Ref<HTMLDivElement> }) {
   const reduce = Boolean(useReducedMotion());
   const metrics = [
     { label: 'Likes', value: compactNumber(numeric(post.likes)), multiple: post.likesMultiple },
@@ -1589,10 +1757,11 @@ function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse:
   ];
   return (
     <motion.div
+      ref={ref}
       data-testid="lead-v3-post-expansion"
       initial={reduce ? false : BEAT_HIDDEN}
       animate={BEAT_SHOWN}
-      exit={{ opacity: 0, transition: { duration: 0.16, ease: BEAT_LEAVE_EASE } }}
+      exit={{ opacity: 0, transition: { duration: sec(0.16), ease: BEAT_LEAVE_EASE } }}
       transition={reduce ? { duration: 0 } : { duration: BEAT_ARRIVE_S, ease: SOFT_EASE }}
       className="overflow-hidden"
     >
@@ -1644,408 +1813,62 @@ function PostRowExpansion({ post, onCollapse }: { post: TrackedPost; onCollapse:
   );
 }
 
-function FeederboardPostRows({ posts, days, selectedKey, onSelect }: { posts: TrackedPost[]; days: number; selectedKey: string; onSelect: (key: string) => void }) {
-  const reduce = Boolean(useReducedMotion());
-  const ranked = [...posts].sort(bestFirst).slice(0, 10);
+/* ── Sections ────────────────────────────────────────────────────────────── */
+/* Each section reads the pick and works out what it shows itself. A switch is then many small renders React can
+   spread across frames, instead of the page computing everything in one long one; and a section whose inputs did
+   not change does not render at all. */
 
+type ScopeProps = { feeds: RuntimeFeed[]; feedId: string; feeder: string; days: number };
+
+const TapeSection = memo(function TapeSection({ feeds, feedId, feeder, days }: ScopeProps) {
+  const events = tapeFor(feeds, feedId, feeder, days);
+  return <LeadTape events={events} dealId={`${feedId}|${feeder}|${days}`} />;
+});
+
+const LeadersSection = memo(function LeadersSection({ feeds, feedId, feeder, days }: ScopeProps) {
+  const cards = leadersFor(feeds, feedId, feeder, days);
   return (
-    <section aria-labelledby="lead-v3-postladder-title" className="min-w-0 max-w-full overflow-hidden bg-(--ld-panel)">
-      <div className="flex items-center justify-between gap-4 border-b border-fg/[0.08] px-4 py-4 sm:px-5">
-        <div>
-          <h2 id="lead-v3-postladder-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feederboard · posts</h2>
-          <p className="mt-1 text-[9px] font-bold text-fg/28 light:text-fg/44">This account&apos;s posts compete · tap a row for the receipts</p>
-        </div>
-        <div className="shrink-0 text-right text-[8px] font-black uppercase tracking-[0.16em] text-fg/24 light:text-fg/40">{days}D · lower is stronger</div>
+    <section aria-labelledby="lead-v3-leaders-title" className="min-w-0 max-w-full">
+      <div className="mb-3 px-1">
+        <h2 id="lead-v3-leaders-title" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-fg/76"><span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-(--ld-glow-dot)" />Top of the feed</h2>
+        <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">Best post, typical post and gains · {days}D</p>
       </div>
-
-      <LayoutGroup id="lead-v3-postladder">
-        <div>
-          {ranked.map((post, index) => {
-            const rank = index + 1;
-            const selected = post.postKey === selectedKey;
-            const throne = rank === 1;
-            return (
-              <motion.div
-                key={post.postKey}
-                layout="position"
-                initial={reduce ? false : { y: 22, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={reduce
-                  ? { opacity: 0, transition: { duration: 0.12 } }
-                  : { y: -16, opacity: 0, transition: beatLeave(rank - 1) }}
-                transition={reduce
-                  ? { layout: LADDER_SPRING, duration: 0.12 }
-                  : { layout: LADDER_SPRING, ...beatArrive(rank) }}
-                className="border-b border-fg/[0.07] last:border-b-0"
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(selected ? '' : post.postKey)}
-                  aria-expanded={selected}
-                  data-testid={`lead-v3-post-row-${rank}`}
-                  className={cn(
-                    'relative isolate block w-full overflow-hidden text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]',
-                    throne
-                      ? 'bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%),linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.035),rgb(var(--fm-fg-rgb)/.01))]'
-                      : selected ? 'bg-fg/[0.03]' : 'hover:bg-fg/[0.022]',
-                  )}
-                >
-                  {throne ? <span className="absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" /> : null}
-                  <div className={cn(
-                    'relative z-10 grid items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4',
-                    throne
-                      ? 'min-h-[100px] grid-cols-[34px_58px_minmax(0,1fr)_auto] sm:grid-cols-[42px_67px_minmax(0,1fr)_auto]'
-                      : 'min-h-[76px] grid-cols-[34px_45px_minmax(0,1fr)_auto] sm:grid-cols-[42px_45px_minmax(0,1fr)_auto]',
-                  )}>
-                    <span className="relative h-full">
-                      <span className={cn(
-                        'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]',
-                        throne ? 'text-[54px] text-[var(--fm-accent)]/[0.16]' : 'text-[44px] text-fg/[0.055]',
-                      )}>{String(rank).padStart(2, '0')}</span>
-                    </span>
-                    <span className={cn(
-                      'relative block shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)',
-                      throne ? 'h-[72px] w-[58px] rounded-[16px] sm:h-[84px] sm:w-[67px]' : 'h-[56px] w-[45px]',
-                    )}>
-                      <CrossfadeImage src={post.thumbnailUrl} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className={cn('block truncate font-black capitalize leading-none tracking-[-0.02em] text-fg', throne ? 'text-[17px]' : 'text-[15px]')}>{post.mediaType} · {postDateLabel(post)}</span>
-                      <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{(post.latestCheckpoint || '').toUpperCase()} read</span>
-                        <span className="text-fg/16">·</span>
-                        <ClimbChip post={post} />
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-2 text-right">
-                      <span className="min-w-0">
-                        <span className="block text-[7px] font-black uppercase tracking-[0.15em] text-fg/26 light:text-fg/44">Placed</span>
-                        <span className={cn('fm-depth-title mt-1 block font-black tabular-nums leading-none text-fg', throne ? 'text-[32px]' : 'text-[24px]')}>
-                          <SlotText value={percentLabel(post.latestPercentile)} />
-                          {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
-                        </span>
-                        <span className="mt-1 block text-[9px] font-black tabular-nums text-[var(--fm-accent-text)]/80"><SlotText value={formatMultiple(post.rankingMultiple)} /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-fg/22 light:text-fg/40">usual</i></span>
-                      </span>
-                      <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-300', selected && 'rotate-180 text-fg')} />
-                    </span>
-                  </div>
-                </button>
-                <AnimatePresence initial={false} mode="popLayout">
-                  {selected && <PostRowExpansion key={post.postKey} post={post} onCollapse={() => onSelect('')} />}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })}
-          {!ranked.length ? (
-            <div className="flex h-[140px] items-center justify-center text-[9px] font-black uppercase tracking-[0.18em] text-fg/26 light:text-fg/44">No tracked posts in this window</div>
-          ) : null}
-        </div>
-      </LayoutGroup>
+      <LeadersStrip cards={cards} />
     </section>
   );
-}
+});
 
-/* ── Post mortem — the recent drops, tap through the stack ───────────────── */
-
-type StackCard = {
-  id: string;
-  feedName: string;
-  handle: string;
-  profilePicUrl: string | null;
-  thumbnailUrl: string | null;
-  checkpoint: string;
-  topPercent: number | null;
-  rankingMetric: string | null;
-  rankingMultiple: number | null;
-  likes: number | null;
-  comments: number | null;
-  engagementRate: number | null;
-};
-
-function stackMetric(card: StackCard) {
-  if (card.rankingMetric === 'comments') return { label: 'comments', value: compactNumber(numeric(card.comments)) };
-  if (card.rankingMetric === 'engagement_rate') return { label: 'eng. rate', value: formatEngagementRate(card.engagementRate) };
-  return { label: 'likes', value: compactNumber(numeric(card.likes)) };
-}
-
-function PostStackCardFace({ card, overlay, active, reduce }: { card: StackCard; overlay: number; active: boolean; reduce: boolean }) {
-  const metric = stackMetric(card);
-  const imageUrl = card.thumbnailUrl || card.profilePicUrl;
+const BoardSection = memo(function BoardSection({ feeds, feedId, feeder, days, selectedId, onSelect, selectedPostKey, onSelectPost }: ScopeProps & {
+  selectedId: string;
+  onSelect: (id: string) => void;
+  selectedPostKey: string;
+  onSelectPost: (key: string) => void;
+}) {
+  const rows = rowsFor(feeds, feedId, days);
+  const feederPosts = feeder ? postsFor(feeds, feedId, feeder, days) : NO_POSTS;
+  const wireLine = useMemo(() => (feeder ? composeFeederWireLine(feederPosts) : composeWireLine(rows)), [feeder, feederPosts, rows]);
+  // a row that left the board can't stay open
+  const open = rows.some((row) => row.id === selectedId) ? selectedId : '';
+  // the page under the board doesn't jump when the board grows or shrinks (a new scope, a row opening): it travels
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => (boardRef.current ? keepBelow(boardRef.current) : undefined), []);
   return (
-    <>
-      {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-        <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full rounded-[28px] object-cover" loading="lazy" decoding="async" />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-[#101010]">
-          <span className="h-24 w-24 rounded-full border border-white/10 p-1">
-            <FeederStoryAvatar feeder={{ handle: card.handle, profilePicUrl: card.profilePicUrl }} className="text-[24px]" />
-          </span>
-        </div>
-      )}
-      <motion.div aria-hidden="true" className="absolute inset-0 bg-black" initial={false} animate={{ opacity: overlay }} transition={reduce ? { duration: 0 } : { duration: 0.86, ease: CARD_STACK_EASE }} />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.03),rgba(0,0,0,.84)_78%)]" />
-      <motion.div
-        className="relative z-10 flex h-full flex-col justify-between p-4 text-white sm:p-5"
-        initial={false}
-        animate={{ opacity: active ? 1 : 0.34, y: active ? 0 : 10 }}
-        transition={reduce ? { duration: 0 } : { duration: 0.32, ease: SOFT_EASE }}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <span className="rounded-full border border-white/10 bg-black/28 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-md">{card.feedName}</span>
-          <span className="rounded-full bg-[var(--fm-accent)] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">{card.checkpoint || 'D3'}</span>
-        </div>
-        <div>
-          <div className="text-[64px] font-black leading-[0.78] tracking-[-0.06em] sm:text-[70px]">
-            {card.topPercent == null ? '—' : Math.max(1, Math.round(card.topPercent))}
-            {card.topPercent != null && <span className="ml-1 text-[0.34em] tracking-normal text-[var(--fm-accent-bright)]">%</span>}
-          </div>
-          <div className="mt-2 truncate text-[18px] font-black leading-none">@{normalizeHandle(card.handle)}</div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <span className="rounded-[16px] border border-white/10 bg-black/26 p-3 backdrop-blur-md">
-              <span className="block text-[21px] font-black leading-none">{metric.value}</span>
-              <span className="mt-1 block text-[8px] font-black uppercase tracking-[0.13em] text-white/48">{metric.label}</span>
-            </span>
-            <span className="rounded-[16px] border border-white/10 bg-black/26 p-3 backdrop-blur-md">
-              <span className="block text-[21px] font-black leading-none">{formatMultiple(card.rankingMultiple)}</span>
-              <span className="mt-1 block text-[8px] font-black uppercase tracking-[0.13em] text-white/48">vs usual</span>
-            </span>
-          </div>
-        </div>
-      </motion.div>
-    </>
-  );
-}
-
-type StackExit = { index: number; key: number };
-
-function PostCardStack({ cards, activeIndex, onAdvance }: { cards: StackCard[]; activeIndex: number; onAdvance: () => void }) {
-  const reduce = Boolean(useReducedMotion());
-  const visibleCards = cards.slice(0, 5);
-  const count = visibleCards.length;
-  const signature = visibleCards.map((card) => card.id).join('|');
-  const [state, setState] = useState<{ signature: string; exits: StackExit[]; exitKey: number }>({ signature: '', exits: [], exitKey: 0 });
-  const activeCardIndex = count > 0 ? activeIndex % count : 0;
-  const exitingCards = !reduce && count > 0 && state.signature === signature
-    ? state.exits.map((exit) => ({ ...exit, index: exit.index % count, card: visibleCards[exit.index % count] }))
-    : [];
-  const latestExitingIndex = exitingCards.at(-1)?.index ?? null;
-
-  const advance = () => {
-    if (count <= 1) return;
-    setState((current) => {
-      const exitKey = current.signature === signature ? current.exitKey + 1 : 1;
-      const exits = current.signature === signature ? current.exits : [];
-      return { signature, exits: [...exits, { index: activeCardIndex, key: exitKey }].slice(-3), exitKey };
-    });
-    onAdvance();
-  };
-
-  useEffect(() => {
-    if (reduce || state.signature !== signature || state.exits.length === 0) return undefined;
-    const exitKey = state.exitKey;
-    const timeout = window.setTimeout(() => {
-      setState((current) => current.exitKey === exitKey ? { ...current, exits: [] } : current);
-    }, CARD_MASK_CLEANUP_MS);
-    return () => window.clearTimeout(timeout);
-  }, [reduce, signature, state.exitKey, state.exits.length, state.signature]);
-
-  if (!count) {
-    return <div className="flex h-[320px] items-center justify-center rounded-[28px] border border-dashed border-fg/10 text-[9px] font-black uppercase tracking-[0.18em] text-fg/24 light:text-fg/40">No tracked posts in this window</div>;
-  }
-
-  return (
-    <div className="relative min-w-0">
-      <div className="pointer-events-none absolute inset-x-3 top-3 z-[70] flex items-center justify-between gap-3 sm:static sm:pointer-events-auto sm:mb-3 sm:px-0">
-        <div>
-          <div className="hidden text-[9px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44 sm:block">Latest drops</div>
-          <div className="text-[11px] font-black leading-none text-white/76 sm:mt-1 sm:text-[13px] sm:text-fg/76">Tap to move the stack</div>
-        </div>
-        <motion.span key={activeCardIndex} initial={reduce ? false : { y: 6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: reduce ? 0.15 : 0.22, ease: SOFT_EASE }} className="rounded-full border border-white/10 bg-black/42 px-2.5 py-1 text-[9px] font-black tracking-[0.13em] text-white/66 backdrop-blur-sm sm:border-fg/10 sm:bg-fg/[0.05] sm:text-fg/44">{activeCardIndex + 1}/{count}</motion.span>
-      </div>
-
-      <motion.button
-        type="button"
-        onClick={advance}
-        whileTap={reduce ? undefined : { scale: 0.986 }}
-        transition={{ duration: 0.16, ease: SOFT_EASE }}
-        className="relative block h-[390px] w-full touch-manipulation overflow-hidden rounded-[28px] bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:h-[430px] lg:h-[460px]"
-        aria-label="Advance the post mortem stack"
-        data-testid="lead-v3-postmortem-stack"
-      >
-        <motion.span aria-hidden="true" className="absolute bottom-4 left-[5%] h-14 w-[82%] rounded-full bg-(--ld-floor) blur-2xl" animate={reduce ? undefined : { opacity: [0.2, 0.34, 0.2], scaleX: [0.92, 1, 0.92] }} transition={{ duration: 1.6, repeat: Infinity, ease: SOFT_EASE }} />
-        {visibleCards.map((card, index) => {
-          const order = (index - activeCardIndex + count) % count;
-          const isFront = order === 0;
-          const coveredByExit = latestExitingIndex === index && index !== activeCardIndex;
-          const pose = order === 0
-            ? { x: '0%', y: 0, scale: 1, opacity: 1, zIndex: 40, overlay: 0 }
-            : order === 1
-              ? { x: '26%', y: 0, scale: 0.72, opacity: 0.94, zIndex: 30, overlay: 0.34 }
-              : order === 2
-                ? { x: '52%', y: 28, scale: 0.64, opacity: 0.8, zIndex: 24, overlay: 0.5 }
-                : order === 3
-                  ? { x: '76%', y: 56, scale: 0.56, opacity: 0.54, zIndex: 16, overlay: 0.64 }
-                  : { x: '88%', y: 56, scale: 0.54, opacity: 0, zIndex: 8, overlay: 0.7 };
-          const transition = reduce
-            ? { duration: 0 }
-            : coveredByExit
-              ? { duration: 0 }
-              : exitingCards.length
-                ? { duration: CARD_MASK_DURATION, ease: CARD_MASK_EASE }
-                : { duration: isFront ? 0.72 : 0.96, ease: CARD_STACK_EASE };
-          return (
-            <motion.div
-              key={card.id}
-              data-stack-order={order}
-              className={cn('absolute bottom-1.5 left-0 top-1.5 aspect-[4/5] origin-center overflow-hidden rounded-[28px] border bg-[#0b0b0b] shadow-(--ld-shadow-stack)', coveredByExit ? 'border-transparent' : 'border-white/12')}
-              initial={false}
-              animate={{ x: pose.x, y: pose.y, scale: pose.scale, opacity: coveredByExit ? 0 : pose.opacity, zIndex: pose.zIndex }}
-              transition={transition}
-              style={{ pointerEvents: isFront ? 'auto' : 'none' }}
-            >
-              <PostStackCardFace card={card} overlay={pose.overlay} active={isFront} reduce={reduce} />
-            </motion.div>
-          );
-        })}
-        {exitingCards.map(({ card, key }) => (
-          <motion.div
-            key={`exit:${key}:${card.id}`}
-            className="absolute bottom-1.5 left-0 top-1.5 aspect-[4/5] origin-center overflow-hidden rounded-[28px] border border-transparent bg-[#0b0b0b]"
-            initial={{ x: '0%', y: 0, scale: 1, opacity: 1, zIndex: 60 }}
-            animate={{ x: '-104%', y: 0, scale: 1, opacity: 1, zIndex: 60 }}
-            transition={{ duration: CARD_MASK_DURATION, ease: CARD_MASK_EASE }}
-            style={{ pointerEvents: 'none' }}
-          >
-            <PostStackCardFace card={card} overlay={0} active reduce={reduce} />
-          </motion.div>
-        ))}
-      </motion.button>
+    <div ref={boardRef} className="min-w-0 max-w-full">
+      <WireLine line={wireLine ?? 'Nothing posted in this window yet.'} dealId={`${feedId}|${feeder}|${days}`} />
+      <Feederboard
+        rows={rows}
+        posts={feederPosts}
+        feeder={feeder}
+        deal={`${feedId}|${feeder}|${days}`}
+        days={days}
+        selectedId={open}
+        onSelect={onSelect}
+        selectedPostKey={selectedPostKey}
+        onSelectPost={onSelectPost}
+      />
     </div>
   );
-}
-
-type PostMortemStats = { posts: number; best: number | null; peak: number | null };
-
-const POST_MORTEM_SLOT_CSS = `
-.fm-pm-slot{position:relative;display:inline-flex;height:1.08em;flex:none;justify-content:center;overflow:hidden;line-height:1;vertical-align:baseline}
-.fm-pm-slot__sizer{visibility:hidden;white-space:pre}
-.fm-pm-slot__face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;white-space:pre}
-.fm-pm-slot__face{will-change:transform,opacity}
-.fm-pm-slot--leave .fm-pm-slot__face{animation:fm-pm-slot-old 640ms cubic-bezier(.32,.72,0,1) both;animation-delay:var(--pm-slot-delay,0ms)}
-.fm-pm-slot--enter .fm-pm-slot__face{animation:fm-pm-slot-new 640ms cubic-bezier(.32,.72,0,1) both;animation-delay:calc(var(--pm-slot-delay,0ms) + 40ms)}
-@keyframes fm-pm-slot-old{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(112%)}}
-@keyframes fm-pm-slot-new{0%{opacity:0;transform:translateY(-112%)}100%{opacity:1;transform:translateY(0)}}
-@media (prefers-reduced-motion:reduce){.fm-pm-slot__face{animation:none!important;transform:translateY(0)!important}}
-`;
-
-function postMortemHeadlineSize(value: string) {
-  if (value.length > 76) return 'text-[26px] sm:text-[31px] lg:text-[36px]';
-  if (value.length < 49) return 'text-[34px] sm:text-[39px] lg:text-[46px]';
-  return 'text-[30px] sm:text-[35px] lg:text-[41px]';
-}
-
-/* Whole words roll, not characters \u2014 a sentence changing glyph-by-glyph reads
-   frantic; word slots keep the same mechanism but feel deliberate. */
-function PostMortemSentenceLayer({ value, revision, leaving }: { value: string; revision: number; leaving: boolean }) {
-  const tokens = value.split(/(\s+)/).filter(Boolean);
-  return <span aria-hidden="true" className="absolute inset-0 flex flex-wrap content-start">{tokens.map((token, tokenIndex) => {
-    if (/^\s+$/.test(token)) return <span key={`${revision}:${tokenIndex}:space`} className="whitespace-pre">{token}</span>;
-    const wordIndex = tokens.slice(0, tokenIndex).filter((previousToken) => !/^\s+$/.test(previousToken)).length;
-    const delay = Math.min(380, wordIndex * 42);
-    return (
-      <span key={`${revision}:${tokenIndex}:${token}`} className={cn('fm-pm-slot', leaving ? 'fm-pm-slot--leave' : 'fm-pm-slot--enter')} style={{ '--pm-slot-delay': `${delay}ms` } as CSSProperties}>
-        <span className="fm-pm-slot__sizer">{token}</span>
-        <span className="fm-pm-slot__face">{token}</span>
-      </span>
-    );
-  })}</span>;
-}
-
-function PostMortemStatement({ value, reduce }: { value: string; reduce: boolean }) {
-  const [slotText, setSlotText] = useState({ previous: value, current: value, revision: 0 });
-
-  useEffect(() => {
-    if (slotText.current === value) return;
-    const timeout = window.setTimeout(() => {
-      setSlotText((current) => current.current === value ? current : { previous: current.current, current: value, revision: current.revision + 1 });
-    }, reduce ? 0 : 30);
-    return () => window.clearTimeout(timeout);
-  }, [reduce, slotText, value]);
-
-  useEffect(() => {
-    if (slotText.previous === slotText.current) return;
-    const timeout = window.setTimeout(() => {
-      setSlotText((current) => current.revision === slotText.revision ? { ...current, previous: current.current } : current);
-    }, reduce ? 150 : 1120);
-    return () => window.clearTimeout(timeout);
-  }, [reduce, slotText]);
-
-  const changing = slotText.previous !== slotText.current;
-  return (
-    <div className="relative mt-3 h-[116px] max-w-full sm:h-[120px] lg:h-[192px]">
-      <style>{POST_MORTEM_SLOT_CSS}</style>
-      <h2 id="lead-v3-postmortem-title" aria-label={slotText.current} className={cn('fm-depth-title absolute inset-0 font-black leading-[0.96] tracking-[-0.055em] text-fg', postMortemHeadlineSize(slotText.current))}>
-        {reduce ? <motion.span key={slotText.current} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>{slotText.current}</motion.span> : <>
-          {changing ? <PostMortemSentenceLayer value={slotText.previous} revision={slotText.revision} leaving /> : null}
-          <PostMortemSentenceLayer value={slotText.current} revision={slotText.revision} leaving={false} />
-        </>}
-      </h2>
-    </div>
-  );
-}
-
-function PostMortem({ cards, deck, stats, days }: { cards: StackCard[]; deck: PostMortemItem[]; stats: PostMortemStats; days: number }) {
-  const { posts: totalPosts, best, peak } = stats;
-  const reduce = Boolean(useReducedMotion());
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeCardIndex = deck.length ? activeIndex % deck.length : 0;
-  const active = deck[activeCardIndex];
-  const scope = active?.handle ? `@${normalizeHandle(active.handle)}` : active?.feedName || 'FEED';
-  const advance = () => setActiveIndex((current) => deck.length ? (current + 1) % deck.length : 0);
-  const callToAction = (
-    <Link href="/fire" data-testid="lead-v3-postmortem-link" className="group inline-flex items-center gap-2.5 rounded-full border border-fg/12 bg-(--ld-cta-well) px-4 py-2.5 transition-colors hover:border-[var(--fm-accent)]/50 hover:text-fg">
-      <Flame className="h-4 w-4 text-[var(--fm-accent-text)]" />
-      <span className="text-[9px] font-black uppercase tracking-[0.15em] text-fg/64 transition-colors group-hover:text-fg">Open the wall · day by day</span>
-      <ChevronRight className="h-3.5 w-3.5 text-fg/36 transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  );
-  return (
-    <section aria-labelledby="lead-v3-postmortem-title" className="relative isolate min-h-[500px] overflow-hidden border-t border-fg/[0.09] bg-(--ld-deep) p-5 sm:p-7 lg:p-9">
-      <span className="pointer-events-none absolute inset-0 scale-105 opacity-[0.13]">
-        <CrossfadeImage src={cards[activeCardIndex]?.thumbnailUrl || null} />
-      </span>
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgb(var(--ld-deep-rgb))_0%,rgb(var(--ld-deep-rgb)/.97)_34%,rgb(var(--ld-deep-rgb)/.74)_68%,rgb(var(--ld-deep-rgb)/.9))]" />
-      <div className="pointer-events-none absolute -bottom-10 left-2 select-none text-[180px] font-black leading-none tracking-[-0.08em] text-fg/[0.025] sm:text-[260px]">PM</div>
-
-      <div className="relative grid gap-3 lg:grid-cols-[minmax(480px,46fr)_minmax(0,54fr)] lg:items-center lg:gap-[clamp(56px,5vw,80px)]">
-        <div className="relative min-w-0">
-          <div className="text-[9px] font-black uppercase tracking-[0.22em] text-fg/48">Post Mortem · {scope} · {days}D</div>
-          {active ? (
-            <>
-              <motion.span key={active.tag} initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0.15 : 0.16, ease: SOFT_EASE }} className="mt-3 inline-flex rounded-full border border-[var(--fm-accent-text)]/32 bg-[var(--fm-accent)]/16 light:bg-[var(--fm-accent)]/[0.08] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.15em] text-[var(--fm-accent-text)]">{active.tag}</motion.span>
-              <PostMortemStatement value={active.statement} reduce={reduce} />
-              {active.proof ? <motion.p key={active.proof} initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0.15 : 0.18, delay: reduce ? 0 : 0.16, ease: SOFT_EASE }} className="max-w-[32rem] text-[13px] font-black leading-[1.25] text-fg/58">{active.proof}</motion.p> : null}
-            </>
-          ) : <p className="mt-5 text-[14px] font-black text-fg/52">No proven trigger in this window.</p>}
-
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-fg/[0.09] pt-3 text-[9px] font-black uppercase tracking-[0.14em] text-fg/32 lg:mt-7 lg:pt-4">
-            <span><b className="mr-1 text-[15px] text-fg">{compactNumber(totalPosts)}</b> posts</span>
-            <span><b className="mr-1 text-[15px] text-fg">{best == null ? '—' : `${percentLabel(best)}%`}</b> best</span>
-            <span><b className="mr-1 text-[15px] text-fg">{formatMultiple(peak)}</b> peak</span>
-            <span>{days}D</span>
-          </div>
-
-          <div className="mt-6 hidden lg:block">{callToAction}</div>
-        </div>
-        <div className="mt-2 w-full min-w-0 lg:mt-0 lg:justify-self-end lg:max-w-[680px]">
-          <PostCardStack cards={cards} activeIndex={activeCardIndex} onAdvance={advance} />
-          <div className="mt-5 lg:hidden">{callToAction}</div>
-        </div>
-      </div>
-    </section>
-  );
-}
+});
 
 /* ── States + page ───────────────────────────────────────────────────────── */
 
@@ -2066,18 +1889,16 @@ export default function LeadBoardPage() {
   const { appShellStyle, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const [days, setDays] = useState<(typeof TIMEFRAMES)[number]>(30);
   const [feeds, setFeeds] = useState<RuntimeFeed[]>([]);
+  const [activity, setActivity] = useState<LeadActivity | null>(null);
   // the pick every tab shares (tabScope), followed in a transition: the page's re-render yields to the rail's frames
   const scope = useTabScopeTransition();
   const { activeFeedId, activeFeeder } = resolveScope(feeds, scope);
   const [selectedId, setSelectedId] = useState('');
   const [selectedPostKey, setSelectedPostKey] = useState('');
-  const [feederboardFacts, setFeederboardFacts] = useState<FeederboardFact[]>([]);
-  const [postMortemDeck, setPostMortemDeck] = useState<PostMortemItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeframePending, setTimeframePending] = useState(false);
-  const [dealId, setDealId] = useState(0);
+  // a range switch re-reads what is on hand in a transition: the header answers the tap first
+  const [timeframePending, startTimeframe] = useTransition();
   const [error, setError] = useState('');
-  const dealSignatureRef = useRef('');
   const headerCompressed = useCompressedOnScroll(pageScrollRef, useBrowserPageScroll, {
     collapseDistance: 150,
     expandDistance: 64,
@@ -2090,22 +1911,18 @@ export default function LeadBoardPage() {
     document.title = 'Lead | FeedMe';
   }, []);
 
-  /* The board for a time range is kept across visits. Lead stays mounted while hidden, but its effects run again
-     every time the tab comes back on screen; without this, every switch to Lead refetched everything and the page
-     re-dealt itself twice while it was still arriving. Now coming back shows what it had at once; once that is a
-     few minutes old it refreshes in the background, and only re-draws if something actually changed. */
-  const loaded = useRef<{ days: number; at: number; signature: string } | null>(null);
+  /* Everything every time range needs is loaded once: each feed's posts (all of them) and the activity of the
+     longest range plus the one before it. A range switch is then only a re-read of what is on hand, with no
+     request and nothing to parse, so it answers at once. Lead stays mounted while hidden but its effects run again
+     each time the tab comes back: what it has shows at once, and once it is a few minutes old it refreshes in the
+     background, re-drawing only if something actually changed. */
+  const loaded = useRef<{ at: number; signature: string } | null>(null);
 
   useEffect(() => {
-    const previous = loaded.current && loaded.current.days === days ? loaded.current : null;
+    const previous = loaded.current;
     if (previous && Date.now() - previous.at < LEAD_FRESH_MS) return undefined;
     const controller = new AbortController();
     let cancelled = false;
-    // a refresh of the range already on screen happens out of sight
-    if (!previous) {
-      setLoading(true);
-      setError('');
-    }
 
     async function load() {
       try {
@@ -2113,37 +1930,35 @@ export default function LeadBoardPage() {
         if (!feedResponse.ok) throw new Error(feedResponse.status === 401 ? 'Sign in to load this board.' : 'Feed data could not be loaded.');
         const feedPayload = await feedResponse.json() as { feeds?: ApiFeed[] };
         const apiFeeds = (feedPayload.feeds || []).filter((feed) => Boolean(feed.id));
+        const activityRequest = fetch(`/api/lead/activity?days=${LEAD_SPAN_DAYS}`, { cache: 'no-store', credentials: 'include', signal: controller.signal })
+          .then(async (response) => (response.ok ? await response.json() as LeadActivity : null))
+          .catch(() => null);
         const runtimeFeeds = await Promise.all(apiFeeds.map(async (feed) => {
-          // Double window: the selected span plus the equal span before it —
-          // every level on the page is read against that prior window.
-          const params = new URLSearchParams({ feedId: feed.id, handle: 'all', timeframe: `${days * 2}D` });
-          const dashboardParams = new URLSearchParams({ feedId: feed.id, days: String(days * 2) });
-          const [postsResponse, dashboardResponse] = await Promise.all([
-            fetch(`/api/feed/feeder-posts?${params.toString()}`, { cache: 'no-store', credentials: 'include', signal: controller.signal }),
-            fetch(`/api/feed/dashboard?${dashboardParams.toString()}`, { cache: 'no-store', credentials: 'include', signal: controller.signal }),
-          ]);
+          const params = new URLSearchParams({ feedId: feed.id, handle: 'all', timeframe: `${LEAD_SPAN_DAYS * 2}D` });
+          const postsResponse = await fetch(`/api/feed/feeder-posts?${params.toString()}`, { cache: 'no-store', credentials: 'include', signal: controller.signal });
           const postsPayload = postsResponse.ok ? await postsResponse.json() as { posts?: TrackedPost[] } : {};
-          const dashboardPayload = dashboardResponse.ok ? await dashboardResponse.json() as { dashboard?: { ascent_series?: AscentPoint[] } } : {};
           return {
             ...feed,
             feeders: Array.isArray(feed.feeders) ? feed.feeders : [],
             posts: Array.isArray(postsPayload.posts) ? postsPayload.posts : [],
-            ascent: Array.isArray(dashboardPayload.dashboard?.ascent_series) ? dashboardPayload.dashboard.ascent_series : [],
+            ascent: [],
           } satisfies RuntimeFeed;
         }));
+        const nextActivity = await activityRequest;
         if (cancelled) return;
-        const signature = feedsSignature(runtimeFeeds);
-        loaded.current = { days, at: Date.now(), signature };
+        const withAscent = runtimeFeeds.map((feed) => ({ ...feed, ascent: ascentFromActivity(nextActivity, feed.id) }));
+        const signature = `${feedsSignature(withAscent)}#${nextActivity?.posts.length ?? 0}:${nextActivity?.to ?? ''}`;
+        loaded.current = { at: Date.now(), signature };
         if (previous && previous.signature === signature) return;
-        setFeeds(runtimeFeeds);
+        startTransition(() => {
+          setFeeds(withAscent);
+          setActivity(nextActivity);
+        });
       } catch (caught) {
         if (controller.signal.aborted || cancelled) return;
         setError(caught instanceof Error ? caught.message : 'Feed data could not be loaded.');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setTimeframePending(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -2152,128 +1967,17 @@ export default function LeadBoardPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [days]);
+  }, []);
 
-  const rows = useMemo(() => buildRows(feeds, activeFeedId, days), [activeFeedId, days, feeds]);
-  const windows = useMemo(() => growthWindows(feeds, activeFeedId, days, activeFeeder), [activeFeedId, activeFeeder, days, feeds]);
-  const leaderCards = useMemo(() => buildLeaderCards(rows, feeds, activeFeedId, days, activeFeeder), [activeFeedId, activeFeeder, days, feeds, rows]);
-  const feederPosts = useMemo(() => {
-    if (!activeFeeder) return [];
-    return scopedPostsFor(feeds, activeFeedId, days).filter((post) => normalizeHandle(post.handle) === activeFeeder);
-  }, [activeFeedId, activeFeeder, days, feeds]);
-  const feederboardScopePosts = useMemo(
-    () => scopedPostsFor(feeds, activeFeedId, days).filter((post) => !activeFeeder || normalizeHandle(post.handle) === activeFeeder),
-    [activeFeedId, activeFeeder, days, feeds],
-  );
-
-  // the facts and the post mortem are asked for once per set of posts: coming back to the tab doesn't ask again
-  const factsFor = useRef<TrackedPost[] | null>(null);
-  const deckFor = useRef<TrackedPost[] | null>(null);
-
+  // build ahead what a switch could ask for next (see warmJobs) while the page is idle
   useEffect(() => {
-    const controller = new AbortController();
-    if (factsFor.current === feederboardScopePosts) return () => controller.abort();
-    if (!feederboardScopePosts.length) {
-      factsFor.current = feederboardScopePosts;
-      setFeederboardFacts([]);
-      return () => controller.abort();
-    }
-    void fetch('/api/feed/feederboard', {
-      method: 'POST',
-      cache: 'no-store',
-      credentials: 'include',
-      signal: controller.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ posts: feederboardScopePosts, days }),
-    })
-      .then(async (response) => response.ok ? response.json() as Promise<{ facts?: FeederboardFact[] }> : { facts: [] })
-      .then((payload) => {
-        if (controller.signal.aborted) return;
-        factsFor.current = feederboardScopePosts;
-        setFeederboardFacts(Array.isArray(payload.facts) ? payload.facts : []);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFeederboardFacts([]);
-      });
-    return () => controller.abort();
-  }, [days, feederboardScopePosts]);
+    if (!feeds.length) return undefined;
+    // once a switch's deal has played: nothing is built while the board moves
+    return whenIdle(warmJobs(feeds, activity, activeFeedId, activeFeeder, days), LEDGER_DEAL_MS + 300);
+  }, [activeFeedId, activeFeeder, activity, days, feeds]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    if (deckFor.current === feederboardScopePosts) return () => controller.abort();
-    if (!feederboardScopePosts.length) {
-      deckFor.current = feederboardScopePosts;
-      setPostMortemDeck([]);
-      return () => controller.abort();
-    }
-    void fetch('/api/lead/post-mortem', {
-      method: 'POST',
-      cache: 'no-store',
-      credentials: 'include',
-      signal: controller.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ posts: feederboardScopePosts, days }),
-    })
-      .then(async (response) => response.ok ? response.json() as Promise<{ deck?: PostMortemItem[] }> : { deck: [] })
-      .then((payload) => {
-        if (controller.signal.aborted) return;
-        deckFor.current = feederboardScopePosts;
-        setPostMortemDeck(Array.isArray(payload.deck) ? payload.deck : []);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setPostMortemDeck([]);
-      });
-    return () => controller.abort();
-  }, [days, feederboardScopePosts]);
-  const tapeEvents = useMemo(() => buildTapeEvents(feeds, activeFeedId, activeFeeder, days), [activeFeedId, activeFeeder, days, feeds]);
-  const wireLine = useMemo(
-    () => activeFeeder ? composeFeederWireLine(feederPosts) : composeWireLine(rows),
-    [activeFeeder, feederPosts, rows],
-  );
-  const postMortemStats = useMemo<PostMortemStats>(() => {
-    const scoped = activeFeeder ? feederPosts : scopedPostsFor(feeds, activeFeedId, days);
-    const best = scoped.reduce<number | null>((min, post) => post.latestPercentile == null ? min : min == null || post.latestPercentile < min ? post.latestPercentile : min, null);
-    const peak = scoped.reduce<number | null>((max, post) => post.rankingMultiple == null ? max : max == null || post.rankingMultiple > max ? post.rankingMultiple : max, null);
-    return { posts: scoped.length, best, peak };
-  }, [activeFeedId, activeFeeder, days, feederPosts, feeds]);
-  const stackCards = useMemo(() => postMortemDeck.map((item) => {
-    const post = feederboardScopePosts.find((candidate) => candidate.postKey === item.postKey);
-    const feed = feeds.find((candidate) => candidate.id === item.feedId || titleCase(candidate.title) === item.feedName);
-    const feeder = feed?.feeders.find((candidate) => normalizeHandle(candidate.handle) === normalizeHandle(item.handle));
-    return {
-      id: item.id,
-      feedName: item.feedName,
-      handle: item.handle || feeder?.handle || item.feedName,
-      profilePicUrl: feeder?.profilePicUrl || null,
-      thumbnailUrl: item.thumbnailUrl || post?.thumbnailUrl || feeder?.thumbnailUrl || null,
-      checkpoint: post?.latestCheckpoint || '',
-      topPercent: post?.latestPercentile ?? null,
-      rankingMetric: post?.rankingMetric || null,
-      rankingMultiple: post?.rankingMultiple ?? null,
-      likes: post?.likes ?? null,
-      comments: post?.comments ?? null,
-      engagementRate: post?.engagementRate ?? null,
-    } satisfies StackCard;
-  }), [feederboardScopePosts, feeds, postMortemDeck]);
-
-  const dealSignature = useMemo(() => [
-    activeFeedId,
-    activeFeeder,
-    days,
-    rows.map((row) => `${row.id}:${row.rank}:${row.typical}:${row.peak}:${row.followerDelta}`).join('|'),
-    leaderCards.map((card) => `${card.key}:${card.value}`).join('|'),
-    windows.map((window) => `${window.id}:${window.delta}`).join('|'),
-  ].join('::'), [activeFeedId, activeFeeder, days, leaderCards, rows, windows]);
-
-  useEffect(() => {
-    if (loading || timeframePending || dealSignatureRef.current === dealSignature) return;
-    dealSignatureRef.current = dealSignature;
-    setDealId((current) => current + 1);
-  }, [dealSignature, loading, timeframePending]);
-
-  useEffect(() => {
-    setSelectedId((current) => rows.some((row) => row.id === current) ? current : '');
-  }, [rows]);
+  // the tape and the leaders change in the same commit as the board (see useHeldNear): one commit, then the motion
+  const scopeNow = useMemo(() => ({ feeds, feedId: activeFeedId, feeder: activeFeeder, days }), [activeFeedId, activeFeeder, days, feeds]);
 
   // picks compare against the live pick (the page's copy may still be catching up)
   const handleFeedChange = (id: string) => {
@@ -2290,7 +1994,7 @@ export default function LeadBoardPage() {
       ref={pageScrollRef}
       data-testid="lead-v3-page"
       className={cn(
-        'fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(76px+env(safe-area-inset-top))] text-fg',
+        '[overflow-anchor:none] fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(84px+env(safe-area-inset-top))] lg:scroll-pt-[calc(100px+env(safe-area-inset-top))] text-fg',
         useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-(--fm-page)',
         useBrowserPageScroll
           ? 'min-h-[100lvh] overflow-x-hidden overflow-y-visible'
@@ -2314,8 +2018,7 @@ export default function LeadBoardPage() {
         }}
         onDaysChange={(nextDays) => {
           if (nextDays === days) return;
-          setTimeframePending(true);
-          setDays(nextDays);
+          startTimeframe(() => setDays(nextDays));
         }}
       />
       <main className="relative z-10 mx-auto w-full min-w-0 max-w-[1500px] px-3 pb-[calc(148px+env(safe-area-inset-bottom))] pt-[calc(172px+env(safe-area-inset-top))] sm:px-5 sm:pt-[calc(172px+env(safe-area-inset-top))] md:pt-[calc(178px+env(safe-area-inset-top))] lg:px-7 lg:pt-[calc(214px+env(safe-area-inset-top))]">
@@ -2327,36 +2030,33 @@ export default function LeadBoardPage() {
               <Link href="/" className="mt-6 inline-flex rounded-full border border-fg/12 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-fg/52 hover:text-fg">Return to Feed</Link>
             </div>
           </div>
-        ) : rows.length ? (
-          <motion.div initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, ease: SOFT_EASE }} className="min-w-0 max-w-full">
-            <LeadTape events={tapeEvents} dealId={dealId} />
-
-            <section aria-labelledby="lead-v3-leaders-title" className="min-w-0 max-w-full">
-              <h2 id="lead-v3-leaders-title" className="mb-3 flex items-center gap-2 px-1 text-[10px] font-black uppercase tracking-[0.18em] text-fg/76"><span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-(--ld-glow-dot)" />Today&apos;s leaders</h2>
-              <LeadersStrip cards={leaderCards} />
-            </section>
+        ) : feeds.length ? (
+          <motion.div initial={reduce ? false : { opacity: 0, transform: 'translateY(12px)' }} animate={{ opacity: 1, transform: 'translateY(0px)' }} transition={{ duration: sec(0.42), ease: SOFT_EASE }} className="min-w-0 max-w-full">
+            <TapeSection {...scopeNow} />
+            <LeadersSection {...scopeNow} />
 
             <div className="relative mt-4 min-w-0 max-w-full overflow-hidden rounded-[28px] border border-fg/[0.09] bg-(--ld-ground) shadow-(--ld-shadow-board)">
-              <WireLine line={wireLine} dealId={dealId} />
-              {/* Scope switches re-deal the ladder: the outgoing rows cascade
-                  out top-down (each row's own staggered exit) while the new
-                  set staggers in — never one monolithic swap. */}
-              <AnimatePresence initial={false} mode="popLayout">
-                <motion.div
-                  key={`${activeFeedId}|${activeFeeder || 'board'}`}
-                  className="min-w-0 max-w-full"
-                  exit={{ opacity: 0, transition: { duration: BEAT_LEAVE_S, delay: 0.24, ease: BEAT_LEAVE_EASE } }}
-                >
-                  {activeFeeder ? (
-                    <FeederboardPostRows posts={feederPosts} days={days} selectedKey={selectedPostKey} onSelect={setSelectedPostKey} />
-                  ) : (
-                    <FeederboardRows rows={rows} selectedId={selectedId} onSelect={setSelectedId} days={days} />
-                  )}
-                </motion.div>
-              </AnimatePresence>
-              <FeederboardCards feeds={feeds} activeFeedId={activeFeedId} activeFeeder={activeFeeder} days={days} facts={feederboardFacts} />
-              <GrowthWindows windows={windows} days={days} dealId={dealId} />
-              <PostMortem cards={stackCards} deck={postMortemDeck} stats={postMortemStats} days={days} />
+              <BoardSection
+                feeds={feeds}
+                feedId={activeFeedId}
+                feeder={activeFeeder}
+                days={days}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                selectedPostKey={selectedPostKey}
+                onSelectPost={setSelectedPostKey}
+              />
+              <FeederboardCards feeds={feeds} activeFeedId={activeFeedId} activeFeeder={activeFeeder} days={days} />
+              <LeadGrowth feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
+              <section aria-label="Feeding habits" className="bg-(--ld-panel)">
+                <div className="border-t border-fg/[0.09] px-4 pb-0 pt-5 sm:px-6 lg:px-7">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feeding habits</h2>
+                  <p className="mt-1 truncate text-[10px] font-bold leading-snug text-fg/50">How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'} · vs the {days}D before</p>
+                </div>
+                <LeadRhythm feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
+                <LeadTiming feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
+                <LeadFormats feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
+              </section>
             </div>
           </motion.div>
         ) : (

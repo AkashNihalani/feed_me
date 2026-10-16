@@ -10,7 +10,8 @@
    browser keeps them; decode() is asked once per picture.
    ───────────────────────────────────────────────────────────── */
 
-const HELD = 64;
+// how many decoded pictures are held (a warm asking for more pushes its own first ones out)
+export const HELD = 64;
 const held = new Map<string, { image: HTMLImageElement; ready: Promise<void>; done: boolean }>();
 
 function warmOne(src: string): Promise<void> {
@@ -61,28 +62,72 @@ const ahead = new Map<string, HTMLImageElement>();
 let aheadQueue: string[] = [];
 let aheadRunning = 0;
 
+/* SPARE — the pictures of a view that may come next (the Feed's other zooms, where it rests), fetched only once the
+   look-ahead has nothing waiting, two at a time, at low priority: what the screen wants always goes first. Kept apart
+   from the look-ahead's (they never push each other out); what hasn't been asked for yet is let go the moment
+   something real is wanted. Fetched only, like the look-ahead's */
+const SPARE_AT_ONCE = 2;
+const SPARE_KEEP = 128;
+const spare = new Map<string, HTMLImageElement>();
+let spareQueue: string[] = [];
+let spareRunning = 0;
+
+// fetched (or on its way) already, by any of the three
+const kept = (src: string) => ahead.has(src) || spare.has(src) || held.has(src);
+
+// one picture fetched and kept in `into`; `done` once it has loaded or failed, or hung past its turn
+function fetchOne(src: string, into: Map<string, HTMLImageElement>, keep: number, low: boolean, done: () => void) {
+  const image = new Image();
+  image.decoding = 'async';
+  if (low) image.fetchPriority = 'low';
+  let turn = true;
+  const finish = () => {
+    if (!turn) return;
+    turn = false;
+    window.clearTimeout(timer);
+    done();
+  };
+  const timer = window.setTimeout(finish, AHEAD_TURN_MS);
+  image.onload = finish;
+  image.onerror = finish;
+  image.src = src;
+  into.set(src, image);
+  while (into.size > keep) into.delete(into.keys().next().value as string);
+}
+
 function pumpAhead() {
   while (aheadRunning < AHEAD_AT_ONCE && aheadQueue.length) {
     const src = aheadQueue.shift() as string;
-    if (ahead.has(src) || held.has(src)) continue;
-    const image = new Image();
-    image.decoding = 'async';
-    let turn = true;
-    const done = () => {
-      if (!turn) return;
-      turn = false;
-      window.clearTimeout(timer);
+    if (kept(src)) continue;
+    aheadRunning += 1;
+    fetchOne(src, ahead, AHEAD_KEEP, false, () => {
       aheadRunning -= 1;
       pumpAhead();
-    };
-    const timer = window.setTimeout(done, AHEAD_TURN_MS);
-    image.onload = done;
-    image.onerror = done;
-    aheadRunning += 1;
-    image.src = src;
-    ahead.set(src, image);
-    while (ahead.size > AHEAD_KEEP) ahead.delete(ahead.keys().next().value as string);
+    });
   }
+  // nothing of the look-ahead's waiting: the spare's turn
+  pumpSpare();
+}
+
+function pumpSpare() {
+  while (spareRunning < SPARE_AT_ONCE && !aheadQueue.length && spareQueue.length) {
+    const src = spareQueue.shift() as string;
+    if (kept(src)) continue;
+    spareRunning += 1;
+    fetchOne(src, spare, SPARE_KEEP, true, () => {
+      spareRunning -= 1;
+      pumpSpare();
+    });
+  }
+}
+
+// the spare pictures, soonest first: replaces what was waiting. Returns what was waiting (let go unasked)
+export function warmSpare(srcs: readonly string[]): string[] {
+  if (typeof window === 'undefined') return [];
+  const waiting = spareQueue;
+  spareQueue = srcs.filter((src) => !kept(src));
+  pumpSpare();
+  return waiting;
 }
 
 // the pictures wanted next, soonest first: replaces what was waiting
@@ -95,7 +140,7 @@ export function warmAhead(srcs: readonly string[]): void {
       // still wanted: kept longest
       ahead.delete(src);
       ahead.set(src, image);
-    } else if (!held.has(src)) {
+    } else if (!kept(src)) {
       waiting.push(src);
     }
   });

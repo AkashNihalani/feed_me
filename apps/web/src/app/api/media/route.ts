@@ -19,6 +19,10 @@ const PRIVATE_MEDIA_CACHE_CONTROL = 'private, max-age=3600, stale-while-revalida
 const R2_SIGNED_URL_DEFAULT_EXPIRES_SECONDS = 600;
 const R2_SIGNED_URL_MIN_EXPIRES_SECONDS = 60;
 const R2_SIGNED_URL_MAX_EXPIRES_SECONDS = 3600;
+// pictures sign from the start of the UTC day for two days (SigV4 allows 7), so the URL is one string all day
+const R2_SIGNED_URL_DAY_SECONDS = 86_400;
+const R2_SIGNED_URL_DAY_EXPIRES_SECONDS = 2 * R2_SIGNED_URL_DAY_SECONDS;
+const R2_SIGNED_REDIRECT_DAY_MARGIN_SECONDS = 300;
 const THUMBNAIL_ASSET_ROLES = [
   'thumbnail',
   'display',
@@ -32,6 +36,8 @@ type SupabaseAdminClient = ReturnType<typeof adminClient>;
 type FeedIdRow = { id: number | string | null };
 type FeederIdRow = { id: number | string | null };
 type PostKeyRow = { post_key: string | null };
+// freshSeconds: how long a day-bucketed URL stays the same string (null when it is signed per request)
+type SignedR2Url = { url: string; expiresSeconds: number; freshSeconds: number | null };
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -105,8 +111,11 @@ function expiredSourceResponse(): Response {
   });
 }
 
-function signedRedirectCacheControl(expiresSeconds: number): string {
-  const maxAge = Math.max(0, Math.min(120, expiresSeconds - 30));
+// a day-bucketed URL is kept until 5 min before UTC midnight (its target stays valid a day past that)
+function signedRedirectCacheControl(signed: SignedR2Url): string {
+  const maxAge = signed.freshSeconds != null
+    ? Math.max(0, signed.freshSeconds - R2_SIGNED_REDIRECT_DAY_MARGIN_SECONDS)
+    : Math.max(0, Math.min(120, signed.expiresSeconds - 30));
   return `private, max-age=${maxAge}`;
 }
 
@@ -216,13 +225,15 @@ async function fetchStoredAsset(
       (!needsImageResponse || !contentType || contentType.startsWith('image/'))
       && (!needsVideoResponse || !contentType || contentType.startsWith('video/'))
     ) {
-      const signedUrl = resolveSignedR2MediaUrl(row);
+      // pictures get the day-bucketed URL the browser can keep; videos stay on the short per-request one
+      const picture = needsImageResponse || contentType.startsWith('image/');
+      const signedUrl = resolveSignedR2MediaUrl(row, picture);
       if (!signedUrl) continue;
       return new Response(null, {
         status: 302,
         headers: privateMediaHeaders({
           location: signedUrl.url,
-          'cache-control': signedRedirectCacheControl(signedUrl.expiresSeconds),
+          'cache-control': signedRedirectCacheControl(signedUrl),
         }),
       });
     }
@@ -299,6 +310,13 @@ function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+// the start of the current UTC day and the whole seconds left in it
+function utcDayBucket(nowMs = Date.now()): { start: Date; secondsLeft: number } {
+  const dayMs = R2_SIGNED_URL_DAY_SECONDS * 1000;
+  const startMs = Math.floor(nowMs / dayMs) * dayMs;
+  return { start: new Date(startMs), secondsLeft: Math.floor((startMs + dayMs - nowMs) / 1000) };
+}
+
 function amzDates(now = new Date()): { shortDate: string; longDate: string } {
   const iso = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   return {
@@ -328,14 +346,21 @@ function canonicalQuery(params: Array<[string, string]>): string {
     .join('&');
 }
 
+// the derived key only changes with the date (pure HMAC work), so the last one is kept
+let lastSigningKey: { id: string; key: Buffer } | null = null;
+
 function r2SigningKey(secretAccessKey: string, shortDate: string, region: string): Buffer {
+  const id = `${secretAccessKey}\n${shortDate}\n${region}`;
+  if (lastSigningKey?.id === id) return lastSigningKey.key;
   const dateKey = hmac(`AWS4${secretAccessKey}`, shortDate);
   const regionKey = hmac(dateKey, region);
   const serviceKey = hmac(regionKey, 's3');
-  return hmac(serviceKey, 'aws4_request');
+  const key = hmac(serviceKey, 'aws4_request');
+  lastSigningKey = { id, key };
+  return key;
 }
 
-function signedR2GetUrl(bucket: string, storagePath: string): { url: string; expiresSeconds: number } | null {
+function signedR2GetUrl(bucket: string, storagePath: string, dayBucket = false): SignedR2Url | null {
   const endpointRaw = (process.env.R2_ENDPOINT_URL || '').trim();
   const accessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
   const secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || '').trim();
@@ -358,8 +383,10 @@ function signedR2GetUrl(bucket: string, storagePath: string): { url: string; exp
     return null;
   }
 
-  const expiresSeconds = boundedSignedUrlExpiresSeconds();
-  const { shortDate, longDate } = amzDates();
+  // a day-bucketed URL signs at 00:00Z, so every request that day gets the same URL (the browser's cache key)
+  const day = dayBucket ? utcDayBucket() : null;
+  const expiresSeconds = day ? R2_SIGNED_URL_DAY_EXPIRES_SECONDS : boundedSignedUrlExpiresSeconds();
+  const { shortDate, longDate } = amzDates(day?.start);
   const credentialScope = `${shortDate}/${region}/s3/aws4_request`;
   const basePath = endpoint.pathname.replace(/\/+$/, '');
   const canonicalUri = `${basePath}/${encodePath(cleanBucket)}/${encodePath(cleanPath)}`;
@@ -391,6 +418,7 @@ function signedR2GetUrl(bucket: string, storagePath: string): { url: string; exp
   return {
     url: `${endpoint.protocol}//${endpoint.host}${canonicalUri}?${query}&X-Amz-Signature=${signature}`,
     expiresSeconds,
+    freshSeconds: day ? day.secondsLeft : null,
   };
 }
 
@@ -398,7 +426,7 @@ function resolveSignedR2MediaUrl(data: {
   storage_provider?: string | null;
   storage_bucket?: string | null;
   storage_path?: string | null;
-}): { url: string; expiresSeconds: number } | null {
+}, dayBucket = false): SignedR2Url | null {
   if (data.storage_provider !== 'r2') return null;
 
   const bucket = typeof data.storage_bucket === 'string' && data.storage_bucket.trim()
@@ -406,7 +434,7 @@ function resolveSignedR2MediaUrl(data: {
     : (process.env.R2_BUCKET || '').trim();
   const path = typeof data.storage_path === 'string' ? data.storage_path.trim().replace(/^\/+/, '') : '';
   if (!bucket || !path) return null;
-  return signedR2GetUrl(bucket, path);
+  return signedR2GetUrl(bucket, path, dayBucket);
 }
 
 function limitedBodyStream(

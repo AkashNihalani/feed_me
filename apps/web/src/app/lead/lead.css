@@ -6,26 +6,20 @@
   --ld-panel: #ffffff;                  /* the board's sections and the tape */
   --ld-raised: #fafbfc;                 /* an open row */
   --ld-deep: #fafbfc;                   /* the wire and the post mortem */
-  --ld-deep-rgb: 250 251 252;
   --ld-thumb: var(--fm-media);          /* behind a row's thumbnail */
   --ld-chip-well: rgb(11 11 15 / 0.03); /* a row's chevron */
-  --ld-cta-well: #ffffff;               /* the post mortem's way to the wall */
-  --ld-floor: rgb(15 23 42 / 0.3);      /* the shadow pooled under the post stack */
   /* rose glows read pink on white: weaker here */
   --ld-throne-glow: 0.08;
   --ld-glow-dot: 0 0 8px rgb(var(--fm-accent-rgb) / 0.35);
   --ld-glow-bar: 0 0 16px rgb(var(--fm-accent-rgb) / 0.2);
   --ld-glow-throne: 0 0 14px rgb(var(--fm-accent-rgb) / 0.22);
-  --ld-glow-node: 0 0 10px rgb(var(--fm-accent-rgb) / 0.32);
   /* dark casts heavy black; light casts soft slate */
   --ld-shadow-board: 0 1px 2px rgb(15 23 42 / 0.04), 0 24px 56px -32px rgb(15 23 42 / 0.18);
   --ld-shadow-thumb: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 18px -12px rgb(15 23 42 / 0.24);
-  --ld-shadow-landing: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 18px -12px rgb(15 23 42 / 0.24);
   --ld-shadow-proof: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
   --ld-shadow-proof-lg: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
   --ld-shadow-tile: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
   --ld-shadow-poster: 0 1px 2px rgb(15 23 42 / 0.05), 0 14px 32px -18px rgb(15 23 42 / 0.26);
-  --ld-shadow-stack: 0 2px 4px rgb(15 23 42 / 0.06), 0 24px 48px -24px rgb(15 23 42 / 0.32);
 }
 
 html.dark .fm-lead {
@@ -33,27 +27,101 @@ html.dark .fm-lead {
   --ld-panel: #070707;
   --ld-raised: #0a0a0a;
   --ld-deep: #060606;
-  --ld-deep-rgb: 6 6 6;
   --ld-thumb: #101010;
   --ld-chip-well: rgb(0 0 0 / 0.2);
-  --ld-cta-well: rgb(0 0 0 / 0.3);
-  --ld-floor: rgb(0 0 0 / 0.62);
   --ld-throne-glow: .14;
   --ld-glow-dot: 0 0 14px rgb(var(--fm-accent-rgb) / .8);
   --ld-glow-bar: 0 0 34px rgb(var(--fm-accent-rgb) / .48);
   --ld-glow-throne: 0 0 26px rgb(var(--fm-accent-rgb) / .46);
-  --ld-glow-node: 0 0 18px rgb(var(--fm-accent-rgb) / .78);
   --ld-shadow-board: 0 32px 80px -46px rgba(0, 0, 0, .98);
   --ld-shadow-thumb: 0 14px 28px -16px rgba(0, 0, 0, .9);
-  --ld-shadow-landing: 0 12px 26px -12px rgba(0, 0, 0, .9);
   --ld-shadow-proof: 0 24px 48px -28px rgba(0, 0, 0, .95);
   --ld-shadow-proof-lg: 0 30px 54px -30px rgba(0, 0, 0, .98);
   --ld-shadow-tile: 0 22px 44px -26px rgba(0, 0, 0, .95);
   --ld-shadow-poster: 0 26px 50px -28px rgba(0, 0, 0, .95);
-  --ld-shadow-stack: 0 34px 78px -36px rgba(0, 0, 0, .98);
 }
 
 /* A title on a picture keeps dark's shade in light too: the light letterpress (globals) is for ink on paper. */
 .fm-lead .fm-depth-title.ld-on-media {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* the Feederboard's first-place light (and the rose numeral) passes from row to row on the rows' beat (--ld-beat,
+   components/motion/Ledger): opacity on the compositor */
+.fm-lead .ld-throne {
+  transition: opacity calc(560ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1) var(--ld-beat, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-lead .ld-throne { transition-duration: 0ms; }
+}
+
+/* a bar that changes length glides there on the Feed's carry curve (transform only, all at once) */
+.fm-lead .lead-glide {
+  transition: transform calc(500ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-lead .lead-glide { transition-duration: 0ms; }
+}
+
+/* pictures develop once decoded: opacity on the compositor, nothing scripted per frame */
+.fm-lead .lead-img {
+  opacity: 0;
+  transition: opacity calc(340ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fm-lead .lead-img[data-shown] { opacity: 1; }
+.fm-lead .lead-img--settle {
+  transform: scale(1.05);
+  transition: opacity calc(600ms * var(--fm-tempo)) cubic-bezier(0.16, 0.9, 0.2, 1), transform calc(1000ms * var(--fm-tempo)) cubic-bezier(0.16, 0.9, 0.2, 1);
+}
+.fm-lead .lead-img--settle[data-shown] { transform: scale(1); }
+
+/* a band off screen skips style, layout and paint entirely: switching re-renders it, but the browser only draws
+   it when it scrolls near (its last size is kept, so the scrollbar doesn't jump) */
+.fm-lead .lead-band {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+}
+
+/* a band's first view: its pieces rise into place in order, once, on the page beat (transform + opacity only) */
+.fm-lead [data-reveal] .lead-rise {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.fm-lead [data-reveal='shown'] .lead-rise,
+.fm-lead [data-reveal='dealt'] .lead-rise {
+  opacity: 1;
+  transform: none;
+  transition: opacity calc(480ms * var(--fm-tempo)) cubic-bezier(0.16, 0.9, 0.2, 1), transform calc(480ms * var(--fm-tempo)) cubic-bezier(0.16, 0.9, 0.2, 1);
+  transition-delay: calc((40ms + var(--rise, 0) * 60ms) * var(--fm-tempo));
+}
+.fm-lead [data-reveal='dealt'] .lead-rise { transition: none; }
+
+/* a changed line rises in (the first words a line shows arrive with their band) */
+.fm-lead .lead-swap { display: inline-block; max-width: 100%; }
+.fm-lead .lead-swap-in {
+  animation: lead-swap-in calc(340ms * var(--fm-tempo)) cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes lead-swap-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-lead [data-reveal] .lead-rise { opacity: 1; transform: none; transition: none; }
+  .fm-lead .lead-swap-in { animation: none !important; }
+}
+
+/* the Feederboard views' pill, carried to the picked view */
+.fm-lead .ld-pill {
+  transition: transform calc(380ms * var(--fm-tempo)) cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-lead .ld-pill { transition-duration: 0ms; }
+}
+
+/* what shows once a list's leaving items have gone (an empty band's message) */
+.fm-lead .ld-late-in {
+  animation: lead-swap-in calc(340ms * var(--fm-tempo)) cubic-bezier(0.2, 0.7, 0.2, 1) calc(420ms * var(--fm-tempo)) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-lead .ld-late-in { animation: none; }
 }

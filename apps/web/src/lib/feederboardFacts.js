@@ -17,10 +17,22 @@ function multiple(value) {
   return `${value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, '')}×`;
 }
 
+// one formatter for every read (making one is the slow part), and each date read once
+let istFormat = null;
+const partsRead = new Map();
+
 function parts(postedAt) {
-  const date = new Date(postedAt || '');
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('en-GB', { timeZone: IST, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const key = postedAt || '';
+  if (partsRead.has(key)) return partsRead.get(key);
+  const date = new Date(key);
+  let read = null;
+  if (!Number.isNaN(date.getTime())) {
+    istFormat = istFormat || new Intl.DateTimeFormat('en-GB', { timeZone: IST, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', hourCycle: 'h23' });
+    read = istFormat.formatToParts(date);
+  }
+  if (partsRead.size >= 5000) partsRead.clear();
+  partsRead.set(key, read);
+  return read;
 }
 
 function value(partsList, type) {
@@ -78,7 +90,9 @@ function group(posts, keyFor) {
   for (const post of posts) {
     const key = keyFor(post);
     if (!key) continue;
-    groups.set(key, [...(groups.get(key) || []), post]);
+    const items = groups.get(key);
+    if (items) items.push(post);
+    else groups.set(key, [post]);
   }
   return [...groups.entries()].map(([key, items]) => ({ key, posts: items }));
 }

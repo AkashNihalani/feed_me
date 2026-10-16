@@ -37,10 +37,13 @@ export default function FeederStoryAvatar({
   feeder,
   className,
   style,
+  loading = 'lazy',
 }: {
   feeder: { handle: string; profilePicUrl?: string | null };
   className?: string;
   style?: CSSProperties;
+  // a face that must be there the moment its circle is (the header's rail) is asked for at once
+  loading?: 'eager' | 'lazy';
 }) {
   const [from, to] = storyGradientForHandle(feeder.handle);
   // a profile pic that won't load (an expired Instagram link) falls back to the initials, as if there were none
@@ -64,7 +67,7 @@ export default function FeederStoryAvatar({
           src={picUrl}
           alt={`@${feeder.handle}`}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
+          loading={loading}
           decoding="async"
           data-media-fallback="off"
           onError={() => setFailedUrl(picUrl)}

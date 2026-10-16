@@ -1,6 +1,16 @@
-@import "tailwindcss";
+/* Tailwind, imported in its three parts so its theme can be `inline reference`: utilities carry the theme's values
+   themselves (`p-4` is `padding: 1rem`, `font-black` is `font-weight: 900`) and the theme's ~120 variables are not
+   written onto :root. Safari carries every custom property defined on the root into every element's style, so each
+   restyle paid for them all; taking the unread ones off the root made a full restyle of Lead a third cheaper there
+   (25ms → 16ms on a MacBook; Chrome ~4ms either way). Variables stay where a value really changes (light/dark). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) theme(inline reference);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 :root {
+  /* how long motion takes, as a factor on its designed pace (keep in step with TEMPO in lib/tempo.ts) */
+  --fm-tempo: 1.35;
   --background: #f4f7f9;
   --foreground: #000000;
   --border-color: #000000;
@@ -26,12 +36,8 @@
   --fm-ink: #09090B;                /* the one near-black surface color */
   --fm-page: #f4f7f9;               /* app page background (dark: below) */
   --fm-dashboard-accent: var(--fm-accent);
-  --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
-  --fm-dashboard-accent-contrast: #ffffff;
   --lead-wedge-surface: radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc);
-  --lead-wedge-border: #ffffff;
   --lead-wedge-mark: var(--fm-accent);
-  --lead-wedge-label: rgb(15 23 42 / 0.48);
 
   /* ── ONE GLASS SYSTEM ──────────────────────────────────────────
      Single source of truth for every frosted surface. Only the two
@@ -70,7 +76,6 @@
   --fm-fg: #0b0b0f;
   --fm-fg-rgb: 11 11 15;
   --fm-accent-text: #E11D48;
-  --fm-accent-text-rgb: 225 29 72;
   --fm-well: rgb(11 11 15 / 0.045);
   --fm-well-edge: rgb(11 11 15 / 0.07);
   --fm-well-shade: inset 0 1px 2px rgb(15 23 42 / 0.06);
@@ -98,8 +103,6 @@ html.light {
   --foreground: #000000;
   --border-color: #000000;
   --fm-dashboard-accent: var(--fm-accent);
-  --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
-  --fm-dashboard-accent-contrast: #ffffff;
 }
 
 /* Manual Dark Mode Override */
@@ -108,19 +111,14 @@ html.dark {
   --foreground: #FFFFFF;
   --border-color: #FFFFFF;
   --fm-dashboard-accent: var(--fm-accent);
-  --fm-dashboard-accent-rgb: var(--fm-accent-rgb);
-  --fm-dashboard-accent-contrast: #ffffff;
   --lead-wedge-surface: radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc);
-  --lead-wedge-border: #ffffff;
   --lead-wedge-mark: var(--fm-accent);
-  --lead-wedge-label: rgb(255 255 255 / 0.48);
 
   --fm-page: #030303;
 
   --fm-fg: #ffffff;
   --fm-fg-rgb: 255 255 255;
   --fm-accent-text: #FB7185;
-  --fm-accent-text-rgb: 251 113 133;
   --fm-well: rgb(0 0 0 / 0.38);
   --fm-well-edge: rgb(255 255 255 / 0.09);
   --fm-well-shade: inset 0 2px 10px rgb(0 0 0 / 0.38);
@@ -150,8 +148,18 @@ html.dark {
   }
 }
 
+/* tabular-nums without Tailwind's five-variable composition of font-variant-numeric (nothing here combines it with
+   another numeric variant): the same value, no lookups, on the ~130 numbers a page carries (see the import above) */
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant light (&:where(.light, .light *));
+/* a laptop: desktop-wide, but no taller than a laptop's window (big monitors keep the roomier sizes) */
+@custom-variant laptop (@media (min-width: 1024px) and (max-height: 960px));
 
 /* a theme switch drawn from a control (lib/theme): the new theme grows out of it as a circle over the old one, so the
    browser's default crossfade is off for it */
@@ -489,13 +497,46 @@ html[data-theme-reveal]::view-transition-new(root) {
 
 .fm-slot-roll__slot--changed .fm-slot-roll__face--old {
   display: flex;
-  animation: fm-login-slot-number-old 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  animation-delay: var(--fm-slot-delay, 0ms);
+  animation: fm-login-slot-number-old calc(420ms * var(--fm-tempo)) cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  /* --fm-slot-base: the roll's own delay (SlotText delay), --fm-slot-delay: this glyph's step in it (both set from
+     times already played out by TEMPO, in SlotText and its callers, so not stretched again here) */
+  animation-delay: calc(var(--fm-slot-base, 0ms) + var(--fm-slot-delay, 0ms));
+  /* held at its start on WebKit until the frame that draws it is shown (SlotText) */
+  animation-play-state: var(--fm-slot-play, running);
 }
 
 .fm-slot-roll__slot--changed .fm-slot-roll__face--new {
-  animation: fm-login-slot-number-new 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  animation-delay: calc(var(--fm-slot-delay, 0ms) + 34ms);
+  animation: fm-login-slot-number-new calc(420ms * var(--fm-tempo)) cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--fm-slot-base, 0ms) + var(--fm-slot-delay, 0ms) + 34ms * var(--fm-tempo));
+  animation-play-state: var(--fm-slot-play, running);
+}
+
+/* an item a list didn't move (off screen as it changed: components/motion/Ledger) shows its new numbers at once */
+[data-ledger-still] .fm-slot-roll__slot--changed .fm-slot-roll__face {
+  animation: none;
+  will-change: auto;
+}
+
+[data-ledger-still] .fm-slot-roll__face--old {
+  display: none;
+}
+
+/* a piece of the header's rail that comes up with a pick (a ring's glow, the armed track): on the pick's clock, from
+   nothing; once it has come, its own opacity (a pick undone) takes over */
+.fm-rail-come {
+  animation: fm-rail-come calc(560ms * var(--fm-tempo)) cubic-bezier(0.16, 0.9, 0.2, 1) backwards;
+}
+
+@keyframes fm-rail-come {
+  from { opacity: 0; }
+}
+
+/* a copy of an item on its way out of a list shows what it showed, still (Ledger's stillCopy) */
+.ld-ghost *,
+.ld-ghost *::before,
+.ld-ghost *::after {
+  animation: none !important;
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -735,7 +776,6 @@ select,
 :root {
   --pwa-top-pad: 0px;
   --pwa-top-fix: 0px;
-  --pwa-bottom-pad: 0px;
 }
 
 :root:has([data-fire-immersive="true"]),
@@ -1552,21 +1592,6 @@ html.fm-fire-root-scroll body::-webkit-scrollbar {
     opacity: 1;
     transform: none;
     filter: none;
-  }
-}
-
-.fm-ascent-line-clip {
-  animation: fm-ascent-line-clip 1.34s cubic-bezier(0.35, 0, 0.12, 1) both;
-  transform-box: fill-box;
-  transform-origin: left center;
-}
-
-@keyframes fm-ascent-line-clip {
-  0% {
-    transform: scaleX(0);
-  }
-  100% {
-    transform: scaleX(1);
   }
 }
 

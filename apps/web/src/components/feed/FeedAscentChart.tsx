@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { animate, motion, useMotionValue, useSpring } from 'framer-motion';
+import { animate, motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { AscentPoint, Timeframe } from './dashboardTypes';
 
 type ChartPoint = {
@@ -29,9 +29,18 @@ const TREND_PATHS = {
 
 type TrendDirection = keyof typeof TREND_PATHS;
 
+// The line + area wipe in left→right on the original 1.34s draw curve. It runs as a clip-path on an HTML layer
+// (framer → WAAPI); the old scaleX on an SVG <clipPath> rect re-rasterised the whole chart every frame in WebKit.
+const LINE_HIDDEN = { clipPath: 'inset(0% 100% 0% 0%)' } as const;
+const LINE_SHOWN = { clipPath: 'inset(0% 0% 0% 0%)', transitionEnd: { clipPath: 'none' } } as const;
+const LINE_REVEAL = { duration: 1.34, ease: [0.35, 0, 0.12, 1] } as const;
+
+// one formatter for every frame of the count-up, not a new Intl object per frame
+const FOLLOWER_FORMAT = new Intl.NumberFormat('en-US');
+
 function formatDeltaFollowers(value: number): string {
   if (!Number.isFinite(value) || Math.abs(value) < 0.5) return '0';
-  return new Intl.NumberFormat('en-US').format(Math.abs(Math.round(value)));
+  return FOLLOWER_FORMAT.format(Math.abs(Math.round(value)));
 }
 
 function signedPercent(value: number): string {
@@ -40,7 +49,7 @@ function signedPercent(value: number): string {
 }
 
 function formatFollowers(value: number): string {
-  return new Intl.NumberFormat('en-US').format(Math.max(0, Math.round(value)));
+  return FOLLOWER_FORMAT.format(Math.max(0, Math.round(value)));
 }
 
 function toLabel(snapshotDate: string): string {
@@ -81,26 +90,26 @@ function TrendGlyph({ direction }: { direction: TrendDirection }) {
       aria-hidden="true"
       className="inline-flex h-[1em] w-[1em] items-center justify-center text-[var(--fm-accent)]"
       initial={false}
-      animate={{ scale: isFlat ? 0.92 : 1 }}
+      animate={{ transform: isFlat ? 'scale(0.92)' : 'scale(1)' }}
       transition={{ type: 'spring', stiffness: 240, damping: 22, mass: 0.74 }}
     >
       <svg
         viewBox="0 0 64 64"
         className="h-[1em] w-[1em] overflow-visible"
       >
-        <motion.g initial={false} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 260, damping: 24, mass: 0.74 }}>
-          <motion.path
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="5.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-            initial={{ d: TREND_PATHS.flat, opacity: 1 }}
-            animate={{ d: path, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 220, damping: 24, mass: 0.8 }}
-          />
-        </motion.g>
+        {/* The flat ↔ arrow morph stays on the path: it's a tiny one-shot per direction flip, and no HTML
+            transform reproduces a shape morph. */}
+        <motion.path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="5.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+          initial={{ d: TREND_PATHS.flat }}
+          animate={{ d: path }}
+          transition={{ type: 'spring', stiffness: 220, damping: 24, mass: 0.8 }}
+        />
       </svg>
     </motion.div>
   );
@@ -113,13 +122,15 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
   const [hoverSelection, setHoverSelection] = useState<ChartSelection | null>(null);
   const [selectedSelection, setSelectedSelection] = useState<ChartSelection | null>(null);
   const [touchScrubbing, setTouchScrubbing] = useState(false);
-  const [animatedDeltaCount, setAnimatedDeltaCount] = useState(0);
-  const [animatedDeltaPercent, setAnimatedDeltaPercent] = useState(0);
 
+  // The count-ups render straight from motion values (framer writes textContent), so a scrub step no longer
+  // re-renders the whole chart on every spring frame.
   const deltaCountValue = useMotionValue(0);
   const deltaCountSpring = useSpring(deltaCountValue, { stiffness: 220, damping: 28, mass: 0.78 });
+  const deltaCountText = useTransform(deltaCountSpring, formatDeltaFollowers);
   const deltaPercentValue = useMotionValue(0);
   const deltaPercentSpring = useSpring(deltaPercentValue, { stiffness: 210, damping: 26, mass: 0.78 });
+  const deltaPercentText = useTransform(deltaPercentSpring, signedPercent);
 
   const data = useMemo(() => {
     if (!Array.isArray(series) || series.length === 0) {
@@ -174,6 +185,14 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
     };
   }, [data, timeframe]);
 
+  const axisLabels = useMemo(() => chart.points.map((point, index) => (
+    shouldShowAxisLabel(index, chart.points.length) ? (
+      <span key={`${point.fullLabel}-${index}`} className="absolute -translate-x-1/2" style={{ left: `${point.x}%` }}>
+        {point.label}
+      </span>
+    ) : null
+  )), [chart.points]);
+
   const hoverIndex = hoverSelection?.signature === chart.signature ? hoverSelection.index : null;
   const selectedIndex = selectedSelection?.signature === chart.signature ? selectedSelection.index : null;
   const displayIndex = hoverIndex ?? selectedIndex;
@@ -187,23 +206,16 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
       ? `${displayPoint.label} vs ${displayPoint.previousLabel}`
       : `${displayPoint.label} starting point`
     : `Net over ${timeframe}`;
-  const lineRevealId = `ascentLineReveal-${gradientId}-${chart.signature}`;
 
   useEffect(() => {
-    const stopCount = deltaCountSpring.on('change', (value) => setAnimatedDeltaCount(value));
-    const stopPercent = deltaPercentSpring.on('change', (value) => setAnimatedDeltaPercent(value));
     const countControls = animate(deltaCountValue, displayDeltaCount, { duration: 0.34, ease: 'easeOut' });
     const percentControls = animate(deltaPercentValue, displayDeltaPercent, { duration: 0.34, ease: 'easeOut' });
     return () => {
-      stopCount();
-      stopPercent();
       countControls.stop();
       percentControls.stop();
     };
   }, [
-    deltaCountSpring,
     deltaCountValue,
-    deltaPercentSpring,
     deltaPercentValue,
     displayDeltaCount,
     displayDeltaPercent,
@@ -217,6 +229,14 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
     return Math.max(0, Math.min(chart.points.length - 1, Math.round(ratio * (chart.points.length - 1))));
   };
 
+  // pointer moves fire far more often than the scrub index changes: keep the same state object (React bails out)
+  // unless the index actually moved
+  const pickIndex = (nextIndex: number) => (current: ChartSelection | null): ChartSelection => (
+    current?.signature === chart.signature && current.index === nextIndex
+      ? current
+      : { signature: chart.signature, index: nextIndex }
+  );
+
   return (
     <div className="fm-depth-glass relative flex h-full w-full flex-col overflow-hidden rounded-[22px] p-3 sm:p-3.5 lg:p-4">
       <div className="relative z-10 flex flex-1 flex-col">
@@ -227,9 +247,9 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
               <div className="flex h-[1em] w-[1em] shrink-0 items-center justify-center">
                 <TrendGlyph direction={direction} />
               </div>
-              <div className="min-w-0 font-black leading-none tracking-[-0.04em] tabular-nums text-black dark:text-white">
-                {formatDeltaFollowers(animatedDeltaCount)}
-              </div>
+              <motion.div className="min-w-0 font-black leading-none tracking-[-0.04em] tabular-nums text-black dark:text-white">
+                {deltaCountText}
+              </motion.div>
             </div>
             <div className="mt-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-foreground/42 dark:text-white/36">
               {contextLine}
@@ -250,9 +270,9 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
                 <div className="text-[8px] font-black uppercase tracking-[0.14em] text-foreground/38 dark:text-white/32">
                   Growth
                 </div>
-                <div className="mt-1.5 text-[18px] font-black leading-none tracking-[-0.04em] tabular-nums text-foreground sm:text-[22px] lg:text-[22px] dark:text-white">
-                  {signedPercent(animatedDeltaPercent)}
-                </div>
+                <motion.div className="mt-1.5 text-[18px] font-black leading-none tracking-[-0.04em] tabular-nums text-foreground sm:text-[22px] lg:text-[22px] dark:text-white">
+                  {deltaPercentText}
+                </motion.div>
               </div>
             </div>
           </div>
@@ -265,7 +285,7 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
           onMouseMove={(event) => {
             const nextIndex = resolveIndex(event.clientX);
             if (nextIndex == null) return;
-            setHoverSelection({ signature: chart.signature, index: nextIndex });
+            setHoverSelection(pickIndex(nextIndex));
           }}
           onMouseLeave={() => setHoverSelection(null)}
           onClick={(event) => {
@@ -289,8 +309,8 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
             if (event.pointerType === 'mouse' || !touchScrubbing) return;
             const nextIndex = resolveIndex(event.clientX);
             if (nextIndex == null) return;
-            setSelectedSelection({ signature: chart.signature, index: nextIndex });
-            setHoverSelection({ signature: chart.signature, index: nextIndex });
+            setSelectedSelection(pickIndex(nextIndex));
+            setHoverSelection(pickIndex(nextIndex));
           }}
           onPointerUp={(event) => {
             if (event.pointerType === 'mouse') return;
@@ -303,61 +323,64 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
           }}
         >
           <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 40">
-            <defs>
-              <linearGradient id={`ascentFill-${gradientId}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor={ASCENT_ACCENT} stopOpacity="0.12" />
-                <stop offset="100%" stopColor={ASCENT_ACCENT} stopOpacity="0.02" />
-              </linearGradient>
-              <linearGradient id={`ascentStroke-${gradientId}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#FB7185" stopOpacity="0.72" />
-                <stop offset="46%" stopColor={ASCENT_ACCENT} stopOpacity="0.96" />
-                <stop offset="100%" stopColor="#BE123C" stopOpacity="0.94" />
-              </linearGradient>
-              <clipPath id={lineRevealId} key={lineRevealId}>
-                <rect
-                  className="fm-ascent-line-clip"
-                  x="-1"
-                  y="0"
-                  width="102"
-                  height="40"
-                />
-              </clipPath>
-            </defs>
-
             <line x1="0" y1="10" x2="100" y2="10" stroke="currentColor" strokeWidth="0.45" className="text-black/16 dark:text-white/10" />
             <line x1="0" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="0.45" className="text-black/16 dark:text-white/10" />
             <line x1="0" y1="30" x2="100" y2="30" stroke="currentColor" strokeWidth="0.45" className="text-black/16 dark:text-white/10" />
+          </svg>
 
-            <g key={chart.signature} clipPath={`url(#${lineRevealId})`}>
-              <path
-                d={chart.area}
-                fill={`url(#ascentFill-${gradientId})`}
-              />
-              <g>
+          {/* Same box as the grid SVG above (the container's content box, like the dot overlay below), so the
+              line, its wipe layer and the scrub line stack exactly where the single SVG drew them. */}
+          <div className="pointer-events-none absolute bottom-5 left-3 right-3 top-3">
+            <motion.div
+              key={chart.signature}
+              className="absolute inset-0 will-change-transform"
+              initial={LINE_HIDDEN}
+              animate={LINE_SHOWN}
+              transition={LINE_REVEAL}
+            >
+              <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 40">
+                <defs>
+                  <linearGradient id={`ascentFill-${gradientId}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor={ASCENT_ACCENT} stopOpacity="0.12" />
+                    <stop offset="100%" stopColor={ASCENT_ACCENT} stopOpacity="0.02" />
+                  </linearGradient>
+                  <linearGradient id={`ascentStroke-${gradientId}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#FB7185" stopOpacity="0.72" />
+                    <stop offset="46%" stopColor={ASCENT_ACCENT} stopOpacity="0.96" />
+                    <stop offset="100%" stopColor="#BE123C" stopOpacity="0.94" />
+                  </linearGradient>
+                </defs>
+
                 <path
-                  d={chart.line}
-                  fill="none"
-                  stroke={ASCENT_ACCENT}
-                  strokeOpacity="0.2"
-                  strokeWidth="3.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
+                  d={chart.area}
+                  fill={`url(#ascentFill-${gradientId})`}
                 />
-                <path
-                  d={chart.line}
-                  fill="none"
-                  stroke={`url(#ascentStroke-${gradientId})`}
-                  strokeWidth="1.24"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                />
-              </g>
-            </g>
+                <g>
+                  <path
+                    d={chart.line}
+                    fill="none"
+                    stroke={ASCENT_ACCENT}
+                    strokeOpacity="0.2"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <path
+                    d={chart.line}
+                    fill="none"
+                    stroke={`url(#ascentStroke-${gradientId})`}
+                    strokeWidth="1.24"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              </svg>
+            </motion.div>
 
             {displayPoint ? (
-              <>
+              <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 40">
                 <line
                   x1={displayPoint.x}
                   y1="5"
@@ -369,9 +392,9 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
                   strokeLinecap="round"
                   vectorEffect="non-scaling-stroke"
                 />
-              </>
+              </svg>
             ) : null}
-          </svg>
+          </div>
 
           {displayPoint ? (
             <div className="pointer-events-none absolute bottom-5 left-3 right-3 top-3 z-[4]">
@@ -388,13 +411,7 @@ function FeedAscentChart({ timeframe, series }: { timeframe: Timeframe; series: 
           ) : null}
 
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4 px-[2px] text-[8px] font-black uppercase tracking-[0.14em] text-foreground/34">
-            {chart.points.map((point, index) => (
-              shouldShowAxisLabel(index, chart.points.length) ? (
-                <span key={`${point.fullLabel}-${index}`} className="absolute -translate-x-1/2" style={{ left: `${point.x}%` }}>
-                  {point.label}
-                </span>
-              ) : null
-            ))}
+            {axisLabels}
           </div>
         </div>
       </div>

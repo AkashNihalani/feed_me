@@ -600,7 +600,9 @@ function applyPage(state: ScopeState, page: StreamPage, requested: string[]) {
     state.pages.set(day, { posts: shared, fetchedAt: now, stale: false, usedAt: previous?.usedAt ?? now });
     const position = state.indexDays.get(day);
     const expected = position == null || !state.index ? 0 : state.index.days[position].count;
-    if (expected !== shared.length) mismatch = true;
+    // (only a day on screen or about to be: one a warm-up fetched, its layout made from its posts already, would bring
+    // a fresh index, and so a layout, in under a move landing or the column by the profile)
+    if (expected !== shared.length && state.interest.has(day)) mismatch = true;
   });
   requested.forEach((day) => {
     if (!state.interest.has(day) && !state.hints.has(day)) state.wanted.delete(day);
@@ -750,8 +752,13 @@ type DaysMemo = {
   map: ReadonlyMap<string, StreamPost[]>;
 };
 
-export function useDayPosts(scope: StreamScope, days: readonly string[]): ReadonlyMap<string, StreamPost[]> {
+/* The posts of `days` (the days on screen and around: asked for, and kept in memory). loaded: every day of the scope
+   that has loaded besides, so a layout made from it lays a loaded day out from its posts wherever it is; the map still
+   changes only when one of `days`, or the index, does (a day loading elsewhere, a warm-up's, renders nothing: the next
+   map has it) */
+export function useDayPosts(scope: StreamScope, days: readonly string[], options: { loaded?: boolean } = {}): ReadonlyMap<string, StreamPost[]> {
   const key = keyFor(scope);
+  const loaded = options.loaded === true;
   const daysKey = days.join(',');
   // a new array with the same days is the same request
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -764,7 +771,16 @@ export function useDayPosts(scope: StreamScope, days: readonly string[]): Readon
     if (cached && cached.key === key && cached.list === list && cached.version === state.version && cached.index === state.index) {
       return cached.map;
     }
+    if (loaded && cached && cached.key === key && cached.index === state.index && list.every((day) => cached.map.get(day) === postsOf(state, day))) {
+      memo.current = { ...cached, list, version: state.version };
+      return cached.map;
+    }
     const map = new Map<string, StreamPost[]>();
+    if (loaded) {
+      state.pages.forEach((page, day) => {
+        if (state.indexDays.has(day)) map.set(day, page.posts);
+      });
+    }
     list.forEach((day) => {
       const posts = postsOf(state, day);
       if (posts) map.set(day, posts);
@@ -779,7 +795,7 @@ export function useDayPosts(scope: StreamScope, days: readonly string[]): Readon
     }
     memo.current = { key, list, version: state.version, index: state.index, map: result };
     return result;
-  }, [key, list]);
+  }, [key, list, loaded]);
 
   const map = useSyncExternalStore(subscribeStream, getSnapshot, getServerDays);
 

@@ -30,15 +30,19 @@ import PostMedia from '@/components/feed/stream/PostMedia';
 import PostReading from '@/components/feed/stream/PostReading';
 import { type PostSheetProps, type StreamFeeder, type StreamPost } from '@/lib/feedStream/contract';
 import { BEAT_EASE_CSS, BEAT_LEAVE_EASE, beatDelay } from '@/lib/motion';
+import { ms, sec } from '@/lib/tempo';
 import '@/components/feed/stream/stream.css';
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
-const OPEN_MS = 460;
-const CLOSE_MS = 240;
+const OPEN_MS = ms(460);
+const CLOSE_MS = ms(240);
+// a drag let go short of closing springs back at the finger's pace, not the app's tempo (lib/tempo: what answers a
+// finger is left out, like a pinch springing back)
 const SETTLE_BACK_MS = 300;
-// the reading's blocks, following the panel in
-const BLOCK_MS = 520;
+// the reading's blocks, following the panel in (a beat in, then lib/motion's beats, already at tempo)
+const BLOCK_MS = ms(520);
+const BLOCK_START_S = sec(0.12);
 const BLOCK_FRAMES: Keyframe[] = [
   { opacity: 0, transform: 'translate3d(0px, 12px, 0px)' },
   { opacity: 1, transform: 'translate3d(0px, 0px, 0px)' },
@@ -104,7 +108,7 @@ function PostSheet({ post, feeder, onClose }: PostSheetProps) {
         if (!moving) {
           panel.querySelectorAll<HTMLElement>('[data-settle]').forEach((block) => {
             const step = Number(block.dataset.settle) || 0;
-            block.animate(BLOCK_FRAMES, { duration: BLOCK_MS, delay: (0.12 + beatDelay(step * 1.5)) * 1000, easing: BEAT_EASE_CSS, fill: 'backwards' });
+            block.animate(BLOCK_FRAMES, { duration: BLOCK_MS, delay: (BLOCK_START_S + beatDelay(step * 1.5)) * 1000, easing: BEAT_EASE_CSS, fill: 'backwards' });
           });
         }
       }

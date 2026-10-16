@@ -60,6 +60,7 @@ import {
   mediaProxyUrl,
   scopeKey,
   shiftDay,
+  ZOOM_ORDER,
   type FeedMode,
   type FeedOrder,
   type StreamFeeder,
@@ -107,13 +108,15 @@ import {
   type Rect,
 } from '@/lib/feedStream/motion';
 import { getDayPosts, peekStreamIndex, prefetchDays, subscribeStream, useDayPosts } from '@/lib/feedStream/store';
-import { isWarm, warmAhead, warmPictures } from '@/lib/feedStream/warm';
+import { HELD, isWarm, warmAhead, warmPictures, warmSpare } from '@/lib/feedStream/warm';
 import { usePinch, type PinchDirection, type PinchFocal } from '@/lib/feedStream/usePinch';
-import { breakpointOf, defaultModeFor, readStoredMode, springBack, stepMode, toggledMode, writeStoredMode, type ViewBreakpoint } from '@/lib/feedStream/zoom';
+import { breakpointOf, initialMode, springBack, stepMode, toggledMode, writeStoredMode, type ViewBreakpoint } from '@/lib/feedStream/zoom';
 import { useAppHaptics } from '@/lib/haptics';
 import { acquireRootPageScroll } from '@/lib/rootScrollMode';
 import { pinToScreen, stillFrame, unsnap, whenDrawn } from '@/lib/feedStream/stillFrame';
 import { markScrollJump, type ScrollJump } from '@/lib/useCompressedOnScroll';
+import { TEMPO, ms } from '@/lib/tempo';
+import { afterDrawn } from '@/lib/webkitMotion';
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -130,16 +133,41 @@ const ZOOM_LOAD_MS = 220;
 const PICTURE_WAIT_MS = 160;
 // a new pick waits at most this long for its posts near the day you're on (the screen holds still meanwhile)
 const PICK_WAIT_MS = 450;
+// the tab opening waits at most this long for its first screen's posts and their pictures (its cells held unseen)
+const ARRIVAL_WAIT_MS = 700;
+// ...and, its pictures' wait over, holds on (still unseen) till that screen's posts are all in, at most this long from
+// the start: an entrance begun on placeholders would turn them into posts under it
+const ARRIVAL_MAX_MS = 1500;
+// ...and decodes only that screen: half a screen either side of its middle post (a full-size decode() costs memory a
+// phone hasn't much of; the rest decode as their <img>s, at the size they're drawn)
+const ARRIVAL_REACH = 0.5;
+// several zooms warmed at once (the phone's menu opening) decode at most this many pictures between them (half of what
+// warm.ts holds: the likely next zoom's are never pushed out); the rest are only fetched
+const MENU_DECODES = HELD / 2;
+// at rest, the other zooms are made ready where each would open: MONTH first (its highlights come from all over each
+// month: the most days to load), then the other
+const PREWARM_ORDER: readonly FeedMode[] = ['month', 'week', 'today'];
+// ...on an idle moment (where there is no idle callback, Safari: after this quiet spell)
+const PREWARM_QUIET_MS = 1200;
+// the most of its pictures a stopped warm-up leaves for the next one to ask for again
+const PREWARM_LEFT_MAX = 128;
 // a new pick asks first for the days around the one you were on: this many, the first this many ahead of it
 const SEED_DAYS = 18;
 const SEED_AHEAD = 3;
 // a move into the Day view: the spotlight (the row's reading) comes on this far into it
-const SPOT_AFTER_MS = 200;
+const SPOT_AFTER_MS = ms(200);
+// a post replacing its placeholder (its day just loaded) dissolves in this long; more than SWAP_IN_MAX on screen at
+// once come in as they are (a dissolve each is a layer each, in a heavy commit)
+const SWAP_IN_MS = ms(200);
+const SWAP_IN_EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
+const SWAP_IN_MAX = 8;
+// above everything in a post's frame (its ring, its dimming, a tile's button)
+const SWAP_COVER_Z = '7';
 // a post carried further than this many screens goes only this many screens of the way, fading (out, or in)
 const FAR = 1.15;
 const PART = 0.4;
 // the longest a carry takes (a post crossing the whole screen)
-const LONG_CARRY_MS = 760;
+const LONG_CARRY_MS = ms(760);
 // a live pinch past the last zoom only gives this much (a rubber band)
 const PINCH_EDGE = 0.35;
 // a live pinch this far from 1 has shown which way it is going
@@ -157,7 +185,12 @@ const HOLD_FROM_PX = 240;
    identical page under it: nothing seen), quicker under a finger */
 const STILL_SETTLE_MS = 600;
 const STILL_HOLD_MS = 450;
-// an even dissolve: pictures that finished loading under the copy come up gently, not in one frame
+/* The copy shows everything at its end (stillFrame: no animation plays in it), so what is still on its way when the
+   pieces are home (the chrome the move brought coming in, a picture developing) would all snap there at once as it
+   goes up: it is let finish first, the page held still meanwhile, at most this long */
+const LAND_SETTLE_MS = ms(450);
+// an even dissolve: pictures that finished loading under the copy come up gently, not in one frame (left at its own
+// pace, not TEMPO's: it dissolves over an identical page, and a copy over a live page should be gone soon)
 const STILL_OUT_MS = 240;
 const STILL_OUT_EASE = 'cubic-bezier(0.4, 0, 0.6, 1)';
 const STILL_TOUCH_OUT_MS = 90;
@@ -166,7 +199,7 @@ const STILL_TOUCH_OUT_MS = 90;
    where the page now is, then dissolves: a glide that long outruns WebKit's drawing (blank for a moment mid-way) */
 const GLIDE_MAX_SCREENS = 1.2;
 const STILL_FADE_HOLD_MS = 300;
-const STILL_FADE_MS = 280;
+const STILL_FADE_MS = ms(280);
 const STILL_FADE_DRIFT = 56;
 const STILL_FADE_EASE = 'cubic-bezier(0.3, 0, 0.5, 1)';
 // under the header (z 100) and the nav (z 180)
@@ -174,6 +207,10 @@ const STILL_Z = 90;
 /* WebKit: a move's pieces wait at their start (at most this long) until the frame that draws the new view is on screen,
    then all set off together (motion.ts, releaseFlight): their clock would otherwise start before that frame is shown */
 const FLIGHT_HOLD_MS = 800;
+/* A move's own scroll is told to the header as a jump (it never folds or unfolds the header by which way it went), with
+   where it lands, until the frame that carries it is on screen (then the usual moment more), at most this long: a slow
+   first frame would otherwise have the header read it as the reader's */
+const JUMP_MARK_MS = 1000;
 /* The pictures a scroll is heading for are fetched before their posts go up (warm.ts, warmAhead): a picture takes a
    round trip to /api/media and another to the store (a second or more on a phone's network), and posts only go up a
    screen ahead, so a fling's pictures used to arrive as it slowed down, popping in one by one where the eye could
@@ -208,8 +245,9 @@ export type FeedStreamHandle = {
   // ...and shown: the screen as it is now is kept for the move, and apply() (the tab's own state) shows the new pick in
   // the same commit. profile: the profile is someone else's
   commit: (apply: () => void, options: { profile: boolean }) => void;
-  // a pick or a zoom about to be taken (a hover, a press): its posts and the pictures it opens on are fetched now
-  warm: (next: { scope?: StreamScope; mode?: FeedMode }) => void;
+  // a pick or a zoom (or zooms) about to be taken (a hover, a press): its posts and the pictures it opens on are
+  // fetched now
+  warm: (next: { scope?: StreamScope; modes?: readonly FeedMode[] }) => void;
 };
 
 // what the stream shows instead of posts (no feeds, no posts, an error), with or without the profile over it
@@ -288,7 +326,14 @@ type Move = {
   origin: number;
   // a pick for someone else: the old profile's copy, going
   profileCopy: HTMLElement | null;
+  // what the new view was laid out from, held until it lands: a day loading mid-glide would turn a placeholder into a
+  // post (another element) under the move. What loads meanwhile comes in once it has landed
+  posts: ReadonlyMap<string, StreamPost[]>;
+  index: StreamIndex;
 };
+
+// the last zoom's focal and where it stood on screen, and the scroll that zoom landed at (null: not yet placed)
+type ZoomMemory = { zid: string; screenY: number; scroll: number | null };
 
 type ZoomOptions = { focal?: { zid?: string | null; postKey?: string | null }; point?: { x: number; y: number }; remember?: boolean; waited?: boolean };
 
@@ -367,20 +412,28 @@ function loadedPosts(scope: StreamScope, index: StreamIndex): Map<string, Stream
   return posts;
 }
 
-/* What a view would show first: the posters near where it opens (a post, or a day) for a scope at a zoom, and the days
-   it needs that haven't loaded. Laid out exactly as the page would be, so a pick or a zoom can have its pictures ready
-   before anything moves. null: the scope's index isn't here yet */
-function viewPictures(scope: StreamScope, mode: FeedMode, size: Metrics, place: { day: string | null; zid: string | null }): { srcs: string[]; missing: string[] } | null {
+type Place = { day: string | null; zid: string | null };
+
+// where a place is in a layout: its post, else its day, else the top
+function placeIn(layout: StreamLayout, place: Place): LayoutItem | undefined {
+  const focal = place.zid ? indexOfSlot(layout, place.zid) : -1;
+  return layout.items[focal >= 0 ? focal : place.day ? Math.max(0, indexForDay(layout, place.day)) : 0];
+}
+
+/* What a view would show first: the posters near where it opens (a post, or a day) for a scope at a zoom, nearest it
+   first, and the days it needs that haven't loaded (and where in it that place is: y, its middle; and the layout).
+   Laid out exactly as the page would be, so a pick or a zoom can have its pictures ready before anything moves. reach:
+   how far either side of the place, in screens. null: the scope's index isn't here yet */
+function viewPictures(scope: StreamScope, mode: FeedMode, size: Metrics, place: Place, reach = 1): { srcs: string[]; missing: string[]; y: number; layout: StreamLayout } | null {
   const index = peekStreamIndex(scope);
   if (!index) return null;
   const posts = loadedPosts(scope, index);
   const layout = computeLayout({ mode, days: index.days, posts, width: size.width, height: size.height, insets: size.insets });
-  const focal = place.zid ? indexOfSlot(layout, place.zid) : -1;
-  const at = focal >= 0 ? focal : place.day ? Math.max(0, indexForDay(layout, place.day)) : 0;
-  const item = layout.items[at];
-  if (!item) return { srcs: [], missing: [] };
-  const [first, last] = itemRange(layout, item.y + item.h / 2 - size.height, item.y + item.h / 2 + size.height);
-  const srcs: string[] = [];
+  const item = placeIn(layout, place);
+  if (!item) return { srcs: [], missing: [], y: 0, layout };
+  const middle = item.y + item.h / 2;
+  const [first, last] = itemRange(layout, middle - size.height * reach, middle + size.height * reach);
+  const near: Array<{ src: string; far: number }> = [];
   const missing = new Set<string>();
   for (let place2 = first; place2 < last; place2 += 1) {
     const entry = layout.items[place2];
@@ -391,13 +444,71 @@ function viewPictures(scope: StreamScope, mode: FeedMode, size: Metrics, place: 
       continue;
     }
     const src = loaded[entry.slot]?.thumbnailUrl;
-    if (src) srcs.push(src);
+    if (src) near.push({ src, far: Math.abs(entry.y + entry.h / 2 - middle) });
   }
-  return { srcs, missing: [...missing] };
+  near.sort((a, b) => a.far - b.far);
+  return { srcs: near.map((entry) => entry.src), missing: [...missing], y: middle, layout };
+}
+
+// every post on a screen (the layer from `top`, `height` tall) has its day loaded: none is drawn as a placeholder
+function screenLoaded(layout: StreamLayout, top: number, height: number): boolean {
+  const [first, last] = itemRange(layout, top, top + height);
+  for (let at = first; at < last; at += 1) {
+    const item = layout.items[at];
+    if ((item.kind === 'tile' || item.kind === 'reel') && !item.postKey) return false;
+  }
+  return true;
+}
+
+/* A held move's pieces home: what in the page is still on its way (`known`, the chrome it brought, and whatever else
+   is running there: a picture developing, a reading coming in), let finish before the still copy is taken (LAND_SETTLE_MS
+   at most; never what loops for good). Resolves at once under a finger or a wheel, and when the flight ends (another
+   move, the tab hidden) */
+function whenSettled(flight: Flight, root: HTMLElement, known: readonly Animation[]): Promise<void> {
+  const running = (animation: Animation) => {
+    if (animation.playState !== 'running') return false;
+    const end = animation.effect?.getComputedTiming().endTime;
+    const now = animation.currentTime;
+    return typeof end === 'number' && Number.isFinite(end) && typeof now === 'number' && end > now;
+  };
+  const settling = new Set(known.filter(running));
+  document.getAnimations().forEach((animation) => {
+    const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+    if (target && root.contains(target) && running(animation)) settling.add(animation);
+  });
+  if (!settling.size || flight.ended) return Promise.resolve();
+  return new Promise((resolve) => {
+    let over = false;
+    let timer = 0;
+    const listen = { capture: true, passive: true } as const;
+    const done = () => {
+      if (over) return;
+      over = true;
+      window.clearTimeout(timer);
+      window.removeEventListener('touchstart', done, listen);
+      window.removeEventListener('wheel', done, listen);
+      resolve();
+    };
+    timer = window.setTimeout(done, LAND_SETTLE_MS);
+    window.addEventListener('touchstart', done, listen);
+    window.addEventListener('wheel', done, listen);
+    flight.cleanups.push(done);
+    void Promise.allSettled(Array.from(settling, (animation) => animation.finished)).then(done);
+  });
+}
+
+// `run` once the page is idle (Safari has no idle callback: after a quiet spell); returns a cancel
+function whenIdle(run: () => void): () => void {
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(run, { timeout: 4000 });
+    return () => window.cancelIdleCallback(id);
+  }
+  const id = window.setTimeout(run, PREWARM_QUIET_MS);
+  return () => window.clearTimeout(id);
 }
 
 /* Resolves once a view is ready to be shown (its days in, the pictures it opens on decoded) or the budget is spent */
-function viewReady(scope: StreamScope, mode: FeedMode, size: Metrics, place: { day: string | null; zid: string | null }, budget: number): Promise<void> {
+function viewReady(scope: StreamScope, mode: FeedMode, size: Metrics, place: Place, budget: number, reach = 1): Promise<void> {
   return new Promise((resolve) => {
     const started = performance.now();
     let done = false;
@@ -411,7 +522,7 @@ function viewReady(scope: StreamScope, mode: FeedMode, size: Metrics, place: { d
       resolve();
     };
     const check = () => {
-      const view = viewPictures(scope, mode, size, place);
+      const view = viewPictures(scope, mode, size, place, reach);
       if (!view) return;
       if (view.missing.length) {
         prefetchDays(scope, view.missing);
@@ -494,7 +605,7 @@ function carryLayer(flight: Flight, el: HTMLElement, was: Rect, vw: number, vh: 
   // on screen at both ends, it makes the whole trip however far (part of the way would end in a pop); a long trip
   // takes a little longer, so nothing ever streaks across the screen
   if (distance <= FAR * vh || (before && after)) {
-    carry(flight, el, now, was, now, { picture, duration: Math.min(LONG_CARRY_MS, CARRY_MS + Math.max(0, distance - 480) * 0.3) });
+    carry(flight, el, now, was, now, { picture, duration: Math.min(LONG_CARRY_MS, CARRY_MS + Math.max(0, distance - 480) * 0.3 * TEMPO) });
     return;
   }
   const fraction = (PART * vh) / distance;
@@ -557,6 +668,12 @@ function FeedStream({
   // the wide Day view's spotlight is on (off for a moment as a move lands)
   const [spotOn, setSpotOn] = useState(true);
   const [move, setMove] = useState<Move | null>(null);
+  // the last move to land: what it was laid out from (shown on while nothing under it has changed: see shownPosts)
+  const [landed, setLanded] = useState<{ gen: string; posts: ReadonlyMap<string, StreamPost[]>; index: StreamIndex } | null>(null);
+  // the tab's opening coming in: what its first screen was laid out from, held (like a move's) until its entrance is
+  // done. A day or a fresh index landing mid-way would turn an entering placeholder into its post (another element,
+  // there at once) or move the column under it; what came in meanwhile is let in once it is over
+  const [entrance, setEntrance] = useState<{ gen: string; posts: ReadonlyMap<string, StreamPost[]>; index: StreamIndex } | null>(null);
 
   // what the handlers read (kept current after every commit, never written during render)
   const layoutRef = useRef<StreamLayout | null>(null);
@@ -567,7 +684,19 @@ function FeedStream({
   const inputsRef = useRef<{ index: StreamIndex | null; posts: ReadonlyMap<string, StreamPost[]>; scope: StreamScope }>({ index: null, posts: new Map(), scope });
   const compressedRef = useRef(headerCompressed);
   const specsRef = useRef<Spec[]>([]);
-  const renderedRef = useRef<{ layout: StreamLayout; gen: string; from: number; to: number } | null>(null);
+  // the cells whose chrome a Day⇄grid move brought in is still coming in after that move has landed (they keep
+  // [data-arriving] so the CSS entrance plays out instead of snapping; read only while no move is under way). Set
+  // with the landing (one render), let go once that entrance is done, with the next render that comes anyway (a
+  // finished entrance's attribute does nothing): its mirror, and the set whose entrance is done. Worn only in the view
+  // (scope and zoom) it landed in: a pick or a zoom with no move of its own never replays it on its own cells
+  const [arrivingAfter, setArrivingAfter] = useState<{ view: string; keys: ReadonlySet<string> } | null>(null);
+  const arrivingAfterRef = useRef<{ view: string; keys: ReadonlySet<string> } | null>(null);
+  const arrivingDoneRef = useRef<ReadonlySet<string> | null>(null);
+  // handed to the landing (endMove), so it lands in the same render as the move's end (a held WebKit landing ends
+  // later, under its still copy)
+  const arrivingNextRef = useRef<ReadonlySet<string> | null>(null);
+  // what the last commit mounted (and the window it was drawn with, when it was the window asked for)
+  const renderedRef = useRef<{ layout: StreamLayout; gen: string; from: number; to: number; win: Win | null } | null>(null);
   const dayWinRef = useRef<DayWin | null>(null);
   const wideRef = useRef<{ layout: StreamLayout; from: number; to: number } | null>(null);
   // the scroll's speed (px a ms, read once a frame) and the pictures last asked for ahead of it
@@ -604,16 +733,45 @@ function FeedStream({
   const pickRef = useRef<{ next: StreamScope; day: string | null; keepScroll: boolean } | null>(null);
   const seekRef = useRef<{ key: string; until: number } | null>(null);
   const arrivedRef = useRef(false);
+  // the tab opening, its cells held unseen until its first screen's posts are in (a token: none, or a newer one, and
+  // that wait is over); whether the last commit drew the skeleton (a launch with no index yet); the window still narrow
+  const holdRef = useRef<object | null>(null);
+  const skeletonPaintedRef = useRef(false);
+  const narrowRef = useRef(true);
+  // the other zooms being made ready at rest (its stop), and per zoom where it last was (the layout's size, the place)
+  const prewarmRef = useRef<(() => void) | null>(null);
+  const prewarmedRef = useRef(new Map<FeedMode, { key: string; y: number; layout: StreamLayout }>());
+  // ...and the pictures a stopped one hadn't fetched yet (the next asks for them again, with no layout of its own)
+  const prewarmLeftRef = useRef<string[]>([]);
+  // a zoom straight back (the page not moved since the last one landed) keeps that zoom's focal, where it stood
+  const lastZoomRef = useRef<ZoomMemory | null>(null);
+  // the slots drawn as placeholders last time (day:slot): one drawn as its post now has had its day load; and the
+  // placeholders' copies still dissolving off the posts that took their place
+  const placeholdersRef = useRef<{ view: string; slots: Set<string> }>({ view: '', slots: new Set() });
+  const coversRef = useRef(new Set<HTMLElement>());
 
   /* ── data ── */
 
   // the days whose posts are wanted: the window's, or (a new pick's first frames, before it has a window) its seed
   const wantDays = dayWin && dayWin.gen === gen ? dayWin.days : seed && seed.gen === gen ? seed.days : NO_DAYS;
-  const posts = useDayPosts(scope, wantDays);
+  // every day of the scope that has loaded (the map changes only when one of the wanted days, or the index, does): a
+  // loaded day is laid out from its posts wherever it is, as a move lays it out, never from its index entry again
+  const posts = useDayPosts(scope, wantDays, { loaded: true });
+  /* Once a move has landed, what it was laid out from goes on being shown while every day it draws is as it was
+     (nothing loaded or changed under it since; days off screen loading meanwhile change nothing): the same layout, so
+     the landing's frame neither lays the feed out again nor reads where the page is after its own writes (WebKit works
+     the page's styles out afresh for that). The first day drawn that differs brings in the live posts, for good */
+  const held = !move && landed && landed.gen === gen && landed.index === index ? landed : null;
+  const opening = !move && entrance && entrance.gen === gen ? entrance : null;
+  // through a move, what it was laid out from (no cell changes kind mid-glide); through the tab's opening, its first
+  // screen's; once a move lands, that (held) or the live posts
+  const frozen = move ?? opening ?? held;
+  const shownPosts = frozen?.posts ?? posts;
+  const shownIndex = frozen?.index ?? index;
 
   const layout = useMemo(
-    () => (mode && metrics && index && !blank ? computeLayout({ mode, days: index.days, posts, width: metrics.width, height: metrics.height, insets: metrics.insets }) : null),
-    [mode, metrics, index, posts, blank],
+    () => (mode && metrics && shownIndex && !blank ? computeLayout({ mode, days: shownIndex.days, posts: shownPosts, width: metrics.width, height: metrics.height, insets: metrics.insets }) : null),
+    [mode, metrics, shownIndex, shownPosts, blank],
   );
   const skeleton = useMemo(
     () => (!index && !blank && mode && metrics ? skeletonLayout(mode, metrics.width, metrics.height, metrics.insets) : null),
@@ -632,18 +790,27 @@ function FeedStream({
   }, [layout]);
   // the first post is "Today's standout" when it is the newest day's highlight
   const firstStandout = useMemo(() => {
-    const newest = index?.days[0];
-    const dayPosts = newest ? posts.get(newest.day) : undefined;
+    const newest = shownIndex?.days[0];
+    const dayPosts = newest ? shownPosts.get(newest.day) : undefined;
     if (!dayPosts?.length) return false;
     const highlight = highlightOf(dayPosts);
     return highlight != null && highlight.key === dayPosts[0].key;
-  }, [index, posts]);
+  }, [shownIndex, shownPosts]);
 
   const drawn = layout ?? skeleton;
   const mountView = drawn && metrics
     ? (layout && win && win.gen === gen && win.mode === layout.mode ? win : mountWindow(drawn, 0, metrics.height, true))
     : null;
   const [mountFrom, mountTo] = drawn && mountView ? itemRange(drawn, mountView.y0, mountView.y1) : [0, 0];
+  // (the landed posts let go: another scope or index, or a day it draws loaded or changed since)
+  let landedStale = Boolean(landed && !move && !held);
+  if (held && frozen === held && drawn) {
+    for (let at = mountFrom; at < mountTo && !landedStale; at += 1) {
+      const day = drawn.items[at].day;
+      if (day && held.posts.get(day) !== posts.get(day)) landedStale = true;
+    }
+  }
+  if (landedStale) setLanded(null);
 
   /* ── the snap (a phone's Day view) ── */
 
@@ -720,8 +887,18 @@ function FeedStream({
     const [from, to] = itemRange(current, view.y0, view.y1);
     const rendered = renderedRef.current;
     if (!rendered || rendered.layout !== current || rendered.gen !== scopeGen || rendered.from !== from || rendered.to !== to) {
-      renderedRef.current = { layout: current, gen: scopeGen, from, to };
-      setWin({ gen: scopeGen, mode: current.mode, y0: view.y0, y1: view.y1, narrow: keepNarrow });
+      const next: Win = { gen: scopeGen, mode: current.mode, y0: view.y0, y1: view.y1, narrow: keepNarrow };
+      const was = rendered?.win;
+      renderedRef.current = { layout: current, gen: scopeGen, from, to, win: next };
+      // (only laid out again, the window the same: what is drawn is this already, no render for it)
+      if (!was || was.gen !== next.gen || was.mode !== next.mode || was.y0 !== next.y0 || was.y1 !== next.y1 || was.narrow !== next.narrow) {
+        setWin(next);
+        // a landing's chrome done coming in lets go of [data-arriving] in this render (not one of its own)
+        if (arrivingAfterRef.current && arrivingAfterRef.current.keys === arrivingDoneRef.current) {
+          arrivingAfterRef.current = null;
+          setArrivingAfter(null);
+        }
+      }
     }
     // the days within three screens either way are asked for (worked out again only when that range moves)
     const [wideFrom, wideTo] = itemRange(current, top - size.height * 3, top + size.height * 4);
@@ -803,6 +980,177 @@ function FeedStream({
     if (Math.abs(land - top) > size.height * 2) prefetchDays(scope, daysInRange(current, land - size.height, land + size.height * 2));
   }, []);
 
+  /* ── made ready ahead ── */
+
+  // the tab opening's hold let go: its cells seen again. done: its arrival is over (a move took over); otherwise it
+  // starts again the next time it can (the tab hidden mid-wait, StrictMode's second run, a new scope)
+  const dropHold = useCallback((done: boolean) => {
+    if (!holdRef.current) return;
+    holdRef.current = null;
+    if (done) arrivedRef.current = true;
+    const layer = layerRef.current;
+    if (layer) delete layer.dataset.holding;
+  }, []);
+
+  const stopPrewarm = useCallback(() => {
+    const stop = prewarmRef.current;
+    prewarmRef.current = null;
+    stop?.();
+  }, []);
+
+  /* The other zooms made ready while the feed is at rest (nothing moving or under a finger, the screen's own posts in),
+     so the first switch to one lands on posts and pictures, not on blocks that develop on the way: on an idle moment,
+     where each would open from here, one zoom at a time, MONTH first. Its days are asked for (they go after the
+     screen's own), and as they come in its pictures are fetched, two at a time behind everything else (warm.ts,
+     warmSpare). A zoom is made ready again only once the place has moved a screen or more in it (told on the layout it
+     was last made ready on: a reading pause lays nothing out to find it is ready already). A finger, a scroll, an
+     intent or a move stops it: the pictures it hadn't fetched yet are let go (the next one asks for them again, after
+     its own, with no layout for them), and a zoom it hadn't finished is made ready again next time */
+  const prewarm = useCallback(() => {
+    stopPrewarm();
+    if (!visibleRef.current || !arrivedRef.current) return;
+    let stopped = false;
+    let finished = false;
+    let cancelIdle = () => {};
+    let unsubscribe: (() => void) | null = null;
+    let frame = 0;
+    let deadline = 0;
+    // the zooms still to make ready (null: not begun, the screen's own posts not in yet), and the place they open at
+    let todo: FeedMode[] | null = null;
+    let place: Place = { day: null, zid: null };
+    // the days a zoom is waiting on (laid out again once they are all in, not as each one lands)
+    let pending: { mode: FeedMode; days: string[] } | null = null;
+    // the zooms laid out afresh, and those of them whose pictures have all been asked for
+    const marked: FeedMode[] = [];
+    const completed: FeedMode[] = [];
+    const wanted: string[] = [];
+    const queued = new Set<string>();
+    // the last one's pictures not yet fetched, taken over (asked for after this one's own)
+    let carried = false;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      cancelIdle();
+      unsubscribe?.();
+      window.clearTimeout(deadline);
+      cancelAnimationFrame(frame);
+      // what wasn't fetched yet waits for the next one (with the last one's, unless this one took those over)
+      const left = warmSpare([]);
+      prewarmLeftRef.current = [...new Set(carried ? left : [...left, ...prewarmLeftRef.current])].slice(0, PREWARM_LEFT_MAX);
+      if (!finished) marked.forEach((forMode) => {
+        if (!completed.includes(forMode)) prewarmedRef.current.delete(forMode);
+      });
+    };
+    const end = () => {
+      if (prewarmRef.current === stop) prewarmRef.current = null;
+      stop();
+    };
+    const attempt = () => {
+      frame = 0;
+      if (stopped) return;
+      const current = layoutRef.current;
+      const size = metricsRef.current;
+      const mode = modeRef.current;
+      const resting = visibleRef.current && !moveRef.current && !pinchRef.current && !touchingRef.current && !scrollingRef.current && !zoomWaitRef.current;
+      if (!current || !size || !mode || !resting) {
+        end();
+        return;
+      }
+      const scope = inputsRef.current.scope;
+      if (!todo) {
+        // (where the page rests, as last read: no read of the page's own after whatever was last written to it)
+        const top = savedYRef.current - originRef.current;
+        if (!screenLoaded(current, top, size.height)) return;
+        // where a zoom from here opens, as zoomTo picks it: the post nearest the middle of the band (into a view that
+        // doesn't hold it, MONTH's highlights, its day)
+        const middle = ((compressedRef.current ? size.insets.topCompressed : size.insets.top) + window.innerHeight - size.insets.bottom) / 2;
+        const near = nearestPost(current, window.innerWidth / 2, top + middle, window.innerHeight);
+        const zid = near >= 0 ? idOf(current.items[near]) : null;
+        place = { day: zid ? zid.split(':')[0] : dayAt(current, top, readingLine(size.insets, compressedRef.current)), zid };
+        todo = PREWARM_ORDER.filter((other) => other !== mode);
+        wait();
+      }
+      const key = `${genRef.current}|${size.width}|${size.height}`;
+      while (todo.length) {
+        const forMode = todo[0];
+        if (pending && pending.mode === forMode && pending.days.some((day) => !getDayPosts(scope, day))) return;
+        pending = null;
+        if (!marked.includes(forMode)) {
+          // made ready from about here already (where the place is on the layout it was made ready on)
+          const last = prewarmedRef.current.get(forMode);
+          const was = last && last.key === key ? placeIn(last.layout, place) : undefined;
+          if (last && was && Math.abs(was.y + was.h / 2 - last.y) < size.height) {
+            todo.shift();
+            continue;
+          }
+        }
+        const view = viewPictures(scope, forMode, size, place);
+        if (!view) {
+          end();
+          return;
+        }
+        if (!marked.includes(forMode)) {
+          prewarmedRef.current.set(forMode, { key, y: view.y, layout: view.layout });
+          marked.push(forMode);
+        }
+        view.srcs.forEach((src) => {
+          if (queued.has(src)) return;
+          queued.add(src);
+          wanted.push(src);
+        });
+        warmSpare(wanted);
+        // its days first (again once they are in), then the next zoom
+        if (view.missing.length) {
+          prefetchDays(scope, view.missing);
+          pending = { mode: forMode, days: view.missing };
+          return;
+        }
+        if (marked.includes(forMode)) completed.push(forMode);
+        todo.shift();
+        wait();
+      }
+      // the last one's pictures it hadn't fetched yet, after this one's own
+      if (!carried) {
+        carried = true;
+        const before = wanted.length;
+        prewarmLeftRef.current.forEach((src) => {
+          if (queued.has(src)) return;
+          queued.add(src);
+          wanted.push(src);
+        });
+        prewarmLeftRef.current = [];
+        if (wanted.length > before) warmSpare(wanted);
+      }
+      finished = true;
+      unsubscribe?.();
+      unsubscribe = null;
+      window.clearTimeout(deadline);
+    };
+    // a wait (the screen's own posts, a zoom's days) lasts WARM_MS at most: then on to the next zoom (or, the screen's
+    // posts never in, nothing)
+    const wait = () => {
+      window.clearTimeout(deadline);
+      deadline = window.setTimeout(() => {
+        if (!todo) {
+          end();
+          return;
+        }
+        todo.shift();
+        wait();
+        attempt();
+      }, WARM_MS);
+    };
+    cancelIdle = whenIdle(() => {
+      if (stopped) return;
+      unsubscribe = subscribeStream(() => {
+        if (!frame && !stopped) frame = requestAnimationFrame(attempt);
+      });
+      wait();
+      attempt();
+    });
+    prewarmRef.current = stop;
+  }, [stopPrewarm]);
+
   // the scroll came to rest: a phone's Day view, the card on the focus line becomes the one in view
   const settle = useCallback(() => {
     const current = layoutRef.current;
@@ -811,6 +1159,8 @@ function FeedStream({
     const scrollY = window.scrollY;
     savedYRef.current = scrollY;
     syncFrame(scrollY);
+    // at rest: the other zooms are made ready from here (once the place has moved enough in them)
+    prewarm();
     if (current.mode !== 'today' || current.mediaWidth != null) return;
     settledTopRef.current = scrollY;
     movingRef.current = false;
@@ -820,7 +1170,7 @@ function FeedStream({
       setActive(at);
       callbacksRef.current.play('snapLock');
     }
-  }, [syncFrame]);
+  }, [prewarm, syncFrame]);
 
   /* ── moves ── */
 
@@ -837,22 +1187,41 @@ function FeedStream({
   // a move lands (or is cut short): every piece is itself, the old view's leftovers go, the page is live again (its
   // snap, though, still held until a finger moves it: holdSnap). A held scroll is handed over first
   const endMove = useCallback(() => {
+    // whether this landing hands a held scroll over itself (then where it really landed is read below)
+    const handing = handoverRef.current !== null;
     handOver();
     holdSnap();
     releaseHeight();
     endFlight(flightRef.current);
     flightRef.current = null;
     window.clearTimeout(spotTimerRef.current);
-    if (!moveRef.current) return;
-    moveRef.current.profileCopy?.remove();
+    const landing = moveRef.current;
+    if (!landing) return;
+    landing.profileCopy?.remove();
     moveRef.current = null;
     setMove(null);
+    // what it was laid out from stays on screen (the page isn't laid out again as it lands)
+    setLanded({ gen: genRef.current, posts: landing.posts, index: landing.index });
+    const arriving = arrivingNextRef.current ? { view: `${genRef.current}|${landing.to}`, keys: arrivingNextRef.current } : null;
+    arrivingAfterRef.current = arriving;
+    setArrivingAfter(arriving);
+    arrivingNextRef.current = null;
     setSpotOn(true);
-    if (visibleRef.current) {
-      savedYRef.current = window.scrollY;
-      syncFrame(window.scrollY);
+    // where it really landed (a held scroll just handed over), read once, after this landing's own writes (hidden: where
+    // it was kept). A zoom straight back reads it only from that hand-over: otherwise the move already noted where it
+    // lands, and a scroll the reader made during the glide must not count as 'where the last zoom left it'
+    const visible = visibleRef.current;
+    const scrollY = visible ? window.scrollY : savedYRef.current;
+    if (lastZoomRef.current && handing) lastZoomRef.current.scroll = scrollY;
+    if (visible) {
+      savedYRef.current = scrollY;
+      syncFrame(scrollY);
+      // the pictures around where it landed, fetched ahead
+      lookAhead(scrollY, false);
+      // landed: the other zooms are made ready from here
+      prewarm();
     }
-  }, [handOver, holdSnap, releaseHeight, syncFrame]);
+  }, [handOver, holdSnap, lookAhead, prewarm, releaseHeight, syncFrame]);
 
   // a still copy of the screen over the page (stillFrame); a finger or a wheel lets it go at once (after `onTouch`)
   const coverPage = useCallback((root: HTMLElement, onTouch?: () => void) => {
@@ -930,13 +1299,18 @@ function FeedStream({
       if (root && root.style.transform) void springBack(root, pinchScale).then(() => pinchBackdrop(root, false));
       return;
     }
+    // the network is the zoom's now. A tab still opening keeps its cells unseen while the zoom waits for its days or
+    // pictures (below), and lets them go as the move starts: the move brings in what it shows
+    stopPrewarm();
     const size = metricsRef.current;
     if (size && options.remember !== false) writeStoredMode(breakpointOf(size.width), next);
     const was = layoutRef.current;
     const layer = layerRef.current;
-    const days = inputsRef.current.index?.days;
-    if (!size || !was || !layer || !days || !visibleRef.current) {
+    const index2 = inputsRef.current.index;
+    if (!size || !was || !layer || !index2 || !visibleRef.current) {
+      dropHold(true);
       releaseLayer();
+      lastZoomRef.current = null;
       modeRef.current = next;
       setMode(next);
       return;
@@ -952,9 +1326,15 @@ function FeedStream({
       y: ((compressedRef.current ? size.insets.topCompressed : size.insets.top) + vh - size.insets.bottom) / 2,
     };
 
+    // a zoom straight back (nothing tapped or pinched, the page where the last zoom landed it): that zoom's focal
+    // again, where it stood then. Picked afresh from the middle of the screen, a round trip would come back on a
+    // neighbour (a grid's middle column, a card's frame above the middle), or lose your week to a month's highlights
+    const last = lastZoomRef.current;
+    const back = !options.focal && !options.point && last && last.scroll != null && Math.abs(scrollY - last.scroll) < 2 ? last : null;
+
     // the focal: what was tapped or pinched; else the profile, when it is what you're looking at; else the post
     // nearest the middle of the band
-    let zid = options.focal?.zid ?? null;
+    let zid = options.focal?.zid ?? back?.zid ?? null;
     if (!zid && options.focal?.postKey) {
       const at = was.byPost.get(options.focal.postKey);
       zid = at != null ? idOf(was.items[at]) : null;
@@ -975,21 +1355,24 @@ function FeedStream({
     // the new view, laid out now, and where the page goes in it: the focal stays where it is on screen (into the Day
     // view, it comes to rest on the focus line); the profile, when that is what you're looking at, stays put
     const scope2 = inputsRef.current.scope;
-    const index2 = inputsRef.current.index;
-    const targetPosts = index2 ? loadedPosts(scope2, index2) : inputsRef.current.posts;
-    const target = computeLayout({ mode: next, days, posts: targetPosts, width: size.width, height: size.height, insets: size.insets });
+    const targetPosts = loadedPosts(scope2, index2);
+    const target = computeLayout({ mode: next, days: index2.days, posts: targetPosts, width: size.width, height: size.height, insets: size.insets });
     const focalAt = zid ? indexOfSlot(target, zid) : -1;
     const focalDay = zid ? zid.split(':')[0] : null;
     const focalFrame = zid ? layer.querySelector<HTMLElement>(`:scope > [data-zid="${zid}"] > [data-layer="frame"]`) : null;
     const anchor = focalFrame ? centreOf(rectOf(focalFrame)) : point;
+    // a zoom straight back puts the focal where it stood before the last zoom, not where that zoom put its frame
+    const anchorY = back ? back.screenY : anchor.y;
     let top: number;
     if (keepProfile) top = scrollY - base;
     else if (next === 'today') top = dayRestTop(target, focalAt >= 0 ? focalAt : Math.max(0, focalDay ? indexForDay(target, focalDay) : 0));
-    else if (focalAt >= 0) top = target.items[focalAt].y + target.items[focalAt].h / 2 - anchor.y;
+    else if (focalAt >= 0) top = target.items[focalAt].y + target.items[focalAt].h / 2 - anchorY;
     else {
-      // the focal isn't on the new page (MONTH shows highlights): its group, under the open header
+      // the focal isn't on the new page (MONTH shows highlights): its group, under the header's edge as it stands (a
+      // grid's jump keeps the fold: folded, the open header's edge would leave the last group's foot showing above)
+      const headerEdge = compressedRef.current ? size.insets.topCompressed : size.insets.top;
       const place = focalDay ? indexForDay(target, focalDay) : -1;
-      top = place >= 0 ? target.items[place].y - size.insets.top : scrollY - base;
+      top = place >= 0 ? target.items[place].y - headerEdge : scrollY - base;
     }
     const scroll = clamp(base + top, 0, Math.max(0, base + target.totalHeight - vh));
 
@@ -1003,7 +1386,8 @@ function FeedStream({
         const item = target.items[at];
         if ((item.kind === 'tile' || item.kind === 'reel') && !item.postKey && item.day) missing.add(item.day);
       }
-      const again = () => zoomToRef.current?.(next, { ...options, focal: { zid, postKey: options.focal?.postKey ?? null }, waited: true });
+      // (a zoom straight back finds its memory again: the screen holds still meanwhile)
+      const again = () => zoomToRef.current?.(next, back ? { ...options, waited: true } : { ...options, focal: { zid, postKey: options.focal?.postKey ?? null }, waited: true });
       if (missing.size) {
         const token = {};
         zoomWaitRef.current = token;
@@ -1039,6 +1423,7 @@ function FeedStream({
     }
 
     // the screen as it stands, then the new view in one commit
+    dropHold(true);
     const shots = snapshot(layer);
     const profileShot = profileEl ? rectOf(profileEl) : null;
     endFlight(flightRef.current);
@@ -1046,6 +1431,8 @@ function FeedStream({
     window.clearTimeout(spotTimerRef.current);
     moveRef.current?.profileCopy?.remove();
     releaseLayer();
+    // this zoom's focal, for one straight back (its scroll set once the page is where it lands)
+    lastZoomRef.current = zid ? { zid, screenY: anchorY, scroll: null } : null;
     const reduce = reducedMotion();
     const view = mountWindow(target, scroll - base, vh, true);
     const nextMove: Move | null = reduce ? null : {
@@ -1061,8 +1448,12 @@ function FeedStream({
       scroll,
       origin: base,
       profileCopy: null,
+      posts: targetPosts,
+      index: index2,
     };
     moveRef.current = nextMove;
+    // the move brings in what it shows: the tab's opening is over (held or not yet begun, it would hide what landed)
+    arrivedRef.current = true;
     const dayNow = next === 'today' ? (focalAt >= 0 ? focalAt : dayIndexAt(target, scroll - base)) : activeRef.current;
     const profileNow = next === 'today' ? dayAtProfile(target, scroll - base) : atProfileRef.current;
     // the days the new view opens on, asked for in the same commit (so it is drawn with its posts, not placeholders)
@@ -1082,13 +1473,16 @@ function FeedStream({
       setAtProfile(profileNow);
       movingRef.current = false;
       setSpotOn(reduce);
+      // (the tab's opening, if still coming in, is the move's now: what it held is let go with it)
+      setEntrance(null);
       setMove(nextMove);
     });
     if (reduce) {
       window.scrollTo(0, scroll);
       savedYRef.current = window.scrollY;
+      if (lastZoomRef.current) lastZoomRef.current.scroll = window.scrollY;
     }
-  }, [dropStill, handOver, keepHeight, profileEl, releaseLayer]);
+  }, [dropHold, dropStill, handOver, keepHeight, profileEl, releaseLayer, stopPrewarm]);
   useIsoLayoutEffect(() => {
     zoomToRef.current = zoomTo;
   });
@@ -1098,6 +1492,12 @@ function FeedStream({
   useIsoLayoutEffect(() => {
     if (!move || landedRef.current === move.id) return;
     landedRef.current = move.id;
+    // a placeholder's copy still dissolving would stay where its post now is, not go with it
+    coversRef.current.forEach((cover) => cover.remove());
+    coversRef.current.clear();
+    // the chrome a move cut short (or still to land under its still copy) was bringing in is not this one's: this move's
+    // own landing says what is still coming in
+    arrivingNextRef.current = null;
     const layer = layerRef.current;
     if (!layer) {
       endMove();
@@ -1125,7 +1525,8 @@ function FeedStream({
       savedYRef.current = window.scrollY + by;
       settledTopRef.current = window.scrollY + by;
     } else {
-      markScrollJump(jumpMode);
+      // (with where it lands, as above: the header has it now, whenever the scroll's own event comes)
+      markScrollJump(jumpMode, JUMP_MARK_MS, Math.min(goal, room));
       holdSnap();
       // the old profile's copy stays where it stood on screen
       const copyAt = move.profileCopy ? rectOf(move.profileCopy) : null;
@@ -1134,6 +1535,8 @@ function FeedStream({
       savedYRef.current = window.scrollY;
       settledTopRef.current = window.scrollY;
     }
+    // a zoom: the scroll its page lands at (a zoom straight back taken mid-glide keeps its focal too)
+    if (move.kind === 'zoom' && lastZoomRef.current) lastZoomRef.current.scroll = savedYRef.current;
 
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -1149,6 +1552,14 @@ function FeedStream({
       flight.cleanups.push(() => {
         window.removeEventListener('touchstart', touched, listen);
         window.removeEventListener('wheel', touched, listen);
+      });
+    } else {
+      // scrolled now: once the frame that carries the scroll (and its event) is on screen, the jump is the header's only
+      // the usual moment more, and the reader's own scroll is read again (not frozen at the landing for JUMP_MARK_MS: a
+      // flick back to the top inside it would leave the header folded there). Not over a newer move's own mark
+      afterDrawn(() => {
+        const current = flightRef.current;
+        if (current === flight || current === null) markScrollJump(jumpMode);
       });
     }
     // what leaves goes away from where the move started; what arrives comes in a ring at a time from where it lands
@@ -1200,6 +1611,17 @@ function FeedStream({
       if (onScreen(now, vw, vh)) steps.push(() => enter(flight, el, now, landing));
     });
     const profileNow = profileEl ? rectOf(profileEl) : null;
+    /* The chrome a move between a grid and the Day view brings in (its CSS entrance, [data-arriving]) outlasts the
+       pieces. The move still lands when its pieces are home (the page is the reader's again, a held scroll handed
+       over); the cells it brought keep [data-arriving] until their entrance is done (arrivingAfter), so nothing
+       snaps. Read here, with the measures, before any piece is set moving (no extra style flush) */
+    const crossingMove = (move.from === 'today') !== (move.to === 'today');
+    const arrivingCells = crossingMove ? Array.from(layer.querySelectorAll<HTMLElement>(':scope > [data-arriving]')) : [];
+    const chrome = arrivingCells
+      .flatMap((cell) => Array.from(cell.querySelectorAll<HTMLElement>('[data-st]')))
+      .flatMap((el) => el.getAnimations())
+      .filter((animation) => animation instanceof CSSAnimation && animation.animationName === 'st-arrive');
+    const arrivingKeys = new Set(arrivingCells.map((cell) => cell.dataset.cell).filter((key): key is string => Boolean(key)));
     steps.forEach((step) => step());
 
     // the page's profile: the same element, moved with the page (a pick for someone else: the old one's copy goes as
@@ -1207,12 +1629,12 @@ function FeedStream({
     if (profileEl && profileNow) {
       if (move.profileCopy) {
         const copy = move.profileCopy;
-        run(flight, copy, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'both' });
+        run(flight, copy, [{ opacity: 1 }, { opacity: 0 }], { duration: ms(180), easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'both' });
         flight.cleanups.push(() => copy.remove());
         if (onScreen(profileNow, vw, vh)) {
           run(flight, profileEl, [{ opacity: 0, transform: 'translate3d(0px, 12px, 0px)' }, { opacity: 1, transform: 'none' }], {
-            duration: 420,
-            delay: 90,
+            duration: ms(420),
+            delay: ms(90),
             easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
             fill: 'backwards',
           });
@@ -1239,15 +1661,32 @@ function FeedStream({
     } else {
       under();
     }
-    // landed (with a backstop, should an animation never report)
+    // landed (with a backstop, should an animation never report): its chrome goes on coming in on its own
     const backstop = window.setTimeout(() => {
       if (flightRef.current === flight) endMove();
     }, LONG_CARRY_MS + 600 + flight.hold);
     void flightDone(flight).then(() => {
       window.clearTimeout(backstop);
       if (flightRef.current !== flight) return;
-      if (handoverRef.current) landHeld(flight);
-      else endMove();
+      // with the landing's own render: the cells still bringing their chrome in, or none (marked done when their
+      // entrance is, and let go with the next render that comes anyway: syncFrame)
+      const still = chrome.length && arrivingKeys.size ? arrivingKeys : null;
+      arrivingNextRef.current = still;
+      if (still) {
+        void Promise.allSettled(chrome.map((animation) => animation.finished)).then(() => {
+          arrivingDoneRef.current = still;
+        });
+      }
+      if (!handoverRef.current || !root) {
+        endMove();
+        return;
+      }
+      // held: what is still on its way plays out first (the page held still), so the copy is taken at rest
+      void whenSettled(flight, root, chrome).then(() => {
+        if (flightRef.current !== flight) return;
+        if (handoverRef.current) landHeld(flight);
+        else endMove();
+      });
     });
   }, [move, endMove, handOver, holdSnap, landHeld, profileEl]);
 
@@ -1255,8 +1694,9 @@ function FeedStream({
 
   // its posts near the day you're on (and the pictures they open on): fetched while the screen holds still
   const prepare = useCallback((next: StreamScope): Promise<void> => {
-    // the day you're on, read where the page really is
+    // the day you're on, read where the page really is (the network the pick's now)
     handOver();
+    stopPrewarm();
     const current = layoutRef.current;
     const size = metricsRef.current;
     if (!current || !size || !visibleRef.current) {
@@ -1269,12 +1709,16 @@ function FeedStream({
     if (around.length) prefetchDays(next, around);
     setSeed({ gen: scopeKey(next), days: around });
     return viewReady(next, current.mode, size, { day, zid: null }, PICK_WAIT_MS);
-  }, [handOver]);
+  }, [handOver, stopPrewarm]);
 
   // ...and shown: the screen as it is now is kept for the move, and apply() shows the new pick in the same commit
   const commit = useCallback((apply: () => void, options: { profile: boolean }) => {
     handOver();
     dropStill();
+    stopPrewarm();
+    dropHold(true);
+    // other posts: the last zoom's focal means nothing here
+    lastZoomRef.current = null;
     const pick = pickRef.current;
     const size = metricsRef.current;
     const layer = layerRef.current;
@@ -1286,14 +1730,17 @@ function FeedStream({
       if (pick && !pick.keepScroll && !pick.day) window.scrollTo(0, 0);
       return;
     }
-    const target = computeLayout({ mode: current, days: nextIndex.days, posts: loadedPosts(pick.next, nextIndex), width: size.width, height: size.height, insets: size.insets });
+    const nextPosts = loadedPosts(pick.next, nextIndex);
+    const target = computeLayout({ mode: current, days: nextIndex.days, posts: nextPosts, width: size.width, height: size.height, insets: size.insets });
     const nextOrigin = originFor(size, pick.next);
     const vh = window.innerHeight;
-    // the day you were on (or the nearest older one it has posts on); in the profile, where you are; else the top
+    // the day you were on (or the nearest older one it has posts on); in the profile, where you are; else the top (a
+    // grid's group under the header's edge as it stands: its jump keeps the fold)
     let scroll = pick.keepScroll ? window.scrollY : 0;
     if (pick.day) {
       const at = indexForDay(target, pick.day);
-      if (at >= 0) scroll = current === 'today' ? nextOrigin + dayRestTop(target, at) : nextOrigin + target.items[at].y - size.insets.top;
+      const headerEdge = compressedRef.current ? size.insets.topCompressed : size.insets.top;
+      if (at >= 0) scroll = current === 'today' ? nextOrigin + dayRestTop(target, at) : nextOrigin + target.items[at].y - headerEdge;
     }
     scroll = clamp(scroll, 0, Math.max(0, nextOrigin + target.totalHeight - vh));
     const shots = snapshot(layer);
@@ -1342,8 +1789,12 @@ function FeedStream({
       scroll,
       origin: nextOrigin,
       profileCopy,
+      posts: nextPosts,
+      index: nextIndex,
     };
     moveRef.current = nextMove;
+    // the move brings in what it shows: the tab's opening is over (held or not yet begun, it would hide what landed)
+    arrivedRef.current = true;
     keepHeight();
     flushSync(() => {
       setWin({ gen: scopeKey(pick.next), mode: current, y0: view.y0, y1: view.y1, narrow: true });
@@ -1357,29 +1808,48 @@ function FeedStream({
       setAtProfile(profileNow);
       movingRef.current = false;
       setSpotOn(false);
+      setEntrance(null);
       setMove(nextMove);
       apply();
     });
-  }, [dropStill, endMove, handOver, keepHeight, originFor, profileEl]);
+  }, [dropHold, dropStill, endMove, handOver, keepHeight, originFor, profileEl, stopPrewarm]);
 
-  /* A pick or a zoom about to be taken (a hover, a press): the days it opens on are fetched and, as they arrive, the
-     pictures it would show first are decoded, for a few seconds at most. Never while just scrolling */
-  const warmView = useCallback((next: { scope?: StreamScope; mode?: FeedMode }) => {
+  /* A pick or a zoom about to be taken (a hover, a press; the phone's zoom menu opening: every other zoom, in the one
+     warm): the days it opens on are fetched and, as they arrive, the pictures it would show first are decoded, for a
+     few seconds at most. Several zooms at once: only a zoom next to this one is decoded (from WEEK, both), nearest the
+     place first and MENU_DECODES at most between them; the rest are only fetched, behind what the screen wants
+     (warmSpare). One zoom laid out a frame (the phone's menu opening is drawn on the main thread), and a zoom whose
+     days are all in isn't laid out again as the others' come in. Never while just scrolling */
+  const warmView = useCallback((next: { scope?: StreamScope; modes?: readonly FeedMode[] }) => {
     const current = layoutRef.current;
     const size = metricsRef.current;
-    if (!current || !size || !modeRef.current || !visibleRef.current) return;
+    const mode = modeRef.current;
+    if (!current || !size || !mode || !visibleRef.current) return;
+    // something real is coming: the idle warm-up gives way
+    stopPrewarm();
     const forScope = next.scope ?? inputsRef.current.scope;
-    const forMode = next.mode ?? modeRef.current;
-    const day = dayAt(current, window.scrollY - originRef.current, readingLine(size.insets, compressedRef.current));
-    const near = next.scope ? -1 : nearestPost(current, window.innerWidth / 2, window.scrollY - originRef.current + window.innerHeight / 2, window.innerHeight);
+    const forModes = next.modes?.length ? next.modes : [mode];
+    // where the page is, as last read (kept every scroll frame; a held move's, where it lands): an intent comes in the
+    // middle of other work (a menu opening), and a read of the page's own would have WebKit work its styles out for it
+    const top = savedYRef.current - originRef.current;
+    const day = dayAt(current, top, readingLine(size.insets, compressedRef.current));
+    const near = next.scope ? -1 : nearestPost(current, window.innerWidth / 2, top + window.innerHeight / 2, window.innerHeight);
     const zid = near >= 0 ? idOf(current.items[near]) : null;
-    const key = `${scopeKey(forScope)}|${forMode}|${day ?? ''}|${zid ?? ''}`;
+    const key = `${scopeKey(forScope)}|${forModes.join(',')}|${day ?? ''}|${zid ?? ''}`;
     const warming = warmingRef.current;
     if (warming.has(key)) return;
     // one warm at a time: the latest intent is the one that matters
     warming.forEach((stopOther) => stopOther());
     if (day && scopeKey(forScope) !== scopeKey(inputsRef.current.scope)) prefetchDays(forScope, Array.from({ length: 8 }, (_, step) => shiftDay(day, -step)));
     const warmed = new Set<string>();
+    const several = forModes.length > 1;
+    let decodes = several ? MENU_DECODES : Number.POSITIVE_INFINITY;
+    const spared: string[] = [];
+    // the zooms whose days were all in (all asked for: not laid out again as the others' days come in); the ones still
+    // to look at this round, one a frame; and whether days came in during it (another round once it is done)
+    const settled = new Set<FeedMode>();
+    let round: FeedMode[] = [];
+    let dirty = false;
     let unsubscribe: (() => void) | null = null;
     let deadline = 0;
     let frame = 0;
@@ -1388,25 +1858,50 @@ function FeedStream({
       unsubscribe = null;
       window.clearTimeout(deadline);
       cancelAnimationFrame(frame);
+      frame = 0;
       warming.delete(key);
     };
     const attempt = () => {
       frame = 0;
-      const view = viewPictures(forScope, forMode, size, { day, zid });
-      if (!view) return;
-      const fresh = view.srcs.filter((src) => !warmed.has(src));
-      fresh.forEach((src) => warmed.add(src));
-      if (fresh.length) void warmPictures(fresh);
-      if (view.missing.length) prefetchDays(forScope, view.missing);
-      else stop();
+      if (!round.length) {
+        round = forModes.filter((forMode) => !settled.has(forMode));
+        dirty = false;
+      }
+      const forMode = round[0];
+      if (forMode) {
+        const view = viewPictures(forScope, forMode, size, { day, zid });
+        // (the scope's index not here yet: looked at again as the store changes)
+        if (!view) return;
+        round.shift();
+        const fresh = view.srcs.filter((src) => !warmed.has(src));
+        fresh.forEach((src) => warmed.add(src));
+        const nextTo = !several || Math.abs(ZOOM_ORDER.indexOf(forMode) - ZOOM_ORDER.indexOf(mode)) === 1;
+        const decode = nextTo ? fresh.slice(0, decodes) : [];
+        decodes -= decode.length;
+        if (decode.length) void warmPictures(decode);
+        if (fresh.length > decode.length) {
+          spared.push(...fresh.slice(decode.length));
+          warmSpare(spared);
+        }
+        if (view.missing.length) prefetchDays(forScope, view.missing);
+        else settled.add(forMode);
+      }
+      // the next zoom (or, days in meanwhile, another round) on the next frame
+      if (round.length || dirty) {
+        frame = requestAnimationFrame(attempt);
+        return;
+      }
+      if (settled.size === forModes.length) stop();
     };
     warming.set(key, stop);
     deadline = window.setTimeout(stop, WARM_MS);
     unsubscribe = subscribeStream(() => {
-      if (!frame) frame = requestAnimationFrame(attempt);
+      // (a round under way: the zooms it has looked at already are looked at again once it is done)
+      if (frame) dirty = true;
+      else frame = requestAnimationFrame(attempt);
     });
     attempt();
-  }, []);
+  }, [stopPrewarm]);
   useEffect(() => () => warmingRef.current.forEach((stop) => stop()), []);
 
   /* ── going places ── */
@@ -1517,6 +2012,18 @@ function FeedStream({
     };
   }, []);
 
+  // where a load opens is the Feed's to say (where you were, else the top): the browser puts back no scroll of its own,
+  // which on a reload deep in the feed came once the page had grown, after the profile and the arrival were drawn
+  useIsoLayoutEffect(() => {
+    const session = window.history;
+    if (!('scrollRestoration' in session)) return undefined;
+    const previous = session.scrollRestoration;
+    session.scrollRestoration = 'manual';
+    return () => {
+      session.scrollRestoration = previous;
+    };
+  }, []);
+
   // the tab came back: back where you were (AppTabHost leaves a [data-tab-scroll="own"] tab's scroll to it). Hiding:
   // nothing keeps running, and nothing of the Feed's is left on the page
   useIsoLayoutEffect(() => {
@@ -1532,13 +2039,21 @@ function FeedStream({
       touchingRef.current = false;
       pinchRef.current = null;
       endMove();
+      // a landing's entrance is long over when the tab is back: [data-arriving] left on would play it again there
+      // (showing the tab again restarts the CSS animations it matches)
+      arrivingAfterRef.current = null;
+      arrivingNextRef.current = null;
+      setArrivingAfter(null);
       dropStill();
       releaseLayer();
+      // an opening still held starts again when the tab is back (StrictMode's second run, too)
+      dropHold(false);
+      stopPrewarm();
       snapHeldRef.current = false;
       holdSnapStyle(false);
       root?.querySelectorAll('video').forEach((video) => video.pause());
     };
-  }, [dropStill, endMove, holdSnap, releaseLayer, scrollPage]);
+  }, [dropHold, dropStill, endMove, holdSnap, releaseLayer, scrollPage, stopPrewarm]);
 
   // keep what the handlers read current
   useIsoLayoutEffect(() => {
@@ -1549,7 +2064,7 @@ function FeedStream({
     inputsRef.current = { index, posts, scope };
     compressedRef.current = headerCompressed;
     callbacksRef.current = { onModeChange, onOpenPost, onManage, onLead, onRead, onOrderChange, play };
-    if (!moveRef.current) renderedRef.current = layout && mountView ? { layout, gen, from: mountFrom, to: mountTo } : null;
+    if (!moveRef.current) renderedRef.current = layout && mountView ? { layout, gen, from: mountFrom, to: mountTo, win: mountView === win ? win : null } : null;
   });
 
   // the viewport and the chrome around it (the open header's bottom, the folded header's, the nav's top, the small
@@ -1599,7 +2114,7 @@ function FeedStream({
     if (breakpointRef.current === breakpoint) return;
     const first = breakpointRef.current === null;
     breakpointRef.current = breakpoint;
-    const wanted = readStoredMode(breakpoint) ?? defaultModeFor(breakpoint);
+    const wanted = initialMode(metrics.width);
     if (first || !modeRef.current) {
       modeRef.current = wanted;
       setMode(wanted);
@@ -1612,11 +2127,19 @@ function FeedStream({
     }
   }, [metrics, endMove]);
 
-  // a new scope: what was measured against the last one is let go
+  // a new scope: what was measured against the last one is let go (an opening still held waits for the new one's posts)
   useIsoLayoutEffect(() => {
     dayWinRef.current = null;
     if (!moveRef.current) seekRef.current = null;
-  }, [gen]);
+    dropHold(false);
+    stopPrewarm();
+    prewarmLeftRef.current = [];
+  }, [gen, dropHold, stopPrewarm]);
+
+  // the last zoom's focal holds only for the scope and the screen it was taken on
+  useIsoLayoutEffect(() => {
+    lastZoomRef.current = null;
+  }, [gen, metrics]);
 
   // a phone's Day view snaps one post per swipe (switched on only once a move has landed: snapping mid-move would pull
   // the page to whichever card is mounted)
@@ -1676,6 +2199,9 @@ function FeedStream({
   // reading line holds still
   const narrowWindow = !win || win.gen !== gen || win.mode !== layout?.mode || win.narrow;
   useIsoLayoutEffect(() => {
+    narrowRef.current = narrowWindow;
+  }, [narrowWindow]);
+  useIsoLayoutEffect(() => {
     const prev = prevRef.current;
     if (!layout) return;
     const nowOrigin = originRef.current;
@@ -1714,7 +2240,8 @@ function FeedStream({
     lookAhead(scrollY, false);
   }, [layout, origin, narrowWindow, scrollPage, syncFrame, lookAhead]);
 
-  // a highlight opened before its day had loaded: once it has, the post in view is that post
+  // a highlight opened before its day had loaded: once it has, the post in view is that post (looked at again as a move
+  // lands: a landing keeps its layout)
   useIsoLayoutEffect(() => {
     const seek = seekRef.current;
     if (!seek || !layout || layout.mode !== 'today' || moveRef.current) return;
@@ -1733,24 +2260,84 @@ function FeedStream({
     activeRef.current = at;
     setActive(at);
     syncFrame(window.scrollY);
-  }, [layout, scrollPage, syncFrame]);
+  }, [layout, move, scrollPage, syncFrame]);
 
-  // the first posts on screen (the tab opening) come in, a ring at a time from the top
+  /* The first posts on screen (the tab opening) come in, a ring at a time from the top, once they are here: till then
+     (their days loading, the screen's pictures decoding: ARRIVAL_WAIT_MS at most, then it comes in as it is) the layer's cells
+     are held unseen (the profile above them stays), so the entrance plays on the posts, not on blocks they then
+     replace. A launch that drew the skeleton keeps the slots it showed as they are (each post comes up over its
+     slot as its day loads, below) and brings in only what is new. Then the other zooms are made ready */
   useIsoLayoutEffect(() => {
-    if (!layout || !layout.items.length || moveRef.current || arrivedRef.current || !visibleRef.current) return;
-    arrivedRef.current = true;
+    if (!layout || !layout.items.length || moveRef.current || arrivedRef.current || holdRef.current || !visibleRef.current) return;
     const layer = layerRef.current;
-    if (!layer || reducedMotion()) return;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const flight = startFlight(holdsScroll() ? FLIGHT_HOLD_MS : 0);
-    const from = { x: vw / 2, y: 0 };
-    const shown = Array.from(layer.querySelectorAll<HTMLElement>(':scope > [data-cell]'), (el) => [el, rectOf(el)] as const)
-      .filter(([, now]) => onScreen(now, vw, vh));
-    shown.forEach(([el, now]) => enter(flight, el, now, from));
-    if (flight.hold) requestAnimationFrame(() => requestAnimationFrame(() => releaseFlight(flight)));
-    void flightDone(flight).then(() => endFlight(flight));
+    const size = metricsRef.current;
+    if (!layer || !size || reducedMotion()) {
+      arrivedRef.current = true;
+      prewarm();
+      return;
+    }
+    const skeletonShown = skeletonPaintedRef.current;
+    // freeze: what it was laid out from is held until it is in (entrance; not over a skeleton's slots, which take
+    // their posts as they come)
+    const ring = (into: HTMLElement, freeze: boolean) => {
+      arrivedRef.current = true;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const flight = startFlight(holdsScroll() ? FLIGHT_HOLD_MS : 0);
+      const from = { x: vw / 2, y: 0 };
+      // (not a piece already coming in some other way: the tab's own arrival, AppTabHost's)
+      const shown = Array.from(into.querySelectorAll<HTMLElement>(':scope > [data-cell]'), (el) => [el, rectOf(el)] as const)
+        .filter(([el, now]) => onScreen(now, vw, vh) && !(skeletonShown && el.dataset.kind === 'placeholder') && !el.getAnimations().length);
+      shown.forEach(([el, now]) => enter(flight, el, now, from));
+      const { posts: shownNow, index: indexNow } = inputsRef.current;
+      const kept = freeze && shown.length && indexNow ? { gen: genRef.current, posts: shownNow, index: indexNow } : null;
+      if (kept) setEntrance(kept);
+      if (flight.hold) requestAnimationFrame(() => requestAnimationFrame(() => releaseFlight(flight)));
+      void flightDone(flight).then(() => {
+        endFlight(flight);
+        // in: what came in meanwhile is let in (a move since let it go already)
+        if (kept) setEntrance((current) => (current === kept ? null : current));
+        prewarm();
+      });
+    };
+    if (skeletonShown) {
+      ring(layer, false);
+      return;
+    }
+    const token = {};
+    holdRef.current = token;
+    layer.dataset.holding = '';
+    const heldAt = performance.now();
+    const top = window.scrollY - originRef.current;
+    const near = nearestPost(layout, window.innerWidth / 2, top + window.innerHeight / 2, window.innerHeight);
+    void viewReady(inputsRef.current.scope, layout.mode, size, { day: null, zid: near >= 0 ? idOf(layout.items[near]) : null }, ARRIVAL_WAIT_MS, ARRIVAL_REACH).then(() => {
+      // a frame on: what came in is drawn, and the rest of the window has gone up (not mounted under the entrance)
+      let frames = 0;
+      const go = () => requestAnimationFrame(() => {
+        if (holdRef.current !== token) return;
+        frames += 1;
+        // its screen's posts not all in yet (a slow network): held on, unseen, till they are (ARRIVAL_MAX_MS at most).
+        // Where the page rests, as last read: no read of the page's own
+        const current = layoutRef.current;
+        const sizeNow = metricsRef.current;
+        const loading = Boolean(current && sizeNow && !screenLoaded(current, savedYRef.current - originRef.current, sizeNow.height)) && performance.now() - heldAt < ARRIVAL_MAX_MS;
+        // (nor while a zoom asked for meanwhile waits for its days: the zoom's move brings the cells in)
+        if ((narrowRef.current && frames < 4) || loading || zoomWaitRef.current) {
+          go();
+          return;
+        }
+        const live = layerRef.current;
+        dropHold(false);
+        if (live) ring(live, true);
+      });
+      go();
+    });
   }, [layout]);
+
+  // whether this commit drew the skeleton (the next one's arrival asks)
+  useIsoLayoutEffect(() => {
+    skeletonPaintedRef.current = Boolean(skeleton);
+  });
 
   // tell the tab which zoom is on (its header control shows it)
   useIsoLayoutEffect(() => {
@@ -1781,6 +2368,8 @@ function FeedStream({
     };
     const onScroll = () => {
       if (touchingRef.current) takeSnap();
+      // the page on the move: the other zooms are made ready once it rests again (settle)
+      stopPrewarm();
       if (!frame) frame = window.requestAnimationFrame(tick);
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(quiet, SETTLE_MS);
@@ -1795,6 +2384,7 @@ function FeedStream({
     const onTouchStart = () => {
       touchingRef.current = true;
       scrollingRef.current = true;
+      stopPrewarm();
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (event.touches.length) return;
@@ -1818,7 +2408,7 @@ function FeedStream({
       window.removeEventListener('touchcancel', onTouchEnd);
       window.removeEventListener('wheel', takeSnap);
     };
-  }, [lookAhead, settle, syncFrame]);
+  }, [lookAhead, settle, stopPrewarm, syncFrame]);
 
   // a first frame mounts only the screen; the rest of the window a frame later
   useEffect(() => {
@@ -1899,13 +2489,14 @@ function FeedStream({
     const root = rootRef.current;
     if (!root || !visibleRef.current || !modeRef.current) return;
     endMove();
+    dropHold(true);
     pinchRef.current = { focal, scale: 1 };
     if (snapOnRef.current) applySnap(false);
     const rect = root.getBoundingClientRect();
     root.style.transformOrigin = `${focal.x - rect.left}px ${focal.y - rect.top}px`;
     root.style.willChange = 'transform';
     pinchBackdrop(root, true);
-  }, [applySnap, endMove]);
+  }, [applySnap, dropHold, endMove]);
 
   const onPinchScale = useCallback((scale: number) => {
     const root = rootRef.current;
@@ -1918,7 +2509,7 @@ function FeedStream({
     pinch.scale = shown;
     root.style.transform = `scale(${shown})`;
     // the way it is going known, the zoom it heads for gets its pictures fetched while the fingers are still down
-    if (room && Math.abs(scale - 1) > PINCH_WARM_AT) warmView({ mode: room });
+    if (room && Math.abs(scale - 1) > PINCH_WARM_AT) warmView({ modes: [room] });
   }, [warmView]);
 
   const onPinchEnd = useCallback((direction: PinchDirection | 0) => {
@@ -2011,7 +2602,7 @@ function FeedStream({
         if (item.day) specs.push({ kind: 'more', key: item.key, x: item.x, y: item.y, w: item.w, h: item.h, day: item.day, more: item.more ?? 0 });
         continue;
       }
-      const post = layout && item.day && item.slot >= 0 ? posts.get(item.day)?.[item.slot] ?? null : null;
+      const post = layout && item.day && item.slot >= 0 ? shownPosts.get(item.day)?.[item.slot] ?? null : null;
       if (!post) {
         specs.push({ kind: 'placeholder', key: `x:${item.day}:${item.slot}`, mode: drawn.mode, shape: shapeOf(item), x: item.x, y: item.y });
         continue;
@@ -2042,6 +2633,8 @@ function FeedStream({
   const gone = move ? move.leaving.filter((spec) => !specKeys.has(spec.key)) : [];
   // the move's two views differ in kind (a grid and the Day view): each post's chrome changes, and comes in
   const crossing = Boolean(move && (move.from === 'today') !== (move.to === 'today'));
+  // ...and once it has landed, the cells whose chrome is still coming in (in the view it landed in)
+  const stillArriving = !move && arrivingAfter && drawn && arrivingAfter.view === `${gen}|${drawn.mode}` ? arrivingAfter.keys : null;
 
   const drawSpec = (spec: Spec, going: boolean) => {
     if (spec.kind === 'section') {
@@ -2094,7 +2687,7 @@ function FeedStream({
         wide={spec.shape.wide}
         leaving={wasPost ? wasPost.mode : null}
         leavingShape={wasPost ? wasPost.shape : null}
-        arriving={!going && crossing}
+        arriving={!going && (crossing || stillArriving?.has(spec.key) === true)}
         focal={!going && move?.focalKey === spec.post.key}
         // the post the Day view rests on plays, and goes on playing while a swipe carries it away (stopping it at the
         // swipe's start swapped the picture under the finger): the next one takes over once the page settles on it
@@ -2156,6 +2749,69 @@ function FeedStream({
   // what this render draws (a move out of it starts from these)
   useIsoLayoutEffect(() => {
     if (!moveRef.current) specsRef.current = specs;
+  });
+
+  /* A post whose day loaded where its placeholder stood (a move's held posts let in once it has landed, a scroll onto
+     days still loading) comes up in place: a copy of the placeholder laid over it dissolves away, one layer a post (the
+     post, its frame and a row's dimming are drawn as they are under it). Not during a move (its posts are held), a
+     scroll, a held scroll or a still copy over the page; only on screen, and more than SWAP_IN_MAX at once come in as
+     they are */
+  useIsoLayoutEffect(() => {
+    // (only against the same posts at the same zoom: another scope's or zoom's day:slot is another post, or another place)
+    const view = `${gen}|${drawn?.mode ?? ''}`;
+    const last = placeholdersRef.current;
+    const was = last.view === view ? last.slots : null;
+    const now = new Set<string>();
+    specs.forEach((spec) => {
+      if (spec.kind === 'placeholder') now.add(spec.key.slice(2));
+    });
+    placeholdersRef.current = { view, slots: now };
+    const layer = layerRef.current;
+    // (not while the tab's opening is held: its entrance brings them in)
+    if (!was?.size || !layer || moveRef.current || holdRef.current || handoverRef.current || stillRef.current || !visibleRef.current) return;
+    const swapped = specs.filter((spec): spec is Extract<Spec, { kind: 'post' }> => spec.kind === 'post' && spec.zid !== null && was.has(spec.zid));
+    // (the page moving: a finger or its momentum, a glide, a wheel, a scroll frame a moment ago)
+    if (!swapped.length || scrollingRef.current || performance.now() - speedRef.current.t < SETTLE_MS || reducedMotion()) return;
+    // where the page is, as last read (not read again after this commit's writes)
+    const top = savedYRef.current - originRef.current;
+    const vh = window.innerHeight;
+    const shown = swapped.filter((spec) => spec.y < top + vh && spec.y + spec.shape.h > top);
+    if (!shown.length || shown.length > SWAP_IN_MAX) return;
+    const like = (el: HTMLElement, frame: HTMLElement) => {
+      el.className = 'st-placeholder';
+      Object.assign(el.style, { position: 'absolute', left: frame.style.left, top: frame.style.top, width: frame.style.width, height: frame.style.height, borderRadius: frame.style.borderRadius });
+    };
+    // WebKit starts a dissolve's clock in the frame that first draws it, before that (heavy: a day just came in) frame
+    // is on screen, and would show it already partway: held whole (the placeholder, as it was) until it is, like a move
+    const fades = startFlight(holdsScroll() ? FLIGHT_HOLD_MS : 0);
+    shown.forEach((spec) => {
+      const cell = layer.querySelector<HTMLElement>(`:scope > [data-cell="${CSS.escape(spec.key)}"]`);
+      const frame = cell?.querySelector<HTMLElement>(':scope > [data-layer="frame"]');
+      if (!cell || !frame) return;
+      // the placeholder as it stood: a phone's card, its block with its frame on it; a tile or a row, its frame
+      const cover = document.createElement('div');
+      if (spec.mode === 'today' && !spec.shape.wide) {
+        cover.className = 'st-placeholder';
+        Object.assign(cover.style, { position: 'absolute', inset: '0px', borderRadius: '28px' });
+        const inner = document.createElement('div');
+        like(inner, frame);
+        cover.appendChild(inner);
+      } else {
+        like(cover, frame);
+      }
+      // (unseen once its dissolve is over, even before it is taken out)
+      Object.assign(cover.style, { zIndex: SWAP_COVER_Z, pointerEvents: 'none', opacity: '0' });
+      cover.setAttribute('aria-hidden', 'true');
+      cell.appendChild(cover);
+      coversRef.current.add(cover);
+      const gone = () => {
+        coversRef.current.delete(cover);
+        cover.remove();
+      };
+      run(fades, cover, [{ opacity: 1 }, { opacity: 0 }], { duration: SWAP_IN_MS, easing: SWAP_IN_EASE, fill: 'backwards' });
+      void fades.animations[fades.animations.length - 1].finished.then(gone, gone);
+    });
+    if (fades.hold && fades.animations.length) afterDrawn(() => releaseFlight(fades));
   });
 
   return (

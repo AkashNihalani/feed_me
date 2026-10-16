@@ -2,7 +2,18 @@
 
 import { useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { beatArrive } from '@/lib/motion';
 import { ApexMixPoint } from './dashboardTypes';
+
+// Each arc settles in on the page beat, one step after the arc before it: it fades up while turning the last few
+// degrees along the ring (the old draw direction). Opacity + a transform string on an HTML layer run on the
+// compositor; the old pathLength draw re-painted the SVG on the main thread every frame.
+const ARC_HIDDEN = { opacity: 0, transform: 'rotate(-12deg)' } as const;
+const ARC_SHOWN = { opacity: 1, transform: 'rotate(0deg)' } as const;
+const ARC_DIM = { duration: 0.2, ease: 'easeOut' } as const;
+const CENTER_HIDDEN = { opacity: 0, transform: 'scale(0.9)' } as const;
+const CENTER_SHOWN = { opacity: 1, transform: 'scale(1)' } as const;
+const CENTER_SWAP = { duration: 0.15 } as const;
 
 interface Segment {
   id: string;
@@ -45,6 +56,7 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
     [segments, total, totalPostCount]
   );
   const hasData = normalizedSegments.length > 0;
+  const activeSeg = activeSegment ? normalizedSegments.find((s) => s.id === activeSegment) : undefined;
 
   // Donut ring geometry
   const size = 180;
@@ -106,36 +118,54 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                 strokeWidth={strokeWidth}
                 className="text-black/[0.04] dark:text-white/[0.06]"
               />
-
-              {/* Segments */}
-              {arcs.map((arc) => {
-                const isActive = activeSegment === arc.id;
-                const isHoveringAny = activeSegment !== null;
-                const opacity = isHoveringAny && !isActive ? 0.3 : 1;
-
-                return (
-                  <motion.path
-                    key={arc.id}
-                    d={arc.d}
-                    fill="none"
-                    stroke={arc.isTop ? '#E11D48' : 'currentColor'}
-                    strokeWidth={isActive ? strokeWidth + 4 : strokeWidth}
-                    strokeLinecap="round"
-                    initial={{ pathLength: 0, opacity: 0 }}
-                    animate={{ pathLength: 1, opacity }}
-                    transition={{ duration: 0.8, ease: 'easeOut', opacity: { duration: 0.2 } }}
-                    className={
-                      arc.isTop
-                        ? 'cursor-pointer'
-                        : 'cursor-pointer text-black/20 dark:text-white/20'
-                    }
-                    onMouseEnter={() => setActiveSegment(arc.id)}
-                    onMouseLeave={() => setActiveSegment(null)}
-                    onClick={() => setActiveSegment(activeSegment === arc.id ? null : arc.id)}
-                  />
-                );
-              })}
             </svg>
+
+            {/* Segments: one HTML layer per arc, same box + viewBox as the track and stacked in the old paint order
+                (later arcs over earlier caps). The outer layer carries the entrance, the inner one the hover dim, so
+                both animate opacity/transform on the compositor. Only the painted stroke takes the pointer. */}
+            {arcs.map((arc) => {
+              const isActive = activeSegment === arc.id;
+              const isHoveringAny = activeSegment !== null;
+              const opacity = isHoveringAny && !isActive ? 0.3 : 1;
+
+              return (
+                <motion.div
+                  key={arc.id}
+                  className="pointer-events-none absolute inset-0"
+                  initial={ARC_HIDDEN}
+                  animate={ARC_SHOWN}
+                  transition={beatArrive(arc.idx)}
+                >
+                  <motion.div
+                    className="absolute inset-0"
+                    initial={false}
+                    animate={{ opacity }}
+                    transition={ARC_DIM}
+                  >
+                    <svg
+                      viewBox={`0 0 ${size} ${size}`}
+                      className="h-full w-full overflow-visible"
+                    >
+                      <path
+                        d={arc.d}
+                        fill="none"
+                        stroke={arc.isTop ? '#E11D48' : 'currentColor'}
+                        strokeWidth={isActive ? strokeWidth + 4 : strokeWidth}
+                        strokeLinecap="round"
+                        className={
+                          arc.isTop
+                            ? 'pointer-events-auto cursor-pointer'
+                            : 'pointer-events-auto cursor-pointer text-black/20 dark:text-white/20'
+                        }
+                        onMouseEnter={() => setActiveSegment(arc.id)}
+                        onMouseLeave={() => setActiveSegment(null)}
+                        onClick={() => setActiveSegment(activeSegment === arc.id ? null : arc.id)}
+                      />
+                    </svg>
+                  </motion.div>
+                </motion.div>
+              );
+            })}
 
             {/* Center content */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -143,29 +173,29 @@ export default function FeedApexArch({ mix }: { mix: ApexMixPoint[] }) {
                 {activeSegment ? (
                   <motion.div
                     key="active"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.15 }}
+                    initial={CENTER_HIDDEN}
+                    animate={CENTER_SHOWN}
+                    exit={CENTER_HIDDEN}
+                    transition={CENTER_SWAP}
                     className="flex flex-col items-center"
                   >
                     <span className="max-w-[96px] text-center text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/40 dark:text-white/35">
-                      {normalizedSegments.find((s) => s.id === activeSegment)?.label}
+                      {activeSeg?.label}
                     </span>
                     <span className="mt-0.5 text-[28px] font-black leading-none tracking-tighter text-black dark:text-white">
-                      {normalizedSegments.find((s) => s.id === activeSegment)?.count ?? 0}
+                      {activeSeg?.count ?? 0}
                     </span>
                     <span className="mt-1 max-w-[96px] text-center text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/35 dark:text-white/30">
-                      {normalizedSegments.find((s) => s.id === activeSegment)?.percentage}% share
+                      {activeSeg?.percentage}% share
                     </span>
                   </motion.div>
                 ) : (
                   <motion.div
                     key="default"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.15 }}
+                    initial={CENTER_HIDDEN}
+                    animate={CENTER_SHOWN}
+                    exit={CENTER_HIDDEN}
+                    transition={CENTER_SWAP}
                     className="flex flex-col items-center"
                   >
                     <span className="max-w-[96px] text-center text-[8px] font-black uppercase leading-none tracking-[0.14em] text-black/40 dark:text-white/35">

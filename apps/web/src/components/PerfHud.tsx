@@ -23,7 +23,8 @@ export default function PerfHud() {
   const active = typeof perfMode === 'object'
     && perfMode.enabled
     && (!pathname?.startsWith('/command') || perfMode.forced)
-    && (!pathname?.startsWith('/read/lakme-case') || perfMode.forced);
+    && (!pathname?.startsWith('/read/lakme-case') || perfMode.forced)
+    && (!pathname?.startsWith('/living-world') || perfMode.forced);
   const [fps, setFps] = useState(0);
   const [longTasks, setLongTasks] = useState(0);
   const [worstMs, setWorstMs] = useState(0);

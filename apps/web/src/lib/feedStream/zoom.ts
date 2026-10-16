@@ -65,6 +65,13 @@ export function readStoredMode(breakpoint: ViewBreakpoint): FeedMode | null {
   return typeof mode === 'string' && MODES.includes(mode) ? mode : null;
 }
 
+// the zoom a page this wide opens on: the one last used at its breakpoint, else that breakpoint's default (the stream
+// and the tab's header both ask, so they can't disagree)
+export function initialMode(width: number): FeedMode {
+  const breakpoint = breakpointOf(width);
+  return readStoredMode(breakpoint) ?? defaultModeFor(breakpoint);
+}
+
 export function writeStoredMode(breakpoint: ViewBreakpoint, mode: FeedMode) {
   writeView((view) => ({ ...view, modes: { ...(view.modes ?? {}), [breakpoint]: mode } }));
 }
