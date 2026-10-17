@@ -17,6 +17,10 @@
   --st-bg: #030303;
   /* tiles and placeholders */
   --st-surface: #0e0e11;
+  /* under a Day card's or the sheet's picture (its frame, its wash): dark in both themes, so a picture letterboxed or
+     still decoding sits on its own dark ground, never the page's light surface. A grid tile keeps the surface (light
+     on the light page: a tile still loading reads as the page's, not a dark block) */
+  --st-media: #0b0b0f;
   /* raised: the sheet, rows, the menu */
   --st-surface-2: #16161a;
   --st-line: rgba(255, 255, 255, 0.09);
@@ -68,15 +72,20 @@ html.light .fm-stream {
   --st-text-2: rgba(255, 255, 255, 0.65);
   --st-text-3: rgba(255, 255, 255, 0.45);
   --st-line: rgba(255, 255, 255, 0.18);
-  /* and so is the app's ink, rose stays the bright one, and the Top % ramp keeps its dark end (globals' light
-     values are for a light page, not for a dark scrim) */
+  /* and so is the app's ink, and the Top % ramp takes its dark steps (globals' light values are for a light page,
+     not for a dark scrim) */
   --fm-fg: #ffffff;
   --fm-fg-rgb: 255 255 255;
   --fm-accent-text: var(--fm-accent-bright);
-  --fm-shade-mid: rgb(84 84 92);
-  --fm-shade-lo: rgb(30 30 35);
-  --fm-shade-tx-mid: rgb(255 255 255 / 0.9);
-  --fm-shade-tx-lo: rgb(255 255 255 / 0.54);
+  --fm-shade-0: #1B1B1E;
+  --fm-shade-1: #252529;
+  --fm-shade-2: #303035;
+  --fm-shade-3: #791B26;
+  --fm-shade-4: #991F2F;
+  --fm-shade-5: #BA2239;
+  --fm-shade-6: #DA2E46;
+  --fm-shade-tx: #ffffff;
+  --fm-shade-glow: rgb(218 46 70 / 0.5);
   color: #ffffff;
 }
 
@@ -211,10 +220,12 @@ html.light .fm-stream {
   );
 }
 
-/* the rose story ring round a big face: a still gradient cut to a 3px ring, so the gap inside it is see-through
-   (a mask on a still element: painted once, never per frame) */
+/* the story ring round a big face ("new"): the crimson accent alone, swept from its deep tone to a lit tint, the one
+   gradient the app allows; a still gradient cut to a 3px ring, so the gap inside it is see-through (a mask on a
+   still element: painted once, never per frame) */
 .st-story-ring {
-  background: linear-gradient(135deg, #fda4af 0%, #fb7185 30%, #e11d48 66%, #9f1239 100%);
+  /* the rail's fresh ring (globals.css, .fm-fresh-ring): the same crimson sweep */
+  background: conic-gradient(from 200deg, var(--fm-accent-deep), var(--fm-accent) 30%, #E75C6B 52%, var(--fm-accent) 72%, var(--fm-accent-deep));
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
 }
@@ -336,16 +347,16 @@ html.light .st-bone {
   scroll-snap-stop: always;
 }
 
-/* the Day view's date beside the posts (DayStamp): it eases in when there is a day to show, out over the profile
-   card and while a zoom flies (opacity and a short slide only) */
-/* the Day view's date: away, it waits past the screen's left edge; shown, it slides in (no fade) */
+/* the Day view's date beside the posts (DayStamp): it never moves. Away (over the profile card, while a zoom flies) it
+   lets go where it stands, quietly; shown, it comes back there */
 .st-stamp {
-  transform: translate3d(calc(-100% - 64px), 0, 0);
-  transition: transform calc(620ms * var(--fm-tempo)) cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 0;
+  transition: opacity calc(160ms * var(--fm-tempo)) ease;
 }
 
 .st-stamp[data-shown] {
-  transform: none;
+  opacity: 1;
+  transition-duration: calc(320ms * var(--fm-tempo));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -365,6 +376,11 @@ html.light .st-bone {
 
 .st-ambient[data-ready] {
   opacity: 1;
+}
+
+/* one made ahead is there at once (PostMedia, warmWash) */
+.st-ambient[data-instant] {
+  transition: none;
 }
 
 /* in a post's 4:5 frame (PostMedia): a picture 4:5 or wider shows whole, letterboxed over the ambient wash; a taller

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase';
+import { clearKept } from '@/lib/feedStream/keep';
 import LiveDashboard from '@/components/login/LiveStats';
 import { useLivePlatformStats } from '@/lib/useLiveStats';
 
@@ -378,6 +379,11 @@ export default function LoginPage() {
   const liveStats = useLivePlatformStats();
 
   const getClient = () => getSupabase();
+
+  // whoever signs in next starts from their own data: what Feed kept on this device goes (lib/feedStream/keep)
+  useEffect(() => {
+    clearKept();
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

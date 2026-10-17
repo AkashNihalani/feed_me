@@ -29,6 +29,95 @@ type CollapseOptions = {
   topGuard?: number;
 };
 
+/* The fold itself, outside React: follows `source`'s scroll (once a frame while it moves) and calls `onChange` only
+   when it flips (and once at the start, with where it begins). For what folds without re-rendering anything (the
+   phone's bottom bar writes it straight onto its element). `reset` puts it open or folded where the page is now,
+   measuring from there; `stop` lets go of the scroll */
+export type ScrollFold = { reset: (folded: boolean) => void; stop: () => void };
+
+export function watchScrollFold(source: HTMLElement | Window, options: CollapseOptions, onChange: (folded: boolean) => void): ScrollFold {
+  const { collapseDistance, expandDistance, topGuard } = options;
+  const read = () => (source === window ? window.scrollY : (source as HTMLElement).scrollTop);
+  const viewport = () => window.innerHeight || 800;
+
+  let raf = 0;
+  let state = false;
+  let told: boolean | null = null;
+  let lastY = read();
+  // Anchor = the scroll position of the last direction reversal. Distance is
+  // measured from here, so a flick-and-hold doesn't accumulate forever.
+  let anchor = lastY;
+  let dir = 0; // -1 up, 1 down, 0 idle
+
+  const tell = () => {
+    if (told === state) return;
+    told = state;
+    onChange(state);
+  };
+
+  const sync = () => {
+    const collapseAt = collapseDistance ?? viewport() * 1.15;
+    const expandAt = expandDistance ?? viewport() * 0.6;
+    const guard = topGuard ?? 56;
+
+    const live = jump && performance.now() < jump.until ? jump : null;
+    const y = live?.at ?? read();
+    const delta = y - lastY;
+
+    if (live) {
+      // the page's own jump: no direction taken from it, the next scroll measures from here
+      if (y <= guard) state = false;
+      else if (live.mode === 'place') state = y > guard + collapseAt;
+      anchor = y;
+      lastY = y;
+      dir = 0;
+    } else if (y <= guard) {
+      // Always fully expanded at the top.
+      state = false;
+      anchor = y;
+      dir = 0;
+    } else if (delta > DIRECTION_NOISE) {
+      // Scrolling down.
+      if (dir <= 0) { dir = 1; anchor = lastY; }
+      if (!state && y - anchor > collapseAt) state = true;
+    } else if (delta < -DIRECTION_NOISE) {
+      // Scrolling up.
+      if (dir >= 0) { dir = -1; anchor = lastY; }
+      if (state && anchor - y > expandAt) state = false;
+    }
+
+    if (Math.abs(delta) > DIRECTION_NOISE) lastY = y;
+    tell();
+  };
+
+  const onScroll = () => {
+    if (raf) return;
+    raf = window.requestAnimationFrame(() => {
+      raf = 0;
+      sync();
+    });
+  };
+
+  sync();
+  source.addEventListener('scroll', onScroll, { passive: true });
+  jumpListeners.add(sync);
+
+  return {
+    reset: (folded) => {
+      state = folded;
+      lastY = read();
+      anchor = lastY;
+      dir = 0;
+      tell();
+    },
+    stop: () => {
+      source.removeEventListener('scroll', onScroll);
+      jumpListeners.delete(sync);
+      if (raf) window.cancelAnimationFrame(raf);
+    },
+  };
+}
+
 /**
  * Direction-aware, distance-based header collapse.
  *
@@ -60,74 +149,8 @@ export function useCompressedOnScroll(
       return () => window.cancelAnimationFrame(reset);
     }
 
-    const read = () => (
-      source === window
-        ? window.scrollY
-        : (source as HTMLElement).scrollTop
-    );
-
-    const viewport = () => window.innerHeight || 800;
-
-    let raf = 0;
-    let state = false;
-    let lastY = read();
-    // Anchor = the scroll position of the last direction reversal. Distance is
-    // measured from here, so a flick-and-hold doesn't accumulate forever.
-    let anchor = lastY;
-    let dir = 0; // -1 up, 1 down, 0 idle
-
-    const sync = () => {
-      const collapseAt = collapseDistance ?? viewport() * 1.15;
-      const expandAt = expandDistance ?? viewport() * 0.6;
-      const guard = topGuard ?? 56;
-
-      const live = jump && performance.now() < jump.until ? jump : null;
-      const y = live?.at ?? read();
-      const delta = y - lastY;
-
-      if (live) {
-        // the page's own jump: no direction taken from it, the next scroll measures from here
-        if (y <= guard) state = false;
-        else if (live.mode === 'place') state = y > guard + collapseAt;
-        anchor = y;
-        lastY = y;
-        dir = 0;
-      } else if (y <= guard) {
-        // Always fully expanded at the top.
-        state = false;
-        anchor = y;
-        dir = 0;
-      } else if (delta > DIRECTION_NOISE) {
-        // Scrolling down.
-        if (dir <= 0) { dir = 1; anchor = lastY; }
-        if (!state && y - anchor > collapseAt) state = true;
-      } else if (delta < -DIRECTION_NOISE) {
-        // Scrolling up.
-        if (dir >= 0) { dir = -1; anchor = lastY; }
-        if (state && anchor - y > expandAt) state = false;
-      }
-
-      if (Math.abs(delta) > DIRECTION_NOISE) lastY = y;
-      setCompressed((current) => (current === state ? current : state));
-    };
-
-    const onScroll = () => {
-      if (raf) return;
-      raf = window.requestAnimationFrame(() => {
-        raf = 0;
-        sync();
-      });
-    };
-
-    sync();
-    source.addEventListener('scroll', onScroll, { passive: true });
-    jumpListeners.add(sync);
-
-    return () => {
-      source.removeEventListener('scroll', onScroll);
-      jumpListeners.delete(sync);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
+    const fold = watchScrollFold(source, { collapseDistance, expandDistance, topGuard }, setCompressed);
+    return () => fold.stop();
   }, [scrollRef, useBrowserPageScroll, collapseDistance, expandDistance, topGuard]);
 
   return compressed;

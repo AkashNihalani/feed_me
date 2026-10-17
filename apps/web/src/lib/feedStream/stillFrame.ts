@@ -27,8 +27,12 @@
    ───────────────────────────────────────────────────────────── */
 
 export type StillFrame = {
-  // resolves once the copy is on screen, whole
+  // resolves once the copy is on screen, whole (held: once it is drawn, still all but invisible, for show())
   shown: Promise<void>;
+  // a held copy shown, by opacity alone (it was drawn already)
+  show: () => void;
+  // the fixed layer over the screen the copy is in (to move it)
+  element: HTMLElement;
   // back over the screen after the page scrolled under it (a fixed copy: nothing to do)
   follow: () => void;
   remove: () => void;
@@ -113,11 +117,40 @@ function pictureCanvas(original: HTMLImageElement, copied: HTMLImageElement): HT
   return canvas;
 }
 
-export function stillFrame(source: HTMLElement, { zIndex }: { zIndex: number }): StillFrame {
+/* `edge`: the strip at the screen's top it leaves alone (Safari's status bar: none from a laptop up); `into`: where the
+   layer goes (the body, or a page's own surface, to lie under the page); `held`: drawn but not shown until show();
+   `freeze`: pieces mid-animation copied where they stand (below) */
+export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, into, held = false, freeze = false }: { zIndex: number; edge?: number; into?: HTMLElement; held?: boolean; freeze?: boolean }): StillFrame {
   const height = window.innerHeight;
   const rect = source.getBoundingClientRect();
   const copy = source.cloneNode(true) as HTMLElement;
   copy.removeAttribute('data-tab-scroll');
+
+  /* `freeze`: what shows through an animation (a WAAPI or CSS one holding its end, an arrival still under way) is
+     written into the copy as it stands now (a clone copies no animation, and would show each such piece where it
+     started). For a copy of a page that is leaving (a tab switch); never for a copy over the page itself (Feed's), whose
+     pieces go on moving under it: there the copy shows where they are going, as it always has. What follows the scroll
+     (a scroll-driven animation: the Day view's deck, its cards tucked in and dimmed) is where it is always: it is the
+     page at rest, and the copy shows it as it stands */
+  const moving = new Set<Element>();
+  source.getAnimations({ subtree: true }).forEach((animation) => {
+    const scrolled = Boolean(animation.timeline) && !(animation.timeline instanceof DocumentTimeline);
+    if (!freeze && !scrolled) return;
+    const effect = animation.effect as KeyframeEffect | null;
+    if (effect?.target && !effect.pseudoElement && effect.target !== source) moving.add(effect.target);
+  });
+  if (moving.size) {
+    const places = new Map<Element, number>();
+    source.querySelectorAll('*').forEach((el, i) => places.set(el, i));
+    const twins = copy.querySelectorAll<HTMLElement | SVGElement>('*');
+    moving.forEach((target) => {
+      const twin = twins[places.get(target) ?? -1];
+      if (!twin) return;
+      const style = getComputedStyle(target);
+      twin.style.opacity = style.opacity;
+      twin.style.transform = style.transform;
+    });
+  }
 
   // the pieces paired with their copies before anything is left out (both lists in document order)
   const pairs = <T extends Element>(selector: string) => {
@@ -179,7 +212,7 @@ export function stillFrame(source: HTMLElement, { zIndex }: { zIndex: number }):
   Object.assign(copy.style, {
     position: 'absolute',
     left: `${rect.left}px`,
-    top: `${rect.top - EDGE_CLEAR}px`,
+    top: `${rect.top - edge}px`,
     width: `${rect.width}px`,
     height: `${rect.height}px`,
     minHeight: '0px',
@@ -196,7 +229,7 @@ export function stillFrame(source: HTMLElement, { zIndex }: { zIndex: number }):
     position: 'fixed',
     left: '0px',
     // below the strip Safari colours the status bar from, and taller than the screen (above)
-    top: `${EDGE_CLEAR}px`,
+    top: `${edge}px`,
     width: '100%',
     height: `${Math.round(TALLER * 100)}%`,
     overflow: 'hidden',
@@ -207,7 +240,7 @@ export function stillFrame(source: HTMLElement, { zIndex }: { zIndex: number }):
     willChange: 'opacity',
   });
   cover.appendChild(copy);
-  document.body.appendChild(cover);
+  (into ?? document.body).appendChild(cover);
   const follow = () => undefined;
 
   let removed = false;
@@ -215,13 +248,17 @@ export function stillFrame(source: HTMLElement, { zIndex }: { zIndex: number }):
     // painted while all but invisible; shown by opacity alone (nothing to paint again), trusted a frame on
     await nextFrame();
     await nextFrame();
-    if (removed) return;
+    if (removed || held) return;
     cover.style.opacity = '1';
     await nextFrame();
   })();
 
   return {
     shown,
+    show: () => {
+      cover.style.opacity = '1';
+    },
+    element: cover,
     follow,
     remove: () => {
       removed = true;
@@ -250,7 +287,9 @@ export function stillFrame(source: HTMLElement, { zIndex }: { zIndex: number }):
 export async function whenDrawn(page: HTMLElement, budgetMs: number): Promise<void> {
   const start = performance.now();
   const height = window.innerHeight;
-  const shown = Array.from(page.querySelectorAll<HTMLImageElement>('img')).filter((img) => img.complete && img.naturalWidth > 0 && !offScreen(img, height));
+  // (a picture still loading under it too: a post just put up where its placeholder stood comes up before the copy
+  // goes, within the same time; decode() waits for its load)
+  const shown = Array.from(page.querySelectorAll<HTMLImageElement>('img')).filter((img) => (!img.complete || img.naturalWidth > 0) && !offScreen(img, height));
   await Promise.race([Promise.all(shown.map((img) => img.decode().catch(() => undefined))), sleep(budgetMs)]);
   let smooth = 0;
   let last = performance.now();

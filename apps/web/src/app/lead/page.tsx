@@ -35,6 +35,8 @@ import LeadFormats from '@/components/lead/LeadFormats';
 import { CrossfadeImage, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
 import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
 import { ascentFromActivity, formatsFor, growthFor, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
+import { announceFirstScreen } from '@/lib/launch';
+import { keptLead, leadOnHand, loadLead, type LeadLoad } from '@/components/lead/leadData';
 import './lead.css';
 
 const TIMEFRAMES = [7, 30, 60, 90] as const;
@@ -49,8 +51,6 @@ const OPEN_ITEM = {
 } as const;
 // how long a loaded board counts as fresh when you come back to the tab (checkpoints land hourly at most)
 const LEAD_FRESH_MS = 5 * 60 * 1000;
-// the longest range Lead offers: its activity (and the range before it) covers every shorter one
-const LEAD_SPAN_DAYS = 90;
 
 type MetricTotals = {
   likes?: string | number | null;
@@ -214,6 +214,26 @@ function feedsSignature(feeds: RuntimeFeed[]) {
     feed.posts.map((post) => `${post.postKey}:${post.latestCheckpoint}:${post.latestPercentile ?? ''}:${post.likes ?? ''}:${post.comments ?? ''}`).join(','),
     feed.ascent.map((point) => `${point.snapshot_date_ist}:${point.follower_count}`).join(','),
   ].join('|')).join('||');
+}
+
+/* the board's feeds from a load (components/lead/leadData), and its signature: worked out once per load */
+const runtimes = new WeakMap<LeadLoad, { feeds: RuntimeFeed[]; signature: string }>();
+function runtimeOf(load: LeadLoad): { feeds: RuntimeFeed[]; signature: string } {
+  let made = runtimes.get(load);
+  if (!made) {
+    const feeds = load.feeds.map((loaded) => {
+      const feed = loaded as unknown as ApiFeed & { posts: TrackedPost[] };
+      return {
+        ...feed,
+        feeders: Array.isArray(feed.feeders) ? feed.feeders : [],
+        posts: Array.isArray(feed.posts) ? feed.posts : [],
+        ascent: ascentFromActivity(load.activity, feed.id),
+      } satisfies RuntimeFeed;
+    });
+    made = { feeds, signature: `${feedsSignature(feeds)}#${load.activity?.posts.length ?? 0}:${load.activity?.to ?? ''}` };
+    runtimes.set(load, made);
+  }
+  return made;
 }
 
 /* when a post went out, worked out once per post (the shortcode read is not free, and every window asks) */
@@ -585,6 +605,7 @@ function LeadHeader({
     eyebrow: 'Feederboard',
     label: scopeLabel,
     control: <TimeframeControl id="lead" value={days} options={TIMEFRAMES} pending={pending} applyMs={MENU_APPLY_AFTER_CLOSE_MS} onChange={onDaysChange} />,
+    controlLabel: 'Time range',
     compressed,
     // none yet means still loading (the header keeps the rail it has)
     feeds: railFeeds.length ? railFeeds : null,
@@ -674,7 +695,7 @@ function TapeChip({ event }: { event: TapeEvent }) {
       <span className={cn(
         'whitespace-nowrap rounded-[8px] px-1.5 py-0.5 text-[9px] font-black tabular-nums tracking-[0.06em]',
         event.dir === 'up'
-          ? 'bg-[var(--fm-accent)]/90 text-white'
+          ? 'bg-[var(--fm-accent)] text-white'
           : event.dir === 'down'
             ? 'border border-fg/8 bg-fg/[0.05] text-fg/44'
             : 'border border-fg/8 bg-fg/[0.03] text-fg/56',
@@ -699,7 +720,7 @@ function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: string }) {
   const duration = Math.max(22, events.length * 4.2);
 
   return (
-    <div ref={tapeRef} data-testid="lead-v3-tape" className="relative mb-3 overflow-hidden rounded-[16px] border border-fg/[0.08] bg-(--ld-panel) py-2.5">
+    <div ref={tapeRef} data-testid="lead-v3-tape" className="relative -mx-3 mb-3 overflow-hidden border-y border-fg/[0.08] bg-(--ld-panel) py-2.5 sm:mx-0 sm:rounded-[16px] sm:border">
       <style>{TAPE_CSS}</style>
       {reduce ? (
         <div className="flex overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -769,7 +790,7 @@ function WireLine({ line, dealId }: { line: string | null; dealId: string }) {
   if (!line) return null;
   return (
     <div data-testid="lead-v3-wire" className="flex items-center gap-3 border-b border-fg/[0.08] bg-(--ld-deep) px-4 py-3 sm:px-5">
-      <span className="shrink-0 rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-white">Wire</span>
+      <span className="shrink-0 rounded-full bg-fg px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-(--fm-page)">Wire</span>
       {/* the old line and the new share one cell (no stylesheet popped in and out mid-switch); two lines' room
           whatever the line says, so a shorter one doesn't pull the board up */}
       <div className="grid min-w-0 flex-1">
@@ -915,7 +936,7 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
       initial={reduce ? false : 'hidden'}
       animate="visible"
       data-reveal="dealt"
-      className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+      className="-mx-3 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
     >
       {cards.map((card) => (
         <motion.article
@@ -940,7 +961,7 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
 
           <div className="relative z-10 flex h-full flex-col justify-between p-3.5 sm:p-4">
             <div className="min-w-0">
-              <div className="truncate text-[9px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-bright)]">{card.eyebrow}</div>
+              <div className="truncate text-[9px] font-black uppercase tracking-[0.2em] text-white/80">{card.eyebrow}</div>
               <div className="mt-1 truncate text-[8px] font-black uppercase tracking-[0.14em] text-white/56">{card.hint}</div>
             </div>
             <div className="min-w-0">
@@ -949,8 +970,8 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
                 <SlotText value={card.value} className="text-[48px] tabular-nums lg:text-[46px] xl:text-[54px] laptop:text-[40px]" />
                 {card.valueSuffix ? <span className="ml-0.5 pb-1 text-[22px] text-[var(--fm-accent-bright)]">{card.valueSuffix}</span> : null}
               </div>
-              <div className={cn('mt-2 h-[12px] truncate text-[8px] font-black uppercase tracking-[0.12em]', card.shift?.up ? 'text-[var(--fm-accent-bright)]' : 'text-white/44')}>
-                {card.shift ? <><span className="mr-1 text-[7px]">{card.shift.up ? '▲' : '▼'}</span><Swap value={card.shift.text} /></> : null}
+              <div className={cn('mt-2 h-[12px] truncate text-[8px] font-black uppercase tracking-[0.12em]', card.shift?.up ? 'text-white/72' : 'text-white/44')}>
+                {card.shift ? <><span className={cn('mr-1 text-[7px]', card.shift.up && 'text-[var(--fm-accent)]')}>{card.shift.up ? '▲' : '▼'}</span><Swap value={card.shift.text} /></> : null}
               </div>
               <div className="mt-2.5 border-t border-white/[0.1] pt-2.5">
                 <div className="truncate text-[12px] font-black text-white"><Swap value={card.name} /></div>
@@ -1000,7 +1021,7 @@ function RowThumb({ row }: { row: BoardRow }) {
 /* the verdict word, in a box as wide as the longest one: the caption beside it keeps its width as the word rolls */
 function RowVerdict({ row, delay = 0 }: { row: BoardRow; delay?: number }) {
   return (
-    <span className={cn('w-[60px] shrink-0 overflow-hidden text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-[var(--fm-accent-text)]' : 'text-fg/34')}>
+    <span className={cn('w-[60px] shrink-0 overflow-hidden text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-fg' : 'text-fg/34')}>
       <SlotText value={row.verdict} align="left" delay={delay} />
     </span>
   );
@@ -1019,11 +1040,12 @@ function MoveChip({ move, className }: { move: number | null; className?: string
     <span
       className={cn(
         'inline-flex w-[30px] shrink-0 items-center gap-0.5 text-[9px] font-black tabular-nums leading-none',
-        up ? 'text-[var(--fm-accent-text)]' : down ? 'text-fg/36' : 'text-fg/28',
+        up ? 'text-fg' : down ? 'text-fg/36' : 'text-fg/28',
         className,
       )}
     >
-      <span className="text-[7px]">{up ? '▲' : down ? '▼' : '–'}</span>
+      {/* a rise: the ▲ carries the accent, the number stays ink (small type is ink) */}
+      <span className={cn('text-[7px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : down ? '▼' : '–'}</span>
       {move === 0 ? '' : Math.abs(move)}
     </span>
   );
@@ -1084,7 +1106,7 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
         onClick={onCollapse}
         className="relative isolate cursor-pointer overflow-hidden border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6 lg:min-h-[360px]"
       >
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-bar)" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-fg" />
         <div className="pointer-events-none absolute -bottom-14 left-3 select-none text-[164px] font-black leading-none tracking-[-0.1em] text-fg/[0.025] sm:text-[210px]">{rankLabel(row.rank)}</div>
 
         <motion.div variants={OPEN_GRID} className="relative grid gap-6 lg:grid-cols-[210px_minmax(240px,.78fr)_minmax(400px,1.3fr)] lg:items-center lg:gap-8">
@@ -1093,7 +1115,7 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
               <span>
                 {row.postCount} posts · {days}D
                 {row.prevPostCount != null ? (
-                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-[var(--fm-accent-text)]/70' : 'text-fg/20 light:text-fg/40')}>
+                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-fg' : 'text-fg/20 light:text-fg/40')}>
                     {row.postCount === row.prevPostCount ? 'same pace' : row.postCount > row.prevPostCount ? `up from ${row.prevPostCount}` : `down from ${row.prevPostCount}`}
                   </i>
                 ) : null}
@@ -1237,7 +1259,7 @@ function RowGround({ throne, strength }: { throne: boolean; strength: number }) 
       <span
         aria-hidden="true"
         data-ledger-sweep=""
-        className={cn('pointer-events-none absolute inset-y-0 left-0 z-0 w-full origin-left', throne ? 'bg-[var(--fm-accent)]/[0.06]' : 'bg-[var(--fm-accent)]/[0.03]')}
+        className={cn('pointer-events-none absolute inset-y-0 left-0 z-0 w-full origin-left', throne ? 'bg-[var(--fm-accent)]/[0.06]' : 'bg-fg/[0.03]')}
         style={{ transform: `scaleX(${strength.toFixed(3)})`, opacity: throne ? 0.07 : 0.04 }}
       />
       <span aria-hidden="true" className="ld-throne pointer-events-none absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" style={{ opacity: throne ? 0.6 : 0 }} />
@@ -1283,12 +1305,12 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
               <span className="block text-[8px] font-black uppercase tracking-[0.13em] text-fg/52">Typical</span>
               <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
                 <NumberBox value={percentLabel(row.typical)} delay={beat} />
-                {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
+                {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
               </span>
               <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[11px] font-black tabular-nums leading-none">
                 {row.typicalShift != null && row.typicalShift !== 0 ? (
-                  <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : 'text-fg/40')}>
-                    <i className="not-italic text-[8px]">{row.typicalShift > 0 ? '▲' : '▼'}</i>
+                  <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-fg' : 'text-fg/40')}>
+                    <i className={cn('not-italic text-[8px]', row.typicalShift > 0 && 'text-[var(--fm-accent)]')}>{row.typicalShift > 0 ? '▲' : '▼'}</i>
                     <SlotText value={String(Math.abs(row.typicalShift))} delay={beat} />
                   </span>
                 ) : null}
@@ -1319,7 +1341,7 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
           <span className="min-w-0">
             <span className="fm-depth-title flex items-baseline text-[28px] font-black tabular-nums leading-none text-fg laptop:text-[24px]">
               <NumberBox value={percentLabel(row.typical)} delay={beat} />
-              {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
+              {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
             </span>
             <span className="mt-1.5 block truncate text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">median · {row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
           </span>
@@ -1391,9 +1413,9 @@ function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedP
               <span className="block text-[7px] font-black uppercase tracking-[0.15em] text-fg/26 light:text-fg/44">Placed</span>
               <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
                 <NumberBox value={percentLabel(post.latestPercentile)} delay={beat} />
-                {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em] text-[var(--fm-accent-text)]">%</i>}
+                {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
               </span>
-              <span className="mt-1 block text-[9px] font-black tabular-nums text-[var(--fm-accent-text)]/80"><NumberBox value={formatMultiple(post.rankingMultiple)} delay={beat} min="3ch" /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-fg/22 light:text-fg/40">usual</i></span>
+              <span className="mt-1 block text-[9px] font-black tabular-nums text-fg/80"><NumberBox value={formatMultiple(post.rankingMultiple)} delay={beat} min="3ch" /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-fg/22 light:text-fg/40">usual</i></span>
             </span>
             <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
           </span>
@@ -1476,7 +1498,7 @@ function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, se
     <section ref={boardRef} aria-labelledby="lead-v3-board-title" className="min-w-0 max-w-full overflow-hidden bg-(--ld-panel)">
       <div className="flex items-center justify-between gap-4 border-b border-fg/[0.08] px-4 py-4 sm:px-5">
         <div className="min-w-0">
-          <h2 id="lead-v3-board-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feederboard</h2>
+          <h2 id="lead-v3-board-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Feederboard</h2>
           <p className="mt-1 overflow-hidden whitespace-nowrap text-[10px] font-bold leading-snug text-fg/50"><Swap value={subtitle} className="truncate align-top" /><span className="hidden sm:inline"> · tap a row for the receipts</span></p>
         </div>
         <div className="shrink-0 text-right text-[9px] font-black uppercase tracking-[0.12em] text-fg/46">
@@ -1626,7 +1648,7 @@ const FeederboardCards = memo(function FeederboardCards(props: {
     <section ref={ref} aria-labelledby="lead-v3-hall-title" className="lead-band relative isolate overflow-hidden border-t border-fg/[0.08] bg-(--ld-panel) px-4 pb-5 pt-4 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h2 id="lead-v3-hall-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Hall of Feed</h2>
+          <h2 id="lead-v3-hall-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Hall of Feed</h2>
           <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">The posts that carried the feed · {days}D</p>
         </div>
         <div className="relative grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[272px]">
@@ -1634,7 +1656,7 @@ const FeederboardCards = memo(function FeederboardCards(props: {
           <span
             ref={pillRef}
             aria-hidden="true"
-            className="ld-pill pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] rounded-[8px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)]"
+            className="ld-pill pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] rounded-[8px] bg-fg shadow-[inset_0_1px_0_rgb(255_255_255_/_0.16)]"
             style={{ width: 'calc(25% - 6px)', transform: `translateX(calc(${viewIndex} * (100% + 6px)))` }}
           />
           {FEEDERBOARD_VIEWS.map((option) => (
@@ -1647,7 +1669,7 @@ const FeederboardCards = memo(function FeederboardCards(props: {
               data-testid={`lead-v3-feederboard-view-${option.id}`}
               className={cn(
                 'relative grid h-full place-items-center rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors duration-[calc(300ms*var(--fm-tempo))] sm:text-[11px]',
-                view === option.id ? 'text-white' : 'text-fg/36 hover:text-fg/72',
+                view === option.id ? 'text-(--fm-page)' : 'text-fg/60 hover:text-fg/80',
               )}
             >
               <span className="relative z-10">{option.label}</span>
@@ -1663,7 +1685,7 @@ const FeederboardCards = memo(function FeederboardCards(props: {
           deal={`${view}|${activeFeedId}|${activeFeeder}|${days}`}
           axis="x"
           startOnDeal
-          className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+          className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
         >
           {view === 'feats' ? facts.map((fact, order) => {
             // the post the card shows (its picture is the run's strongest post), else the strongest of the evidence
@@ -1680,13 +1702,13 @@ const FeederboardCards = memo(function FeederboardCards(props: {
             >
               <CrossfadeImage src={fact.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
-              <span className="absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--fm-accent-bright)]">{WIN_LABEL[fact.kind] ?? fact.kind.replace(/-/g, ' ')}</span>
+              <span className="absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white">{WIN_LABEL[fact.kind] ?? fact.kind.replace(/-/g, ' ')}</span>
               {fact.postUrl ? <a href={fact.postUrl} target="_blank" rel="noreferrer" aria-label="Open the post on Instagram" className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/78">Instagram</a> : null}
               <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
                 {/* the post it stands on, in numbers (what the old post mortem showed) */}
                 {hero && hero.latestPercentile != null ? (
                   <div className="mb-1.5 flex items-baseline gap-2 text-white">
-                    <span className="fm-depth-title ld-on-media text-[13px] font-black tabular-nums">TOP {percentLabel(hero.latestPercentile)}<i className="not-italic text-[var(--fm-accent-bright)]">%</i></span>
+                    <span className="fm-depth-title ld-on-media text-[13px] font-black tabular-nums">TOP {percentLabel(hero.latestPercentile)}<i className="not-italic">%</i></span>
                     {hero.rankingMultiple != null ? <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/64">{formatMultiple(hero.rankingMultiple)} usual</span> : null}
                   </div>
                 ) : null}
@@ -1741,8 +1763,8 @@ function ClimbChip({ post }: { post: TrackedPost }) {
   if (trajectory == null || Math.abs(trajectory) < 3 || post.firstPercentile == null) return null;
   const up = trajectory > 0;
   return (
-    <span className={cn('inline-flex shrink-0 items-center gap-1 text-[8px] font-black tabular-nums tracking-[0.08em]', up ? 'text-[var(--fm-accent-text)]' : 'text-fg/36')}>
-      <span className="text-[7px]">{up ? '▲' : '▼'}</span>
+    <span className={cn('inline-flex shrink-0 items-center gap-1 text-[8px] font-black tabular-nums tracking-[0.08em]', up ? 'text-fg' : 'text-fg/36')}>
+      <span className={cn('text-[7px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : '▼'}</span>
       {percentLabel(post.firstPercentile)}%→{percentLabel(post.latestPercentile)}%
     </span>
   );
@@ -1766,7 +1788,7 @@ function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onColl
       className="overflow-hidden"
     >
       <div onClick={onCollapse} className="relative cursor-pointer border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6">
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-bar)" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-fg" />
         <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-7">
           <a
             href={post.postUrl || '#'}
@@ -1876,7 +1898,7 @@ function LoadingState() {
   return (
     <div className="flex min-h-[55vh] items-center justify-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-        <motion.span className="mx-auto block h-2 w-2 rounded-full bg-[var(--fm-accent)]" animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1, 0.8] }} transition={{ duration: 1.4, repeat: Infinity }} />
+        <motion.span className="mx-auto block h-2 w-2 rounded-full bg-fg" animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1, 0.8] }} transition={{ duration: 1.4, repeat: Infinity }} />
         <div className="mt-4 text-[9px] font-black uppercase tracking-[0.22em] text-fg/30 light:text-fg/44">Building the board</div>
       </motion.div>
     </div>
@@ -1888,14 +1910,20 @@ export default function LeadBoardPage() {
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const { appShellStyle, useBrowserPageScroll, useTranslucentBrowserChrome } = useMobileImmersiveViewport();
   const [days, setDays] = useState<(typeof TIMEFRAMES)[number]>(30);
-  const [feeds, setFeeds] = useState<RuntimeFeed[]>([]);
-  const [activity, setActivity] = useState<LeadActivity | null>(null);
+  // what is on hand when the page is built (the launch warmed it, or a visit before): the board from the first frame
+  const [onHand] = useState(() => leadOnHand());
+  const [feeds, setFeeds] = useState<RuntimeFeed[]>(() => (onHand ? runtimeOf(onHand).feeds : []));
+  const [activity, setActivity] = useState<LeadActivity | null>(() => onHand?.activity ?? null);
   // the pick every tab shares (tabScope), followed in a transition: the page's re-render yields to the rail's frames
   const scope = useTabScopeTransition();
   const { activeFeedId, activeFeeder } = resolveScope(feeds, scope);
   const [selectedId, setSelectedId] = useState('');
   const [selectedPostKey, setSelectedPostKey] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !onHand);
+  // the board is in (or can't be): a launch veil goes
+  useEffect(() => {
+    if (!loading) announceFirstScreen();
+  }, [loading]);
   // a range switch re-reads what is on hand in a transition: the header answers the tap first
   const [timeframePending, startTimeframe] = useTransition();
   const [error, setError] = useState('');
@@ -1912,60 +1940,53 @@ export default function LeadBoardPage() {
   }, []);
 
   /* Everything every time range needs is loaded once: each feed's posts (all of them) and the activity of the
-     longest range plus the one before it. A range switch is then only a re-read of what is on hand, with no
-     request and nothing to parse, so it answers at once. Lead stays mounted while hidden but its effects run again
-     each time the tab comes back: what it has shows at once, and once it is a few minutes old it refreshes in the
-     background, re-drawing only if something actually changed. */
-  const loaded = useRef<{ at: number; signature: string } | null>(null);
+     longest range plus the one before it (components/lead/leadData, shared: the launch warms it before Lead is ever
+     opened). A range switch is then only a re-read of what is on hand, with no request and nothing to parse, so it
+     answers at once. Lead stays mounted while hidden but its effects run again each time the tab comes back: what it
+     has shows at once (a load on hand, or what the device kept from last time), and once it is a few minutes old (or
+     only kept) it refreshes in the background, re-drawing only if something actually changed. */
+  const loaded = useRef<{ at: number; signature: string } | null>(onHand ? { at: onHand.kept ? 0 : onHand.at, signature: runtimeOf(onHand).signature } : null);
 
   useEffect(() => {
     const previous = loaded.current;
     if (previous && Date.now() - previous.at < LEAD_FRESH_MS) return undefined;
-    const controller = new AbortController();
     let cancelled = false;
+    const show = (load: LeadLoad) => {
+      const { feeds: nextFeeds, signature } = runtimeOf(load);
+      const shown = loaded.current;
+      // (one only kept counts as old: it is shown, and loaded afresh behind it)
+      loaded.current = { at: load.kept ? 0 : load.at, signature };
+      if (shown && shown.signature === signature) return;
+      // loading ends in the same (deferred) commit that brings the feeds: ending it on its own, at once, showed
+      // "No feeds to compare yet" for the frames before the feeds landed
+      startTransition(() => {
+        setFeeds(nextFeeds);
+        setActivity(load.activity);
+        setLoading(false);
+      });
+    };
 
     async function load() {
       try {
-        const feedResponse = await fetch('/api/feed', { cache: 'no-store', credentials: 'include', signal: controller.signal });
-        if (!feedResponse.ok) throw new Error(feedResponse.status === 401 ? 'Sign in to load this board.' : 'Feed data could not be loaded.');
-        const feedPayload = await feedResponse.json() as { feeds?: ApiFeed[] };
-        const apiFeeds = (feedPayload.feeds || []).filter((feed) => Boolean(feed.id));
-        const activityRequest = fetch(`/api/lead/activity?days=${LEAD_SPAN_DAYS}`, { cache: 'no-store', credentials: 'include', signal: controller.signal })
-          .then(async (response) => (response.ok ? await response.json() as LeadActivity : null))
-          .catch(() => null);
-        const runtimeFeeds = await Promise.all(apiFeeds.map(async (feed) => {
-          const params = new URLSearchParams({ feedId: feed.id, handle: 'all', timeframe: `${LEAD_SPAN_DAYS * 2}D` });
-          const postsResponse = await fetch(`/api/feed/feeder-posts?${params.toString()}`, { cache: 'no-store', credentials: 'include', signal: controller.signal });
-          const postsPayload = postsResponse.ok ? await postsResponse.json() as { posts?: TrackedPost[] } : {};
-          return {
-            ...feed,
-            feeders: Array.isArray(feed.feeders) ? feed.feeders : [],
-            posts: Array.isArray(postsPayload.posts) ? postsPayload.posts : [],
-            ascent: [],
-          } satisfies RuntimeFeed;
-        }));
-        const nextActivity = await activityRequest;
+        const onHandNow = leadOnHand() ?? await keptLead();
         if (cancelled) return;
-        const withAscent = runtimeFeeds.map((feed) => ({ ...feed, ascent: ascentFromActivity(nextActivity, feed.id) }));
-        const signature = `${feedsSignature(withAscent)}#${nextActivity?.posts.length ?? 0}:${nextActivity?.to ?? ''}`;
-        loaded.current = { at: Date.now(), signature };
-        if (previous && previous.signature === signature) return;
-        startTransition(() => {
-          setFeeds(withAscent);
-          setActivity(nextActivity);
-        });
+        if (onHandNow) show(onHandNow);
+        if (onHandNow && !onHandNow.kept && Date.now() - onHandNow.at < LEAD_FRESH_MS) return;
+        const fresh = await loadLead();
+        if (cancelled) return;
+        show(fresh);
       } catch (caught) {
-        if (controller.signal.aborted || cancelled) return;
+        if (cancelled) return;
+        // a board already shown stays (a refresh that failed changes nothing)
+        if (loaded.current) return;
         setError(caught instanceof Error ? caught.message : 'Feed data could not be loaded.');
-      } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     }
 
     void load();
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, []);
 
@@ -1994,7 +2015,7 @@ export default function LeadBoardPage() {
       ref={pageScrollRef}
       data-testid="lead-v3-page"
       className={cn(
-        '[overflow-anchor:none] fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(84px+env(safe-area-inset-top))] lg:scroll-pt-[calc(100px+env(safe-area-inset-top))] text-fg',
+        '[overflow-anchor:none] fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(84px+env(safe-area-inset-top))] lg:scroll-pt-6 text-fg',
         useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-(--fm-page)',
         useBrowserPageScroll
           ? 'min-h-[100lvh] overflow-x-hidden overflow-y-visible'
@@ -2021,7 +2042,7 @@ export default function LeadBoardPage() {
           startTimeframe(() => setDays(nextDays));
         }}
       />
-      <main className="relative z-10 mx-auto w-full min-w-0 max-w-[1500px] px-3 pb-[calc(148px+env(safe-area-inset-bottom))] pt-[calc(172px+env(safe-area-inset-top))] sm:px-5 sm:pt-[calc(172px+env(safe-area-inset-top))] md:pt-[calc(178px+env(safe-area-inset-top))] lg:px-7 lg:pt-[calc(214px+env(safe-area-inset-top))]">
+      <main className="relative z-10 mx-auto w-full min-w-0 max-w-[1500px] px-3 pb-[calc(148px+env(safe-area-inset-bottom))] pt-[calc(172px+env(safe-area-inset-top))] sm:px-5 sm:pt-[calc(172px+env(safe-area-inset-top))] md:pt-[calc(178px+env(safe-area-inset-top))] lg:px-7 lg:pt-(--fm-desk-top)">
         {loading && !feeds.length ? <LoadingState /> : error ? (
           <div className="flex min-h-[55vh] items-center justify-center px-6 text-center">
             <div>
@@ -2035,7 +2056,8 @@ export default function LeadBoardPage() {
             <TapeSection {...scopeNow} />
             <LeadersSection {...scopeNow} />
 
-            <div className="relative mt-4 min-w-0 max-w-full overflow-hidden rounded-[28px] border border-fg/[0.09] bg-(--ld-ground) shadow-(--ld-shadow-board)">
+            {/* the board: edge to edge on a phone (its bands keep a 16px gutter for text), a framed card from sm up */}
+            <div className="relative -mx-3 mt-4 min-w-0 overflow-hidden border-y border-fg/[0.09] bg-(--ld-ground) sm:mx-0 sm:max-w-full sm:rounded-[28px] sm:border sm:shadow-(--ld-shadow-board)">
               <BoardSection
                 feeds={feeds}
                 feedId={activeFeedId}
@@ -2050,7 +2072,7 @@ export default function LeadBoardPage() {
               <LeadGrowth feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
               <section aria-label="Feeding habits" className="bg-(--ld-panel)">
                 <div className="border-t border-fg/[0.09] px-4 pb-0 pt-5 sm:px-6 lg:px-7">
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--fm-accent-text)]">Feeding habits</h2>
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Feeding habits</h2>
                   <p className="mt-1 truncate text-[10px] font-bold leading-snug text-fg/50">How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'} · vs the {days}D before</p>
                 </div>
                 <LeadRhythm feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />

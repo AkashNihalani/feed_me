@@ -5,18 +5,19 @@
    still, in the margin beside the posts, saying which day the post
    in view went up (or got its result, in results order).
 
-     FRIDAY          the rose kicker (TODAY / YESTERDAY / weekday)
+     FRIDAY          the kicker (TODAY / YESTERDAY / weekday)
      2               the date, set as a hero numeral
      October         the month
-     ──              a short rose rule
+     ──              a short ink rule
      Post 3 of 12    where this post sits in its day
 
    It follows the scroll, not the rest: crossing into another day,
    each line that changes swaps (the old one rises away as the new
    one rises in, overlapping, never masked, so a big numeral is
    never cut mid-change), the date a beat after the weekday. Over
-   the profile card and while a zoom flies it slides away past the
-   screen's left edge, and back in after.
+   the profile card and while a zoom flies it lets go where it
+   stands, quietly, and comes back there after: it never slides
+   (the side rail lies over this margin when it opens, as glass).
 
    It fills the box it is given; FeedStream pins that box beside
    the card band with position: sticky inside the page's layer (a
@@ -75,11 +76,11 @@ function DayStamp({ day, slot, count, hidden, width }: DayStampProps) {
       data-shown={parts && !hidden ? '' : undefined}
       className="st-stamp pointer-events-none flex h-full w-full flex-col items-end justify-center text-right"
     >
-      <Swap value={(parts?.kicker ?? '').toUpperCase()} className="text-[13px] font-black leading-none tracking-[0.22em] text-[var(--fm-accent-text)]" />
+      <Swap value={(parts?.kicker ?? '').toUpperCase()} className="text-[13px] font-black leading-none tracking-[0.22em] text-[var(--st-text-2)]" />
       {/* the numeral: a full line box (leading 1) so no glyph ever reaches past it */}
       <Swap value={date} step={1} className="mt-2 font-black leading-none tracking-[-0.06em] tabular-nums text-[var(--st-text)]" style={{ fontSize: numeral }} />
       <Swap value={month} step={2} className="mt-1 text-[22px] font-bold leading-none tracking-[-0.02em] text-[var(--st-text-2)]" />
-      <span className="mt-6 block h-[3px] w-9 rounded-full bg-[var(--fm-accent)]" />
+      <span className="mt-6 block h-[3px] w-9 rounded-full bg-[var(--st-text)]" />
       <span className={cn('mt-3 block text-[13px] font-medium leading-none tabular-nums text-[var(--st-text-3)]', count > 1 ? null : 'invisible')}>
         <Swap value={`Post ${slot + 1} of ${count}`} step={3} />
       </span>

@@ -10,6 +10,7 @@
 
 import readerData from '@/data/readerPreview.json';
 import { normalizeHandle } from '@/lib/feedLabels';
+import { onForget } from '@/lib/keepStore';
 
 // the app's names for feeds and feeders (the header uses the same ones)
 export { feedInitials, normalizeHandle, titleCase } from '@/lib/feedLabels';
@@ -87,9 +88,28 @@ export function feedOf(feeds: RailFeed[], handle: string | null) {
 /* fetched once per visit to the app and kept for the tab's next mount; a failed or signed-out fetch still
    leaves the samples reachable */
 let feedCache: RailFeed[] | null = null;
+// another account's feeds are never shown (sign-out: lib/keepStore)
+onForget(() => {
+  feedCache = null;
+  warming = null;
+});
 
 export function cachedFeeds() {
   return feedCache;
+}
+
+// the feeds loaded ahead (the launch, a quiet moment after the first screen), so Read opens on them
+let warming: Promise<RailFeed[]> | null = null;
+export function warmReadFeeds(): Promise<RailFeed[]> {
+  if (feedCache) return Promise.resolve(feedCache);
+  if (!warming) {
+    warming = loadFeeds(new AbortController().signal);
+    const done = () => {
+      warming = null;
+    };
+    warming.then(done, done);
+  }
+  return warming;
 }
 
 export async function loadFeeds(signal: AbortSignal): Promise<RailFeed[]> {

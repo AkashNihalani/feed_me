@@ -26,7 +26,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import FeedControl from '@/components/feed/stream/FeedControl';
 import { FeedEmptyState } from '@/components/feed/stream/FeedEmptyState';
 import FeedManageSheet from '@/components/feed/stream/FeedManageSheet';
-import FeedStream, { type FeedStreamBlank, type FeedStreamHandle, type StreamProfileView } from '@/components/feed/stream/FeedStream';
+import FeedStream, { type FeedStreamBlank, type FeedStreamHandle, type StreamProfileView, type StreamSlide } from '@/components/feed/stream/FeedStream';
 import PostSheet from '@/components/feed/stream/PostSheet';
 import { usePageReady } from '@/components/shell/AppShell';
 import { HEADER_CONTROL, useTabHeader } from '@/components/shell/TabHeader';
@@ -62,6 +62,15 @@ function resolvePick(feeds: AppFeed[] | null, pick: TabScope): Pick {
     ?? (handle ? feeds.find((feed) => feed.feeders.some((feeder) => normalizeHandle(feeder.handle) === handle))?.id ?? null : null);
   const live = feedId && feeds.some((feed) => feed.id === feedId) ? feedId : null;
   return { feedId: live, handle: live ? handle : null };
+}
+
+// a new order slides its list in from the side its tab is on (Latest results, the right); someone else's posts never
+// slide (FeedStream: StreamSlide)
+function slideOf(from: StreamScope, to: StreamScope, someoneElse: boolean): StreamSlide | undefined {
+  const was = from.order ?? 'posted';
+  const now = to.order ?? 'posted';
+  if (someoneElse || was === now) return undefined;
+  return now === 'results' ? 1 : -1;
 }
 
 function counted(value: number, one: string, many: string) {
@@ -208,6 +217,7 @@ const FeedHeader = memo(function FeedHeader({ feeds, order, mode, compressed, fr
     eyebrow: order === 'results' ? 'Feed · latest results' : 'Feed · newest posts',
     label,
     control: <FeedControl mode={mode} onModeChange={onModeChange} onModeIntent={onModeIntent} />,
+    controlLabel: 'Zoom',
     compressed,
     // none yet means still loading (the header keeps the rail it has)
     feeds: railFeeds.length ? railFeeds : null,
@@ -312,8 +322,9 @@ function FeedTabContent() {
       startTransition(apply);
       return undefined;
     }
+    const slide = slideOf(shownRef.current, live, someoneElse);
     void stream.prepare(live).then(() => {
-      if (!cancelled) stream.commit(apply, { profile: someoneElse });
+      if (!cancelled) stream.commit(apply, { profile: someoneElse, slide });
     });
     return () => {
       cancelled = true;

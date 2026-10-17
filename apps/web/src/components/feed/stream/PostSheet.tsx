@@ -215,7 +215,8 @@ function PostSheet({ post, feeder, onClose }: PostSheetProps) {
       className="fm-stream fixed inset-0 z-[200] flex items-end justify-center lg:items-center lg:p-8"
       style={{ pointerEvents: open ? undefined : 'none' }}
     >
-      <div ref={dimRef} aria-hidden="true" onClick={onClose} className="absolute inset-0 touch-none bg-black/70 light:bg-(--fm-scrim)" />
+      {/* (below the strip Safari colours a phone's status bar from, and taller than the screen: stillFrame.ts) */}
+      <div ref={dimRef} aria-hidden="true" onClick={onClose} className="fm-under-status absolute touch-none bg-black/70 light:bg-(--fm-scrim)" />
       <div
         ref={panelRef}
         role="dialog"

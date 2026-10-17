@@ -318,6 +318,15 @@ export function dayLabel(day: string, today: string = istDay()): DayLabel {
 }
 
 // "now", "12m", "5h", "3d", "Thu 2 Oct"
+/* Something new: it happened in the last 24 hours (a rolling day, as the server's fresh feeders are). What the app
+   marks in red (red is never a pick: a pick is ink) */
+const NEW_WITHIN_MS = 24 * 60 * 60 * 1000;
+export function withinDay(iso: string | null | undefined, now: number = Date.now()): boolean {
+  if (!iso) return false;
+  const at = Date.parse(iso);
+  return Number.isFinite(at) && now - at >= 0 && now - at < NEW_WITHIN_MS;
+}
+
 export function relativeTime(iso: string, now: number = Date.now()): string {
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
   if (minutes < 1) return 'now';

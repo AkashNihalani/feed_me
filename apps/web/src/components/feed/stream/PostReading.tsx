@@ -31,6 +31,7 @@ import {
   isWinner,
   istDay,
   shiftDay,
+  withinDay,
   type StreamFeeder,
   type StreamMediaType,
   type StreamPost,
@@ -80,10 +81,12 @@ function formatRate(value: number | null) {
 }
 
 // "D7 landed today" when the latest read is fresh
+// a result that landed today or yesterday; fresh: in the last 24 hours (marked red)
 function landedNote(post: StreamPost, today: string) {
   if (!post.latestCheckpoint || !post.resultDay) return null;
-  if (post.resultDay === today) return { text: `${post.latestCheckpoint} landed today`, today: true };
-  if (post.resultDay === shiftDay(today, -1)) return { text: `${post.latestCheckpoint} landed yesterday`, today: false };
+  const fresh = post.resultAt ? withinDay(post.resultAt) : post.resultDay === today;
+  if (post.resultDay === today) return { text: `${post.latestCheckpoint} landed today`, fresh };
+  if (post.resultDay === shiftDay(today, -1)) return { text: `${post.latestCheckpoint} landed yesterday`, fresh };
   return null;
 }
 
@@ -147,8 +150,7 @@ function PostReading({ post, feeder, size, withHeader = true, titleId }: PostRea
         )}
         <p className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 font-medium leading-snug text-[var(--st-text-2)]', look.note)}>
           {landed ? (
-            <span className="inline-flex items-center gap-1.5 text-[var(--st-text)]">
-              {landed.today ? <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-[var(--fm-accent-text)]" /> : null}
+            <span className={cn('inline-flex items-center text-[var(--st-text)]', landed.fresh && 'rounded-full bg-[var(--fm-accent)] px-2 py-[3px] text-[0.85em] font-bold leading-none text-white')}>
               {landed.text}
             </span>
           ) : null}
@@ -162,7 +164,7 @@ function PostReading({ post, feeder, size, withHeader = true, titleId }: PostRea
       </div>
 
       {figures.length ? (
-        <dl className={cn('st-settle grid min-w-0 grid-cols-2 gap-x-6 sm:grid-cols-4', look.figures)} data-settle="3" style={{ '--i': 3 } as CSSProperties}>
+        <dl className={cn('st-settle grid min-w-0 grid-cols-2 gap-x-6 sm:grid-cols-4 lg:gap-x-4', look.figures)} data-settle="3" style={{ '--i': 3 } as CSSProperties}>
           {figures.map((figure) => (
             <div key={figure.key} className="flex min-w-0 flex-col-reverse">
               <dt className={cn('mt-1.5 truncate font-medium leading-none text-[var(--st-text-2)]', look.label)}>{figure.label}</dt>

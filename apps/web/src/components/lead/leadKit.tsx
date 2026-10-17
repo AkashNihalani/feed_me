@@ -153,7 +153,8 @@ export function PostTile({ shot, className, when }: { shot: Shot; className?: st
       <span aria-hidden="true" className="absolute inset-0 grid place-items-center text-[8px] font-black uppercase tracking-[0.12em] text-white/30">{shot.format || 'post'}</span>
       <CrossfadeImage src={shot.thumb} />
       <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.28)_0%,transparent_30%,transparent_52%,rgba(0,0,0,.86)_100%)]" />
-      <span className="absolute left-1.5 top-1.5 rounded-[7px] px-1.5 py-0.5 text-[9px] font-black tabular-nums text-white" style={{ background: tone ? tone.c : 'rgba(0,0,0,.55)' }}>
+      {/* the ramp's own number colour: the soft steps carry ink, the solid ones white */}
+      <span className="absolute left-1.5 top-1.5 rounded-[7px] px-1.5 py-0.5 text-[9px] font-black tabular-nums" style={{ background: tone ? tone.c : 'rgba(0,0,0,.55)', color: tone ? tone.tx : '#ffffff' }}>
         {percentile != null ? `${topLabel(percentile)}%` : 'new'}
       </span>
       <span className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2">
@@ -220,8 +221,9 @@ export function Eyebrow({ icon, children, className }: { icon?: ReactNode; child
 
 export function Delta({ up, children, className }: { up: boolean | null; children: ReactNode; className?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.12em]', up ? 'text-[var(--fm-accent-text)]' : 'text-fg/44 light:text-fg/52', className)}>
-      {up == null ? null : <i className="not-italic text-[7px]">{up ? '▲' : '▼'}</i>}
+    // a rise: the ▲ carries the accent, the words stay ink (small type is ink)
+    <span className={cn('inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.12em]', up ? 'text-fg' : 'text-fg/44 light:text-fg/52', className)}>
+      {up == null ? null : <i className={cn('not-italic text-[7px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : '▼'}</i>}
       {children}
     </span>
   );

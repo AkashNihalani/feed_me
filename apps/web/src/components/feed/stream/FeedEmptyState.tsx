@@ -82,8 +82,8 @@ export function FeedEmptyState({ kind, onCreateFeed }: FeedEmptyStateProps) {
           }}
           className={cn(
             ARRIVE,
-            'mt-6 inline-flex h-12 items-center gap-2 rounded-[14px] bg-(--fm-accent) px-5 text-[14px] font-semibold text-white outline-none',
-            'shadow-[0_14px_32px_-16px_rgb(var(--fm-accent-rgb)/0.7)] transition-[scale] duration-150 ease-out active:scale-[0.97]',
+            'mt-6 inline-flex h-12 items-center gap-2 rounded-[14px] bg-fg px-5 text-[14px] font-semibold text-(--fm-page) outline-none',
+            'shadow-[0_14px_32px_-16px_rgb(var(--fm-shadow-rgb)/0.45)] transition-[scale] duration-150 ease-out active:scale-[0.97]',
             'focus-visible:ring-2 focus-visible:ring-white/70 [-webkit-tap-highlight-color:transparent]',
           )}
           style={arrive(3)}

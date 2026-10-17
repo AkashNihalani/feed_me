@@ -6,7 +6,7 @@
    Read's own pieces inside it:
 
    - the rail marks every feeder Read has a read for (and their
-     feed) with the rose story ring;
+     feed) with the accent story ring;
    - it moves with the page, never ahead of it (leaving / armed,
      see TabHeader);
    - the view switch on the right (Runs · Repeats · Ranks), only
@@ -19,7 +19,7 @@
      reads #rd-rail to leave rail taps alone.
    ───────────────────────────────────────────────────────────── */
 
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, useTabHeader } from '@/components/shell/TabHeader';
@@ -63,7 +63,7 @@ export default function ReadHeader({
   leaving: boolean;
   armed: string | null;
   compressed: boolean;
-  topRef: (el: HTMLDivElement | null) => void;
+  topRef: Ref<HTMLDivElement>;
   fontClass: string;
   onAll: () => void;
   onFeed: (id: string) => void;
@@ -119,13 +119,14 @@ export default function ReadHeader({
     eyebrow,
     label,
     control: viewSwitch,
+    // (a laptop up the view switch is the page's own lens, stuck under the window's top: the side rail carries none)
+    railControl: null,
     compressed,
     className: `rd-header ${fontClass}`,
     feeds,
     pendingFeeders: fallback,
     feedId,
     handle,
-    marked: hasRead,
     feederLabel: (feederHandle) => (hasRead(feederHandle) ? `Read @${feederHandle}` : `@${feederHandle}, not read yet`),
     leaving,
     armed,

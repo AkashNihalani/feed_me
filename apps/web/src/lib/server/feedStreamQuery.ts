@@ -26,6 +26,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient as createServerSupabaseClient } from '@/lib/supabase/server';
 import { instagramLinkLive } from '@/lib/server/instagramLink';
+import { postMoment } from '@/lib/postMoment';
 import {
   CAPTION_MAX,
   STREAM_WINDOW_DAYS,
@@ -75,6 +76,9 @@ const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' };
 
 // the index reads no thumbnail URLs (the proxy needs only the key); 'results' also needs when each result landed
 const INDEX_POST_FIELDS = 'post_key,feeder_id,posted_at,media_type';
+// ...and for the last few days, post_url: the shortcode in it carries when a post went out, to the minute (who posted
+// in the last 24 hours). A post's stored date sits at most ~31h before it went out, so these days hold every one
+const FRESH_REACH_DAYS = 3;
 const INDEX_METRICS_POSTED = 'checkpoint,percentile_performance,business_date_ist,likes';
 const INDEX_METRICS_RESULTS = 'checkpoint,percentile_performance,business_date_ist,computed_at,likes';
 const PAGE_POST_FIELDS = 'post_key,feeder_id,media_type,posted_at,post_url,caption';
@@ -816,15 +820,17 @@ async function fetchIndexCandidates(sb: AdminClient, scope: StreamScopeContext, 
   const fromDay = scope.order === 'results' ? shiftDay(window.start, -RESULT_REACH_DAYS) : window.start;
   const metricFields = scope.order === 'results' ? INDEX_METRICS_RESULTS : INDEX_METRICS_POSTED;
   const slices = splitDays(fromDay, window.today, INDEX_SLICES);
-  const readSlices = (select: string) => Promise.all(slices.map((slice) => fetchPostRows(sb, feederIds, slice.from, slice.to, select)))
+  const recentFrom = shiftDay(window.today, -FRESH_REACH_DAYS);
+  const fieldsOf = (slice: { to: string }) => (slice.to >= recentFrom ? `${INDEX_POST_FIELDS},post_url` : INDEX_POST_FIELDS);
+  const readSlices = (embed: string) => Promise.all(slices.map((slice) => fetchPostRows(sb, feederIds, slice.from, slice.to, `${fieldsOf(slice)}${embed}`)))
     .then((parts) => parts.flat());
 
   let rows: PostRow[];
   try {
-    rows = await readSlices(`${INDEX_POST_FIELDS},post_metrics(${metricFields})`);
+    rows = await readSlices(`,post_metrics(${metricFields})`);
   } catch (error) {
     console.warn('[feed stream] index embed failed, joining metrics separately:', streamErrorMessage(error, 'unknown'));
-    rows = await readSlices(INDEX_POST_FIELDS);
+    rows = await readSlices('');
     await attachSeparately(sb, rows, metricFields, false);
   }
   return toCandidates(rows, scope);
@@ -1162,14 +1168,19 @@ export function buildStreamIndex(
       };
     });
 
-  // who posted in the last 24h, the most recent first (the same in either order)
+  // who posted in the last 24h, the most recent first (the same in either order). By the moment a post went out: the
+  // stored posted_at is only its date (00:00) since Aug 2026, which put every post before the last 24 hours. Its
+  // shortcode carries the moment (postMoment), never taken as before the stored date (a scheduled post's shortcode is
+  // minted when it was scheduled, days before it went out)
   const freshSince = nowMs - FRESH_MS;
   const freshHandles: string[] = [];
   const seen = new Set<string>();
   candidates
-    .filter((candidate) => candidate.postedAtMs >= freshSince)
-    .sort((left, right) => right.postedAtMs - left.postedAtMs)
-    .forEach((candidate) => {
+    .filter((candidate) => candidate.postedAtMs >= freshSince - 2 * DAY_MS)
+    .map((candidate) => ({ candidate, moment: Math.max(postMoment(candidate.row.posted_at, candidate.row.post_url) ?? 0, candidate.postedAtMs) }))
+    .filter(({ moment }) => moment >= freshSince && moment <= nowMs)
+    .sort((left, right) => right.moment - left.moment)
+    .forEach(({ candidate }) => {
       if (seen.has(candidate.feeder.handle)) return;
       seen.add(candidate.feeder.handle);
       freshHandles.push(candidate.feeder.handle);

@@ -20,7 +20,7 @@
    data/readerPreview.json; the feeds are the app's own.
    ───────────────────────────────────────────────────────────── */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { useReducedMotion } from 'framer-motion';
 import { mountReader } from '@/components/read/readerEngine';
@@ -43,8 +43,10 @@ import { acquireRootPageScroll } from '@/lib/rootScrollMode';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { setTabScope, useTabScope, type TabScope } from '@/lib/tabScope';
+import { isSwitchingTo, wideTabMotion } from '@/lib/tabSheet';
 import readerData from '@/data/readerPreview.json';
 import '@/components/read/readTab.css';
+import { announceFirstScreen } from '@/lib/launch';
 
 // A stable object: React re-applies dangerouslySetInnerHTML whenever the object changes, which would wipe
 // everything the engine has written into the layer.
@@ -62,15 +64,32 @@ export default function ReadTab() {
   // what the engine is showing (which feeder, which view of the wall, how many posts), mirrored into the header
   const [engine, setEngine] = useState<EngineState>({ f: 0, lens: 'runs', n: 0 });
   const [head, setHead] = useState<HTMLDivElement | null>(null);
+  /* The title row the engine writes into is the phone header's below 1024px and the side rail's (DeskRow) above: crossing
+     that width hands it from one to the other in one commit. The engine finds it by its id, so it stays mounted
+     through the hand-over (what you were reading, the view, the pick all kept): only a row going with none to follow
+     lets it go */
+  const topRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return undefined;
+    setHead(el);
+    return () => setHead((current) => (current === el ? null : current));
+  }, []);
+  const hasHead = head != null;
   const [main, setMain] = useState<HTMLDivElement | null>(null);
   const [layer, setLayer] = useState<HTMLDivElement | null>(null);
   const [feeds, setFeeds] = useState<RailFeed[] | null>(() => cachedFeeds());
+  // the index has its feeds: a launch veil goes
+  useEffect(() => {
+    if (feeds) announceFirstScreen();
+  }, [feeds]);
   const scope = useTabScope();
-  // each time the tab comes back on screen the index arrives afresh, piece by piece (a read does so on its own: the
-  // engine mounts again). Effects run again on every reveal, so this counts the visits
-  const [visit, setVisit] = useState(0);
+  /* The tab coming back on screen shows the page as it was left, at rest: no entrance plays again (the index keeps its
+     pieces; the read's engine, which mounts again on every reveal, draws quietly). Effects run again on every reveal
+     (Activity), so this one tells the engine's mount below that this run is a return, not a page change */
+  const shownBefore = useRef(false);
+  const returning = useRef(false);
   useLayoutEffect(() => {
-    setVisit((count) => count + 1);
+    returning.current = shownBefore.current;
+    shownBefore.current = true;
   }, []);
   // the overlays live at body level so position: fixed is never trapped by a transformed tab container
   const portalTarget = typeof document === 'undefined' ? null : document.body;
@@ -125,14 +144,19 @@ export default function ReadTab() {
   }, [readIndex]);
   const reader = useRef<Reader | null>(null);
   useLayoutEffect(() => {
-    if (!head || !main || !layer || !reading) return undefined;
+    if (!hasHead || !main || !layer || !reading) return undefined;
     // the engine's unmount closes and empties every overlay in the layer, so it can stay in the body hidden
+    // (from a laptop up a tab switch bringing Read in has its own arrival, lib/tabSheet riseIn, and a return shows the
+    // page at rest; a phone plays Read's own arrival, as it always has)
+    const quiet = wideTabMotion() && (returning.current || isSwitchingTo('read'));
+    returning.current = false;
     const mounted = mountReader({
       data: readerData,
       layer,
       setCompressed: setEngineCompressed,
       onHeader: setEngine,
       initial: readAt.current ?? 0,
+      quiet,
     }) as Reader;
     reader.current = mounted;
     return () => {
@@ -140,7 +164,7 @@ export default function ReadTab() {
       reader.current = null;
       setEngineCompressed(false);
     };
-  }, [head, main, layer, reading]);
+  }, [hasHead, main, layer, reading]);
   // one read to another: the mounted engine fades over to it
   useLayoutEffect(() => {
     if (readIndex != null) reader.current?.show(readIndex);
@@ -229,7 +253,7 @@ export default function ReadTab() {
         leaving={leavingTo != null}
         armed={armed}
         compressed={compressed}
-        topRef={setHead}
+        topRef={topRef}
         fontClass={appFont.variable}
         onAll={pickAll}
         onFeed={pickFeed}
@@ -244,7 +268,7 @@ export default function ReadTab() {
         {reading ? null : (
           <div ref={indexBox}>
             <ReadIndex
-              key={`${page}:${visit}`}
+              key={page}
               feeds={feeds}
               feed={activeFeed}
               handle={scope.handle}

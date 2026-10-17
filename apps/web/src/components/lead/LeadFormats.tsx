@@ -96,7 +96,7 @@ function ShareBar({ label, share, fill, beat, strong = false, move = null }: { l
         <span aria-hidden="true" className="lead-glide absolute inset-0 origin-left rounded-[3px]" style={{ ...glide, background: fill, transform: `scaleX(${at.toFixed(4)})` }} />
         <span aria-hidden="true" className="lead-glide pointer-events-none absolute inset-0" style={{ ...glide, transform: `translateX(${(at * 100).toFixed(2)}%)` }}>
           <span className="absolute left-0 top-1/2 flex -translate-y-1/2 items-baseline gap-1 whitespace-nowrap pl-2 leading-none">
-            <span className={cn('text-[12px] font-black tabular-nums', strong ? 'text-[var(--fm-accent-text)]' : 'text-fg/80')}><SlotText value={pct(at)} delay={beat} /></span>
+            <span className={cn('text-[12px] font-black tabular-nums', strong ? 'text-fg' : 'text-fg/80')}><SlotText value={pct(at)} delay={beat} /></span>
             {move ? <span className="text-[9px] font-black tabular-nums text-fg/40 light:text-fg/50">{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span> : null}
           </span>
         </span>

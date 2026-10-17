@@ -463,7 +463,7 @@ function DayPosts({ day }: { day: GrowthDay }) {
         <div className="min-w-0 truncate text-[12px] font-black tracking-[-0.01em] text-fg">
           <Swap value={day.shots.length ? `${day.shots.length} ${day.shots.length === 1 ? 'post' : 'posts'} went out on ${dayLabel(day.key)}` : `Nothing went out on ${dayLabel(day.key)}`} />
         </div>
-        <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent-text)]">{day.best != null ? `best top ${topLabel(day.best)}%` : ''}</span>
+        <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.14em] text-fg">{day.best != null ? `best top ${topLabel(day.best)}%` : ''}</span>
       </div>
       <div className="-mx-4 mt-2.5 flex h-[88px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:h-[96px] sm:px-0 [&::-webkit-scrollbar]:hidden">
         {shown.map((shot) => (
@@ -531,7 +531,7 @@ function MomentRow({ moment, rank, biggest, active, onPick }: { moment: Moment; 
       onClick={onPick}
       className={cn(
         'group flex min-h-[78px] items-center gap-3 rounded-[16px] border bg-(--ld-raised) px-2.5 text-left transition-[border-color,box-shadow] duration-200',
-        active ? 'border-[var(--fm-accent)] shadow-[0_0_0_1px_var(--fm-accent)]' : 'border-fg/[0.08] hover:border-fg/[0.16]',
+        active ? 'border-fg shadow-[0_0_0_1px_var(--fm-fg)]' : 'border-fg/[0.08] hover:border-fg/[0.16]',
       )}
     >
       <span className="relative block h-[60px] w-[48px] shrink-0 overflow-hidden rounded-[10px] bg-(--fm-media)">

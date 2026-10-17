@@ -18,6 +18,8 @@ import '@/lib/motionFinish';
 import { HEADER_ROUTE_MORPH, PAGE_SURFACE_MOTION, ROUTE_CONTENT_SETTLE } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import AppTabHost from './AppTabHost';
+import LaunchVeil from './LaunchVeil';
+import { DeskRow, SideRail } from './SideRail';
 import { TabHeaderHost } from './TabHeader';
 
 type PageReadyContextValue = {
@@ -166,19 +168,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
     ));
   }, [pathname]);
   const headerCompressed = headerCompression.pathname === pathname && headerCompression.compressed;
-  const shellStyle = currentHeaderId === 'lead'
+  /* the shared header (Feed, Lead, Read): 152px open / 68px folded on a phone. From a laptop up these tabs have no bar
+     over the page: the side rail stands at the left (the page's column starts after it) and the page is content from
+     its first line (SideRail) */
+  const sharedHeader = currentHeaderId === 'lead' || currentHeaderId === 'read' || currentHeaderId === 'feed';
+  const shellStyle = sharedHeader
     ? {
         '--fm-mobile-header-chrome-height': '152px',
-        '--fm-desktop-header-chrome-height': '168px',
         '--fm-mobile-header-chrome-compressed-height': '68px',
       } as CSSProperties
-    : currentHeaderId === 'read' || currentHeaderId === 'feed'
-      ? {
-          '--fm-mobile-header-chrome-height': '152px',
-          '--fm-desktop-header-chrome-height': '168px',
-          '--fm-mobile-header-chrome-compressed-height': '68px',
-        } as CSSProperties
-      : undefined;
+    : undefined;
   const headerLayerValue = useMemo(() => ({
     currentId: currentHeaderId,
     element: headerLayerElement,
@@ -198,6 +197,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div
           className={cn(
             'pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+            sharedHeader && 'lg:hidden',
             !hasTabChrome && 'hidden',
           )}
         >
@@ -217,11 +217,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
-        <div className="grid h-full min-h-[100dvh] min-w-0 w-full">
+        <div className={cn('grid h-full min-h-[100dvh] min-w-0 w-full', sharedHeader && 'lg:pl-(--fm-rail-x)')}>
           <RouteTransitionLayer key={routeLayerKey} animateArrival={hasTabChrome}>
             {hasTabChrome ? <AppTabHost pathname={pathname} /> : children}
           </RouteTransitionLayer>
         </div>
+        {hasTabChrome ? <LaunchVeil /> : null}
+        {sharedHeader ? <DeskRow tab={currentHeaderId} /> : null}
+        {sharedHeader ? <SideRail tab={currentHeaderId} /> : null}
       </div>
     </HeaderLayerContext.Provider>
   );

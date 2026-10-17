@@ -6,8 +6,9 @@
    width and scope before it renders: the layout can reserve it and
    nothing below moves when the numbers arrive.
 
-   Narrow (a phone): face + stats · name · actions · highlights ·
-   week strip · habits · the order tabs, one under another.
+   Narrow (a phone): face + stats · name (with the settings button) ·
+   highlights · week strip · the order tabs, one under another (Lead
+   and Read live in the bottom bar; the habit cards are Lead's).
    Wide (≥ 720): the face beside the name, stats and actions; then
    highlights; then the strip and the habits (side by side ≥ 1000);
    then the order tabs.
@@ -49,10 +50,8 @@ export function profileFrame(width: number, scope: StreamScope): ProfileFrame {
     const height = row.pad
       + row.face
       + row.gap + row.title + (all ? row.today : 0)
-      + row.gap + row.actions
       + (row.gap + 4) + row.highlights
       + row.gap + row.strip
-      + row.gap + row.habits
       + (row.gap + 4) + row.tabs;
     return { wide: false, widest: false, hero: row.face, height };
   }

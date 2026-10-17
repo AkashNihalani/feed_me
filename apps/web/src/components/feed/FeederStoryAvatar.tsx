@@ -10,15 +10,16 @@
 import { useState, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 
+// ink pairs of different strengths: a face that hasn't loaded must not read as the accent (or as anything coloured)
 const STORY_GRADIENTS = [
-  ['#1f2937', '#0f172a'],
-  ['#b91c1c', '#7f1d1d'],
-  ['#1d4ed8', '#1e3a8a'],
-  ['#047857', '#064e3b'],
-  ['#b45309', '#78350f'],
-  ['#7c3aed', '#4c1d95'],
-  ['#0891b2', '#155e75'],
-  ['#475569', '#1e293b'],
+  ['#3f3f46', '#18181b'],
+  ['#52525b', '#27272a'],
+  ['#2e2e33', '#111113'],
+  ['#5b5b63', '#2a2a2f'],
+  ['#44403c', '#1c1917'],
+  ['#334155', '#0f172a'],
+  ['#4a4a51', '#1f1f23'],
+  ['#3a3a40', '#141416'],
 ] as const;
 
 export function feederInitials(handle: string | null | undefined) {

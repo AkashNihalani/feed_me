@@ -170,7 +170,7 @@ export default function FeedBriefDialog({
         >
           {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/55 dark:bg-black/70"
+            className="fm-under-status absolute bg-black/55 dark:bg-black/70"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -216,7 +216,7 @@ export default function FeedBriefDialog({
               )}
               <div className="mt-5">
                 <div className="h-1 rounded-full bg-black/10 dark:bg-white/8">
-                  <motion.div className="h-full rounded-full bg-[var(--fm-accent)]" animate={{ width: progress }} transition={{ duration: 0.2, ease: APPLE_EASE }} />
+                  <motion.div className="h-full rounded-full bg-fg" animate={{ width: progress }} transition={{ duration: 0.2, ease: APPLE_EASE }} />
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   {CREATE_FEED_STEPS.map((label, index) => {
@@ -228,13 +228,13 @@ export default function FeedBriefDialog({
                           {isActive && (
                             <motion.div
                               layoutId="active-step-indicator"
-                              className="absolute inset-0 rounded-full bg-[var(--fm-accent)]"
+                              className="absolute inset-0 rounded-full bg-fg"
                               transition={GRID_LAYOUT_SPRING}
                             />
                           )}
                           <span className={cn('relative z-10 block h-2.5 w-2.5 rounded-full border transition', isActive ? 'border-transparent' : isPast ? 'border-black/50 bg-black/40 dark:border-white/50 dark:bg-white/40' : 'border-black/16 bg-black/6 dark:border-white/16 dark:bg-white/6')} />
                         </div>
-                        <span className={cn("hidden text-[10px] font-black uppercase tracking-[0.14em] transition sm:block md:hidden lg:block", isActive ? "text-[var(--fm-accent)]" : isPast ? "text-neutral-500 dark:text-white/50" : "text-neutral-400 dark:text-white/32")}>{label}</span>
+                        <span className={cn("hidden text-[10px] font-black uppercase tracking-[0.14em] transition sm:block md:hidden lg:block", isActive ? "text-fg" : isPast ? "text-neutral-500 dark:text-white/50" : "text-neutral-400 dark:text-white/32")}>{label}</span>
                       </button>
                     );
                   })}
@@ -386,7 +386,7 @@ export default function FeedBriefDialog({
                   transition={isSummaryStep ? { duration: 0.42, ease: APPLE_EASE } : undefined}
                   onClick={onPrimary}
                   disabled={!canProceed || isBusy}
-                  className="flex h-11 items-center gap-2 rounded-[14px] bg-[var(--fm-accent)] px-5 text-[12px] font-black text-white disabled:opacity-40"
+                  className="flex h-11 items-center gap-2 rounded-[14px] bg-fg px-5 text-[12px] font-black text-(--fm-page) disabled:opacity-40"
                 >
                   {isBusy ? (isSummaryStep ? 'Saving' : 'Working') : isSummaryStep ? 'Save Brief' : 'Next'}
                   {!isBusy && !isSummaryStep && <ArrowRight size={15} strokeWidth={2.6} />}

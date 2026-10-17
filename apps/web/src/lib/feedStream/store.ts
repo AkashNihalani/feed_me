@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { clearCacheByPrefix, readCache, setCache } from '@/lib/pageCache';
 import { redirectToLoginOnce } from '@/lib/feedsStore';
+import { KEEP_POSTS, clearKept, readKept, writeKept } from './keep';
 import {
   STREAM_WINDOW_DAYS,
   istDay,
@@ -86,6 +87,8 @@ type ScopeState = {
   retryAt: number;
   retryTimer: ReturnType<typeof setTimeout> | null;
   mismatchAt: number;
+  // its index is still the one the device kept from an earlier launch (no answer from the server yet this time)
+  fromKeep: boolean;
 };
 
 type Batch = { state: ScopeState; days: string[]; from: string; to: string };
@@ -174,6 +177,7 @@ function ensureScope(key: string): ScopeState {
     retryAt: 0,
     retryTimer: null,
     mismatchAt: 0,
+    fromKeep: false,
   };
   state = created;
   scopes.set(key, state);
@@ -290,8 +294,52 @@ function hydrateIndex(state: ScopeState) {
     clearCacheByPrefix(RETIRED_CACHE_PREFIX);
   }
   const cached = readCache<StreamIndex>(INDEX_CACHE_PREFIX + state.key);
-  if (!cached || !isIndex(cached.data)) return;
-  setIndex(state, withinWindow(cached.data), cached.ts);
+  if (cached && isIndex(cached.data)) setIndex(state, withinWindow(cached.data), cached.ts);
+  // what the device kept from an earlier launch (keep.ts): its index when this tab has none, and its newest days'
+  // posts, shown at once and brought up to date when asked for (kept days count as old: refetched on screen)
+  const kept = readKept(state.key);
+  if (!kept || !isIndex(kept.index)) return;
+  if (!state.index) {
+    setIndex(state, withinWindow(kept.index), kept.ts);
+    state.fromKeep = true;
+  }
+  if (state.pages.size) return;
+  kept.days.forEach(([day, posts]) => {
+    if (!Array.isArray(posts) || !state.indexDays.has(day)) return;
+    state.pages.set(day, { posts, fetchedAt: kept.ts, stale: true, usedAt: kept.ts });
+    state.postCount += posts.length;
+  });
+  state.version = ++versionSequence;
+}
+
+/* What a scope has loaded is kept on the device (keep.ts) a moment after it last changed, when the page is idle: its
+   index and its newest days' posts */
+const KEEP_AFTER_MS = 2000;
+const keepTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function keepSoon(state: ScopeState) {
+  if (typeof window === 'undefined' || state.unauthorized) return;
+  const waiting = keepTimers.get(state.key);
+  if (waiting) clearTimeout(waiting);
+  keepTimers.set(state.key, setTimeout(() => {
+    keepTimers.delete(state.key);
+    const idle = (window as Window & { requestIdleCallback?: (run: () => void, options?: { timeout: number }) => number }).requestIdleCallback;
+    if (idle) idle(() => keepNow(state), { timeout: 2000 });
+    else keepNow(state);
+  }, KEEP_AFTER_MS));
+}
+function keepNow(state: ScopeState) {
+  const index = state.index;
+  if (!index || state.unauthorized) return;
+  const days: Array<[string, StreamPost[]]> = [];
+  let posts = 0;
+  for (const entry of index.days) {
+    if (posts >= KEEP_POSTS) break;
+    const page = state.pages.get(entry.day);
+    if (!page) continue;
+    days.push([entry.day, page.posts]);
+    posts += page.posts.length;
+  }
+  writeKept(state.key, { ts: state.indexAt || Date.now(), index, days });
 }
 
 function statusOf(state: ScopeState): StreamIndexStatus {
@@ -375,10 +423,12 @@ function applyIndex(state: ScopeState, incoming: StreamIndex) {
   } else {
     state.indexAt = Date.now();
   }
+  state.fromKeep = false;
   state.indexError = null;
   state.indexErrorAt = 0;
   state.snapshot = null;
   setCache(INDEX_CACHE_PREFIX + state.key, next);
+  keepSoon(state);
 }
 
 // load the index when there is none, or refresh it in the background once it is old
@@ -414,6 +464,7 @@ function markUnauthorized(state: ScopeState) {
   state.postCount = 0;
   state.version = ++versionSequence;
   clearCacheByPrefix(INDEX_CACHE_PREFIX);
+  clearKept();
   emit();
   redirectToLoginOnce();
 }
@@ -611,6 +662,7 @@ function applyPage(state: ScopeState, page: StreamPage, requested: string[]) {
   if (changed) {
     state.version = ++versionSequence;
     emit();
+    keepSoon(state);
   }
   // the posts moved on since the index was made: bring the index (and so the layout) up to date
   if (mismatch && now - state.mismatchAt > MISMATCH_REFRESH_MS) {
@@ -817,12 +869,32 @@ export function getDayPosts(scope: StreamScope, day: string): StreamPost[] | und
   return postsOf(state, day);
 }
 
+/* a scope whose index is still only what the device kept from an earlier launch (the server not answered yet this
+   time): a first screen drawn from it would be laid out again as the fresh one lands, so the Feed waits a moment */
+export function indexFromKeep(scope: StreamScope): boolean {
+  return scopes.get(keyFor(scope))?.fromKeep === true;
+}
+
+// ...and the days a screen shows, settled: the index answered, and none of them kept from before and refetching
+export function daysSettled(scope: StreamScope, days: readonly string[]): boolean {
+  const state = scopes.get(keyFor(scope));
+  if (!state) return true;
+  if (state.fromKeep) return false;
+  return days.every((day) => !state.pages.get(day)?.stale);
+}
+
 // a scope's index as the store has it (null: not yet), its load started if it is missing or stale
 export function peekStreamIndex(scope: StreamScope): StreamIndex | null {
   if (typeof window === 'undefined') return null;
   const state = ensureScope(keyFor(scope));
   ensureIndex(state);
   return state.index;
+}
+
+// the index as it is in memory, asking for nothing (safe to read while a page is drawn)
+export function loadedStreamIndex(scope: StreamScope): StreamIndex | null {
+  if (typeof window === 'undefined') return null;
+  return scopes.get(keyFor(scope))?.index ?? null;
 }
 
 // warm the days about to come on screen (the hint lapses after a few seconds if they never do)
@@ -849,9 +921,12 @@ export function invalidateStream(feedId?: string | null): void {
   });
   if (target === null) {
     clearCacheByPrefix(INDEX_CACHE_PREFIX);
+    clearKept();
   } else {
     clearCacheByPrefix(`${INDEX_CACHE_PREFIX}${target}:`);
     clearCacheByPrefix(`${INDEX_CACHE_PREFIX}all:`);
+    clearKept(`${target}:`);
+    clearKept('all:');
   }
   emit();
   pump();

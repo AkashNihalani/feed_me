@@ -25,19 +25,22 @@
        (≥40px = one-off hero numerals, allowed as-is)
      Tracking (em):       -0.04 (tight display) · 0.06 (loose body)
                           · 0.14 (caps labels) · 0.22 (wide caps)   */
-  --fm-accent: #E11D48;
-  --fm-accent-rgb: 225 29 72;
-  --fm-accent-bright: #FB7185;      /* rose-400 — accent pops on dark */
-  --fm-accent-bright-rgb: 251 113 133;
-  --fm-accent-soft: #FDA4AF;        /* rose-300 — tints, secondary marks */
-  --fm-accent-deep: #BE123C;        /* rose-700 — pressed / deep fills */
-  --fm-accent-deeper: #9F1239;      /* rose-800 — darkest accent text */
+  /* The accent is ONE crimson in both themes: it sits at the brightness that reads equally on the light page and the
+     black one (4.38:1 on each; white on it 4.71:1). It marks meaning only (winners, top 10%, rises, new, today);
+     what is selected is ink, and small type is ink (no single colour reaches 4.5:1 on both pages). */
+  --fm-accent: #DA2E46;
+  --fm-accent-rgb: 218 46 70;
+  --fm-accent-bright: #DA2E46;      /* the same crimson: there is no second, brighter tone */
+  --fm-accent-bright-rgb: 218 46 70;
+  --fm-accent-soft: #FBA1A2;        /* a soft tint (the ramp's top 11–25%) */
+  --fm-accent-deep: #AB032C;        /* pressed / deep fills (the light ramp's top 1–3%) */
+  --fm-accent-deeper: #791B26;      /* the deepest crimson (oxblood) */
   --fm-flame: #FF6B00;              /* fire signal orange */
   --fm-ink: #09090B;                /* the one near-black surface color */
   --fm-page: #f4f7f9;               /* app page background (dark: below) */
   --fm-dashboard-accent: var(--fm-accent);
-  --lead-wedge-surface: radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc);
-  --lead-wedge-mark: var(--fm-accent);
+  --lead-wedge-surface: linear-gradient(135deg,#f7f7f8,#cfd3dc);
+  --lead-wedge-mark: #0b0b0f;
 
   /* ── ONE GLASS SYSTEM ──────────────────────────────────────────
      Single source of truth for every frosted surface. Only the two
@@ -61,21 +64,24 @@
      A surface that themes itself reads these instead of white/black:
        --fm-fg          the ink: type, hairlines, faint fills. Tailwind
                         `fg` (text-fg/60, border-fg/10, bg-fg/[0.04])
-       --fm-accent-text the accent as type and marks on the page
-                        (rose-400 pops on black but is too faint on
-                        white, so light uses the brand rose)
+       --fm-accent-text the accent as large type and marks (the same
+                        crimson in both themes; small type is ink)
        --fm-well*       a control's sunken track (segmented controls,
                         the header's 44px control)
        --fm-raised      a sheet or menu over the page
        --fm-media       behind a picture while it loads
        --fm-scrim       the dim behind a sheet
        --fm-shadow-rgb  the colour drop shadows are cast in
-       --fm-shade-*     the Top % ramp (readShade): crimson at the top,
-                        receding into the page below the middle
+       --fm-shade-0…6   the Top % ramp (readShade): seven fixed steps.
+                        0–2 greys below the median, 3–4 soft tints
+                        (top 26–50%, 11–25%), 5–6 solid (top 4–10%,
+                        1–3%). --fm-shade-tx is the number on 0–4
+                        (5–6 always carry white), --fm-shade-glow the
+                        top step's light
      Over a picture, type stays white on its dark scrim in both themes. */
   --fm-fg: #0b0b0f;
   --fm-fg-rgb: 11 11 15;
-  --fm-accent-text: #E11D48;
+  --fm-accent-text: #DA2E46;
   --fm-well: rgb(11 11 15 / 0.045);
   --fm-well-edge: rgb(11 11 15 / 0.07);
   --fm-well-shade: inset 0 1px 2px rgb(15 23 42 / 0.06);
@@ -83,12 +89,15 @@
   --fm-media: #e4e7ec;
   --fm-scrim: rgb(15 23 42 / 0.3);
   --fm-shadow-rgb: 15 23 42;
-  --fm-shade-hi: rgb(247 24 82);
-  --fm-shade-mid: rgb(113 113 122);
-  --fm-shade-lo: rgb(224 227 232);
-  --fm-shade-tx-hi: #ffffff;
-  --fm-shade-tx-mid: rgb(11 11 15 / 0.84);
-  --fm-shade-tx-lo: rgb(11 11 15 / 0.5);
+  --fm-shade-0: #F0F0F3;
+  --fm-shade-1: #E3E3E8;
+  --fm-shade-2: #D6D7DC;
+  --fm-shade-3: #FECAC9;
+  --fm-shade-4: #FBA1A2;
+  --fm-shade-5: #DA2E46;
+  --fm-shade-6: #AB032C;
+  --fm-shade-tx: #0b0b0f;
+  --fm-shade-glow: rgb(218 46 70 / 0.3);
   --fm-mobile-header-chrome-height: 128px;
   --fm-desktop-header-chrome-height: 112px;
   --fm-mobile-header-chrome-compressed-height: 78px;
@@ -111,14 +120,14 @@ html.dark {
   --foreground: #FFFFFF;
   --border-color: #FFFFFF;
   --fm-dashboard-accent: var(--fm-accent);
-  --lead-wedge-surface: radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc);
-  --lead-wedge-mark: var(--fm-accent);
+  --lead-wedge-surface: linear-gradient(135deg,#f7f7f8,#cfd3dc);
+  --lead-wedge-mark: #0b0b0f;
 
   --fm-page: #030303;
 
   --fm-fg: #ffffff;
   --fm-fg-rgb: 255 255 255;
-  --fm-accent-text: #FB7185;
+  --fm-accent-text: #DA2E46;
   --fm-well: rgb(0 0 0 / 0.38);
   --fm-well-edge: rgb(255 255 255 / 0.09);
   --fm-well-shade: inset 0 2px 10px rgb(0 0 0 / 0.38);
@@ -126,10 +135,16 @@ html.dark {
   --fm-media: #000000;
   --fm-scrim: rgb(0 0 0 / 0.6);
   --fm-shadow-rgb: 0 0 0;
-  --fm-shade-mid: rgb(84 84 92);
-  --fm-shade-lo: rgb(30 30 35);
-  --fm-shade-tx-mid: rgb(255 255 255 / 0.9);
-  --fm-shade-tx-lo: rgb(255 255 255 / 0.54);
+  /* dark: the steps rise out of the black, deep crimson up to the accent itself; every number is white */
+  --fm-shade-0: #1B1B1E;
+  --fm-shade-1: #252529;
+  --fm-shade-2: #303035;
+  --fm-shade-3: #791B26;
+  --fm-shade-4: #991F2F;
+  --fm-shade-5: #BA2239;
+  --fm-shade-6: #DA2E46;
+  --fm-shade-tx: #ffffff;
+  --fm-shade-glow: rgb(218 46 70 / 0.5);
 
   /* Dark: keep content evident behind the frost */
   --fm-chrome-bg: rgba(6, 6, 6, 0.44);
@@ -826,6 +841,326 @@ html.fm-mobile-browser-immersive .fm-app-shell-root {
   background: transparent;
 }
 
+/* A full-screen layer over the page (a scrim, a page-coloured ground): it never paints the strip a phone's status bar
+   is coloured from (Safari 26 keeps the first colour a fixed layer paints there: lib/feedStream/stillFrame.ts), and it
+   is taller than the screen, so the bottom edge's sampler passes it by too */
+.fm-under-status {
+  left: 0;
+  right: 0;
+  top: 12px;
+  bottom: auto;
+  height: 120lvh;
+}
+
+/* ── the launch veil (components/shell/LaunchVeil): a cold start's first moment ─────────────────────────────── */
+
+/* The veil starts below the strip a phone's status bar is coloured from (fm-under-status) and clips what is in it,
+   so its sheet lifting away never paints there; from a laptop up it is the whole window */
+.fm-launch-veil {
+  --fm-launch-top: 12px;
+  --fm-launch-beat: calc(520ms * var(--fm-tempo));
+  display: none;
+  position: fixed;
+  z-index: 400;
+  overflow: hidden;
+  pointer-events: auto;
+}
+html.fm-launch .fm-launch-veil {
+  display: block;
+}
+@media (hover: hover) and (pointer: fine) {
+  .fm-launch-veil {
+    --fm-launch-top: 0px;
+    top: 0;
+    height: 100lvh;
+  }
+}
+.fm-launch-veil[data-lifting] {
+  pointer-events: none;
+}
+/* the sheet: the page's ground, lifting away (up off the screen, a soft shadow at its foot) */
+.fm-launch-sheet {
+  position: absolute;
+  inset: 0;
+  background: var(--fm-page);
+  color: var(--fm-fg);
+  box-shadow: 0 34px 70px -28px rgb(var(--fm-shadow-rgb) / 0.5);
+  transition: transform calc(560ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1);
+}
+.fm-launch-veil[data-lifting] .fm-launch-sheet {
+  transform: translate3d(0, -100%, 0);
+}
+
+/* what is on it, a touch above the screen's middle (the veil runs on past the screen's foot: placed off its top) */
+.fm-launch-stage {
+  position: absolute;
+  left: 50%;
+  top: calc(47lvh - var(--fm-launch-top));
+  width: min(360px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  translate: -50% -50%;
+  transition: transform calc(560ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1), opacity calc(260ms * var(--fm-tempo)) ease;
+  animation: fm-launch-rise calc(620ms * var(--fm-tempo)) cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.fm-launch-veil[data-lifting] .fm-launch-stage {
+  transform: translate3d(0, -36px, 0);
+  opacity: 0;
+}
+
+.fm-launch-mark {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.fm-launch-me {
+  color: var(--fm-accent);
+}
+.fm-launch-kicker {
+  margin-top: 30px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgb(var(--fm-fg-rgb) / 0.42);
+}
+
+/* the number: big and bold, its digits rolling like an odometer's wheels */
+.fm-launch-number {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  font-size: clamp(104px, 34vw, 156px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.fm-launch-wheel {
+  position: relative;
+  display: inline-block;
+  height: 0.9em;
+  width: 0.6em;
+  overflow: hidden;
+}
+.fm-launch-strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: center;
+  transition: transform calc(300ms * var(--fm-tempo)) cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.fm-launch-strip > span {
+  display: block;
+  height: 0.9em;
+  line-height: 0.9em;
+}
+.fm-launch-hundred {
+  display: inline-flex;
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: width calc(300ms * var(--fm-tempo)) cubic-bezier(0.2, 0.7, 0.2, 1), opacity calc(200ms * var(--fm-tempo)) ease;
+}
+.fm-launch-hundred.is-on {
+  width: 0.6em;
+  opacity: 1;
+}
+.fm-launch-sign {
+  margin-left: 0.04em;
+  margin-top: 0.08em;
+  font-size: 0.38em;
+  letter-spacing: -0.02em;
+  color: var(--fm-accent);
+}
+
+/* the pellets the Pac-Man eats its way along, to where the number is */
+.fm-launch-track {
+  position: relative;
+  margin-top: 26px;
+  height: 34px;
+}
+.fm-launch-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: rgb(var(--fm-fg-rgb) / 0.07);
+}
+.fm-launch-pellet {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: rgb(var(--fm-fg-rgb) / 0.78);
+  transition: transform calc(160ms * var(--fm-tempo)) ease-in, opacity calc(160ms * var(--fm-tempo)) ease-in;
+}
+.fm-launch-pellet[data-eaten] {
+  transform: scale(0.2);
+  opacity: 0;
+}
+.fm-launch-pac {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  will-change: transform;
+}
+.fm-launch-jaw {
+  position: absolute;
+  left: 0;
+  width: 34px;
+  height: 17px;
+  background: var(--fm-accent);
+}
+.fm-launch-jaw--top {
+  top: 0;
+  border-radius: 17px 17px 0 0;
+  transform-origin: 50% 100%;
+  animation: fm-launch-chomp-top var(--fm-launch-beat) ease-in-out infinite;
+}
+.fm-launch-jaw--bottom {
+  bottom: 0;
+  border-radius: 0 0 17px 17px;
+  transform-origin: 50% 0%;
+  animation: fm-launch-chomp-bottom var(--fm-launch-beat) ease-in-out infinite;
+}
+@keyframes fm-launch-chomp-top {
+  0%, 100% { transform: rotate(-34deg); }
+  50% { transform: rotate(-4deg); }
+}
+@keyframes fm-launch-chomp-bottom {
+  0%, 100% { transform: rotate(34deg); }
+  50% { transform: rotate(4deg); }
+}
+
+/* the courses: big bold rows, each ticked off as it is in */
+.fm-launch-courses {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fm-launch-course {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 2px;
+  border-top: 1px solid rgb(var(--fm-fg-rgb) / 0.07);
+}
+.fm-launch-course:first-child {
+  border-top: 0;
+}
+.fm-launch-tick {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: transparent;
+  box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.14);
+  transition: background-color calc(240ms * var(--fm-tempo)) ease, box-shadow calc(240ms * var(--fm-tempo)) ease, color calc(240ms * var(--fm-tempo)) ease;
+}
+/* still cooking: a crimson pip turning slowly in its ring */
+.fm-launch-tick::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--fm-accent) 0 18%, transparent 18% 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: fm-launch-spin calc(900ms * var(--fm-tempo)) linear infinite;
+  transition: opacity calc(160ms * var(--fm-tempo)) ease;
+}
+.fm-launch-course[data-ready] .fm-launch-tick {
+  background-color: var(--fm-fg);
+  box-shadow: inset 0 0 0 2px var(--fm-fg);
+  color: var(--fm-page);
+  animation: fm-launch-pop calc(360ms * var(--fm-tempo)) cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.fm-launch-course[data-ready] .fm-launch-tick::after {
+  opacity: 0;
+  animation: none;
+}
+@keyframes fm-launch-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes fm-launch-pop {
+  0% { transform: scale(0.7); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.fm-launch-course-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.fm-launch-course-title {
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.fm-launch-course-doing {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: rgb(var(--fm-fg-rgb) / 0.5);
+}
+.fm-launch-course[data-ready] .fm-launch-course-doing {
+  color: rgb(var(--fm-fg-rgb) / 0.72);
+}
+.fm-launch-note {
+  margin-top: 22px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgb(var(--fm-fg-rgb) / 0.42);
+}
+
+@keyframes fm-launch-rise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-launch-jaw,
+  .fm-launch-stage,
+  .fm-launch-tick,
+  .fm-launch-tick::after {
+    animation: none;
+  }
+  .fm-launch-sheet,
+  .fm-launch-stage,
+  .fm-launch-strip {
+    transition: none;
+  }
+}
+
+
 .fm-chrome-safe-backdrop {
   position: absolute;
   inset: 0;
@@ -1178,6 +1513,75 @@ html[data-perf-noshadow] .fm-chrome-shadow {
   }
 }
 
+/* ── the side rail (SideRail) ──────────────────────────────────────────────
+   From a laptop up Feed, Lead and Read have no bar over the page: their chrome (the tabs, the feeds, the tab's
+   setting) is one floating panel down the left, 12px in from the window's edges: a 96px column of icons and circles,
+   which opens over the page to 296px, names and all, while you point at it. Each page's column starts 16px past the
+   column (--fm-rail-x) and never moves for the rail; it is content from its first line, level with the rail's first
+   row (--fm-desk-top). The phone's bottom bar and folding header are gone at this width. */
+:root {
+  --fm-rail-x: 0px;
+  --fm-desk-top: 0px;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --fm-rail-x: 124px;
+    --fm-desk-top: 24px;
+  }
+}
+
+/* The rail is the phone bars' glass, the bottom bar's frost and tint: open, it lies over the page (Day's date, a post,
+   the board), which shows through it frosted. It is cut to the column, or opened, by a clip, which would cut its shadow
+   too: the shadow is on still plates behind it (never redrawn under the live blur), the column's and the deeper one of
+   the rail lying open, crossing over as it opens (.fm-rail-shadow) */
+/* (its rim is drawn inside it, not as a border: a border would put the rail's content 1px off the 48px line its icons
+   and circles share, and off the column's 72px its grounds are cut to) */
+.fm-depth-chrome--rail {
+  border-width: 0;
+  border-radius: 28px;
+  background: var(--fm-nav-bg);
+  will-change: auto;
+  box-shadow:
+    inset 0 0 0 1px var(--fm-chrome-border),
+    inset 0 1px 0 var(--fm-chrome-border-top),
+    0 -1px 0 rgba(0, 0, 0, 0.03) inset;
+}
+
+.dark .fm-depth-chrome--rail {
+  box-shadow:
+    inset 0 0 0 1px var(--fm-chrome-border),
+    inset 0 1px 0 var(--fm-chrome-border-top),
+    0 -1px 0 rgba(0, 0, 0, 0.5) inset;
+}
+
+.fm-rail-shadow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 28px;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.03),
+    0 16px 34px -10px rgba(0, 0, 0, 0.12);
+}
+
+.fm-rail-shadow--open {
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.05),
+    0 28px 60px -18px rgba(0, 0, 0, 0.24);
+}
+
+.dark .fm-rail-shadow {
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.4),
+    0 18px 34px -10px rgba(0, 0, 0, 0.58);
+}
+
+.dark .fm-rail-shadow--open {
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.5),
+    0 30px 64px -16px rgba(0, 0, 0, 0.72);
+}
+
 .fm-depth-chrome--header-compressed {
   height: var(--fm-mobile-header-chrome-height, 128px);
   min-height: var(--fm-mobile-header-chrome-height, 128px);
@@ -1236,8 +1640,244 @@ html[data-perf-noshadow] .fm-chrome-shadow {
   contain: layout paint style;
 }
 
+/* A feeder with a post in the last 24 hours: the ring round its circle (TabHeader and SideRail, FreshRing). The crimson
+   accent alone, swept round from its deep tone to a lit tint and back (the lit tint: the accent 40% of the way to its
+   soft tint), cut to a ring by a mask: painted once, never animated (a rail holds many) */
+.fm-fresh-ring {
+  background: conic-gradient(from 200deg, var(--fm-accent-deep), var(--fm-accent) 30%, #E75C6B 52%, var(--fm-accent) 72%, var(--fm-accent-deep));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 3.75px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 3.75px));
+}
+
+/* The phone's bottom bar folding down to the icon of the tab you're on, in one glass circle in the middle, as the page
+   scrolls on (BottomNav tells the story; the places come from its measure, as --fm-hero-* and --fm-ring-x on the nav).
+   Transform and opacity alone, never a clip or a width (a clip on the glass has its blur drawn again every frame), and
+   nothing kept on a layer while the bar is still. The glass fades on its own element, never through a fading parent (a
+   parent's fade would cut a blur off from what is behind it).
+   Folding: the tab's ink sets off at once and closes into a disc, its label tucked away; the other two glide in toward
+   the middle and go (the far one first); the bar's glass draws in and melts; the circle's glass settles in round the
+   disc as it lands. Opening: the circle's glass lets go, the ink sets off a beat after, the bar comes back out round it,
+   the other two last (the near one first), and the bar's own pill takes over the moment the ink is home */
+[data-fm-bottom-nav] {
+  --fm-nav-d: calc(440ms * var(--fm-tempo));
+  --fm-nav-lag: calc(40ms * var(--fm-tempo));
+  --fm-nav-home: calc(480ms * var(--fm-tempo));
+  --fm-nav-ease: cubic-bezier(0.3, 0.3, 0.2, 1);
+  --fm-glass-swap: background 420ms cubic-bezier(0.32, 0.72, 0, 1), border-color 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* the bar: drawing in toward the middle as its glass melts, and out of the picture once folded (no blur kept behind
+   the circle while the page scrolls under it); back the moment it opens */
+.fm-nav-bar {
+  transition:
+    transform var(--fm-nav-d) var(--fm-nav-ease),
+    visibility 0s;
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-bar {
+  transform: scale(0.66);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform var(--fm-nav-d) var(--fm-nav-ease),
+    visibility 0s linear var(--fm-nav-d);
+}
+.fm-nav-fade {
+  transition:
+    opacity calc(260ms * var(--fm-tempo)) ease calc(60ms * var(--fm-tempo)),
+    var(--fm-glass-swap);
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-fade {
+  opacity: 0;
+  transition:
+    opacity calc(240ms * var(--fm-tempo)) ease calc(80ms * var(--fm-tempo)),
+    var(--fm-glass-swap);
+}
+/* the other two: gliding in toward the middle as they go (--fm-nav-gather, --fm-nav-out), back out after the ink has
+   set off home (--fm-nav-in) */
+.fm-nav-tab {
+  transition:
+    opacity calc(220ms * var(--fm-tempo)) ease calc(var(--fm-nav-in, 220ms) * var(--fm-tempo)),
+    transform calc(360ms * var(--fm-tempo)) var(--fm-nav-ease) calc(var(--fm-nav-in, 220ms) * var(--fm-tempo));
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-tab {
+  opacity: 0;
+  transform: translate3d(var(--fm-nav-gather, 0px), 0, 0) scale(0.9);
+  transition:
+    opacity calc(180ms * var(--fm-tempo)) ease calc(var(--fm-nav-out, 0ms) * var(--fm-tempo)),
+    transform calc(320ms * var(--fm-tempo)) var(--fm-nav-ease) calc(var(--fm-nav-out, 0ms) * var(--fm-tempo));
+}
+/* the bar's own pill and the tab on it: gone the moment the fold starts (the hero, laid exactly over them, is what you
+   see from that frame on), back the moment it is home */
+.fm-nav-held {
+  transition: opacity 0s linear var(--fm-nav-home);
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-held {
+  opacity: 0;
+  transition: opacity 0s;
+}
+
+/* the circle (the folded bar's tap target): its glass under the disc (the disc's size) while the bar is open, settling
+   out round it as it lands. Hidden, not just clear, while the bar is open: no blur kept behind the bar */
+.fm-nav-ring {
+  position: absolute;
+  left: var(--fm-ring-x, 0px);
+  bottom: 0;
+  width: 56px;
+  height: 56px;
+  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.82);
+  pointer-events: none;
+  transition:
+    visibility 0s linear var(--fm-nav-home),
+    transform calc(220ms * var(--fm-tempo)) var(--fm-nav-ease),
+    opacity calc(140ms * var(--fm-tempo)) ease;
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-ring {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition:
+    visibility 0s,
+    transform calc(260ms * var(--fm-tempo)) var(--fm-nav-ease) calc(200ms * var(--fm-tempo)),
+    opacity calc(200ms * var(--fm-tempo)) ease calc(200ms * var(--fm-tempo));
+}
+/* (a layer of its own only while it moves) */
+.fm-nav-ring-glass {
+  will-change: auto;
+}
+
+/* the hero: the tab you're on, laid over the bar's pill, carried into the circle */
+.fm-nav-hero {
+  position: absolute;
+  left: var(--fm-hero-x, 0px);
+  top: var(--fm-hero-y, 0px);
+  width: var(--fm-hero-w, 0px);
+  height: var(--fm-hero-h, 0px);
+  pointer-events: none;
+  visibility: hidden;
+  transition: visibility 0s linear var(--fm-nav-home);
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-hero {
+  visibility: visible;
+  transition: visibility 0s;
+}
+.fm-nav-hero-move {
+  transition: transform var(--fm-nav-d) var(--fm-nav-ease) var(--fm-nav-lag);
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-hero-move {
+  transition: transform var(--fm-nav-d) var(--fm-nav-ease);
+}
+/* its ink, round at both ends all the way: two circles the pill's height and the band between them. The pair shrinks
+   (one scale, so the ends stay circles) about the left one, which lands on the circle's middle, as the band closes and
+   the right one slides onto the left */
+.fm-nav-ink {
+  position: absolute;
+  inset: 0;
+  transform-origin: calc(var(--fm-hero-h, 0px) / 2) 50%;
+  /* (its fade with its move: solid again before the bar's own pill takes over) */
+  transition:
+    transform var(--fm-nav-d) var(--fm-nav-ease) var(--fm-nav-lag),
+    opacity calc(360ms * var(--fm-tempo)) ease var(--fm-nav-lag);
+}
+/* folded, the disc is a little see-through: the circle's glass (and what is under it) shows through the ink. One fade
+   on the whole group, so where its pieces overlap never reads darker */
+[data-fm-bottom-nav][data-mini] .fm-nav-ink {
+  transform: translate3d(var(--fm-hero-tx, 0px), var(--fm-hero-ty, 0px), 0) scale(var(--fm-hero-s, 1));
+  opacity: 0.74;
+  transition:
+    transform var(--fm-nav-d) var(--fm-nav-ease),
+    opacity var(--fm-nav-d) var(--fm-nav-ease);
+}
+.fm-nav-ink > span {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--fm-fg);
+}
+.fm-nav-ink-cap {
+  left: 0;
+  width: var(--fm-hero-h, 0px);
+  border-radius: 9999px;
+}
+.fm-nav-ink-band {
+  left: calc(var(--fm-hero-h, 0px) / 2);
+  width: var(--fm-hero-mid, 0px);
+  transform-origin: 0 50%;
+}
+.fm-nav-ink-end {
+  left: var(--fm-hero-mid, 0px);
+  width: var(--fm-hero-h, 0px);
+  border-radius: 9999px;
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-ink-band {
+  transform: scaleX(0.001);
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-ink-end {
+  transform: translate3d(calc(var(--fm-hero-mid, 0px) * -1), 0, 0);
+}
+/* ...and its shadow, the bar's pill's: from half circles and the band, side by side (the ink's own pieces overlap, and
+   the shadows of pieces that overlap darken where they do) */
+.fm-nav-ink > .fm-nav-shade {
+  background: transparent;
+  box-shadow:
+    0 4px 14px rgb(var(--fm-shadow-rgb) / 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.dark .fm-nav-ink > .fm-nav-shade {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+.fm-nav-ink > .fm-nav-shade-cap {
+  width: calc(var(--fm-hero-h, 0px) / 2);
+  border-radius: 9999px 0 0 9999px;
+}
+.fm-nav-ink > .fm-nav-shade-end {
+  left: calc(var(--fm-hero-mid, 0px) + var(--fm-hero-h, 0px) / 2);
+  width: calc(var(--fm-hero-h, 0px) / 2);
+  border-radius: 0 9999px 9999px 0;
+}
+/* its icon riding along (never scaled) to the circle's middle, its label tucked away as it sets off and then out of
+   the picture. Safari 26 colours its bottom toolbar from whatever fixed box sits a few pixels above the screen's foot,
+   mid-width (LocalFrameView::fixedContainerEdges, pointer-events or not): nothing of the nav may reach below its own
+   foot by more than a few pixels, so the icon and label move, never a box the tab's size round them */
+[data-fm-bottom-nav][data-mini] .fm-nav-hero-rider {
+  transform: translate3d(var(--fm-hero-ix, 0px), var(--fm-hero-iy, 0px), 0);
+}
+.fm-nav-hero-label {
+  transition:
+    opacity calc(200ms * var(--fm-tempo)) ease calc(260ms * var(--fm-tempo)),
+    transform var(--fm-nav-d) var(--fm-nav-ease) var(--fm-nav-lag),
+    visibility 0s;
+}
+[data-fm-bottom-nav][data-mini] .fm-nav-hero-label {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity calc(120ms * var(--fm-tempo)) ease,
+    transform var(--fm-nav-d) var(--fm-nav-ease),
+    visibility 0s linear calc(120ms * var(--fm-tempo));
+}
+
+/* a tab switch: the new tab's bar as it is, at once */
+[data-fm-bottom-nav][data-snap] :is(.fm-nav-bar, .fm-nav-fade, .fm-nav-tab, .fm-nav-held, .fm-nav-ring, .fm-nav-hero, .fm-nav-hero-move, .fm-nav-hero-label) {
+  transition: none;
+}
+@media (min-width: 1024px) {
+  .fm-nav-ring,
+  .fm-nav-hero {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-fm-bottom-nav] :is(.fm-nav-bar, .fm-nav-fade, .fm-nav-tab, .fm-nav-held, .fm-nav-ring, .fm-nav-hero, .fm-nav-hero-move, .fm-nav-hero-label) {
+    transition: none !important;
+  }
+}
+
 .fm-depth-chrome--nav {
-  border-radius: 28px;
+  /* a capsule, like the circle it folds into and the pill in it */
+  border-radius: 9999px;
   /* Same frosted glass as the header so the floating bar glides over content
      symmetrically (top + bottom). Slightly more opaque than the header for
      tap-target legibility, but still evidently translucent. */

@@ -8,9 +8,13 @@
    It is a box at its place (FeedStream lays it out; nothing here
    moves it) holding layers the moves can take hold of:
      frame   — the picture's box: a grid's whole tile, a phone
-               card's 4:5 across its top, a row's 4:5 at its left;
-     bg      — a phone card's surface and wash of its picture, the
-               card's whole box;
+               card's whole 4:5 (a tablet's across its top), a
+               row's 4:5 at its left. Under the picture it is the
+               media's dark ground in both themes (never the page's
+               light surface), and in the Day view the picture's
+               wash, which a landscape picture shows whole over;
+     bg      — a tablet card's surface and wash of its picture,
+               below its frame (a phone's card is all frame);
      chrome  — what reads it: a tile's number (inside its frame,
                so it scales with it from one grid to the other),
                a phone card's foot (who, the number, the trail,
@@ -45,6 +49,7 @@ import {
   type StreamFeeder,
   type StreamMediaType,
   type StreamPost,
+  withinDay,
 } from '@/lib/feedStream/contract';
 import { titleCase } from '@/lib/feedLabels';
 import { POST_ASPECT, READING_GAP } from '@/lib/feedStream/layout';
@@ -55,6 +60,8 @@ const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : use
 
 // type over a picture: the scrim does the work, a soft shadow keeps it crisp on the brightest spots
 const ON_PICTURE = '[text-shadow:0_1px_2px_rgb(0_0_0/0.35)]';
+// something new (the last 24 hours) on a card: its words in a red pill (red is never a pick)
+const FRESH_PILL = 'rounded-full bg-[var(--fm-accent)] px-2 py-[3px] text-[11px] font-bold leading-none text-white [text-shadow:none]';
 
 /* ── the box a post has in a view ─────────────────────────── */
 
@@ -70,7 +77,7 @@ function frameOf(mode: FeedMode, shape: CellShape): { width: number; height: num
 
 /* ── a tile's chrome (WEEK, MONTH): minimal but bold ──────────
    1×1 — the number alone · 1×2 — a TOP kicker over it · 2×2 — TOP · D3 over it, and in a mixed scope a tiny face
-   and @handle top-left. The number is sized by the tile's width; a winner's is rose. A reel has a small ▶. */
+   and @handle top-left. The number is sized by the tile's width, white on the picture; a winner wears a white ring. A reel has a small ▶. */
 
 type Shape = 'one' | 'tall' | 'big';
 const NUMBER: Record<Shape, { share: number; min: number; max: number }> = {
@@ -86,7 +93,6 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
   const shape: Shape = cols >= 2 && rows >= 2 ? 'big' : rows >= 2 ? 'tall' : 'one';
   const top = post.topPercent;
   const measured = top != null && Number.isFinite(top);
-  const winner = isWinner(top);
   const rule = NUMBER[shape];
   const size = Math.round(Math.min(rule.max, Math.max(rule.min, width * rule.share)));
   const inset = INSET[shape];
@@ -122,7 +128,8 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
             <span
               className={cn(
                 'flex items-baseline font-black leading-[0.82] tracking-[-0.03em] tabular-nums [-webkit-text-stroke:0.045em_currentColor] [paint-order:stroke_fill]',
-                winner ? 'text-[var(--fm-accent-bright)]' : 'text-white',
+                // white on every picture (an accent number over a bright photo reads ~2:1); a winner is marked by its ring
+                'text-white',
               )}
               style={{ fontSize: size }}
             >
@@ -141,10 +148,12 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
 const ROOMY_MIN = 500;
 const TRAIL_MIN = 380;
 
+// a result that landed today or yesterday; fresh: in the last 24 hours (marked red)
 function landedNote(post: StreamPost, today: string) {
   if (!post.latestCheckpoint || !post.resultDay) return null;
-  if (post.resultDay === today) return { text: `${post.latestCheckpoint} landed today`, today: true };
-  if (post.resultDay === shiftDay(today, -1)) return { text: `${post.latestCheckpoint} landed yesterday`, today: false };
+  const fresh = post.resultAt ? withinDay(post.resultAt) : post.resultDay === today;
+  if (post.resultDay === today) return { text: `${post.latestCheckpoint} landed today`, fresh };
+  if (post.resultDay === shiftDay(today, -1)) return { text: `${post.latestCheckpoint} landed yesterday`, fresh };
   return null;
 }
 
@@ -161,13 +170,13 @@ function Marks({ post, standout, dayStart }: { post: StreamPost; standout: boole
     <span className="pointer-events-none absolute left-4 top-4 z-[4] flex flex-col gap-2">
       {dayStart ? (
         <span data-st="" className="inline-flex w-fit flex-col rounded-[14px] bg-black/55 px-3 pb-2.5 pt-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]" style={{ '--i': 0 } as CSSProperties}>
-          <span className="text-[10px] font-black uppercase leading-none tracking-[0.22em] text-[var(--fm-accent-bright)]">{dayStart.kicker}</span>
+          <span className="text-[10px] font-black uppercase leading-none tracking-[0.22em] text-white/75">{dayStart.kicker}</span>
           <span className="mt-1.5 text-[22px] font-black leading-none tracking-[-0.04em] text-white">{dayStart.title}</span>
         </span>
       ) : null}
       {standout ? (
-        <span data-st="" className="inline-flex w-fit items-center gap-1.5 rounded-[6px] bg-black/55 px-2 py-[5px] text-[10px] font-black uppercase leading-none tracking-[0.14em] text-[var(--fm-accent-bright)]" style={{ '--i': 1 } as CSSProperties}>
-          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent-bright)]" />
+        <span data-st="" className="inline-flex w-fit items-center gap-1.5 rounded-[6px] bg-black/55 px-2 py-[5px] text-[10px] font-black uppercase leading-none tracking-[0.14em] text-white" style={{ '--i': 1 } as CSSProperties}>
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]" />
           {standoutText(post, istDay())}
         </span>
       ) : null}
@@ -186,7 +195,9 @@ function CardChrome({ post, feeder, width, height, standout, dayStart }: {
   const today = istDay();
   const roomy = height >= ROOMY_MIN;
   const face = feeder ?? { handle: post.handle, profilePicUrl: null };
-  const meta = [feeder?.feedTitle ? titleCase(feeder.feedTitle) : null, relativeTime(post.postedAt)].filter(Boolean).join(' · ');
+  const feedName = feeder?.feedTitle ? titleCase(feeder.feedTitle) : null;
+  // posted in the last 24 hours: its age is marked red (something new)
+  const fresh = withinDay(post.postedAt);
   const landed = landedNote(post, today);
   const stats = [
     post.multiple != null ? { key: 'multiple', value: formatMultiple(post.multiple), unit: 'usual' } : null,
@@ -205,15 +216,18 @@ function CardChrome({ post, feeder, width, height, standout, dayStart }: {
           </span>
           <span className="min-w-0">
             <span className="block truncate text-[14px] font-bold leading-tight text-white">@{post.handle}</span>
-            {meta ? <span className="mt-0.5 block truncate text-[12px] font-medium leading-tight text-white/65">{meta}</span> : null}
+            <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-tight text-white/65">
+              {feedName ? <span className="truncate">{feedName}</span> : null}
+              {feedName ? <span aria-hidden="true">·</span> : null}
+              <span className={cn('shrink-0', fresh && FRESH_PILL)}>{relativeTime(post.postedAt)}</span>
+            </span>
           </span>
         </span>
         <span data-st="" className="flex min-w-0 items-end gap-3" style={{ '--i': 1 } as CSSProperties}>
           <TopBadge size={roomy ? 'xl' : 'lg'} topPercent={post.topPercent} checkpoint={post.latestCheckpoint} />
           {landed ? (
-            <span className={cn('flex min-w-0 items-center gap-1.5 pb-1 text-[12px] font-medium leading-tight text-white/65', ON_PICTURE)}>
-              {landed.today ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent-bright)]" /> : null}
-              <span className="truncate">{landed.text}</span>
+            <span className={cn('flex min-w-0 items-center pb-1 text-[12px] font-medium leading-tight text-white/65', ON_PICTURE)}>
+              <span className={cn('truncate', landed.fresh && FRESH_PILL)}>{landed.text}</span>
             </span>
           ) : null}
         </span>
@@ -233,8 +247,9 @@ function CardChrome({ post, feeder, width, height, standout, dayStart }: {
           </span>
         ) : null}
       </span>
+      {/* a winner (top 10%): a white ring */}
       {isWinner(post.topPercent) ? (
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[4] rounded-[28px] shadow-[inset_0_0_0_1.5px_rgb(var(--fm-accent-rgb)/0.85)]" />
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[4] rounded-[28px] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]" />
       ) : null}
     </>
   );
@@ -356,7 +371,9 @@ function PostCell({
   const chipsOut = was?.grid && !grid;
   const cardOut = was?.card && !card;
   const rowOut = was?.row && !row;
-  const bg = card || cardOut;
+  // a card whose frame is all of it (a phone's) has no surface of its own to show
+  const fullFrame = (cardShape: CellShape) => frameOf('today', cardShape).height >= cardShape.h - 0.5;
+  const bg = card ? !fullFrame(shape) : Boolean(cardOut && leavingShape && !fullFrame(leavingShape));
 
   const style: CSSProperties = { left: x, top: y, width: shape.w, height: shape.h };
   const top = post.topPercent;
@@ -376,6 +393,7 @@ function PostCell({
       data-post-key={post.key}
       data-kind="post"
       data-focal={focal ? '' : undefined}
+      data-card={card ? '' : undefined}
       data-lit={lit ? '' : undefined}
       data-spot={spot ? '' : undefined}
       data-arriving={arriving ? '' : undefined}
@@ -397,12 +415,12 @@ function PostCell({
 
       <div
         data-layer="frame"
-        className={cn('group overflow-hidden bg-[var(--st-surface)] [contain:strict]', !grid && 'isolate')}
+        className={cn('group overflow-hidden [contain:strict]', grid ? 'bg-[var(--st-surface)]' : 'isolate bg-[var(--st-media)]')}
         style={{ left: 0, top: 0, width: frame.width, height: frame.height, borderRadius: frame.radius }}
         {...(grid ? press : null)}
       >
-        {/* a row's frame shows a picture wider than 4:5 whole, over its own wash */}
-        {row ? <Wash src={post.thumbnailUrl} /> : null}
+        {/* the Day view's frame shows a landscape picture whole, over its own wash */}
+        {row || card ? <Wash src={post.thumbnailUrl} /> : null}
         {/* the picture gives under the finger (inside the frame: the moves own the frame's transform), and never while
             the finger scrolls the page (press.ts) */}
         <span className={cn('absolute inset-0 block transition-transform duration-200 ease-out', grid ? 'group-data-[pressed]:scale-[0.97]' : null)}>
@@ -414,8 +432,9 @@ function PostCell({
           </span>
         ) : null}
         {row ? <Marks post={post} standout={standout} dayStart={null} /> : null}
+        {/* a winner (top 10%): a white ring (what is new is marked on its feeder's circle, not on the post) */}
         {winner && !card ? (
-          <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 z-[4] shadow-[inset_0_0_0_1.5px_var(--fm-accent-bright)]', grid ? 'rounded-[6px]' : 'rounded-[28px]')} />
+          <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 z-[4] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]', grid ? 'rounded-[6px]' : 'rounded-[28px]')} />
         ) : null}
         {/* the wide Day view's column out of the spotlight: it recedes into the page (dimmed on dark, washed out on light) */}
         {row ? <span aria-hidden="true" className="st-dim pointer-events-none absolute inset-0 z-[5] bg-black light:bg-[var(--st-bg)]" /> : null}
@@ -482,10 +501,11 @@ export const PlaceholderCell = memo(function PlaceholderCell({ cellKey, mode, x,
 }) {
   const shape: CellShape = { w, h, cols: 1, rows: 1, mediaWidth, wide };
   const frame = frameOf(mode, shape);
+  const card = mode === 'today' && !shape.wide;
   const style: CSSProperties = { left: x, top: y, width: shape.w, height: shape.h };
   return (
-    <div data-cell={cellKey} data-kind="placeholder" data-gone={gone ? '' : undefined} aria-hidden="true" className="st-cell" style={style}>
-      {mode === 'today' && !shape.wide ? <div className="st-placeholder absolute inset-0 rounded-[28px]" /> : null}
+    <div data-cell={cellKey} data-kind="placeholder" data-card={card ? '' : undefined} data-gone={gone ? '' : undefined} aria-hidden="true" className={cn('st-cell', card && 'rounded-[28px]')} style={style}>
+      {card && frame.height < shape.h - 0.5 ? <div className="st-placeholder absolute inset-0 rounded-[28px]" /> : null}
       <div data-layer="frame" className="st-placeholder" style={{ left: 0, top: 0, width: frame.width, height: frame.height, borderRadius: frame.radius }} />
     </div>
   );

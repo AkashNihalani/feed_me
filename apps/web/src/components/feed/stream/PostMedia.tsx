@@ -10,8 +10,10 @@
    with no picture to show (the stream says so) wears its drawn
    cover straight away (PostCover), and so does one whose picture
    fails. In a 4:5 frame (framed: the Day view, the sheet) a picture
-   taller than the frame fills it; one 4:5 or wider shows whole,
-   over the wash behind the frame.
+   fills it edge to edge (a square loses a sliver at its sides, as
+   on a profile grid); only a landscape one shows whole, over the
+   wash behind it. Under a picture is never the page's light
+   surface: the feeder's tone (a grid) or the wash's dark ground.
 
    Over the poster, only while the post is the one in view (active):
    a reel's stored preview (muted, inline, looping, one at a time
@@ -32,7 +34,7 @@
    number, a ▶) is the piece's.
    ───────────────────────────────────────────────────────────── */
 
-import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type RefObject, type SyntheticEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type RefObject, type SyntheticEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import PostCover from '@/components/feed/stream/PostCover';
@@ -54,6 +56,8 @@ const DRIFT_FRAMES: Keyframe[] = [
 // a drift let go while its card is still on screen eases back to rest rather than jumping
 const DRIFT_RELEASE_MS = 420;
 
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 const IMG = 'st-img absolute inset-0 block h-full w-full object-cover';
 const VIDEO = 'st-video absolute inset-0 block h-full w-full object-cover';
 
@@ -70,10 +74,12 @@ function usePoster(post: StreamPost) {
   return { src, onError };
 }
 
-// a picture 4:5 or wider shows whole in a frame (letterboxed); a taller one fills it (stream.css, .st-framed)
-const FRAME_ASPECT = 4 / 5;
+// a landscape picture shows whole in a frame (letterboxed over its wash); anything squarer fills it (stream.css,
+// .st-framed): a square's sliver at the sides is the profile grid's own crop, and the frame never changes shape round
+// it as a post goes from a tile to its card
+const LANDSCAPE = 1.1;
 function markShape(img: HTMLImageElement) {
-  img.dataset.shape = img.naturalWidth / img.naturalHeight >= FRAME_ASPECT - 0.01 ? 'wide' : 'tall';
+  img.dataset.shape = img.naturalWidth / img.naturalHeight >= LANDSCAPE ? 'wide' : 'tall';
 }
 
 /* A picture already decoded in the cache shows at once; the rest develop when they load (stream.css, .st-img). One that
@@ -131,6 +137,11 @@ const WASH_SIZE = 24;
 const WASH_KEEP = 240;
 const washes = new Map<string, HTMLCanvasElement>();
 
+// a picture's wash made ahead (a card about to be shown): drawn at once when its card mounts, no fade
+export function warmWash(src: string | null | undefined) {
+  if (src && !washes.has(src)) void washOf(src);
+}
+
 function washOf(src: string): Promise<HTMLCanvasElement | null> {
   const kept = washes.get(src);
   if (kept) return Promise.resolve(kept);
@@ -157,23 +168,29 @@ function washOf(src: string): Promise<HTMLCanvasElement | null> {
 
 export const Wash = memo(function Wash({ src, className }: { src: string | null; className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
+  // one made already is drawn before the first paint, whole (no fade); the rest come up as they are made
+  useIsoLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !src) return undefined;
     let live = true;
-    void washOf(src).then((wash) => {
+    const draw = (wash: HTMLCanvasElement | null, instant: boolean) => {
       if (!live || !wash) return;
       canvas.width = wash.width;
       canvas.height = wash.height;
       canvas.getContext('2d')?.drawImage(wash, 0, 0);
+      if (instant) canvas.dataset.instant = '';
       canvas.dataset.ready = '';
-    });
+    };
+    const kept = washes.get(src);
+    if (kept) draw(kept, true);
+    else void washOf(src).then((wash) => draw(wash, false));
     return () => {
       live = false;
     };
   }, [src]);
   return (
-    <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 block overflow-hidden bg-[var(--st-surface)]', className)}>
+    // (its ground is the media's dark, never the page's light surface: the frame it backs is a picture's)
+    <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 block overflow-hidden bg-[var(--st-media)]', className)}>
       {src ? <canvas ref={canvasRef} width={1} height={1} className="st-ambient absolute inset-0 block h-full w-full object-cover" /> : null}
       <span className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(0_0_0/0.2),rgb(0_0_0/0.55)_60%,rgb(0_0_0/0.75))]" />
     </span>
@@ -490,7 +507,7 @@ export const PostPicture = memo(function PostPicture({ post, active, eager, fram
 function PostMedia({ post, active = false, eager = false, controls = 'bottom', fit = 'cover', className }: PostMediaProps) {
   const framed = fit !== 'cover';
   return (
-    <span data-post-media="" className={cn('relative block h-full w-full overflow-hidden rounded-[inherit] bg-[var(--st-surface)]', className)}>
+    <span data-post-media="" className={cn('relative block h-full w-full overflow-hidden rounded-[inherit] bg-[var(--st-media)]', className)}>
       {framed ? <Wash src={post.thumbnailUrl} /> : null}
       <span className={cn('absolute block overflow-hidden', fit === 'portrait' ? 'inset-x-0 top-0 aspect-[4/5]' : 'inset-0')}>
         <PostPicture post={post} active={active} eager={eager} framed={framed} controls={controls} />

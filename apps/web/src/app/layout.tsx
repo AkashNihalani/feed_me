@@ -10,6 +10,7 @@ import MediaFallback from "@/components/MediaFallback";
 import { appFont } from "@/lib/fonts";
 import { getSiteUrl } from "@/lib/site-url";
 import { THEME_BOOTSTRAP_SCRIPT, THEME_COLORS } from "@/lib/themeBootstrap";
+import { LAUNCH_SCRIPT } from "@/lib/launch";
 
 const metadataBase = new URL(getSiteUrl());
 
@@ -84,6 +85,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${appFont.variable} h-full min-h-[100dvh] w-full overflow-x-hidden bg-background`}>
       <body className="antialiased bg-background h-full min-h-[100dvh] w-full overflow-hidden transition-colors duration-300">
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        {/* a cold start (nothing of Feed's on the device): the launch veil is up from the first frame (lib/launch) */}
+        <script dangerouslySetInnerHTML={{ __html: LAUNCH_SCRIPT }} />
         <main className="h-full min-h-[100dvh] w-full overflow-hidden">
           <AppShell>{children}</AppShell>
         </main>

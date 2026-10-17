@@ -100,6 +100,16 @@ export function getResolvedTheme() {
   return resolved;
 }
 
+/* Safari on a phone (not the installed app) colours its status bar from what a full-screen layer paints at the top of
+   the screen, and keeps that colour (lib/feedStream/stillFrame.ts): a view transition is one such layer, so there the
+   theme flips at once and the bar stays clear */
+function colorsStatusBar() {
+  const ua = navigator.userAgent;
+  const ios = /iP(hone|od|ad)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return ios && !standalone;
+}
+
 type ViewTransitionDocument = Document & {
   startViewTransition?: (update: () => void) => { ready: Promise<void>; finished: Promise<void> };
 };
@@ -116,7 +126,7 @@ export function setThemePreference(next: ThemePreference, from?: { x: number; y:
   const changes = resolve(next) !== resolved;
   const doc = document as ViewTransitionDocument;
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (!changes || !from || reduce || typeof doc.startViewTransition !== 'function') {
+  if (!changes || !from || reduce || typeof doc.startViewTransition !== 'function' || colorsStatusBar()) {
     settle(next);
     return;
   }

@@ -5,7 +5,7 @@
    Instagram profile, but cooler. Every number comes from the same
    posts and checkpoints the feed shows.
 
-   A feeder: their big face (a rose story ring when they posted in
+   A feeder: their big face (an accent story ring when they posted in
    the last day) with a time badge. A feed: its feeders' faces,
    stacked. All feeds: the feed badges, stacked, and what happened
    today. Beside or under it: posts, followers and the typical
@@ -37,6 +37,7 @@ import {
   dayLabel,
   formatCount,
   formatTopPercent,
+  isWinner,
   relativeTime,
   type FeedOrder,
   type ProfileHeaderProps,
@@ -67,13 +68,16 @@ const ORDERS: ReadonlyArray<{ value: FeedOrder; label: string; Icon: LucideIcon 
   { value: 'results', label: 'Latest results', Icon: Target },
 ];
 const FORMAT_NAME: Record<StreamMediaType, string> = { reel: 'Reels', carousel: 'Carousels', image: 'Images', unknown: 'Posts' };
-// a feed's badge: the rail's light disc, its initials in rose
-const DISC_BG = 'radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg, #f7f7f8, #cfd3dc)';
-// the card: its surface (stream.css --st-card), lit rose from above the face
-const CARD_BG = 'radial-gradient(90% 55% at 50% 0%, rgb(var(--fm-accent-rgb) / var(--st-card-glow)), transparent 70%), var(--st-card)';
+// a feed's badge: the rail's light disc, its initials in ink (the disc is light in both themes)
+const DISC_BG = 'linear-gradient(135deg, #f7f7f8, #cfd3dc)';
+// the card: its surface (stream.css --st-card), lit softly from above the face (a neutral light: the accent is for meaning)
+const CARD_BG = 'radial-gradient(90% 55% at 50% 0%, rgb(var(--fm-fg-rgb) / calc(var(--st-card-glow) * 0.4)), transparent 70%), var(--st-card)';
 const EASE = 'ease-[cubic-bezier(0.16,0.9,0.2,1)]';
 // a glide at the app's tempo (lib/tempo)
 const GLIDE = 'duration-[calc(300ms*var(--fm-tempo))]';
+/* the order's underline (and the card's fill) goes with the list it marks: it moves when the new order's list slides
+   in (FeedStream: SLIDE_MS on the carry curve), not at the tap, which only lights the tab's label at once */
+const SLIDE_GLIDE = 'duration-[calc(460ms*var(--fm-tempo))] ease-[cubic-bezier(0.3,0.3,0.2,1)]';
 const MARKER = 'text-[10px] font-black uppercase leading-none tracking-[0.14em] text-[var(--st-text-3)]';
 const ACTION = 'flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-[14px] bg-[var(--st-surface-2)] px-3 text-[14px] font-bold text-[var(--st-text)] shadow-[inset_0_0_0_1px_var(--st-line)] outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
 
@@ -87,7 +91,7 @@ function postsValue(posts: number) {
   return posts < 10_000 ? posts.toLocaleString('en-US') : formatCount(posts);
 }
 
-// "▲ 3.0% · 30d" in rose, "▼ 1.2% · 30d" muted
+// "▲ 3.0% · 30d" with an accent ▲, "▼ 1.2% · 30d" muted
 function followerNote(delta: number | null): Note {
   if (!ranked(delta)) return null;
   const size = Math.abs(delta).toFixed(1);
@@ -143,7 +147,7 @@ const initialsSize = (px: number) => (px >= 100 ? 'text-[28px]' : px >= 76 ? 'te
 function FeedDisc({ title, px, front }: { title: string; px: number; front: boolean }) {
   return (
     <span
-      className={cn('grid h-full w-full place-items-center font-black leading-none tracking-[-0.04em] text-[var(--fm-accent)]', px >= 100 ? 'text-[34px]' : px >= 76 ? 'text-[22px]' : 'text-[18px]')}
+      className={cn('grid h-full w-full place-items-center font-black leading-none tracking-[-0.04em] text-[#0b0b0f]', px >= 100 ? 'text-[34px]' : px >= 76 ? 'text-[22px]' : 'text-[18px]')}
       style={{ background: DISC_BG }}
     >
       {front ? feedInitials(title) : null}
@@ -239,10 +243,10 @@ function TodayLine({ today, center = false }: { today: StreamProfile['today'] | 
   const live = today.posts + today.results > 0;
   return (
     <p className={cn('flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-[18px] text-[var(--st-text-2)]', center && 'justify-center')}>
-      {live ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent-text)]" /> : null}
+      {/* something new today: "Today" in a red pill (red is never a pick) */}
+      <b className={cn('shrink-0 font-bold', live ? 'rounded-full bg-[var(--fm-accent)] px-1.5 py-[3px] text-[11px] leading-none text-white' : 'text-[var(--st-text)]')}>Today</b>
       <span className="truncate">
-        <b className="font-bold text-[var(--st-text)]">Today</b>
-        {' · '}
+        {'· '}
         <b className="font-bold tabular-nums text-[var(--st-text)]">{today.posts}</b> {plural(today.posts, 'post')} went up
         {' · '}
         <b className="font-bold tabular-nums text-[var(--st-text)]">{today.results}</b> {plural(today.results, 'result')} landed
@@ -287,8 +291,14 @@ function StatsRow({ profile, center, className }: { profile: StreamProfile | nul
             {stat.value ?? <span className="st-bone mt-1 inline-block h-3.5 w-10 align-top" />}
           </span>
           <span className="mt-1 block max-w-full truncate text-[12px] font-medium leading-4 text-[var(--st-text-2)]">{stat.label}</span>
-          <span className={cn('mt-0.5 block h-[14px] max-w-full truncate text-[10px] font-bold leading-[14px]', stat.note?.up ? 'text-[var(--fm-accent-text)]' : 'text-[var(--st-text-3)]')}>
-            {stat.note?.text ?? ''}
+          {/* a rise: the ▲ carries the accent, the words stay ink (small type is ink) */}
+          <span className={cn('mt-0.5 block h-[14px] max-w-full truncate text-[10px] font-bold leading-[14px]', stat.note?.up ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
+            {stat.note?.up && stat.note.text.startsWith('▲') ? (
+              <>
+                <span className="text-[var(--fm-accent)]">▲</span>
+                {stat.note.text.slice(1)}
+              </>
+            ) : (stat.note?.text ?? '')}
           </span>
         </div>
       ))}
@@ -321,7 +331,7 @@ function Actions({ onLead, onRead, onManage, className, style }: {
   );
 }
 
-/* a highlight: a little Instagram circle (a neutral ring, a gap, the cover), its number in a rose badge over the
+/* a highlight: a little Instagram circle (a neutral ring, a gap, the cover), its number in a badge over the
    ring's foot, its label under it */
 function Highlight({ item, onOpenPost }: { item: StreamHighlight; onOpenPost: (key: string) => void }) {
   const top = ranked(item.topPercent) ? formatTopPercent(item.topPercent) : null;
@@ -356,7 +366,7 @@ function Highlight({ item, onOpenPost }: { item: StreamHighlight; onOpenPost: (k
           )}
         </span>
         {top ? (
-          <span className="absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[var(--fm-accent)] px-1.5 py-[3px] text-[10px] font-black leading-none tabular-nums text-white shadow-[0_0_0_2px_var(--st-cut)]">
+          <span className={cn('absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-1.5 py-[3px] text-[10px] font-black leading-none tabular-nums shadow-[0_0_0_2px_var(--st-cut)]', isWinner(item.topPercent) ? 'bg-[var(--fm-accent)] text-white' : 'bg-(--fm-raised) text-fg')}>
             {top}
           </span>
         ) : null}
@@ -391,7 +401,8 @@ function Highlights({ items, loading, center, onOpenPost }: { items: StreamHighl
 }
 
 function WeekBox({ week, latest, big }: { week: Week | null; latest: boolean; big: boolean }) {
-  const ring = latest ? 'inset 0 0 0 1.5px var(--fm-accent-text)' : null;
+  // the latest week is marked in ink: an accent ring would vanish on a top-10% week (its box is the accent itself)
+  const ring = latest ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null;
   const when = week ? `Week of ${dayLabel(week.start).long}` : 'Before the window';
   if (!week || !ranked(week.typical)) {
     return (
@@ -417,7 +428,7 @@ function WeekBox({ week, latest, big }: { week: Week | null; latest: boolean; bi
   );
 }
 
-// the last 13 weeks, oldest first, the latest ringed rose; `cell` is a box's width, which picks the type size
+// the last 13 weeks, oldest first, the latest ringed in ink; `cell` is a box's width, which picks the type size
 function WeekStrip({ weeks, loading, cell, className }: { weeks: Week[]; loading: boolean; cell: number; className?: string }) {
   const last = weeks.slice(-WEEKS);
   const cells: Array<Week | null> = [...Array.from({ length: WEEKS - last.length }, () => null), ...last];
@@ -492,9 +503,10 @@ function HabitCards({ kind, profile, className }: { kind: Kind; profile: StreamP
   );
 }
 
-/* the order, as Instagram's tab row under a bio: two equal tabs, the current one white over a rose underline that
-   glides between them (transform), the other dimmed; a hairline under the row */
-function OrderTabs({ order, onChange }: { order: FeedOrder; onChange: (order: FeedOrder) => void }) {
+/* the order, as Instagram's tab row under a bio: two equal tabs, the current one over an ink underline that
+   glides between them (transform), the other dimmed; a hairline under the row. `order`: the one tapped (its label
+   lights at once); `shown`: the one whose list is on screen (the underline is under it) */
+function OrderTabs({ order, shown, onChange }: { order: FeedOrder; shown: FeedOrder; onChange: (order: FeedOrder) => void }) {
   const { play } = useAppHaptics();
   const pick = (next: FeedOrder) => {
     if (next === order) return;
@@ -526,17 +538,21 @@ function OrderTabs({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
           </button>
         );
       })}
+      {/* (data-order-glide: FeedStream holds it with the list's slide on WebKit, and lands it with the slide) */}
       <span
         aria-hidden="true"
-        className={cn('pointer-events-none absolute bottom-0 left-0 h-[2px] w-1/2 bg-[var(--fm-accent-text)] transition-transform', GLIDE, EASE)}
-        style={{ transform: order === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
+        data-order-glide=""
+        className={cn('pointer-events-none absolute bottom-0 left-0 h-[2px] w-1/2 bg-[var(--st-text)] transition-transform motion-reduce:transition-none', SLIDE_GLIDE)}
+        style={{ transform: shown === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
       />
     </div>
   );
 }
 
-// the card's order: a compact two-way pill, the current half filled rose (the fill glides, transform only)
-function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: FeedOrder) => void }) {
+/* the card's order: a compact two-way pill, the current half filled ink (the fill glides, transform only, with the list).
+   The labels are drawn twice: in ink on the well, and in the page's colour inside the fill, held still while it glides
+   (they move back by as much as it moves on), so each turns over exactly where the fill's edge crosses it */
+function OrderPill({ order, shown, onChange }: { order: FeedOrder; shown: FeedOrder; onChange: (order: FeedOrder) => void }) {
   const { play } = useAppHaptics();
   const pick = (next: FeedOrder) => {
     if (next === order) return;
@@ -549,11 +565,6 @@ function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
       aria-label="Order"
       className="relative grid h-9 w-[240px] max-w-full grid-cols-2 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) p-[3px] shadow-(--fm-well-shade)"
     >
-      <span
-        aria-hidden="true"
-        className={cn('pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] w-[calc(50%-3px)] rounded-[10px] bg-[var(--fm-accent)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.28)] transition-transform', GLIDE, EASE)}
-        style={{ transform: order === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
-      />
       {ORDERS.map(({ value, label }) => {
         const on = value === order;
         return (
@@ -563,12 +574,32 @@ function OrderPill({ order, onChange }: { order: FeedOrder; onChange: (order: Fe
             role="tab"
             aria-selected={on}
             onClick={() => pick(value)}
-            className={cn('relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] px-2 text-[12px] font-bold leading-none outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]', on ? 'text-white' : 'text-fg')}
+            // (an outset ring: it shows in the well's padding round the fill, which lies over the selected button; the
+            // other one, focused, comes up over the fill, so its ring shows whole where the two meet)
+            className={cn('relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] px-2 text-[12px] font-bold leading-none text-fg outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]', value !== shown && 'focus-visible:z-30')}
           >
             <span className={cn('truncate transition-opacity', GLIDE, on ? 'opacity-100' : 'opacity-60')}>{label}</span>
           </button>
         );
       })}
+      <span
+        aria-hidden="true"
+        data-order-glide=""
+        className={cn('pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] z-20 w-[calc(50%-3px)] overflow-hidden rounded-[10px] bg-fg shadow-[inset_0_1px_0_rgb(255_255_255_/_0.16)] transition-transform motion-reduce:transition-none', SLIDE_GLIDE)}
+        style={{ transform: shown === 'results' ? 'translateX(100%)' : 'translateX(0%)' }}
+      >
+        <span
+          data-order-glide=""
+          className={cn('absolute left-[-3px] top-[-3px] grid h-[calc(100%+6px)] w-[calc(200%+6px)] grid-cols-2 p-[3px] text-(--fm-page) transition-transform motion-reduce:transition-none', SLIDE_GLIDE)}
+          style={{ transform: shown === 'results' ? 'translateX(calc((100% - 6px) / -2))' : 'translateX(0px)' }}
+        >
+          {ORDERS.map(({ value, label }) => (
+            <span key={value} className="grid min-w-0 place-items-center px-2 text-[12px] font-bold leading-none">
+              <span className="truncate">{label}</span>
+            </span>
+          ))}
+        </span>
+      </span>
     </div>
   );
 }
@@ -585,7 +616,7 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
   const highlights = <Highlights items={profile?.highlights ?? []} loading={loading} center={false} onOpenPost={onOpenPost} />;
   const strip = <WeekStrip weeks={profile?.weeks ?? []} loading={loading} cell={(stripWidth - (WEEKS - 1) * 3) / WEEKS} />;
   const habits = <HabitCards kind={kind} profile={profile} />;
-  const tabs = <OrderTabs order={order} onChange={onOrderChange} />;
+  const tabs = <OrderTabs order={order} shown={scope.order ?? 'posted'} onChange={onOrderChange} />;
   const style = { width, height: frame.height, '--st-cut': 'var(--st-bg)' } as CSSProperties;
 
   if (!frame.wide) {
@@ -595,18 +626,23 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
           {face}
           <StatsRow profile={profile} center className="min-w-0 flex-1" />
         </div>
-        <div style={{ marginTop: ROW.gap, height: ROW.title }}>
-          <TitleBlock title={title} subtitle={subtitle} wide={false} />
+        {/* on a phone the name carries the settings button alone: Lead and Read are a tap away in the bottom bar, and
+            the habit cards are numbers (Lead's job), so the posts start on the first screen */}
+        <div className="flex items-center gap-3" style={{ marginTop: ROW.gap, height: ROW.title }}>
+          <div className="min-w-0 flex-1">
+            <TitleBlock title={title} subtitle={subtitle} wide={false} />
+          </div>
+          <button type="button" onClick={onManage} aria-label="Manage feeds and feeders" className={cn(ACTION, 'w-11 flex-none px-0')}>
+            <Ellipsis className="h-5 w-5" strokeWidth={2.4} aria-hidden="true" />
+          </button>
         </div>
         {kind === 'all' ? (
           <div className="pt-1.5" style={{ height: ROW.today }}>
             <TodayLine today={profile?.today ?? null} />
           </div>
         ) : null}
-        <Actions onLead={onLead} onRead={onRead} onManage={onManage} style={{ marginTop: ROW.gap }} />
         <div style={{ marginTop: ROW.gap + 4 }}>{highlights}</div>
         <div style={{ marginTop: ROW.gap }}>{strip}</div>
-        <div style={{ marginTop: ROW.gap }}>{habits}</div>
         <div style={{ marginTop: ROW.gap + 4 }}>{tabs}</div>
       </section>
     );
@@ -691,7 +727,7 @@ function ProfileCard({ scope, title, subtitle, feeder, feeds, faces, profile, fr
       </div>
 
       <div className="flex flex-col items-center gap-2.5">
-        <OrderPill order={order} onChange={onOrderChange} />
+        <OrderPill order={order} shown={scope.order ?? 'posted'} onChange={onOrderChange} />
         <span className="flex flex-col items-center text-[var(--st-text-2)]">
           <ChevronUp className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
           <span className="mt-0.5 text-[12px] font-medium leading-[18px]">

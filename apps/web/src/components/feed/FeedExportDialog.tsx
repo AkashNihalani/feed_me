@@ -104,7 +104,7 @@ export default function FeedExportDialog({
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
         >
           <motion.div
-            className="absolute inset-0 bg-black/58 dark:bg-black/74"
+            className="fm-under-status absolute bg-black/58 dark:bg-black/74"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -134,7 +134,7 @@ export default function FeedExportDialog({
             <div className="shrink-0 border-b border-black/10 px-5 pb-4 pt-4 dark:border-white/8 md:px-6 md:pt-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--fm-accent)]">Excel Export</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-fg/60">Excel Export</div>
                   <div className="mt-1 truncate text-[28px] font-black tracking-normal">Feed workbook</div>
                   <div className="mt-2 inline-flex max-w-full items-center rounded-full border border-black/10 bg-black/[0.035] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-black/48 dark:border-white/8 dark:bg-white/[0.05] dark:text-white/42">
                     <span className="truncate">{scopeLabel}</span>
@@ -195,14 +195,14 @@ export default function FeedExportDialog({
                 className={cn(
                   'mt-4 flex w-full items-center justify-between gap-3 rounded-[18px] border px-3.5 py-3 text-left transition',
                   includeSummary
-                    ? 'border-[var(--fm-accent)]/30 bg-[var(--fm-accent)]/10 text-black dark:text-white'
+                    ? 'border-fg/25 bg-fg/[0.06] text-fg'
                     : 'border-black/10 bg-black/[0.025] text-black/58 dark:border-white/8 dark:bg-white/[0.035] dark:text-white/46',
                 )}
               >
                 <span className="text-[12px] font-black uppercase tracking-[0.14em]">Summary sheet</span>
                 <span className={cn(
                   'flex h-5 w-5 items-center justify-center rounded-full border',
-                  includeSummary ? 'border-[var(--fm-accent)] bg-[var(--fm-accent)] text-white' : 'border-black/14 dark:border-white/14',
+                  includeSummary ? 'border-fg bg-fg text-(--fm-page)' : 'border-black/14 dark:border-white/14',
                 )}>
                   {includeSummary && <Check size={13} strokeWidth={3} />}
                 </span>
@@ -223,7 +223,7 @@ export default function FeedExportDialog({
                         <span className={cn(
                           'flex h-5 min-w-5 items-center justify-center rounded-full border text-[10px] font-black',
                           allSelected
-                            ? 'border-[var(--fm-accent)] bg-[var(--fm-accent)] text-white'
+                            ? 'border-fg bg-fg text-(--fm-page)'
                             : 'border-black/14 text-black/36 dark:border-white/14 dark:text-white/32',
                         )}>
                           {allSelected ? <Check size={13} strokeWidth={3} /> : groupSelected}
@@ -240,14 +240,14 @@ export default function FeedExportDialog({
                               className={cn(
                                 'flex min-h-10 items-center justify-between gap-3 rounded-[14px] border px-3 py-2 text-left transition',
                                 active
-                                  ? 'border-[var(--fm-accent)]/26 bg-[var(--fm-accent)]/10 text-black dark:text-white'
+                                  ? 'border-fg/25 bg-fg/[0.06] text-fg'
                                   : 'border-black/8 bg-white/50 text-black/54 hover:bg-white/80 dark:border-white/7 dark:bg-white/[0.035] dark:text-white/44 dark:hover:bg-white/[0.06]',
                               )}
                             >
                               <span className="text-[12px] font-bold leading-snug">{field.label}</span>
                               <span className={cn(
                                 'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
-                                active ? 'border-[var(--fm-accent)] bg-[var(--fm-accent)] text-white' : 'border-black/14 dark:border-white/14',
+                                active ? 'border-fg bg-fg text-(--fm-page)' : 'border-black/14 dark:border-white/14',
                               )}>
                                 {active && <Check size={10} strokeWidth={3} />}
                               </span>
@@ -261,7 +261,7 @@ export default function FeedExportDialog({
               </div>
 
               {(error || hasInvalidRange || !hasFields) && (
-                <div className="mt-4 rounded-[14px] border border-[var(--fm-accent)]/24 bg-[var(--fm-accent)]/10 px-3 py-2.5 text-[12px] font-bold text-[var(--fm-accent-deep)] dark:text-[var(--fm-accent-soft)]">
+                <div className="mt-4 rounded-[14px] border border-fg/15 bg-fg/[0.05] px-3 py-2.5 text-[12px] font-bold text-fg">
                   {error || (hasInvalidRange ? 'Export start date must be before end date' : 'Select at least one field')}
                 </div>
               )}
@@ -272,7 +272,7 @@ export default function FeedExportDialog({
                 type="button"
                 onClick={onExport}
                 disabled={isExporting || hasInvalidRange || !hasFields}
-                className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-[var(--fm-accent)] px-4 py-3 text-[12px] font-black uppercase tracking-[0.14em] text-white shadow-[0_12px_30px_-14px_rgb(var(--fm-accent-rgb)/0.7)] transition hover:bg-[var(--fm-accent-deep)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-fg px-4 py-3 text-[12px] font-black uppercase tracking-[0.14em] text-(--fm-page) shadow-[0_12px_30px_-14px_rgb(var(--fm-shadow-rgb)/0.45)] transition hover:bg-fg/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download size={16} strokeWidth={2.7} />
                 {isExporting ? 'Preparing Workbook' : 'Download XLSX'}

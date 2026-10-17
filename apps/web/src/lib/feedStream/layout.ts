@@ -17,9 +17,14 @@
    through a zoom).
 
    today (DAY): a column of posts, one per post, each resting with
-   its centre on the focus line (focusY: the middle of the band
-   between the folded header and the nav). A phone's post is a
-   card filling that band (one swipe, one post: the page snaps).
+   its centre on the focus line (focusY). A phone's post is a 4:5
+   card the screen's width, resting just under the folded header
+   (one swipe, one post: the page snaps, deck), the next one's top
+   showing under it and on under the browser's bar; the column
+   scrolls as it is, under the glass header and the status bar
+   (nothing moves a card but the scroll). Wider, the focus line
+   is the middle of the band between the folded header and the
+   nav.
    From READING_FROM wide a post is a row: its media in a 4:5
    frame (mediaWidth) with its reading beside it, rows a gap apart,
    scrolled freely; the row on the focus line is the one in view.
@@ -55,9 +60,16 @@ export function sectionHeaderHeight(width: number) {
 export const SECTION_GAP = 20;
 export const GRID_GAP = 2;
 export const GRID_MAX_WIDTH = 1400;
-// a phone's Day card: the band between the folded header and the nav, less this on every side, cards this far apart
+// a theatre's Day card (a tablet): the band between the folded header and the nav, less this on every side; cards this
+// far apart (a phone's too)
 export const REEL_INSET = 8;
 export const REEL_GAP = 12;
+// a phone's card rests this far under the folded header's edge, and leaves at least this much of the next card showing
+// under it (on a short screen it is narrower, still 4:5)
+export const DECK_TOP_GAP = 8;
+const DECK_NEXT_MIN = 56;
+// the stack's page runs on this much of the screen past its last card's rest
+const DECK_END = 0.3;
 // wider than a phone (and narrower than a row), a card is a "theatre": 9:16 in the middle, never wider than this
 export const THEATRE_MAX_WIDTH = 520;
 // between the page's profile and the first group (or the first post)
@@ -92,7 +104,9 @@ const DAY_TOP = 12;
 export type GridMode = Exclude<FeedMode, 'today'>;
 
 // where the chrome sits: the open header's bottom edge, the folded header's, and the nav's top edge (from the bottom)
-export type StreamInsets = { top: number; topCompressed: number; bottom: number };
+// dock: the room a phone's Day view leaves at the screen's foot (the nav folds into a circle there while you read, so
+// the card on the focus line takes the screen's middle; without it, the nav's whole bar)
+export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number };
 
 export type LayoutKind = 'section' | 'tile' | 'reel' | 'more';
 
@@ -126,6 +140,9 @@ export type LayoutInput = {
   width: number;
   height: number;
   insets: StreamInsets;
+  // a laptop's window (the stream's column can be narrower, beside the side rail): the Day view's wide rows go with the
+  // window, as the rest of the chrome does (by default: the column is the window)
+  wide?: boolean;
 };
 
 export type StreamLayout = {
@@ -150,6 +167,8 @@ export type StreamLayout = {
   cardHeight: number;
   // a row (wide): the media frame's width at the row's left (the reading fills the rest); null: a phone's card
   mediaWidth: number | null;
+  // a phone's Day view: its cards rest at their top, just under the folded header (the snap's line: FeedStream)
+  deck: boolean;
   // lookups (built once per layout)
   bottoms: Float64Array; // running max of y + h, so "first item reaching below y" is a binary search
   byPost: ReadonlyMap<string, number>;
@@ -267,12 +286,13 @@ function pack(spans: ReadonlyArray<{ cols: number; rows: number }>, columns: num
 
 /* The Day view's geometry at a size: the focus line, and a post's box (a phone's card, a theatre card, or a wide
    screen's row of media + reading) */
-function dayGeometry(width: number, height: number, insets: StreamInsets) {
+function dayGeometry(width: number, height: number, insets: StreamInsets, wide = width >= READING_FROM) {
   const bandTop = insets.topCompressed;
-  const bandBottom = height - insets.bottom;
+  // (a phone's card runs on under the bar to the dock's line; a tablet's and a row's band ends at the nav)
+  const bandBottom = height - (wide || width >= THEATRE_FROM ? insets.bottom : insets.dock ?? insets.bottom);
   const band = Math.max(MIN_CARD_HEIGHT, bandBottom - bandTop);
   const focusY = (bandTop + bandBottom) / 2;
-  if (width >= READING_FROM) {
+  if (wide) {
     const reading = Math.min(READING_MAX, Math.max(READING_MIN, width * READING_SHARE));
     let frame = Math.min(MEDIA_MAX_HEIGHT, band - ROW_INSET * 2);
     let media = frame * POST_ASPECT;
@@ -283,18 +303,26 @@ function dayGeometry(width: number, height: number, insets: StreamInsets) {
     }
     return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP };
   }
+  /* A phone's card is the post's 4:5 frame edge to edge (the screen's width: carousels and pictures whole, never a
+     reel's tall crop), its reading over the frame's foot; it rests just under the folded header, the rest of the
+     screen showing the next card's top (no air over it: the stack glides there). On a short screen it keeps 4:5,
+     narrower. A theatre (a tablet) keeps the reel's card the band's height, in the band's middle */
+  if (width < THEATRE_FROM) {
+    const restTop = bandTop + DECK_TOP_GAP;
+    const cardHeight = Math.max(0, Math.min(width / POST_ASPECT, bandBottom - restTop - REEL_GAP - DECK_NEXT_MIN));
+    const cardWidth = Math.min(width, cardHeight * POST_ASPECT);
+    return { focusY: restTop + cardHeight / 2, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP };
+  }
   const cardHeight = band - REEL_INSET * 2;
-  const cardWidth = width < THEATRE_FROM
-    ? Math.max(0, width - REEL_INSET * 2)
-    : Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);
+  const cardWidth = Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);
   return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP };
 }
 
-export function computeLayout({ mode, days, posts, width, height, insets }: LayoutInput): StreamLayout {
+export function computeLayout({ mode, days, posts, width, height, insets, wide }: LayoutInput): StreamLayout {
   const { contentX, contentWidth } = contentBox(width);
   const items: LayoutItem[] = [];
   const sections = new Map<string, LayoutSection>();
-  const day = dayGeometry(width, height, insets);
+  const day = dayGeometry(width, height, insets, wide);
 
   // the grids
   const columns = mode === 'today' ? 1 : gridColumns(mode, width);
@@ -325,8 +353,11 @@ export function computeLayout({ mode, days, posts, width, height, insets }: Layo
         index += 1;
       }
     }
-    // the last post can rest on the focus line: the page ends a focus line's distance from the screen's foot past it
-    totalHeight = index ? DAY_TOP + (index - 1) * day.stride + day.cardHeight / 2 + (height - day.focusY) : height;
+    // the last post can rest on the focus line: the page ends a focus line's distance from the screen's foot past it. A
+    // phone's stack runs on past that (the screen grows as Safari's bars fold away, and a page that ended at the small
+    // screen's foot couldn't scroll its last card up to rest: the snap and the page's end fought over it at every swipe)
+    const runOn = width < THEATRE_FROM && !(wide ?? width >= READING_FROM) ? height * DECK_END : 0;
+    totalHeight = index ? DAY_TOP + (index - 1) * day.stride + day.cardHeight / 2 + (height - day.focusY) + runOn : height;
   } else {
     const unit = ZOOM_GROUP[mode];
     const cell = (column: number) => contentX + column * (cellWidth + GRID_GAP);
@@ -426,6 +457,7 @@ export function computeLayout({ mode, days, posts, width, height, insets }: Layo
     cardWidth: day.cardWidth,
     cardHeight: day.cardHeight,
     mediaWidth: mode === 'today' ? day.mediaWidth : null,
+    deck: mode === 'today' && width < THEATRE_FROM && !wide,
     bottoms,
     byPost,
     byKey,
@@ -433,14 +465,14 @@ export function computeLayout({ mode, days, posts, width, height, insets }: Layo
 }
 
 // the fixed placeholders drawn before the index arrives (no data, no shimmer)
-export function skeletonLayout(mode: FeedMode, width: number, height: number, insets: StreamInsets): StreamLayout {
+export function skeletonLayout(mode: FeedMode, width: number, height: number, insets: StreamInsets, wide?: boolean): StreamLayout {
   const columns = mode === 'today' ? 3 : gridColumns(mode, width);
   const tops = (count: number) => Array.from({ length: count }, () => null);
   const days: StreamDay[] = [
     { day: '2000-01-02', count: columns * 2, best: null, covers: [], tops: tops(columns * 2) },
     { day: '2000-01-01', count: columns * 4, best: null, covers: [], tops: tops(columns * 4) },
   ];
-  return computeLayout({ mode, days, posts: new Map(), width, height, insets });
+  return computeLayout({ mode, days, posts: new Map(), width, height, insets, wide });
 }
 
 /* ── lookups ───────────────────────────────────────────────── */

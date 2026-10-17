@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSupabase, User } from '@/lib/supabase';
+import { clearKept } from '@/lib/feedStream/keep';
 import { cn } from '@/lib/utils';
 import { getCache, setCache } from '@/lib/pageCache';
 import { useAppHaptics } from '@/lib/haptics';
@@ -1238,6 +1239,8 @@ function FundPageContent({ embedded = false }: FundPageProps = {}) {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    // what Feed kept on this device is this account's: it goes with it (lib/feedStream/keep)
+    clearKept();
     await getSupabase().auth.signOut();
     router.push('/login');
   }, [router]);
@@ -1364,7 +1367,7 @@ function FundPageContent({ embedded = false }: FundPageProps = {}) {
       {!embedded && !useTranslucentBrowserChrome && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-0 bg-[var(--fm-page)]"
+          className="fm-under-status pointer-events-none fixed z-0 bg-[var(--fm-page)]"
         />
       )}
 
@@ -1572,7 +1575,7 @@ function FundPageContent({ embedded = false }: FundPageProps = {}) {
       {/* ═══ PREMIUM THEME RIPPLE TRANSITION ═══ */}
       {themeRipple && (
         <div
-          className="pointer-events-none fixed inset-0 z-[9999] will-change-[clip-path,opacity]"
+          className="fm-under-status pointer-events-none fixed z-[9999] will-change-[clip-path,opacity]"
           style={{
             background: themeRipple.toDark
               ? `radial-gradient(circle at ${themeRipple.x}px ${themeRipple.y}px, rgb(var(--fm-accent-rgb)/0.16) 0%, rgba(8,8,8,0.22) 28%, rgba(8,8,8,0.12) 62%, rgba(8,8,8,0.04) 100%)`

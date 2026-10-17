@@ -108,8 +108,8 @@ const ROOT_STYLE = {
 } as CSSProperties;
 
 const FEED_BADGE_STYLE: CSSProperties = {
-  color: 'var(--fm-accent)',
-  background: 'radial-gradient(circle at 30% 18%, rgb(var(--fm-accent-rgb) / 0.12), transparent 58%), linear-gradient(135deg,#f7f7f8,#cfd3dc)',
+  color: '#0b0b0f',
+  background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)',
 };
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -194,8 +194,9 @@ function RowIcon({ tone, children }: { tone: Tone; children: ReactNode }) {
       aria-hidden="true"
       className={cn(
         'relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-transform duration-150 ease-out group-active:scale-[0.94]',
-        tone === 'primary' && 'border-transparent bg-(--fm-accent) text-white',
-        (tone === 'danger' || tone === 'anchor') && 'border-[rgb(var(--fm-accent-rgb)/0.28)] bg-[rgb(var(--fm-accent-rgb)/0.12)] text-(--fm-accent-text)',
+        // an action is ink, never the accent (it marks meaning); a destructive one is said by its words and icon
+        tone === 'primary' && 'border-transparent bg-fg text-(--fm-page)',
+        (tone === 'danger' || tone === 'anchor') && 'border-(--ms-line) bg-(--ms-chip) text-(--ms-text)',
         tone === 'plain' && 'border-(--ms-line) bg-(--ms-chip) text-(--ms-text-2)',
       )}
     >
@@ -230,11 +231,11 @@ function Row({ icon, media, tone = 'plain', label, support, alert = false, trail
       />
       {media ?? <RowIcon tone={tone}>{icon}</RowIcon>}
       <span className="relative min-w-0 flex-1">
-        <span className={cn('block truncate text-[16px] font-semibold leading-5', tone === 'danger' ? 'text-(--fm-accent-text)' : 'text-(--ms-text)')}>
+        <span className={cn('block truncate text-[16px] font-semibold leading-5', 'text-(--ms-text)')}>
           {label}
         </span>
         {support ? (
-          <span className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', alert ? 'text-(--fm-accent-text)' : 'text-(--ms-text-2)')}>
+          <span className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', alert ? 'text-(--ms-text)' : 'text-(--ms-text-2)')}>
             {support}
           </span>
         ) : null}
@@ -356,7 +357,7 @@ function AddFeederRow({ value, adding, error, added, blocked, slots, onChange, o
         <span
           id={supportId}
           aria-live="polite"
-          className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', error && !adding ? 'text-(--fm-accent-text)' : 'text-(--ms-text-2)')}
+          className={cn('mt-0.5 block truncate text-[12px] font-medium leading-4', error && !adding ? 'text-(--ms-text)' : 'text-(--ms-text-2)')}
         >
           {support}
         </span>
@@ -421,7 +422,7 @@ function AppearanceRow({ onPick }: { onPick: () => void }) {
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] w-[calc((100%-6px)/3)] rounded-[10px] bg-(--fm-accent) shadow-[inset_0_1px_0_rgb(255_255_255/0.28)] transition-transform duration-300 ease-[cubic-bezier(0.16,0.9,0.2,1)]"
+          className="pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] w-[calc((100%-6px)/3)] rounded-[10px] bg-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.16)] transition-transform duration-300 ease-[cubic-bezier(0.16,0.9,0.2,1)]"
           style={{ transform: `translateX(${at * 100}%)` }}
         />
         {THEMES.map(({ value, label, Icon }, index) => {
@@ -440,7 +441,7 @@ function AppearanceRow({ onPick }: { onPick: () => void }) {
               onClick={() => pick(index)}
               className={cn(
                 'relative z-10 grid h-full min-w-0 place-items-center rounded-[10px] outline-none [-webkit-tap-highlight-color:transparent] transition-[color,scale] duration-200 ease-out active:scale-[0.92] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--fm-accent-bright)',
-                on ? 'text-white' : 'text-(--ms-text-2)',
+                on ? 'text-(--fm-page)' : 'text-(--ms-text-2)',
               )}
             >
               <Icon size={16} strokeWidth={2.4} aria-hidden="true" />
@@ -470,7 +471,7 @@ function ConfirmView({ title, body, action, working, busy, blocked, error, cance
     <div className="px-3 pb-1 pt-2">
       <div className="text-[22px] font-black leading-[1.1] tracking-[-0.04em] text-(--ms-text)">{title}</div>
       <p className="mt-2 text-[14px] font-medium leading-5 text-(--ms-text-2)">{body}</p>
-      {error ? <p role="alert" className="mt-3 text-[12px] font-semibold leading-4 text-(--fm-accent-text)">{error}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-[12px] font-semibold leading-4 text-(--ms-text)">{error}</p> : null}
       <div className="mt-5 grid grid-cols-2 gap-2">
         <button
           ref={cancelRef}
@@ -485,7 +486,7 @@ function ConfirmView({ title, body, action, working, busy, blocked, error, cance
           type="button"
           onClick={onConfirm}
           disabled={busy || blocked}
-          className="h-12 rounded-[14px] bg-(--fm-accent) text-[14px] font-semibold text-white outline-none transition-[opacity,scale] duration-150 ease-out active:scale-[0.98] disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-white/70"
+          className="h-12 rounded-[14px] bg-fg text-[14px] font-semibold text-(--fm-page) outline-none transition-[opacity,scale] duration-150 ease-out active:scale-[0.98] disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-(--fm-accent) focus-visible:ring-offset-2 focus-visible:ring-offset-(--fm-page)"
         >
           {busy ? working : action}
         </button>
@@ -976,8 +977,9 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
     };
 
   const sheet = mounted ? (
-    <div ref={rootRef} className="fm-stream" style={{ ...ROOT_STYLE, pointerEvents: panelOpen ? 'auto' : 'none' }} inert={overlayOpen}>
-      <div aria-hidden="true" className="absolute inset-0 touch-none bg-(--fm-scrim)" style={dimStyle} onClick={requestClose} />
+    <div ref={rootRef} data-fm-modal="" className="fm-stream" style={{ ...ROOT_STYLE, pointerEvents: panelOpen ? 'auto' : 'none' }} inert={overlayOpen}>
+      {/* (below the strip Safari colours a phone's status bar from, and taller than the screen: stillFrame.ts) */}
+      <div aria-hidden="true" className="fm-under-status absolute touch-none bg-(--fm-scrim)" style={dimStyle} onClick={requestClose} />
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end lg:justify-center lg:p-8">
         <section
           ref={panelRef}
@@ -1027,7 +1029,7 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
   ) : null;
 
   const toast = toastText ? (
-    <div className="pointer-events-none fixed inset-x-0 top-[calc(12px_+_env(safe-area-inset-top))] z-[270] flex justify-center px-4">
+    <div data-fm-modal="" className="pointer-events-none fixed inset-x-0 top-[calc(12px_+_env(safe-area-inset-top))] z-[270] flex justify-center px-4">
       <div
         role={dialogError ? 'alert' : undefined}
         className="flex max-w-[440px] items-center gap-2.5 rounded-[14px] border border-white/10 bg-(--fm-ink) py-2 pl-3.5 pr-1.5 text-white shadow-[0_18px_40px_-18px_rgba(0,0,0,0.9)]"
@@ -1038,7 +1040,7 @@ export default function FeedManageSheet({ open, scope, intent = null, onClose }:
           pointerEvents: dialogError ? 'auto' : 'none',
         }}
       >
-        <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-(--fm-accent)" />
+        <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-white/80" />
         <span className="min-w-0 flex-1 text-[14px] font-semibold leading-5">{toastText}</span>
         <button
           type="button"

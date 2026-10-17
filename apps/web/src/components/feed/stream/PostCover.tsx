@@ -24,12 +24,12 @@ import '@/components/feed/stream/stream.css';
 
 // dark tones with a little colour in their lit end, every one of them under white type (SVG-free, so no hex limits)
 const TONES = [
-  ['#4a1828', '#120609'],
-  ['#3d2142', '#0e0710'],
-  ['#1e2c42', '#070a11'],
-  ['#45281b', '#0f0805'],
-  ['#1d3529', '#060c09'],
-  ['#35244c', '#0b0713'],
+  ['#3a3436', '#0d0b0c'],
+  ['#36332f', '#0d0c0a'],
+  ['#2e3033', '#0a0b0c'],
+  ['#45362c', '#0f0b08'],
+  ['#2f3530', '#0a0c0a'],
+  ['#38353a', '#0d0c0e'],
   ['#3c3220', '#0e0b06'],
   ['#2b2f36', '#0a0b0d'],
 ] as const;

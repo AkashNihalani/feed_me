@@ -30,7 +30,7 @@ export const SCENES = {
   shelf: ['#f2d9dc', '#986870'], phone: ['#433366', '#0c0915'],
 };
 
-export function mountReader({ data, layer, setCompressed, onHeader, initial = 0 }) {
+export function mountReader({ data, layer, setCompressed, onHeader, initial = 0, quiet = false }) {
 /* Everything below runs per mount. The prototype's code keeps its own (top-level) indentation, so its
    multi-line template strings stay byte-for-byte what they were. */
 let alive = true;
@@ -63,26 +63,37 @@ const qa = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const mqReduce = matchMedia('(prefers-reduced-motion: reduce)');
 let RM = mqReduce.matches;
+/* quiet: the tab coming back on screen (the engine mounts again on every reveal). The read is drawn as it was left,
+   at rest: none of its entrance plays (the script's own animations are held off while it is first drawn) */
+let QUIET = false;
 if (mqReduce.addEventListener) listen(mqReduce, 'change', (e) => { RM = e.matches; });
-const mqPhone = matchMedia('(max-width: 1023px)');
-const phone = () => mqPhone.matches;
-/* the app's chrome. The header is the app's glass capsule: its top moves with the safe area; it is 152px tall
-   on a phone and 168px on desktop, and folds to its top 68px (the title row) as you scroll down. Its height
-   comes from the engine's own state, so a measure taken right after a fold already sees where it is going.
-   hb() is 8px under it: where the desktop lens sticks. hbc() is the same line with the header folded: where
-   the header's panel drops, and where every scroll the page makes for you lands things (it folds the
-   header). The tab bar is the app's own bottom nav. */
+// a phone's chrome, exactly where React draws it: below the laptop width the app's header and bottom bar are on (the
+// complement of min-width 1024px, so a fractional width between 1023 and 1024 is never both and never neither)
+const mqWide = matchMedia('(min-width: 1024px)');
+const phone = () => !mqWide.matches;
+// a dialog of the app's own over Read (the side rail's Manage sheet, Feed's brief or export): a tap or an Escape in it
+// is its business, never Read's pick
+const FOREIGN_MODAL = '[aria-modal="true"]:not(#rd-sheet), [data-fm-modal]';
+/* the app's chrome. On a phone the header is the app's glass capsule: its top moves with the safe area; it is
+   152px tall and folds to its top 68px (the title row) as you scroll down. Its height comes from the engine's
+   own state, so a measure taken right after a fold already sees where it is going. hbc() is the line under it
+   folded: where the header's panel drops, and where every scroll the page makes for you lands things (it folds
+   the header). The tab bar is the app's own bottom nav.
+   From a laptop up nothing sits over the page (the app's chrome is the side rail, SideRail): the page's heading
+   scrolls away with it, hb() (where the lens sticks) is the window's top, what the page scrolls to lands just
+   under that (hbc 8), and a pick's readout floats at the foot of the page's column (readTab.css), clear of the
+   wall. */
 const cap = () => { const h = $('rd-hdr'); return h ? h.closest('.fm-depth-chrome--header') : null; };
-const ht = () => { const c = cap(); return c ? c.getBoundingClientRect().top : 10; };
-const hh = () => (S.compact ? 68 : phone() ? 152 : 168);
-const hb = () => ht() + hh() + 8;
-const hbc = () => ht() + 76;
+const ht = () => { if (!phone()) return 0; const c = cap(); return c ? c.getBoundingClientRect().top : 10; };
+const hh = () => (!phone() ? 0 : S.compact ? 68 : 152);
+const hb = () => (phone() ? ht() + hh() + 8 : 0);
+const hbc = () => (phone() ? ht() + 76 : 8);
 const navTop = () => { const n = document.querySelector('[data-fm-bottom-nav]'), r = n && n.getBoundingClientRect(); return r && r.height ? r.top : innerHeight - 88; };
 const fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
 const SOFT = 'cubic-bezier(.16,.9,.2,1)';
 const GLIDE = 'cubic-bezier(.33,.0,.15,1)';
 const EASE_IN = 'cubic-bezier(.4, 0, 1, 1)';
-const anim = (el, kf, o = {}) => (RM || !el || !el.animate ? null : el.animate(kf, { duration: o.dur ?? 460, easing: o.ease ?? SOFT, delay: o.delay ?? 0, fill: o.fill ?? 'backwards' }));
+const anim = (el, kf, o = {}) => (RM || QUIET || !el || !el.animate ? null : el.animate(kf, { duration: o.dur ?? 460, easing: o.ease ?? SOFT, delay: o.delay ?? 0, fill: o.fill ?? 'backwards' }));
 const rise = (el, o = {}) => anim(el, [{ opacity: 0, transform: `translateY(${o.y ?? 12}px)` }, { opacity: 1, transform: 'none' }], o);
 const buzz = () => { try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(6); } catch (e) {} };
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -190,25 +201,20 @@ const moveC = (m) => (MOVE[m] || ['', ''])[1];
 const tabIx = (k) => TABS.findIndex(([v]) => v === k);
 /* Top % is the app's unit: where a post sits in this account's own memory, lower is stronger */
 const pcx = (p) => Math.max(1, Math.round(p.pct));
-/* the shade of a run, from its typical post against his own middle (top 50%): above the middle it
-   reddens continuously toward the Feed card's crimson (top 1%), below it it recedes into the page (darkens on
-   dark, pales on light). So top 5% and top 20% never share a shade, and the brightest red is earned.
-   The colours are CSS mixes of the theme's ramp (--fm-shade-*, globals.css), the same as readShade.ts: a theme
-   switch recolours every run at once, with nothing to re-render. */
-const pctOf = (t) => `${(t * 100).toFixed(1)}%`;
-// a toward b by t, in sRGB (what the old per-channel mix did)
-const mix = (a, b, t) => `color-mix(in srgb, ${a}, ${b} ${pctOf(t)})`;
+/* the shade of a run, from its typical post (Top %): seven fixed steps of the theme's ramp (--fm-shade-0…6,
+   globals.css), the same as readShade.ts. Below the median three greys recede into the page; top 26–50% and 11–25%
+   are soft tints of the accent, top 4–10% and 1–3% solid, and the top step carries a little light. Tokens, not
+   values: a theme switch recolours every run at once, with nothing to re-render. */
+const shadeStep = (v) => { const t = Math.min(100, Math.max(1, v)); return t <= 3 ? 6 : t <= 10 ? 5 : t <= 25 ? 4 : t <= 50 ? 3 : t <= 65 ? 2 : t <= 85 ? 1 : 0; };
+const INNER = ['0.08', '0.08', '0.08', '0.1', '0.16', '0.24', '0.34'];
 function shade(v) {
-  const t = Math.min(100, Math.max(1, v));
-  if (t <= 50) {
-    const k = Math.pow((50 - t) / 49, 0.9), g = Math.max(0, (k - 0.35) / 0.65);
-    return { c: mix('var(--fm-shade-mid)', 'var(--fm-shade-hi)', k), tx: 'var(--fm-shade-tx-hi)', gc: g ? `rgba(247,24,82,${(g * 0.6).toFixed(2)})` : 'transparent', gi: (0.1 + g * 0.24).toFixed(2) };
-  }
-  const w = Math.min(1, (t - 50) / 35);
-  return { c: mix('var(--fm-shade-mid)', 'var(--fm-shade-lo)', w), tx: mix('var(--fm-shade-tx-mid)', 'var(--fm-shade-tx-lo)', w), gc: 'transparent', gi: '0.08' };
+  const step = shadeStep(v);
+  return { c: `var(--fm-shade-${step})`, tx: step >= 5 ? '#ffffff' : 'var(--fm-shade-tx)', gc: step === 6 ? 'var(--fm-shade-glow)' : 'transparent', gi: INNER[step] };
 }
 const shadeVars = (v) => { const x = shade(v); return `--c:${x.c};--tx:${x.tx};--gc:${x.gc};--gi:${x.gi}`; };
-const RAMP = `linear-gradient(90deg, ${[1, 8, 15, 22, 29, 36, 43, 50, 60, 70, 85, 100].map((v) => `${shade(v).c} ${(((v - 1) / 99) * 100).toFixed(1)}%`).join(', ')})`;
+const EDGES = [1, 3.5, 10.5, 25.5, 50.5, 65.5, 85.5, 100];
+const rampAt = (v) => `${(((v - 1) / 99) * 100).toFixed(1)}%`;
+const RAMP = `linear-gradient(90deg, ${EDGES.slice(0, -1).map((from, i) => `${shade(Math.ceil(from)).c} ${rampAt(from)} ${rampAt(EDGES[i + 1])}`).join(', ')})`;
 const who = () => M().f.who;
 const they = () => (who() === 'his' ? 'His crowd' : 'Their crowd');
 const word = (p) => RANKW[p.band];
@@ -233,7 +239,7 @@ function art(kind) {
   else if (kind === 'car') g = '<path d="M2 36 L4.5 30.5 Q7 27 12 27 L19 27 Q23 27 26 30.5 L28.5 36 Z"/><circle cx="8" cy="36.5" r="2.6" fill="#000"/><circle cx="22.5" cy="36.5" r="2.6" fill="#000"/><rect x="5" y="31" width="20" height=".8" fill="rgba(140,180,255,.6)"/>';
   else if (kind === 'product') g = '<rect x="12.5" y="17" width="5" height="18" rx="1.2"/><rect x="12" y="13" width="6" height="5" rx="1" fill="rgba(255,255,255,.35)"/>';
   else if (kind === 'arm') g = '<path d="M-2 30 Q10 24 32 26 L32 34 Q10 33 -2 38Z"/>';
-  else if (kind === 'ui') g = '<rect x="4" y="16" width="14" height="4" rx="2" fill="rgba(255,255,255,.2)"/><rect x="11" y="22" width="15" height="4" rx="2" fill="rgba(251,113,133,.4)"/><rect x="4" y="28" width="10" height="4" rx="2" fill="rgba(255,255,255,.2)"/>';
+  else if (kind === 'ui') g = '<rect x="4" y="16" width="14" height="4" rx="2" fill="rgba(255,255,255,.2)"/><rect x="11" y="22" width="15" height="4" rx="2" fill="rgba(218,46,70,.4)"/><rect x="4" y="28" width="10" height="4" rx="2" fill="rgba(255,255,255,.2)"/>';
   return `<svg class="art" viewBox="0 0 30 40" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><g fill="rgba(0,0,0,.52)">${g}</g></svg>`;
 }
 function tile(p, o = {}) {
@@ -861,7 +867,10 @@ function wtile(p) {
    below it; theme tokens, so it follows a theme switch */
 function runInk(tp) {
   const t = Math.min(100, Math.max(1, tp));
-  if (t <= 50) return mix('var(--lk-white)', 'var(--lk-red)', Math.pow((50 - t) / 49, 0.8));
+  // stepped, like the ramp: a top-10% run's number is the accent, the rest of the top half ink (a mix of ink into
+  // the accent passed through muddy middles)
+  if (t <= 10) return 'var(--lk-red)';
+  if (t <= 50) return 'var(--lk-white)';
   return `rgb(var(--lk-white-rgb) / calc(${(0.62 - Math.min(1, (t - 50) / 40) * 0.3).toFixed(2)} * var(--ta)))`;
 }
 function breakerHTML(R) {
@@ -1428,6 +1437,7 @@ function setSort(v, dir, pk) {
 function outsideTap(e) {
   if (ovOpen) return false;
   const t = e.target;
+  if (t.closest && t.closest(FOREIGN_MODAL)) return false;
   if (S.drop && !t.closest('#rd-hdrop, #rd-hdr, #rd-rail')) { closeDrop(); return true; }
   const lit = !!S.sel || S.pick != null;
   if (!lit) return false;
@@ -1462,7 +1472,7 @@ function resChart(p, compact) {
   if (p.i > 0 && xThis - xEnd > 2) {
     const len = Math.round(xThis - xEnd), col = p.ripple > 0 ? 'var(--rose)' : 'rgb(var(--down-rgb) / .75)', ld = Math.min(p.ripple || p.shortOf, 25) * 38 + 500;
     s += `<line class="ln2" style="--lo:${xEnd < xThis - 2 ? '100%' : '0%'};--ld:${ld}ms" x1="${(xThis - 2).toFixed(1)}" y1="${yP.toFixed(1)}" x2="${xEnd.toFixed(1)}" y2="${yP.toFixed(1)}" stroke="${col}" stroke-width="1.6" stroke-linecap="round"/>`;
-    if (p.ripple > 0 || p.shortOf >= 2) s += `<text class="lb" style="--ld:${ld + 300}ms" x="${((xThis + xEnd) / 2).toFixed(1)}" y="${(p.ripple > 0 ? yP - 6 : 7).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="${col}" font-family="JetBrains Mono, monospace">${p.ripple > 0 ? `beat ${p.ripple}` : `${p.shortOf} did better`}</text>`;
+    if (p.ripple > 0 || p.shortOf >= 2) s += `<text class="lb" style="--ld:${ld + 300}ms" x="${((xThis + xEnd) / 2).toFixed(1)}" y="${(p.ripple > 0 ? yP - 6 : 7).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="${p.ripple > 0 ? 'var(--ink)' : col}" font-family="JetBrains Mono, monospace">${p.ripple > 0 ? `beat ${p.ripple}` : `${p.shortOf} did better`}</text>`;
   }
   s += `<line x1="0" x2="${W}" y1="${H - 6}" y2="${H - 6}" stroke="rgb(var(--fg-rgb) / .12)"/>`;
   const svg = `<svg class="ch" preserveAspectRatio="xMinYMax meet" viewBox="0 -4 ${W} ${H + 14}" role="img" aria-label="${esc(beatShort(p).replace(/[▲▼] /, ''))}">${s}</svg>`;
@@ -1648,7 +1658,6 @@ let boardIO = null;
 const bot = (p) => Math.max(1, Math.round(100 - p.pct + 100 / M().n));
 const rkw = (p) => (p.pct <= 50 ? `Top ${pcx(p)}%` : `Bottom ${bot(p)}%`);
 const rkv = (v) => (v <= 50 ? `Top ${Math.max(1, Math.round(v))}%` : `Bottom ${Math.max(1, Math.round(100 - v + 100 / M().n))}%`);
-const STATUSW = { born: 'New in run', sharpened: 'Stronger after run', held: 'Held through run', tweaked: 'Narrowed in run', strains: 'Strained in run', breaks: 'Broke in run', dropped: 'Dropped in run', backs: 'Backed in run' };
 const VERDICT = { called: 'It held', missed: 'It didn’t hold', open: 'Still open' };
 const byIds = (ids) => (ids || []).map((id) => M().byId[id]).filter(Boolean);
 const byRank = (a) => [...a].sort((x, y) => x.rank - y.rank);
@@ -1680,8 +1689,8 @@ function formulaHTML() {
   const order = (all, ok) => [...all.filter(ok), ...all.filter((p) => !ok(p))];
   const row = (cls, n, of, text, all, ok) => `<div class="fm-row ${cls}"><span class="fm-big"><b data-to="${n}">${n}</b><small>of ${of}</small></span><p>${text}</p><div class="fm-dk">${deck(order(all, ok), cls === 'up' ? 'r' : 'w').replace(/class="dk-c" data-post="(\w+)"/g, (m, id) => (ok(Mo.byId[id]) ? m : `class="dk-c off" data-post="${id}"`))}</div></div>`;
   return `<div class="fm" data-fm>
-    ${row('up', up, two.length, 'posts that hit two of my rules landed in his <b>top half</b>.', two, (p) => p.rank <= half)}
-    ${row('dn', dn, miss.length, 'posts that missed one sank into his <b>bottom half</b>.', miss, (p) => p.rank > half)}
+    ${row('up', up, two.length, `posts with two of these rules made ${who()} <b>top half</b>.`, two, (p) => p.rank <= half)}
+    ${row('dn', dn, miss.length, `posts missing one sank to ${who()} <b>bottom half</b>.`, miss, (p) => p.rank > half)}
   </div>`;
 }
 
@@ -1700,38 +1709,60 @@ function lifeHTML(r) {
   const life = r.life || []; if (!life.length) return '';
   return `<div class="lf"><span class="k">How I got here</span><ol>${life.map((x, k) => `<li class="${moveC(x.move)}${k === life.length - 1 ? ' last' : ''}"><span class="lf-h"><b>Run ${x.run}</b><em>${esc(moveW(x.move))}</em></span><p>${esc(x.line)}</p></li>`).join('')}</ol></div>`;
 }
+/* a rule's proof at a glance: the post that landed with it sits high, the one that sank without it sits low (the
+   drop it opens to, in miniature). The reader picks the pair; without one, its best hit and its deepest miss */
+function pairOf(r) {
+  const Mo = M(), brk = new Set(r.brokenBy), q = r.pair || {};
+  const hit = Mo.byId[q.hit] || byRank(byIds(r.L).filter((p) => !brk.has(p.id)))[0] || null;
+  const miss = Mo.byId[q.miss] || byRank(byIds(r.Sk).filter((p) => !brk.has(p.id))).reverse()[0] || null;
+  return { hit, miss, line: q.line || '' };
+}
+const pairCov = (p, cls) => (p ? `<span class="rl-pc ${cls}">${cover(p)}<b>${rkw(p)}</b></span>` : '');
+// what a rule did in the latest run, in a word; a rule that only held says how long it has
+const STATUSK = { born: 'New', sharpened: 'Stronger', tweaked: 'Narrowed', strains: 'Strained', breaks: 'Broken', backs: 'Backed' };
+function ruleKick(r, gone) {
+  const Mo = M(), N = Mo.runs.length, life = r.life || [], last = life[life.length - 1];
+  if (gone) return `<em class="dn">Dropped</em>${last ? (last.run === N ? ' this run' : ` in run ${last.run}`) : ''}`;
+  const num = `<em>${pad2(r.n)}</em> · `;
+  if (last && last.run === N && STATUSK[last.move]) return `${num}${STATUSK[last.move]} this run`;
+  const R0 = life.length ? Mo.runs[life[0].run - 1] : null;
+  return `${num}Steady${R0 ? ` since ${MON[D(R0.items[0].date).getMonth()]}` : ''}`;
+}
 function plateHTML(r, gone) {
-  const Mo = M(), N = Mo.runs.length, life = r.life || [];
+  const Mo = M(), life = r.life || [];
   const has = byRank(byIds(r.L)), lacks = byRank(byIds(r.Sk)).reverse();
   const mh = has.length ? medPct(has) : null, ml = lacks.length ? medPct(lacks) : null;
   const w = mh != null && ml != null ? places(ml - mh) : null;
   const id = 'dp' + (++FSEQ); PDATA.set(id, { r, has, lacks, mh, ml, w });
-  const body = gone ? String(r.line || '').replace(/^Dropped in run \d+\.\s*/, '') : r.because;
+  // a dropped rule: why it went, in its first sentence up top, the rest when it opens
+  const gl = String(r.line || '').replace(/^Dropped in run \d+\.\s*/, ''), gs = gl.match(/^[^.!?]*[.!?]/), gHead = gs ? gs[0] : gl, gRest = gl.slice(gHead.length).trim();
+  const body = gone ? gRest : r.because;
+  const pr = pairOf(r);
   const alt = (v) => (v / 100).toFixed(4);
-  const ledge = (ps, v, cls, lab) => `<div class="dp-l ${cls}" style="--a:${alt(v)}">${deck(ps, cls === 'has' ? 'r' : 'w')}<i class="dp-rule"></i><span class="dp-lab"><b>${lab}</b> · ${ps.length} · ${rkv(v)}</span><span class="dp-cap" aria-hidden="true"></span></div>`;
+  const ledge = (ps, v, cls, lab) => `<div class="dp-l ${cls}" style="--a:${alt(v)}">${deck(ps, cls === 'has' ? 'r' : 'w')}<i class="dp-rule"></i><span class="dp-lab"><b>${lab}</b> · ${plural(ps.length, 'post')} · usually ${rkv(v)}</span><span class="dp-cap" aria-hidden="true"></span></div>`;
   const ev = evidenceHTML(r, gone), lf = lifeHTML(r), evN = (ev.match(/class="evr /g) || []).length;
   const fold = (key, label, count, html) => (html ? `<button type="button" class="rk-fb" data-fold="${key}" aria-expanded="false"><span>${label}</span><b>${count}</b><i aria-hidden="true"></i></button>` : '');
-  const kick = gone ? `<em class="dn">Dropped</em>${life.length ? ` · Runs ${life[0].run}–${life[life.length - 1].run}` : ''}` : `<em>Rule ${pad2(r.n)}</em> · ${STATUSW[r.status] || 'Held through run'} ${N}`;
-  const big = w != null ? [String(w), Math.abs(w) === 1 ? 'place' : 'places'] : ['—', 'no misses yet'];
-  const meta = gone ? `<span>It never moved him</span>${has.length ? ` · <span>named <b>${has.length}</b></span>` : ''}` : `<span>With it <b class="r">${rkv(mh)}</b></span>${ml != null ? ` · <span>without <b>${rkv(ml)}</b></span>` : ''}`;
+  const line = gone ? gHead : pr.line;
+  const meta = gone ? '' : `<span><b>${r.held}</b> of ${r.calls} posts back it</span> · <span>behind <b>${r.carry}</b> of ${who()} top ${r.quarter}</span>`;
   const bid = 'rlb' + FSEQ;
   return `<article class="rp rl-i${gone ? ' gone' : ''}" data-rs="${r.id}">
     <button type="button" class="rl-hd" aria-expanded="false" aria-controls="${bid}">
-      <span class="rl-n${gone ? ' dim' : ''}"><b>${gone && w == null ? '0' : big[0]}</b><small>${gone && w == null ? 'places' : big[1]}</small></span>
-      <span class="rl-t"><span class="rl-k">${kick}</span><span class="rs-law">${esc(r.law)}</span><span class="rl-m">${meta}</span></span>
+      <span class="rl-pr${pr.miss && !gone ? '' : ' one'}" aria-hidden="true">${pairCov(pr.hit, gone ? 'off' : 'up')}${gone ? '' : pairCov(pr.miss, 'dn')}</span>
+      <span class="rl-t"><span class="rl-k">${ruleKick(r, gone)}</span><span class="rs-law">${esc(r.law)}</span>${line ? `<span class="rl-p">${esc(line)}</span>` : ''}${meta ? `<span class="rl-m">${meta}</span>` : ''}</span>
       <i class="rl-x" aria-hidden="true"></i>
     </button>
     <div class="rl-bd" id="${bid}" hidden><div class="rl-in">
-      <p class="rs-bc">${esc(body)}</p>
-      <div class="dp${w == null ? ' solo' : ''}" data-dp="${id}" style="--wf:${w == null ? 0 : clamp01(w / Mo.n).toFixed(3)}" role="group" aria-label="${w != null ? `Posts with it typically land ${rkv(mh)}; without it, ${rkv(ml)}. Missing it costs ${w} places.` : `Its posts typically land ${rkv(mh)}.`}">
-        <i class="dp-g t"><span>His best</span></i><i class="dp-g b"><span>His worst</span></i>
+      ${body ? `<p class="rs-bc">${esc(body)}</p>` : ''}
+      ${!gone && r.edge ? `<p class="rs-edge"><b>Where it breaks</b>${esc(r.edge)}</p>` : ''}
+      <div class="dp${w == null ? ' solo' : ''}" data-dp="${id}" style="--wf:${w == null ? 0 : clamp01(w / Mo.n).toFixed(3)}" role="group" aria-label="${w != null ? `Posts with it usually land ${rkv(mh)}; without it, ${rkv(ml)}, ${w} places lower.` : `Its posts usually land ${rkv(mh)}.`}">
+        <i class="dp-g t"><span>${who() === 'his' ? 'His' : 'Their'} best</span></i><i class="dp-g b"><span>${who() === 'his' ? 'His' : 'Their'} worst</span></i>
         ${has.length ? ledge(has, mh, 'has', gone ? 'What it named' : 'With it') : ''}
         ${lacks.length ? ledge(lacks, ml, 'lacks', 'Without it') : ''}
-        ${w != null ? `<div class="dp-w" style="--a:${alt(mh)};--b:${alt(ml)}"><i class="dp-drop"></i><span class="dp-v"><b class="dp-num">${w}</b><small>${Math.abs(w) === 1 ? 'place' : 'places'}</small></span><em>${w >= 0 ? 'what missing it costs' : 'it works the other way'}</em></div>` : `<div class="dp-w none" style="--a:${alt(mh)};--b:${alt(mh)}"><span class="dp-v"><b class="dp-num">0</b><small>places</small></span><em>${gone ? 'it never moved him' : 'nothing without it yet'}</em></div>`}
+        ${w != null ? `<div class="dp-w" style="--a:${alt(mh)};--b:${alt(ml)}"><i class="dp-drop"></i><span class="dp-v"><b class="dp-num">${w}</b><small>${Math.abs(w) === 1 ? 'place' : 'places'}</small></span><em>${w >= 0 ? 'lower without it' : 'it works the other way'}</em></div>` : `<div class="dp-w none" style="--a:${alt(mh)};--b:${alt(mh)}"><span class="dp-v"><b class="dp-num">0</b><small>places</small></span><em>${gone ? 'it never moved him' : 'nothing without it yet'}</em></div>`}
       </div>
       <div class="rl-ctl">
-        <div class="rk-fbs">${fold('ev', gone ? 'What it named' : 'What happens in them', evN, ev)}${fold('lf', 'How I got here', `${life.length} ${life.length === 1 ? 'run' : 'runs'}`, lf)}</div>
-        <div class="rs-ft"><span>Speaks for <b>${r.reach}</b> of ${Mo.n}</span><span><b>${r.carry}</b> of his top ${r.quarter}</span><span>Held <b>${r.held}</b> of ${r.calls}</span>${gone ? '' : `<button type="button" class="rs-go" data-rule="${r.id}" aria-pressed="${S.pick === r.id}">Light it up on the wall${IC.r}</button>`}</div>
+        <div class="rk-fbs">${fold('ev', gone ? 'What it named' : 'The posts, explained', evN, ev)}${fold('lf', 'How I worked it out', `${life.length} ${life.length === 1 ? 'run' : 'runs'}`, lf)}</div>
+        ${gone ? '' : `<div class="rs-ft"><button type="button" class="rs-go" data-rule="${r.id}" aria-pressed="${S.pick === r.id}">Light it up on the wall${IC.r}</button></div>`}
       </div>
       ${ev ? `<div class="rk-fold" data-fbody="ev" hidden>${ev}</div>` : ''}
       ${lf ? `<div class="rk-fold" data-fbody="lf" hidden>${lf}</div>` : ''}
@@ -1741,10 +1772,13 @@ function plateHTML(r, gone) {
 function openHTML() {
   const op = M().rd.open || []; if (!op.length) return '';
   const bid = 'rlb' + (++FSEQ);
+  // a post from each of the first two questions, side by side at the same height: nothing has landed or sunk yet
+  const qs = op.slice(0, 2).map((o) => byRank(byIds(o.posts))[0]).filter(Boolean);
+  const shorts = op.map((o) => o.short || String(o.q).split(/[.?]/)[0]);
   return `<article class="rp rl-i open" data-rs="open">
     <button type="button" class="rl-hd" aria-expanded="false" aria-controls="${bid}">
-      <span class="rl-n dim"><b>${op.length}</b><small>${op.length === 1 ? 'question' : 'questions'}</small></span>
-      <span class="rl-t"><span class="rl-k"><em class="dn">Still open</em></span><span class="rs-law">What I can’t call yet</span><span class="rl-m">${esc(String(op[0].q).split(/[.?]/)[0])}${op.length > 1 ? ` · and ${op.length - 1} more` : ''}</span></span>
+      <span class="rl-pr q${qs.length > 1 ? '' : ' one'}" aria-hidden="true">${qs.map((p) => pairCov(p, 'q')).join('')}</span>
+      <span class="rl-t"><span class="rl-k"><em class="dn">Still open</em> · ${plural(op.length, 'question')}</span><span class="rs-law">What I can’t call yet</span><span class="rl-p">${esc(shorts.join(' · '))}</span></span>
       <i class="rl-x" aria-hidden="true"></i>
     </button>
     <div class="rl-bd" id="${bid}" hidden><div class="rl-in">
@@ -1820,7 +1854,7 @@ function insightsHTML() {
 function rulesDeckHTML() {
   const Mo = M();
   return `<section class="rl" data-rl aria-label="My rules">
-    <div class="rl-key"><span>What missing it costs</span><span>Tap a rule to open it</span></div>
+    <div class="rl-key"><span>What landed · what sank</span><span>Tap a rule to open it</span></div>
     ${Mo.rules.map((r) => plateHTML(r)).join('')}${Mo.retired.map((r) => plateHTML(r, true)).join('')}${openHTML()}
   </section>`;
 }
@@ -2472,7 +2506,7 @@ function switchFeeder(k) {
    while its own entrance plays inside it (render: boxes, fills, the run's read, the bloom); the lens's kicker
    and the lens follow a beat apart; the wall comes in after them, tile by tile (revealWall) */
 function enterPage() {
-  if (RM) return;
+  if (RM || QUIET) return;
   const t = $('rd-rules'), lh = document.querySelector('#rd-main .lens-head'), ln = $('rd-lens');
   if (t) anim(t, [{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { dur: 720 });
   if (lh) rise(lh, { y: 14, dur: 680, delay: t ? 900 : 440 });
@@ -2511,6 +2545,8 @@ listen(document, 'click', (e) => {
 });
 listen(document, 'keydown', (e) => {
   if (e.key === 'Escape') {
+    const at = document.activeElement;
+    if (at && at.closest && at.closest(FOREIGN_MODAL)) return;
     if (!ovOpen && !S.drop && $('rd-trbloom') && $('rd-trbloom').classList.contains('picking')) { unpickPetal(); return; }
     if (ovOpen) { if (S.stack.length > 1) { S.stack.pop(); swapOv(-1); } else closeOv(); }
     else if (S.drop) closeDrop();
@@ -2549,8 +2585,10 @@ listen(window, 'resize', () => {
 });
 if (document.fonts) document.fonts.ready.then(() => { if (alive) fixPods(); });
 freshChrome();
+QUIET = quiet;
 render();
 enterPage();
+QUIET = false;
 // anything that changes the page's height (the card, a run's read) moves the dividers: the spy re-reads them
 if ('ResizeObserver' in window) { ro = new ResizeObserver(() => { if (!alive) return; SPY.tops = null; spyBand(); }); ro.observe($('rd-main')); }
 

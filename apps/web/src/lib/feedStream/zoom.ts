@@ -90,8 +90,10 @@ export function writeStoredOrder(order: FeedOrder) {
 const SPRING_BACK_MS = 360;
 const SPRING_BACK_EASE = 'cubic-bezier(0.22, 1.1, 0.36, 1)';
 
-/* A live pinch let go short of its threshold: the page springs back from where the fingers left it */
-export function springBack(el: HTMLElement, from: number): Promise<void> {
+/* A live pinch let go short of its threshold: the page springs back from where the fingers left it. The spring is handed
+   back (a new pinch, or a move, cancels it: the page is theirs at once), with whether it ran to its end: only a spring
+   that did lets go of the page's origin and layer (one cut short leaves them to whoever cut it) */
+export function springBack(el: HTMLElement, from: number): { animation: Animation | null; done: Promise<boolean> } {
   el.style.transform = '';
   const clean = () => {
     el.style.transformOrigin = '';
@@ -99,8 +101,14 @@ export function springBack(el: HTMLElement, from: number): Promise<void> {
   };
   if (reducedMotion() || Math.abs(from - 1) < 0.002 || typeof el.animate !== 'function') {
     clean();
-    return Promise.resolve();
+    return { animation: null, done: Promise.resolve(true) };
   }
   const animation = el.animate([{ transform: `scale(${from})` }, { transform: 'none' }], { duration: SPRING_BACK_MS, easing: SPRING_BACK_EASE });
-  return animation.finished.then(clean, clean);
+  return {
+    animation,
+    done: animation.finished.then(() => {
+      clean();
+      return true;
+    }, () => false),
+  };
 }

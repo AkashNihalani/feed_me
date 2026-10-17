@@ -14,9 +14,11 @@
    gesture events in Safari), on fine pointers only.
 
    The focal is what sits under the fingers: the stream's box
-   ([data-zid], a post or the profile) at the midpoint. The live
-   scale is reported at most once a frame; the caller applies it
-   as one transform.
+   ([data-zid], a post or the profile) at the midpoint (on iOS
+   the touches': Safari's gesture event has no place, and begins
+   a pinch only when no two-finger touch reached the stream). The
+   live scale is reported at most once a frame; the caller
+   applies it as one transform.
    ───────────────────────────────────────────────────────────── */
 
 import { useEffect, useRef, type RefObject } from 'react';
@@ -123,8 +125,21 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
       detach();
       if (source === 'touch') end();
     }
+    // where a finger last came down on the stream (a gesture with no place of its own begins there: below)
+    let lastTouch = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    // an iOS gesture under way that no two-finger touchstart on the stream has begun yet
+    let placeless = false;
+    // while it is: the page never scrolls under it (a finger off the stream, on the header or the nav, included)
+    const block = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+    };
+    const unblock = () => window.removeEventListener('touchmove', block);
     const onStart = (event: TouchEvent) => {
+      const first = event.touches[0];
+      if (first) lastTouch = { x: first.clientX, y: first.clientY };
       if (source || event.touches.length !== 2) return;
+      placeless = false;
+      unblock();
       const start = spread(event.touches);
       startDistance = Math.max(1, start.distance);
       begin('touch', start.x, start.y);
@@ -134,18 +149,34 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
     };
 
     /* Safari's gesture events: on iOS they shadow the touch pinch (only kept from zooming the page); on a Mac
-       trackpad they are the pinch */
+       trackpad they are the pinch. iOS sends gesturestart before the second finger's touchstart, and without a place
+       (an iOS GestureEvent has no clientX): begun from it, the pinch would centre on the middle of the screen, and
+       carry whatever post is there, not the one under the fingers. So a gesture without a place waits: the second
+       finger's touchstart begins the pinch where the fingers are. Only when none does (that finger came down on the
+       header or the nav, outside the stream; an iPad's trackpad, with no touches at all) does the gesture begin it,
+       at its first change, where a finger last came down on the stream (or the middle) */
     const onGestureStart = (event: GestureLike) => {
       event.preventDefault();
       if (source) return;
-      begin('gesture', event.clientX ?? window.innerWidth / 2, event.clientY ?? window.innerHeight / 2);
+      if (typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+        begin('gesture', event.clientX, event.clientY);
+        return;
+      }
+      placeless = true;
+      window.addEventListener('touchmove', block, { passive: false });
     };
     const onGestureChange = (event: GestureLike) => {
       event.preventDefault();
+      if (!source && placeless) {
+        placeless = false;
+        begin('gesture', lastTouch.x, lastTouch.y);
+      }
       if (source === 'gesture' && typeof event.scale === 'number') live(event.scale);
     };
     const onGestureEnd = (event: GestureLike) => {
       event.preventDefault();
+      placeless = false;
+      unblock();
       if (source === 'gesture') end();
     };
 
@@ -175,6 +206,7 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
 
     return () => {
       detach();
+      unblock();
       window.clearTimeout(wheelTimer);
       if (frame) window.cancelAnimationFrame(frame);
       // a gesture cut short (the tab hiding) springs back rather than committing

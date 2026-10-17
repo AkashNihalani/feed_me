@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { Activity, memo, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { SWITCH_CLOCK_CSS_EASE, SWITCH_CLOCK_MS } from '@/lib/motion';
 import { arrivePieces } from '@/lib/pageArrival';
+import { noteTab, riseIn, settleTab, wideTabMotion } from '@/lib/tabSheet';
 
 const tabLoaders = {
   feed: () => import('@/components/tabs/FeedTab'),
@@ -66,6 +67,22 @@ const TabBody = memo(function TabBody({ component: TabComponent }: { component: 
   return <TabComponent />;
 });
 
+/* the CSS entrances of a tab shown again restart from the top (display: none ended them): finished at once, so the
+   tab is drawn as it was left. An endless one (a loader, an ambient loop) plays on, and so does one that follows the
+   scroll (a scroll-driven one has no end: finished, it would stop following it) */
+function settleEntrances(root: HTMLElement) {
+  root.getAnimations({ subtree: true }).forEach((animation) => {
+    if (!(animation instanceof CSSAnimation)) return;
+    if (animation.effect?.getTiming().iterations === Infinity) return;
+    if (animation.timeline && !(animation.timeline instanceof DocumentTimeline)) return;
+    try {
+      animation.finish();
+    } catch {
+      // one that cannot finish (no end)
+    }
+  });
+}
+
 function TabFallback() {
   return <div className="min-h-[100dvh] w-full bg-[var(--fm-page)]" />;
 }
@@ -115,19 +132,18 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
     });
   }, []);
 
-  // A newly revealed tab starts at the top, matching prior behavior (every
-  // switch used to rebuild at scroll 0) so a tab never inherits the previous
-  // tab's page-scroll offset. Runs before paint to avoid a visible jump.
-  //
-  // The revealed tab then settles in with a transform-only rise on the shared
-  // switch clock (same duration/ease as the header entrance). Deliberately NOT
-  // opacity (grouping the shadowed subtree makes iOS rasterize the whole tab
-  // per switch) and deliberately NOT framer-motion (animations inside a hidden
-  // <Activity> are suspended and replay unreliably on reveal — this host is
-  // always mounted, so a plain CSS transition it drives always fires). The
-  // transform is cleared once settled so position:fixed descendants (e.g. the
-  // fire PWA deck band) don't keep a transformed containing block.
+  /* A tab switch has one arrival, the same every time, cached or not: the tab you pick is there as you left it, and
+     its page comes in as its own pieces rising into place, row by row (lib/tabSheet riseIn), once the frame that shows
+     it is on screen. Nothing else on the page plays an entrance: the CSS entrances a hidden tab's pieces restart on
+     being shown again (display: none ends them) are finished before the first frame, and a page with an entrance of
+     its own (Read's engine) mounts quietly when a switch brings it (noteTab). Other motions can be tried on a
+     preview (?tabmotion=).
+
+     A tab that keeps its own place in the page (Feed) has already put its scroll back before this runs; any other
+     starts at the top, as a fresh tab would. */
+  noteTab(activeTab);
   useIsomorphicLayoutEffect(() => {
+    settleTab(activeTab);
     if (prevTabRef.current === activeTab) return;
     prevTabRef.current = activeTab;
 
@@ -135,13 +151,15 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
     // a tab that keeps its own place in the page (Feed) has already put the scroll back, before this runs
     if (!el?.querySelector('[data-tab-scroll="own"]')) window.scrollTo(0, 0);
     if (!el) return;
-    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return;
-    }
+    settleEntrances(el);
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // a laptop up: the page's blocks rise into place, row by row (lib/tabSheet: transform alone)
+    if (wideTabMotion()) return riseIn(el) ?? undefined;
 
-    // Never the tab as one block where it can be helped: a tab that plays its own arrival (Read) is left to it, and
-    // a tab whose pieces are marked [data-arrive] (Lead) has them rise one after another on the page beat, under the
-    // one header adapting above. Only tabs with neither still settle in whole.
+    /* A phone: never the tab as one block where it can be helped. A tab that plays its own arrival (Read) is left to
+       it, and a tab whose pieces are marked [data-arrive] (Lead) has them rise one after another on the page beat,
+       under the one header adapting above. Only tabs with neither settle in whole: one transform on the tab, never
+       its opacity (iOS draws a faded subtree with shadows afresh, every frame) */
     if (el.querySelector('[data-tab-arrival="own"]')) return;
     if (arrivePieces(el) > 0) return;
 
@@ -177,10 +195,8 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
         const isActive = key === activeTab;
         return (
           <Activity key={key} name={`tab-${key}`} mode={isActive ? 'visible' : 'hidden'}>
-            {/* Tabs are already built (kept alive); arrival is the transform-only
-                settle driven by the layout effect above, on the shared switch
-                clock. No whole-tab opacity dissolve (grouping a shadowed subtree
-                forces iOS to rasterize it on every switch). */}
+            {/* Tabs are already built (kept alive): a switch shows this one as it
+                was left (the layout effect above) */}
             <div
               data-tab={key}
               ref={(node) => {

@@ -20,12 +20,12 @@ import { useEffect } from 'react';
 
 // dark, low-chroma pairs that sit on the app's ground the way Read's drawn covers do (SVG stops can't take var())
 const TONES = [
-  ['#3a1520', '#0d0507'],
-  ['#2a1a22', '#0a0709'],
+  ['#24242a', '#09090b'],
+  ['#2a2826', '#0a0908'],
   ['#1f2128', '#08090b'],
-  ['#33201a', '#0c0806'],
-  ['#1c2622', '#070a09'],
-  ['#2b1630', '#0a060c'],
+  ['#2c2a28', '#0b0a09'],
+  ['#222624', '#080a09'],
+  ['#28272c', '#09090b'],
 ] as const;
 
 const MEDIA_HOST_SUFFIXES = ['cdninstagram.com', 'fbcdn.net'];

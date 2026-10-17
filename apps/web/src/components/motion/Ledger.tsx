@@ -68,6 +68,12 @@ const SCREEN_MARGIN_PX = 120;
    place and is gone as it tucks in. No beats, no ripple, no bounce: one gesture, the way Feed's posts move. */
 export const FAN_MS = ms(600);
 const FAN_SCALE = 0.94;
+/* A fan's item may carry a name beside its circle (data-ledger-label: the side rail's rows). Its circle makes the
+   gesture alone: the name goes at once as it leaves, and comes in beside it as it lands, so names never pass over one
+   another on the way */
+const FAN_LABEL_IN_MS = ms(300);
+const FAN_LABEL_OUT_MS = ms(90);
+const labelOf = (item: HTMLElement) => item.querySelector<HTMLElement>('[data-ledger-label]');
 
 // a move whose frame didn't come for this long (a page in the background) is stale: the list just shows what it is
 // (well past the slowest commit a switch makes, so a heavy one still plays its deal)
@@ -108,8 +114,11 @@ export type LedgerProps = {
   // the item to keep under the reader's finger when room is made (the row just opened: a row closing above it doesn't
   // carry it away up the page; the page scrolls by the difference instead)
   anchor?: string;
-  // a rail of circles (axis x): one glide out of, or back into, the place of the item that stays (see FAN_MS)
+  // a rail of circles, along either axis: one glide out of, or back into, the place of the item that stays (see FAN_MS)
   fan?: boolean;
+  // the item a fan opens out of and closes back into, when it was in the list (the feed opened, or the one closing):
+  // without it, the nearest item that stays
+  hub?: string;
   // the beat between one item and the next in a deal, and how long what stays travels (defaults: LEDGER_STEP_MS,
   // LEDGER_MOVE_MS)
   step?: number;
@@ -301,7 +310,7 @@ export class Ledger extends Component<LedgerProps> {
     const layer = this.layer.current;
     if (!list || !layer || reducedMotion() || skipped(list)) return;
     this.dealt = true;
-    const { axis = 'y', startOnDeal = false, anchor, fan = false } = this.props;
+    const { axis = 'y', startOnDeal = false, anchor, fan = false, hub } = this.props;
     const across = axis === 'x';
     const rise = this.props.rise ?? RISE_PX;
     const step = this.props.step ?? LEDGER_STEP_MS;
@@ -342,11 +351,15 @@ export class Ledger extends Component<LedgerProps> {
     const copies = startFlight(hold);
     this.rows = rows;
 
-    // a fan's step from one item to the next, and where the gesture comes from: the place the item that stays (the
-    // one nearest, when several do) was in before
-    const pitch = items.length > 1 ? Math.abs(items[1].x - items[0].x) || items[0].rect.width : (items[0]?.rect.width ?? 64) + 8;
-    const holders = fan ? items.filter(({ id }) => snapshot.places.has(id)).map(({ id }) => (snapshot.places.get(id) as Place).x) : [];
-    const originFor = (x: number) => (holders.length ? holders.reduce((best, there) => (Math.abs(there - x) < Math.abs(best - x) ? there : best)) : x - pitch);
+    /* a fan's step from one item to the next along its axis, and where the gesture comes from: the place its hub was
+       in before, or (no hub) the place the item that stays (the one nearest, when several do) was in */
+    const along = (place: { x: number; y: number }) => (across ? place.x : place.y);
+    const span = (rect: { width: number; height: number }) => (across ? rect.width : rect.height);
+    const pitch = items.length > 1 ? Math.abs(along(items[1]) - along(items[0])) || span(items[0].rect) : (items[0] ? span(items[0].rect) : 64) + 8;
+    const hubWas = fan && hub ? snapshot.places.get(hub) : undefined;
+    const holders = !fan ? [] : hubWas ? [along(hubWas)] : items.filter(({ id }) => snapshot.places.has(id)).map(({ id }) => along(snapshot.places.get(id) as Place));
+    const originFor = (at: number) => (holders.length ? holders.reduce((best, there) => (Math.abs(there - at) < Math.abs(best - at) ? there : best)) : at - pitch);
+    const fanAt = (by: number, scale: number) => (across ? `translate3d(${by.toFixed(1)}px, 0, 0) scale(${scale})` : `translate3d(0, ${by.toFixed(1)}px, 0) scale(${scale})`);
 
     // what leaves: a copy where it was seen, lifting away on its place's beat (under what takes its place)
     let lowest = 0;
@@ -356,12 +369,15 @@ export class Ledger extends Component<LedgerProps> {
       Object.assign(copy.style, { position: 'absolute', left: `${gone.x + scroll.left}px`, top: `${gone.y + scroll.top}px`, width: `${gone.width}px`, height: `${gone.height}px`, margin: '0' });
       layer.appendChild(copy);
       if (fan) {
-        // back into the place the gesture comes from (under every item: it tucks in behind), gone as it gets there
-        const into = originFor(gone.x) - gone.x;
+        // its name goes at once; its circle slides back into the place the gesture comes from (under every item: it
+        // tucks in behind), gone as it gets there
+        const name = labelOf(copy);
+        if (name) run(copies, name, [{ opacity: 1 }, { opacity: 0 }], { duration: FAN_LABEL_OUT_MS, easing: 'ease-in', fill: 'both' });
+        const into = originFor(along(gone)) - along(gone);
         run(copies, copy, [
-          { offset: 0, transform: 'translate3d(0px, 0, 0) scale(1)', opacity: gone.opacity },
+          { offset: 0, transform: fanAt(0, 1), opacity: gone.opacity },
           { offset: 0.45, opacity: gone.opacity },
-          { offset: 1, transform: `translate3d(${into.toFixed(1)}px, 0, 0) scale(${FAN_SCALE})`, opacity: 0 },
+          { offset: 1, transform: fanAt(into, FAN_SCALE), opacity: 0 },
         ], { duration: FAN_MS, easing: CARRY_EASE_CSS, fill: 'both' });
       } else {
         const lift = across ? `translate3d(${-Math.sign(rise || 1) * LIFT_PX}px, 0, 0) scale(0.94)` : `translate3d(0, ${-LIFT_PX}px, 0)`;
@@ -374,9 +390,9 @@ export class Ledger extends Component<LedgerProps> {
       const animation = copies.animations[copies.animations.length - 1];
       this.copies.add(animation);
       // a copy hanging below the list's new end keeps the list that tall until it has gone: the page under the list
-      // closes up after the rows have lifted out, not over them
+      // closes up after the rows have lifted out, not over them (a fan's copies go back inside it)
       const bottom = gone.y + scroll.top + gone.height;
-      if (bottom > natural + 1) {
+      if (!fan && bottom > natural + 1) {
         lowest = Math.max(lowest, bottom);
         this.hold(list, animation);
       }
@@ -402,13 +418,16 @@ export class Ledger extends Component<LedgerProps> {
         ? `translate3d(${(dx + rise).toFixed(1)}px, ${dy.toFixed(1)}px, 0) scale(0.94)`
         : `translate3d(${dx.toFixed(1)}px, ${(dy + rise).toFixed(1)}px, 0)`);
       if (!was && fan) {
-        // out of the place the gesture comes from, to its own place, as one with everything else
+        // out of the place the gesture comes from, to its own place, as one with everything else; its name comes in
+        // beside it as it lands
         this.arrivals.set(id, now);
         run(rows, item, [
-          { offset: 0, transform: `translate3d(${(originFor(x) - x).toFixed(1)}px, 0, 0) scale(${FAN_SCALE})`, opacity: 0 },
+          { offset: 0, transform: fanAt(originFor(along({ x, y })) - along({ x, y }), FAN_SCALE), opacity: 0 },
           { offset: 0.22, opacity: 1 },
-          { offset: 1, transform: 'translate3d(0px, 0, 0) scale(1)', opacity: 1 },
+          { offset: 1, transform: fanAt(0, 1), opacity: 1 },
         ], { duration: FAN_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
+        const name = labelOf(item);
+        if (name) run(rows, name, [{ transform: 'translate3d(-10px, 0, 0)', opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }], { duration: FAN_LABEL_IN_MS, delay: FAN_MS * 0.5, easing: LEDGER_ENTER_EASE, fill: 'backwards' });
         continue;
       }
       if (!was) {
@@ -427,9 +446,9 @@ export class Ledger extends Component<LedgerProps> {
       const due = !snapshot.dealt && was.opacity < 0.99 ? this.arrivals.get(id) : undefined;
       if (due != null && due > now) {
         run(rows, item, [{ transform: from(dx, dy), opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }], { duration: LEDGER_ENTER_MS, delay: due - now, easing: LEDGER_ENTER_EASE, fill: 'backwards' });
-      } else if (fan && snapshot.dealt && Math.abs(dx) > 0.5) {
+      } else if (fan && snapshot.dealt && Math.abs(along({ x: dx, y: dy })) > 0.5) {
         // the feed you tapped glides to its new place, with everything else
-        run(rows, item, [{ transform: `translate3d(${dx.toFixed(1)}px, 0, 0)` }, { transform: 'translate3d(0px, 0, 0)' }], { duration: FAN_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
+        run(rows, item, [{ transform: fanAt(along({ x: dx, y: dy }), 1) }, { transform: fanAt(0, 1) }], { duration: FAN_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
       } else if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5 || was.opacity < 0.99) {
         run(rows, item, [
           { transform: `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0)`, opacity: was.opacity },
