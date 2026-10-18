@@ -33,6 +33,7 @@ import LeadRhythm from '@/components/lead/LeadRhythm';
 import LeadTiming from '@/components/lead/LeadTiming';
 import LeadFormats from '@/components/lead/LeadFormats';
 import { CrossfadeImage, DIM, MARK, NOTE, SOFT, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
+import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
 import { ascentFromActivity, formatsFor, growthFor, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
 import { announceFirstScreen } from '@/lib/launch';
@@ -1924,6 +1925,26 @@ export default function LeadBoardPage() {
   }, [loading]);
   // a range switch re-reads what is on hand in a transition: the header answers the tap first
   const [timeframePending, startTimeframe] = useTransition();
+  // < and > step the time range (7D · 30D · 60D · 90D), as they step Feed's zoom: > a longer window, < a shorter one,
+  // stopping at the ends. Only while Lead is on screen (a hidden tab's effects are off), never while typing or under a
+  // dialog
+  const daysRef = useRef(days);
+  useLayoutEffect(() => {
+    daysRef.current = days;
+  }, [days]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '<' && event.key !== '>') return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      if (typingIn(event.target) || aModalIsOpen()) return;
+      const next = TIMEFRAMES[TIMEFRAMES.indexOf(daysRef.current) + (event.key === '>' ? 1 : -1)];
+      if (!next) return;
+      event.preventDefault();
+      startTimeframe(() => setDays(next));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [error, setError] = useState('');
   const headerCompressed = useCompressedOnScroll(pageScrollRef, useBrowserPageScroll, {
     collapseDistance: 150,

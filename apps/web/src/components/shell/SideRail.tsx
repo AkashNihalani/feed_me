@@ -46,6 +46,7 @@ import { CARRY_EASE_CSS, carryCurve } from '@/lib/feedStream/motion';
 import { feedInitials, titleCase } from '@/lib/feedLabels';
 import { ms, sec } from '@/lib/tempo';
 import { useFreshHandles } from '@/lib/feedStream/fresh';
+import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { leaveTab, stayOnTab } from '@/lib/tabSheet';
 import { cn } from '@/lib/utils';
 import {
@@ -90,15 +91,6 @@ const foldMove = (open: boolean, reduce: boolean) => (reduce ? undefined : `clip
 const OPEN_AFTER_MS = 110;
 const SHUT_AFTER_MS = 200;
 
-// a dialog actually on screen (Read keeps its closed sheet in the page, marked modal, under an aria-hidden layer)
-function aModalIsOpen() {
-  return Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"]')).some((el) => {
-    if (el.closest('[aria-hidden="true"], [inert]') || !el.getClientRects().length) return false;
-    const style = getComputedStyle(el);
-    return style.visibility !== 'hidden' && style.opacity !== '0';
-  });
-}
-
 /* ── the tabs ─────────────────────────────────────────────────────────────── */
 
 const TABS: ReadonlyArray<{ key: string; label: string; href: string; icon: LucideIcon }> = [
@@ -140,9 +132,7 @@ function useTabKeys(onTab: (key: string) => void) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
-      if (aModalIsOpen()) return;
+      if (typingIn(event.target) || aModalIsOpen()) return;
       const item = TABS.find((entry) => entry.label[0].toLowerCase() === event.key.toLowerCase());
       if (item) latest.current(item.key);
     };

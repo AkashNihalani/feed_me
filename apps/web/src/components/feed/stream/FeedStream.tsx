@@ -2916,7 +2916,8 @@ function FeedStream({
     return () => window.cancelAnimationFrame(frame);
   }, [gen, layout, metrics, narrowWindow, move]);
 
-  // the keys: G the Day view ⇄ the week, M the month, Esc the week, - and + a zoom out or in, ↑ ↓ J K a post at a time
+  // the keys: G the Day view ⇄ the week, M the month, Esc the week, > and < (or - and +) a zoom out or in, as they
+  // step Lead's time range, ↑ ↓ J K a post at a time
   useEffect(() => {
     if (!keyboard) return undefined;
     const onKey = (event: KeyboardEvent) => {
@@ -2939,10 +2940,12 @@ function FeedStream({
         case 'M':
           go(current === 'month' ? null : 'month');
           break;
+        case '>':
         case '-':
         case '_':
           go(stepMode(current, 1));
           break;
+        case '<':
         case '=':
         case '+':
           go(stepMode(current, -1));
