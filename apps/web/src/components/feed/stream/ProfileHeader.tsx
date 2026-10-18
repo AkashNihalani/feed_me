@@ -284,19 +284,20 @@ function StatsRow({ profile, center, className }: { profile: StreamProfile | nul
     },
   ];
   return (
-    <div className={cn('grid grid-cols-3 gap-2', className)} style={{ height: ROW.stats }}>
+    <div className={cn('grid grid-cols-3 gap-1', className)} style={{ height: ROW.stats }}>
       {stats.map((stat) => (
         <div key={stat.key} className={cn('flex min-w-0 flex-col', center ? 'items-center text-center' : 'items-start')}>
           <span className="block h-[22px] max-w-full truncate text-[18px] font-black leading-[22px] tracking-[-0.04em] tabular-nums text-[var(--st-text)]">
             {stat.value ?? <span className="st-bone mt-1 inline-block h-3.5 w-10 align-top" />}
           </span>
           <span className="mt-1 block max-w-full truncate text-[12px] font-medium leading-4 text-[var(--st-text-2)]">{stat.label}</span>
-          {/* a rise: the ▲ carries the accent, the words stay ink (small type is ink) */}
-          <span className={cn('mt-0.5 block h-[14px] max-w-full truncate text-[10px] font-bold leading-[14px]', stat.note?.up ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
-            {stat.note?.up && stat.note.text.startsWith('▲') ? (
+          {/* a rise: the ▲ carries the accent, the words stay ink (small type is ink). The arrow is a glyph, drawn at
+              8px as Lead's are, so the 12px words fit a phone's column */}
+          <span className={cn('mt-0.5 block h-4 max-w-full truncate text-[12px] font-semibold leading-4', stat.note?.up ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
+            {stat.note && /^[▲▼] /.test(stat.note.text) ? (
               <>
-                <span className="text-[var(--fm-accent)]">▲</span>
-                {stat.note.text.slice(1)}
+                <span className={cn('mr-0.5 align-[1px] text-[8px] leading-none', stat.note.up && 'text-[var(--fm-accent)]')}>{stat.note.text[0]}</span>
+                {stat.note.text.slice(2)}
               </>
             ) : (stat.note?.text ?? '')}
           </span>
@@ -344,7 +345,7 @@ function Highlight({ item, onOpenPost }: { item: StreamHighlight; onOpenPost: (k
       onClick={() => onOpenPost(item.key)}
       {...press}
       aria-label={`${item.label}: @${item.handle}${top ? `, top ${top}` : ''}`}
-      className="group flex w-[72px] shrink-0 flex-col items-center rounded-[14px] outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+      className="group flex min-w-[72px] max-w-[96px] shrink-0 flex-col items-center rounded-[14px] outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
     >
       <span className="relative block h-[62px] w-[62px] shrink-0">
         <span aria-hidden="true" className="absolute inset-0 rounded-full shadow-[inset_0_0_0_1.5px_rgb(var(--fm-fg-rgb)/0.2)]" />
@@ -371,7 +372,7 @@ function Highlight({ item, onOpenPost }: { item: StreamHighlight; onOpenPost: (k
           </span>
         ) : null}
       </span>
-      <span className="mt-3 block w-full truncate text-center text-[12px] font-medium leading-[18px] text-[var(--st-text-2)]">{item.label}</span>
+      <span className="mt-3 block max-w-full truncate whitespace-nowrap text-center text-[12px] font-medium leading-[18px] text-[var(--st-text-2)]">{item.label}</span>
     </button>
   );
 }
@@ -420,7 +421,7 @@ function WeekBox({ week, latest, big }: { week: Week | null; latest: boolean; bi
     <span
       role="listitem"
       aria-label={`${when}: typical top ${value}%, ${week.count} ${plural(week.count, 'post')}`}
-      className={cn('flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[6px] font-black leading-none tracking-[-0.04em] tabular-nums', big ? 'text-[12px]' : 'text-[10px]')}
+      className={cn('flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[6px] font-black leading-none tracking-[-0.04em] tabular-nums', big ? 'text-[14px]' : 'text-[12px]')}
       style={{ background: tone.c, color: tone.tx, boxShadow: [ring, `inset 0 1px 0 rgba(255, 255, 255, ${tone.gi})`].filter(Boolean).join(', ') }}
     >
       {value}
@@ -531,7 +532,7 @@ function OrderTabs({ order, shown, onChange }: { order: FeedOrder; shown: FeedOr
             onClick={() => pick(value)}
             className="group flex h-full min-w-0 items-center justify-center px-2 outline-none [-webkit-tap-highlight-color:transparent] focus-visible:bg-fg/[0.05]"
           >
-            <span className={cn('flex min-w-0 items-center gap-1.5 text-[14px] font-bold leading-none text-[var(--st-text)] transition-[opacity,scale] duration-[calc(300ms*var(--fm-tempo)),300ms] group-active:scale-[0.96]', EASE, on ? 'opacity-100' : 'opacity-45')}>
+            <span className={cn('flex min-w-0 items-center gap-1.5 text-[14px] font-bold leading-none text-[var(--st-text)] transition-[opacity,scale] duration-[calc(300ms*var(--fm-tempo)),300ms] group-active:scale-[0.96]', EASE, on ? 'opacity-100' : 'opacity-60')}>
               <Icon className="h-4 w-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
               <span className="truncate">{label}</span>
             </span>

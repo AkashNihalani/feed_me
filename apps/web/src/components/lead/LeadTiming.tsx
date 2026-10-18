@@ -13,8 +13,8 @@ import { Clock3 } from 'lucide-react';
 import { RAMP } from '@/components/read/readShade';
 import { cn } from '@/lib/utils';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
-import { ink, lerp, mixColor, rampColor, useCanvasScene, type Frame } from './leadCanvas';
-import { Eyebrow, PostTile, Swap, blockLabel, momentLabel, topLabel, useHeldNear, usePick, useReveal } from './leadKit';
+import { ink, labelFont, labelInk, lerp, mixColor, rampColor, useCanvasScene, type Frame } from './leadCanvas';
+import { DIM, Eyebrow, MARK, NOTE, PostTile, SOFT, Swap, blockLabel, momentLabel, topLabel, useHeldNear, usePick, useReveal } from './leadKit';
 import { BLOCKS, WEEKDAYS, WEEKDAYS_LONG, timingFor, type LeadFeed, type Slot, type TimingModel } from './leadModels';
 
 type Props = { feeds: LeadFeed[]; activity: LeadActivity | null; feedId: string; feeder: string; days: number };
@@ -34,6 +34,14 @@ function LeadTiming(props: Props) {
   const busiest = model.busiest && model.busiest.id !== best?.id ? model.busiest : null;
   const picked = model.slots.find((slot) => slot.id === (hover ?? pinned)) || best || model.busiest;
   const mode = hover || (pinned && pinned !== best?.id && pinned !== busiest?.id) ? 'picked' : picked && picked.id === busiest?.id ? 'busiest' : 'best';
+  // the switch offers only the slots there are (one that isn't there is left out, never a dimmed button), and a slot
+  // that both lands best and is the busiest once, saying so. A slot picked on the grid presses neither side: either
+  // side, or that bubble tapped again, lets it go
+  const options = [
+    best ? { id: 'best', label: model.busiest?.id === best.id ? 'Lands best · busiest too' : 'Lands best', slot: best } : null,
+    busiest ? { id: 'busiest', label: 'Busiest', slot: busiest } : null,
+  ].filter((option): option is { id: string; label: string; slot: Slot } => option != null);
+  const pin = useCallback((id: string | null) => setPinned((current) => (id && current === id ? null : id)), [setPinned]);
   const lift = best?.typical != null && model.typical != null ? Math.round(model.typical - best.typical) : null;
 
   return (
@@ -65,9 +73,9 @@ function LeadTiming(props: Props) {
                 { label: 'Busiest', value: busiest ? `${WEEKDAYS[busiest.day]} ${blockLabel(busiest.block)}` : '—', note: busiest ? `${busiest.count} posts` : 'same slot' },
               ].map((stat) => (
                 <div key={stat.label} className="min-w-0 border-r border-fg/[0.08] py-2.5 pr-3 last:border-r-0 [&:not(:first-child)]:pl-3">
-                  <dt className="truncate text-[8px] font-black uppercase tracking-[0.16em] text-fg/40 light:text-fg/52">{stat.label}</dt>
+                  <dt className={cn('truncate', MARK, 'tracking-[0.1em]', DIM)}>{stat.label}</dt>
                   <dd className="mt-1.5 truncate text-[17px] font-black tabular-nums leading-none tracking-[-0.03em] text-fg"><Swap value={stat.value} /></dd>
-                  <div className="mt-1 truncate text-[10px] font-bold text-fg/44 light:text-fg/54"><Swap value={stat.note} /></div>
+                  <div className={cn('mt-1 truncate', NOTE, DIM)}><Swap value={stat.note} /></div>
                 </div>
               ))}
             </dl>
@@ -75,8 +83,8 @@ function LeadTiming(props: Props) {
 
           {/* the grid */}
           <div className="lead-rise flex min-w-0 flex-col lg:col-start-1 lg:row-span-2 lg:row-start-1" style={{ '--rise': 1 } as CSSProperties}>
-            <GridCanvas model={model} picked={mode === 'best' ? null : picked?.id ?? null} onHover={setHover} onPin={setPinned} />
-            <div className="mt-2.5 flex h-[14px] items-center justify-between gap-4 overflow-x-clip whitespace-nowrap text-[8px] font-black uppercase tracking-[0.12em] text-fg/40 light:text-fg/52">
+            <GridCanvas model={model} picked={mode === 'best' ? null : picked?.id ?? null} onHover={setHover} onPin={pin} />
+            <div className={cn('mt-2.5 flex h-4 items-center justify-between gap-3 overflow-x-clip whitespace-nowrap', MARK, 'tracking-[0.08em]', DIM)}>
               <span className="flex items-center gap-2">
                 <span className="flex items-end gap-0.5"><i className="block h-[6px] w-[6px] rounded-full bg-fg/40" /><i className="block h-[10px] w-[10px] rounded-full bg-fg/40" /></span>
                 more posts
@@ -88,38 +96,38 @@ function LeadTiming(props: Props) {
 
           {/* the picked slot's posts */}
           <div className="lead-rise flex min-w-0 flex-col lg:col-start-2 lg:row-start-2 lg:pt-4" style={{ '--rise': 2 } as CSSProperties}>
-            <div className="grid h-10 grid-cols-3 rounded-[13px] border border-fg/[0.07] bg-(--fm-well) p-[3px] shadow-(--fm-well-shade)">
-              {[
-                { id: 'best', label: 'Lands best', slot: best, onPick: () => setPinned(best?.id ?? null) },
-                { id: 'busiest', label: 'Busiest', slot: busiest, onPick: () => setPinned(busiest?.id ?? null) },
-                { id: 'picked', label: 'Picked', slot: mode === 'picked' ? picked : null, onPick: () => undefined },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  disabled={!option.slot}
-                  onClick={option.onPick}
-                  aria-pressed={mode === option.id}
-                  className={cn(
-                    'relative rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors duration-200 disabled:opacity-40',
-                    mode === option.id ? 'bg-fg text-(--ld-panel)' : 'text-fg/50 hover:text-fg/80',
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            {options.length ? (
+              <div className="grid h-10 rounded-[13px] border border-fg/[0.07] bg-(--fm-well) p-[3px] shadow-(--fm-well-shade)" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+                {options.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setPinned(option.slot.id)}
+                    aria-pressed={mode === option.id}
+                    className={cn(
+                      'relative rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors duration-200',
+                      mode === option.id ? 'bg-fg text-(--ld-panel)' : cn(SOFT, 'hover:text-fg'),
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              // nothing went out in the window: the band keeps its height (the line below says so)
+              <div aria-hidden="true" className="h-10" />
+            )}
             <div className="mt-3 flex h-[16px] items-baseline justify-between gap-3 overflow-x-clip whitespace-nowrap">
               <div className="min-w-0 truncate text-[13px] font-black tracking-[-0.01em] text-fg"><Swap value={picked ? slotName(picked) : 'No posts yet'} /></div>
-              <div className="shrink-0 text-[10px] font-bold text-fg/50 light:text-fg/58">
-                <Swap value={picked ? [`${picked.count} posts`, picked.typical != null ? `top ${topLabel(picked.typical)}%` : null].filter(Boolean).join(' · ') : ''} />
+              <div className={cn('shrink-0', NOTE, SOFT)}>
+                <Swap value={picked ? [`${picked.count} ${picked.count === 1 ? 'post' : 'posts'}`, picked.typical != null ? `top ${topLabel(picked.typical)}%` : null].filter(Boolean).join(' · ') : ''} />
               </div>
             </div>
-            <div className="-mx-4 mt-2.5 flex h-[104px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:h-[118px] sm:px-0 [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-4 mt-2.5 flex h-[128px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:h-[136px] sm:px-0 [&::-webkit-scrollbar]:hidden">
               {(picked?.shots || []).slice(0, 12).map((shot) => (
-                <PostTile key={shot.key} shot={shot} when={momentLabel(shot.ms).replace(/^\w+ /, '')} className="h-full flex-none" />
+                <PostTile key={shot.key} shot={shot} when={momentLabel(shot.ms).replace(/^\w+ /, '').replace(/\s?[AP]M$/, '')} className="h-full flex-none" />
               ))}
-              {picked && !picked.shots.length ? <span className="grid h-full flex-1 place-items-center rounded-[14px] border border-dashed border-fg/[0.12] text-[10px] font-black uppercase tracking-[0.14em] text-fg/36">No posts in this slot</span> : null}
+              {picked && !picked.shots.length ? <span className={cn('grid h-full flex-1 place-items-center rounded-[14px] border border-dashed border-fg/[0.12]', MARK, DIM)}>No posts in this slot</span> : null}
             </div>
           </div>
         </div>
@@ -172,33 +180,33 @@ function drawGrid({ ctx, width, height, palette }: Frame, from: Scene | null, to
   const empty = ink(palette, 0.12);
   ctx.textBaseline = 'middle';
   // block heads, the day names, the margins (each day's and each block's typical)
-  ctx.font = font(8);
+  ctx.font = labelFont(palette, 10);
   ctx.textAlign = 'center';
-  ctx.fillStyle = ink(palette, 0.45);
+  ctx.fillStyle = labelInk(palette, 0.45);
   BLOCKS.forEach((_, block) => ctx.fillText(blockLabel(block).toUpperCase(), g.cx(block), TOP / 2 - 1));
   ctx.textAlign = 'right';
-  ctx.fillStyle = ink(palette, 0.34);
+  ctx.fillStyle = labelInk(palette, 0.34);
   ctx.fillText('TOP', width, TOP / 2 - 1);
   ctx.textAlign = 'left';
-  ctx.font = font(9);
+  ctx.font = labelFont(palette, 10);
   WEEKDAYS.forEach((name, day) => {
-    ctx.fillStyle = ink(palette, day >= 5 ? 0.46 : 0.62);
+    ctx.fillStyle = labelInk(palette, day >= 5 ? 0.46 : 0.62);
     ctx.fillText(name.toUpperCase(), 0, g.cy(day));
   });
   ctx.font = font(10);
   ctx.textAlign = 'right';
   to.days.forEach((label, day) => {
-    ctx.fillStyle = ink(palette, label === '—' ? 0.22 : 0.62);
+    ctx.fillStyle = label === '—' ? ink(palette, 0.22) : labelInk(palette, 0.62);
     ctx.fillText(label, width, g.cy(day));
   });
   ctx.textAlign = 'center';
   to.blocks.forEach((label, block) => {
-    ctx.fillStyle = ink(palette, label === '—' ? 0.22 : 0.62);
+    ctx.fillStyle = label === '—' ? ink(palette, 0.22) : labelInk(palette, 0.62);
     ctx.fillText(label, g.cx(block), height - BOTTOM / 2 + 1);
   });
   ctx.textAlign = 'left';
-  ctx.fillStyle = ink(palette, 0.34);
-  ctx.font = font(8);
+  ctx.fillStyle = labelInk(palette, 0.34);
+  ctx.font = labelFont(palette, 10);
   ctx.fillText('TOP', 0, height - BOTTOM / 2 + 1);
 
   const fillOf = (bubble: Bubble) => (bubble.top != null ? rampColor(palette, bubble.top) : bubble.hollow ? null : empty);

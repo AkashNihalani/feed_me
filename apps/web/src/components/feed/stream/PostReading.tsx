@@ -160,7 +160,7 @@ function PostReading({ post, feeder, size, withHeader = true, titleId }: PostRea
       </div>
 
       <div className="st-settle min-w-0" data-settle="2" style={{ '--i': 2 } as CSSProperties}>
-        <CheckpointTrail results={post.results} latest={post.latestCheckpoint} size="md" />
+        <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="md" />
       </div>
 
       {figures.length ? (

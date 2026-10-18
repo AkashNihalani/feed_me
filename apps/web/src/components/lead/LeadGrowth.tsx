@@ -15,8 +15,8 @@ import { Users } from 'lucide-react';
 import SlotText from '@/components/SlotText';
 import { cn } from '@/lib/utils';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
-import { ink, lerp, monotonePath, resample, roundRect, useCanvasScene, type Frame, type Palette } from './leadCanvas';
-import { CrossfadeImage, Delta, Eyebrow, PostTile, Swap, compact, dayLabel, shortDay, signed, timeLabel, topLabel, useHeldNear, usePick, useReveal, useScrub } from './leadKit';
+import { ink, labelFont, labelInk, lerp, monotonePath, resample, roundRect, useCanvasScene, type Frame, type Palette } from './leadCanvas';
+import { CrossfadeImage, DIM, Delta, Eyebrow, MARK, NOTE, PostTile, SOFT, Swap, compact, dayLabel, shortDay, signed, timeLabel, topLabel, useHeldNear, usePick, useReveal, useScrub } from './leadKit';
 import { growthFor, type GrowthDay, type GrowthModel, type LeadFeed, type Moment } from './leadModels';
 
 const INK = [0.86, 0.52, 0.3, 0.18];
@@ -87,8 +87,8 @@ const GrowthHead = memo(function GrowthHead({ model, days }: { model: GrowthMode
         <div className="sm:text-right">
           <SlotText value={signed(model.net)} className="fm-depth-title text-[48px] font-black tabular-nums leading-[0.8] tracking-[-0.055em] text-fg lg:text-[56px] laptop:text-[44px]" />
           {/* two lines on a phone (both always fit), one from sm up; the same height whatever they say */}
-          <div className="mt-2 flex h-[34px] flex-col items-start justify-center gap-1.5 overflow-x-clip whitespace-nowrap sm:h-[16px] sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-            <span className="text-[9px] font-black uppercase tracking-[0.16em] text-fg/44 light:text-fg/54"><Swap value={mostly ? `followers · mostly ${mostly}` : 'followers gained'} /></span>
+          <div className="mt-2 flex h-[38px] flex-col items-start justify-center gap-1.5 overflow-x-clip whitespace-nowrap sm:h-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+            <span className={cn(NOTE, DIM)}><Swap value={mostly ? `followers · mostly ${mostly}` : 'followers gained'} className="align-top" /></span>
             {before ? <Delta up={priorUp}><Swap value={before} /></Delta> : null}
           </div>
         </div>
@@ -109,13 +109,13 @@ const GrowthHead = memo(function GrowthHead({ model, days }: { model: GrowthMode
         </div>
         <div className="mt-2 flex h-[16px] gap-x-5 overflow-x-clip whitespace-nowrap">
           {shown.map((driver, order) => (
-            <span key={driver.id} className="flex shrink-0 items-center gap-1.5 text-[10px] font-black text-fg/76">
+            <span key={driver.id} className="flex shrink-0 items-center gap-1.5 text-[12px] font-black leading-4 text-fg/76">
               <span className="h-2 w-2 rounded-full" style={{ background: `rgb(var(--fm-fg-rgb) / ${INK[order]})` }} />
               {driver.name}
-              <span className="tabular-nums text-fg/44">{signed(driver.net)}</span>
+              <span className={cn('tabular-nums', DIM)}>{signed(driver.net)}</span>
             </span>
           ))}
-          {drivers.length > shown.length ? <span className="shrink-0 text-[10px] font-black text-fg/40">+{drivers.length - shown.length} more</span> : null}
+          {drivers.length > shown.length ? <span className={cn('shrink-0 text-[12px] font-black leading-4', DIM)}>+{drivers.length - shown.length} more</span> : null}
         </div>
       </div>
     </div>
@@ -126,19 +126,19 @@ function Readout({ day, picked, rise }: { day: GrowthDay; picked: boolean; rise:
   return (
     <div className="flex h-[66px] items-start justify-between gap-4 px-4 pt-3.5 sm:px-5">
       <div className="min-w-0">
-        <div className="h-[13px] overflow-x-clip whitespace-nowrap text-[8px] font-black uppercase tracking-[0.18em] text-fg/40 light:text-fg/52">
+        <div className={cn('h-4 overflow-x-clip whitespace-nowrap', NOTE, DIM)}>
           <Swap value={`${picked ? 'Picked' : 'Latest reading'} · ${dayLabel(day.key)}`} />
         </div>
-        <div className="mt-1.5 flex items-baseline gap-2 whitespace-nowrap">
+        <div className="mt-1 flex items-baseline gap-2 whitespace-nowrap">
           <SlotText value={day.followers == null ? '—' : compact(day.followers, 2)} className="fm-depth-title text-[28px] font-black tabular-nums leading-none tracking-[-0.045em] text-fg sm:text-[32px]" />
-          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-fg/40 light:text-fg/52">followers</span>
+          <span className={cn(MARK, DIM)}>followers</span>
         </div>
       </div>
       <div className="shrink-0 text-right">
-        <div className="text-[8px] font-black uppercase tracking-[0.18em] text-fg/40 light:text-fg/52">{day.estimated ? 'Estimated' : 'That day'}</div>
+        <div className={cn('h-4', MARK, 'leading-4', DIM)}>{day.estimated ? 'Estimated' : 'That day'}</div>
         <SlotText
           value={signed(day.delta)}
-          className={cn('fm-depth-title mt-1.5 block text-[28px] font-black tabular-nums leading-none tracking-[-0.045em] sm:text-[32px]', rise ? 'text-[var(--fm-accent-text)]' : 'text-fg')}
+          className={cn('fm-depth-title mt-1 block text-[28px] font-black tabular-nums leading-none tracking-[-0.045em] sm:text-[32px]', rise ? 'text-[var(--fm-accent-text)]' : 'text-fg')}
         />
       </div>
     </div>
@@ -269,8 +269,8 @@ function drawScene({ ctx, width, height, palette }: Frame, scene: Scene, alpha: 
     ctx.stroke();
   }
   ctx.setLineDash([]);
-  ctx.font = font(9);
-  ctx.fillStyle = ink(palette, 0.4);
+  ctx.font = labelFont(palette, 10);
+  ctx.fillStyle = labelInk(palette, 0.4);
   ctx.textAlign = scene.topLeft ? 'left' : 'right';
   ctx.textBaseline = 'top';
   ctx.fillText(scene.top, scene.topLeft ? PAD : width - PAD, curveTop);
@@ -372,15 +372,15 @@ function drawScene({ ctx, width, height, palette }: Frame, scene: Scene, alpha: 
     ctx.arc(x, yy, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = mark.rise ? '#fff' : palette.raised;
-    ctx.font = font(mark.big ? 12 : 11);
+    ctx.font = font(12);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(mark.label, x, yy + 0.5);
   }
 
   // the dates
-  ctx.font = font(8);
-  ctx.fillStyle = ink(palette, 0.4);
+  ctx.font = labelFont(palette, 10);
+  ctx.fillStyle = labelInk(palette, 0.4);
   ctx.textBaseline = 'bottom';
   scene.axis.forEach((tick, step) => {
     const lastTick = step === scene.axis.length - 1;
@@ -457,19 +457,23 @@ const GrowthStage = memo(function GrowthStage({ model, index, picked, onHover, o
 
 function DayPosts({ day }: { day: GrowthDay }) {
   const shown = day.shots.slice(0, 14);
+  // a best needs a few posts to be the best of: one ranked post that came last is not "best top 100%"
+  const ranked = day.shots.filter((shot) => shot.ranked?.latestPercentile != null).length;
+  const best = ranked >= 3 && day.best != null;
+  const note = !day.shots.length ? '' : best ? `best top ${topLabel(day.best)}%` : ranked ? `${ranked} ranked so far` : 'not ranked yet';
   return (
     <div className="mt-4">
       <div className="flex h-[16px] items-baseline justify-between gap-3 overflow-x-clip whitespace-nowrap">
         <div className="min-w-0 truncate text-[12px] font-black tracking-[-0.01em] text-fg">
           <Swap value={day.shots.length ? `${day.shots.length} ${day.shots.length === 1 ? 'post' : 'posts'} went out on ${dayLabel(day.key)}` : `Nothing went out on ${dayLabel(day.key)}`} />
         </div>
-        <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.14em] text-fg">{day.best != null ? `best top ${topLabel(day.best)}%` : ''}</span>
+        <span className={cn('shrink-0', MARK, best ? 'text-fg' : DIM)}>{note}</span>
       </div>
-      <div className="-mx-4 mt-2.5 flex h-[88px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:h-[96px] sm:px-0 [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-4 mt-2.5 flex h-[128px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:h-[136px] sm:px-0 [&::-webkit-scrollbar]:hidden">
         {shown.map((shot) => (
           <PostTile key={shot.key} shot={shot} when={timeLabel(shot.ms)} className="h-full flex-none" />
         ))}
-        {!shown.length ? <span className="grid h-full flex-1 place-items-center rounded-[14px] border border-dashed border-fg/[0.12] text-[10px] font-black uppercase tracking-[0.14em] text-fg/36">A quiet day</span> : null}
+        {!shown.length ? <span className={cn('grid h-full flex-1 place-items-center rounded-[14px] border border-dashed border-fg/[0.12]', MARK, DIM)}>A quiet day</span> : null}
       </div>
     </div>
   );
@@ -493,9 +497,9 @@ const Moments = memo(function Moments({ model, activeIndex, onPick }: { model: G
   const extra = fillers.slice(0, Math.max(0, 4 - model.moments.length));
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-2.5 flex h-[14px] items-center justify-between text-[8px] font-black uppercase tracking-[0.18em] text-fg/44 light:text-fg/54">
-        <span>Spikes</span>
-        <span className="truncate pl-3 text-fg/32 light:text-fg/46">Biggest jumps, and what posted just before</span>
+      <div className="mb-2.5 flex h-4 items-center justify-between gap-3">
+        <span className={cn('shrink-0', MARK, DIM)}>Spikes</span>
+        <span className={cn('truncate', NOTE, DIM)}>The posts just before each move</span>
       </div>
       <div className="grid flex-1 grid-rows-4 gap-2">
         {model.moments.map((moment, order) => (
@@ -512,8 +516,8 @@ const Moments = memo(function Moments({ model, activeIndex, onPick }: { model: G
           <div key={fact.label} className="flex min-h-[78px] items-center gap-3 rounded-[16px] border border-dashed border-fg/[0.1] px-3">
             <div className="grid h-[58px] w-[46px] shrink-0 place-items-center rounded-[10px] bg-fg/[0.04] text-[13px] font-black tabular-nums text-fg/60">{fact.value}</div>
             <div className="min-w-0">
-              <div className="text-[8px] font-black uppercase tracking-[0.16em] text-fg/44 light:text-fg/54">{fact.label}</div>
-              <div className="mt-1 text-[11px] font-bold leading-[1.3] text-fg/56">{fact.note}</div>
+              <div className={cn(MARK, DIM)}>{fact.label}</div>
+              <div className={cn('mt-1', NOTE, SOFT)}>{fact.note}</div>
             </div>
           </div>
         ))}
@@ -536,17 +540,17 @@ function MomentRow({ moment, rank, biggest, active, onPick }: { moment: Moment; 
     >
       <span className="relative block h-[60px] w-[48px] shrink-0 overflow-hidden rounded-[10px] bg-(--fm-media)">
         <CrossfadeImage src={moment.after?.thumb || null} />
-        <span className={cn('absolute left-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[9px] font-black tabular-nums', rank ? 'bg-[var(--fm-accent)] text-white' : 'bg-white text-black')}>{rank ?? '↓'}</span>
+        <span className={cn('absolute left-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[10px] font-black tabular-nums', rank ? 'bg-[var(--fm-accent)] text-white' : 'bg-white text-black')}>{rank ?? '↓'}</span>
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
           <span className={cn('text-[20px] font-black tabular-nums leading-none tracking-[-0.04em]', rank ? 'text-fg' : 'text-fg/80')}>{signed(moment.delta)}</span>
-          <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.12em] text-fg/40 light:text-fg/52">{dayLabel(moment.key)}</span>
+          <span className={cn('shrink-0', NOTE, DIM)}>{dayLabel(moment.key)}</span>
         </span>
-        <span className="mt-1.5 block truncate text-[11px] font-black text-fg/80">
+        <span className="mt-1.5 block truncate text-[12px] font-black leading-4 text-fg/80">
           {rank ? (biggest ? 'Biggest jump' : 'Jump') : 'Biggest drop'}{moment.after ? ` · after @${moment.after.handle}` : ''}
         </span>
-        <span className="mt-0.5 block truncate text-[10px] font-bold text-fg/48 light:text-fg/56">
+        <span className={cn('mt-0.5 block truncate', NOTE, DIM)}>
           {moment.after ? [`${moment.after.format || 'post'}`, percentile != null ? `top ${topLabel(percentile)}%` : 'not ranked yet', when].join(' · ') : 'no post in the two days before'}
         </span>
       </span>

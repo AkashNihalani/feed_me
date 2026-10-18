@@ -25,7 +25,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { memo, useState, type CSSProperties } from 'react';
-import { groupParts, istDay } from '@/lib/feedStream/contract';
+import { dayLabel, groupParts, istDay } from '@/lib/feedStream/contract';
 import { ms } from '@/lib/tempo';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
@@ -66,23 +66,29 @@ function Swap({ value, step = 0, className, style }: { value: string; step?: num
 }
 
 function DayStamp({ day, slot, count, hidden, width }: DayStampProps) {
-  const parts = day ? groupParts(day, 'day', istDay()) : null;
+  const today = istDay();
+  const parts = day ? groupParts(day, 'day', today) : null;
+  const short = day ? dayLabel(day, today) : null;
   const [date = '', month = ''] = parts ? parts.title.split(' ') : [];
+  // Every line stays inside the margin the shut rail leaves clear (`width`). On a narrow one (a 1280 laptop) the lines
+  // go short (the weekday "WED", Today staying whole; the month "Oct"; "39 of 40") and the numeral sizes down to fit
+  const narrow = width < 112;
   // the numeral fills the margin, held to a hero range
-  const numeral = Math.round(Math.min(152, Math.max(80, width * 0.62)));
+  const numeral = Math.round(Math.min(152, narrow ? Math.max(44, (width - 4) / 1.25) : Math.max(80, width * 0.62)));
+  const kicker = (narrow && parts && parts.kicker !== 'Today' ? short?.weekday : parts?.kicker) ?? '';
   return (
     <div
       aria-hidden="true"
       data-shown={parts && !hidden ? '' : undefined}
       className="st-stamp pointer-events-none flex h-full w-full flex-col items-end justify-center text-right"
     >
-      <Swap value={(parts?.kicker ?? '').toUpperCase()} className="text-[13px] font-black leading-none tracking-[0.22em] text-[var(--st-text-2)]" />
+      <Swap value={kicker.toUpperCase()} className={cn('font-black leading-none text-[var(--st-text-2)]', narrow ? 'text-[12px] tracking-[0.14em]' : 'text-[13px] tracking-[0.22em]')} />
       {/* the numeral: a full line box (leading 1) so no glyph ever reaches past it */}
       <Swap value={date} step={1} className="mt-2 font-black leading-none tracking-[-0.06em] tabular-nums text-[var(--st-text)]" style={{ fontSize: numeral }} />
-      <Swap value={month} step={2} className="mt-1 text-[22px] font-bold leading-none tracking-[-0.02em] text-[var(--st-text-2)]" />
+      <Swap value={narrow ? short?.month ?? '' : month} step={2} className="mt-1 text-[22px] font-bold leading-none tracking-[-0.02em] text-[var(--st-text-2)]" />
       <span className="mt-6 block h-[3px] w-9 rounded-full bg-[var(--st-text)]" />
-      <span className={cn('mt-3 block text-[13px] font-medium leading-none tabular-nums text-[var(--st-text-3)]', count > 1 ? null : 'invisible')}>
-        <Swap value={`Post ${slot + 1} of ${count}`} step={3} />
+      <span className={cn('mt-3 block font-medium leading-none tabular-nums text-[var(--st-text-3)]', narrow ? 'text-[12px]' : 'text-[13px]', count > 1 ? null : 'invisible')}>
+        <Swap value={narrow ? `${slot + 1} of ${count}` : `Post ${slot + 1} of ${count}`} step={3} />
       </span>
     </div>
   );

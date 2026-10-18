@@ -100,7 +100,8 @@ const FACE_FOCUS = 'group-focus-visible:ring-2 group-focus-visible:ring-inset gr
 // each circle is a layer of its own (the rail moves them), stacked first over last so a circle coming out of the one
 // before it comes out from behind it
 const ITEM_CLASS = 'group relative flex w-[70px] shrink-0 flex-col items-center gap-1 border-0 bg-transparent p-0 text-inherit outline-none [user-select:none] [will-change:transform] [-webkit-tap-highlight-color:transparent]';
-const LABEL_CLASS = 'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[9px] leading-none';
+// 12px: the small type's floor for a name (the header keeps its height: the rail had 5px spare under the names)
+const LABEL_CLASS = 'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[12px] leading-none';
 // the one you're on in bold ink; the rest in ink too, lighter (never greyed out: 5:1 on the glass at 60%)
 const LABEL_LIT = 'font-black text-fg';
 const LABEL_REST = 'font-semibold text-fg/60';
@@ -494,7 +495,7 @@ export function WhoToken({ feed, feeder, pending = false }: { feed: HeaderFeed |
         {feeder ? (
           <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} loading="eager" className="text-[10px]" />
         ) : feed ? (
-          <span className={cn(TOKEN_PLATE, 'text-[9px] font-black leading-none')}>{feedInitials(feed.title)}</span>
+          <span className={cn(TOKEN_PLATE, 'text-[10px] font-black leading-none')}>{feedInitials(feed.title)}</span>
         ) : pending ? (
           <span className={TOKEN_PLATE} />
         ) : (

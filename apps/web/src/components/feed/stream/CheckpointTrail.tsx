@@ -7,7 +7,9 @@
    of Read's run boxes, crimson at the top, darkening below the
    middle) and carries its number; the latest one wears a light
    inner ring, the way Read marks the run its move is read from.
-   A read still to come is a hollow outline with its label.
+   A read still to come is a hollow outline with its label and when
+   it lands ("in 9d", "soon"); one that was missed (a later read
+   landed, or its day is past) says so with a dash.
 
    Still: nothing here moves. A parent that wants the trail to
    arrive animates its segments ([data-trail-seg]) itself, once
@@ -16,7 +18,7 @@
 
 import { memo, type CSSProperties } from 'react';
 import { UNRANKED_SHADE, shade } from '@/components/read/readShade';
-import { STREAM_CHECKPOINTS, formatTopPercent, type StreamCheckpoint, type StreamResult } from '@/lib/feedStream/contract';
+import { STREAM_CHECKPOINTS, formatTopPercent, istDay, type StreamCheckpoint, type StreamResult } from '@/lib/feedStream/contract';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
@@ -24,10 +26,20 @@ export type CheckpointTrailProps = {
   results: StreamResult[];
   latest: StreamCheckpoint | null;
   size: 'sm' | 'md';
+  postedDay?: string | null; // the IST day the post went up (YYYY-MM-DD): says when a read still to come lands
 };
 
-function CheckpointTrail({ results, latest, size }: CheckpointTrailProps) {
+// how many days after the post each read is taken
+const CHECKPOINT_DAY: Record<StreamCheckpoint, number> = { D1: 1, D3: 3, D7: 7, D21: 21 };
+
+// whole days from one IST day (YYYY-MM-DD) to another
+function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+function CheckpointTrail({ results, latest, size, postedDay = null }: CheckpointTrailProps) {
   const md = size === 'md';
+  const age = postedDay ? daysBetween(postedDay, istDay()) : null;
   const box = cn(
     'flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap leading-none',
     md ? 'h-[30px] gap-1 rounded-[10px] px-2' : 'h-[18px] rounded-[6px] px-1',
@@ -38,19 +50,26 @@ function CheckpointTrail({ results, latest, size }: CheckpointTrailProps) {
         const result = results.find((entry) => entry.checkpoint === checkpoint);
 
         if (!result) {
+          // missed: a later read landed, or its day is past (a day's grace for the read to land); else still to come
+          const later = results.some((entry) => STREAM_CHECKPOINTS.indexOf(entry.checkpoint) > STREAM_CHECKPOINTS.indexOf(checkpoint));
+          const due = age == null || !Number.isFinite(age) ? null : CHECKPOINT_DAY[checkpoint] - age;
+          const missed = later || (due != null && due < -1);
+          const note = missed ? '—' : due == null ? '' : due <= 1 ? 'soon' : `in ${due}d`;
+          const label = missed ? `${checkpoint}, no read` : due == null ? `${checkpoint}, not landed yet` : `${checkpoint}, lands ${due <= 1 ? 'soon' : `in ${due} days`}`;
           return (
             <span
               key={checkpoint}
               role="listitem"
               data-trail-seg=""
-              aria-label={`${checkpoint}, not landed yet`}
+              aria-label={label}
               className={cn(
                 box,
-                'justify-center font-black uppercase tracking-[0.14em] text-[var(--st-text-3)] shadow-[inset_0_0_0_1px_var(--st-line)]',
-                md ? 'text-[10px]' : 'text-[8px]',
+                'text-[var(--st-text-3)] shadow-[inset_0_0_0_1px_var(--st-line)]',
+                md && note ? 'justify-between' : 'justify-center',
               )}
             >
-              {checkpoint}
+              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{checkpoint}</span>
+              {md && note ? <span className="text-[12px] font-semibold tabular-nums">{note}</span> : null}
             </span>
           );
         }

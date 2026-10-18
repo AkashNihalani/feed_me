@@ -21,7 +21,7 @@ export const PROFILE_ROW = {
   gap: 14, // between rows (a phone)
   wideGap: 24, // between the wide layout's bands
   face: 120, // the 108px face in its ring
-  stats: 58, // value · label · note
+  stats: 60, // value · label · note
   title: 48, // the name and its line (a phone)
   titleWide: 56,
   today: 24, // all feeds: "Today · …", with the space above it (a phone)

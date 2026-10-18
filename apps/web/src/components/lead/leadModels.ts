@@ -381,7 +381,8 @@ export function growthModel(scope: Scope, shots: Shot[], lanes: Lane[]): GrowthM
 /* ── Rhythm ────────────────────────────────────────────────────────────── */
 
 export type CalendarDay = { key: string; count: number; today: boolean; inWindow: boolean; shots: Shot[] };
-export const CALENDAR_WEEKS = 13;
+// fourteen Monday-first weeks hold a 90D window whatever weekday it starts on (the calendar draws only the window's)
+export const CALENDAR_WEEKS = 14;
 
 export type LaneRhythm = Lane & {
   count: number;
@@ -393,7 +394,7 @@ export type LaneRhythm = Lane & {
 };
 
 export type RhythmModel = {
-  // the last thirteen Monday-first weeks, oldest first (a cell is null after today); the window is lit in them
+  // the last fourteen Monday-first weeks, oldest first (a cell is null after today); `inWindow` marks the window's days
   weeks: Array<{ key: string; total: number; days: Array<CalendarDay | null> }>;
   most: number;
   count: number;
@@ -420,10 +421,10 @@ export function rhythmModel(scope: Scope, shots: Shot[], lanes: Lane[]): RhythmM
   const laneCount = lanes.map(() => 0);
   const lanePrior = lanes.map(() => 0);
   const times: number[] = [];
-  // the days with a post, from the window's posts (the calendar's thirteen weeks can start inside a 90D window)
+  // the days with a post, from the window's posts
   const active = new Set<string>();
   let prior = 0;
-  // the calendar reaches back thirteen weeks whatever the window, so its size and its scale never change
+  // the calendar's data reaches back fourteen weeks whatever the window, so its scale (`most`) never changes
   const firstMonday = addDays(end, -(istWeekday(istDayStart(end) + 3_600_000) + (CALENDAR_WEEKS - 1) * 7));
   const calendarMs = istDayStart(firstMonday);
   for (const shot of shots) {

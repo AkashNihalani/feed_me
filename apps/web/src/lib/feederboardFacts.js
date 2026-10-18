@@ -13,6 +13,11 @@ function format(value) {
   return value ? `${value[0].toUpperCase()}${value.slice(1)}` : 'Posts';
 }
 
+// "reels", "carousels": a media type counted in a sentence
+function plural(value) {
+  return value && value !== 'unknown' ? `${value}s` : 'posts';
+}
+
 function multiple(value) {
   return `${value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, '')}×`;
 }
@@ -168,7 +173,7 @@ function buildFeederboardFacts(posts, windowDays) {
   if (busiest) {
     const contributors = group(busiest.posts, (post) => handle(post)).sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key));
     const lead = contributors[0];
-    candidates.push(fact('busiest-day', `${scoped[0]?.feedName || 'This feed'} dropped ${busiest.posts.length} posts on ${dayLabel(busiest.posts[0])}.`, lead && lead.posts.length > 1 ? `${lead.key} supplied ${lead.posts.length}.` : `${contributors.length} feeders contributed.`, busiest.posts, 78 + busiest.posts.length));
+    candidates.push(fact('busiest-day', `${scoped[0]?.feedName || 'This feed'} posted ${busiest.posts.length} times on ${dayLabel(busiest.posts[0])}.`, lead && lead.posts.length > 1 ? `${lead.key} supplied ${lead.posts.length}.` : `${contributors.length} feeders contributed.`, busiest.posts, 78 + busiest.posts.length));
   }
 
   const publishingDays = group(scoped, dayKey)
@@ -190,13 +195,13 @@ function buildFeederboardFacts(posts, windowDays) {
   const formatStreak = group(scoped, (post) => post.mediaType).filter((entry) => entry.posts.length >= 3).sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key))[0];
   if (formatStreak) {
     const aboveCount = formatStreak.posts.filter(above).length;
-    if (aboveCount >= 2) candidates.push(fact('format-run', `${format(formatStreak.key)} went ${aboveCount} for ${formatStreak.posts.length} above usual this window.`, `${handle(representative(formatStreak.posts))} supplied the strongest one.`, formatStreak.posts, 72 + aboveCount));
+    if (aboveCount >= 2) candidates.push(fact('format-run', `${aboveCount} of ${formatStreak.posts.length} ${plural(formatStreak.key)} beat their usual this window.`, `${handle(representative(formatStreak.posts))} supplied the strongest one.`, formatStreak.posts, 72 + aboveCount));
   }
 
   const formatTime = group(scoped.filter(above), (post) => `${post.mediaType}:${dayPart(post)}`).filter((entry) => entry.posts.length >= 2).sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key))[0];
   if (formatTime) {
     const [media, time] = formatTime.key.split(':');
-    candidates.push(fact('format-time', `${format(media)} landed above usual ${formatTime.posts.length} times in the ${time}.`, `${handle(representative(formatTime.posts))} appears in that run.`, formatTime.posts, 68 + formatTime.posts.length));
+    candidates.push(fact('format-time', `${format(plural(media))} landed above usual ${formatTime.posts.length} times in the ${time}.`, `${handle(representative(formatTime.posts))} appears in that run.`, formatTime.posts, 68 + formatTime.posts.length));
   }
 
   const totalComments = scoped.reduce((sum, post) => sum + number(post.comments), 0);
@@ -222,7 +227,7 @@ function buildFeederboardFacts(posts, windowDays) {
     .filter((post) => post.commentsMultiple != null && post.likesMultiple != null)
     .sort((a, b) => Math.abs(number(b.commentsMultiple) - number(b.likesMultiple)) - Math.abs(number(a.commentsMultiple) - number(a.likesMultiple)) || String(a.postKey).localeCompare(String(b.postKey)))[0];
   if (imbalance && Math.abs(number(imbalance.commentsMultiple) - number(imbalance.likesMultiple)) >= 0.8) {
-    candidates.push(fact('response-imbalance', `${handle(imbalance)} drew ${multiple(number(imbalance.commentsMultiple))} usual comments while likes held at ${multiple(number(imbalance.likesMultiple))}.`, `${format(imbalance.mediaType)} · ${dayLabel(imbalance)}.`, [imbalance], 67 + Math.abs(number(imbalance.commentsMultiple) - number(imbalance.likesMultiple)) * 8));
+    candidates.push(fact('response-imbalance', `${handle(imbalance)}: ${multiple(number(imbalance.commentsMultiple))} usual comments, ${multiple(number(imbalance.likesMultiple))} usual likes.`, `${format(imbalance.mediaType)} · ${dayLabel(imbalance)}.`, [imbalance], 67 + Math.abs(number(imbalance.commentsMultiple) - number(imbalance.likesMultiple)) * 8));
   }
 
   const quietBreakout = [...scoped].sort((a, b) => postTime(a) - postTime(b));

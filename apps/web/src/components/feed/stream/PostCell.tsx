@@ -233,7 +233,7 @@ function CardChrome({ post, feeder, width, height, standout, dayStart }: {
         </span>
         {height >= TRAIL_MIN ? (
           <span data-st="" className="block" style={{ '--i': 2 } as CSSProperties}>
-            <CheckpointTrail results={post.results} latest={post.latestCheckpoint} size="md" />
+            <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="md" />
           </span>
         ) : null}
         {stats.length ? (

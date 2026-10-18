@@ -84,6 +84,11 @@ export function paletteFor(el: HTMLElement): Palette {
 
 export const ink = (palette: Palette, alpha: number) => `rgba(${palette.fg[0]}, ${palette.fg[1]}, ${palette.fg[2]}, ${alpha})`;
 
+/* a chart's words and numbers: never fainter than the small type's floor (leadKit DIM: 58% ink on the light page, 48%
+   on the dark one), and never set under 10px (labelFont) */
+export const labelInk = (palette: Palette, alpha: number) => ink(palette, Math.max(alpha, palette.fg[0] > 128 ? 0.48 : 0.58));
+export const labelFont = (palette: Palette, size: number) => `800 ${Math.max(10, size)}px ${palette.font}`;
+
 export function rampColor(palette: Palette, topPercent: number) {
   return palette.ramp[Math.max(1, Math.min(100, Math.round(topPercent)))];
 }

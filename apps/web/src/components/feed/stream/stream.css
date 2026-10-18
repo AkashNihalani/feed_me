@@ -26,7 +26,8 @@
   --st-line: rgba(255, 255, 255, 0.09);
   --st-text: #ffffff;
   --st-text-2: rgba(255, 255, 255, 0.65);
-  --st-text-3: rgba(255, 255, 255, 0.45);
+  /* the faintest type: 5:1 on the page (never under the 4.5:1 floor) */
+  --st-text-3: rgba(255, 255, 255, 0.5);
   /* the bottom gradient over media: the colour, and its channels for the eased fall-off (.st-scrim) */
   --st-scrim: rgba(0, 0, 0, 0.88);
   --st-scrim-rgb: 0 0 0;
@@ -46,7 +47,7 @@
 }
 
 /* Light: the app's light page (globals --fm-page), white raised pieces, ink at the same contrast the dark type has on
-   black (hence 0.7 / 0.56, not dark's 0.65 / 0.45). Media keeps its dark scrim and light type in both themes:
+   black (hence 0.7 / 0.6, not dark's 0.65 / 0.5). Media keeps its dark scrim and light type in both themes:
    .st-on-media pins the text tokens wherever type sits over a picture. */
 html.light .fm-stream {
   color-scheme: light;
@@ -56,7 +57,7 @@ html.light .fm-stream {
   --st-line: rgba(11, 11, 15, 0.09);
   --st-text: #0b0b0f;
   --st-text-2: rgba(11, 11, 15, 0.7);
-  --st-text-3: rgba(11, 11, 15, 0.56);
+  --st-text-3: rgba(11, 11, 15, 0.6);
   --st-card: #ffffff;
   --st-card-glow: 0.1;
   --st-card-inset: #f1f4f7;
@@ -70,7 +71,7 @@ html.light .fm-stream {
 .st-on-media {
   --st-text: #ffffff;
   --st-text-2: rgba(255, 255, 255, 0.65);
-  --st-text-3: rgba(255, 255, 255, 0.45);
+  --st-text-3: rgba(255, 255, 255, 0.5);
   --st-line: rgba(255, 255, 255, 0.18);
   /* and so is the app's ink, and the Top % ramp takes its dark steps (globals' light values are for a light page,
      not for a dark scrim) */

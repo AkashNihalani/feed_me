@@ -32,7 +32,7 @@ import LeadGrowth from '@/components/lead/LeadGrowth';
 import LeadRhythm from '@/components/lead/LeadRhythm';
 import LeadTiming from '@/components/lead/LeadTiming';
 import LeadFormats from '@/components/lead/LeadFormats';
-import { CrossfadeImage, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
+import { CrossfadeImage, DIM, MARK, NOTE, SOFT, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
 import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
 import { ascentFromActivity, formatsFor, growthFor, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
 import { announceFirstScreen } from '@/lib/launch';
@@ -688,17 +688,17 @@ const TAPE_CSS = `
 function TapeChip({ event }: { event: TapeEvent }) {
   return (
     <span className="mr-6 flex shrink-0 items-center gap-2 border-r border-fg/[0.07] pr-6 last:border-0">
-      <span className={cn('text-[8px]', event.dir === 'up' ? 'text-[var(--fm-accent-text)]' : event.dir === 'down' ? 'text-fg/30 light:text-fg/44' : 'text-fg/40')}>
+      <span className={cn('text-[8px]', event.dir === 'up' ? 'text-[var(--fm-accent-text)]' : DIM)}>
         {event.dir === 'up' ? '▲' : event.dir === 'down' ? '▼' : '●'}
       </span>
-      <span className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.12em] text-fg/52">{event.text}</span>
+      <span className={cn('whitespace-nowrap', NOTE, SOFT)}>{event.text}</span>
       <span className={cn(
-        'whitespace-nowrap rounded-[8px] px-1.5 py-0.5 text-[9px] font-black tabular-nums tracking-[0.06em]',
+        'whitespace-nowrap rounded-[8px] px-1.5 py-0.5 text-[12px] font-black tabular-nums',
         event.dir === 'up'
           ? 'bg-[var(--fm-accent)] text-white'
           : event.dir === 'down'
-            ? 'border border-fg/8 bg-fg/[0.05] text-fg/44'
-            : 'border border-fg/8 bg-fg/[0.03] text-fg/56',
+            ? cn('border border-fg/8 bg-fg/[0.05]', DIM)
+            : cn('border border-fg/8 bg-fg/[0.03]', SOFT),
       )}>{event.value}</span>
     </span>
   );
@@ -790,12 +790,12 @@ function WireLine({ line, dealId }: { line: string | null; dealId: string }) {
   if (!line) return null;
   return (
     <div data-testid="lead-v3-wire" className="flex items-center gap-3 border-b border-fg/[0.08] bg-(--ld-deep) px-4 py-3 sm:px-5">
-      <span className="shrink-0 rounded-full bg-fg px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-(--fm-page)">Wire</span>
+      <span className={cn('shrink-0 rounded-full bg-fg px-2 py-0.5 text-(--fm-page)', MARK)}>Wire</span>
       {/* the old line and the new share one cell (no stylesheet popped in and out mid-switch); two lines' room
           whatever the line says, so a shorter one doesn't pull the board up */}
       <div className="grid min-w-0 flex-1">
         <AnimatePresence initial={false}>
-          <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="[grid-area:1/1] min-h-[2lh] min-w-0 text-[11px] font-bold leading-snug text-fg/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[12px]">{line}</motion.p>
+          <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="[grid-area:1/1] min-h-[2lh] min-w-0 text-[12px] font-bold leading-snug text-fg/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{line}</motion.p>
         </AnimatePresence>
       </div>
     </div>
@@ -866,7 +866,7 @@ function buildLeaderCards(rows: BoardRow[], feeds: RuntimeFeed[], activeFeedId: 
     collage: scopedPosts.map(({ post }) => post.thumbnailUrl).filter((url): url is string => Boolean(url)).slice(0, 4),
     shift: typicalDelta == null || typicalDelta === 0
       ? null
-      : { up: typicalDelta > 0, text: `${Math.abs(typicalDelta)} ${typicalDelta > 0 ? 'stronger' : 'softer'} than prior ${days}D` },
+      : { up: typicalDelta > 0, text: `from ${percentLabel(priorTypical)}%` },
   });
 
   const now = Date.now();
@@ -888,7 +888,7 @@ function buildLeaderCards(rows: BoardRow[], feeds: RuntimeFeed[], activeFeedId: 
     thumb: strongestWindowPost?.post.thumbnailUrl || null,
     shift: netDelta == null || priorNet == null
       ? null
-      : { up: netDelta >= priorNet, text: `prior window ${signedNumber(priorNet)}` },
+      : { up: netDelta >= priorNet, text: `from ${signedNumber(priorNet)}` },
   });
 
   // the post that climbed furthest between its first read and its latest
@@ -957,25 +957,25 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
               ))}
             </div>
           ) : null}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,4,4,.62)_0%,rgba(4,4,4,.28)_38%,rgba(4,4,4,.9)_82%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,4,4,.7)_0%,rgba(4,4,4,.28)_38%,rgba(4,4,4,.9)_82%)]" />
 
           <div className="relative z-10 flex h-full flex-col justify-between p-3.5 sm:p-4">
             <div className="min-w-0">
-              <div className="truncate text-[9px] font-black uppercase tracking-[0.2em] text-white/80">{card.eyebrow}</div>
-              <div className="mt-1 truncate text-[8px] font-black uppercase tracking-[0.14em] text-white/56">{card.hint}</div>
+              <div className={cn('truncate text-white/80', MARK, 'tracking-[0.18em]')}>{card.eyebrow}</div>
+              <div className={cn('mt-0.5 truncate text-white/78', NOTE)}>{card.hint}</div>
             </div>
             <div className="min-w-0">
               <div className="fm-depth-title ld-on-media flex items-end font-black leading-[0.78] tracking-[-0.05em] text-white">
-                {card.valuePrefix ? <span className="mr-1.5 pb-1 text-[11px] tracking-normal text-white/56">{card.valuePrefix}</span> : null}
+                {card.valuePrefix ? <span className="mr-1.5 pb-1 text-[12px] tracking-normal text-white/78">{card.valuePrefix}</span> : null}
                 <SlotText value={card.value} className="text-[48px] tabular-nums lg:text-[46px] xl:text-[54px] laptop:text-[40px]" />
                 {card.valueSuffix ? <span className="ml-0.5 pb-1 text-[22px] text-[var(--fm-accent-bright)]">{card.valueSuffix}</span> : null}
               </div>
-              <div className={cn('mt-2 h-[12px] truncate text-[8px] font-black uppercase tracking-[0.12em]', card.shift?.up ? 'text-white/72' : 'text-white/44')}>
-                {card.shift ? <><span className={cn('mr-1 text-[7px]', card.shift.up && 'text-[var(--fm-accent)]')}>{card.shift.up ? '▲' : '▼'}</span><Swap value={card.shift.text} /></> : null}
+              <div className={cn('mt-2 h-4 truncate', NOTE, card.shift?.up ? 'text-white/90' : 'text-white/72')}>
+                {card.shift ? <><span className={cn('mr-1 text-[8px] leading-none', card.shift.up && 'text-[var(--fm-accent)]')}>{card.shift.up ? '▲' : '▼'}</span><Swap value={card.shift.text} className="align-top" /></> : null}
               </div>
               <div className="mt-2.5 border-t border-white/[0.1] pt-2.5">
                 <div className="truncate text-[12px] font-black text-white"><Swap value={card.name} /></div>
-                <div className="mt-1 truncate text-[8px] font-black uppercase tracking-[0.12em] text-white/56"><Swap value={card.detail} /></div>
+                <div className={cn('mt-0.5 truncate text-white/72', NOTE)}><Swap value={card.detail} /></div>
               </div>
             </div>
           </div>
@@ -1018,11 +1018,12 @@ function RowThumb({ row }: { row: BoardRow }) {
   );
 }
 
-/* the verdict word, in a box as wide as the longest one: the caption beside it keeps its width as the word rolls */
-function RowVerdict({ row, delay = 0 }: { row: BoardRow; delay?: number }) {
+/* the verdict word, in a box as wide as the longest one: the caption beside it keeps its width as the word rolls.
+   On a phone it heads the numbers' column instead (`end`), over the typical post it judges */
+function RowVerdict({ row, delay = 0, end = false }: { row: BoardRow; delay?: number; end?: boolean }) {
   return (
-    <span className={cn('w-[60px] shrink-0 overflow-hidden text-[8px] font-black uppercase tracking-[0.13em]', row.hot ? 'text-fg' : 'text-fg/34')}>
-      <SlotText value={row.verdict} align="left" delay={delay} />
+    <span className={cn('block w-[60px] shrink-0 overflow-hidden whitespace-nowrap', MARK, 'leading-none', end && 'ml-auto text-right', row.hot ? 'text-fg' : DIM)}>
+      <SlotText value={row.verdict} align={end ? 'right' : 'left'} delay={delay} />
     </span>
   );
 }
@@ -1032,20 +1033,20 @@ function RowVerdict({ row, delay = 0 }: { row: BoardRow; delay?: number }) {
    beside it never re-truncates as it changes. */
 function MoveChip({ move, className }: { move: number | null; className?: string }) {
   if (move == null) {
-    return <span className={cn('inline-flex w-[30px] shrink-0 items-center', className)}><span className="rounded-[7px] bg-fg/[0.07] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-fg/44">new</span></span>;
+    return <span className={cn('inline-flex w-[40px] shrink-0 items-center', className)}><span className={cn('rounded-[7px] bg-fg/[0.07] px-1.5 py-0.5 tracking-[0.08em]', MARK, DIM)}>new</span></span>;
   }
   const up = move > 0;
   const down = move < 0;
   return (
     <span
       className={cn(
-        'inline-flex w-[30px] shrink-0 items-center gap-0.5 text-[9px] font-black tabular-nums leading-none',
-        up ? 'text-fg' : down ? 'text-fg/36' : 'text-fg/28',
+        'inline-flex w-[40px] shrink-0 items-center gap-0.5 text-[12px] font-black tabular-nums leading-none',
+        up ? 'text-fg' : DIM,
         className,
       )}
     >
       {/* a rise: the ▲ carries the accent, the number stays ink (small type is ink) */}
-      <span className={cn('text-[7px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : down ? '▼' : '–'}</span>
+      <span className={cn('text-[8px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : down ? '▼' : '–'}</span>
       {move === 0 ? '' : Math.abs(move)}
     </span>
   );
@@ -1073,9 +1074,9 @@ function MetricLedger({ row }: { row: BoardRow }) {
     <motion.dl variants={OPEN_ITEM} className="order-3 -mx-4 flex min-w-0 overflow-x-auto border-y border-fg/[0.08] px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:order-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-7 lg:overflow-visible lg:border-y-0 lg:border-l lg:border-fg/[0.08] lg:px-0 lg:pl-7 [&::-webkit-scrollbar]:hidden">
       {metrics.map((metric) => (
         <div key={metric.label} className="min-w-[118px] border-r border-fg/[0.08] py-4 pr-4 last:border-r-0 lg:min-w-0 lg:border-r-0 lg:py-0 lg:pr-0">
-          <dt className="truncate text-[8px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44">{metric.label}</dt>
+          <dt className={cn('truncate', MARK, DIM)}>{metric.label}</dt>
           <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
-          <div className="mt-2 text-[8px] font-black tabular-nums text-fg/34">
+          <div className={cn('mt-2 tabular-nums', NOTE, SOFT)}>
             {metric.multiple == null ? 'raw movement' : `${formatMultiple(metric.multiple)} usual`}
           </div>
         </div>
@@ -1111,23 +1112,23 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
 
         <motion.div variants={OPEN_GRID} className="relative grid gap-6 lg:grid-cols-[210px_minmax(240px,.78fr)_minmax(400px,1.3fr)] lg:items-center lg:gap-8">
           <motion.div variants={OPEN_ITEM} className="order-1 min-w-0">
-            <div className="flex items-center justify-between gap-3 text-[8px] font-black uppercase tracking-[0.18em] text-fg/24 light:text-fg/40">
+            <div className={cn('flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1', NOTE, DIM)}>
               <span>
                 {row.postCount} posts · {days}D
                 {row.prevPostCount != null ? (
-                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-fg' : 'text-fg/20 light:text-fg/40')}>
+                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-fg' : DIM)}>
                     {row.postCount === row.prevPostCount ? 'same pace' : row.postCount > row.prevPostCount ? `up from ${row.prevPostCount}` : `down from ${row.prevPostCount}`}
                   </i>
                 ) : null}
               </span>
-              <i className="not-italic text-fg/16 light:text-fg/36">tap outside media to close</i>
+              <i className="not-italic">tap outside media to close</i>
             </div>
 
             <div className="mt-5 flex items-end gap-4 lg:mt-7 lg:block">
               <div className="min-w-0">
-                <div className="text-[8px] font-black uppercase tracking-[0.2em] text-fg/30 light:text-fg/44">Range · best post</div>
+                <div className={cn(MARK, DIM)}>Range · best post</div>
                 <div className="fm-depth-title mt-2 flex items-end font-black leading-[0.68] tracking-[-0.08em] text-fg">
-                  <span className="mr-2 pb-2 text-[11px] tracking-normal text-fg/40">TOP</span>
+                  <span className={cn('mr-2 pb-2 text-[12px] tracking-normal', DIM)}>TOP</span>
                   <SlotText value={percentLabel(row.best)} className="text-[74px] tabular-nums sm:text-[96px] lg:text-[108px]" />
                   {row.best != null ? <span className="ml-1 pb-1 text-[30px] tracking-normal text-[var(--fm-accent-text)] lg:text-[40px]">%</span> : null}
                 </div>
@@ -1135,9 +1136,9 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
               <div className="shrink-0 border-l border-fg/10 pl-4 lg:mt-4 lg:border-l-0 lg:border-t lg:border-fg/10 lg:pl-0 lg:pt-4">
                 <div className="fm-depth-title flex items-baseline text-[30px] font-black leading-none tracking-[-0.05em] text-fg/56">
                   <SlotText value={percentLabel(row.floor)} className="tabular-nums" />
-                  {row.floor != null ? <i className="ml-0.5 not-italic text-[15px] text-fg/30 light:text-fg/44">%</i> : null}
+                  {row.floor != null ? <i className={cn('ml-0.5 not-italic text-[15px]', DIM)}>%</i> : null}
                 </div>
-                <div className="mt-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-fg/30 light:text-fg/44">floor · weakest post</div>
+                <div className={cn('mt-1.5', MARK, DIM)}>floor · weakest post</div>
               </div>
             </div>
           </motion.div>
@@ -1146,8 +1147,8 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
 
           <motion.div variants={OPEN_ITEM} className="order-2 min-w-0 lg:order-3">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-fg/32">Posts behind the number</span>
-              <span className="text-[8px] font-black uppercase tracking-[0.16em] text-fg/20 light:text-fg/40">Best first</span>
+              <span className={cn(MARK, DIM)}>Posts behind the number</span>
+              <span className={cn(MARK, DIM)}>Best first</span>
             </div>
             {row.proofPosts.length ? (
               <>
@@ -1173,7 +1174,7 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
                       <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_30%,rgba(0,0,0,.9))]" />
                       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4">
                         <span className="text-[13px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
-                        <span className="text-[8px] font-black uppercase tracking-[0.12em] text-white/54">{proofMetric(post)}</span>
+                        <span className="text-[12px] font-semibold leading-4 text-white/80">{proofMetric(post)}</span>
                       </div>
                     </a>
                   ))}
@@ -1204,14 +1205,14 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
                       <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_28%,rgba(0,0,0,.9))]" />
                       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4">
                         <span className="text-[13px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
-                        <span className="text-[8px] font-black uppercase tracking-[0.12em] text-white/54">{proofMetric(post)}</span>
+                        <span className="text-[12px] font-semibold leading-4 text-white/80">{proofMetric(post)}</span>
                       </div>
                     </motion.a>
                   ))}
                 </div>
               </>
             ) : (
-              <div className="flex h-[180px] items-center justify-center border-y border-fg/[0.07] text-[9px] font-black uppercase tracking-[0.18em] text-fg/26 light:text-fg/44">No tracked media in this window</div>
+              <div className={cn('flex h-[180px] items-center justify-center border-y border-fg/[0.07]', MARK, DIM)}>No tracked media in this window</div>
             )}
           </motion.div>
         </motion.div>
@@ -1285,8 +1286,9 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
       >
         <RowGround throne={row.rank === 1} strength={strength} />
 
-        {/* phone / tablet: the numbers' column has one width on every row and in every window */}
-        {!wide ? <div className="relative z-10 grid min-h-[76px] grid-cols-[34px_45px_minmax(0,1fr)_112px] items-center gap-2.5 px-3 py-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_112px] sm:gap-3 sm:px-4">
+        {/* phone / tablet: the numbers' column has one width on every row and in every window; the verdict heads it,
+            over the typical post it judges (the subtitle says what the number is) */}
+        {!wide ? <div className="relative z-10 grid min-h-[76px] grid-cols-[34px_45px_minmax(0,1fr)_124px] items-center gap-2 px-3 py-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_124px] sm:gap-3 sm:px-4">
           <RankNumeral rank={row.rank} delay={beat} size="text-[44px]" />
           <RowThumb row={row} />
           <span className="min-w-0">
@@ -1294,35 +1296,31 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
               <span className="truncate text-[15px] font-black leading-none tracking-[-0.02em] text-fg">{row.name}</span>
               <MoveChip move={row.rankMove} />
             </span>
-            <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-[9px] font-black uppercase tracking-[0.11em] text-fg/52">{row.caption}</span>
-              <span className="text-fg/16">·</span>
-              <RowVerdict row={row} delay={beat} />
-            </span>
+            <span className={cn('mt-1.5 block truncate', NOTE, SOFT)}>{row.caption}</span>
           </span>
           <span className="flex min-w-0 items-center justify-end gap-2 text-right">
             <span className="min-w-0">
-              <span className="block text-[8px] font-black uppercase tracking-[0.13em] text-fg/52">Typical</span>
+              <RowVerdict row={row} delay={beat} end />
               <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
                 <NumberBox value={percentLabel(row.typical)} delay={beat} />
                 {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
               </span>
-              <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[11px] font-black tabular-nums leading-none">
+              <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[12px] font-black tabular-nums leading-none">
                 {row.typicalShift != null && row.typicalShift !== 0 ? (
-                  <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-fg' : 'text-fg/40')}>
+                  <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-fg' : DIM)}>
                     <i className={cn('not-italic text-[8px]', row.typicalShift > 0 && 'text-[var(--fm-accent)]')}>{row.typicalShift > 0 ? '▲' : '▼'}</i>
                     <SlotText value={String(Math.abs(row.typicalShift))} delay={beat} />
                   </span>
                 ) : null}
-                <span className="text-[10px] text-fg/48"><NumberBox value={formatMultiple(row.peak)} delay={beat} min="3ch" /> <i className="not-italic text-[8px] uppercase tracking-[0.08em] text-fg/44">peak</i></span>
+                <span className={SOFT}><NumberBox value={formatMultiple(row.peak)} delay={beat} min="3ch" /> <i className={cn('not-italic', MARK, 'tracking-[0.08em]', DIM)}>peak</i></span>
               </span>
             </span>
-            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/48 light:text-fg/58 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg light:text-fg')} />
           </span>
         </div> : null}
 
         {/* desktop */}
-        {wide ? <div className="relative z-10 grid min-h-[80px] grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-center gap-4 px-5 py-3 laptop:min-h-[70px]">
+        {wide ? <div className="relative z-10 grid min-h-[80px] grid-cols-[52px_minmax(150px,1fr)_136px_120px_104px_104px_28px] items-center gap-3 px-4 py-3 laptop:min-h-[70px] xl:grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] xl:gap-4 xl:px-5">
           <RankNumeral rank={row.rank} delay={beat} size="text-[50px] laptop:text-[42px]" />
           <span className="flex min-w-0 items-center gap-3.5">
             <RowThumb row={row} />
@@ -1332,7 +1330,7 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
                 <MoveChip move={row.rankMove} />
               </span>
               <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{row.caption}</span>
+                <span className={cn('truncate', NOTE, SOFT)}>{row.caption}</span>
                 <span className="text-fg/16">·</span>
                 <RowVerdict row={row} delay={beat} />
               </span>
@@ -1343,7 +1341,7 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
               <NumberBox value={percentLabel(row.typical)} delay={beat} />
               {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
             </span>
-            <span className="mt-1.5 block truncate text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">median · {row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>{row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
           </span>
           <span className="min-w-0">
             <span className={cn(
@@ -1353,20 +1351,20 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
               {row.typicalShift != null && row.typicalShift !== 0 ? <i className="not-italic text-[0.45em]">{row.typicalShift > 0 ? '▲' : '▼'}</i> : null}
               <SlotText value={row.typicalShift == null ? '—' : String(Math.abs(row.typicalShift))} delay={beat} />
             </span>
-            <span className="mt-1.5 block truncate text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">
-              {row.typicalShift == null ? 'no prior window' : row.typicalShift === 0 ? `level · prev ${days}D` : `places ${row.typicalShift > 0 ? 'stronger' : 'softer'} · prev ${days}D`}
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>
+              {row.typicalShift == null ? 'no prior window' : row.typicalShift === 0 ? 'level' : `places ${row.typicalShift > 0 ? 'stronger' : 'softer'}`}
             </span>
           </span>
           <span className="min-w-0">
             <span className="block text-[21px] font-black tabular-nums leading-none text-[var(--fm-accent-text)] laptop:text-[18px]"><SlotText value={formatMultiple(row.peak)} delay={beat} /></span>
-            <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">vs its usual</span>
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>vs its usual</span>
           </span>
           <span className="min-w-0">
             <span className="block text-[15px] font-black tabular-nums leading-none text-fg/60"><SlotText value={lastPostedLabel(row.lastPostedAt)} delay={beat} /></span>
-            <span className="mt-1.5 block text-[7px] font-black uppercase tracking-[0.15em] text-fg/24 light:text-fg/40">{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
           </span>
           <span className="grid h-7 w-7 place-items-center rounded-full border border-fg/10 bg-(--ld-chip-well)">
-            <ChevronDown className={cn('h-4 w-4 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
+            <ChevronDown className={cn('h-4 w-4 text-fg/48 light:text-fg/58 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg light:text-fg')} />
           </span>
         </div> : null}
       </button>
@@ -1395,7 +1393,7 @@ function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedP
       >
         <RowGround throne={rank === 1} strength={strength} />
         {/* one height for every place on the ladder, filled or empty (EmptyPlace) */}
-        <div className="relative z-10 grid h-[84px] grid-cols-[34px_45px_minmax(0,1fr)_96px] items-center gap-2.5 px-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_96px] sm:gap-3 sm:px-4">
+        <div className="relative z-10 grid h-[84px] grid-cols-[34px_45px_minmax(0,1fr)_112px] items-center gap-2.5 px-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_112px] sm:gap-3 sm:px-4">
           <RankNumeral rank={rank} delay={beat} size="text-[44px]" />
           <span className="relative block h-[56px] w-[45px] shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)">
             <CrossfadeImage src={post.thumbnailUrl} />
@@ -1403,21 +1401,21 @@ function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedP
           <span className="min-w-0">
             <span className="block truncate text-[15px] font-black capitalize leading-none tracking-[-0.02em] text-fg">{post.mediaType} · {postDateLabel(post)}</span>
             <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-[8px] font-black uppercase tracking-[0.13em] text-fg/34">{(post.latestCheckpoint || '').toUpperCase()} read</span>
+              <span className={cn('truncate', NOTE, SOFT)}>{(post.latestCheckpoint || '').toUpperCase()} read</span>
               <span className="text-fg/16">·</span>
               <ClimbChip post={post} />
             </span>
           </span>
           <span className="flex min-w-0 items-center justify-end gap-2 text-right">
             <span className="min-w-0">
-              <span className="block text-[7px] font-black uppercase tracking-[0.15em] text-fg/26 light:text-fg/44">Placed</span>
+              <span className={cn('block', MARK, 'leading-none', DIM)}>Placed</span>
               <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
                 <NumberBox value={percentLabel(post.latestPercentile)} delay={beat} />
                 {post.latestPercentile == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
               </span>
-              <span className="mt-1 block text-[9px] font-black tabular-nums text-fg/80"><NumberBox value={formatMultiple(post.rankingMultiple)} delay={beat} min="3ch" /> <i className="not-italic text-[7px] uppercase tracking-[0.1em] text-fg/22 light:text-fg/40">usual</i></span>
+              <span className="mt-1 block whitespace-nowrap text-[12px] font-black tabular-nums leading-none text-fg/80"><NumberBox value={formatMultiple(post.rankingMultiple)} delay={beat} min="3ch" /> <i className={cn('not-italic', MARK, 'tracking-[0.08em]', DIM)}>usual</i></span>
             </span>
-            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/36 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg')} />
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/48 light:text-fg/58 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg light:text-fg')} />
           </span>
         </div>
       </button>
@@ -1438,7 +1436,7 @@ function EmptyPlace({ id, rank, note }: { id: string; rank: number; note?: strin
           <span className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none text-[44px] font-black tabular-nums leading-none tracking-[-0.08em] text-fg/[0.055]">{rankLabel(rank)}</span>
         </span>
         <span className="ml-[57px] flex items-center gap-3">
-          {note ? <span className="shrink-0 text-[8px] font-black uppercase tracking-[0.16em] text-fg/34 light:text-fg/46">{note}</span> : null}
+          {note ? <span className={cn('shrink-0', MARK, DIM)}>{note}</span> : null}
           <span className="h-px flex-1 border-t border-dashed border-fg/[0.1]" />
         </span>
       </div>
@@ -1499,21 +1497,21 @@ function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, se
       <div className="flex items-center justify-between gap-4 border-b border-fg/[0.08] px-4 py-4 sm:px-5">
         <div className="min-w-0">
           <h2 id="lead-v3-board-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Feederboard</h2>
-          <p className="mt-1 overflow-hidden whitespace-nowrap text-[10px] font-bold leading-snug text-fg/50"><Swap value={subtitle} className="truncate align-top" /><span className="hidden sm:inline"> · tap a row for the receipts</span></p>
+          <p className={cn('mt-1 overflow-hidden whitespace-nowrap', NOTE, SOFT)}><Swap value={subtitle} className="truncate align-top" /><span className="hidden sm:inline"> · tap a row for the receipts</span></p>
         </div>
-        <div className="shrink-0 text-right text-[9px] font-black uppercase tracking-[0.12em] text-fg/46">
+        <div className={cn('max-w-[9.5rem] shrink-0 text-right sm:max-w-none', MARK, 'tracking-[0.12em] leading-[1.3]', DIM)}>
           TOP % · lower is stronger
         </div>
       </div>
 
       {wide ? (
         feeder ? (
-          <div key="posts" ref={holdArrival} className="lead-swap-in grid grid-cols-[42px_45px_minmax(0,1fr)_96px] items-end gap-3 border-b border-fg/[0.07] px-4 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-fg/24 light:text-fg/40">
+          <div key="posts" ref={holdArrival} className={cn('lead-swap-in grid grid-cols-[42px_45px_minmax(0,1fr)_112px] items-end gap-3 border-b border-fg/[0.07] px-4 py-3', MARK, DIM)}>
             <span>Rank</span><span>Post</span><span /><span className="pr-6 text-right">Placed</span>
           </div>
         ) : (
-          <div key="rows" ref={holdArrival} className="lead-swap-in grid grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] items-end gap-4 border-b border-fg/[0.07] px-5 py-3 text-[7px] font-black uppercase tracking-[0.17em] text-fg/24 light:text-fg/40">
-            <span>Rank</span><span>Feed / feeder</span><span>Typical post</span><span>Shift</span><span>Peak vs usual</span><span>Last posted</span><span />
+          <div key="rows" ref={holdArrival} className={cn('lead-swap-in grid grid-cols-[52px_minmax(150px,1fr)_136px_120px_104px_104px_28px] items-end gap-3 border-b border-fg/[0.07] px-4 py-3 xl:grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] xl:gap-4 xl:px-5', MARK, 'tracking-[0.1em]', DIM)}>
+            <span>Rank</span><span>Feed / feeder</span><span>Typical post</span><span>Shift · prev {days}D</span><span>Peak vs usual</span><span>Last posted</span><span />
           </div>
         )
       ) : null}
@@ -1531,7 +1529,7 @@ function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, se
             ))}
       </Ledger>
       {!feeder && !shown.length ? (
-        <div className="flex h-[140px] items-center justify-center text-[9px] font-black uppercase tracking-[0.18em] text-fg/26 light:text-fg/44">No feeds to rank yet</div>
+        <div className={cn('flex h-[140px] items-center justify-center', MARK, DIM)}>No feeds to rank yet</div>
       ) : null}
     </section>
   );
@@ -1649,7 +1647,7 @@ const FeederboardCards = memo(function FeederboardCards(props: {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h2 id="lead-v3-hall-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Hall of Feed</h2>
-          <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">The posts that carried the feed · {days}D</p>
+          <p className={cn('mt-1', NOTE, SOFT)}>The posts that carried the feed · {days}D</p>
         </div>
         <div className="relative grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[272px]">
           {/* one pill, carried to the picked view (a transform on the compositor) */}
@@ -1678,14 +1676,14 @@ const FeederboardCards = memo(function FeederboardCards(props: {
         </div>
       </div>
 
-      <div className="relative mt-5 min-h-[300px] lg:min-h-[360px]">
+      <div className="relative mt-5 min-h-[300px] xl:min-h-[360px]">
         {/* the cards turn over left to right, a beat a card (components/lead/ledgerMotion) */}
         <Ledger
           ids={ids}
           deal={`${view}|${activeFeedId}|${activeFeeder}|${days}`}
           axis="x"
           startOnDeal
-          className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+          className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0 xl:grid xl:grid-cols-5 xl:overflow-visible xl:pb-0 [&::-webkit-scrollbar]:hidden"
         >
           {view === 'feats' ? facts.map((fact, order) => {
             // the post the card shows (its picture is the run's strongest post), else the strongest of the evidence
@@ -1698,22 +1696,22 @@ const FeederboardCards = memo(function FeederboardCards(props: {
               key={ids[order]}
               data-ledger={ids[order]}
               data-testid={`lead-v3-feederboard-fact-${fact.kind}`}
-              className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
+              className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) sm:w-[236px] sm:min-w-[236px] xl:w-auto xl:min-w-0"
             >
               <CrossfadeImage src={fact.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
-              <span className="absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white">{WIN_LABEL[fact.kind] ?? fact.kind.replace(/-/g, ' ')}</span>
-              {fact.postUrl ? <a href={fact.postUrl} target="_blank" rel="noreferrer" aria-label="Open the post on Instagram" className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/78">Instagram</a> : null}
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_36%,rgba(0,0,0,.7)_58%,rgba(0,0,0,.94)_100%)]" />
+              <span className={cn('absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-white', MARK, 'tracking-[0.1em]')}>{WIN_LABEL[fact.kind] ?? fact.kind.replace(/-/g, ' ')}</span>
+              {fact.postUrl ? <a href={fact.postUrl} target="_blank" rel="noreferrer" aria-label="Open the post on Instagram" className={cn('absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2.5 py-1.5 text-white/85', MARK, 'tracking-[0.1em]')}>Instagram</a> : null}
               <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
                 {/* the post it stands on, in numbers (what the old post mortem showed) */}
                 {hero && hero.latestPercentile != null ? (
                   <div className="mb-1.5 flex items-baseline gap-2 text-white">
                     <span className="fm-depth-title ld-on-media text-[13px] font-black tabular-nums">TOP {percentLabel(hero.latestPercentile)}<i className="not-italic">%</i></span>
-                    {hero.rankingMultiple != null ? <span className="text-[9px] font-black uppercase tracking-[0.1em] text-white/64">{formatMultiple(hero.rankingMultiple)} usual</span> : null}
+                    {hero.rankingMultiple != null ? <span className="text-[12px] font-semibold text-white/78">{formatMultiple(hero.rankingMultiple)} usual</span> : null}
                   </div>
                 ) : null}
-                <div className="text-[20px] font-black leading-[1.02] tracking-[-0.035em] text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden sm:text-[22px]">{fact.headline}</div>
-                <div className="mt-2 text-[10px] font-bold leading-[1.3] text-white/78 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{fact.detail}</div>
+                <div className="pb-[2px] text-[20px] font-black leading-[1.05] tracking-[-0.035em] text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden sm:text-[22px]">{fact.headline}</div>
+                <div className="mt-2 text-[12px] font-semibold leading-4 text-white/78 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{fact.detail}</div>
               </div>
             </article>
             );
@@ -1729,22 +1727,22 @@ const FeederboardCards = memo(function FeederboardCards(props: {
                 onClick={(event) => { if (!post.postUrl) event.preventDefault(); }}
                 data-testid={`lead-v3-feederboard-record-${index + 1}`}
                 aria-label={post.postUrl ? `Open tracked post ranked ${index + 1} by ${display.label}` : `Tracked post ranked ${index + 1} by ${display.label}`}
-                className="group relative block aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] lg:w-auto lg:min-w-0"
+                className="group relative block aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] xl:w-auto xl:min-w-0"
               >
                 <CrossfadeImage src={post.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
                 <span className="absolute left-2.5 top-2.5 grid h-7 min-w-7 place-items-center rounded-md bg-black/62 px-1.5 text-[11px] font-black tabular-nums text-white/88">{index + 1}</span>
-                <span className="absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/72">{activeFeedId === 'all' ? post.feedName : (post.latestCheckpoint || 'latest').toUpperCase()}</span>
+                <span className={cn('absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-white/85', MARK, 'tracking-[0.1em]')}>{activeFeedId === 'all' ? post.feedName : (post.latestCheckpoint || 'latest').toUpperCase()}</span>
                 <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
                   <div className="fm-depth-title ld-on-media text-[28px] font-black tabular-nums leading-[0.9] tracking-[-0.04em] text-white sm:text-[30px]">{display.value}</div>
-                  <div className="mt-2 text-[10px] font-black text-white/78">@{normalizeHandle(post.handle) || post.feedName.toLowerCase()}</div>
-                  <div className="mt-1 text-[10px] leading-[1.3] text-white/54 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{display.label} · {(post.latestCheckpoint || 'latest').toUpperCase()} read</div>
+                  <div className="mt-2 truncate text-[12px] font-black text-white/90">@{normalizeHandle(post.handle) || post.feedName.toLowerCase()}</div>
+                  <div className="mt-1 text-[12px] font-semibold leading-4 text-white/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{display.label} · {(post.latestCheckpoint || 'latest').toUpperCase()} read</div>
                 </div>
               </a>
             );
           })}
         </Ledger>
-        {!cards.length ? <div ref={holdArrival} className="ld-late-in absolute inset-0 flex items-center justify-center text-center text-[10px] font-black uppercase tracking-[0.16em] text-fg/28 light:text-fg/44">{view === 'feats' ? 'No wins in this window yet' : 'No tracked posts in this window'}</div> : null}
+        {!cards.length ? <div ref={holdArrival} className={cn('ld-late-in absolute inset-0 flex items-center justify-center text-center', MARK, DIM)}>{view === 'feats' ? 'No wins in this window yet' : 'No tracked posts in this window'}</div> : null}
       </div>
     </section>
   );
@@ -1763,8 +1761,8 @@ function ClimbChip({ post }: { post: TrackedPost }) {
   if (trajectory == null || Math.abs(trajectory) < 3 || post.firstPercentile == null) return null;
   const up = trajectory > 0;
   return (
-    <span className={cn('inline-flex shrink-0 items-center gap-1 text-[8px] font-black tabular-nums tracking-[0.08em]', up ? 'text-fg' : 'text-fg/36')}>
-      <span className={cn('text-[7px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : '▼'}</span>
+    <span className={cn('inline-flex shrink-0 items-center gap-1 text-[12px] font-black tabular-nums leading-4', up ? 'text-fg' : DIM)}>
+      <span className={cn('text-[8px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : '▼'}</span>
       {percentLabel(post.firstPercentile)}%→{percentLabel(post.latestPercentile)}%
     </span>
   );
@@ -1809,10 +1807,10 @@ function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onColl
             <span className="absolute bottom-3 left-3 text-[12px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
           </a>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-fg/30 light:text-fg/44">
+            <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', NOTE, DIM)}>
               <span>{post.mediaType} · {postDateLabel(post)}</span>
               {post.firstCheckpoint && post.firstPercentile != null ? (
-                <span className="text-fg/44">
+                <span className={SOFT}>
                   {post.firstCheckpoint} top {percentLabel(post.firstPercentile)}% → {(post.latestCheckpoint || '').toUpperCase()} top {percentLabel(post.latestPercentile)}%
                 </span>
               ) : (
@@ -1822,9 +1820,9 @@ function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onColl
             <dl className="mt-4 grid grid-cols-3 gap-4">
               {metrics.map((metric) => (
                 <div key={metric.label} className="min-w-0">
-                  <dt className="truncate text-[8px] font-black uppercase tracking-[0.18em] text-fg/30 light:text-fg/44">{metric.label}</dt>
+                  <dt className={cn('truncate', MARK, DIM)}>{metric.label}</dt>
                   <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
-                  <div className="mt-2 text-[8px] font-black tabular-nums text-fg/34">{metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`}</div>
+                  <div className={cn('mt-2 tabular-nums', NOTE, SOFT)}>{metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`}</div>
                 </div>
               ))}
             </dl>
@@ -1853,7 +1851,7 @@ const LeadersSection = memo(function LeadersSection({ feeds, feedId, feeder, day
     <section aria-labelledby="lead-v3-leaders-title" className="min-w-0 max-w-full">
       <div className="mb-3 px-1">
         <h2 id="lead-v3-leaders-title" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-fg/76"><span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-(--ld-glow-dot)" />Top of the feed</h2>
-        <p className="mt-1 text-[10px] font-bold leading-snug text-fg/50">Best post, typical post and gains · {days}D</p>
+        <p className={cn('mt-1', NOTE, SOFT)}>Best post, typical post and gains · {days}D</p>
       </div>
       <LeadersStrip cards={cards} />
     </section>
@@ -1899,7 +1897,7 @@ function LoadingState() {
     <div className="flex min-h-[55vh] items-center justify-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
         <motion.span className="mx-auto block h-2 w-2 rounded-full bg-fg" animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1, 0.8] }} transition={{ duration: 1.4, repeat: Infinity }} />
-        <div className="mt-4 text-[9px] font-black uppercase tracking-[0.22em] text-fg/30 light:text-fg/44">Building the board</div>
+        <div className={cn('mt-4', MARK, 'tracking-[0.18em]', DIM)}>Building the board</div>
       </motion.div>
     </div>
   );
@@ -2047,8 +2045,8 @@ export default function LeadBoardPage() {
           <div className="flex min-h-[55vh] items-center justify-center px-6 text-center">
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-fg/58">Board unavailable</div>
-              <p className="mt-3 text-[12px] font-bold text-fg/32">{error}</p>
-              <Link href="/" className="mt-6 inline-flex rounded-full border border-fg/12 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-fg/52 hover:text-fg">Return to Feed</Link>
+              <p className={cn('mt-3 text-[12px] font-bold', SOFT)}>{error}</p>
+              <Link href="/" className={cn('mt-6 inline-flex rounded-full border border-fg/12 px-4 py-2.5 hover:text-fg', MARK, SOFT)}>Return to Feed</Link>
             </div>
           </div>
         ) : feeds.length ? (
@@ -2073,7 +2071,7 @@ export default function LeadBoardPage() {
               <section aria-label="Feeding habits" className="bg-(--ld-panel)">
                 <div className="border-t border-fg/[0.09] px-4 pb-0 pt-5 sm:px-6 lg:px-7">
                   <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Feeding habits</h2>
-                  <p className="mt-1 truncate text-[10px] font-bold leading-snug text-fg/50">How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'} · vs the {days}D before</p>
+                  <p className={cn('mt-1', NOTE, SOFT)}>How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'} · vs the {days}D before</p>
                 </div>
                 <LeadRhythm feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
                 <LeadTiming feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
@@ -2085,7 +2083,7 @@ export default function LeadBoardPage() {
           <div className="flex min-h-[55vh] items-center justify-center text-center">
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-fg/58">No feeds to compare yet</div>
-              <p className="mt-3 text-[12px] font-bold text-fg/30 light:text-fg/44">Add feeders in Feed, then this board will fill itself.</p>
+              <p className={cn('mt-3 text-[12px] font-bold', SOFT)}>Add feeders in Feed, then this board will fill itself.</p>
             </div>
           </div>
         )}

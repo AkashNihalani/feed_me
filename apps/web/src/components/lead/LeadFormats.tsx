@@ -17,7 +17,7 @@ import SlotText from '@/components/SlotText';
 import { ms } from '@/lib/tempo';
 import { cn } from '@/lib/utils';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
-import { CrossfadeImage, Delta, Eyebrow, Swap, topLabel, useHeldNear, useReveal } from './leadKit';
+import { CrossfadeImage, DIM, Delta, Eyebrow, MARK, NOTE, Swap, topLabel, useHeldNear, useReveal } from './leadKit';
 import { FORMAT_LABEL, formatsFor, type Format, type FormatRead, type LeadFeed } from './leadModels';
 
 const ICON: Record<Format, typeof Clapperboard> = { reel: Clapperboard, carousel: Layers, image: ImageIcon };
@@ -63,7 +63,7 @@ function LeadFormats(props: Props) {
         </div>
 
         {/* what the bars are shares of */}
-        <div className="lead-rise mt-4 flex h-[14px] items-center gap-4 overflow-x-clip whitespace-nowrap text-[9px] font-black uppercase tracking-[0.14em] text-fg/44 light:text-fg/54" style={{ '--rise': 1 } as CSSProperties}>
+        <div className={cn('lead-rise mt-4 flex h-[14px] items-center gap-4 overflow-x-clip whitespace-nowrap', MARK, DIM)} style={{ '--rise': 1 } as CSSProperties}>
           <span><Swap value={`Posts · ${model.count}`} /></span>
           <span className="text-fg/20">·</span>
           <span><Swap value={`${hitsName} · ${model.hits}`} /></span>
@@ -90,14 +90,14 @@ function ShareBar({ label, share, fill, beat, strong = false, move = null }: { l
   const glide = { transitionDelay: `${beat}ms` } as CSSProperties;
   return (
     <div className="flex h-[20px] items-center gap-3">
-      <span className="w-[54px] shrink-0 truncate text-[8px] font-black uppercase tracking-[0.12em] text-fg/44 light:text-fg/54">{label}</span>
-      <div className="relative mr-[64px] h-[10px] min-w-0 flex-1">
+      <span className={cn('w-[64px] shrink-0 truncate', MARK, 'tracking-[0.1em]', DIM)}>{label}</span>
+      <div className="relative mr-[72px] h-[10px] min-w-0 flex-1">
         <span aria-hidden="true" className="absolute inset-0 rounded-[3px] bg-fg/[0.06]" />
         <span aria-hidden="true" className="lead-glide absolute inset-0 origin-left rounded-[3px]" style={{ ...glide, background: fill, transform: `scaleX(${at.toFixed(4)})` }} />
         <span aria-hidden="true" className="lead-glide pointer-events-none absolute inset-0" style={{ ...glide, transform: `translateX(${(at * 100).toFixed(2)}%)` }}>
           <span className="absolute left-0 top-1/2 flex -translate-y-1/2 items-baseline gap-1 whitespace-nowrap pl-2 leading-none">
             <span className={cn('text-[12px] font-black tabular-nums', strong ? 'text-fg' : 'text-fg/80')}><SlotText value={pct(at)} delay={beat} /></span>
-            {move ? <span className="text-[9px] font-black tabular-nums text-fg/40 light:text-fg/50">{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span> : null}
+            {move ? <span className={cn('text-[12px] font-black tabular-nums', DIM)}>{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span> : null}
           </span>
         </span>
       </div>
@@ -125,7 +125,7 @@ function MenuRow({ read, lead, hitsName, beat }: { read: FormatRead; lead: boole
         <span className="relative block h-[60px] w-[48px] shrink-0 overflow-hidden rounded-[10px] bg-(--fm-media)">
           <span className="absolute inset-0 grid place-items-center"><Icon className="h-4 w-4 text-white/24" /></span>
           <CrossfadeImage src={read.best?.thumb || null} />
-          {bestPercentile != null ? <span className="absolute inset-x-0 bottom-0 whitespace-nowrap bg-[linear-gradient(180deg,transparent,rgba(0,0,0,.8))] px-1 pb-0.5 pt-2 text-center text-[8px] font-black text-white">Top {topLabel(bestPercentile)}%</span> : null}
+          {bestPercentile != null ? <span className="absolute inset-x-0 bottom-0 whitespace-nowrap bg-[linear-gradient(180deg,transparent,rgba(0,0,0,.8))] px-1 pb-0.5 pt-2 text-center text-[10px] font-black text-white">Top {topLabel(bestPercentile)}%</span> : null}
         </span>
         <div className="min-w-0">
           <div className="flex h-[22px] items-center gap-2 overflow-x-clip whitespace-nowrap">
@@ -133,9 +133,9 @@ function MenuRow({ read, lead, hitsName, beat }: { read: FormatRead; lead: boole
               <Icon className={cn('h-3 w-3', INK[read.format] > 0.45 ? 'text-(--ld-panel)' : 'text-fg/80')} />
             </span>
             <span className="text-[15px] font-black tracking-[-0.02em] text-fg">{FORMAT_LABEL[read.format]}</span>
-            {lead ? <span className="rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white">lands best</span> : null}
+            {lead ? <span className={cn('rounded-full bg-[var(--fm-accent)] px-2 py-0.5 text-white', MARK, 'tracking-[0.1em]')}><span className="hidden min-[400px]:inline">lands </span>best</span> : null}
           </div>
-          <div className="mt-1 h-[14px] overflow-x-clip whitespace-nowrap text-[10px] font-bold text-fg/48 light:text-fg/56">
+          <div className={cn('mt-1 h-4 overflow-x-clip whitespace-nowrap', NOTE, DIM)}>
             <Swap value={`${read.count} ${read.count === 1 ? 'post' : 'posts'} · ${read.hits} ${read.hits === 1 ? 'hit' : 'hits'}`} />
           </div>
         </div>
@@ -146,9 +146,9 @@ function MenuRow({ read, lead, hitsName, beat }: { read: FormatRead; lead: boole
         <div className={cn('fm-depth-title text-[26px] font-black tabular-nums leading-none tracking-[-0.04em]', above ? 'text-[var(--fm-accent-text)]' : 'text-fg')}>
           <SlotText value={times == null ? '—' : `${times.toFixed(1)}×`} delay={beat} />
         </div>
-        <div className="mt-1.5 h-[12px] overflow-x-clip whitespace-nowrap text-[9px] font-black uppercase tracking-[0.1em] text-fg/44 light:text-fg/54"><Swap value={verdict} /></div>
+        <div className={cn('mt-1.5 h-[12px] overflow-x-clip whitespace-nowrap', MARK, 'tracking-[0.1em] leading-3', DIM)}><Swap value={verdict} /></div>
         {/* where its usual post ranks, and which way that went against the window before */}
-        <div className="mt-1 flex h-[12px] items-center justify-end gap-1.5 overflow-x-clip whitespace-nowrap text-[10px] font-bold text-fg/48 light:text-fg/56">
+        <div className={cn('mt-1 flex h-4 items-center justify-end gap-1.5 overflow-x-clip whitespace-nowrap', NOTE, DIM)}>
           <Swap value={read.typical == null ? `ER ${formatEr(read.er)}` : `usually top ${topLabel(read.typical)}%`} />
           {typicalMove ? <Delta up={typicalMove > 0}><Swap value={String(Math.abs(typicalMove))} /></Delta> : null}
         </div>
