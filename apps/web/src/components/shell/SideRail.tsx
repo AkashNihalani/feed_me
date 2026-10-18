@@ -94,8 +94,8 @@ const SHUT_AFTER_MS = 200;
 /* ── the tabs ─────────────────────────────────────────────────────────────── */
 
 const TABS: ReadonlyArray<{ key: string; label: string; href: string; icon: LucideIcon }> = [
-  { key: 'feed', label: 'Feed', href: '/', icon: LayoutGrid },
   { key: 'lead', label: 'Lead', href: '/lead', icon: Trophy },
+  { key: 'feed', label: 'Feed', href: '/', icon: LayoutGrid },
   { key: 'read', label: 'Read', href: '/read', icon: BookOpenText },
 ];
 // where a tab stands in the rail, top to bottom

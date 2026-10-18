@@ -11,8 +11,8 @@ import { watchScrollFold, type ScrollFold } from '@/lib/useCompressedOnScroll';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
-  { label: 'Feed', href: '/', icon: LayoutGrid },
   { label: 'Lead', href: '/lead', icon: Trophy },
+  { label: 'Feed', href: '/', icon: LayoutGrid },
   { label: 'Read', href: '/read', icon: BookOpenText },
 ];
 
