@@ -436,16 +436,31 @@ html.light .st-bone {
   opacity: 0;
 }
 
-/* a move into a view: the post's chrome (a card's foot, a tile's number) comes in a piece at a time as it lands */
-.st-cell[data-arriving] [data-st] {
+/* a move into a view: the post's chrome (a card's foot, a tile's number) comes in a piece at a time as it lands. Only
+   the view it lands in: the chrome of the view being left (the *-out layers) holds where it stood and goes with the
+   move (an entrance's hidden start on it would blink it out in the move's first frame). What lies over the picture as
+   a whole (a scrim, a winner's ring) only fades in, from the first piece's moment: drawn at once, it would sit at the
+   new size while the picture is still on its way into it */
+.st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st] {
   animation: st-arrive calc(420ms * var(--fm-tempo)) var(--st-ease, ease-out) backwards;
   animation-delay: calc((var(--st-arrive-at, 260ms) + var(--i, 0) * 45ms) * var(--fm-tempo));
+}
+
+.st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st-fade] {
+  animation: st-fade-in calc(420ms * var(--fm-tempo)) var(--st-ease, ease-out) backwards;
+  animation-delay: calc(var(--st-arrive-at, 260ms) * var(--fm-tempo));
 }
 
 @keyframes st-arrive {
   from {
     opacity: 0;
     transform: translate3d(0, 10px, 0);
+  }
+}
+
+@keyframes st-fade-in {
+  from {
+    opacity: 0;
   }
 }
 
@@ -477,7 +492,8 @@ html.light .st-bone {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-cell[data-arriving] [data-st] {
+  .st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st],
+  .st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st-fade] {
     animation: none;
   }
 

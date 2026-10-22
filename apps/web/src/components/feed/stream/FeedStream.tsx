@@ -204,7 +204,10 @@ const SNAP_CLASS = 'fm-feed-root-scroll';
 /* WebKit (every iOS browser, Safari on a Mac) draws the stretch of page a scroll the page makes itself lands on only
    once its UI process has scrolled there: a jump further than it has drawn around the screen shows the page's black
    for 2–7 frames. So there a move that lands the page elsewhere holds the scroll (the page drawn where it lands by an
-   offset, nothing scrolls) and hands it over when it has landed, under a still copy of the screen (stillFrame) */
+   offset, nothing scrolls) and hands it over when it has landed, under a still copy of the screen (stillFrame).
+   (Measured again on the iPhone simulator, Oct 22: the hand-over blanks the Feed for 3–7 frames whenever it comes,
+   as its pieces set off too, and in steps; only the copy hides it. Safari's bars, which no fixed copy reaches, still
+   show it in their strips) */
 const HOLD_FROM_PX = 240;
 /* The copy stays until the page under it is drawn: its frames coming at their pace again (at most STILL_SETTLE_MS), and
    at least STILL_HOLD_MS after the scroll was handed over, which is how long WebKit can take to draw a phone's screen of
@@ -245,6 +248,15 @@ const FLIGHT_HOLD_MS = 800;
    where it lands, until the frame that carries it is on screen (then the usual moment more), at most this long: a slow
    first frame would otherwise have the header read it as the reader's */
 const JUMP_MARK_MS = 1000;
+/* ...and it is told where the page lands only as the pieces set off (a fold begun in the frame that first draws the new
+   view would arrive already folded: WebKit starts its clock before that heavy frame is shown), for this long: the
+   move's own scroll events are in by then, and the reader's next scroll counts again */
+const JUMP_ANSWER_MS = 240;
+// a phone (or a tablet): the profile stands this far under the open header, its face clear of the glass, in every zoom
+const PROFILE_HEADROOM = 16;
+// a pinch let go waits at most this long for the pictures its warm-up was already decoding (the page held in the
+// fingers meanwhile), so the zoom lands on pictures, not dark tiles that develop on the way
+const PINCH_PICTURE_WAIT_MS = 120;
 /* The pictures a scroll is heading for are fetched before their posts go up (warm.ts, warmAhead): a picture takes a
    round trip to /api/media and another to the store (a second or more on a phone's network), and posts only go up a
    screen ahead, so a fling's pictures used to arrive as it slowed down, popping in one by one where the eye could
@@ -407,6 +419,11 @@ type PieceActions = {
 
 function readingLine(insets: StreamInsets, folded: boolean): number {
   return (folded ? insets.topCompressed : insets.top) + LINE_GAP;
+}
+
+// the space above the profile, under the open header: PROFILE_HEADROOM narrower than a desktop's column
+function profilePad(width: number): number {
+  return width >= 1024 ? contentBox(width).topPad : PROFILE_HEADROOM;
 }
 
 // an element's top in the page, from the offset chain (transforms, like a live pinch, don't count)
@@ -824,6 +841,8 @@ function FeedStream({
   const handoverRef = useRef<{ by: number; mode: ScrollJump } | null>(null);
   const stillRef = useRef<{ remove: () => void; follow: () => void } | null>(null);
   const zoomToRef = useRef<((next: FeedMode, options?: ZoomOptions) => void) | null>(null);
+  // the hand-over a finger put off till the page is at rest (landCarried), for settle, declared before it
+  const landCarriedRef = useRef<() => void>(() => undefined);
   // a zoom waiting for its posts or pictures: its token
   const zoomWaitRef = useRef<object | null>(null);
   const warmingRef = useRef(new Map<string, () => void>());
@@ -933,9 +952,16 @@ function FeedStream({
     holdSnapStyle(true);
   }, []);
 
+  /* where the page is in its own terms: its scroll, plus the offset a held move draws it at (handed over at rest when a
+     finger took the page first: endMove's keepHeld). Everything that maps the scroll onto the layout reads this */
+  const pageY = useCallback(() => window.scrollY + (handoverRef.current?.by ?? 0), []);
+
   /* A move holding the scroll (WebKit), handed over: the offset it was drawn at comes off and the page scrolls by as
      much, so nothing moves on screen. When it lands, under a still copy of the screen; anything that needs the page
-     where it really is (another move, a scroll, a pick) takes it over at once first */
+     where it really is (another move, a scroll, a pick) takes it over at once first. Never under a finger that is
+     moving the page: iOS starts the pan from where the page was, and the scroll made meanwhile is lost (the page
+     back where it was, the posts thousands of px off: a blank page, the place lost). So a finger keeps the offset,
+     and it is handed over once the page is at rest (landCarried) */
   const handOver = useCallback(() => {
     const pending = handoverRef.current;
     if (!pending) return;
@@ -1258,7 +1284,26 @@ function FeedStream({
     const current = layoutRef.current;
     if (!touchingRef.current) scrollingRef.current = false;
     if (!current || !visibleRef.current || touchingRef.current || moveRef.current || pinchRef.current) return;
-    const scrollY = window.scrollY;
+    /* a held scroll a finger kept: handed over now the page is at rest (under a copy). A phone's Day view first comes to
+       rest on a card: that finger's swipe began before the view's snap was back on (it comes on as a move lands, the
+       finger's touch landing it), and iOS snaps a swipe only by the snap it began with, so it coasted to a stop between
+       two cards. It glides onto the nearest, and is handed over once that glide is at rest */
+    const carried = handoverRef.current;
+    if (carried) {
+      const size = metricsRef.current;
+      const top = pageY() - originRef.current;
+      if (current.mode === 'today' && current.mediaWidth == null && size && !dayAtProfile(current, top)) {
+        const rest = dayRestTop(current, dayIndexAt(current, top));
+        if (Math.abs(rest - top) > 2) {
+          holdSnap();
+          scrollingRef.current = true;
+          window.scrollTo({ top: originRef.current + rest - carried.by, behavior: 'smooth' });
+          return;
+        }
+      }
+      landCarriedRef.current();
+    }
+    const scrollY = pageY();
     savedYRef.current = scrollY;
     syncFrame(scrollY);
     // at rest: the other zooms are made ready from here (once the place has moved enough in them)
@@ -1272,7 +1317,7 @@ function FeedStream({
       setActive(at);
       callbacksRef.current.play('snapLock');
     }
-  }, [prewarm, syncFrame]);
+  }, [holdSnap, pageY, prewarm, syncFrame]);
 
   /* ── moves ── */
 
@@ -1409,13 +1454,20 @@ function FeedStream({
     if (root && !pinchRef.current && !pinchAnimRef.current) root.style.willChange = '';
   }, []);
 
-  // a move lands (or is cut short): every piece is itself, the old view's leftovers go, the page is live again (its
-  // snap, though, still held until a finger moves it: holdSnap). A held scroll is handed over first
-  const endMove = useCallback(() => {
+  /* a move lands (or is cut short): every piece is itself, the old view's leftovers go, the page is live again. A held
+     scroll is handed over first (holding the snap: a scroll the page makes), unless a finger is on the page
+     (`keepHeld`: one that has just come down, before the window hears it): then the page goes on where it is drawn, by
+     its offset, and the scroll is handed over once it is at rest (handOver, landCarried). The snap is otherwise left as
+     it is: the move's own scroll held it already, and a finger that has taken the page since (a swipe as the move
+     lands) keeps it, so the swipe still ends on a card instead of coasting to a stop between two */
+  const endMove = useCallback((keepHeld = false) => {
+    const keep = (keepHeld || touchingRef.current) && handoverRef.current !== null;
     // whether this landing hands a held scroll over itself (then where it really landed is read below)
-    const handing = handoverRef.current !== null;
-    handOver();
-    holdSnap();
+    const handing = handoverRef.current !== null && !keep;
+    if (!keep) handOver();
+    // (kept: the header reads the reader's scroll from here on, from where the page really is, keeping its fold; it
+    // was told where the move lands, in the page's own terms, which the real scroll isn't till the hand-over)
+    else markScrollJump('keep', 60, window.scrollY);
     releaseHeight();
     handSlideOff();
     endFlight(flightRef.current);
@@ -1440,7 +1492,7 @@ function FeedStream({
     // it was kept). A zoom straight back reads it only from that hand-over: otherwise the move already noted where it
     // lands, and a scroll the reader made during the glide must not count as 'where the last zoom left it'
     const visible = visibleRef.current;
-    const scrollY = visible ? window.scrollY : savedYRef.current;
+    const scrollY = visible ? pageY() : savedYRef.current;
     if (lastZoomRef.current && handing) lastZoomRef.current.scroll = scrollY;
     if (focalHoldRef.current && handing) focalHoldRef.current.scroll = scrollY;
     dropLayer();
@@ -1449,18 +1501,25 @@ function FeedStream({
       syncFrame(scrollY);
       // the pictures around where it landed, fetched ahead
       lookAhead(scrollY, false);
-      // landed: the other zooms are made ready from here
-      prewarm();
+      // landed: the other zooms are made ready from here (not while a held scroll is still to be handed over)
+      if (!handoverRef.current) prewarm();
     }
-  }, [dropLayer, handOver, handSlideOff, holdSnap, lookAhead, prewarm, releaseHeight, syncFrame]);
+  }, [dropLayer, handOver, handSlideOff, lookAhead, pageY, prewarm, releaseHeight, syncFrame]);
 
-  // a still copy of the screen over the page (stillFrame); a finger or a wheel lets it go at once (after `onTouch`)
+  /* a still copy of the screen over the page (stillFrame). A finger or a wheel lets it go at once (after `onTouch`),
+     even mid-dissolve: a scroll under a copy still on screen moves the page under a picture that stands still, which
+     reads as the page frozen */
   const coverPage = useCallback((root: HTMLElement, onTouch?: () => void) => {
     dropStill();
     const still = stillFrame(root, { zIndex: STILL_Z });
+    let quick = false;
     const letGo = () => {
       onTouch?.();
-      if (stillRef.current === entry) entry.fadeOut(STILL_TOUCH_OUT_MS, 0);
+      if (quick) return;
+      quick = true;
+      unlisten();
+      if (stillRef.current === entry) stillRef.current = null;
+      void still.fadeOut(STILL_TOUCH_OUT_MS, 0);
     };
     const listen = { capture: true, passive: true } as const;
     window.addEventListener('touchstart', letGo, listen);
@@ -1476,10 +1535,10 @@ function FeedStream({
         unlisten();
         still.remove();
       },
+      // (still listening as it goes: a touch mid-dissolve takes it off quickly)
       fadeOut: (ms: number, dy: number, easing?: string, hold?: number) => {
-        unlisten();
         if (stillRef.current === entry) stillRef.current = null;
-        still.fadeOut(ms, dy, easing, hold);
+        void still.fadeOut(ms, dy, easing, hold).then(unlisten);
       },
     };
     stillRef.current = entry;
@@ -1496,15 +1555,16 @@ function FeedStream({
       return;
     }
     let landed = false;
-    const land = () => {
+    // (a finger coming down: the move lands, its scroll kept as drawn, for the page to be handed over at rest)
+    const land = (byFinger: boolean) => {
       if (landed) return;
       landed = true;
-      if (flightRef.current === flight) endMove();
+      if (flightRef.current === flight) endMove(byFinger);
     };
-    const entry = coverPage(root, land);
+    const entry = coverPage(root, () => land(true));
     void entry.shown.then(async () => {
       if (stillRef.current !== entry) return;
-      land();
+      land(false);
       const handed = performance.now();
       await whenDrawn(root, STILL_SETTLE_MS);
       await sleep(Math.max(0, STILL_HOLD_MS - (performance.now() - handed)));
@@ -1512,12 +1572,42 @@ function FeedStream({
     });
   }, [coverPage, endMove]);
 
+  /* A held scroll kept through a finger's scroll (endMove's keepHeld), handed over once the page is at rest: under a
+     still copy, as a landing's (the jump WebKit would show blank), which dissolves once the page is drawn where it now
+     is. The header keeps its fold (the reader has had the page for a while). A finger first: at once, under it */
+  const landCarried = useCallback(() => {
+    const pending = handoverRef.current;
+    if (!pending || moveRef.current) return;
+    pending.mode = 'keep';
+    const root = rootRef.current;
+    if (!root || !visibleRef.current) {
+      handOver();
+      return;
+    }
+    const entry = coverPage(root);
+    void entry.shown.then(async () => {
+      if (stillRef.current !== entry) return;
+      // (a finger since: the page is its again, and the offset stays till the next rest)
+      if (touchingRef.current) {
+        entry.fadeOut(STILL_TOUCH_OUT_MS, 0);
+        return;
+      }
+      handOver();
+      const handed = performance.now();
+      await whenDrawn(root, STILL_SETTLE_MS);
+      await sleep(Math.max(0, STILL_HOLD_MS - (performance.now() - handed)));
+      if (stillRef.current === entry) entry.fadeOut(STILL_OUT_MS, 0, STILL_OUT_EASE);
+    });
+  }, [coverPage, handOver]);
+  useIsoLayoutEffect(() => {
+    landCarriedRef.current = landCarried;
+  });
 
   // where the layer will start for a scope (under the open header, its profile and the gap after it)
   const originFor = useCallback((size: Metrics, forScope: StreamScope) => {
     const root = rootRef.current;
     const column = contentBox(size.width);
-    return (root ? pageTop(root) : 0) + size.insets.top + column.topPad + profileHeaderHeight(column.contentWidth, forScope) + PROFILE_GAP;
+    return (root ? pageTop(root) : 0) + size.insets.top + profilePad(size.width) + profileHeaderHeight(column.contentWidth, forScope) + PROFILE_GAP;
   }, []);
 
   /* A zoom. What is on screen is measured where it is (a live pinch included), the new view laid out and drawn in one
@@ -1630,8 +1720,10 @@ function FeedStream({
     }
     const scroll = clamp(base + top, 0, Math.max(0, base + target.totalHeight - vh));
 
-    /* The posts it opens on must be here, or their cells would arrive as placeholders (a moment at most; a pinch goes
-       at once, the page is in the fingers) */
+    /* The posts it opens on must be here, or their cells would arrive as placeholders (a moment at most). A pinch never
+       waits for days (the page is in the fingers), only, briefly, for the pictures its warm-up has been decoding since
+       the fingers showed which way it was going (PINCH_PICTURE_WAIT_MS), the page held where the fingers left it */
+    const pinched = pinchScale !== 1;
     zoomWaitRef.current = null;
     // into the Day view: the washes of the card it rests on and the next one made ahead (nothing waits for them)
     if (next === 'today' && focalAt >= 0) {
@@ -1640,7 +1732,7 @@ function FeedStream({
         if (item?.day && item.slot >= 0) warmWash(targetPosts.get(item.day)?.[item.slot]?.thumbnailUrl);
       });
     }
-    if (!options.waited && pinchScale === 1 && !reducedMotion()) {
+    if (!options.waited && !reducedMotion()) {
       const [first, last] = itemRange(target, scroll - base, scroll - base + vh);
       const missing = new Set<string>();
       for (let at = first; at < last; at += 1) {
@@ -1649,7 +1741,7 @@ function FeedStream({
       }
       // (a zoom straight back finds its memory again: the screen holds still meanwhile)
       const again = () => zoomToRef.current?.(next, back ? { ...options, waited: true } : { ...options, focal: { zid, postKey: options.focal?.postKey ?? null }, waited: true });
-      if (missing.size) {
+      if (missing.size && !pinched) {
         const token = {};
         zoomWaitRef.current = token;
         prefetchDays(scope2, [...missing]);
@@ -1674,7 +1766,7 @@ function FeedStream({
       if (cold.length) {
         const token = {};
         zoomWaitRef.current = token;
-        void warmPictures(cold, PICTURE_WAIT_MS).then(() => {
+        void warmPictures(cold, pinched ? PINCH_PICTURE_WAIT_MS : PICTURE_WAIT_MS).then(() => {
           if (zoomWaitRef.current !== token) return;
           zoomWaitRef.current = null;
           again();
@@ -1784,18 +1876,15 @@ function FeedStream({
     const by = Math.min(goal, room) - window.scrollY;
     const root = rootRef.current;
     if (root && holdsScroll() && Math.abs(by) >= HOLD_FROM_PX) {
-      // WebKit: drawn where it lands by an offset, nothing scrolled; the scroll handed over once it has landed. The
-      // header answers now, as if the page were already there (the old profile's copy, inside the page, stays put)
+      // WebKit: drawn where it lands by an offset, nothing scrolled; the scroll handed over once it has landed, under a
+      // still copy (landHeld). The old profile's copy, inside the page, stays put
       const copyAt = move.profileCopy ? rectOf(move.profileCopy) : null;
       root.style.top = `${(-by).toFixed(2)}px`;
       if (move.profileCopy && copyAt) pinToScreen(move.profileCopy, copyAt);
       handoverRef.current = { by, mode: jumpMode };
-      markScrollJump(jumpMode, 4000, window.scrollY + by);
       savedYRef.current = window.scrollY + by;
       settledTopRef.current = window.scrollY + by;
     } else {
-      // (with where it lands, as above: the header has it now, whenever the scroll's own event comes)
-      markScrollJump(jumpMode, JUMP_MARK_MS, Math.min(goal, room));
       holdSnap();
       // the old profile's copy stays where it stood on screen
       const copyAt = move.profileCopy ? rectOf(move.profileCopy) : null;
@@ -1804,6 +1893,15 @@ function FeedStream({
       savedYRef.current = window.scrollY;
       settledTopRef.current = window.scrollY;
     }
+    /* The header (and the phone's bottom bar) keep their fold through the frame that draws the new view, the move's own
+       scroll not read as the reader's ('keep'), and are told where the page lands as the pieces set off (answerHeader):
+       a fold begun in this heavy frame would arrive already folded on WebKit (the rail gone in one frame, the glass a
+       frame or two later) */
+    markScrollJump('keep', JUMP_MARK_MS);
+    const landingY = savedYRef.current;
+    // (a held scroll is the move's until it is handed over, as it lands: the header goes on reading where it lands
+    // till then)
+    const answerHeader = () => markScrollJump(jumpMode, handoverRef.current ? 4000 : JUMP_ANSWER_MS, landingY);
     // a zoom: the scroll its page lands at (a zoom straight back taken mid-glide keeps its focal too)
     if (move.kind === 'zoom' && lastZoomRef.current) lastZoomRef.current.scroll = savedYRef.current;
     if (move.kind === 'zoom' && focalHoldRef.current) focalHoldRef.current.scroll = savedYRef.current;
@@ -1812,24 +1910,23 @@ function FeedStream({
     const vh = window.innerHeight;
     const flight = startFlight(holdsScroll() ? FLIGHT_HOLD_MS : 0);
     flightRef.current = flight;
-    // a finger on the screen while the scroll is held: handed over before the finger moves the page (a scroll the page
-    // makes while a finger is moving it can be lost, and the page would jump by all of it)
-    if (handoverRef.current) {
-      const touched = () => handOver();
+    /* A finger (or a wheel) on the page while a zoom or a pick is still moving takes the page at once: the move lands
+       where it was going, and the page is live under the finger (a page still moving mounts nothing new as it scrolls:
+       a swipe began just as a zoom landed scrolled into black). Two fingers are a pinch, which takes the page itself
+       (onPinchStart); a pinch on a trackpad (ctrl + wheel) too. A new order's slide has its own way (below) */
+    if (!move.slide) {
+      const grab = (event: Event) => {
+        if ('touches' in event && (event as TouchEvent).touches.length > 1) return;
+        if ('ctrlKey' in event && (event as WheelEvent).ctrlKey && event.type === 'wheel') return;
+        // (its held scroll kept: handed over under the finger, the scroll would be lost to the pan iOS begins)
+        if (flightRef.current === flight && !flight.ended) endMove(true);
+      };
       const listen = { capture: true, passive: true } as const;
-      window.addEventListener('touchstart', touched, listen);
-      window.addEventListener('wheel', touched, listen);
+      window.addEventListener('touchstart', grab, listen);
+      window.addEventListener('wheel', grab, listen);
       flight.cleanups.push(() => {
-        window.removeEventListener('touchstart', touched, listen);
-        window.removeEventListener('wheel', touched, listen);
-      });
-    } else {
-      // scrolled now: once the frame that carries the scroll (and its event) is on screen, the jump is the header's only
-      // the usual moment more, and the reader's own scroll is read again (not frozen at the landing for JUMP_MARK_MS: a
-      // flick back to the top inside it would leave the header folded there). Not over a newer move's own mark
-      afterDrawn(() => {
-        const current = flightRef.current;
-        if (current === flight || current === null) markScrollJump(jumpMode);
+        window.removeEventListener('touchstart', grab, listen);
+        window.removeEventListener('wheel', grab, listen);
       });
     }
     /* A new order: the copy of the list it was shows over the page (it was drawn unseen), and goes out one side as the
@@ -1989,9 +2086,9 @@ function FeedStream({
     const crossingMove = (move.from === 'today') !== (move.to === 'today');
     const arrivingCells = crossingMove ? Array.from(layer.querySelectorAll<HTMLElement>(':scope > [data-arriving]')) : [];
     const chrome = arrivingCells
-      .flatMap((cell) => Array.from(cell.querySelectorAll<HTMLElement>('[data-st]')))
+      .flatMap((cell) => Array.from(cell.querySelectorAll<HTMLElement>('[data-st], [data-st-fade]')))
       .flatMap((el) => el.getAnimations())
-      .filter((animation) => animation instanceof CSSAnimation && animation.animationName === 'st-arrive');
+      .filter((animation) => animation instanceof CSSAnimation && (animation.animationName === 'st-arrive' || animation.animationName === 'st-fade-in'));
     const arrivingKeys = new Set(arrivingCells.map((cell) => cell.dataset.cell).filter((key): key is string => Boolean(key)));
     /* (WebKit) that entrance is CSS: its clock started in this commit's frame, while the pieces wait for that frame to
        be on screen. It waits with them, from its start, and sets off when they do; a flight that never sets off lets
@@ -2031,6 +2128,7 @@ function FeedStream({
       // starts the next frame once the last is shown)
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (flightRef.current !== flight || flight.ended) return;
+        answerHeader();
         releaseFlight(flight);
         [...chrome, ...glides].forEach((animation) => {
           if (animation.playState === 'paused') animation.play();
@@ -2041,7 +2139,10 @@ function FeedStream({
       }));
     } else {
       under();
-      afterDrawn(dropLayer);
+      afterDrawn(() => {
+        if (flightRef.current === flight || flightRef.current === null) answerHeader();
+        dropLayer();
+      });
     }
     // landed (with a backstop, should an animation never report): its chrome goes on coming in on its own
     const backstop = window.setTimeout(() => {
@@ -2376,12 +2477,12 @@ function FeedStream({
   const stepPost = useCallback((direction: 1 | -1) => {
     const current = layoutRef.current;
     if (!current || current.mode !== 'today' || moveRef.current) return;
-    const top = window.scrollY - originRef.current;
+    const top = pageY() - originRef.current;
     const from = dayAtProfile(current, top) ? -1 : dayIndexAt(current, top);
     const to = clamp(from + direction, -1, current.items.length - 1);
     if (to === from) return;
     scrollPage(to < 0 ? 0 : originRef.current + dayRestTop(current, to), !reducedMotion());
-  }, [scrollPage]);
+  }, [pageY, scrollPage]);
 
   // a highlight in the profile: the Day view, at that post (its day loads first)
   const openHighlight = useCallback((key: string) => {
@@ -2527,7 +2628,8 @@ function FeedStream({
     ));
     const layer = layerRef.current;
     if (layer && !moveRef.current) {
-      const next = pageTop(layer);
+      // (in the page's own terms: a held scroll's offset, kept through a finger's scroll, isn't where the layer lies)
+      const next = pageTop(layer) + (handoverRef.current?.by ?? 0);
       setOrigin((current) => (Math.abs(current - next) < 1 ? current : next));
     }
   }, []);
@@ -2599,15 +2701,17 @@ function FeedStream({
   const markHeight = layout?.cardHeight ?? 0;
   // a stack's cards rest at their top (just under the folded header); a theatre's in the band's middle
   const markAlign: 'start' | 'center' = layout?.deck ? 'start' : 'center';
-  const [marks, setMarks] = useState<{ count: number; top: number; stride: number; height: number; align: 'start' | 'center' } | null>(null);
+  // (a stack's first card rests lower, the profile's order tabs over it: its mark snaps that much sooner)
+  const markLead = layout?.lead ?? 0;
+  const [marks, setMarks] = useState<{ count: number; top: number; stride: number; height: number; align: 'start' | 'center'; lead: number } | null>(null);
   useIsoLayoutEffect(() => {
     if (move) return;
     setMarks((current) => {
       if (!markCount) return null;
-      if (current && current.count === markCount && current.top === markTop && current.stride === markStride && current.height === markHeight && current.align === markAlign) return current;
-      return { count: markCount, top: markTop, stride: markStride, height: markHeight, align: markAlign };
+      if (current && current.count === markCount && current.top === markTop && current.stride === markStride && current.height === markHeight && current.align === markAlign && current.lead === markLead) return current;
+      return { count: markCount, top: markTop, stride: markStride, height: markHeight, align: markAlign, lead: markLead };
     });
-  }, [move, markCount, markTop, markStride, markHeight, markAlign]);
+  }, [move, markCount, markTop, markStride, markHeight, markAlign, markLead]);
   const snapMarks = useMemo(() => {
     if (!marks) return null;
     return Array.from({ length: marks.count }, (_, at) => (
@@ -2617,7 +2721,7 @@ function FeedStream({
         data-still-skip=""
         className="pointer-events-none absolute left-0 w-px"
         // (one swipe, one post: a flick never carries past the next card)
-        style={{ top: marks.top + at * marks.stride, height: marks.height, scrollSnapAlign: marks.align, scrollSnapStop: 'always' }}
+        style={{ top: marks.top + at * marks.stride, height: marks.height, scrollSnapAlign: marks.align, scrollSnapStop: 'always', scrollMarginTop: at === 0 && marks.lead ? marks.lead : undefined }}
       />
     ));
   }, [marks]);
@@ -2632,7 +2736,10 @@ function FeedStream({
     const html = document.documentElement;
     html.style.setProperty('--fm-feed-snap-top', `${snapTop}px`);
     html.style.setProperty('--fm-feed-snap-bottom', `${snapBottom}px`);
-    holdSnap();
+    // held as it comes on (a still page would be snapped at once by WebKit, by its own old place in the list), unless
+    // a finger has taken it and the page is still on the move under it (a swipe begun as a move landed: it keeps the
+    // snap, and ends on a card)
+    if (snapHeldRef.current || !scrollingRef.current) holdSnap();
     applySnap(!pinchRef.current);
     return () => {
       applySnap(false);
@@ -2655,12 +2762,12 @@ function FeedStream({
     if (moveRef.current) return;
     if (!prev || (prev.layout === layout && prev.origin === nowOrigin) || prev.layout.mode !== layout.mode) {
       if (!prev || prev.layout !== layout) {
-        syncFrame(window.scrollY, narrowWindow);
-        lookAhead(window.scrollY, false);
+        syncFrame(pageY(), narrowWindow);
+        lookAhead(pageY(), false);
       }
       return;
     }
-    let scrollY = window.scrollY;
+    let scrollY = pageY();
     const line = readingLine(prev.layout.insets, compressedRef.current);
     const top = scrollY - prev.origin;
     // only when reading the posts (looking at the profile, the page simply grows under it), and never under a scroll in
@@ -2718,7 +2825,7 @@ function FeedStream({
     const at = layout.byPost.get(seek.key);
     if (at == null) return;
     seekRef.current = null;
-    if (dayIndexAt(layout, window.scrollY - originRef.current) === at && !dayAtProfile(layout, window.scrollY - originRef.current)) return;
+    if (dayIndexAt(layout, pageY() - originRef.current) === at && !dayAtProfile(layout, pageY() - originRef.current)) return;
     markScrollJump('place');
     scrollPage(originRef.current + dayRestTop(layout, at), false);
     savedYRef.current = window.scrollY;
@@ -2836,7 +2943,7 @@ function FeedStream({
     const tick = () => {
       frame = 0;
       if (!visibleRef.current || pinchRef.current) return;
-      const scrollY = window.scrollY;
+      const scrollY = pageY();
       savedYRef.current = scrollY;
       syncFrame(scrollY);
       lookAhead(scrollY, true);
@@ -2866,7 +2973,7 @@ function FeedStream({
       }
       settle();
     };
-    const onTouchStart = () => {
+    const onTouchStart = (event: TouchEvent) => {
       touchingRef.current = true;
       scrollingRef.current = true;
       stopPrewarm();
@@ -2874,7 +2981,30 @@ function FeedStream({
       cancelZoomWait();
       // (and a zoom's focal is no longer held: the page is the finger's)
       focalHoldRef.current = null;
+      /* a touch ends on the element it began on, and one let go of while the finger is down (a grid tile's button, gone
+         as a pinch lands in the Day view) is out of the page: its end never reaches the window, and the page would go
+         on thinking a finger is down (nothing settles; a scroll the page makes would let its snap go). Heard there too,
+         once an element, and acted on there only when it has left the page (otherwise the window hears it as ever) */
+      const target = event.target;
+      if (target instanceof Node && !touchTargets.has(target)) {
+        touchTargets.add(target);
+        target.addEventListener('touchend', onTargetEnd, { passive: true });
+        target.addEventListener('touchcancel', onTargetEnd, { passive: true });
+      }
     };
+    const touchTargets = new Set<Node>();
+    const unhearTarget = (target: Node) => {
+      touchTargets.delete(target);
+      target.removeEventListener('touchend', onTargetEnd);
+      target.removeEventListener('touchcancel', onTargetEnd);
+    };
+    function onTargetEnd(event: Event) {
+      const target = event.currentTarget;
+      if (target instanceof Node) unhearTarget(target);
+      // (still in the page: the window hears it too, and acts on it there)
+      if (target instanceof Node && target.isConnected) return;
+      onTouchEnd(event as TouchEvent);
+    }
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) cancelZoomWait();
     };
@@ -2893,6 +3023,7 @@ function FeedStream({
     window.addEventListener('wheel', onWheel, { passive: true });
     return () => {
       window.removeEventListener('wheel', onWheel);
+      touchTargets.forEach(unhearTarget);
       if (frame) window.cancelAnimationFrame(frame);
       if (timer) window.clearTimeout(timer);
       window.removeEventListener('scroll', onScroll);
@@ -2902,19 +3033,19 @@ function FeedStream({
       window.removeEventListener('touchcancel', onTouchEnd);
       window.removeEventListener('wheel', takeSnap);
     };
-  }, [cancelZoomWait, lookAhead, settle, stopPrewarm, syncFrame]);
+  }, [cancelZoomWait, lookAhead, pageY, settle, stopPrewarm, syncFrame]);
 
   // a first frame mounts only the screen; the rest of the window a frame later
   useEffect(() => {
     if (!layout || !metrics || move || !narrowWindow) return undefined;
     const frame = window.requestAnimationFrame(() => {
       if (moveRef.current || !visibleRef.current) return;
-      const view = mountWindow(layout, window.scrollY - originRef.current, metrics.height, false);
+      const view = mountWindow(layout, pageY() - originRef.current, metrics.height, false);
       renderedRef.current = null;
       setWin({ gen, mode: layout.mode, y0: view.y0, y1: view.y1, narrow: false });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [gen, layout, metrics, narrowWindow, move]);
+  }, [gen, layout, metrics, narrowWindow, move, pageY]);
 
   // the keys: G the Day view ⇄ the week, M the month, Esc the week, > and < (or - and +) a zoom out or in, as they
   // step Lead's time range, ↑ ↓ J K a post at a time
@@ -3057,13 +3188,14 @@ function FeedStream({
   const profileHeight = column ? profileHeaderHeight(column.contentWidth, scope) : 0;
   const showProfile = Boolean(column && metrics && (!blank || blank.profile));
   const wideDay = layout?.mode === 'today' && layout.mediaWidth != null;
-  // a phone's Day view snaps to the profile too (at the very top)
-  // (its snap lands the page at the very top: the snap's line is the cards' rest line, under the folded header)
+  const profileTop = metrics ? metrics.insets.top + profilePad(metrics.width) : 0;
+  // a phone's Day view snaps to the profile too, at the very top (the snap's line is the cards' rest line, under the
+  // folded header)
   const profileSnap: CSSProperties = phoneDay && metrics && column && layout
-    ? { scrollSnapAlign: 'start', scrollMarginTop: metrics.insets.top + column.topPad - (layout.deck ? layout.focusY - layout.cardHeight / 2 : metrics.insets.topCompressed) }
+    ? { scrollSnapAlign: 'start', scrollMarginTop: profileTop - (layout.deck ? layout.focusY - layout.cardHeight / 2 : metrics.insets.topCompressed) }
     : {};
   const profileHeader = showProfile && column && metrics ? (
-    <div style={{ paddingTop: metrics.insets.top + column.topPad }}>
+    <div style={{ paddingTop: profileTop }}>
       <div
         key={who}
         ref={attachProfile}
@@ -3240,7 +3372,14 @@ function FeedStream({
     );
     layerHeight = 'auto';
   } else if (drawn && metrics) {
-    content = [...specs.map((spec) => drawSpec(spec, false)), ...gone.map((spec) => drawSpec(spec, true))];
+    /* Every cell in one order that never changes (by its key; they are placed absolutely, the order only stacks pieces
+       that cross mid-move), so React never moves one in the page, only adds and removes. A cell moved in the page is
+       taken out and put back, and its CSS animations start over: in layout order, a leftover the landed view mounted
+       again above the cards a move brought had React move those cards instead, and the chrome still coming in on them
+       blinked out and came in again */
+    const cells: Array<{ spec: Spec; going: boolean }> = [...specs.map((spec) => ({ spec, going: false })), ...gone.map((spec) => ({ spec, going: true }))];
+    cells.sort((a, b) => (a.spec.key < b.spec.key ? -1 : a.spec.key > b.spec.key ? 1 : 0));
+    content = cells.map(({ spec, going }) => drawSpec(spec, going));
     layerHeight = layout ? layout.totalHeight : Math.max(metrics.height - origin, 0);
   }
 

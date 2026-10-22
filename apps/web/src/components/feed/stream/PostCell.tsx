@@ -104,7 +104,7 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
     <>
       {showFace ? (
         <>
-          <span aria-hidden="true" className="st-scrim-top pointer-events-none absolute inset-x-0 top-0 h-[34%]" />
+          <span data-st-fade="" aria-hidden="true" className="st-scrim-top pointer-events-none absolute inset-x-0 top-0 h-[34%]" />
           <span data-st="" className={cn('absolute flex items-center gap-1.5', ON_PICTURE)} style={{ top: inset, left: inset, maxWidth: `calc(100% - ${inset * 2 + (reel ? 18 : 0)}px)` }}>
             <span className="relative h-[18px] w-[18px] shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.24)]">
               <FeederStoryAvatar feeder={feeder} className="text-[8px]" />
@@ -121,7 +121,7 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
       ) : null}
       {measured ? (
         <>
-          <span aria-hidden="true" className={cn('st-scrim-soft pointer-events-none absolute inset-x-0 bottom-0', SCRIM[shape])} />
+          <span data-st-fade="" aria-hidden="true" className={cn('st-scrim-soft pointer-events-none absolute inset-x-0 bottom-0', SCRIM[shape])} />
           <span data-st="" className={cn('pointer-events-none absolute flex flex-col items-start', ON_PICTURE)} style={{ left: inset, bottom: inset - 1 }}>
             {kicker ? <span className="mb-1.5 text-[10px] font-black uppercase leading-none tracking-[0.14em] text-white/75">{kicker}</span> : null}
             {/* past the face's heaviest cut (700): a hairline stroke in its own colour, painted under the fill */}
@@ -207,7 +207,7 @@ function CardChrome({ post, feeder, width, height, standout, dayStart }: {
   return (
     <>
       {/* the post's 4:5 frame ends above the reading, so the scrim only needs to cover the foot */}
-      <span aria-hidden="true" className="st-scrim pointer-events-none absolute inset-x-0 bottom-0 h-[46%] rounded-b-[28px]" />
+      <span data-st-fade="" aria-hidden="true" className="st-scrim pointer-events-none absolute inset-x-0 bottom-0 h-[46%] rounded-b-[28px]" />
       <Marks post={post} standout={standout} dayStart={dayStart} />
       <span className={cn('st-on-media pointer-events-none absolute inset-x-0 bottom-0 flex flex-col p-4 sm:p-5', roomy ? 'gap-3' : 'gap-2.5')} style={{ maxWidth: Math.min(width, 460) }}>
         <span data-st="" className={cn('flex min-w-0 items-center gap-2.5', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
@@ -249,7 +249,7 @@ function CardChrome({ post, feeder, width, height, standout, dayStart }: {
       </span>
       {/* a winner (top 10%): a white ring */}
       {isWinner(post.topPercent) ? (
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[4] rounded-[28px] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]" />
+        <span data-st-fade="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[4] rounded-[28px] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]" />
       ) : null}
     </>
   );

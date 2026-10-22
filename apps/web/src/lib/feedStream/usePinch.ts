@@ -115,15 +115,30 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
       if (event.cancelable) event.preventDefault();
       live(spread(event.touches).distance / startDistance);
     };
+    /* A finger's end goes to the element it came down on. One the page lets go of mid-pinch (a placeholder becoming its
+       post as its day loads) is out of the page: its end never reaches the stream, and the pinch would never end (its
+       blocking touchmove left on, every later pinch ignored). So the fingers' own elements are listened to as well */
+    let fingers: EventTarget[] = [];
     const detach = () => {
       el.removeEventListener('touchmove', onMove);
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
+      fingers.forEach((finger) => {
+        finger.removeEventListener('touchend', onFingerEnd);
+        finger.removeEventListener('touchcancel', onFingerEnd);
+      });
+      fingers = [];
     };
     function onTouchEnd(event: TouchEvent) {
       if (event.touches.length >= 2) return;
       detach();
       if (source === 'touch') end();
+    }
+    // (heard on a finger's element: only when it has left the page, else the stream hears it as ever)
+    function onFingerEnd(event: Event) {
+      const finger = event.currentTarget;
+      if (finger instanceof Node && finger.isConnected) return;
+      onTouchEnd(event as TouchEvent);
     }
     // where a finger last came down on the stream (a gesture with no place of its own begins there: below)
     let lastTouch = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -133,7 +148,16 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
     const block = (event: TouchEvent) => {
       if (event.cancelable) event.preventDefault();
     };
-    const unblock = () => window.removeEventListener('touchmove', block);
+    /* ...and never past the gesture: its end is heard on the stream, which may never hear it (a finger that came down
+       off it; one whose element the page let go of), so fewer than two fingers anywhere lets the page scroll again */
+    const unblockOnLift = (event: TouchEvent) => {
+      if (event.touches.length < 2) unblock();
+    };
+    function unblock() {
+      window.removeEventListener('touchmove', block);
+      window.removeEventListener('touchend', unblockOnLift, true);
+      window.removeEventListener('touchcancel', unblockOnLift, true);
+    }
     const onStart = (event: TouchEvent) => {
       const first = event.touches[0];
       if (first) lastTouch = { x: first.clientX, y: first.clientY };
@@ -146,6 +170,11 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
       el.addEventListener('touchmove', onMove, { passive: false });
       el.addEventListener('touchend', onTouchEnd, { passive: true });
       el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+      fingers = Array.from(event.touches, (touch) => touch.target).filter((finger, at, all) => all.indexOf(finger) === at);
+      fingers.forEach((finger) => {
+        finger.addEventListener('touchend', onFingerEnd, { passive: true });
+        finger.addEventListener('touchcancel', onFingerEnd, { passive: true });
+      });
     };
 
     /* Safari's gesture events: on iOS they shadow the touch pinch (only kept from zooming the page); on a Mac
@@ -164,6 +193,8 @@ export function usePinch(targetRef: RefObject<HTMLElement | null>, handlers: Pin
       }
       placeless = true;
       window.addEventListener('touchmove', block, { passive: false });
+      window.addEventListener('touchend', unblockOnLift, { capture: true, passive: true });
+      window.addEventListener('touchcancel', unblockOnLift, { capture: true, passive: true });
     };
     const onGestureChange = (event: GestureLike) => {
       event.preventDefault();

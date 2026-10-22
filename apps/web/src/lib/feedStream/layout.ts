@@ -68,6 +68,9 @@ export const REEL_GAP = 12;
 // under it (on a short screen it is narrower, still 4:5)
 export const DECK_TOP_GAP = 8;
 const DECK_NEXT_MIN = 56;
+// ...but the first rests lower: the profile's order tabs (profileHeaderSize's PROFILE_ROW.tabs) showing over it, just
+// under the folded header (in a browser they're under the nav at the top: the first swipe brings them in)
+const DECK_TABS = 44;
 // the stack's page runs on this much of the screen past its last card's rest
 const DECK_END = 0.3;
 // wider than a phone (and narrower than a row), a card is a "theatre": 9:16 in the middle, never wider than this
@@ -169,6 +172,8 @@ export type StreamLayout = {
   mediaWidth: number | null;
   // a phone's Day view: its cards rest at their top, just under the folded header (the snap's line: FeedStream)
   deck: boolean;
+  // ...and its first this much lower, the profile's order tabs over it (0 in any other view)
+  lead: number;
   // lookups (built once per layout)
   bottoms: Float64Array; // running max of y + h, so "first item reaching below y" is a binary search
   byPost: ReadonlyMap<string, number>;
@@ -301,7 +306,7 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
       media = Math.max(MEDIA_MIN, room);
       frame = media / POST_ASPECT;
     }
-    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP };
+    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, lead: 0 };
   }
   /* A phone's card is the post's 4:5 frame edge to edge (the screen's width: carousels and pictures whole, never a
      reel's tall crop), its reading over the frame's foot; it rests just under the folded header, the rest of the
@@ -311,11 +316,14 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
     const restTop = bandTop + DECK_TOP_GAP;
     const cardHeight = Math.max(0, Math.min(width / POST_ASPECT, bandBottom - restTop - REEL_GAP - DECK_NEXT_MIN));
     const cardWidth = Math.min(width, cardHeight * POST_ASPECT);
-    return { focusY: restTop + cardHeight / 2, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP };
+    // the first card down by the tabs' row less the air over it already (under the profile and under the header), never
+    // so far that it runs into the dock's line
+    const lead = Math.max(0, Math.min(DECK_TABS + PROFILE_GAP + DAY_TOP - DECK_TOP_GAP, bandBottom - restTop - cardHeight - REEL_GAP));
+    return { focusY: restTop + cardHeight / 2, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead };
   }
   const cardHeight = band - REEL_INSET * 2;
   const cardWidth = Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);
-  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP };
+  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead: 0 };
 }
 
 export function computeLayout({ mode, days, posts, width, height, insets, wide }: LayoutInput): StreamLayout {
@@ -458,6 +466,7 @@ export function computeLayout({ mode, days, posts, width, height, insets, wide }
     cardHeight: day.cardHeight,
     mediaWidth: mode === 'today' ? day.mediaWidth : null,
     deck: mode === 'today' && width < THEATRE_FROM && !wide,
+    lead: mode === 'today' && width < THEATRE_FROM && !wide ? day.lead : 0,
     bottoms,
     byPost,
     byKey,
@@ -530,16 +539,17 @@ export function daysInRange(layout: StreamLayout, y0: number, y1: number): strin
    Positions here are the layer's: `top` is the page's scroll less the layer's origin. A post rests when its centre is
    on the focus line. */
 
-// where the layer's scroll (top) is when post i rests on the focus line
+// where the layer's scroll (top) is when post i rests on the focus line (a phone's first, `lead` above it)
 export function dayRestTop(layout: StreamLayout, index: number): number {
-  const item = layout.items[clamp(index, 0, Math.max(0, layout.items.length - 1))];
-  return item ? item.y + item.h / 2 - layout.focusY : 0;
+  const at = clamp(index, 0, Math.max(0, layout.items.length - 1));
+  const item = layout.items[at];
+  return item ? item.y + item.h / 2 - layout.focusY - (at === 0 ? layout.lead : 0) : 0;
 }
 
 // the post nearest the focus line at a scroll (0 when the profile is in view: see dayAtProfile)
 export function dayIndexAt(layout: StreamLayout, top: number): number {
   if (!layout.items.length || layout.stride <= 0) return 0;
-  return clamp(Math.round((top - dayRestTop(layout, 0)) / layout.stride), 0, layout.items.length - 1);
+  return clamp(Math.round((top - dayRestTop(layout, 0) - layout.lead) / layout.stride), 0, layout.items.length - 1);
 }
 
 // the profile, not a post, is what is in view: the scroll is more than half a post above the first post's rest

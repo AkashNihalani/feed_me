@@ -37,8 +37,9 @@ export type StillFrame = {
   follow: () => void;
   remove: () => void;
   // goes by dissolving (drifting `dy` as it does) instead of at once; with `hold`, it drifts from the start but stays
-  // whole that long before it dissolves (the page under it still being drawn)
-  fadeOut: (ms: number, dy?: number, easing?: string, hold?: number) => void;
+  // whole that long before it dissolves (the page under it still being drawn). Asked again mid-dissolve (a finger:
+  // quicker), it goes on from where it stands. Resolves once it is gone
+  fadeOut: (ms: number, dy?: number, easing?: string, hold?: number) => Promise<void>;
 };
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -244,6 +245,7 @@ export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, int
   const follow = () => undefined;
 
   let removed = false;
+  let fade: Animation | null = null;
   const shown = (async () => {
     // painted while all but invisible; shown by opacity alone (nothing to paint again), trusted a frame on
     await nextFrame();
@@ -266,17 +268,26 @@ export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, int
     },
     fadeOut: (ms, dy = 0, easing = 'cubic-bezier(0.2, 0.7, 0.2, 1)', hold = 0) => {
       removed = true;
+      // a dissolve already under way: on from where it stands (its opacity and drift as drawn now), not from whole
+      const now = fade ? getComputedStyle(cover) : null;
+      const from = { opacity: now ? Number(now.opacity) : 1, transform: now && now.transform !== 'none' ? now.transform : 'none' };
+      fade?.cancel();
       const total = ms + hold;
       // with a hold, the drift is one even ease from the start, and only the opacity waits
       const frames: Keyframe[] = hold > 0
         ? [
-            { offset: 0, opacity: 1, transform: 'none', easing: 'cubic-bezier(0.25, 0.5, 0.35, 1)' },
-            { offset: hold / total, opacity: 1, easing },
+            { offset: 0, opacity: from.opacity, transform: from.transform, easing: 'cubic-bezier(0.25, 0.5, 0.35, 1)' },
+            { offset: hold / total, opacity: from.opacity, easing },
             { offset: 1, opacity: 0, transform: `translate3d(0px, ${dy}px, 0px)` },
           ]
-        : [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translate3d(0px, ${dy}px, 0px)` }];
-      const fade = cover.animate(frames, hold > 0 ? { duration: total, fill: 'forwards' } : { duration: ms, easing, fill: 'forwards' });
-      void fade.finished.catch(() => undefined).then(() => cover.remove());
+        : [{ opacity: from.opacity, transform: from.transform }, { opacity: 0, transform: `translate3d(0px, ${dy}px, 0px)` }];
+      const mine = cover.animate(frames, hold > 0 ? { duration: total, fill: 'forwards' } : { duration: ms, easing, fill: 'forwards' });
+      fade = mine;
+      return mine.finished.then(
+        () => cover.remove(),
+        // (cancelled: a quicker one took over, and removes it)
+        () => undefined,
+      );
     },
   };
 }
