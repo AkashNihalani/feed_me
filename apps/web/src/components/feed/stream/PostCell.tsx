@@ -41,13 +41,13 @@
    open over it (stream.css, data-head-open).
    ───────────────────────────────────────────────────────────── */
 
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, type TouchEvent as ReactTouchEvent } from 'react';
 import { ArrowUpRight, ChevronUp, Pause, Play } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import CheckpointTrail from '@/components/feed/stream/CheckpointTrail';
 import { PostPicture, Wash } from '@/components/feed/stream/PostMedia';
 import PostReading, { formatRate, postedLabel } from '@/components/feed/stream/PostReading';
-import { press } from '@/components/feed/stream/press';
+import { pageGliding, press } from '@/components/feed/stream/press';
 import TopBadge from '@/components/feed/stream/TopBadge';
 import {
   formatCount,
@@ -437,8 +437,10 @@ export type PostCellProps = {
   // a phone's card: how far its reading is lifted to clear the folded nav (a short screen)
   clear?: number;
   onOpenTile: (post: StreamPost, element: HTMLElement) => void;
-  // a tap on a card that isn't the one in view: the page brings it there
-  onFocusCard: (post: StreamPost) => void;
+  // a tap on a card that isn't the one in view: the page brings it there. True when it is the one in view now after
+  // all (the page rests on it, the scroll that brought it there not settled yet; or the tap stopped the page gliding
+  // onto it: gliding), and the tap goes on to read it
+  onFocusCard: (post: StreamPost, gliding?: boolean) => boolean;
 };
 
 const KIND: Record<StreamMediaType, string> = { reel: 'Reel', carousel: 'Carousel', image: 'Post', unknown: 'Post' };
@@ -464,6 +466,11 @@ const SHADE_LEAD = 84;
 const READ_TOP_ROOM = 56;
 // a reading open as its card clears is shut once it has slid off (stream.css, .st-read in [data-clean])
 const CLEAR_MS = ms(420);
+// a touch that stops the page gliding is a tap if it lifts this near where it landed, this soon; a click that follows
+// it anyway, this soon, is that tap's
+const TAP_SLOP_PX = 10;
+const TAP_MAX_MS = 500;
+const TAP_CLICK_MS = 600;
 
 type Clean = 'watch' | 'slides' | null;
 
@@ -618,12 +625,11 @@ function PostCell({
       if (cellRef.current?.dataset.clean) setRead(false, false);
     }, CLEAR_MS);
   }, [setRead]);
+  // a tap taken as its touch lifted, the page gliding (onCardTouchEnd, below): the card it lands on is the one in view
+  const glideTapRef = useRef(false);
   const togglePlay = useCallback(() => {
     // (a card peeking under the one in view is brought into view first)
-    if (!active) {
-      onFocusCard(post);
-      return;
-    }
+    if (!active && !onFocusCard(post, glideTapRef.current)) return;
     setClean((current) => (current === 'watch' ? rest : 'watch'));
     shutWhenClear();
   }, [active, onFocusCard, post, shutWhenClear, rest, setClean]);
@@ -668,17 +674,49 @@ function PostCell({
   }, [card]);
 
   // a tap anywhere on a card: the one in view reads (or, cleared, comes back); another is brought into view
-  const onCardTap = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if ((event.target as Element).closest('a, button')) return;
-    if (!active) {
-      onFocusCard(post);
-      return;
-    }
+  const tap = () => {
+    if (!active && !onFocusCard(post, glideTapRef.current)) return;
     if (clean) {
       setClean(null);
       return;
     }
     setRead(!openRef.current);
+  };
+  // (a click after a tap its touch already gave the card is that tap's)
+  const tookTapRef = useRef(Number.NEGATIVE_INFINITY);
+  const onCardTap = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('a, button')) return;
+    if (performance.now() - tookTapRef.current < TAP_CLICK_MS) return;
+    tap();
+  };
+  /* A touch that lands while the page is still gliding (the swipe that brought the card, its snap settling) is spent by
+     iOS on stopping the glide, and no click follows: lifted where it landed, it is the card's tap here (a control's
+     too: its ▶, its arrow). Links are left to the browser */
+  const touchRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onCardTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    touchRef.current = event.touches.length === 1 && touch && pageGliding() ? { x: touch.clientX, y: touch.clientY, t: performance.now() } : null;
+  };
+  const onCardTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const start = touchRef.current;
+    touchRef.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch || event.touches.length) return;
+    if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > TAP_SLOP_PX || performance.now() - start.t > TAP_MAX_MS) return;
+    const control = (event.target as Element).closest('a, button');
+    if (control instanceof HTMLAnchorElement) return;
+    event.preventDefault();
+    tookTapRef.current = performance.now();
+    glideTapRef.current = true;
+    try {
+      if (control instanceof HTMLButtonElement) control.click();
+      else tap();
+    } finally {
+      glideTapRef.current = false;
+    }
+  };
+  const onCardTouchCancel = () => {
+    touchRef.current = null;
   };
 
   return (
@@ -700,6 +738,9 @@ function PostCell({
       // a card reads from anywhere on it (its chrome lets touches through, to a carousel's slides); the keys have its
       // arrow button
       onClick={card ? onCardTap : undefined}
+      onTouchStart={card ? onCardTouchStart : undefined}
+      onTouchEnd={card ? onCardTouchEnd : undefined}
+      onTouchCancel={card ? onCardTouchCancel : undefined}
       className={cn('st-cell', row && 'st-row', card && 'cursor-pointer rounded-[28px] [-webkit-tap-highlight-color:transparent]')}
       style={style}
     >
@@ -774,10 +815,7 @@ function PostCell({
             playOff={playOff}
             watching={clean === 'watch'}
             onToggle={() => {
-              if (!active) {
-                onFocusCard(post);
-                return;
-              }
+              if (!active && !onFocusCard(post, glideTapRef.current)) return;
               // (a cleared card: its reading back, then open)
               if (clean) setClean(null);
               setRead(!openRef.current);

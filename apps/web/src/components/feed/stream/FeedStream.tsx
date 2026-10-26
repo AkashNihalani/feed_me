@@ -51,6 +51,7 @@ import MoreTile from '@/components/feed/stream/MoreTile';
 import PostCell, { PlaceholderCell, type CellShape } from '@/components/feed/stream/PostCell';
 import ProfileHeader from '@/components/feed/stream/ProfileHeader';
 import SectionHeader from '@/components/feed/stream/SectionHeader';
+import { notePageScroll } from '@/components/feed/stream/press';
 import { profileHeaderHeight } from '@/components/feed/stream/profileHeaderSize';
 import {
   groupLabel,
@@ -405,8 +406,9 @@ type ZoomOptions = { focal?: { zid?: string | null; postKey?: string | null }; p
 
 type PieceActions = {
   openTile: (post: StreamPost, element: HTMLElement) => void;
-  // a card that isn't the one in view (a tap on it): the Day view glides it there
-  focusCard: (post: StreamPost) => void;
+  // a card that isn't the one in view (a tap on it): the Day view glides it there (true: it is the one in view now,
+  // and the tap goes on to read it: PostCell's onFocusCard)
+  focusCard: (post: StreamPost, gliding?: boolean) => boolean;
   // a MONTH group's "+N": WEEK, at that month's newest week
   openWeek: (day: string, element: HTMLElement) => void;
   manage: () => void;
@@ -2566,10 +2568,23 @@ function FeedStream({
       const zid = element.closest<HTMLElement>('[data-zid]')?.dataset.zid ?? null;
       zoomTo('today', { focal: { zid, postKey: post.key }, point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } });
     },
-    focusCard: (post) => {
+    focusCard: (post, gliding = false) => {
       const current = layoutRef.current;
       const at = current?.mode === 'today' ? current.byPost.get(post.key) : undefined;
-      if (current && at != null && !moveRef.current) scrollPage(originRef.current + dayRestTop(current, at), !reducedMotion());
+      if (!current || at == null || moveRef.current) return false;
+      const top = pageY() - originRef.current;
+      const rest = dayRestTop(current, at);
+      /* the card the page rests on before the scroll that brought it there has settled (the one in view is only told
+         then: settle), or the one a tap stopped the page gliding onto, short of its rest: it is the one in view now,
+         and the tap goes on to read it (it glides on to its rest if it stopped short). A card peeking either side
+         glides into view */
+      const inView = gliding || (!dayAtProfile(current, top) && dayIndexAt(current, top) === at);
+      if (inView && activeRef.current !== at) {
+        activeRef.current = at;
+        setActive(at);
+      }
+      if (Math.abs(rest - top) > 2) scrollPage(originRef.current + rest, !reducedMotion());
+      return inView;
     },
     openWeek: (day, element) => {
       const rect = element.getBoundingClientRect();
@@ -2580,7 +2595,7 @@ function FeedStream({
     read: () => callbacksRef.current.onRead(),
     orderChange: (next) => callbacksRef.current.onOrderChange(next),
     openHighlight,
-  }), [openHighlight, scrollPage, zoomTo]);
+  }), [openHighlight, pageY, scrollPage, zoomTo]);
 
   /* ── effects (layout effects run in this order, before paint, and again whenever the tab comes back) ── */
 
@@ -3046,6 +3061,8 @@ function FeedStream({
       holdSnapStyle(false);
     };
     const onScroll = () => {
+      // (a touch that lands now lands on a page still gliding: press.ts)
+      notePageScroll();
       if (touchingRef.current) takeSnap();
       // the page on the move: the other zooms are made ready once it rests again (settle)
       stopPrewarm();

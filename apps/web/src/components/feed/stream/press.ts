@@ -50,3 +50,19 @@ export const press = {
   onPointerCancel: onPointerEnd,
   onPointerLeave: onPointerEnd,
 };
+
+/* ── a tap while the page glides ──
+   A touch that lands while the page is still gliding (a swipe's momentum, its snap settling onto a card, a glide the
+   page makes itself) is spent by iOS on stopping it: no click follows, so a card seemed to want a second tap. The Feed
+   notes every scroll here (notePageScroll); a touch that begins within a moment of one (pageGliding) is a card's to
+   take as its tap when it lifts where it landed (PostCell) */
+const GLIDE_GAP_MS = 90;
+let scrolledAt = Number.NEGATIVE_INFINITY;
+
+export function notePageScroll() {
+  scrolledAt = performance.now();
+}
+
+export function pageGliding(): boolean {
+  return performance.now() - scrolledAt < GLIDE_GAP_MS;
+}
