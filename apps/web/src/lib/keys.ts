@@ -1,4 +1,4 @@
-/* The app's single-key shortcuts (the rail's F · L · R, Feed's zooms, the time range's < and >) stand down while you
+/* The app's single-key shortcuts (the rail's F · L · R, Feed's zooms, the time range's ← and →) stand down while you
    type, and under a dialog that is on screen. */
 
 // a dialog actually on screen (Read keeps its closed sheet in the page, marked modal, under an aria-hidden layer)

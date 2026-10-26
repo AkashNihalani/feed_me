@@ -9,7 +9,7 @@
    between the Feed's views never draws its picture again. A post
    with no picture to show (the stream says so) wears its drawn
    cover straight away (PostCover), and so does one whose picture
-   fails. In a 4:5 frame (framed: the Day view, the sheet) a picture
+   fails. In a 4:5 frame (framed: the Day view) a picture
    fills it edge to edge (a square loses a sliver at its sides, as
    on a profile grid); only a landscape one shows whole, over the
    wash behind it. Under a picture is never the page's light
@@ -21,17 +21,15 @@
    won't start within 2.5s, or errors, is let go and the poster
    drifts once instead), or a carousel's slides (a horizontal snap,
    its own scroller, dots, arrows on a wide screen, a video slide
-   playing while it is the one showing). Nothing plays or drifts
-   under reduced motion, with Save-Data on, or while the page is
-   hidden.
+   playing while it is the one showing). A card's preview, and a
+   card's video slide, plays only when asked (play: its ▶), and
+   says how far it has got and when it won't play. Nothing plays or drifts by itself under
+   reduced motion or with Save-Data on, and nothing while the page
+   is hidden.
 
    Wash is the picture shrunk to a few dozen pixels (softened and
    saturated there) and stretched over its box: the backdrop of a
    framed post, blurred for free.
-
-   PostMedia (the sheet's) is a box with the wash behind a 4:5
-   frame holding the picture. Whatever goes over a picture (a
-   number, a ▶) is the piece's.
    ───────────────────────────────────────────────────────────── */
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type RefObject, type SyntheticEvent } from 'react';
@@ -39,7 +37,7 @@ import { useReducedMotion } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import PostCover from '@/components/feed/stream/PostCover';
 import { claimPlayback } from '@/components/feed/stream/playback';
-import { mediaProxyUrl, type PostMediaProps, type StreamPost, type StreamSlide } from '@/lib/feedStream/contract';
+import { mediaProxyUrl, type StreamPost, type StreamSlide } from '@/lib/feedStream/contract';
 import { BEAT_EASE_CSS } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
@@ -199,18 +197,32 @@ export const Wash = memo(function Wash({ src, className }: { src: string | null;
 
 /* ── a reel's preview over its poster ──────────────────────────────────────── */
 
-function usePreview(post: StreamPost, active: boolean, posterRef: RefObject<HTMLImageElement | null>) {
+type PreviewHooks = {
+  // a card's ▶: the preview plays only while this is on (undefined: whenever the post is the one in view)
+  play?: boolean;
+  // how far through the clip it is (0…1), as it plays
+  onProgress?: (fraction: number) => void;
+  // it won't play (it errored, or never started)
+  onFail?: () => void;
+};
+
+function usePreview(post: StreamPost, active: boolean, posterRef: RefObject<HTMLImageElement | null>, { play, onProgress, onFail }: PreviewHooks = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const reduce = Boolean(useReducedMotion());
   const hidden = useSyncExternalStore(subscribeVisibility, readHidden, readHiddenOnServer);
-  // still: no preview and no drift
-  const still = reduce || hidden || saveData();
+  // still: no preview and no drift (a preview asked for by its ▶ plays whatever the quiet signals say)
+  const still = hidden || (play === undefined && (reduce || saveData()));
   // the preview that wouldn't play while the card was in view, forgotten once it leaves (the next visit tries again)
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (!active && failedUrl !== null) setFailedUrl(null);
   const failed = failedUrl !== null && failedUrl === post.previewUrl;
-  const playing = active && !still && !failed && Boolean(post.previewUrl) && post.slides.length <= 1;
-  const drifting = active && !still && failed;
+  const wanted = active && play !== false;
+  const playing = wanted && !still && !failed && Boolean(post.previewUrl) && post.slides.length <= 1;
+  const drifting = wanted && !still && failed;
+  const hooksRef = useRef({ onProgress, onFail });
+  useIsoLayoutEffect(() => {
+    hooksRef.current = { onProgress, onFail };
+  });
 
   // claim playback, start it, reveal it on its first frame, or give up and let the poster drift
   useEffect(() => {
@@ -228,6 +240,10 @@ function usePreview(post: StreamPost, active: boolean, posterRef: RefObject<HTML
       if (settled || disposed) return;
       stopTrying();
       setFailedUrl(url);
+      hooksRef.current.onFail?.();
+    };
+    const onTime = () => {
+      if (video.duration > 0) hooksRef.current.onProgress?.(video.currentTime / video.duration);
     };
     const reveal = () => {
       if (!disposed) video.dataset.playing = '';
@@ -245,6 +261,7 @@ function usePreview(post: StreamPost, active: boolean, posterRef: RefObject<HTML
     });
     video.addEventListener('playing', onPlaying);
     video.addEventListener('error', fail);
+    video.addEventListener('timeupdate', onTime);
     timer = window.setTimeout(fail, START_TIMEOUT_MS);
     // muted before play(), as a property and an attribute: what iOS checks to let it play inline on its own
     video.muted = true;
@@ -258,6 +275,7 @@ function usePreview(post: StreamPost, active: boolean, posterRef: RefObject<HTML
       stopTrying();
       video.removeEventListener('playing', onPlaying);
       video.removeEventListener('error', fail);
+      video.removeEventListener('timeupdate', onTime);
       release();
       video.pause();
       delete video.dataset.playing;
@@ -288,35 +306,41 @@ function usePreview(post: StreamPost, active: boolean, posterRef: RefObject<HTML
 
 /* ── a carousel's slides over its poster ──────────────────────────────────── */
 
-// a modal on screen right now (a closed one may still be in the page, at no size or fully faded)
-function openDialog() {
-  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')).some((dialog) => {
-    const box = dialog.getBoundingClientRect();
-    return box.width > 0 && box.height > 0 && getComputedStyle(dialog).opacity !== '0';
-  });
-}
-
 const SLIDE_ARROW = 'pointer-events-auto absolute top-1/2 z-[3] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-0 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] outline-none transition-[opacity,transform] duration-200 ease-out hover:bg-black/65 focus-visible:opacity-100 active:scale-[0.92] group-hover/slides:opacity-100';
 
-function SlideVideo({ post, slide, playing }: { post: StreamPost; slide: StreamSlide; playing: boolean }) {
+// a video slide plays while it is the one showing (a card's, only on its ▶), telling the card how far through it is
+function SlideVideo({ post, slide, playing, hooks }: { post: StreamPost; slide: StreamSlide; playing: boolean; hooks?: RefObject<PreviewHooks> }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     const video = ref.current;
     if (!video || !playing) return undefined;
+    let disposed = false;
+    const fail = () => {
+      if (!disposed) hooks?.current.onFail?.();
+    };
+    const onTime = () => {
+      if (video.duration > 0) hooks?.current.onProgress?.(video.currentTime / video.duration);
+    };
     const release = claimPlayback(`${post.key}:${slide.role}`, () => video.pause());
+    video.addEventListener('error', fail);
+    video.addEventListener('timeupdate', onTime);
     video.muted = true;
     video.defaultMuted = true;
     const attempt = video.play();
-    if (attempt) attempt.catch(() => undefined);
+    if (attempt) attempt.catch(fail);
     return () => {
+      disposed = true;
+      video.removeEventListener('error', fail);
+      video.removeEventListener('timeupdate', onTime);
       release();
       video.pause();
     };
-  }, [playing, post.key, slide.role]);
+  }, [playing, post.key, slide.role, hooks]);
   return (
     <video
       ref={ref}
-      src={mediaProxyUrl(post.key, slide.role)}
+      // (from a moment in: iOS draws that frame for a slide that hasn't played, where it drew nothing)
+      src={`${mediaProxyUrl(post.key, slide.role)}#t=0.001`}
       className="absolute inset-0 block h-full w-full object-cover"
       muted
       playsInline
@@ -350,13 +374,29 @@ function SlideImage({ post, slide, eager }: { post: StreamPost; slide: StreamSli
   );
 }
 
-function Slides({ post, controls }: { post: StreamPost; controls: 'top' | 'bottom' }) {
+function Slides({ post, controls, play, hooks, onSlide }: {
+  post: StreamPost;
+  controls: 'top' | 'bottom';
+  // a card's ▶: its video slides play only while it is on (undefined: whichever is showing plays)
+  play?: boolean;
+  hooks?: RefObject<PreviewHooks>;
+  onSlide?: (index: number) => void;
+}) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const reduce = Boolean(useReducedMotion());
   const hidden = useSyncExternalStore(subscribeVisibility, readHidden, readHiddenOnServer);
   const slides = post.slides;
   const count = slides.length;
   const [at, setAt] = useState(0);
+
+  // the card hears which slide is showing (it clears its reading off the slides past the first)
+  const onSlideRef = useRef(onSlide);
+  useIsoLayoutEffect(() => {
+    onSlideRef.current = onSlide;
+  });
+  useEffect(() => {
+    onSlideRef.current?.(at);
+  }, [at]);
 
   // where the track rests: the slide nearest its scroll, read once a frame while it moves
   useEffect(() => {
@@ -385,23 +425,7 @@ function Slides({ post, controls }: { post: StreamPost; controls: 'top' | 'botto
     track.scrollTo({ left: next * track.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
   }, [count, reduce]);
 
-  // the arrow keys flip slides while this carousel is the one in view
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
-      // a sheet open over the feed has the keys: a carousel behind it stays put (closed sheets stay in the page, unseen)
-      if (!trackRef.current?.closest('[role="dialog"]') && openDialog()) return;
-      if (event.key === 'ArrowRight') go(at + 1);
-      else if (event.key === 'ArrowLeft') go(at - 1);
-      else return;
-      event.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [at, go]);
-
+  // (the arrow keys are the Feed's, ← → its zoom and ↑ ↓ its posts: slides flip by their own arrows, a swipe, the trackpad)
   const step = (delta: number) => (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     go(at + delta);
@@ -412,21 +436,24 @@ function Slides({ post, controls }: { post: StreamPost; controls: 'top' | 'botto
       <div ref={trackRef} className="st-slides absolute inset-0 flex">
         {slides.map((slide, index) => (
           <div key={slide.role} className="st-slide relative h-full w-full shrink-0 overflow-hidden">
-            {slide.video ? <SlideVideo post={post} slide={slide} playing={!hidden && index === at} /> : <SlideImage post={post} slide={slide} eager={index < 2} />}
+            {slide.video ? <SlideVideo post={post} slide={slide} playing={!hidden && index === at && play !== false} hooks={hooks} /> : <SlideImage post={post} slide={slide} eager={index < 2} />}
           </div>
         ))}
       </div>
       {/* where you are: a dot per slide (the current one a short bar), and the count; they come up as the post comes to
-          rest in the Day view, so they fade in (st-controls-in) */}
-      <span aria-hidden="true" className={cn('st-controls-in pointer-events-none absolute inset-x-0 z-[2] flex justify-center gap-[5px]', controls === 'top' ? 'top-3' : 'bottom-3')}>
-        {slides.map((slide, index) => (
-          <span
-            key={slide.role}
-            className={cn('h-[6px] w-[6px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.45)] transition-[transform,opacity] duration-300 ease-out', index === at ? 'scale-[1.35] opacity-100' : 'opacity-50')}
-          />
-        ))}
+          rest in the Day view, so they fade in (st-controls-in). A card's dots wait for a swipe (st-card-dots), and a card's
+          count and dots step clear of the header while it is open over them (st-slide-count, st-slide-dots) */}
+      <span className={controls === 'top' ? 'st-card-dots' : 'contents'}>
+        <span aria-hidden="true" className={cn('st-slide-dots st-controls-in pointer-events-none absolute inset-x-0 z-[2] flex justify-center gap-[5px]', controls === 'top' ? 'top-3' : 'bottom-3')}>
+          {slides.map((slide, index) => (
+            <span
+              key={slide.role}
+              className={cn('h-[6px] w-[6px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.45)] transition-[transform,opacity] duration-300 ease-out', index === at ? 'scale-[1.35] opacity-100' : 'opacity-50')}
+            />
+          ))}
+        </span>
       </span>
-      <span className={cn('st-controls-in pointer-events-none absolute right-3 z-[2] rounded-full bg-black/55 px-2 py-1 text-[11px] font-bold leading-none tabular-nums text-white', controls === 'top' ? 'top-3' : 'bottom-3')}>
+      <span className={cn('st-slide-count st-controls-in pointer-events-none absolute right-3 z-[2] rounded-full bg-black/55 px-2 py-1 text-[11px] font-bold leading-none tabular-nums text-white', controls === 'top' ? 'top-3' : 'bottom-3')}>
         {at + 1}/{count}
       </span>
       <span className="pointer-events-none absolute inset-0 z-[3] hidden [@media(hover:hover)]:block">
@@ -449,7 +476,7 @@ function Slides({ post, controls }: { post: StreamPost; controls: 'top' | 'botto
 
 export type PostPictureProps = {
   post: StreamPost;
-  // the post in view (the Day view's, an open sheet's): its preview plays, its slides swipe
+  // the post in view (the Day view's): its preview plays, its slides swipe
   active: boolean;
   // the first screen: fetch at high priority
   eager: boolean;
@@ -457,13 +484,24 @@ export type PostPictureProps = {
   framed: boolean;
   // where a carousel's dots sit
   controls?: 'top' | 'bottom';
+  // a card's: its preview plays only while play is on (its ▶), how far it has got, and when it won't play
+  play?: boolean;
+  onProgress?: (fraction: number) => void;
+  onPlayFail?: () => void;
+  // a carousel's slide showing, as it changes
+  onSlide?: (index: number) => void;
   className?: string;
 };
 
-export const PostPicture = memo(function PostPicture({ post, active, eager, framed, controls = 'bottom', className }: PostPictureProps) {
+export const PostPicture = memo(function PostPicture({ post, active, eager, framed, controls = 'bottom', play, onProgress, onPlayFail, onSlide, className }: PostPictureProps) {
   const posterRef = useRef<HTMLImageElement | null>(null);
   const picture = usePoster(post);
-  const { videoRef, playing } = usePreview(post, active, posterRef);
+  const { videoRef, playing } = usePreview(post, active, posterRef, { play, onProgress, onFail: onPlayFail });
+  // the same hooks for a carousel's video slides
+  const slideHooks = useRef<PreviewHooks>({});
+  useIsoLayoutEffect(() => {
+    slideHooks.current = { onProgress, onFail: onPlayFail };
+  });
   const setPoster = useCallback((img: HTMLImageElement | null) => {
     posterRef.current = img;
     markIfLoaded(img);
@@ -497,23 +535,7 @@ export const PostPicture = memo(function PostPicture({ post, active, eager, fram
       {playing ? (
         <video ref={videoRef} className={VIDEO} muted playsInline loop preload="auto" disablePictureInPicture disableRemotePlayback aria-hidden="true" tabIndex={-1} />
       ) : null}
-      {slides ? <Slides post={post} controls={controls} /> : null}
+      {slides ? <Slides post={post} controls={controls} play={play} hooks={slideHooks} onSlide={onSlide} /> : null}
     </span>
   );
 });
-
-/* ── the sheet's media: the wash behind a 4:5 frame holding the picture ──── */
-
-function PostMedia({ post, active = false, eager = false, controls = 'bottom', fit = 'cover', className }: PostMediaProps) {
-  const framed = fit !== 'cover';
-  return (
-    <span data-post-media="" className={cn('relative block h-full w-full overflow-hidden rounded-[inherit] bg-[var(--st-media)]', className)}>
-      {framed ? <Wash src={post.thumbnailUrl} /> : null}
-      <span className={cn('absolute block overflow-hidden', fit === 'portrait' ? 'inset-x-0 top-0 aspect-[4/5]' : 'inset-0')}>
-        <PostPicture post={post} active={active} eager={eager} framed={framed} controls={controls} />
-      </span>
-    </span>
-  );
-}
-
-export default memo(PostMedia);

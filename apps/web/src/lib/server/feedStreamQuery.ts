@@ -726,6 +726,42 @@ async function storedSlides(sb: AdminClient, keys: string[], nowMs: number): Pro
   return slides;
 }
 
+// a carousel nothing has stored yet (capture runs days behind, and previews have no R2 to sign with): its own
+// Instagram links while they last, which /api/media fetches for carousel_NN from carousel_urls[NN-1]. A link past
+// its expiry is left out, the rest keep their place's role; a video slide is an .mp4 link
+type SlideSourceRow = { post_key?: string | null; carousel_urls: unknown };
+
+async function liveSlides(sb: AdminClient, keys: string[], nowMs: number): Promise<Map<string, StreamSlide[]>> {
+  const slides = new Map<string, StreamSlide[]>();
+  const unique = Array.from(new Set(keys.filter(Boolean)));
+  if (!unique.length) return slides;
+  try {
+    const rows = await fetchRowsByPostKeys<SlideSourceRow>(unique, (chunkKeys, start, end) => sb
+      .from('posts')
+      .select('post_key,carousel_urls')
+      .in('post_key', chunkKeys)
+      .order('post_key', { ascending: true })
+      .range(start, end));
+    rows.forEach((sources, key) => {
+      const urls = Array.isArray(sources[0]?.carousel_urls) ? sources[0].carousel_urls as unknown[] : [];
+      const list = urls.flatMap((url, index) => {
+        if (typeof url !== 'string' || !instagramLinkLive(url.trim(), nowMs)) return [];
+        let path = '';
+        try {
+          path = new URL(url.trim()).pathname.toLowerCase();
+        } catch {
+          return [];
+        }
+        return [{ role: `carousel_${String(index + 1).padStart(2, '0')}`, video: path.endsWith('.mp4') }];
+      });
+      if (list.length > 1) slides.set(key, list);
+    });
+  } catch (error) {
+    console.warn('[feed stream] slide links read failed, carousels show their cover:', streamErrorMessage(error, 'unknown'));
+  }
+  return slides;
+}
+
 // the caption's opening, on one line's worth of whitespace
 function captionOf(value: string | null | undefined): string | null {
   const text = (value || '').replace(/\s+/g, ' ').trim();
@@ -1316,10 +1352,13 @@ export async function loadStreamPage(
     })
     .sort(pageOrder(scope.order));
   const carouselKeys = inRange.filter((candidate) => normalizeMediaType(candidate.row.media_type) === 'carousel').map((candidate) => candidate.key);
-  const [drawable, slides] = await Promise.all([
+  const [drawable, stored, live] = await Promise.all([
     drawablePosters(sb, inRange.map((candidate) => candidate.key), nowMs),
     storedSlides(sb, carouselKeys, nowMs),
+    liveSlides(sb, carouselKeys, nowMs),
   ]);
+  // stored slides first: they outlast the links
+  const slides = new Map([...live, ...stored]);
   page.posts = inRange.map((candidate) => toStreamPost(candidate, previews, nowMs, drawable, slides));
   return page;
 }

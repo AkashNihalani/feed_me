@@ -795,8 +795,6 @@ select,
 
 :root:has([data-fire-immersive="true"]),
 html.fm-fire-immersive,
-:root:has(.fm-mobile-browser-immersive),
-html.fm-mobile-browser-immersive,
 :root:has([data-fire-immersive="true"]) body,
 html.fm-fire-immersive body,
 :root:has(.fm-mobile-browser-immersive) body,
@@ -811,6 +809,15 @@ html.fm-fire-immersive body > main {
 html.fm-mobile-browser-immersive body > main {
   background: transparent !important;
   background-color: transparent !important;
+}
+
+/* ...but the root keeps the page's colour: iOS Safari fills the status bar's strip with it while the page sits at its
+   top, and with nothing there it fills it white (a solid bar over the page's grey). Everything over the root stays
+   clear, so the page still shows through the status bar and the toolbar as it scrolls under them */
+:root:has(.fm-mobile-browser-immersive),
+html.fm-mobile-browser-immersive {
+  background: var(--fm-page) !important;
+  background-color: var(--fm-page) !important;
 }
 
 html.fm-mobile-browser-immersive,

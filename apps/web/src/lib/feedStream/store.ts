@@ -304,10 +304,15 @@ function hydrateIndex(state: ScopeState) {
     state.fromKeep = true;
   }
   if (state.pages.size) return;
+  // (a post on one day only: kept from before it moved days, it keeps its newest, the days being kept newest first)
+  const seen = new Set<string>();
   kept.days.forEach(([day, posts]) => {
     if (!Array.isArray(posts) || !state.indexDays.has(day)) return;
-    state.pages.set(day, { posts, fetchedAt: kept.ts, stale: true, usedAt: kept.ts });
-    state.postCount += posts.length;
+    const own = posts.filter((post) => !seen.has(post.key));
+    own.forEach((post) => seen.add(post.key));
+    const shown = own.length === posts.length ? posts : own;
+    state.pages.set(day, { posts: shown, fetchedAt: kept.ts, stale: true, usedAt: kept.ts });
+    state.postCount += shown.length;
   });
   state.version = ++versionSequence;
 }
@@ -628,9 +633,11 @@ function applyPage(state: ScopeState, page: StreamPage, requested: string[]) {
   const now = Date.now();
   const order = state.scope.order;
   const grouped = new Map<string, StreamPost[]>();
+  const incoming = new Set<string>();
   for (const post of page.posts) {
     const day = sectionDayOf(post, order);
-    if (!day) continue;
+    if (!day || incoming.has(post.key)) continue;
+    incoming.add(post.key);
     const bucket = grouped.get(day);
     if (bucket) bucket.push(post);
     else grouped.set(day, [post]);
@@ -654,6 +661,17 @@ function applyPage(state: ScopeState, page: StreamPage, requested: string[]) {
     // (only a day on screen or about to be: one a warm-up fetched, its layout made from its posts already, would bring
     // a fresh index, and so a layout, in under a move landing or the column by the profile)
     if (expected !== shared.length && state.interest.has(day)) mismatch = true;
+  });
+  /* A post is on one day. One this page puts on another day than an older page has it on (its latest result landed
+     on a later day, its posting time was put right) goes from the older page: on both, the Feed would draw it twice,
+     two cells under one key, and React leaves strays of them on the page */
+  state.pages.forEach((other, day) => {
+    if (grouped.has(day) || !other.posts.some((post) => incoming.has(post.key))) return;
+    const rest = other.posts.filter((post) => !incoming.has(post.key));
+    state.postCount -= other.posts.length - rest.length;
+    // (stale: whatever else changed on that day comes with its next fetch)
+    state.pages.set(day, { ...other, posts: rest.length ? rest : EMPTY_POSTS, stale: true });
+    changed = true;
   });
   requested.forEach((day) => {
     if (!state.interest.has(day) && !state.hints.has(day)) state.wanted.delete(day);

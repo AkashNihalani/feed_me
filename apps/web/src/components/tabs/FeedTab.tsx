@@ -18,7 +18,8 @@
    the rest are replaced in place. The stream
    (components/feed/stream/FeedStream) owns the
    page, the layout and the zoom; this owns the header, the pick,
-   the order and the sheets.
+   the order and the manage sheet (a post's details open on its
+   card, PostCell).
    ───────────────────────────────────────────────────────────── */
 
 import { Suspense, memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -27,12 +28,11 @@ import FeedControl from '@/components/feed/stream/FeedControl';
 import { FeedEmptyState } from '@/components/feed/stream/FeedEmptyState';
 import FeedManageSheet from '@/components/feed/stream/FeedManageSheet';
 import FeedStream, { type FeedStreamBlank, type FeedStreamHandle, type StreamProfileView, type StreamSlide } from '@/components/feed/stream/FeedStream';
-import PostSheet from '@/components/feed/stream/PostSheet';
 import { usePageReady } from '@/components/shell/AppShell';
 import { HEADER_CONTROL, useTabHeader } from '@/components/shell/TabHeader';
 import { normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { feederLookup, useFeeds, type AppFeed } from '@/lib/feedsStore';
-import { relativeTime, scopeKey, type FeedMode, type FeedOrder, type StreamFeeder, type StreamPost, type StreamScope } from '@/lib/feedStream/contract';
+import { relativeTime, scopeKey, type FeedMode, type FeedOrder, type StreamFeeder, type StreamScope } from '@/lib/feedStream/contract';
 import { useStreamIndex } from '@/lib/feedStream/store';
 import { initialMode, readStoredOrder, writeStoredOrder } from '@/lib/feedStream/zoom';
 import { useAppHaptics } from '@/lib/haptics';
@@ -248,7 +248,6 @@ function FeedTabContent() {
   // the zoom the stream opens on, known before it has measured: the header's control starts on it (not on DAY, sliding
   // over once the stream says). Only the header reads it, never the server's markup
   const [mode, setMode] = useState<FeedMode | null>(() => (typeof window === 'undefined' ? null : initialMode(document.documentElement.clientWidth)));
-  const [sheetPost, setSheetPost] = useState<StreamPost | null>(null);
   const [manage, setManage] = useState<ManageState>({ open: false, intent: null });
 
   // the pick, followed in a transition (the rail answers the tap first), with the order
@@ -367,7 +366,7 @@ function FeedTabContent() {
     streamRef.current?.warm({ scope });
   }, []);
 
-  /* ── the order, the sheets, the other tabs ── */
+  /* ── the order, the manage sheet, the other tabs ── */
 
   const changeOrder = useCallback((next: FeedOrder) => {
     if (next === orderRef.current) return;
@@ -375,8 +374,6 @@ function FeedTabContent() {
     writeStoredOrder(next);
     setOrder(next);
   }, []);
-  const openPost = useCallback((post: StreamPost) => setSheetPost(post), []);
-  const closePost = useCallback(() => setSheetPost(null), []);
   const openManage = useCallback(() => setManage({ open: true, intent: null }), []);
   const createFeed = useCallback(() => setManage({ open: true, intent: 'create-feed' }), []);
   const closeManage = useCallback(() => setManage((current) => ({ ...current, open: false })), []);
@@ -435,15 +432,13 @@ function FeedTabContent() {
         minHeight={String(appShellStyle.minHeight)}
         headerCompressed={compressed}
         blank={blank}
-        keyboard={!sheetPost && !manage.open}
+        keyboard={!manage.open}
         onModeChange={setMode}
         onOrderChange={changeOrder}
-        onOpenPost={openPost}
         onManage={openManage}
         onLead={openLead}
         onRead={openRead}
       />
-      <PostSheet post={sheetPost} feeder={sheetPost ? lookup.get(sheetPost.handle) ?? null : null} onClose={closePost} />
       <FeedManageSheet open={manage.open} scope={pickScope} intent={manage.intent} onClose={closeManage} />
     </div>
   );

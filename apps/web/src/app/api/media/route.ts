@@ -483,7 +483,15 @@ function limitedBodyStream(
   });
 }
 
-async function fetchRemoteAsset(raw: string, assetRole: string): Promise<Response> {
+// the byte range a video's player asks for, when the role can be one (Safari asks for a range before it plays
+// anything, and won't play a source that answers with the whole file)
+function videoRange(assetRole: string, range: string | null): string | null {
+  if (!isVideoRole(assetRole) && slideIndexOf(assetRole) == null) return null;
+  const value = (range || '').trim();
+  return /^bytes=(\d+-\d*|-\d+)$/.test(value) ? value : null;
+}
+
+async function fetchRemoteAsset(raw: string, assetRole: string, range: string | null = null): Promise<Response> {
   let target: URL;
   try {
     target = new URL(raw);
@@ -498,6 +506,7 @@ async function fetchRemoteAsset(raw: string, assetRole: string): Promise<Respons
   const role = (assetRole || 'thumbnail').trim().toLowerCase();
   const expectedPrefix = expectedContentPrefix(role);
   const maxBytes = maxBytesForRole(role);
+  const byteRange = videoRange(role, range);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REMOTE_FETCH_TIMEOUT_MS);
   let streamOwnsTimeout = false;
@@ -508,6 +517,7 @@ async function fetchRemoteAsset(raw: string, assetRole: string): Promise<Respons
         'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari',
         'accept': '*/*',
         'referer': 'https://www.instagram.com/',
+        ...(byteRange ? { range: byteRange } : {}),
       },
       cache: 'no-store',
       redirect: 'follow',
@@ -528,14 +538,24 @@ async function fetchRemoteAsset(raw: string, assetRole: string): Promise<Respons
       return new Response('remote asset too large', { status: 413 });
     }
 
+    // a range answered in part goes back as the part, with where it sits in the whole file
+    const partial = Boolean(byteRange) && upstream.status === 206 && Boolean(upstream.headers.get('content-range'));
+    const passed: Record<string, string> = { 'content-type': contentType };
+    if (partial) {
+      passed['content-range'] = upstream.headers.get('content-range') as string;
+      if (contentLength > 0 && !upstream.headers.get('content-encoding')) passed['content-length'] = String(contentLength);
+    }
+    if (byteRange && (upstream.headers.get('accept-ranges') || '').toLowerCase() === 'bytes') passed['accept-ranges'] = 'bytes';
+    const status = partial ? 206 : 200;
+
     if (!upstream.body) {
       const body = await upstream.arrayBuffer();
       if (body.byteLength > maxBytes) {
         return new Response('remote asset too large', { status: 413 });
       }
       return new Response(body, {
-        status: 200,
-        headers: privateMediaHeaders({ 'content-type': contentType }),
+        status,
+        headers: privateMediaHeaders(passed),
       });
     }
 
@@ -547,8 +567,8 @@ async function fetchRemoteAsset(raw: string, assetRole: string): Promise<Respons
       () => clearTimeout(timeout),
     );
     return new Response(limitedStream, {
-      status: 200,
-      headers: privateMediaHeaders({ 'content-type': contentType }),
+      status,
+      headers: privateMediaHeaders(passed),
     });
   } catch {
     return new Response('fetch failed', { status: 502 });
@@ -559,8 +579,8 @@ async function fetchRemoteAsset(raw: string, assetRole: string): Promise<Respons
   }
 }
 
-async function fetchRemoteAssetForRole(raw: string, assetRole: string): Promise<Response> {
-  return fetchRemoteAsset(raw, assetRole);
+async function fetchRemoteAssetForRole(raw: string, assetRole: string, range: string | null = null): Promise<Response> {
+  return fetchRemoteAsset(raw, assetRole, range);
 }
 
 export async function GET(req: NextRequest) {
@@ -598,7 +618,7 @@ export async function GET(req: NextRequest) {
         return expiredSourceResponse();
       }
       if (sourceUrl) {
-        return fetchRemoteAssetForRole(sourceUrl, assetRole || 'thumbnail');
+        return fetchRemoteAssetForRole(sourceUrl, assetRole || 'thumbnail', req.headers.get('range'));
       }
     } catch {
       // fall through to unavailable response below

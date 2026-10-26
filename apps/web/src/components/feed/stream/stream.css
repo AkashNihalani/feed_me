@@ -231,23 +231,23 @@ html.light .fm-stream {
   mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
 }
 
-/* the profile card (the today zoom's first card) sizes to its box. Its Lead / Read / settings actions always show
-   (the settings are the only way to feeds, feeders, the plan and the appearance from here); with them its rows need
-   598px, and a short card lets go of its least needed rows instead: all feeds' "Today" line first, then the week
-   strip, then the highlights */
+/* the profile card (the today zoom's first card) sizes to its box. Its settings button always shows (the only way to
+   feeds, feeders, the plan and the appearance from here) and so does Lead's door; with them its rows need 658px, and a
+   short card lets go of its least needed rows instead: all feeds' "Today" line first, then Read's door, then the
+   highlights */
 .st-profile-card {
   container-type: size;
 }
 
-@container (max-height: 621px) {
+@container (max-height: 681px) {
   .st-profile-card .st-pc-today { display: none; }
 }
 
-@container (max-height: 597px) {
+@container (max-height: 657px) {
   .st-profile-card .st-pc-strip { display: none; }
 }
 
-@container (max-height: 535px) {
+@container (max-height: 595px) {
   .st-profile-card .st-pc-highlights { display: none; }
 }
 
@@ -491,7 +491,251 @@ html.light .st-bone {
   opacity: 0;
 }
 
+/* ── a phone's Day view in depth (FeedStream sets [data-depth] and the layer's --st-rest, --st-lead, --st-stride,
+   --st-edge): the post in view stands forward; the one above it and the one below sit back toward it, smaller and
+   darker, each held by the edge nearest it so the gap between them never opens. One animation on each post's own
+   place on screen (a view timeline cut at the line the posts rest on: Safari's bars coming and going never shift it),
+   so the scroll moves it on the compositor, with no script. Off while a move flies (FeedStream eases it back in as
+   the move lands); a browser without view timelines shows the column flat ── */
+
+@supports (animation-timeline: view()) {
+  .st-cell[data-depth] {
+    --st-rest-at: var(--st-rest, 0px);
+    animation: st-depth linear both;
+    animation-timeline: view(block var(--st-rest-at) 0px);
+    animation-range: exit-crossing calc(0% - var(--st-stride, 500px)) exit-crossing calc(0% + var(--st-stride, 500px));
+  }
+
+  /* (the first post rests lower, the profile's order tabs over it) */
+  .st-cell[data-depth="first"] {
+    --st-rest-at: calc(var(--st-rest, 0px) + var(--st-lead, 0px));
+  }
+
+  .st-cell[data-depth] [data-depth-dim],
+  .st-cell[data-depth] > [data-layer="chrome"] {
+    animation: st-depth-dim linear both;
+    animation-timeline: view(block var(--st-rest-at) 0px);
+    animation-range: exit-crossing calc(0% - var(--st-stride, 500px)) exit-crossing calc(0% + var(--st-stride, 500px));
+  }
+
+  .st-cell[data-depth] > [data-layer="chrome"] {
+    animation-name: st-depth-fade;
+  }
+}
+
+/* below (0%): the top edge held; in view (50%); above (100%): the foot held. FeedStream's depthAt is the same */
+@keyframes st-depth {
+  0% { transform: translate3d(0px, calc(var(--st-edge, 0px) * -1), 0px) scale(0.92); }
+  50% { transform: translate3d(0px, 0px, 0px) scale(1); }
+  100% { transform: translate3d(0px, var(--st-edge, 0px), 0px) scale(0.92); }
+}
+
+@keyframes st-depth-dim {
+  0% { opacity: 0.4; }
+  50% { opacity: 0; }
+  100% { opacity: 0.5; }
+}
+
+@keyframes st-depth-fade {
+  0% { opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { opacity: 0.45; }
+}
+
+/* ── a card's reading (PostCell): its foot over the picture's foot (who, the number) and, a tap on, the rest (the
+   reads, the figures, the caption, when, the way out) come up from under the foot, the whole block risen as one piece
+   over a fade that rises with it (PostCell moves both, by transform, from wherever they are: a tap mid-way turns them
+   straight round). The rest scrolls inside itself past the room it has (PostCell sets --st-more-max as it opens), the
+   foot staying put over it; the picture above stays clear ── */
+
+/* (it never clips and never scrolls, open or shut: on iOS a box that stops scrolling has its layer rebuilt, a frame of
+   it drawn blank as the reading closed; the card's chrome layer clips it to the card) */
+.st-read {
+  overflow: visible;
+  transition:
+    transform calc(420ms * var(--fm-tempo)) cubic-bezier(0.32, 0.72, 0, 1),
+    opacity calc(300ms * var(--fm-tempo)) ease;
+}
+
+.st-cell[data-read] .st-read {
+  pointer-events: auto;
+}
+
+/* closed: the rest waits just under the foot, unseen (where it stands open, so it travels with the block). It is the
+   one that scrolls, the same way open and shut */
+.st-read-more {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 16px;
+  opacity: 0;
+  max-height: var(--st-more-max, none);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  touch-action: pan-y;
+}
+
+.st-read-more::-webkit-scrollbar {
+  display: none;
+}
+
+.st-cell[data-read] .st-read-more {
+  position: static;
+  opacity: 1;
+}
+
+/* more than fits: its lower edge softens into the card, so it reads as one that scrolls (and scrolled to its end, its
+   last line clears the softened edge) */
+.st-cell[data-read] .st-read-more[data-scrolls] {
+  padding-bottom: 20px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+
+.st-read-shade {
+  opacity: 0;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0) 0, rgb(0 0 0 / 0.42) 70px, rgb(0 0 0 / 0.6) 150px, rgb(0 0 0 / 0.72) 100%);
+  transition: opacity calc(300ms * var(--fm-tempo)) ease;
+}
+
+.st-cell[data-read] .st-read-shade {
+  opacity: 1;
+}
+
+.st-read-toggle svg {
+  transition: transform calc(380ms * var(--fm-tempo)) cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.st-cell[data-read] .st-read-toggle svg {
+  transform: rotate(180deg);
+}
+
+/* what lies over the top of a card (its day, a standout mark) steps aside while its reading is open */
+.st-card-marks {
+  transition:
+    opacity calc(240ms * var(--fm-tempo)) ease,
+    translate 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.st-cell[data-read] .st-card-marks {
+  opacity: 0;
+}
+
+/* cleared (a reel's preview playing, a carousel being swiped): the reading slides down off the card, its fades and
+   marks with it; a tap brings them back */
+.st-card-scrim {
+  transition: opacity calc(360ms * var(--fm-tempo)) ease;
+}
+
+.st-cell[data-clean] .st-read {
+  transform: translate3d(0px, calc(100% + 16px), 0px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.st-cell[data-clean] .st-card-scrim,
+.st-cell[data-clean] .st-read-shade,
+.st-cell[data-clean] .st-card-marks {
+  opacity: 0;
+}
+
+/* a card's slide dots stay out of its tab's way at rest and come up as you swipe or play a slide (the tab clears
+   then); its count says where you are either way */
+.st-card-dots {
+  opacity: 0;
+  transition: opacity calc(240ms * var(--fm-tempo)) ease;
+}
+
+.st-cell[data-clean] .st-card-dots {
+  opacity: 1;
+}
+
+/* the header open over the card in view (it unfolds as you scroll back) reaches over its top: the marks there (its
+   tab, its ▶, a carousel's count and dots) step down clear of it, in step with the header's own fold (340ms on the
+   carry's curve, AppShell). The first card rests under the order tabs, clear of it either way */
+.st-slide-count,
+.st-slide-dots {
+  transition: translate 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[data-head-open] .st-cell[data-card]:not([data-first]) :is(.st-card-marks, .st-play, .st-slide-count, .st-slide-dots) {
+  translate: 0px var(--st-head-push, 0px);
+}
+
+/* a clip's play button (a reel's, where its preview exists; a carousel's, on its video slides): its progress runs
+   round it while it plays. A carousel's waits away while its slide is a picture */
+.st-play {
+  transition:
+    scale 150ms ease-out,
+    opacity calc(200ms * var(--fm-tempo)) ease,
+    translate 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.st-play[data-off] {
+  opacity: 0;
+  scale: 0.6;
+  pointer-events: none;
+}
+
+.st-play .st-play-on,
+.st-play .st-play-off {
+  grid-area: 1 / 1;
+  transition:
+    opacity calc(180ms * var(--fm-tempo)) ease,
+    transform calc(220ms * var(--fm-tempo)) cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.st-play .st-play-off {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.st-cell[data-clean="watch"] .st-play .st-play-on {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.st-cell[data-clean="watch"] .st-play .st-play-off {
+  opacity: 1;
+  transform: none;
+}
+
+.st-play-ring {
+  opacity: 0;
+  transition:
+    opacity calc(200ms * var(--fm-tempo)) ease,
+    stroke-dashoffset 260ms linear;
+}
+
+.st-cell[data-clean="watch"] .st-play-ring {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .st-cell[data-depth],
+  .st-cell[data-depth] [data-depth-dim],
+  .st-cell[data-depth] > [data-layer="chrome"] {
+    animation: none;
+  }
+
+  .st-read,
+  .st-read-shade,
+  .st-read-toggle svg,
+  .st-card-marks,
+  .st-card-dots,
+  .st-card-scrim,
+  .st-slide-count,
+  .st-slide-dots,
+  .st-play,
+  .st-play .st-play-on,
+  .st-play .st-play-off,
+  .st-play-ring {
+    transition: none;
+  }
+
   .st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st],
   .st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st-fade] {
     animation: none;

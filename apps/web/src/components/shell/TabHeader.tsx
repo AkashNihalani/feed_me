@@ -1336,7 +1336,7 @@ function TimeframePill({ index, count, children }: { index: number; count: numbe
 }
 
 // the keys that step it, from the keyboard (Feed's zoom and Lead's range both: lib/keys)
-const KEYS_HINT = 'Press < or > to step';
+const KEYS_HINT = 'Press ← or → to step';
 
 // an option's name on the track, drawn the same twice: once on the track, once in the page's colour inside the pill
 const TRACK_LABEL = 'grid h-full place-items-center text-[13px] font-black uppercase leading-none tracking-[0.06em]';
@@ -1380,7 +1380,7 @@ export function TimeframeControl<T extends string | number>({ value, options, pe
         style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
         role="group"
         aria-label={name ?? 'Time range'}
-        aria-keyshortcuts="< >"
+        aria-keyshortcuts="ArrowLeft ArrowRight"
         title={KEYS_HINT}
       >
         {options.map((option) => (
@@ -1407,7 +1407,7 @@ export function TimeframeControl<T extends string | number>({ value, options, pe
         style={{ width: options.length * (isRoomy(options, label) ? 66 : 46), gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
         role="group"
         aria-label={name ?? 'Time range'}
-        aria-keyshortcuts="< >"
+        aria-keyshortcuts="ArrowLeft ArrowRight"
         title={KEYS_HINT}
       >
         {options.map((option) => (

@@ -382,22 +382,6 @@ export type StreamFeeder = {
   followerCount: number | null;
 };
 
-export type PostMediaProps = {
-  post: StreamPost;
-  variant: 'reel' | 'tile' | 'hero' | 'sheet' | 'mini';
-  // reel and sheet: the card in view / the open sheet — its preview plays (one at a time, app-wide), its slides swipe
-  active?: boolean;
-  // the first screen: fetch at high priority
-  eager?: boolean;
-  // where a carousel's dots sit: over the top (the phone's Day card, whose foot carries its reading) or the foot
-  controls?: 'top' | 'bottom';
-  // cover: the media fills its box (the grids). frame: the box is a 4:5 frame (the wide Day view, the sheet). portrait:
-  // the 4:5 frame runs across the top of a taller box (a phone's Day card). In a frame a picture taller than 4:5 fills
-  // it; one 4:5 or wider shows whole over a blurred wash of itself
-  fit?: 'cover' | 'frame' | 'portrait';
-  className?: string;
-};
-
 export type TopBadgeProps = {
   topPercent: number | null;
   checkpoint: StreamCheckpoint | null;
@@ -470,12 +454,6 @@ export type ProfileHeaderProps = {
   onRead: () => void; // "Story in Read": the Read tab, same pick
   onManage: () => void; // the ⋯ button
   onOpenPost: (key: string) => void; // a highlight: today zoom at that post
-};
-
-export type PostSheetProps = {
-  post: StreamPost | null; // null: closed
-  feeder: StreamFeeder | null;
-  onClose: () => void;
 };
 
 // the header's control (TabHeader's 44px slot): the zoom, and nothing else — the SAME control as Lead's 30D

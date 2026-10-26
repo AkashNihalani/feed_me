@@ -9,10 +9,12 @@
    the last day) with a time badge. A feed: its feeders' faces,
    stacked. All feeds: the feed badges, stacked, and what happened
    today. Beside or under it: posts, followers and the typical
-   post, each with its move. Then the name, the way to the numbers
-   (Lead) and the story (Read), highlights as little circles, the
-   last 13 weeks as shaded boxes, three habits, and the order as
-   Instagram's tab row (Newest posts · Latest results).
+   post, each with its move. Then the name, highlights as little
+   circles, and the way into the other two tabs, each showing
+   something of its own rather than a button (profileDoors): Read's
+   trajectory, its runs of 10 as shaded boxes, and the first win of
+   Lead's Hall of Feed with its post. Last, the order as Instagram's
+   tab row (Newest posts · Latest results).
 
    'page' sits above the grids at a fixed height for its width
    (profileHeaderSize: loaded or not, nothing below it moves).
@@ -21,20 +23,24 @@
    screen it lets go of its least needed rows (stream.css).
 
    While the profile loads the frame is drawn with still
-   placeholders, never a number. Nothing here animates but the
-   order's underline and pill (transform), and presses.
+   placeholders, never a number, and the rows keep their heights
+   whatever arrives, so a phone's snapping Day view never moves
+   under the finger. Nothing here animates but the order's
+   underline and pill (transform), and presses.
    ───────────────────────────────────────────────────────────── */
 
 import { memo, useState, type CSSProperties, type ReactNode } from 'react';
-import { BookOpen, ChevronUp, Clock, Ellipsis, Target, Trophy, type LucideIcon } from 'lucide-react';
+import { ChevronRight, ChevronUp, Clock, Ellipsis, Target, Trophy, type LucideIcon } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
+import { useProfileDoors, type ReadDoor } from '@/components/feed/stream/profileDoors';
 import PostCover from '@/components/feed/stream/PostCover';
 import { press } from '@/components/feed/stream/press';
 import { PROFILE_ROW, profileFrame } from '@/components/feed/stream/profileHeaderSize';
+import { HALL_DAYS, LEAD_AT_KEY, WIN_LABEL, type HallFact } from '@/components/lead/leadHall';
+import { RUN_SIZE, RUN_SLOTS, noteFor, type BoardRun, type Momentum } from '@/components/read/readBoard';
 import { shade } from '@/components/read/readShade';
 import {
   STREAM_WINDOW_DAYS,
-  dayLabel,
   formatCount,
   formatTopPercent,
   isWinner,
@@ -43,7 +49,6 @@ import {
   type ProfileHeaderProps,
   type StreamFeeder,
   type StreamHighlight,
-  type StreamMediaType,
   type StreamProfile,
   type StreamScope,
 } from '@/lib/feedStream/contract';
@@ -53,21 +58,18 @@ import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
 type Kind = 'feeder' | 'feed' | 'all';
-type Size = 'page' | 'card';
+type Size = 'page' | 'card' | 'spread';
 type Face = { handle: string; profilePicUrl: string | null };
-type Week = StreamProfile['weeks'][number];
 type Note = { text: string; up: boolean } | null;
 
 const ROW = PROFILE_ROW;
-// the big face, and the ring round it (3px of ring, 3px of gap)
-const FACE_PX: Record<Size, number> = { page: 108, card: 124 };
+// the big face, and the ring round it (3px of ring, 3px of gap); 'spread' is a wide screen's, with the stats beside it
+const FACE_PX: Record<Size, number> = { page: 108, card: 124, spread: 132 };
 const RING = 6;
-const WEEKS = 13;
 const ORDERS: ReadonlyArray<{ value: FeedOrder; label: string; Icon: LucideIcon }> = [
   { value: 'posted', label: 'Newest posts', Icon: Clock },
   { value: 'results', label: 'Latest results', Icon: Target },
 ];
-const FORMAT_NAME: Record<StreamMediaType, string> = { reel: 'Reels', carousel: 'Carousels', image: 'Images', unknown: 'Posts' };
 // a feed's badge: the rail's light disc, its initials in ink (the disc is light in both themes)
 const DISC_BG = 'linear-gradient(135deg, #f7f7f8, #cfd3dc)';
 // the card: its surface (stream.css --st-card), lit softly from above the face (a neutral light: the accent is for meaning)
@@ -107,25 +109,6 @@ function typicalNote(typical: number | null, previous: number | null): Note {
   if (typical < previous - 0.5) return { text: `▲ from ${from}`, up: true };
   if (typical > previous + 0.5) return { text: `▼ from ${from}`, up: false };
   return { text: `steady at ${from}`, up: false };
-}
-
-function typicalLine(value: number | null) {
-  return ranked(value) ? `Typical Top ${formatTopPercent(value)}` : 'Not measured yet';
-}
-
-// an IST hour window: "6–9 pm", "11 am–2 pm"
-function hoursLabel(start: number, end: number) {
-  const part = (hour: number) => {
-    const at = ((Math.round(hour) % 24) + 24) % 24;
-    return { n: at % 12 === 0 ? 12 : at % 12, half: at < 12 ? 'am' : 'pm' };
-  };
-  const from = part(start);
-  const to = part(end);
-  return from.half === to.half ? `${from.n}–${to.n} ${to.half}` : `${from.n} ${from.half}–${to.n} ${to.half}`;
-}
-
-function perWeekLabel(value: number) {
-  return Number.isFinite(value) ? value.toFixed(1).replace(/\.0$/, '') : '—';
 }
 
 /* ── the face ─────────────────────────────────────────────────────────────── */
@@ -197,7 +180,7 @@ function FaceBlock({ kind, size, scope, feeder, feeds, faces, fresh, lastPostAt 
           <span aria-hidden="true" className="absolute inset-[1.5px] rounded-full shadow-[inset_0_0_0_1.5px_rgb(var(--fm-fg-rgb)/0.2)]" />
         )}
         <span className="absolute block overflow-hidden rounded-full" style={{ inset: RING }}>
-          <FeederStoryAvatar feeder={face} className={size === 'card' ? 'text-[34px]' : 'text-[28px]'} />
+          <FeederStoryAvatar feeder={face} className={size === 'page' ? 'text-[28px]' : 'text-[34px]'} />
         </span>
       </>
     );
@@ -255,7 +238,19 @@ function TodayLine({ today, center = false }: { today: StreamProfile['today'] | 
   );
 }
 
-function StatsRow({ profile, center, className }: { profile: StreamProfile | null; center: boolean; className?: string }) {
+/* the numbers at two sizes: 'sm' (a wide screen's stacked top, the Day card) and 'md' (a phone, beside the face: support,
+   never the lead (the name is): semibold at a quiet size, a hairline between the three, the labels and notes muted).
+   A spread top has Instagram's one line of them instead (InlineStats) */
+type StatSize = 'sm' | 'md';
+const STAT: Record<StatSize, { height: number; value: string; bone: string; top: string; unit: string; label: string; note: string; rule: boolean }> = {
+  sm: { height: ROW.stats, value: 'h-[22px] font-black tracking-[-0.04em] text-[18px] leading-[22px]', bone: 'mt-1 h-3.5 w-10', top: 'text-[12px]', unit: 'text-[12px]', label: 'mt-1 text-[12px] leading-4', note: 'mt-0.5', rule: false },
+  md: { height: ROW.statsPhone, value: 'h-[24px] font-semibold tracking-[-0.02em] text-[20px] leading-[24px]', bone: 'mt-1 h-4 w-11', top: 'text-[12px]', unit: 'text-[14px]', label: 'mt-1 text-[12px] leading-4', note: 'mt-0.5', rule: true },
+};
+// a hairline between two numbers, three quarters of their height
+const STAT_RULE = "relative before:absolute before:left-0 before:top-[12%] before:h-[76%] before:w-px before:bg-[var(--st-line)] first:before:hidden";
+
+function StatsRow({ profile, center, size = 'sm', className }: { profile: StreamProfile | null; center: boolean; size?: StatSize; className?: string }) {
+  const look = STAT[size];
   const typical = profile && ranked(profile.typical) ? formatTopPercent(profile.typical).slice(0, -1) : null;
   const stats: Array<{ key: string; value: ReactNode; label: string; note: Note }> = [
     {
@@ -274,32 +269,42 @@ function StatsRow({ profile, center, className }: { profile: StreamProfile | nul
       key: 'typical',
       value: profile ? (typical ? (
         <>
-          <span className="mr-1 text-[12px] font-bold tracking-normal text-[var(--st-text-2)]">Top</span>
+          <span className={cn('mr-1 font-medium tracking-normal text-[var(--st-text-2)]', look.top)}>Top</span>
           {typical}
-          <span className="text-[12px] tracking-normal">%</span>
+          <span className={cn('tracking-normal', look.unit)}>%</span>
         </>
       ) : '—') : null,
       label: 'typical post',
       note: profile ? typicalNote(profile.typical, profile.typicalPrev) : null,
     },
   ];
+  // a phone's column is narrow: "▲0.3% 30d", the glyph tight to its number
+  const noteText = (text: string) => (size === 'md' ? text.replace(' · ', ' ') : text);
   return (
-    <div className={cn('grid grid-cols-3 gap-1', className)} style={{ height: ROW.stats }}>
+    <div className={cn('grid grid-cols-3', look.rule ? 'gap-0' : 'gap-1', className)} style={{ height: look.height }}>
       {stats.map((stat) => (
-        <div key={stat.key} className={cn('flex min-w-0 flex-col', center ? 'items-center text-center' : 'items-start')}>
-          <span className="block h-[22px] max-w-full truncate text-[18px] font-black leading-[22px] tracking-[-0.04em] tabular-nums text-[var(--st-text)]">
-            {stat.value ?? <span className="st-bone mt-1 inline-block h-3.5 w-10 align-top" />}
+        <div
+          key={stat.key}
+          className={cn(
+            'flex min-w-0 flex-col justify-center',
+            center ? 'items-center text-center' : 'items-start',
+            look.rule && STAT_RULE,
+            look.rule && !center && 'pl-5 pr-2 first:pl-0',
+          )}
+        >
+          <span className={cn('block max-w-full truncate tabular-nums text-[var(--st-text)]', look.value)}>
+            {stat.value ?? <span className={cn('st-bone inline-block align-top', look.bone)} />}
           </span>
-          <span className="mt-1 block max-w-full truncate text-[12px] font-medium leading-4 text-[var(--st-text-2)]">{stat.label}</span>
+          <span className={cn('block max-w-full truncate font-medium text-[var(--st-text-2)]', look.label)}>{stat.label}</span>
           {/* a rise: the ▲ carries the accent, the words stay ink (small type is ink). The arrow is a glyph, drawn at
               8px as Lead's are, so the 12px words fit a phone's column */}
-          <span className={cn('mt-0.5 block h-4 max-w-full truncate text-[12px] font-semibold leading-4', stat.note?.up ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
+          <span className={cn('block h-4 max-w-full truncate text-[12px] font-semibold leading-4', look.note, stat.note?.up ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
             {stat.note && /^[▲▼] /.test(stat.note.text) ? (
               <>
                 <span className={cn('mr-0.5 align-[1px] text-[8px] leading-none', stat.note.up && 'text-[var(--fm-accent)]')}>{stat.note.text[0]}</span>
-                {stat.note.text.slice(2)}
+                {noteText(stat.note.text.slice(2))}
               </>
-            ) : (stat.note?.text ?? '')}
+            ) : (stat.note ? noteText(stat.note.text) : '')}
           </span>
         </div>
       ))}
@@ -307,28 +312,34 @@ function StatsRow({ profile, center, className }: { profile: StreamProfile | nul
   );
 }
 
-function Actions({ onLead, onRead, onManage, className, style }: {
-  onLead: () => void;
-  onRead: () => void;
-  onManage: () => void;
-  className?: string;
-  style?: CSSProperties;
-}) {
+/* Instagram's line of numbers, under the name on a spread top: each number in semibold before its word, its move after
+   it in small muted type (the ▲ carries the accent) */
+function InlineStats({ profile }: { profile: StreamProfile | null }) {
+  const typical = profile && ranked(profile.typical) ? formatTopPercent(profile.typical) : null;
+  const items: Array<{ key: string; value: string | null; label: string; note: Note }> = [
+    { key: 'posts', value: profile ? postsValue(profile.posts) : null, label: plural(profile?.posts ?? 0, 'post'), note: null },
+    { key: 'followers', value: profile ? formatCount(profile.followers) : null, label: 'followers', note: profile ? followerNote(profile.followerDelta30d) : null },
+    { key: 'typical', value: profile ? (typical ? `Top ${typical}` : '—') : null, label: 'typical post', note: profile ? typicalNote(profile.typical, profile.typicalPrev) : null },
+  ];
   return (
-    <div className={cn('flex gap-2', className)} style={{ height: ROW.actions, ...style }}>
-      <button type="button" onClick={onLead} className={ACTION}>
-        <Trophy className="h-4 w-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-        {/* a phone's column has room for the tab's name alone; never a word cut in half */}
-        <span className="truncate"><span className="hidden sm:inline">Numbers in </span>Lead</span>
-      </button>
-      <button type="button" onClick={onRead} className={ACTION}>
-        <BookOpen className="h-4 w-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
-        <span className="truncate"><span className="hidden sm:inline">Story in </span>Read</span>
-      </button>
-      <button type="button" onClick={onManage} aria-label="Manage feeds and feeders" className={cn(ACTION, 'w-11 flex-none px-0')}>
-        <Ellipsis className="h-5 w-5" strokeWidth={2.4} aria-hidden="true" />
-      </button>
-    </div>
+    <p className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[14px] leading-6 text-[var(--st-text-2)]">
+      {items.map((item) => (
+        <span key={item.key} className="whitespace-nowrap">
+          {item.value == null ? <span className="st-bone mr-1.5 inline-block h-3.5 w-10 align-middle" /> : <b className="mr-1 text-[16px] font-semibold tabular-nums text-[var(--st-text)]">{item.value}</b>}
+          {item.label}
+          {item.note ? (
+            <span className={cn('ml-2 text-[12px] font-semibold', item.note.up ? 'text-[var(--st-text-2)]' : 'text-[var(--st-text-3)]')}>
+              {/^[▲▼] /.test(item.note.text) ? (
+                <>
+                  <span className={cn('mr-0.5 align-[1px] text-[8px] leading-none', item.note.up && 'text-[var(--fm-accent)]')}>{item.note.text[0]}</span>
+                  {item.note.text.slice(2).replace(' · ', ' ')}
+                </>
+              ) : item.note.text}
+            </span>
+          ) : null}
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -401,106 +412,226 @@ function Highlights({ items, loading, center, onOpenPost }: { items: StreamHighl
   );
 }
 
-function WeekBox({ week, latest, big }: { week: Week | null; latest: boolean; big: boolean }) {
-  // the latest week is marked in ink: an accent ring would vanish on a top-10% week (its box is the accent itself)
-  const ring = latest ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null;
-  const when = week ? `Week of ${dayLabel(week.start).long}` : 'Before the window';
-  if (!week || !ranked(week.typical)) {
-    return (
-      <span
-        role="listitem"
-        aria-label={`${when}: ${week?.count ? `${week.count} ${plural(week.count, 'post')}, not measured yet` : 'no posts'}`}
-        className="block min-w-0 flex-1 rounded-[6px]"
-        style={{ boxShadow: ring ?? 'inset 0 0 0 1px var(--st-line)' }}
-      />
-    );
+/* ── the way into Read and Lead ───────────────────────────────────────────── */
+
+const MOMENTUM: Record<Momentum, { text: string; glyph: '▲' | '▼' | null }> = {
+  up: { text: 'On the up', glyph: '▲' },
+  down: { text: 'Sliding', glyph: '▼' },
+  level: { text: 'Holding', glyph: null },
+  early: { text: 'Too early to call', glyph: null },
+};
+// a door is the whole row: it gives a little under the finger (press: never while the page scrolls)
+const DOOR = 'flex w-full min-w-0 text-left outline-none [-webkit-tap-highlight-color:transparent] transition-transform duration-150 ease-out data-[pressed]:scale-[0.985] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]';
+// from a laptop up the two doors sit side by side, each on its own surface (TILE_PAD a side)
+const TILE_PAD = 16;
+const TILE = 'rounded-[18px] bg-[var(--st-surface-2)] p-4 shadow-[inset_0_0_0_1px_var(--st-line)]';
+const CHEVRON = 'h-3.5 w-3.5 shrink-0 text-[var(--st-text-3)]';
+
+// a run's box in Read's shades (its typical post's top %), the run the move is read from ringed in ink; or an empty slot
+function RunBox({ run, ring, big, small = false, large = false }: { run: BoardRun | null; ring: boolean; big: boolean; small?: boolean; large?: boolean }) {
+  const edge = ring ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null;
+  if (!run || run.tp == null) {
+    return <span className="block min-w-0 flex-1 rounded-[6px]" style={{ boxShadow: edge ?? 'inset 0 0 0 1px var(--st-line)' }} />;
   }
-  const tone = shade(week.typical);
-  const value = formatTopPercent(week.typical).slice(0, -1);
+  const tone = shade(run.tp);
   return (
     <span
-      role="listitem"
-      aria-label={`${when}: typical top ${value}%, ${week.count} ${plural(week.count, 'post')}`}
-      className={cn('flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[6px] font-black leading-none tracking-[-0.04em] tabular-nums', big ? 'text-[14px]' : 'text-[12px]')}
-      style={{ background: tone.c, color: tone.tx, boxShadow: [ring, `inset 0 1px 0 rgba(255, 255, 255, ${tone.gi})`].filter(Boolean).join(', ') }}
+      className={cn('flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[6px] font-bold leading-none tracking-[-0.02em] tabular-nums', big || large ? 'text-[14px]' : small ? 'text-[10px]' : 'text-[12px]')}
+      style={{ background: tone.c, color: tone.tx, boxShadow: [edge, `inset 0 1px 0 rgba(255, 255, 255, ${tone.gi})`].filter(Boolean).join(', ') }}
     >
-      {value}
+      {run.tp}
     </span>
   );
 }
 
-// the last 13 weeks, oldest first, the latest ringed in ink; `cell` is a box's width, which picks the type size
-function WeekStrip({ weeks, loading, cell, className }: { weeks: Week[]; loading: boolean; cell: number; className?: string }) {
-  const last = weeks.slice(-WEEKS);
-  const cells: Array<Week | null> = [...Array.from({ length: WEEKS - last.length }, () => null), ...last];
+const slots = <T,>(items: T[]) => [...items, ...Array.from({ length: Math.max(0, RUN_SLOTS - items.length) }, () => null)].slice(0, RUN_SLOTS);
+
+/* Read's door: a feeder's runs of 10 oldest first, as Read's board draws them, with which way the latest moved; a feed
+   or all feeds, each feeder's latest run (strongest first) with how the group splits. On a phone (compact) it is one
+   line: what it is and where it stands on the left, the boxes beside it. `cell` is a box's width */
+const READ_LABEL_PX = 88;
+type Glyph = '▲' | '▼' | null;
+// what Read's door says and draws, as a row (compact: the phone's short words) or as a card
+function readParts(door: ReadDoor | null | undefined, compact: boolean) {
+  let marker = `Runs of ${RUN_SIZE}`;
+  let note: { text: string; glyph: Glyph } | null = null;
+  let boxes: Array<{ key: string; run: BoardRun | null; ring: boolean }> = slots<BoardRun>([]).map((_, k) => ({ key: `e${k}`, run: null, ring: false }));
+  let label = 'Read';
+  if (door?.kind === 'feeder') {
+    const { row } = door;
+    note = MOMENTUM[row.momentum];
+    boxes = slots(row.runs ?? []).map((run, k) => ({ key: run ? `r${run.r}` : `e${k}`, run, ring: Boolean(run && run === row.now) }));
+    label = `Read: @${row.handle}'s runs of ${RUN_SIZE}, ${note.text.toLowerCase()}${row.now?.tp != null ? `, latest typical post top ${row.now.tp}%` : ''}`;
+  } else if (door?.kind === 'group') {
+    marker = 'Latest runs';
+    // the phone's line is short: who is on the up (or sliding) stands for the group's split
+    const short = door.up ? `${door.up} on the up` : door.down ? `${door.down} sliding` : 'Holding';
+    note = { text: compact ? short : door.head, glyph: compact && door.up ? '▲' : compact && door.down ? '▼' : null };
+    boxes = slots(door.latest ?? []).map((item, k) => ({ key: item ? item.handle : `e${k}`, run: item?.run ?? null, ring: false }));
+    label = `Read: ${door.head}. Each feeder's latest run, strongest first`;
+  }
+  return { marker, note, boxes, label };
+}
+
+function Note({ note, empty }: { note: { text: string; glyph: Glyph } | null; empty: string }) {
   return (
-    <div className={cn('flex flex-col', className)} style={{ height: ROW.strip }}>
-      <span className={cn(MARKER, 'block h-[14px] leading-[14px]')}>Typical post · 13 weeks</span>
-      <span role="list" aria-label="Typical post, week by week" className="mt-2 flex h-[30px] gap-[3px]">
-        {loading
-          ? cells.map((_, index) => <span key={index} className="st-bone block min-w-0 flex-1" />)
-          : cells.map((week, index) => <WeekBox key={week?.start ?? `before:${index}`} week={week} latest={index === WEEKS - 1} big={cell >= 28} />)}
-      </span>
-    </div>
+    <span className={cn('block truncate', !note && 'text-[var(--st-text-3)]')}>
+      {note?.glyph ? <span className={cn('mr-0.5 align-[1px] text-[8px] leading-none', note.glyph === '▲' && 'text-[var(--fm-accent)]')}>{note.glyph}</span> : null}
+      {note ? note.text : empty}
+    </span>
   );
 }
 
-function habitsOf(kind: Kind, profile: StreamProfile | null) {
-  const bestTime = {
-    marker: 'Best time',
-    value: profile?.bestHours ? hoursLabel(profile.bestHours.start, profile.bestHours.end) : '—',
-    note: profile?.bestHours ? typicalLine(profile.bestHours.typical) : 'Not enough posts yet',
-  };
-  if (kind === 'feeder') {
-    return [
-      bestTime,
-      {
-        marker: 'Strongest',
-        value: profile?.strongestFormat ? FORMAT_NAME[profile.strongestFormat.type] : '—',
-        note: profile?.strongestFormat ? typicalLine(profile.strongestFormat.typical) : 'Not enough posts yet',
-      },
-      {
-        marker: 'Rhythm',
-        value: profile ? `${perWeekLabel(profile.perWeek)} a week` : '—',
-        note: `Over ${STREAM_WINDOW_DAYS} days`,
-      },
-    ];
+function ReadDoorRow({ door, onRead, cell, tile, compact = false, height }: { door: ReadDoor | null | undefined; onRead: () => void; cell: number; tile: boolean; compact?: boolean; height: number | string }) {
+  const big = cell >= 28;
+  const { marker, note, boxes, label } = readParts(door, compact);
+  const where = door === undefined ? <span className="st-bone block h-2.5 w-20" /> : <Note note={note} empty="Nothing yet" />;
+  const row = (
+    <span aria-hidden="true" className={cn('flex gap-[3px]', compact ? 'h-[30px] min-w-0 flex-1' : tile ? 'mt-2.5 h-[32px] w-full' : 'mt-2 h-[30px] w-full')}>
+      {door === undefined
+        ? boxes.map((box) => <span key={box.key} className="st-bone block min-w-0 flex-1" />)
+        : boxes.map((box) => <RunBox key={box.key} run={box.run} ring={box.ring} big={big} small={cell < 22} large={tile && cell >= 40} />)}
+    </span>
+  );
+  if (compact) {
+    return (
+      <button type="button" onClick={onRead} {...press} aria-label={`${label}. Open Read`} className={cn(DOOR, 'items-center gap-2.5', tile && TILE)} style={{ height }}>
+        <span className="flex shrink-0 flex-col gap-1" style={{ width: READ_LABEL_PX }}>
+          <span className={cn(MARKER, 'block truncate leading-[12px]')}>{marker}</span>
+          <span className="block text-[12px] font-semibold leading-4 text-[var(--st-text)]">{where}</span>
+        </span>
+        {row}
+        <ChevronRight className={CHEVRON} strokeWidth={2.4} aria-hidden="true" />
+      </button>
+    );
   }
-  return [
-    {
-      marker: 'Leading',
-      value: profile?.leader ? `@${profile.leader.handle}` : '—',
-      note: profile?.leader ? typicalLine(profile.leader.typical) : 'Needs 5+ posts',
-    },
-    {
-      marker: 'On a run',
-      value: profile?.onRun ? `@${profile.onRun.handle}` : '—',
-      note: profile?.onRun ? `${profile.onRun.winners} top-10% ${plural(profile.onRun.winners, 'post')} · 7d` : 'No one this week',
-    },
-    bestTime,
-  ];
+  return (
+    <button type="button" onClick={onRead} {...press} aria-label={`${label}. Open Read`} className={cn(DOOR, 'flex-col', tile && TILE)} style={{ height }}>
+      <span className="flex h-[14px] w-full items-center justify-between gap-3">
+        <span className={cn(MARKER, 'block shrink-0 leading-[14px]')}>{marker}</span>
+        <span className="flex min-w-0 items-center gap-1 text-[12px] font-semibold leading-4 text-[var(--st-text)]">
+          {where}
+          <ChevronRight className={CHEVRON} strokeWidth={2.4} aria-hidden="true" />
+        </span>
+      </span>
+      {row}
+    </button>
+  );
 }
 
-function HabitCards({ kind, profile, className }: { kind: Kind; profile: StreamProfile | null; className?: string }) {
+/* Lead's door: the first win of its Hall of Feed for the same pick and window, with the post it stands on. Tapping it opens
+   Lead at the Hall (LEAD_AT_KEY) */
+// Lead opens at its Hall of Feed (LEAD_AT_KEY), on the pick the tabs share
+function openHall(onLead: () => void) {
+  try {
+    sessionStorage.setItem(LEAD_AT_KEY, 'hall');
+  } catch {}
+  onLead();
+}
+
+function HallCover({ win, className, style }: { win: HallFact | null | undefined; className?: string; style?: CSSProperties }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const picture = win?.thumbnailUrl && win.thumbnailUrl !== failed ? win.thumbnailUrl : null;
   return (
-    <div className={cn('grid grid-cols-3 gap-2', className)} style={{ height: ROW.habits }}>
-      {habitsOf(kind, profile).map((card) => (
-        <div key={card.marker} className="flex min-w-0 flex-col justify-between rounded-[18px] bg-[var(--st-surface-2)] p-3 text-left shadow-[inset_0_0_0_1px_var(--st-line)]">
-          <span className={cn(MARKER, 'block truncate')}>{card.marker}</span>
-          {profile ? (
-            <span className="block min-w-0">
-              <span className="block truncate text-[16px] font-black leading-5 tracking-[-0.04em] text-[var(--st-text)]">{card.value}</span>
-              <span className="mt-0.5 block truncate text-[12px] font-medium leading-4 text-[var(--st-text-2)]">{card.note}</span>
+    <span className={cn('relative block shrink-0 overflow-hidden rounded-[12px] bg-[var(--st-surface)] shadow-[inset_0_0_0_1px_var(--st-line)]', className)} style={style}>
+      {win === undefined ? <span className="st-bone absolute inset-0" /> : picture ? (
+        // eslint-disable-next-line @next/next/no-img-element -- the post's own thumbnail, as Lead's Hall draws it
+        <img src={picture} alt="" draggable={false} loading="lazy" decoding="async" data-media-fallback="off" onError={() => setFailed(picture)} className="block h-full w-full object-cover" />
+      ) : (
+        <span className="grid h-full w-full place-items-center text-[var(--st-text-3)]"><Trophy className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" /></span>
+      )}
+    </span>
+  );
+}
+
+const hallLabel = (win: HallFact | null | undefined) => {
+  const kind = win ? WIN_LABEL[win.kind] ?? null : null;
+  return { kind, aria: `${win ? `Lead, Hall of Feed${kind ? `, ${kind}` : ''}: ${win.headline}` : 'Lead: Hall of Feed'} Open Lead` };
+};
+
+function LeadDoorRow({ win, onLead, tile, height }: { win: HallFact | null | undefined; onLead: () => void; tile: boolean; height: number | string }) {
+  const { kind, aria } = hallLabel(win);
+  const cover = tile ? 56 : 48;
+  return (
+    <button type="button" onClick={() => openHall(onLead)} {...press} aria-label={aria} className={cn(DOOR, 'items-center gap-3', tile && TILE)} style={{ height }}>
+      <HallCover win={win} style={{ width: cover, height: cover }} />
+      <span className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+        <span className={cn(MARKER, 'block truncate leading-[12px]')}>{kind ? `Hall of Feed · ${kind}` : 'Hall of Feed'}</span>
+        {win === undefined ? (
+          <span aria-hidden="true" className="flex flex-col gap-1.5 pt-0.5">
+            <span className="st-bone block h-2.5 w-full max-w-[240px]" />
+            <span className="st-bone block h-2.5 w-2/3" />
+          </span>
+        ) : (
+          <span className={cn('block overflow-hidden font-semibold [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]', tile ? 'text-[14px] leading-5' : 'text-[12px] leading-4', win ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
+            {win ? win.headline : `No wins in the last ${HALL_DAYS} days yet`}
+          </span>
+        )}
+      </span>
+      <ChevronRight className={cn(CHEVRON, 'self-start')} strokeWidth={2.4} aria-hidden="true" />
+    </button>
+  );
+}
+
+/* a spread top's right column: the two doors as cards, one over the other, sharing the top's height. Each says a little
+   more than a row: Read's what it is, where the account stands, then its boxes taller; Lead's the post's cover, the win,
+   and the line under it in Lead's Hall */
+function ReadDoorCard({ door, onRead, cell }: { door: ReadDoor | null | undefined; onRead: () => void; cell: number }) {
+  const { marker, note, boxes, label } = readParts(door, false);
+  // a feeder: the move, then where the latest run sits ("▲ On the up · top 42%, was 55%")
+  const status = door?.kind === 'feeder' && note && door.row.now?.tp != null ? { ...note, text: `${note.text} · ${noteFor(door.row).core}` } : note;
+  return (
+    <button type="button" onClick={onRead} {...press} aria-label={`${label}. Open Read`} className={cn(DOOR, TILE, 'min-h-0 flex-1 flex-col justify-between')}>
+      <span className="flex w-full items-center justify-between gap-3">
+        <span className={cn(MARKER, 'block truncate leading-[14px]')}>{marker}</span>
+        <ChevronRight className={CHEVRON} strokeWidth={2.4} aria-hidden="true" />
+      </span>
+      <span className="mt-1.5 block w-full text-[14px] font-semibold leading-5 text-[var(--st-text)]">
+        {door === undefined ? <span className="st-bone mt-1.5 block h-3 w-40" /> : <Note note={status} empty="Nothing to read yet" />}
+      </span>
+      <span aria-hidden="true" className="mt-3 flex h-[40px] w-full gap-[3px]">
+        {door === undefined
+          ? boxes.map((box) => <span key={box.key} className="st-bone block min-w-0 flex-1" />)
+          : boxes.map((box) => <RunBox key={box.key} run={box.run} ring={box.ring} big={cell >= 28} small={cell < 22} />)}
+      </span>
+    </button>
+  );
+}
+
+// `cover`: the cover's side on a narrow column (its words need the room); otherwise the cover is the card's height
+function LeadDoorCard({ win, onLead, cover }: { win: HallFact | null | undefined; onLead: () => void; cover: number | null }) {
+  const { kind, aria } = hallLabel(win);
+  return (
+    <button type="button" onClick={() => openHall(onLead)} {...press} aria-label={aria} className={cn(DOOR, TILE, 'min-h-0 flex-1 items-stretch gap-3')}>
+      {cover ? <HallCover win={win} className="self-center" style={{ width: cover, height: cover }} /> : <HallCover win={win} className="aspect-square h-full" />}
+      <span className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+        <span className="flex w-full items-center justify-between gap-3">
+          <span className={cn(MARKER, 'block truncate leading-[14px]')}>{kind ? `Hall of Feed · ${kind}` : 'Hall of Feed'}</span>
+          <ChevronRight className={CHEVRON} strokeWidth={2.4} aria-hidden="true" />
+        </span>
+        {win === undefined ? (
+          <span aria-hidden="true" className="flex flex-col gap-1.5 pt-0.5">
+            <span className="st-bone block h-3 w-full max-w-[260px]" />
+            <span className="st-bone block h-3 w-2/3" />
+          </span>
+        ) : (
+          <>
+            <span className={cn('block overflow-hidden text-[14px] font-semibold leading-5 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]', win ? 'text-[var(--st-text)]' : 'text-[var(--st-text-3)]')}>
+              {win ? win.headline : `No wins in the last ${HALL_DAYS} days yet`}
             </span>
-          ) : (
-            <span aria-hidden="true" className="flex flex-col gap-1.5">
-              <span className="st-bone block h-3.5 w-14 max-w-full" />
-              <span className="st-bone block h-2.5 w-20 max-w-full" />
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
+            {win?.detail ? <span className="block truncate text-[12px] font-medium leading-4 text-[var(--st-text-3)]">{win.detail}</span> : null}
+          </>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function ManageButton({ onManage, className }: { onManage: () => void; className?: string }) {
+  return (
+    <button type="button" onClick={onManage} aria-label="Manage feeds and feeders" className={cn(ACTION, 'w-11 flex-none px-0', className)}>
+      <Ellipsis className="h-5 w-5" strokeWidth={2.4} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -611,31 +742,29 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
   const kind = kindOf(scope);
   const frame = profileFrame(width, scope);
   const loading = profile == null;
+  const doors = useProfileDoors(scope);
   const content = width - 8;
-  const stripWidth = frame.widest ? (content - ROW.wideGap) * (1.15 / 2.15) : content;
   const face = <FaceBlock kind={kind} size="page" scope={scope} feeder={feeder} feeds={feeds} faces={faces} fresh={fresh} lastPostAt={profile?.lastPostAt ?? null} />;
   const highlights = <Highlights items={profile?.highlights ?? []} loading={loading} center={false} onOpenPost={onOpenPost} />;
-  const strip = <WeekStrip weeks={profile?.weeks ?? []} loading={loading} cell={(stripWidth - (WEEKS - 1) * 3) / WEEKS} />;
-  const habits = <HabitCards kind={kind} profile={profile} />;
   const tabs = <OrderTabs order={order} shown={scope.order ?? 'posted'} onChange={onOrderChange} />;
   const style = { width, height: frame.height, '--st-cut': 'var(--st-bg)' } as CSSProperties;
 
   if (!frame.wide) {
+    // ten boxes beside the door's label (and its gap and chevron), 3px apart
+    const cell = (content - READ_LABEL_PX - 10 - 10 - 14 - (RUN_SLOTS - 1) * 3) / RUN_SLOTS;
     return (
       <section aria-label={title} className="relative flex flex-col px-[var(--st-inset)]" style={style}>
-        <div className="flex items-center gap-4" style={{ marginTop: ROW.pad, height: ROW.face }}>
+        <div className="flex items-center gap-3" style={{ marginTop: ROW.pad, height: ROW.face }}>
           {face}
-          <StatsRow profile={profile} center className="min-w-0 flex-1" />
+          <StatsRow profile={profile} center size="md" className="min-w-0 flex-1" />
         </div>
-        {/* on a phone the name carries the settings button alone: Lead and Read are a tap away in the bottom bar, and
-            the habit cards are numbers (Lead's job), so the posts start on the first screen */}
+        {/* on a phone the name carries the settings button alone: the way to Read and Lead is the two rows under the
+            highlights, each as short as it can be, so the profile stays one stop of the Day view's snap */}
         <div className="flex items-center gap-3" style={{ marginTop: ROW.gap, height: ROW.title }}>
           <div className="min-w-0 flex-1">
             <TitleBlock title={title} subtitle={subtitle} wide={false} />
           </div>
-          <button type="button" onClick={onManage} aria-label="Manage feeds and feeders" className={cn(ACTION, 'w-11 flex-none px-0')}>
-            <Ellipsis className="h-5 w-5" strokeWidth={2.4} aria-hidden="true" />
-          </button>
+          <ManageButton onManage={onManage} />
         </div>
         {kind === 'all' ? (
           <div className="pt-1.5" style={{ height: ROW.today }}>
@@ -643,13 +772,68 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
           </div>
         ) : null}
         <div style={{ marginTop: ROW.gap + 4 }}>{highlights}</div>
-        <div style={{ marginTop: ROW.gap }}>{strip}</div>
-        <div style={{ marginTop: ROW.gap + 4 }}>{tabs}</div>
+        <div style={{ marginTop: ROW.gap }}>
+          <ReadDoorRow door={doors.read} onRead={onRead} cell={cell} tile={false} compact height={ROW.read} />
+        </div>
+        <div style={{ marginTop: ROW.doorGap }}>
+          <LeadDoorRow win={doors.lead} onLead={onLead} tile={false} height={ROW.lead} />
+        </div>
+        <div style={{ marginTop: ROW.gap }}>{tabs}</div>
       </section>
     );
   }
 
-  const info = content - FACE_PX.page - RING * 2 - 32;
+  // the two doors side by side, 12px apart, each a tile
+  const cell = ((content - 12) / 2 - TILE_PAD * 2 - (RUN_SLOTS - 1) * 3) / RUN_SLOTS;
+  const doorRow = (
+    <div className="grid grid-cols-2 gap-3" style={{ marginTop: ROW.wideGap, height: ROW.doorsWide }}>
+      <ReadDoorRow door={doors.read} onRead={onRead} cell={cell} tile height="100%" />
+      <LeadDoorRow win={doors.lead} onLead={onLead} tile height="100%" />
+    </div>
+  );
+
+  /* a wide column: two sides. On the left, Instagram's profile, tucked in: the face; beside it the name (with the
+     settings), the numbers on one line, the bio (the line under the name, all feeds' Today); the highlights under it all.
+     On the right, the two doors as cards, one over the other, the left side's height between them, so both sides start
+     and end on the same lines */
+  if (frame.spread) {
+    const doorsWidth = Math.min(ROW.doorsColumnMax, Math.max(ROW.doorsColumnMin, Math.round(content * 0.34)));
+    const doorCell = (doorsWidth - TILE_PAD * 2 - (RUN_SLOTS - 1) * 3) / RUN_SLOTS;
+    const faceSize: Size = content >= ROW.bigFaceFrom ? 'spread' : 'page';
+    return (
+      <section aria-label={title} className="relative flex flex-col px-[var(--st-inset)]" style={style}>
+        <div className="grid gap-10" style={{ marginTop: ROW.pad, height: frame.hero, gridTemplateColumns: `minmax(0, 1fr) ${doorsWidth}px` }}>
+          <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 items-center gap-7" style={{ height: ROW.profileTop }}>
+              <FaceBlock kind={kind} size={faceSize} scope={scope} feeder={feeder} feeds={feeds} faces={faces} fresh={fresh} lastPostAt={profile?.lastPostAt ?? null} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex min-w-0 items-center gap-3">
+                  <h2 className="min-w-0 truncate text-[28px] font-black leading-[34px] tracking-[-0.04em] text-[var(--st-text)]">{title}</h2>
+                  <ManageButton onManage={onManage} className="h-9 w-9 rounded-[10px]" />
+                </div>
+                <div className="mt-3">
+                  <InlineStats profile={profile} />
+                </div>
+                {subtitle ? <p className="mt-2 truncate text-[14px] font-medium leading-5 text-[var(--st-text-2)]">{subtitle}</p> : null}
+                {kind === 'all' ? (
+                  <div className="mt-0.5">
+                    <TodayLine today={profile?.today ?? null} />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div style={{ marginTop: ROW.profileGap }}>{highlights}</div>
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
+            <ReadDoorCard door={doors.read} onRead={onRead} cell={doorCell} />
+            <LeadDoorCard win={doors.lead} onLead={onLead} cover={doorsWidth < ROW.fullCoverFrom ? 80 : null} />
+          </div>
+        </div>
+        <div style={{ marginTop: ROW.gap + 6 }}>{tabs}</div>
+      </section>
+    );
+  }
+
   return (
     <section aria-label={title} className="relative flex flex-col px-[var(--st-inset)]" style={style}>
       <div className="flex items-center gap-8" style={{ marginTop: ROW.pad, height: frame.hero }}>
@@ -659,7 +843,7 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
             <div className="min-w-0 flex-1">
               <TitleBlock title={title} subtitle={subtitle} wide />
             </div>
-            <Actions onLead={onLead} onRead={onRead} onManage={onManage} className="shrink-0" style={{ width: Math.min(420, Math.round(info * 0.56)) }} />
+            <ManageButton onManage={onManage} />
           </div>
           <div style={{ marginTop: ROW.gap }}>
             <StatsRow profile={profile} center={false} className="max-w-[460px]" />
@@ -672,20 +856,7 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
         </div>
       </div>
       <div style={{ marginTop: ROW.wideGap }}>{highlights}</div>
-      {frame.widest ? (
-        <div
-          className="grid items-center gap-6"
-          style={{ marginTop: ROW.wideGap, height: Math.max(ROW.strip, ROW.habits), gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)' }}
-        >
-          {strip}
-          {habits}
-        </div>
-      ) : (
-        <>
-          <div style={{ marginTop: ROW.wideGap }}>{strip}</div>
-          <div style={{ marginTop: ROW.gap }}>{habits}</div>
-        </>
-      )}
+      {doorRow}
       <div style={{ marginTop: ROW.gap + 6 }}>{tabs}</div>
     </section>
   );
@@ -694,6 +865,7 @@ function ProfilePage({ scope, title, subtitle, feeder, feeds, faces, profile, fr
 function ProfileCard({ scope, title, subtitle, feeder, feeds, faces, profile, fresh, order, onOrderChange, width, onLead, onRead, onManage, onOpenPost }: ProfileHeaderProps) {
   const kind = kindOf(scope);
   const loading = profile == null;
+  const doors = useProfileDoors(scope);
   const stripWidth = Math.min(width - 40, 420);
   return (
     <section
@@ -702,6 +874,8 @@ function ProfileCard({ scope, title, subtitle, feeder, feeds, faces, profile, fr
       // inside the card, what is raised sits in the card's own inset tone (on light: grey on a white card)
       style={{ width, background: CARD_BG, '--st-cut': 'var(--st-card)', '--st-surface-2': 'var(--st-card-inset)' } as CSSProperties}
     >
+      {/* the settings: the only way to feeds, feeders, the plan and the appearance from here, so always on the card */}
+      <ManageButton onManage={onManage} className="absolute right-3 top-3 z-10" />
       <div className="flex w-full flex-col items-center">
         <FaceBlock kind={kind} size="card" scope={scope} feeder={feeder} feeds={feeds} faces={faces} fresh={fresh} lastPostAt={profile?.lastPostAt ?? null} />
         <div className="mt-4 w-full" style={{ height: ROW.title }}>
@@ -713,8 +887,8 @@ function ProfileCard({ scope, title, subtitle, feeder, feeds, faces, profile, fr
           </div>
         ) : null}
         <StatsRow profile={profile} center className="mt-3 w-full max-w-[360px]" />
-        <div className="st-pc-actions mt-3 w-full max-w-[400px]">
-          <Actions onLead={onLead} onRead={onRead} onManage={onManage} className="w-full" />
+        <div className="st-pc-lead mt-3 w-full max-w-[400px]">
+          <LeadDoorRow win={doors.lead} onLead={onLead} tile height={ROW.doorsWide} />
         </div>
       </div>
 
@@ -722,8 +896,8 @@ function ProfileCard({ scope, title, subtitle, feeder, feeds, faces, profile, fr
         <div className="st-pc-highlights w-full">
           <Highlights items={profile?.highlights ?? []} loading={loading} center onOpenPost={onOpenPost} />
         </div>
-        <div className="st-pc-strip mt-2.5 w-full text-left" style={{ maxWidth: stripWidth }}>
-          <WeekStrip weeks={profile?.weeks ?? []} loading={loading} cell={(stripWidth - (WEEKS - 1) * 3) / WEEKS} />
+        <div className="st-pc-strip mt-2.5 w-full" style={{ maxWidth: stripWidth }}>
+          <ReadDoorRow door={doors.read} onRead={onRead} cell={(stripWidth - (RUN_SLOTS - 1) * 3) / RUN_SLOTS} tile={false} height={ROW.read} />
         </div>
       </div>
 

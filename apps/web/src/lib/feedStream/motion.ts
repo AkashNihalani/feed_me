@@ -228,8 +228,9 @@ export function leave(
   at: Rect,
   from: Rect,
   centre: { x: number; y: number } | null,
-  // a piece's own old chrome (a tile's number on a post going elsewhere) goes at once instead: nothing replaces it
-  options: { quick?: boolean } = {},
+  // a piece's own old chrome (a tile's number on a post going elsewhere) goes at once instead: nothing replaces it.
+  // opacity: where it starts from (a phone card's chrome faded by the Day view's depth)
+  options: { quick?: boolean; opacity?: number } = {},
 ) {
   if (at.width <= 0 || at.height <= 0) return;
   moving(flight, el, '0 0');
@@ -249,11 +250,12 @@ export function leave(
     width: from.width * AWAY_SCALE,
     height: from.height * AWAY_SCALE,
   };
+  const start = options.opacity ?? 1;
   const frames: Keyframe[] = options.quick
-    ? [{ transform: box(from, at), opacity: 1 }, { transform: box(away, at), opacity: 0 }]
+    ? [{ transform: box(from, at), opacity: start }, { transform: box(away, at), opacity: 0 }]
     : [
-        { offset: 0, transform: box(from, at), opacity: 1 },
-        { offset: LEAVE_HOLD, opacity: 1 },
+        { offset: 0, transform: box(from, at), opacity: start },
+        { offset: LEAVE_HOLD, opacity: start },
         { offset: 1, transform: box(away, at), opacity: 0 },
       ];
   flight.animations.push(el.animate(frames, options.quick
@@ -262,10 +264,12 @@ export function leave(
 }
 
 /* What is new to the screen: where it now is (`at`), from a touch smaller and nearer `centre`, dissolving in, a ring
-   later the further it is from it. Holds unseen until its turn (fill backwards) */
-export function enter(flight: Flight, el: HTMLElement, at: Rect, centre: { x: number; y: number } | null, extraDelay = 0) {
+   later the further it is from it. Holds unseen until its turn (fill backwards). still: it only dissolves in, where
+   it is (a piece whose transform is the scroll's: a phone card in the Day view's depth) */
+export function enter(flight: Flight, el: HTMLElement, at: Rect, centre: { x: number; y: number } | null, extraDelay = 0, still = false) {
   if (at.width <= 0 || at.height <= 0) return;
-  moving(flight, el, '0 0');
+  // (still: its transform, origin and all, stays the scroll's)
+  if (!still) moving(flight, el, '0 0');
   const middle = centreOf(at);
   let dx = 0;
   let dy = 0;
@@ -285,7 +289,7 @@ export function enter(flight: Flight, el: HTMLElement, at: Rect, centre: { x: nu
     height: at.height * AWAY_SCALE,
   };
   flight.animations.push(el.animate(
-    [{ transform: box(near, at), opacity: 0 }, { transform: 'none', opacity: 1 }],
+    still ? [{ opacity: 0 }, { opacity: 1 }] : [{ transform: box(near, at), opacity: 0 }, { transform: 'none', opacity: 1 }],
     { duration: ENTER_MS, delay: ENTER_DELAY_MS + ring * RING_STEP_MS + extraDelay + flight.hold, easing: ENTER_EASE, fill: 'backwards' },
   ));
 }

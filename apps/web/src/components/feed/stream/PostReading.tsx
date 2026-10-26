@@ -75,7 +75,7 @@ export function postMeta(post: StreamPost, feeder: StreamFeeder | null) {
 }
 
 // 1.37 → "1.37%", 12.5 → "12.5%"
-function formatRate(value: number | null) {
+export function formatRate(value: number | null) {
   if (value == null || !Number.isFinite(value)) return '—';
   return `${value.toFixed(value >= 10 ? 1 : 2).replace(/\.?0+$/, '')}%`;
 }

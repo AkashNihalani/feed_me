@@ -18,13 +18,15 @@
 
    today (DAY): a column of posts, one per post, each resting with
    its centre on the focus line (focusY). A phone's post is a 4:5
-   card the screen's width, resting just under the folded header
-   (one swipe, one post: the page snaps, deck), the next one's top
-   showing under it and on under the browser's bar; the column
-   scrolls as it is, under the glass header and the status bar
-   (nothing moves a card but the scroll). Wider, the focus line
-   is the middle of the band between the folded header and the
-   nav.
+   card always the screen's width, resting in the middle of the
+   screen (one swipe, one post: the page snaps, deck), the cards
+   either side showing as much of themselves up under the glass
+   header as on under the browser's bar. The column scrolls under
+   the glass header and the status bar, the post in view standing
+   forward and the ones either side sitting back toward it
+   (stream.css, st-depth: the scroll is all that moves them).
+   Wider, the focus line is the middle of the band between the
+   folded header and the nav.
    From READING_FROM wide a post is a row: its media in a 4:5
    frame (mediaWidth) with its reading beside it, rows a gap apart,
    scrolled freely; the row on the focus line is the one in view.
@@ -64,10 +66,12 @@ export const GRID_MAX_WIDTH = 1400;
 // far apart (a phone's too)
 export const REEL_INSET = 8;
 export const REEL_GAP = 12;
-// a phone's card rests this far under the folded header's edge, and leaves at least this much of the next card showing
-// under it (on a short screen it is narrower, still 4:5)
+// a phone's card rests in the middle of the screen (always the screen's width), the card before it and the card after
+// it showing as much as each other; never nearer the folded header's edge than this (a short screen)
 export const DECK_TOP_GAP = 8;
-const DECK_NEXT_MIN = 56;
+// the folded nav's circle stands this far up from the dock's line (and a little air over it): a card whose foot reaches
+// it on a short screen has its reading lifted clear of it
+const DOCK_CIRCLE = 56;
 // ...but the first rests lower: the profile's order tabs (profileHeaderSize's PROFILE_ROW.tabs) showing over it, just
 // under the folded header (in a browser they're under the nav at the top: the first swipe brings them in)
 const DECK_TABS = 44;
@@ -109,7 +113,9 @@ export type GridMode = Exclude<FeedMode, 'today'>;
 // where the chrome sits: the open header's bottom edge, the folded header's, and the nav's top edge (from the bottom)
 // dock: the room a phone's Day view leaves at the screen's foot (the nav folds into a circle there while you read, so
 // the card on the focus line takes the screen's middle; without it, the nav's whole bar)
-export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number };
+// screen: the whole screen's height, as with the browser's bars away (the page runs on under them): a phone's Day card
+// rests in its middle (without it, the viewport's)
+export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number; screen?: number };
 
 export type LayoutKind = 'section' | 'tile' | 'reel' | 'more';
 
@@ -174,6 +180,10 @@ export type StreamLayout = {
   deck: boolean;
   // ...and its first this much lower, the profile's order tabs over it (0 in any other view)
   lead: number;
+  // the line (viewport px) a phone's card rests its top on, and how far a resting card's reading is lifted to clear the
+  // folded nav's circle (0 where the card's foot ends above it)
+  restTop: number;
+  footClear: number;
   // lookups (built once per layout)
   bottoms: Float64Array; // running max of y + h, so "first item reaching below y" is a binary search
   byPost: ReadonlyMap<string, number>;
@@ -306,24 +316,27 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
       media = Math.max(MEDIA_MIN, room);
       frame = media / POST_ASPECT;
     }
-    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, lead: 0 };
+    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, lead: 0, restTop: focusY - frame / 2, footClear: 0 };
   }
   /* A phone's card is the post's 4:5 frame edge to edge (the screen's width: carousels and pictures whole, never a
-     reel's tall crop), its reading over the frame's foot; it rests just under the folded header, the rest of the
-     screen showing the next card's top (no air over it: the stack glides there). On a short screen it keeps 4:5,
-     narrower. A theatre (a tablet) keeps the reel's card the band's height, in the band's middle */
+     reel's tall crop), its reading over the frame's foot. It rests in the middle of the screen: the card before it
+     (up under the glass header) and the card after it (on under the browser's bar) show as much as each other; on a
+     short screen it rests just under the folded header instead. It is always the screen's width: a short screen
+     shows less of the cards either side, and lifts the reading clear of the folded nav. A theatre (a tablet) keeps
+     the reel's card the band's height, in the band's middle */
   if (width < THEATRE_FROM) {
-    const restTop = bandTop + DECK_TOP_GAP;
-    const cardHeight = Math.max(0, Math.min(width / POST_ASPECT, bandBottom - restTop - REEL_GAP - DECK_NEXT_MIN));
-    const cardWidth = Math.min(width, cardHeight * POST_ASPECT);
-    // the first card down by the tabs' row less the air over it already (under the profile and under the header), never
-    // so far that it runs into the dock's line
-    const lead = Math.max(0, Math.min(DECK_TABS + PROFILE_GAP + DAY_TOP - DECK_TOP_GAP, bandBottom - restTop - cardHeight - REEL_GAP));
-    return { focusY: restTop + cardHeight / 2, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead };
+    const cardHeight = width / POST_ASPECT;
+    const cardWidth = width;
+    const restTop = Math.round(Math.max(bandTop + DECK_TOP_GAP, ((insets.screen ?? height) - cardHeight) / 2));
+    // the first card down by what the profile's order tabs need over it, less the air already there under the header,
+    // never so far that it runs into the dock's line
+    const lead = Math.max(0, Math.min(DECK_TABS + PROFILE_GAP + DAY_TOP - (restTop - bandTop), bandBottom - restTop - cardHeight - REEL_GAP));
+    const footClear = Math.max(0, Math.round(restTop + cardHeight - (bandBottom - DOCK_CIRCLE)));
+    return { focusY: restTop + cardHeight / 2, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead, restTop, footClear };
   }
   const cardHeight = band - REEL_INSET * 2;
   const cardWidth = Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);
-  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead: 0 };
+  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead: 0, restTop: focusY - cardHeight / 2, footClear: 0 };
 }
 
 export function computeLayout({ mode, days, posts, width, height, insets, wide }: LayoutInput): StreamLayout {
@@ -467,6 +480,8 @@ export function computeLayout({ mode, days, posts, width, height, insets, wide }
     mediaWidth: mode === 'today' ? day.mediaWidth : null,
     deck: mode === 'today' && width < THEATRE_FROM && !wide,
     lead: mode === 'today' && width < THEATRE_FROM && !wide ? day.lead : 0,
+    restTop: day.restTop,
+    footClear: mode === 'today' && width < THEATRE_FROM && !wide ? day.footClear : 0,
     bottoms,
     byPost,
     byKey,

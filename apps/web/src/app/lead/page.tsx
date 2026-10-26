@@ -27,6 +27,7 @@ import { postMoment } from '@/lib/postMoment';
 import { ms, sec } from '@/lib/tempo';
 import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
 import { buildFeederboardFacts } from '@/lib/feederboardFacts';
+import { LEAD_AT_KEY, NOT_A_WIN, WIN_LABEL, hallBasis, leadScope } from '@/components/lead/leadHall';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
 import LeadGrowth from '@/components/lead/LeadGrowth';
 import LeadRhythm from '@/components/lead/LeadRhythm';
@@ -197,13 +198,10 @@ function lastPostedLabel(time: number | null) {
   return days === 0 ? 'TODAY' : `${days}D`;
 }
 
-/* the pick every tab shares, as Lead reads it: a feed Lead doesn't have (or none yet) is all feeds */
+/* the pick every tab shares, as Lead reads it: a feed Lead doesn't have (or none yet) is all feeds (components/lead/leadHall,
+   which Feed's profile reads too) */
 function resolveScope(feeds: RuntimeFeed[], scope: TabScope) {
-  const feedId = scope.feedId ?? (scope.handle
-    ? feeds.find((feed) => feed.feeders.some((feeder) => normalizeHandle(feeder.handle) === scope.handle))?.id ?? null
-    : null);
-  const activeFeedId = feedId && feeds.some((feed) => feed.id === feedId) ? feedId : 'all';
-  return { activeFeedId, activeFeeder: activeFeedId !== 'all' && scope.handle ? scope.handle : '' };
+  return leadScope(feeds, scope);
 }
 
 /* what the board is drawn from, as one string: a background refresh that comes back the same leaves the page alone */
@@ -514,15 +512,9 @@ function postsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: stri
 }
 
 /* What the facts and the post mortem read: the scope's posts dated in the window by their stored date, 500 at most
-   (as their API routes read them) */
-function factBasis(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number) {
-  return remember(feeds, null, `basis|${activeFeedId}|${feederHandle}|${days}`, () => {
-    const cutoff = Date.now() - days * 86_400_000;
-    return postsFor(feeds, activeFeedId, feederHandle, days).slice(0, 500).filter((post) => {
-      const time = Date.parse(post.postedAt || '');
-      return Number.isFinite(time) && time >= cutoff;
-    });
-  });
+   (as their API routes read them). The rule lives in components/lead/leadHall, so Feed's profile shows the same win */
+function factBasis(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): ScopedPost[] {
+  return remember(feeds, null, `basis|${activeFeedId}|${feederHandle}|${days}`, () => hallBasis(feeds, activeFeedId, feederHandle, days, postTime));
 }
 
 /* the facts for one scope and window: the deterministic builder (lib/feederboardFacts) run on what the page already
@@ -1555,22 +1547,8 @@ const FEEDERBOARD_VIEWS = [
   { id: 'er', label: 'Eng.', ariaLabel: 'Most engaged' },
 ] as const;
 
-/* a win's handle: what kind of thing happened, in a word or two (the facts themselves are lib/feederboardFacts) */
-const WIN_LABEL: Record<string, string> = {
-  'above-streak': 'Hot streak',
-  'checkpoint-climb': 'Climber',
-  'busiest-day': 'Busiest day',
-  'publishing-run': 'On a roll',
-  'format-run': 'Format win',
-  'format-time': 'Sweet spot',
-  'post-concentration': 'Comment magnet',
-  'feeder-participation': 'Team effort',
-  'feeder-concentration': 'Carried the chat',
-  'response-imbalance': 'Talking point',
-  'quiet-breakout': 'Comeback',
-};
-// a run of misses is worth knowing (the Feederboard's verdicts show it) but isn't a win
-const NOT_A_WIN = new Set(['below-streak']);
+/* a win's handle (WIN_LABEL) and what isn't a win (NOT_A_WIN) live in components/lead/leadHall, shared with Feed's
+   profile; the facts themselves are lib/feederboardFacts */
 
 type FeederboardViewId = (typeof FEEDERBOARD_VIEWS)[number]['id'];
 type FeederboardRankedViewId = Exclude<FeederboardViewId, 'feats'>;
@@ -1925,19 +1903,20 @@ export default function LeadBoardPage() {
   }, [loading]);
   // a range switch re-reads what is on hand in a transition: the header answers the tap first
   const [timeframePending, startTimeframe] = useTransition();
-  // < and > step the time range (7D · 30D · 60D · 90D), as they step Feed's zoom: > a longer window, < a shorter one,
-  // stopping at the ends. Only while Lead is on screen (a hidden tab's effects are off), never while typing or under a
-  // dialog
+  // ← and → (or < and >) step the time range (7D · 30D · 60D · 90D), as they step Feed's zoom: ← back, a longer window,
+  // → a shorter one, stopping at the ends. Only while Lead is on screen (a hidden tab's effects are off), never while
+  // typing or under a dialog
   const daysRef = useRef(days);
   useLayoutEffect(() => {
     daysRef.current = days;
   }, [days]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== '<' && event.key !== '>') return;
+      const longer = event.key === 'ArrowLeft' || event.key === '<';
+      if (!longer && event.key !== 'ArrowRight' && event.key !== '>') return;
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
       if (typingIn(event.target) || aModalIsOpen()) return;
-      const next = TIMEFRAMES[TIMEFRAMES.indexOf(daysRef.current) + (event.key === '>' ? 1 : -1)];
+      const next = TIMEFRAMES[TIMEFRAMES.indexOf(daysRef.current) + (longer ? 1 : -1)];
       if (!next) return;
       event.preventDefault();
       startTimeframe(() => setDays(next));
@@ -1957,6 +1936,32 @@ export default function LeadBoardPage() {
   useEffect(() => {
     document.title = 'Lead | FeedMe';
   }, []);
+
+  /* arriving from the Feed's Hall of Feed row (ProfileHeader's Lead door): Lead opens at its Hall of Feed, on the pick
+     the tabs share. The ask is taken when the tab comes on screen (its effects run again then) and kept until the Hall
+     is drawn; the scroll waits two frames, so the tab's own arrival has placed the page first */
+  const hallAsked = useRef(false);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(LEAD_AT_KEY) !== 'hall') return;
+      sessionStorage.removeItem(LEAD_AT_KEY);
+      hallAsked.current = true;
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!hallAsked.current || !feeds.length) return undefined;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const hall = document.getElementById('lead-v3-hall-title')?.closest<HTMLElement>('section');
+        if (!hall) return;
+        hallAsked.current = false;
+        // a phone scrolls the window, under the folded header (Lead's own scroll padding is its desktop panel's)
+        hall.style.scrollMarginTop = window.matchMedia('(min-width: 1024px)').matches ? '' : 'calc(84px + env(safe-area-inset-top))';
+        hall.scrollIntoView({ block: 'start' });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [feeds]);
 
   /* Everything every time range needs is loaded once: each feed's posts (all of them) and the activity of the
      longest range plus the one before it (components/lead/leadData, shared: the launch warms it before Lead is ever

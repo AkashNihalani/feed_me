@@ -27,13 +27,26 @@
    The wide Day view's row on the focus line has the spotlight
    (spot): its reading comes in a piece at a time and its picture
    is lit; the rest of the column is dimmed, its reading away.
+
+   A card (a phone's or a tablet's Day view) reads on itself: one
+   tap anywhere on it lifts its foot into the whole reading (the
+   rest coming up from under it, the picture's top left clear),
+   the next tap puts it back, from wherever it is mid-way. A reel
+   with a preview clip, and a carousel on a video slide, has a ▶
+   that clears the reading off the card while the clip plays; a
+   carousel clears it as its slides are swiped, until a tap or its
+   first slide again. A phone's card also stands forward or sits
+   back with the scroll (depth: stream.css, st-depth), and the
+   marks over its top step down clear of the header while that is
+   open over it (stream.css, data-head-open).
    ───────────────────────────────────────────────────────────── */
 
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import { ArrowUpRight, ChevronUp, Pause, Play } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import CheckpointTrail from '@/components/feed/stream/CheckpointTrail';
 import { PostPicture, Wash } from '@/components/feed/stream/PostMedia';
-import PostReading from '@/components/feed/stream/PostReading';
+import PostReading, { formatRate, postedLabel } from '@/components/feed/stream/PostReading';
 import { press } from '@/components/feed/stream/press';
 import TopBadge from '@/components/feed/stream/TopBadge';
 import {
@@ -53,6 +66,9 @@ import {
 } from '@/lib/feedStream/contract';
 import { titleCase } from '@/lib/feedLabels';
 import { POST_ASPECT, READING_GAP } from '@/lib/feedStream/layout';
+import { CARRY_EASE_CSS, reducedMotion, releaseFlight, run, startFlight } from '@/lib/feedStream/motion';
+import { ms } from '@/lib/tempo';
+import { FLIGHT_HOLD_MS, afterDrawn, holdsFlights } from '@/lib/webkitMotion';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
@@ -148,15 +164,6 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
 const ROOMY_MIN = 500;
 const TRAIL_MIN = 380;
 
-// a result that landed today or yesterday; fresh: in the last 24 hours (marked red)
-function landedNote(post: StreamPost, today: string) {
-  if (!post.latestCheckpoint || !post.resultDay) return null;
-  const fresh = post.resultAt ? withinDay(post.resultAt) : post.resultDay === today;
-  if (post.resultDay === today) return { text: `${post.latestCheckpoint} landed today`, fresh };
-  if (post.resultDay === shiftDay(today, -1)) return { text: `${post.latestCheckpoint} landed yesterday`, fresh };
-  return null;
-}
-
 function standoutText(post: StreamPost, today: string) {
   if (post.day === today || post.resultDay === today) return "Today's standout";
   const yesterday = shiftDay(today, -1);
@@ -164,14 +171,15 @@ function standoutText(post: StreamPost, today: string) {
   return 'Standout';
 }
 
-function Marks({ post, standout, dayStart }: { post: StreamPost; standout: boolean; dayStart: { kicker: string; title: string } | null }) {
-  if (!standout && !dayStart) return null;
+// a phone card's tab: what the post is and the day it went up (every card wears one)
+function Marks({ post, standout, date }: { post: StreamPost; standout: boolean; date: { kicker: string; title: string } | null }) {
+  if (!standout && !date) return null;
   return (
-    <span className="pointer-events-none absolute left-4 top-4 z-[4] flex flex-col gap-2">
-      {dayStart ? (
+    <span className="st-card-marks pointer-events-none absolute left-4 top-4 z-[4] flex flex-col gap-2">
+      {date ? (
         <span data-st="" className="inline-flex w-fit flex-col rounded-[14px] bg-black/55 px-3 pb-2.5 pt-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]" style={{ '--i': 0 } as CSSProperties}>
-          <span className="text-[10px] font-black uppercase leading-none tracking-[0.22em] text-white/75">{dayStart.kicker}</span>
-          <span className="mt-1.5 text-[22px] font-black leading-none tracking-[-0.04em] text-white">{dayStart.title}</span>
+          <span className="text-[10px] font-black uppercase leading-none tracking-[0.22em] text-white/75">{KIND[post.mediaType]} · {date.kicker}</span>
+          <span className="mt-1.5 text-[22px] font-black leading-none tracking-[-0.04em] text-white">{date.title}</span>
         </span>
       ) : null}
       {standout ? (
@@ -184,68 +192,166 @@ function Marks({ post, standout, dayStart }: { post: StreamPost; standout: boole
   );
 }
 
-function CardChrome({ post, feeder, width, height, standout, dayStart }: {
+// the reading's pieces a live card moves itself (PostCell, setRead)
+type ReadParts = {
+  read: RefObject<HTMLSpanElement | null>;
+  inner: RefObject<HTMLSpanElement | null>;
+  more: RefObject<HTMLSpanElement | null>;
+  shade: RefObject<HTMLSpanElement | null>;
+  toggle: RefObject<HTMLButtonElement | null>;
+  ring: RefObject<SVGCircleElement | null>;
+};
+
+// the play button's ring (r 20.5): its length, run round as the clip plays
+const RING = 2 * Math.PI * 20.5;
+
+/* A card's chrome. Live (the card on the page, not the copy a move out of the Day view lets go): the rest of its
+   reading waits under its foot for a tap, a ▶ sits on a reel that has a clip, and the reading clears its foot of the
+   folded nav (clear) */
+function CardChrome({ post, feeder, width, height, standout, date, live = false, clear = 0, parts, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
   post: StreamPost;
   feeder: StreamFeeder | null;
   width: number;
   height: number;
   standout: boolean;
-  dayStart: { kicker: string; title: string } | null;
+  date: { kicker: string; title: string } | null;
+  live?: boolean;
+  clear?: number;
+  parts?: ReadParts;
+  playable?: boolean;
+  // a carousel's ▶: under its count, and away while its slide is a picture
+  playSlides?: boolean;
+  playOff?: boolean;
+  // its preview playing (its ▶ now a pause)
+  watching?: boolean;
+  onToggle?: () => void;
+  onPlay?: () => void;
 }) {
-  const today = istDay();
   const roomy = height >= ROOMY_MIN;
   const face = feeder ?? { handle: post.handle, profilePicUrl: null };
   const feedName = feeder?.feedTitle ? titleCase(feeder.feedTitle) : null;
   // posted in the last 24 hours: its age is marked red (something new)
   const fresh = withinDay(post.postedAt);
-  const landed = landedNote(post, today);
-  const stats = [
-    post.multiple != null ? { key: 'multiple', value: formatMultiple(post.multiple), unit: 'usual' } : null,
-    post.likes != null ? { key: 'likes', value: formatCount(post.likes), unit: post.likes === 1 ? 'like' : 'likes' } : null,
-    post.comments != null ? { key: 'comments', value: formatCount(post.comments), unit: post.comments === 1 ? 'comment' : 'comments' } : null,
-  ].filter((stat): stat is { key: string; value: string; unit: string } => stat != null);
+  // its numbers, as figures: each a number over what it counts
+  const figures = [
+    post.likes != null ? { key: 'likes', value: formatCount(post.likes), label: post.likes === 1 ? 'like' : 'likes' } : null,
+    post.comments != null ? { key: 'comments', value: formatCount(post.comments), label: post.comments === 1 ? 'comment' : 'comments' } : null,
+    post.engagementRate != null ? { key: 'er', value: formatRate(post.engagementRate), label: 'engagement' } : null,
+    post.multiple != null ? { key: 'usual', value: formatMultiple(post.multiple), label: 'vs usual' } : null,
+  ].filter((figure): figure is { key: string; value: string; label: string } => figure != null);
+  const when = [KIND[post.mediaType], postedLabel(post.postedAt)].filter(Boolean).join(' · ');
+  // a tap on these is theirs, not the card's
+  const own = (action?: () => void) => (event: ReactMouseEvent) => {
+    event.stopPropagation();
+    action?.();
+  };
   return (
     <>
-      {/* the post's 4:5 frame ends above the reading, so the scrim only needs to cover the foot */}
-      <span data-st-fade="" aria-hidden="true" className="st-scrim pointer-events-none absolute inset-x-0 bottom-0 h-[46%] rounded-b-[28px]" />
-      <Marks post={post} standout={standout} dayStart={dayStart} />
-      <span className={cn('st-on-media pointer-events-none absolute inset-x-0 bottom-0 flex flex-col p-4 sm:p-5', roomy ? 'gap-3' : 'gap-2.5')} style={{ maxWidth: Math.min(width, 460) }}>
-        <span data-st="" className={cn('flex min-w-0 items-center gap-2.5', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
-          <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
-            <FeederStoryAvatar feeder={face} className="text-[12px]" />
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[14px] font-bold leading-tight text-white">@{post.handle}</span>
-            <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-tight text-white/65">
-              {feedName ? <span className="truncate">{feedName}</span> : null}
-              {feedName ? <span aria-hidden="true">·</span> : null}
-              <span className={cn('shrink-0', fresh && FRESH_PILL)}>{relativeTime(post.postedAt)}</span>
+      {/* the scrim only covers the foot (who, and the number): the rest of the picture stays bright */}
+      <span data-st-fade="" aria-hidden="true" className="st-scrim st-card-scrim pointer-events-none absolute inset-x-0 bottom-0 h-[40%] rounded-b-[28px]" />
+      {/* the open reading's fade, risen with it (its top set as it opens) */}
+      {live ? <span ref={parts?.shade} aria-hidden="true" className="st-read-shade pointer-events-none absolute inset-0" /> : null}
+      <Marks post={post} standout={standout} date={date} />
+      {live && playable ? (
+        <button
+          type="button"
+          onClick={own(onPlay)}
+          aria-label={watching ? 'Pause the preview' : 'Play the preview'}
+          aria-pressed={watching}
+          data-off={playOff ? '' : undefined}
+          inert={playOff}
+          className={cn(
+            'st-play pointer-events-auto absolute right-3 z-[5] grid h-11 w-11 place-items-center rounded-full bg-black/45 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] outline-none [-webkit-tap-highlight-color:transparent] active:scale-[0.92] focus-visible:ring-2 focus-visible:ring-white/80',
+            playSlides ? 'top-[39px]' : 'top-3',
+          )}
+        >
+          <svg aria-hidden="true" viewBox="0 0 44 44" className="pointer-events-none absolute inset-0 h-11 w-11 -rotate-90">
+            <circle ref={parts?.ring} className="st-play-ring" cx="22" cy="22" r="20.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={RING} strokeDashoffset={RING} />
+          </svg>
+          <Play aria-hidden="true" className="st-play-on ml-0.5 h-[18px] w-[18px]" fill="currentColor" strokeWidth={0} />
+          <Pause aria-hidden="true" className="st-play-off h-[18px] w-[18px]" fill="currentColor" strokeWidth={0} />
+        </button>
+      ) : null}
+      <span
+        ref={parts?.read}
+        className="st-read st-on-media absolute inset-x-0 bottom-0 block px-4 pt-4 pb-[calc(16px+var(--st-clear,0px))] sm:px-5 sm:pt-5 sm:pb-[calc(20px+var(--st-clear,0px))]"
+        style={{ '--st-clear': `${clear}px` } as CSSProperties}
+      >
+        <span ref={parts?.inner} className="st-read-in relative block" style={{ maxWidth: Math.min(width, 460) }}>
+          <span className={cn('flex min-w-0 flex-col', roomy ? 'gap-3' : 'gap-2.5')}>
+            <span data-st="" className={cn('flex min-w-0 items-center gap-2.5', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
+              <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
+                <FeederStoryAvatar feeder={face} className="text-[12px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-bold leading-tight text-white">@{post.handle}</span>
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-tight text-white/65">
+                  {feedName ? <span className="truncate">{feedName}</span> : null}
+                  {feedName ? <span aria-hidden="true">·</span> : null}
+                  <span className={cn('shrink-0', fresh && FRESH_PILL)}>{relativeTime(post.postedAt)}</span>
+                </span>
+              </span>
+              {live ? (
+                <button
+                  ref={parts?.toggle}
+                  type="button"
+                  onClick={own(onToggle)}
+                  aria-expanded="false"
+                  aria-label="Show the details"
+                  className="st-read-toggle pointer-events-auto grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.14] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16)] outline-none [-webkit-tap-highlight-color:transparent] [text-shadow:none] active:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/80"
+                >
+                  <ChevronUp aria-hidden="true" className="h-4 w-4" strokeWidth={2.6} />
+                </button>
+              ) : null}
+            </span>
+            <span data-st="" className="flex min-w-0 items-end" style={{ '--i': 1 } as CSSProperties}>
+              <TopBadge size={roomy ? 'xl' : 'lg'} topPercent={post.topPercent} checkpoint={post.latestCheckpoint} />
             </span>
           </span>
-        </span>
-        <span data-st="" className="flex min-w-0 items-end gap-3" style={{ '--i': 1 } as CSSProperties}>
-          <TopBadge size={roomy ? 'xl' : 'lg'} topPercent={post.topPercent} checkpoint={post.latestCheckpoint} />
-          {landed ? (
-            <span className={cn('flex min-w-0 items-center pb-1 text-[12px] font-medium leading-tight text-white/65', ON_PICTURE)}>
-              <span className={cn('truncate', landed.fresh && FRESH_PILL)}>{landed.text}</span>
+          {/* the rest of the reading, under the foot (the card itself stays minimal: who, and the number): the four reads,
+              the counts as figures, the caption whole, when, the way out */}
+          {live ? (
+            <span ref={parts?.more} className="st-read-more flex flex-col gap-3.5">
+              {height >= TRAIL_MIN ? (
+                <span className="block">
+                  <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="lg" />
+                </span>
+              ) : null}
+              {figures.length ? (
+                // (each as wide as it needs, spread across the card, a hairline centred between each two)
+                <span className="flex min-w-0 items-stretch justify-between gap-2">
+                  {figures.map((figure, index) => (
+                    <Fragment key={figure.key}>
+                      {index ? <span aria-hidden="true" className="w-px shrink-0 bg-white/[0.16]" /> : null}
+                      <span data-figure="" className={cn('flex min-w-0 flex-col', ON_PICTURE)}>
+                        <span className="whitespace-nowrap text-[19px] font-black leading-[0.9] tracking-[-0.04em] tabular-nums text-white">{figure.value}</span>
+                        <span className="mt-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white/60">{figure.label}</span>
+                      </span>
+                    </Fragment>
+                  ))}
+                </span>
+              ) : null}
+              {post.caption ? (
+                <span className={cn('block whitespace-pre-line break-words text-[14px] font-medium leading-[1.5] text-white/[0.88]', ON_PICTURE)}>{post.caption}</span>
+              ) : null}
+              <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
+                {when ? <span className={cn('text-[12px] font-medium leading-tight text-white/60', ON_PICTURE)}>{when}</span> : null}
+                {post.url ? (
+                  <a
+                    href={post.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={own()}
+                    className="group/ig inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-white pl-4 pr-3.5 text-[13px] font-bold text-[#0b0b0f] outline-none transition-transform duration-150 ease-out [-webkit-tap-highlight-color:transparent] active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-white/80"
+                  >
+                    Open on Instagram
+                    <ArrowUpRight aria-hidden="true" className="h-4 w-4 transition-transform duration-200 ease-out group-hover/ig:-translate-y-px group-hover/ig:translate-x-px" strokeWidth={2.4} />
+                  </a>
+                ) : null}
+              </span>
             </span>
           ) : null}
         </span>
-        {height >= TRAIL_MIN ? (
-          <span data-st="" className="block" style={{ '--i': 2 } as CSSProperties}>
-            <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="md" />
-          </span>
-        ) : null}
-        {stats.length ? (
-          <span data-st="" className={cn('flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[12px] font-medium leading-snug text-white/65', ON_PICTURE)} style={{ '--i': 3 } as CSSProperties}>
-            {stats.map((stat, index) => (
-              <span key={stat.key} className="whitespace-nowrap">
-                {index ? <span aria-hidden="true" className="mr-1.5 text-white/45">·</span> : null}
-                <b className="font-bold tabular-nums text-white">{stat.value}</b> {stat.unit}
-              </span>
-            ))}
-          </span>
-        ) : null}
       </span>
       {/* a winner (top 10%): a white ring */}
       {isWinner(post.topPercent) ? (
@@ -318,18 +424,48 @@ export type PostCellProps = {
   lit: boolean;
   spot: boolean;
   standout: boolean;
-  // a phone card that opens its day: the day (it wears the date)
-  dayStart: string | null;
+  // a phone card: the day it sits under (it wears the date)
+  date: string | null;
   eager: boolean;
   feeder: StreamFeeder | null;
   // the old view's leftover during a move (hidden unless the move lets it go from where it was)
   gone?: boolean;
+  // a phone's Day view, not mid-move: the card stands forward or sits back with the scroll (the first post rests lower)
+  depth?: 'first' | 'on' | null;
+  // the Day view's first card (it rests under the order tabs, clear of the header however it stands)
+  first?: boolean;
+  // a phone's card: how far its reading is lifted to clear the folded nav (a short screen)
+  clear?: number;
   onOpenTile: (post: StreamPost, element: HTMLElement) => void;
-  onOpenCard: (post: StreamPost) => void;
+  // a tap on a card that isn't the one in view: the page brings it there
+  onFocusCard: (post: StreamPost) => void;
 };
 
 const KIND: Record<StreamMediaType, string> = { reel: 'Reel', carousel: 'Carousel', image: 'Post', unknown: 'Post' };
 const FOCUS = 'outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]';
+
+// a card's reading opening and closing: one even glide each way (the carry's curve), started on the tap and turned
+// round from wherever it is by the next. Its rest comes in a line at a time as it rises, and fades as it sinks
+const READ_OPEN_MS = ms(460);
+const READ_CLOSE_MS = ms(440);
+const READ_LINE_MS = ms(380);
+const READ_LINE_AT_MS = ms(110);
+const READ_LINE_STEP_MS = ms(60);
+const READ_LINE_EASE = 'cubic-bezier(0.16, 0.9, 0.2, 1)';
+const READ_FADE_MS = ms(300);
+const READ_FADE_EASE = 'cubic-bezier(0.3, 0, 0.4, 1)';
+// inside a line: the trail's reads and the figures come in one after another, a beat into their line
+const READ_PIECE_MS = ms(340);
+const READ_PIECE_AT_MS = ms(50);
+const READ_PIECE_STEP_MS = ms(45);
+// the open reading's fade starts this far above its first line
+const SHADE_LEAD = 84;
+// the open reading leaves at least this much of the picture's top clear (past that, its rest scrolls)
+const READ_TOP_ROOM = 56;
+// a reading open as its card clears is shut once it has slid off (stream.css, .st-read in [data-clean])
+const CLEAR_MS = ms(420);
+
+type Clean = 'watch' | 'slides' | null;
 
 function PostCell({
   cellKey,
@@ -352,15 +488,18 @@ function PostCell({
   lit,
   spot,
   standout,
-  dayStart,
+  date,
   eager,
   feeder,
   gone = false,
+  depth = null,
+  first = false,
+  clear = 0,
   onOpenTile,
-  onOpenCard,
+  onFocusCard,
 }: PostCellProps) {
   const shape: CellShape = { w, h, cols, rows, mediaWidth, wide };
-  const dayParts = dayStart ? groupParts(dayStart, 'day', istDay()) : null;
+  const dateParts = date ? groupParts(date, 'day', istDay()) : null;
   const grid = mode !== 'today';
   const card = mode === 'today' && !shape.wide;
   const row = mode === 'today' && shape.wide;
@@ -379,15 +518,172 @@ function PostCell({
   const top = post.topPercent;
   const measured = top != null && Number.isFinite(top);
   const label = `${KIND[post.mediaType]} by @${post.handle}, ${measured ? `top ${formatTopPercent(top)}${post.latestCheckpoint ? ` at ${post.latestCheckpoint}` : ''}` : 'not measured yet'}`;
-  const openCard = () => onOpenCard(post);
-  const onKey = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-    event.preventDefault();
-    openCard();
+
+  /* ── a card's reading: open or shut, moved from wherever it is (a tap mid-way turns it round) ── */
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const readRef = useRef<HTMLSpanElement | null>(null);
+  const innerRef = useRef<HTMLSpanElement | null>(null);
+  const moreRef = useRef<HTMLSpanElement | null>(null);
+  const shadeRef = useRef<HTMLSpanElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const ringRef = useRef<SVGCircleElement | null>(null);
+  const openRef = useRef(false);
+  const setRead = useCallback((open: boolean, animate = true) => {
+    const cell = cellRef.current;
+    const read = readRef;
+    const more = moreRef;
+    const shade = shadeRef;
+    const toggle = toggleRef;
+    const block = innerRef.current;
+    if (!cell || !read.current || !block || openRef.current === open) return;
+    openRef.current = open;
+    // where it is on screen now (mid-way, if it is moving), then where it belongs: it goes from the one to the other
+    const before = block.getBoundingClientRect().top;
+    const shadeAt = shade.current ? Number(getComputedStyle(shade.current).opacity) : 0;
+    const moreAt = more.current ? Number(getComputedStyle(more.current).opacity) : 0;
+    const lines = more.current ? (Array.from(more.current.children) as HTMLElement[]) : [];
+    const pieces = more.current ? Array.from(more.current.querySelectorAll<HTMLElement>('[data-trail-seg], [data-figure]')) : [];
+    [block, shade.current, more.current, ...lines, ...pieces].forEach((el) => el?.getAnimations().forEach((animation) => animation.cancel()));
+    // opening: the rest gets the room the card has left under the foot (past it, it scrolls), from its top
+    if (open && more.current) {
+      const pad = getComputedStyle(read.current);
+      const foot = (block.firstElementChild as HTMLElement | null)?.offsetHeight ?? 0;
+      const room = cell.clientHeight - READ_TOP_ROOM - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom) - foot - 16;
+      more.current.style.setProperty('--st-more-max', `${Math.max(96, Math.floor(room))}px`);
+      more.current.scrollTop = 0;
+    }
+    if (open) cell.dataset.read = '';
+    else delete cell.dataset.read;
+    if (more.current) more.current.inert = !open;
+    toggle.current?.setAttribute('aria-expanded', String(open));
+    toggle.current?.setAttribute('aria-label', open ? 'Hide the details' : 'Show the details');
+    if (open && more.current) more.current.toggleAttribute('data-scrolls', more.current.scrollHeight > more.current.clientHeight + 1);
+    const after = block.getBoundingClientRect().top;
+    // the fade's top sits a little over the reading's, open or shut, so it goes up and comes down with it. Placed by
+    // translate, never by top: it keeps the card's height whole, its foot covered all the way (shut, its top used to
+    // stay up there, and the glide down began with it lifted a whole reading higher: dark over the picture's top)
+    if (shade.current) shade.current.style.translate = `0px ${Math.max(0, after - cell.getBoundingClientRect().top - SHADE_LEAD).toFixed(1)}px`;
+    const dy = before - after;
+    if (!animate || reducedMotion() || Math.abs(dy) < 0.5) return;
+    // (WebKit starts a glide's clock before the frame that draws it is on screen: held at its start for that frame, it
+    // is seen whole)
+    const flight = startFlight(holdsFlights() ? FLIGHT_HOLD_MS : 0);
+    const glide: KeyframeAnimationOptions = { duration: open ? READ_OPEN_MS : READ_CLOSE_MS, easing: CARRY_EASE_CSS, fill: 'backwards' };
+    const from = `translate3d(0px, ${dy.toFixed(1)}px, 0px)`;
+    run(flight, block, [{ transform: from }, { transform: 'translate3d(0px, 0px, 0px)' }], glide);
+    if (shade.current) run(flight, shade.current, [{ opacity: shadeAt, transform: from }, { opacity: open ? 1 : 0, transform: 'translate3d(0px, 0px, 0px)' }], glide);
+    if (open && moreAt > 0.05) {
+      // (a close turned round mid-way: it is all there already, it only rises back)
+      lines.forEach((line) => run(flight, line, [{ opacity: moreAt }, { opacity: 1 }], { duration: READ_LINE_MS, easing: READ_LINE_EASE, fill: 'backwards' }));
+    } else if (open) {
+      // a line at a time under the foot as it rises; in the trail's line and the figures' line, their pieces one after
+      // another a beat into it
+      lines.forEach((line, index) => {
+        const at = READ_LINE_AT_MS + index * READ_LINE_STEP_MS;
+        const own = Array.from(line.querySelectorAll<HTMLElement>('[data-trail-seg], [data-figure]'));
+        const rise = [{ transform: 'translate3d(0px, 12px, 0px)' }, { transform: 'translate3d(0px, 0px, 0px)' }];
+        if (!own.length) {
+          run(flight, line, [{ ...rise[0], opacity: 0 }, { ...rise[1], opacity: 1 }], { duration: READ_LINE_MS, delay: at, easing: READ_LINE_EASE, fill: 'backwards' });
+          return;
+        }
+        run(flight, line, rise, { duration: READ_LINE_MS, delay: at, easing: READ_LINE_EASE, fill: 'backwards' });
+        own.forEach((piece, step) => run(
+          flight,
+          piece,
+          piece.dataset.figure !== undefined
+            ? [{ opacity: 0, transform: 'translate3d(0px, 8px, 0px)' }, { opacity: 1, transform: 'translate3d(0px, 0px, 0px)' }]
+            : [{ opacity: 0, transform: 'translate3d(-10px, 0px, 0px)' }, { opacity: 1, transform: 'translate3d(0px, 0px, 0px)' }],
+          { duration: READ_PIECE_MS, delay: at + READ_PIECE_AT_MS + step * READ_PIECE_STEP_MS, easing: READ_LINE_EASE, fill: 'backwards' },
+        ));
+      });
+    } else if (more.current) {
+      run(flight, more.current, [{ opacity: moreAt }, { opacity: 0 }], { duration: READ_FADE_MS, easing: READ_FADE_EASE, fill: 'backwards' });
+    }
+    if (flight.hold) afterDrawn(() => releaseFlight(flight));
+  }, []);
+
+  /* ── cleared: a clip playing (its ▶), or a carousel's slides past the first ── */
+  const [clean, setClean] = useState<Clean>(null);
+  // the slide a card's carousel shows: one with video slides has its ▶ on those
+  const [slideAt, setSlideAt] = useState(0);
+  const slideClips = card && post.slides.length > 1 && post.slides.some((slide) => slide.video);
+  const playable = card && ((post.mediaType === 'reel' && Boolean(post.previewUrl) && post.slides.length <= 1) || slideClips);
+  const playOff = slideClips && !post.slides[slideAt]?.video;
+  // what a card is once its clip stops: cleared past a carousel's first slide, itself on it
+  const rest: Clean = slideAt > 0 ? 'slides' : null;
+  // a reading open as the card clears goes down with the rest, and is shut once it is out of sight
+  const shutWhenClear = useCallback(() => {
+    if (!openRef.current) return;
+    window.setTimeout(() => {
+      if (cellRef.current?.dataset.clean) setRead(false, false);
+    }, CLEAR_MS);
+  }, [setRead]);
+  const togglePlay = useCallback(() => {
+    // (a card peeking under the one in view is brought into view first)
+    if (!active) {
+      onFocusCard(post);
+      return;
+    }
+    setClean((current) => (current === 'watch' ? rest : 'watch'));
+    shutWhenClear();
+  }, [active, onFocusCard, post, shutWhenClear, rest, setClean]);
+  const onProgress = useCallback((fraction: number) => {
+    const ring = ringRef.current;
+    if (ring) ring.style.strokeDashoffset = String(RING * (1 - Math.min(1, Math.max(0, fraction))));
+  }, []);
+  const onPlayFail = useCallback(() => setClean((current) => (current === 'watch' ? rest : current)), [rest, setClean]);
+  // a swipe stops a slide's clip too: cleared past the first slide, itself again on it
+  const onSlide = useCallback((index: number) => {
+    if (index > 0) shutWhenClear();
+    setSlideAt(index);
+    setClean(index > 0 ? 'slides' : null);
+  }, [shutWhenClear, setClean]);
+  // the ring empty again whenever the clip isn't playing
+  useEffect(() => {
+    const ring = ringRef.current;
+    if (clean !== 'watch' && ring) ring.style.strokeDashoffset = String(RING);
+  }, [clean]);
+
+  // the card leaving view (a swipe on, a move): it is itself again, its reading shut
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (!active) {
+      setClean(null);
+      setSlideAt(0);
+    }
+  }
+  useEffect(() => {
+    if (!active) setRead(false, card);
+  }, [active, card, setRead]);
+  // no longer a card (a move to a grid or a row): nothing of its reading stays on it
+  useIsoLayoutEffect(() => {
+    if (card) {
+      const more = moreRef.current;
+      if (more && !openRef.current) more.inert = true;
+      return;
+    }
+    openRef.current = false;
+    if (cellRef.current) delete cellRef.current.dataset.read;
+  }, [card]);
+
+  // a tap anywhere on a card: the one in view reads (or, cleared, comes back); another is brought into view
+  const onCardTap = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('a, button')) return;
+    if (!active) {
+      onFocusCard(post);
+      return;
+    }
+    if (clean) {
+      setClean(null);
+      return;
+    }
+    setRead(!openRef.current);
   };
 
   return (
     <div
+      ref={cellRef}
       data-cell={cellKey}
       data-zid={zid ?? undefined}
       data-post-key={post.key}
@@ -398,13 +694,13 @@ function PostCell({
       data-spot={spot ? '' : undefined}
       data-arriving={arriving ? '' : undefined}
       data-gone={gone ? '' : undefined}
-      // a phone's card opens its details from anywhere on it (its chrome lets touches through, to a carousel's slides)
-      role={card ? 'button' : undefined}
-      tabIndex={card ? 0 : undefined}
-      aria-label={card ? `${label}. Open details` : undefined}
-      onClick={card ? openCard : undefined}
-      onKeyDown={card ? onKey : undefined}
-      className={cn('st-cell', row && 'st-row', card && cn('cursor-pointer rounded-[28px]', FOCUS))}
+      data-depth={card && depth ? depth : undefined}
+      data-first={card && first ? '' : undefined}
+      data-clean={card && clean ? clean : undefined}
+      // a card reads from anywhere on it (its chrome lets touches through, to a carousel's slides); the keys have its
+      // arrow button
+      onClick={card ? onCardTap : undefined}
+      className={cn('st-cell', row && 'st-row', card && 'cursor-pointer rounded-[28px] [-webkit-tap-highlight-color:transparent]')}
       style={style}
     >
       {bg ? (
@@ -424,20 +720,33 @@ function PostCell({
         {/* the picture gives under the finger (inside the frame: the moves own the frame's transform), and never while
             the finger scrolls the page (press.ts) */}
         <span className={cn('absolute inset-0 block transition-transform duration-200 ease-out', grid ? 'group-data-[pressed]:scale-[0.97]' : null)}>
-          <PostPicture post={post} active={active && !grid} eager={eager} framed={!grid} controls={card ? 'top' : 'bottom'} />
+          <PostPicture
+            post={post}
+            active={active && !grid}
+            eager={eager}
+            framed={!grid}
+            controls={card ? 'top' : 'bottom'}
+            // a card's preview plays on its ▶ (a row's plays as it comes into view)
+            play={card ? clean === 'watch' : undefined}
+            onProgress={card ? onProgress : undefined}
+            onPlayFail={card ? onPlayFail : undefined}
+            onSlide={card ? onSlide : undefined}
+          />
         </span>
         {grid ? (
           <span data-layer="chips" className="pointer-events-none absolute inset-0 block">
             <GridChips post={post} cols={shape.cols} rows={shape.rows} width={shape.w} feeder={feeder} />
           </span>
         ) : null}
-        {row ? <Marks post={post} standout={standout} dayStart={null} /> : null}
+        {row ? <Marks post={post} standout={standout} date={null} /> : null}
         {/* a winner (top 10%): a white ring (what is new is marked on its feeder's circle, not on the post) */}
         {winner && !card ? (
           <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 z-[4] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]', grid ? 'rounded-[6px]' : 'rounded-[28px]')} />
         ) : null}
         {/* the wide Day view's column out of the spotlight: it recedes into the page (dimmed on dark, washed out on light) */}
         {row ? <span aria-hidden="true" className="st-dim pointer-events-none absolute inset-0 z-[5] bg-black light:bg-[var(--st-bg)]" /> : null}
+        {/* a phone's card sitting back (st-depth-dim); kept in every view, so a move can let it go as it flies */}
+        <span data-depth-dim="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[5] bg-black opacity-0" />
         {grid ? (
           <button
             type="button"
@@ -449,8 +758,32 @@ function PostCell({
       </div>
 
       {card ? (
-        <div data-layer="chrome" className="pointer-events-none rounded-[28px]" style={{ left: 0, top: 0, width: shape.w, height: shape.h }}>
-          <CardChrome post={post} feeder={feeder} width={shape.w} height={shape.h} standout={standout} dayStart={dayParts} />
+        <div data-layer="chrome" className="pointer-events-none overflow-hidden rounded-[28px]" style={{ left: 0, top: 0, width: shape.w, height: shape.h }}>
+          <CardChrome
+            post={post}
+            feeder={feeder}
+            width={shape.w}
+            height={shape.h}
+            standout={standout}
+            date={dateParts}
+            live
+            clear={clear}
+            parts={{ read: readRef, inner: innerRef, more: moreRef, shade: shadeRef, toggle: toggleRef, ring: ringRef }}
+            playable={playable}
+            playSlides={slideClips}
+            playOff={playOff}
+            watching={clean === 'watch'}
+            onToggle={() => {
+              if (!active) {
+                onFocusCard(post);
+                return;
+              }
+              // (a cleared card: its reading back, then open)
+              if (clean) setClean(null);
+              setRead(!openRef.current);
+            }}
+            onPlay={togglePlay}
+          />
         </div>
       ) : null}
 
@@ -468,7 +801,7 @@ function PostCell({
       ) : null}
       {cardOut && leavingShape ? (
         <div data-layer="chrome-out" className="pointer-events-none" style={{ left: 0, top: 0, width: leavingShape.w, height: leavingShape.h }}>
-          <CardChrome post={post} feeder={feeder} width={leavingShape.w} height={leavingShape.h} standout={standout} dayStart={dayParts} />
+          <CardChrome post={post} feeder={feeder} width={leavingShape.w} height={leavingShape.h} standout={standout} date={dateParts} />
         </div>
       ) : null}
       {rowOut && leavingShape ? (

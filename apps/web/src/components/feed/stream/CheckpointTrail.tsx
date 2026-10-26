@@ -11,6 +11,10 @@
    it lands ("in 9d", "soon"); one that was missed (a later read
    landed, or its day is past) says so with a dash.
 
+   Sizes: sm a strip of numbers, md a row of labelled boxes, lg a
+   small tile per read, its label over its number (a phone card's
+   open reading, where the trail is the thing you came for).
+
    Still: nothing here moves. A parent that wants the trail to
    arrive animates its segments ([data-trail-seg]) itself, once
    (ReelCard does, on the page beat).
@@ -25,7 +29,7 @@ import '@/components/feed/stream/stream.css';
 export type CheckpointTrailProps = {
   results: StreamResult[];
   latest: StreamCheckpoint | null;
-  size: 'sm' | 'md';
+  size: 'sm' | 'md' | 'lg';
   postedDay?: string | null; // the IST day the post went up (YYYY-MM-DD): says when a read still to come lands
 };
 
@@ -38,14 +42,18 @@ function daysBetween(from: string, to: string) {
 }
 
 function CheckpointTrail({ results, latest, size, postedDay = null }: CheckpointTrailProps) {
-  const md = size === 'md';
+  const lg = size === 'lg';
+  // labelled (md and lg): each box says which read it is, and when one still to come lands
+  const md = size === 'md' || lg;
   const age = postedDay ? daysBetween(postedDay, istDay()) : null;
   const box = cn(
-    'flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap leading-none',
-    md ? 'h-[30px] gap-1 rounded-[10px] px-2' : 'h-[18px] rounded-[6px] px-1',
+    'flex min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-none',
+    lg
+      ? 'h-[60px] flex-col items-start rounded-[14px] px-2.5 py-2.5'
+      : md ? 'h-[30px] items-center gap-1 rounded-[10px] px-2' : 'h-[18px] items-center rounded-[6px] px-1',
   );
   return (
-    <span role="list" aria-label="Checkpoints" className={cn('flex w-full min-w-0', md ? 'gap-1.5' : 'gap-1')}>
+    <span role="list" aria-label="Checkpoints" className={cn('flex w-full min-w-0', lg ? 'gap-2' : md ? 'gap-1.5' : 'gap-1')}>
       {STREAM_CHECKPOINTS.map((checkpoint) => {
         const result = results.find((entry) => entry.checkpoint === checkpoint);
 
@@ -65,11 +73,11 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
               className={cn(
                 box,
                 'text-[var(--st-text-3)] shadow-[inset_0_0_0_1px_var(--st-line)]',
-                md && note ? 'justify-between' : 'justify-center',
+                lg || (md && note) ? 'justify-between' : 'justify-center',
               )}
             >
-              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{checkpoint}</span>
-              {md && note ? <span className="text-[12px] font-semibold tabular-nums">{note}</span> : null}
+              <span className={cn('font-black uppercase tracking-[0.14em]', lg ? 'text-[11px]' : 'text-[10px]')}>{checkpoint}</span>
+              {md && note ? <span className={cn('tabular-nums', lg ? 'text-[15px] font-bold' : 'text-[12px] font-semibold')}>{note}</span> : null}
             </span>
           );
         }
@@ -84,7 +92,7 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
           boxShadow: [
             now ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null,
             `inset 0 1px 0 rgba(255, 255, 255, ${tone.gi})`,
-            md && tone.gc !== 'transparent' ? `0 0 18px ${tone.gc}` : null,
+            md && tone.gc !== 'transparent' ? `0 0 ${lg ? 22 : 18}px ${tone.gc}` : null,
           ].filter(Boolean).join(', '),
         };
         const value = ranked ? formatTopPercent(top).slice(0, -1) : '—';
@@ -99,11 +107,11 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
             style={style}
           >
             {md ? (
-              <span className={cn('text-[10px] font-black uppercase tracking-[0.14em]', now ? 'opacity-90' : 'opacity-60')}>{checkpoint}</span>
+              <span className={cn('font-black uppercase tracking-[0.14em]', lg ? 'text-[11px]' : 'text-[10px]', now ? 'opacity-90' : 'opacity-60')}>{checkpoint}</span>
             ) : null}
-            <span className={cn('font-black tabular-nums tracking-[-0.04em]', md ? 'text-[14px]' : 'text-[10px]')}>
+            <span className={cn('font-black tabular-nums tracking-[-0.04em]', lg ? 'text-[clamp(17px,5.6vw,22px)]' : md ? 'text-[14px]' : 'text-[10px]')}>
               {value}
-              {ranked ? <span className={cn('ml-px tracking-normal opacity-75', md ? 'text-[10px]' : 'text-[8px]')}>%</span> : null}
+              {ranked ? <span className={cn('ml-px tracking-normal opacity-75', lg ? 'text-[0.6em]' : md ? 'text-[10px]' : 'text-[8px]')}>%</span> : null}
             </span>
           </span>
         );

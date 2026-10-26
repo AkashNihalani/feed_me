@@ -194,9 +194,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {pathname.startsWith('/living-world') ? (
           <style>{'nextjs-portal { display: none !important; }'}</style>
         ) : null}
+        {/* placed by its top, not padded down from the screen's edge: a fixed box that reaches the top edge is taken by
+            iOS Safari for a fixed header, and the status bar over it is painted solid instead of letting the page show
+            through */}
         <div
+          data-fm-header-layer
           className={cn(
-            'pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center px-2 pt-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 sm:pt-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] md:pt-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
+            'pointer-events-none fixed inset-x-0 top-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] z-[100] flex flex-col items-center px-2 sm:top-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 md:top-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
             sharedHeader && 'lg:hidden',
             !hasTabChrome && 'hidden',
           )}

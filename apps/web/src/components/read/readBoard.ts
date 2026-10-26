@@ -191,3 +191,50 @@ export function loadBoard(feed: RailFeed): Promise<BoardFeeder[]> {
   pending.set(feed.id, request);
   return request;
 }
+
+/* ── the board's words (Read's index and Feed's profile say the same) ── */
+
+const WORDS = ['No one', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+
+export function counted(n: number, lower = false) {
+  const word = n <= 10 ? WORDS[n] : String(n);
+  return lower ? word.toLowerCase() : word;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/* the line under a feeder's handle: the run the move is read from, against the one before it */
+export function noteFor(row: BoardFeeder) {
+  if (row.momentum === 'early' || !row.now || row.now.tp == null) {
+    const core = row.total ? `${plural(row.total, 'post')} so far` : 'No posts tracked yet';
+    return { pre: '', core, full: core };
+  }
+  const pre = `${row.now.live ? 'This run' : 'Last run'}: typical post `;
+  const core = `top ${row.now.tp}%${row.before?.tp != null ? `, was ${row.before.tp}%` : ''}`;
+  return { pre, core, full: pre + core };
+}
+
+/* the board's headline and the line under it: how the group splits, who is strongest, who moved most */
+export function summaryOf(rows: BoardFeeder[], where: string) {
+  const count = (m: Momentum) => rows.filter((row) => row.momentum === m).length;
+  const up = count('up');
+  const down = count('down');
+  const level = count('level');
+  const head = up && down ? `${counted(up)} on the up, ${counted(down, true)} sliding`
+    : up ? `${counted(up)} on the up, nobody sliding`
+    : down ? `${counted(down)} sliding, nobody on the up`
+    : level ? 'Everyone is holding steady'
+    : rows.length ? 'Too early to call anyone' : 'Nobody to read here yet';
+  const ranked = rows.filter((row): row is BoardFeeder & { now: BoardRun & { tp: number } } => row.now?.tp != null);
+  const strongest = [...ranked].sort((a, b) => a.now.tp - b.now.tp)[0] || null;
+  const moved = (row: (typeof ranked)[number]) => (row.before?.tp != null ? Math.abs(row.before.tp - row.now.tp) : 0);
+  const mover = [...ranked].sort((a, b) => moved(b) - moved(a))[0] || null;
+  const lines: string[] = [];
+  // every top % is against the feeder's own posts, so "strongest" means outdoing themselves the most
+  if (strongest) lines.push(`@${strongest.handle} is outdoing themselves the most ${where}: the typical post of their ${strongest.now.live ? 'current' : 'last'} run sits in their own top ${strongest.now.tp}%.`);
+  if (mover && mover !== strongest && mover.before?.tp != null && moved(mover) >= 8) {
+    lines.push(`@${mover.handle} moved the most, from their own top ${mover.before.tp}% to top ${mover.now.tp}%.`);
+  }
+  return { head, sub: lines.join(' ') };
+}
+
