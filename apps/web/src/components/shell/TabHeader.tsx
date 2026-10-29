@@ -1213,10 +1213,10 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             tabIndex={-1}
             aria-label="Close"
             onClick={() => setOpen(false)}
-            className="absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 text-[16px] font-black uppercase tracking-[-0.02em] text-fg outline-none"
+            className={cn('absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 font-black uppercase text-fg outline-none', slot > 68 ? 'text-[13px] tracking-[0.02em]' : 'text-[16px] tracking-[-0.02em]')}
             style={{ width: box.width, height: box.height }}
           >
-            <ValueSlot text={face(shown)} dir={roll.dir} roomy={roomy} width={slot} reduce={reduce} />
+            <ValueSlot text={face(shown)} dir={roll.dir} roomy={roomy} width={slot > 68 ? 76 : slot} reduce={reduce} />
             <motion.span
               className="grid place-items-center"
               initial={reduce ? false : { transform: 'rotate(0deg)' }}
@@ -1246,10 +1246,12 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
         aria-busy={pending}
         onClick={toggle}
         // under the box while the menu is out (the box wears its face), so nothing moves
-        style={{ ...(box ? { visibility: 'hidden' as const } : null), ...(slot > 68 ? { width: slot + 40 } : null) }}
-        className={cn(HEADER_CONTROL, roomy ? 'w-[108px]' : 'w-[76px]', 'text-[16px] tracking-[-0.02em] transition-transform duration-150 active:scale-[0.97]')}
+        // (a name longer than the roomy slot holds, Read's Strategy, is set a size down, so the button keeps the 108px
+        // every roomy picker has and the handle beside it keeps its room)
+        style={box ? { visibility: 'hidden' as const } : undefined}
+        className={cn(HEADER_CONTROL, roomy ? 'w-[108px]' : 'w-[76px]', slot > 68 ? 'text-[13px] tracking-[0.02em]' : 'text-[16px] tracking-[-0.02em]', 'transition-transform duration-150 active:scale-[0.97]')}
       >
-        <ValueSlot text={face(shown)} dir={roll.dir} roomy={roomy} width={slot} reduce={reduce} />
+        <ValueSlot text={face(shown)} dir={roll.dir} roomy={roomy} width={slot > 68 ? 76 : slot} reduce={reduce} />
         <span className="grid place-items-center">
           <ChevronDown className="h-3.5 w-3.5 text-fg/54" aria-hidden="true" />
         </span>

@@ -28,7 +28,7 @@ import { ChevronDown } from 'lucide-react';
 import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, TimeframeControl, useTabHeader } from '@/components/shell/TabHeader';
 import { cn } from '@/lib/utils';
 import { readOf, type RailFeed, type RailFeeder } from '@/components/read/readFeeds';
-import { CHAPTERS, PARTS, chapterName, chapterOf, partName, partNumber, type Chapter, type Part } from '@/components/read/read17/Read17';
+import { CHAPTERS, chapterName, chapterOf, type Chapter, type Part } from '@/components/read/read17/Read17';
 
 const VIEW_LABEL: Record<string, string> = { runs: 'Runs', repeats: 'Repeats', ranks: 'Ranks' };
 const VIEW_ORDER: Record<string, number> = { runs: 0, repeats: 1, ranks: 2 };
@@ -121,10 +121,10 @@ export default function ReadHeader({
     </AnimatePresence>
   );
 
-  // the part switch: in the header it wears the part's number, as Lead's wears its range (so the row keeps the room the
-  // other tabs give the handle), and opens on every part by name; the side rail docks the three parts as a track
+  // the part switch: the read's three parts by name, Story · Strategy · Split (a picker in the phone's header, a track
+  // where there's room, and the same track docked on the side rail)
   const partSwitch = chapter ? (
-    <TimeframeControl id="read" value={chapter.value} options={PARTS} label={partName} face={partNumber} menuWidth={184} name="Part of the read" onChange={chapter.onChange} />
+    <TimeframeControl id="read" value={chapterOf(chapter.value)} options={CHAPTERS} label={chapterName} name="Part of the read" onChange={chapter.onChange} />
   ) : null;
   const partTrack = chapter ? (
     <TimeframeControl id="read-rail" value={chapterOf(chapter.value)} options={CHAPTERS} label={chapterName} name="Part of the read" onChange={chapter.onChange} />

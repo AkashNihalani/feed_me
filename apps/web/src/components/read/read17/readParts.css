@@ -45,9 +45,14 @@ html.dark .r17 {
 .r17 .phead .pav { width: 26px; height: 26px; border-radius: 50%; background: var(--media) center/cover; box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 3px var(--page) }
 .r17 .phead em { font-style: normal; color: var(--ink-3); font-weight: 500 }
 .r17 .phead .cnt { margin-left: auto; font: 600 12.5px/1 var(--font); color: var(--ink-3); font-variant-numeric: tabular-nums }
-.r17 .vp { position: relative; overflow: hidden; touch-action: pan-y; border-radius: 26px }
-.r17 .track { display: flex; gap: 12px; transition: transform .52s var(--glide); will-change: transform }
-.r17 .slide { flex: 0 0 100%; display: grid; gap: 22px; position: relative }
+.r17 .vp { position: relative; overflow: hidden; touch-action: pan-y; border-radius: 26px; background: #0b0b0e }
+/* the cards stand one behind another in the frame; only the one on show is drawn, and the two in a move (the frame's
+   dark shows between them as one slides out and the next slides in) */
+.r17 .track { position: relative; height: var(--ch) }
+.r17 .slide { position: absolute; inset: 0; display: grid; visibility: hidden }
+.r17 .slide.on, .r17 .slide.mv { visibility: visible }
+.r17 .slide.mv { will-change: transform }
+.r17 .sdim { position: absolute; z-index: 9; inset: 0; border-radius: 26px; background: #050508; opacity: 0; pointer-events: none }
 .r17 .hint { display: flex; justify-content: center; gap: 14px; padding: 12px 0 0; font: 500 12.5px/1.3 var(--font); color: var(--ink-3); text-align: center }
 
 .r17 .card { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .8); --ink-3: rgb(255 255 255 / .54); --hair: rgb(255 255 255 / .12); --raised: var(--card); --page: var(--card);
@@ -76,7 +81,7 @@ html.dark .r17 {
 .r17 .card.open .foot { transform: none }
 .r17 .kick { display: flex; align-items: center; gap: 8px; font: 700 11px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .85) }
 .r17 .kick .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; flex: none }
-.r17 .kick.feeding .dot { background: var(--accent) } .r17 .kick.folding .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #fff }
+.r17 .kick.feeding .dot, .r17 .kick.t-up .dot { background: var(--accent) } .r17 .kick.folding .dot, .r17 .kick.t-dn .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #fff }
 .r17 .kick em { font-style: normal; color: rgb(255 255 255 / .5) }
 .r17 .fig { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px }
 .r17 .num { font: 700 46px/.92 var(--font); letter-spacing: -.055em; font-variant-numeric: tabular-nums }
@@ -162,20 +167,32 @@ html.dark .r17 {
    through a window (a clip); picking another moves the row as one, its spines riding the moving edges ---------- */
 .r17 .arr { display: none }
 .r17 .ds { --sw: 48px; --dw: 680px; --tw: 360px; --dh: 640px; display: grid; gap: 18px }
-.r17 .dsr { position: relative; height: var(--dh) }
+.r17 .ds { --gut-bg: var(--page) }
+.r17 .dsr { position: relative; height: var(--dh); overflow: hidden; border-radius: 26px; isolation: isolate }
+/* each card lies over the one before it, so a card's own sliver is all that shows until the row opens it. Ahead of each
+   card (and moving with it, part of the same layer) a gutter in the page's colour keeps the gap and the rounded corners
+   on both sides of it: 26px corners, an 8px gap */
+.r17 .dsc > .dgut { position: absolute; z-index: 0; top: 0; left: -34px; width: 60px; height: 100%; pointer-events: none;
+  background: radial-gradient(circle 26px at 0 100%, transparent 25.5px, var(--gut-bg) 26px) 0 0 / 26px 26px no-repeat,
+    radial-gradient(circle 26px at 0 0, transparent 25.5px, var(--gut-bg) 26px) 0 100% / 26px 26px no-repeat,
+    linear-gradient(var(--gut-bg), var(--gut-bg)) 26px 0 / 8px 100% no-repeat,
+    linear-gradient(var(--gut-bg), var(--gut-bg)) 34px 0 / 26px 26px no-repeat,
+    linear-gradient(var(--gut-bg), var(--gut-bg)) 34px 100% / 26px 26px no-repeat }
+.r17 .dsi { position: absolute; z-index: 1; inset: 0; overflow: hidden; border-radius: 26px; background: var(--card); isolation: isolate }
 .r17 .dsc { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .8); --ink-3: rgb(255 255 255 / .54); --hair: rgb(255 255 255 / .12); --raised: var(--card); --page: var(--card);
   --s0: #1B1B1E; --s1: #252529; --s2: #303035; --s3: #791B26; --s4: #991F2F; --s5: #BA2239; --s6: #DA2E46; --stx: #fff;
-  position: absolute; top: 0; left: 0; width: var(--dw); height: 100%; overflow: hidden; border-radius: 26px; background: var(--card); color: #fff; isolation: isolate;
-  clip-path: inset(0px calc(var(--dw) - var(--sw)) 0px 0px round 26px); will-change: transform, clip-path }
-.r17 .dz { position: absolute; z-index: 0; top: 0; bottom: 0; left: var(--tw); width: calc(var(--dw) - var(--tw)); overflow: hidden; background: #0a0a0d }
+  position: absolute; top: 0; left: 0; width: var(--dw); height: 100%; color: #fff; will-change: transform }
+/* (a laptop's card: its picture on the left, still, so a closed card's spine is the picture's own left edge; its words
+   on a panel at the right) */
+.r17 .dz { position: absolute; z-index: 0; top: 0; bottom: 0; left: 0; width: calc(var(--dw) - var(--tw)); overflow: hidden; background: #0a0a0d }
 .r17 .dz .md { position: absolute; inset: 0 }
-.r17 .dz .md.bleed::after { background: linear-gradient(90deg, rgb(13 13 17 / .5) 0, rgb(13 13 17 / 0) 22%, rgb(13 13 17 / 0) 70%, rgb(13 13 17 / .55) 100%) }
+.r17 .dz .md.bleed::after { background: linear-gradient(90deg, rgb(13 13 17 / .35) 0, rgb(13 13 17 / 0) 20%, rgb(13 13 17 / 0) 72%, rgb(13 13 17 / .6) 100%) }
 .r17 .dz .md.bleed .plab { left: 16px; right: 16px; top: auto; bottom: 18px }
-.r17 .dz .md.quad::after { background: linear-gradient(90deg, rgb(13 13 17 / .45) 0, rgb(13 13 17 / 0) 26%) }
-.r17 .dz .md.quad .qd .plab { top: 12px }
+.r17 .dz .md.quad::after { background: linear-gradient(270deg, rgb(13 13 17 / .45) 0, rgb(13 13 17 / 0) 26%) }
+.r17 .dz .md.quad .qd .plab { top: 14px; left: 14px; right: 14px }
 .r17 .dz .md.pad { bottom: 0; padding: 40px 26px; display: flex; flex-direction: column; justify-content: center }
 .r17 .dsc.k-list .dz .md { padding: 30px 24px; display: flex; flex-direction: column; justify-content: center; overflow: hidden }
-.r17 .dtx { position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; width: var(--tw); display: flex; flex-direction: column; padding: 22px 26px 28px }
+.r17 .dtx { position: absolute; z-index: 1; top: 0; bottom: 0; left: calc(var(--dw) - var(--tw)); width: var(--tw); display: flex; flex-direction: column; gap: 30px; padding: 22px 26px 28px; will-change: opacity, transform }
 .r17 .dhd { display: flex; align-items: center; gap: 9px; min-width: 0 }
 .r17 .dhd .av { flex: none; width: 30px; height: 30px; border-radius: 50%; background: #222 center/cover; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9) }
 .r17 .dhd b { font: 700 14px/1 var(--font); letter-spacing: -.01em }
@@ -187,22 +204,35 @@ html.dark .r17 {
 .r17 .dft .line { font-size: 22px; line-height: 1.18; text-wrap: balance }
 .r17 .dft .more { display: grid; gap: 12px; padding-top: 8px }
 .r17 .dft .why { font-size: 15px }
-.r17 .dsp { position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: var(--sw); display: grid; grid-template-rows: auto 1fr auto; justify-items: center; padding: 18px 0 16px; border-radius: 26px; background: #15151a center/cover; color: #fff; will-change: transform }
+/* (the spine's dark wash spans the whole card, so a card folding darkens evenly as its window narrows; its number, name
+   and dot sit in the sliver at the left) */
+.r17 .dsp { position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: var(--dw); padding-right: calc(var(--dw) - var(--sw)) !important; display: grid; grid-template-rows: auto 1fr auto; justify-items: center; padding: 18px 0 16px; border-radius: 26px; background: #15151a; color: #fff; will-change: opacity }
+/* (a card whose panel is a picture: its spine is that picture's middle, seen through) */
+.r17 .dsc.pic .dsp { background: transparent }
+.r17 .dsc:not(.on) .dtx { pointer-events: none }
+/* a closed card's sliver is picture only: its captions are hidden until it opens (deskPlace fades them in and out) */
+.r17 .dsc:not(.on) .dz .plab { visibility: hidden; transition: visibility 0s linear .45s }
 .r17 .dsp::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(5 5 8 / .5), rgb(5 5 8 / .8)); transition: background .35s var(--soft) }
 .r17 .dsp > * { position: relative }
 .r17 .dsp b { font: 700 13px/1 var(--font); font-variant-numeric: tabular-nums }
 .r17 .dsp span { align-self: end; writing-mode: vertical-rl; transform: rotate(180deg); font: 800 11px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .82); white-space: nowrap; overflow: hidden }
-.r17 .dsp i { width: 7px; height: 7px; margin-top: 14px; border-radius: 50%; background: #fff }
-.r17 .dsp i.feeding { background: var(--accent) } .r17 .dsp i.folding { background: transparent; box-shadow: inset 0 0 0 1.5px #fff }
+/* a slide's verdict mark: an arrow in a crimson disc for one that went well, in a white ring for one that went badly, a
+   plain dot for one that only states something */
+.r17 .mk { display: grid; place-items: center; flex: none; width: 7px; height: 7px; border-radius: 50%; background: #fff }
+.r17 .mk svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round }
+.r17 .mk.t-up, .r17 .mk.t-dn { width: 26px; height: 26px; color: #fff }
+.r17 .mk.t-up { background: var(--accent); box-shadow: 0 6px 16px -6px rgb(218 46 70 / .9) }
+.r17 .mk.t-dn { background: rgb(255 255 255 / .06); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .7) }
+.r17 .dsp .mk { margin-top: 14px }
 .r17 .dsp:hover::before { background: linear-gradient(180deg, rgb(5 5 8 / .25), rgb(5 5 8 / .6)) }
 .r17 .dsc.on .dsp { pointer-events: none }
 .r17 .ds.ov .dz { left: 0; width: var(--dw) }
-.r17 .ds.ov .dtx { width: var(--dw); background: linear-gradient(180deg, rgb(5 5 8 / .45) 0, rgb(5 5 8 / 0) 18%, rgb(5 5 8 / 0) 38%, rgb(5 5 8 / .86) 60%, rgb(5 5 8 / .96)) }
+.r17 .ds.ov .dtx { left: 0; width: var(--dw); background: linear-gradient(180deg, rgb(5 5 8 / .45) 0, rgb(5 5 8 / 0) 18%, rgb(5 5 8 / 0) 38%, rgb(5 5 8 / .86) 60%, rgb(5 5 8 / .96)) }
 .r17 .dsb { display: flex; align-items: center; gap: 20px }
 .r17 .dpr { flex: 1; display: flex; gap: 6px }
 .r17 .dpr button { flex: 1 1 0; height: 20px; display: grid; align-items: center }
 .r17 .dpr i { display: block; height: 3px; border-radius: 2px; background: rgb(var(--ink-rgb) / .12); overflow: hidden; position: relative }
-.r17 .dpr i b { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; transform: scaleX(0) }
+.r17 .dpr i b { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; transform: scaleX(0); will-change: transform }
 .r17 .dct { display: flex; gap: 8px }
 .r17 .dct .nb { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--hair); transition: opacity .3s }
 .r17 .dct .nb[disabled] { opacity: .3; pointer-events: none }
@@ -219,9 +249,10 @@ html.dark .r17 {
 .r17 .sec { scroll-margin-top: calc(var(--r17-cap) + 82px - 56px) }
 .r17 .ls { scroll-margin-top: calc(var(--r17-cap) + 82px) }
 @media (min-width: 1024px) { .r17 .sec { scroll-margin-top: calc(var(--fm-desk-top, 24px) - 56px) } .r17 .ls { scroll-margin-top: var(--fm-desk-top, 24px) } }
-.r17 .wrap { max-width: 1260px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) }
+/* the page's column: on a laptop it sits Feed's 20px off the rail and grows to Feed's 1400px, centred past that */
+.r17 .wrap { max-width: 1440px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) }
 @media (min-width: 640px) { .r17 .wrap { padding-inline: 24px } }
-@media (min-width: 1024px) { .r17 .wrap { padding-inline: clamp(20px, 2.6vw, 36px) } }
+@media (min-width: 1024px) { .r17 { --r17-gut: 20px } .r17 .wrap { padding-inline: var(--r17-gut) } }
 .r17 .sec { padding-top: 56px }
 .r17 .sec:first-child { padding-top: 0 }
 .r17 .op { display: grid; gap: 10px; padding-bottom: 18px }
@@ -246,7 +277,8 @@ html.dark .r17 {
 .r17 .md.quad .qd img, .r17 .md.quad .qd .qc { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background-position: center; background-size: cover }
 .r17 .md.quad::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgb(5 5 8 / .25) 0, rgb(5 5 8 / 0) 18%, rgb(5 5 8 / 0) 42%, rgb(5 5 8 / .7) 60%, rgb(5 5 8 / .95) 78%) }
 .r17 .md.quad .plab { position: absolute; z-index: 2; left: 9px; right: 9px; top: 10px; bottom: auto }
-.r17 .md.quad .qd:nth-child(-n+2) .plab { top: 70px }
+/* (on a phone's card the top row's tags clear the story's bars and handle; a laptop's card has no header over its picture) */
+.r17 .card .md.quad .qd:nth-child(-n+2) .plab { top: 70px }
 
 /* ---------- Strategy: the current 100 read five ways. Each part opens on its headline, its numbers in red, then a reel
    of read cards. A card is the posts behind its number: on top its evidence (a cut of the post that says it best, its
@@ -275,7 +307,7 @@ html.dark .r17 {
 .r17 .rl { --cw: min(74vw, 300px); display: grid; grid-auto-flow: column; grid-auto-columns: var(--cw); gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; margin-inline: -16px; padding: 6px 16px 12px; scroll-padding-inline: 16px }
 .r17 .rl::-webkit-scrollbar { display: none }
 @media (min-width: 640px) { .r17 .rl { margin-inline: -24px; padding-inline: 24px; scroll-padding-inline: 24px } }
-@media (min-width: 1024px) { .r17 .rl { --cw: 282px; gap: 14px; margin: 0 calc(-1 * clamp(20px, 2.6vw, 36px)) 0 0; padding: 6px clamp(20px, 2.6vw, 36px) 14px 0; scroll-padding-inline: 0 } }
+@media (min-width: 1024px) { .r17 .rl { --cw: 282px; gap: 14px; margin: 0 calc(-1 * var(--r17-gut)) 0 0; padding: 6px var(--r17-gut) 14px 0; scroll-padding-inline: 0 } }
 
 /* a read card: dark in both themes, as the story's cards are; the reel snaps to its wrapper */
 .r17 .rcw { display: grid; min-width: 0; scroll-snap-align: start }
@@ -339,7 +371,7 @@ html.dark .r17 {
 
 /* ---------- the switch (the wall's Recent · Ranks): the app's well with the ink pill ---------- */
 .r17 .seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; height: 44px; padding: 4px; border-radius: 15px; background: var(--fm-well); border: 1px solid var(--fm-well-edge); box-shadow: var(--fm-well-shade) }
-.r17 .seg button { position: relative; z-index: 1; padding: 0 14px; border-radius: 11px; font: 800 12.5px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--ink-rgb) / .56); transition: color .35s }
+.r17 .seg button { position: relative; z-index: 1; display: grid; place-items: center; text-align: center; padding: 0 14px; border-radius: 11px; font: 800 12.5px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--ink-rgb) / .56); transition: color .35s }
 .r17 .seg button[aria-pressed="true"] { color: var(--page) }
 .r17 .seg .pill { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; border-radius: 11px; background: var(--ink); box-shadow: 0 4px 14px rgb(var(--fm-shadow-rgb) / .22); transition: transform .5s var(--carry), width .5s var(--carry) }
 
@@ -354,30 +386,45 @@ html.dark .r17 {
 @media (min-width: 1280px) { .r17 .wgrid { grid-template-columns: repeat(8, minmax(0, 1fr)) } }
 .r17 .wt { position: relative; display: block; aspect-ratio: 4 / 5; cursor: pointer; text-align: left; container-type: inline-size }
 .r17 .wt .plt { position: absolute; inset: 0; border-radius: 11px; transform: translate(3px, 3px) }
-.r17 .wt .cv { position: absolute; inset: 0; border-radius: 11px; background: var(--well) center/cover; box-shadow: 0 8px 18px -12px rgb(15 23 42 / .5); transition: filter .4s }
-.r17 .wt .dt { position: absolute; z-index: 2; left: 7px; top: 6px; font: 700 clamp(9.5px, 8cqi, 11.5px)/1 var(--font); color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / .6) }
+.r17 .wt { transition: transform .5s var(--glide), opacity .45s var(--soft) }
+.r17 .wt .cv { position: absolute; inset: 0; border-radius: 11px; background: var(--well) center/cover; box-shadow: 0 8px 18px -12px rgb(15 23 42 / .5); transition: filter .45s var(--soft) }
+.r17 .wt .dt { position: absolute; z-index: 2; left: 6px; top: 6px; padding: 4px 6px; border-radius: 7px; background: rgb(8 8 12 / .52); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font: 700 clamp(9.5px, 8.5cqi, 12px)/1 var(--font); letter-spacing: -.02em; color: #fff }
 .r17 .bdg { position: absolute; left: 7px; bottom: 7px; padding: 5px 7px; border-radius: 9px; font: 700 12.5px/1 var(--font); letter-spacing: -.02em; color: var(--stx); font-variant-numeric: tabular-nums; white-space: nowrap }
 .r17 .bdg.w { color: #fff }
 .r17 .bdg.fl { background: #0d0d11; color: #fff } .r17 .bdg.fl.dn { background: var(--accent) }
-.r17 .wt .bdg { z-index: 2; left: 5px; bottom: 5px; font-size: clamp(9.5px, 8.5cqi, 12px); padding: 4px 6px; border-radius: 7px }
+.r17 .wt .bdg { z-index: 2; left: 6px; bottom: 6px; font-size: clamp(9.5px, 8.5cqi, 12px); padding: 4px 6px; border-radius: 7px }
 .r17 .wt .rgn { position: absolute; z-index: 3; inset: 0; border-radius: 11px; pointer-events: none; transition: box-shadow .3s }
 .r17 .wt .mk { position: absolute; z-index: 4; right: 5px; top: 5px; min-width: 1.9em; padding: .34em .5em; border-radius: 999px; background: var(--accent); color: #fff; font: 800 clamp(9px, 8.5cqi, 12px)/1 var(--font); text-align: center; box-shadow: 0 4px 10px -4px rgb(0 0 0 / .5); opacity: 0; transform: scale(.6); transition: opacity .2s, transform .35s var(--carry) }
 .r17 .wt.beat .mk, .r17 .wt.above .mk { opacity: 1; transform: none }
 .r17 .wt.above .mk { background: var(--ink) }
-.r17 .wt.beat::after { content: ""; position: absolute; z-index: 4; left: 12%; right: 12%; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent) }
-.r17 .wt.sel .rgn { box-shadow: 0 0 0 3px var(--accent), 0 14px 28px -10px rgb(15 23 42 / .5) }
+/* (the trail: the picked post stands forward in a crimson ring; each post it beat lifts with a crimson ring of its own and
+   its number; the one that stopped it sits in an ink ring; everything else steps back, smaller, faded and grey, so the
+   trail reads at a glance) */
+.r17 .wall.trail .wt:not(.sel):not(.beat):not(.above):not(.stop) { opacity: .34; transform: scale(.94) }
+.r17 .wall.trail .wt:not(.sel):not(.beat):not(.above):not(.stop) .cv { filter: saturate(0) }
+.r17 .wt.beat, .r17 .wt.above { transform: translateY(-4px); z-index: 4 }
+.r17 .wt.beat .rgn { box-shadow: 0 0 0 2px var(--accent), 0 14px 26px -12px rgb(218 46 70 / .7) }
+.r17 .wt.above .rgn { box-shadow: 0 0 0 2px var(--ink), 0 14px 26px -12px rgb(15 23 42 / .55) }
+.r17 .wt.sel { transform: translateY(-6px) scale(1.06) }
+.r17 .wt.sel .rgn { box-shadow: 0 0 0 3px var(--accent), 0 0 0 7px rgb(218 46 70 / .18), 0 18px 34px -12px rgb(218 46 70 / .6) }
 .r17 .wt.sel { z-index: 5 }
 .r17 .wt.stop .rgn { box-shadow: 0 0 0 3px var(--ink) }
 .r17 .wt .fl { position: absolute; z-index: 6; left: 50%; top: -11px; transform: translateX(-50%); padding: 4px 8px; border-radius: 999px; background: var(--ink); color: var(--page); font: 800 9.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap }
-.r17 .wall.trail .wt:not(.sel):not(.beat):not(.above):not(.stop) .cv { filter: saturate(.2) brightness(1.06) }
 .r17 .tlx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 4 }
-.r17 .tlx line { stroke: var(--accent); stroke-width: 3; stroke-linecap: round }
+.r17 .tlx line { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 5px rgb(218 46 70 / .55)) }
 .r17 .tlx line.dn { stroke: var(--ink) }
 .r17 .thd { position: absolute; z-index: 7; left: 0; top: 0; padding: 6px 10px; border-radius: 999px; background: var(--accent); color: #fff; font: 800 10.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transform: translate(-50%, 2px); box-shadow: 0 8px 18px -8px rgb(0 0 0 / .5); transition: opacity .2s, left var(--dt, 0ms) linear, top var(--dt, 0ms) linear }
 .r17 .thd.dn { background: var(--ink); color: var(--page) }
 .r17 .thd.on { opacity: 1 }
-.r17 .rgp { display: grid; gap: 12px; padding: 22px 0 26px; border-top: 1px solid var(--hair) }
-.r17 .rgp:first-child { border-top: 0; padding-top: 4px }
+.r17 .rgp { position: relative; display: grid; gap: 12px; padding: 22px 0 26px }
+.r17 .rgp:first-child { padding-top: 4px }
+/* (the band's divider, an element of its own so it can draw across) */
+.r17 .rgl { position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--hair); transform-origin: 0 50% }
+.r17 .rgp:first-child .rgl { display: none }
+.r17 .rgp .rl { display: inline-block; padding-bottom: .22em; margin-bottom: -.22em; clip-path: inset(-.4em -.3em 0 -.3em) }
+.r17 .rgp .rl > span { display: inline-block }
+/* (a band's words on their way out, over the tiles flying beneath) */
+.r17 .rgp.rgh { position: absolute; z-index: 6; display: block; padding: 0; pointer-events: none }
 .r17 .rgp .rh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px }
 .r17 .rgp .rl { font: 700 clamp(34px, 8vw, 54px)/.88 var(--font); letter-spacing: -.06em }
 .r17 .rgp.hot .rl { color: var(--accent) }
@@ -507,7 +554,7 @@ html.dark .r17 {
 .r17 .pmig { justify-self: start; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border-radius: 999px; background: var(--well); box-shadow: inset 0 0 0 1px var(--hair); font: 700 13.5px/1 var(--font); color: var(--ink); text-decoration: none }
 .r17 .foot2 { padding-block: 60px 20px; color: var(--ink-3); font-size: 13px }
 .r17 .foot2 p { max-width: 72ch; margin: 0 0 10px }
-@media (prefers-reduced-motion: reduce) { .r17 .seg .pill, .r17 .ro, .r17 .pn, .r17 .pns, .r17 .wt .cv, .r17 .wt .mk, .r17 .thd { transition: none !important } }
+@media (prefers-reduced-motion: reduce) { .r17 .seg .pill, .r17 .ro, .r17 .pn, .r17 .pns, .r17 .wt, .r17 .wt .cv, .r17 .wt .mk, .r17 .thd { transition: none !important } }
 
 /* ---------- the panel and the pick's readout in the app's glass: frosted, the page behind showing through blurred,
    lit at the rim with a soft sheen down from the top edge. Tiles inside are lighter glass on the glass. The panel
@@ -534,19 +581,87 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 .r17 .ro .x { background: var(--pg-tile); box-shadow: inset 0 0 0 1px var(--pg-tile-rim) }
 @media (prefers-reduced-motion: reduce) { .r17 .pn { transition: none !important } }
 
-/* ---------- scroll: motion tied to each block's place on screen, run by the browser off the main thread (no script,
-   no fades, nothing hidden). A reel's cards glide in from the right as it comes up, done before it reaches the middle;
-   heads rise into place as they arrive; cards and the story sit back a touch as they pass up under the header.
-   Scrolling back plays it in reverse, so re-reading never waits on anything ---------- */
+/* ---------- scroll: motion tied to each block's place on screen, run by the browser on its own scroll timeline (no script,
+   no fades, nothing hidden). A reel's cards glide in from the right as it comes up, one behind another, done before it
+   reaches the middle; heads rise into place as they arrive; cards and the story sink back as they pass up under the
+   header. Scrolling back plays it in reverse, so re-reading never waits on anything. Transforms only (the individual
+   translate and scale, so hover and press keep their own) ---------- */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     .r17 .rl { view-timeline: --r17-reel block; overflow-y: hidden }
-    .r17 .rcw > .rc { transform-origin: 50% 100%; animation: r17-in linear both, r17-back linear both; animation-timeline: --r17-reel, --r17-reel; animation-range: entry 0% entry 80%, exit 30% exit 100% }
+    .r17 .rcw > .rc { transform-origin: 50% 100%; animation: r17-in linear both, r17-back linear both; animation-timeline: --r17-reel, --r17-reel; animation-range: entry 0% entry 85%, exit 25% exit 100% }
     .r17 .lh, .r17 .op { animation: r17-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 90% }
-    .r17 #ds { transform-origin: 50% 100%; animation: r17-back linear both; animation-timeline: view(); animation-range: exit 35% exit 100% }
+    .r17 #ds, .r17 .player { transform-origin: 50% 100%; animation: r17-back linear both; animation-timeline: view(); animation-range: exit 30% exit 100% }
   }
 }
-@keyframes r17-in { from { translate: calc(64px + var(--i, 0) * 36px) 0 } to { translate: 0 0 } }
-@keyframes r17-rise { from { translate: 0 40px } to { translate: 0 0 } }
-@keyframes r17-back { from { scale: 1 } to { scale: .94 } }
+@keyframes r17-in { from { translate: calc(110px + var(--i, 0) * 56px) 0 } to { translate: 0 0 } }
+@keyframes r17-rise { from { translate: 0 64px } to { translate: 0 0 } }
+@keyframes r17-back { from { scale: 1 } to { scale: .9 } }
+
+/* ---------- a slide's lean, said quietly. One that ran hot: its number in crimson and a low crimson glow behind its
+   words (on a spine, a warm foot). One that ran cold: a dimmer number, its pictures drained a little and a cool grey
+   haze where the glow would be. A level slide, neither ---------- */
+.r17 .card.t-up .num, .r17 .dsc.t-up .num { color: var(--accent) }
+.r17 .card.t-dn .num, .r17 .dsc.t-dn .num { color: rgb(255 255 255 / .64) }
+.r17 .card.t-dn .md img, .r17 .card.t-dn .md .qc, .r17 .dsc.t-dn .dz img, .r17 .dsc.t-dn .dz .qc { filter: saturate(.42) brightness(.86) }
+.r17 .card.t-up::after, .r17 .card.t-dn::after { content: ""; position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; height: 62%; pointer-events: none }
+.r17 .card.t-up::after { background: radial-gradient(95% 75% at 8% 100%, rgb(218 46 70 / .3), rgb(218 46 70 / 0) 72%) }
+.r17 .card.t-dn::after { background: radial-gradient(95% 75% at 8% 100%, rgb(150 160 176 / .16), rgb(150 160 176 / 0) 72%) }
+.r17 .dsc.t-up .dsi::after, .r17 .dsc.t-dn .dsi::after { content: ""; position: absolute; z-index: 0; right: 0; bottom: 0; width: var(--tw); height: 70%; pointer-events: none }
+.r17 .dsc.t-up .dsi::after { background: radial-gradient(110% 80% at 100% 100%, rgb(218 46 70 / .24), rgb(218 46 70 / 0) 70%) }
+.r17 .dsc.t-dn .dsi::after { background: radial-gradient(110% 80% at 100% 100%, rgb(150 160 176 / .13), rgb(150 160 176 / 0) 70%) }
+.r17 .ds.ov .dsc .dsi::after { width: var(--dw) }
+
+/* ---------- the verdict on the outside. A spine that went well glows crimson from its foot, its phrase in bold white; one
+   that went badly sinks into a cool dark, its picture drained, its phrase dimmed; a plain one stays as it is. On a
+   phone the same lean colours the story's bars and the line under the handle ---------- */
+.r17 .dsc.t-up .dsp::before { background: linear-gradient(180deg, rgb(5 5 8 / .42) 0%, rgb(5 5 8 / .5) 38%, rgb(140 18 36 / .78) 76%, rgb(218 46 70 / .94) 100%) }
+.r17 .dsc.t-up .dsp:hover::before { background: linear-gradient(180deg, rgb(5 5 8 / .2) 0%, rgb(5 5 8 / .3) 38%, rgb(140 18 36 / .7) 76%, rgb(218 46 70 / .9) 100%) }
+.r17 .dsc.t-dn .dsp::before { background: linear-gradient(180deg, rgb(10 12 17 / .7), rgb(10 12 17 / .92)) }
+.r17 .dsc.t-dn .dsp:hover::before { background: linear-gradient(180deg, rgb(10 12 17 / .5), rgb(10 12 17 / .82)) }
+.r17 .dsc.t-up .dsp span { color: #fff; font-size: 12px; font-weight: 800 }
+.r17 .dsc.t-dn .dsp span { color: rgb(255 255 255 / .6) }
+.r17 .dsc.t-dn .dsp b { color: rgb(255 255 255 / .55) }
+
+.r17 .ighead em.vd { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden }
+.r17 .ighead em.vd span { overflow: hidden; text-overflow: ellipsis }
+.r17 .ighead em.vd .mk { width: 5px; height: 5px }
+.r17 .ighead em.vd.t-up, .r17 .ighead em.vd.t-dn { padding: 5px 10px 5px 6px; border-radius: 999px; font: 700 12.5px/1 var(--font); color: #fff; text-shadow: none }
+.r17 .ighead em.vd.t-up { background: var(--accent); box-shadow: 0 6px 16px -8px rgb(218 46 70 / .9) }
+.r17 .ighead em.vd.t-dn { background: rgb(12 14 19 / .62); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .28); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px) }
+.r17 .ighead em.vd.t-up .mk, .r17 .ighead em.vd.t-dn .mk { width: 14px; height: 14px; background: none; box-shadow: none }
+.r17 .igbars button.t-up i { background: rgb(218 46 70 / .5) }
+.r17 .igbars button.t-up i b { background: var(--accent) }
+.r17 .igbars button.t-dn i { background: rgb(255 255 255 / .2) }
+.r17 .dpr button.t-up i { background: rgb(218 46 70 / .24) }
+.r17 .dpr button.t-up i b { background: var(--accent) }
+
+/* a story card's words, each in a mask to rise out of: the number, and the headline word by word (the masks give the
+   descenders room) */
+.r17 .card .num { display: block; padding-bottom: .12em; margin-bottom: -.12em; clip-path: inset(-.4em -.3em 0 -.3em) }
+.r17 .card .num > span { display: inline-block }
+.r17 .card .line .w { display: inline-block; clip-path: inset(-.4em -.2em -.22em -.2em) }
+.r17 .card .line .w > span { display: inline-block }
+
+/* (an opened card's words take the card: the pictures' captions step back under them) */
+.r17 .card .md .plab { transition: opacity .3s var(--soft) }
+.r17 .card.open .md .plab { opacity: 0 }
+
+/* (beside its picture, a card's words sit on a panel of their own, so the picture slides out from behind them and never
+   runs under the text; the slide's lean glows on that panel) */
+.r17 .ds:not(.ov) .dtx { background: var(--card) }
+.r17 .ds:not(.ov) .dsc.t-up .dtx { background: radial-gradient(110% 80% at 100% 100%, rgb(218 46 70 / .24), rgb(218 46 70 / 0) 70%), var(--card) }
+.r17 .ds:not(.ov) .dsc.t-dn .dtx { background: radial-gradient(110% 80% at 100% 100%, rgb(150 160 176 / .13), rgb(150 160 176 / 0) 70%), var(--card) }
+
+/* ---------- a laptop's readout: a card beside the post it's about (placed by the engine), grown out of the side facing it.
+   The cover, what it got, then Open across the foot ---------- */
+.r17 .ro.pop, .r17 .ro.pop.on { left: 0; top: 0; bottom: auto; width: 296px; transform: none; transition: none;
+  grid-template-columns: 52px minmax(0, 1fr) 34px; grid-template-rows: auto auto; align-items: start; gap: 12px; padding: 12px; border-radius: 20px }
+.r17 .ro.pop:not(.on), .r17 .ro.pop.off { visibility: hidden }
+.r17 .ro.pop .c { width: 52px; height: 64px; border-radius: 10px }
+.r17 .ro.pop .t { padding-top: 2px }
+.r17 .ro.pop .t b { white-space: normal; font-size: 14px; line-height: 1.25 }
+.r17 .ro.pop .t span { white-space: normal; line-height: 1.35 }
+.r17 .ro.pop .x { grid-column: 3; grid-row: 1; width: 34px; height: 34px }
+.r17 .ro.pop .o { grid-column: 1 / -1; grid-row: 2; height: 40px; width: 100%; display: grid; place-items: center }
 

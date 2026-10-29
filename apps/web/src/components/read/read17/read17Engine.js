@@ -33,7 +33,7 @@ const coverCache = {};
 // the parts the header names: the story, Strategy's five pieces, the wall
 const PARTS = ['story', 'slices', 'sides', 'streaks', 'followers', 'formats', 'split'];
 
-export function mountRead17({ root, layer, data, acct, base, onChapter }) {
+export function mountRead17({ root, layer, data, acct, base, onChapter, fold }) {
 const BASE = base;
 let A = data, covers = coverCache[acct] || {}, dead = false, raf = 0, rt = 0;
 const offs = [];
@@ -56,7 +56,7 @@ const SAY = { anuj: 'A holiday week. Eleven posts, six from Japan, and his worst
    STORY: ten cards, a glimpse each
    ===================================================================== */
 let at = 0;
-const kickOf = (s) => `<span class="kick ${s.ch.toLowerCase()}"><span class="dot"></span>${esc((typeof KICK !== 'undefined' && KICK[s.ch]) || s.ch)}</span>`;
+const kickOf = (s) => `<span class="kick ${s.ch.toLowerCase()}${s._t ? ` t-${s._t}` : ''}"><span class="dot"></span>${esc((typeof KICK !== 'undefined' && KICK[s.ch]) || s.ch)}</span>`;
 function labelHTML(it) { const v = it.v; return `<div class="plab">${v != null ? `<b class="${wt(v).trim()}" style="background:${sv(v)}">${top(v)}</b>` : ''}<span>${esc(it.label)}</span></div>`; }
 function mediaHTML(s, k) {
   const m = s.media;
@@ -108,26 +108,34 @@ function moreHTML(s) {
   if (s.key) x += `<p class="keyl">${esc(s.key)}</p><div class="ramp"><b>Top</b>${[['1–3', 6], ['4–10', 5], ['11–25', 4], ['26–50', 3], ['51–70', 2], ['71–85', 1], ['86–100', 0]].map(([l, v]) => `<span style="background:var(--s${v});${v >= 5 ? 'color:#fff' : ''}">${l}</span>`).join('')}</div>`;
   return x;
 }
+// a line set word by word, each word in a mask of its own, so it can rise into place
+const wordsHTML = (t) => String(t).split(/\s+/).filter(Boolean).map((w) => `<span class="w"><span>${esc(w)}</span></span>`).join(' ');
 function footHTML(s) {
   const wide = /[a-z]/i.test(s.num) && !/^Top/.test(s.num) && !/K$|M$|weeks/.test(s.num);
   const list = s.media.kind === 'list';
-  return `<div class="foot">${kickOf(s)}<div class="fig"><b class="num${wide ? ' wd' : ''}">${esc(s.num)}</b><span class="unit">${esc(s.unit)}</span></div>
-    <div class="lrow"><h3 class="line">${esc(s.line)}</h3>${list ? '' : '<span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></span>'}</div>
+  return `<div class="foot">${kickOf(s)}<div class="fig"><b class="num${wide ? ' wd' : ''}"><span>${esc(s.num)}</span></b><span class="unit">${esc(s.unit)}</span></div>
+    <div class="lrow"><h3 class="line" aria-label="${esc(s.line)}">${wordsHTML(s.line)}</h3>${list ? '' : '<span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></span>'}</div>
     ${list ? '' : `<div class="more">${moreHTML(s)}</div>`}</div>`;
 }
 const KICK = { Profile: 'Who this is', Feeding: 'What landed', Folding: 'What sank', Format: 'Formats this week', Frequency: 'Posting this week', Followers: 'Followers this week', Feedback: "The reader's review", 'Follow-up': 'Next week' };
 function storyHTML() {
   const best = A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0], n = A.stories.length;
   return `<div class="player" id="player">
-    <div class="vp" id="vp"><div class="track" id="track">${A.stories.map((s, k) => `<article class="slide${k === 0 ? ' on' : ''}" data-k="${k}">
-        <div class="card k-${s.media.kind}" data-k="${k}">${mediaHTML(s, k)}<span class="shade"></span>${footHTML(s)}</div></article>`).join('')}</div>
-      <div class="igtop"><div class="igbars" id="igbars">${A.stories.map((s, k) => `<button data-k="${k}" aria-label="${esc(s.ch)}"><i><b></b></i></button>`).join('')}</div>
-        <div class="ighead"><span class="av" data-cv="${best}" style="${cv(best)}"></span><b>${esc(A.handle.replace('@', ''))}</b><em id="pch">${esc(chLabel(A.stories[0]))}</em>
+    <div class="vp" id="vp"><div class="track" id="track">${A.stories.map((s, k) => `<article class="slide${k === 0 ? ' on' : ''}" data-k="${k}"><i class="sdim"></i>
+        <div class="card k-${s.media.kind}${s._t ? ` t-${s._t}` : ''}" data-k="${k}">${mediaHTML(s, k)}<span class="shade"></span>${footHTML(s)}</div></article>`).join('')}</div>
+      <div class="igtop"><div class="igbars" id="igbars">${A.stories.map((s, k) => `<button data-k="${k}" class="${s._t ? `t-${s._t}` : ''}" aria-label="${esc(spineOf(s))}"><i><b></b></i></button>`).join('')}</div>
+        <div class="ighead"><span class="av" data-cv="${best}" style="${cv(best)}"></span><b>${esc(A.handle.replace('@', ''))}</b><em id="pch" class="vd${A.stories[0]._t ? ` t-${A.stories[0]._t}` : ''}">${verdictHTML(A.stories[0])}</em>
           <button class="pp" id="pp" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button></div></div>
       <button class="arr p" id="arrp" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><button class="arr n" id="arrn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div>
-    <div class="hint" id="hint">${isDesk() ? '<span>Click the card to read it · ← → for the next · hold to pause</span>' : '<span>Tap to read · swipe for the next · hold to pause</span>'}</div></div>`;
+    <div class="hint" id="hint">${isDesk() ? '<span>Click the card to read it · ← → for the next · hold to pause</span>' : '<span>Tap a side to move · tap the words to read</span>'}</div></div>`;
 }
 const chLabel = (s) => s.ch + (s.idx ? ` · ${s.idx} of 2` : '');
+// a slide's verdict, said on the outside: its short phrase (what's inside, good or bad) behind an arrow that leans the
+// way it went, or a plain dot for a slide that only states something
+const ARW = { up: '<svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>', dn: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/></svg>' };
+const mark = (s) => `<i class="mk${s._t ? ` t-${s._t}` : ''}">${ARW[s._t] || ''}</i>`;
+const spineOf = (s) => s.spine || KICK[s.ch] || s.ch;
+const verdictHTML = (s) => `${mark(s)}<span>${esc(spineOf(s))}</span>`;
 function sizePlayer() {
   if (DS) { deskSize(); return; }
   const p = $('player'); if (!p) return;
@@ -138,20 +146,31 @@ function measureMore() {
   if (DS) return;
   qa('.card').forEach((c) => { const m = c.querySelector('.more'), f = c.querySelector('.foot'); if (!m) return; c.style.setProperty('--mh', `${m.offsetHeight + 6}px`); c.style.setProperty('--fh', `${f.offsetHeight - m.offsetHeight - 6 + 8}px`); });
 }
-function slideW() { const s = q1('.slide'); return s ? s.getBoundingClientRect().width + parseFloat(getComputedStyle($('track')).columnGap || 12) : 0; }
+function slideW() { const v = $('vp'); return v ? v.clientWidth : 0; }
 let el = 0, held = false, paused = false, inView = true, last = 0, durs = [];
 const words = (s) => [s.unit, s.line, s.why, s.so].filter(Boolean).join(' ').split(/\s+/).length;
+// the progress bars: those before the card on show full, those after empty, and the one under way filling on its own (a
+// compositor animation from where it stands to full, played while the story runs and paused while it's held, paused, out of
+// view or behind another tab); nothing is written to the bars frame by frame, which kept the page re-sorting its layers
+// sixty times a second
+let barA = null, barRun = null;
 function paintBars() {
-  qa('#igbars b').forEach((b, j) => { b.style.transform = j < at ? 'scaleX(1)' : j > at ? 'scaleX(0)' : `scaleX(${Math.min(1, el / (durs[at] || 9000))})`; });
+  const bs = qa('#igbars b'), d = durs[at] || 9000;
+  if (barA) barA.cancel(); barA = null; barRun = null;
+  bs.forEach((b, j) => { b.style.transform = j < at ? 'scaleX(1)' : 'scaleX(0)'; });
+  const b = bs[at]; if (!b || RM) return;
+  barA = b.animate([{ transform: `scaleX(${Math.min(1, el / d)})` }, { transform: 'scaleX(1)' }], { duration: Math.max(1, d - el), easing: 'linear', fill: 'forwards' });
+  barA.pause();
 }
-function go(k) {
+function go(k, p0 = 0) {
   if (DS) { deskGo(k); return; }
   const n = A.stories.length; k = Math.max(0, Math.min(n - 1, k));
+  const from = at;
   if (k !== at) qa('.card.open').forEach((c) => c.classList.remove('open'));
   at = k; el = 0;
-  const t = $('track'); t.style.transition = ''; t.style.transform = `translate3d(${baseX() - k * slideW()}px,0,0)`;
-  qa('.slide').forEach((s, j) => s.classList.toggle('on', j === k));
-  $('pch').textContent = chLabel(A.stories[k]);
+  DRAGGED = p0 > .04;
+  if (k !== from) turnTo(from, k, p0); else { qa('.slide').forEach((s_, j) => s_.classList.toggle('on', j === k)); if (p0) settleBack(p0); }
+  { const ch = $('pch'), s = A.stories[k]; ch.className = `vd${s._t ? ` t-${s._t}` : ''}`; ch.innerHTML = verdictHTML(s); }
   $('arrp').disabled = k === 0; $('arrn').disabled = k === n - 1;
   paintBars();
   const c = q1(`.card[data-k="${k}"]`); if (c) layoutCard(c, k);
@@ -160,12 +179,9 @@ function go(k) {
 function frame(t) {
   if (dead) return;
   const dt = last ? Math.min(100, t - last) : 0; last = t;
-  const open = q1('.card.open');
-  if (A && durs.length && !held && !paused && !open && inView && !document.hidden) {
-    el += dt; const d = durs[at] || 9000;
-    if (el >= d) { if (at < A.stories.length - 1) go(at + 1); else el = d; }
-    paintBars();
-  }
+  const run = !!(A && durs.length && !held && !paused && !q1('.card.open') && inView && !document.hidden);
+  if (run) { el += dt; const d = durs[at] || 9000; if (el >= d) { if (at < A.stories.length - 1) go(at + 1); else el = d; } }
+  if (barA && run !== barRun) { barRun = run; if (run) barA.play(); else barA.pause(); }
   raf = requestAnimationFrame(frame);
 }
 function setPaused(p) {
@@ -173,30 +189,61 @@ function setPaused(p) {
   $('ppi').innerHTML = p ? '<path d="M7 5v14l12-7z"/>' : '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
   $('pp').setAttribute('aria-label', p ? 'Play' : 'Pause');
 }
+// a tap on the story when it isn't square on the screen: the page glides it to the middle of what the header and the
+// bottom bar leave once both are folded (and folds them), and that is all the tap does; once it's there a tap reads it.
+// True when the tap was spent on that
+function centreStory() {
+  const vp = $('vp'); if (!vp || DS) return false;
+  const hd = document.querySelector('header[aria-label="Read"]'), row = hd && hd.querySelector(':scope > div > div');
+  const nav = document.querySelector('[data-fm-bottom-nav]'), H = innerHeight;
+  // the header folds to its title row; the bar to its 56px circle
+  const top = row ? row.getBoundingClientRect().bottom + 18 : 150, bottom = nav ? nav.getBoundingClientRect().bottom - 56 - 12 : H - 90;
+  const b = vp.getBoundingClientRect(), off = (b.top + b.bottom) / 2 - (top + bottom) / 2;
+  const y = Math.max(0, Math.min(document.documentElement.scrollHeight - H, Math.round(scrollY + off)));
+  const folded = !nav || nav.hasAttribute('data-mini');
+  if (Math.abs(y - scrollY) < 12) { if (folded) return false; if (fold) fold(scrollY); return true; }
+  if (fold) fold(y);
+  scrollTo({ top: y, behavior: RM ? 'auto' : 'smooth' });
+  return true;
+}
 function hookPlayer() {
-  const vp = $('vp'), track = $('track');
+  const vp = $('vp');
   durs = A.stories.map((s) => Math.max(8000, Math.min(16000, 5000 + words(s) * 170))); el = 0; paused = false;
   let drag = null, holdT = null;
   vp.addEventListener('pointerdown', (e) => { if (e.button > 0 || e.target.closest('.godeep, .arr, .pp, .igbars')) return; drag = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, mode: null, id: e.pointerId, target: e.target }; clearTimeout(holdT); holdT = setTimeout(() => { held = true; }, 220); });
   vp.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.mode) { if (Math.abs(dx) > 8 || Math.abs(dy) > 10) { clearTimeout(holdT); held = false; } if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) { drag.mode = 'x'; track.style.transition = 'none'; try { vp.setPointerCapture(e.pointerId); } catch {} } else if (Math.abs(dy) > 10) drag.mode = 'y'; }
-    if (drag.mode === 'x') { drag.dx = dx; const edge = (at === 0 && dx > 0) || (at === A.stories.length - 1 && dx < 0); track.style.transform = `translate3d(${baseX() - at * slideW() + (edge ? dx * .3 : dx)}px,0,0)`; }
+    if (!drag.mode) { if (Math.abs(dx) > 8 || Math.abs(dy) > 10) { clearTimeout(holdT); held = false; } if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) { drag.mode = 'x'; try { vp.setPointerCapture(e.pointerId); } catch {} } else if (Math.abs(dy) > 10) drag.mode = 'y'; }
+    if (drag.mode === 'x') { const now = performance.now(); drag.v = (dx - drag.dx) / Math.max(1, now - (drag.lt || drag.t)); drag.lt = now; drag.dx = dx; const nb = at + (dx < 0 ? 1 : -1), cur = slideOf(at); if (RM || !cur) return;
+      // (past the first or the last card it only gives a little, as if held at the edge)
+      if (nb < 0 || nb >= A.stories.length) { if (DRN != null) { rest(slideOf(DRN), false); DRN = null; } cur.style.transform = `translate3d(${dx * .22}px,0,0)`; return; }
+      cur.style.transform = ''; turnAt(nb, dx < 0 ? 1 : -1, Math.min(1, Math.abs(dx) / slideW())); }
   });
   const end = (e) => {
     clearTimeout(holdT); const wasHeld = held; held = false;
     if (!drag || e.pointerId !== drag.id) return; const d = drag; drag = null;
     if (wasHeld && !d.mode) return;
-    if (d.mode === 'x') { const v = d.dx / Math.max(1, performance.now() - d.t), W = slideW(); if (d.dx < -W * .16 || v < -.45) go(at + 1); else if (d.dx > W * .16 || v > .45) go(at - 1); else go(at); return; }
+    if (d.mode === 'x') {
+      const v = d.v ?? d.dx / Math.max(1, performance.now() - d.t), W = slideW(), k = d.dx < -W * .16 || v < -.45 ? at + 1 : d.dx > W * .16 || v > .45 ? at - 1 : at;
+      // the glide leaves at the finger's speed (the glide curve starts 2.25 times its average), between 260 and 520ms
+      const p0 = Math.min(1, Math.abs(d.dx) / W), cur = slideOf(at);
+      if (k === at || k < 0 || k >= A.stories.length) { if (cur && cur.style.transform && DRN == null) cur.animate([{ transform: cur.style.transform }, { transform: 'none' }], { duration: 380, easing: GROW }).onfinish = () => { cur.style.transform = ''; }; if (cur && DRN == null) cur.style.transform = ''; if (DRN != null) settleBack(p0); return; }
+      // (the spring sets off at the finger's speed, in whole remaining distances a second)
+      SWV = Math.min(7, (Math.abs(v) * 1000) / Math.max(40, (1 - p0) * W));
+      go(k, p0); return;
+    }
     if (d.mode) return;
-    const card = d.target.closest('.card'), slide = d.target.closest('.slide');
-    if (!slide) return;
-    const k = +slide.dataset.k;
-    if (k !== at) { go(k); return; }
-    if (card && !card.classList.contains('k-list')) { card.classList.toggle('open'); }
+    if (centreStory()) return;
+    // a tap: on (or just above) the words, they open or close; elsewhere the left third goes back and the rest goes on,
+    // as on Instagram. An open card closes on any tap
+    const card = q1(`.card[data-k="${at}"]`); if (!card || !d.target.closest('.slide')) return;
+    if (card.classList.contains('open')) { setOpen(card, false); return; }
+    const foot = card.querySelector('.foot'), r = card.getBoundingClientRect();
+    if (!card.classList.contains('k-list') && foot && d.y >= foot.getBoundingClientRect().top - 28) { setOpen(card, true); return; }
+    if (d.x - r.left < r.width / 3) { if (at > 0) go(at - 1); else { el = 0; paintBars(); } } else if (at < A.stories.length - 1) go(at + 1);
   };
-  vp.addEventListener('pointerup', end); vp.addEventListener('pointercancel', (e) => { if (drag && drag.mode === 'x') { drag = null; go(at); } else drag = null; });
+  vp.addEventListener('pointerup', end); vp.addEventListener('pointercancel', (e) => { if (drag && drag.mode === 'x') { const p0 = Math.min(1, Math.abs(drag.dx) / slideW()); drag = null; if (DRN != null) settleBack(p0); } else drag = null; });
   let acc = 0, lock = false;
   vp.addEventListener('wheel', (e) => { if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; e.preventDefault(); if (lock) return; acc += e.deltaX; if (Math.abs(acc) > 46) { go(at + (acc > 0 ? 1 : -1)); acc = 0; lock = true; setTimeout(() => { lock = false; }, 520); } }, { passive: false });
   $('arrp').addEventListener('click', () => go(at - 1));
@@ -286,6 +333,24 @@ const xshade = (m) => (m == null ? 0 : m >= 3 ? 6 : m >= 2 ? 5 : m >= 1.4 ? 4 : 
 function ctxLine(ids, keys) { const p = keys.map((k) => { const m = xSet(ids, k); return m == null ? null : `${KEYN[k]} ${fx(m)}`; }).filter(Boolean); return p.length ? `${cap1(p.join(' · '))}.` : ''; }
 const listOf = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 // a story card that leads on a rank leads on a multiple instead: its post, or the week's set it speaks for
+// each slide's lean: up (it ran hot), down (it ran cold) or level, from its own numbers. The followers slide is set
+// against a usual week, the median of the ten full weeks before it, and says so
+function storyTone() {
+  const W = A.weeks.filter((w) => !w.part), i = W.findIndex((w) => w.s === '19 Oct');
+  const prev = W.slice(Math.max(0, i - 10), Math.max(0, i)).map((w) => w.g).filter((g) => g != null), uw = prev.length ? medOf(prev) : null;
+  A.stories.forEach((s) => {
+    let t = '';
+    if (s.ch === 'Feeding') t = 'up';
+    else if (s.ch === 'Folding') t = 'dn';
+    else if (/×$/.test(s.num)) t = parseFloat(s.num) >= 1 ? 'up' : 'dn';
+    else if (s.ch === 'Followers' && i >= 0 && W[i].g != null) {
+      const g = W[i].g, m = g > 0 && uw > 0 ? g / uw : null;
+      if (!s._u && uw != null) { s._u = true; s.unit = `followers this week · ${m != null ? `${fx(m)} ` : ''}a usual week: ${sg(Math.round(uw))}${s.unit.replace(/^followers this week/, '')}`; }
+      t = g < 0 || (uw > 0 && g < uw * .5) ? 'dn' : uw != null && g >= uw ? 'up' : '';
+    } else if (s.ch === 'Feedback' && /^\d+ of \d+$/.test(s.num)) { const [a, b] = s.num.split(' of ').map(Number); t = a / b >= .55 ? 'up' : a / b <= .4 ? 'dn' : ''; }
+    s._t = t;
+  });
+}
 function storyX() {
   const P = A.posts, lw = A.weeks.find((w) => w.s === '19 Oct'), wk = lw ? lw.ids : [];
   A.stories.forEach((s) => {
@@ -299,7 +364,7 @@ function storyX() {
     if (m == null) return;
     s._x = true;
     const was = s.num;
-    s.unit = `${A.his} usual likes · ${s.unit.replace(/\s*·\s*(usual for \w+|the other \d+): Top [\d.]+%/, '').replace(/^(his|its) /, '')} · ${was}`;
+    s.unit = `of ${A.his} usual ${K(Math.round(B.lk))} likes · ${s.unit.replace(/\s*·\s*(usual for \w+|the other \d+): Top [\d.]+%/, '').replace(/^(his|its) /, '')} · ${was}`;
     s.num = fx(m);
     // (a figure that repeated the old headline would repeat the new one: it goes)
     if (s.figs) s.figs = s.figs.filter(([v]) => v !== was);
@@ -455,7 +520,7 @@ function readCards() {
   const SL = S.L.slices;
   SL.rows.forEach((r) => { r.x = xSet(r.ids, 'lk'); });
   SL.rows.sort((a, b) => (b.x ?? -1) - (a.x ?? -1));
-  SL.rows.forEach((r) => { const b = bestX(r.ids); r.card = { kick: r.title, count: `${r.n} posts · ${top(r.rank)}`, num: fx(r.x), unit: `${his} usual likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: b ? `Best: ${lab(b)}, ${fx(xPost(b, 'lk'))} likes.` : '', tone: tx(r.x), media: evidenceOf(r.ids, null, used) }; r.head = head(r.card); });
+  SL.rows.forEach((r) => { const b = bestX(r.ids); r.card = { kick: r.title, count: `${r.n} posts · ${top(r.rank)}`, num: fx(r.x), unit: `of ${his} usual ${K(Math.round(B.lk))} likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: b ? `Best: ${lab(b)}, ${fx(xPost(b, 'lk'))} likes.` : '', tone: tx(r.x), media: evidenceOf(r.ids, null, used) }; r.head = head(r.card); });
   const bs = SL.rows.find((g) => g.n >= 4 && g.x != null) || SL.rows[0], bg = [...SL.rows].sort((x, z) => z.n - x.n)[0];
   SL.hl = bg !== bs && bg.x ? `${esc(cap1(low(bs.title)))} gets ${em_(fx(bs.x / bg.x))} the likes of ${esc(low(bg.title))}, ${his} biggest slice.` : `${esc(cap1(low(bs.title)))} leads ${his} slices on likes.`;
   SL.sub = SL.head.aside;
@@ -503,7 +568,7 @@ function readCards() {
 
   // formats: each format's typical likes against the usual post
   const FM = S.L.formats;
-  FM.rows.forEach((r) => { r.x = xSet(r.ids, 'lk'); r.card = { kick: r.title, count: `${r.n} of 100 · ${top(r.rank)}`, num: fx(r.x), unit: `${his} usual likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: insideOf(r.ids), tone: tx(r.x), media: evidenceOf(r.ids, null, used) }; r.head = head(r.card); });
+  FM.rows.forEach((r) => { r.x = xSet(r.ids, 'lk'); r.card = { kick: r.title, count: `${r.n} of 100 · ${top(r.rank)}`, num: fx(r.x), unit: `of ${his} usual ${K(Math.round(B.lk))} likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: insideOf(r.ids), tone: tx(r.x), media: evidenceOf(r.ids, null, used) }; r.head = head(r.card); });
   const mn = FM.rows[0], sec = FM.rows[1];
   FM.hl = `${em_(`${mn.n} of the 100`)} are ${esc(mn.title.toLowerCase())}${sec ? `, ${em_(`${sec.n}`)} ${esc(sec.title.toLowerCase())}` : ''}.`;
   FM.sub = FM.head.aside;
@@ -597,8 +662,50 @@ function writeUp(ids, g, said) {
 function drawWall() {
   const wg = $('wg'); if (!wg) return; clearTrail();
   if (WV === 'recent') { wg.className = 'wgrid'; wg.innerHTML = A.wall.map(wallTile).join(''); }
-  else { const said = new Set(); wg.className = ''; wg.innerHTML = RANKG.map((g) => { const ids = byRank(A.wall.filter((i) => g.f(A.posts[i].top))); if (!ids.length) return ''; return `<section class="rgp ${g.c}"><div class="rh"><b class="rl">${g.l}</b><span class="rm">${ids.length} post${ids.length > 1 ? 's' : ''}${likesRange(ids)}</span></div><p class="rw">${writeUp(ids, g, said)}</p><div class="wgrid">${ids.map(wallTile).join('')}</div></section>`; }).join(''); }
+  else { const said = new Set(); wg.className = ''; wg.innerHTML = RANKG.map((g) => { const ids = byRank(A.wall.filter((i) => g.f(A.posts[i].top))); if (!ids.length) return ''; return `<section class="rgp ${g.c}"><i class="rgl"></i><div class="rh"><b class="rl"><span>${g.l}</span></b><span class="rm">${ids.length} post${ids.length > 1 ? 's' : ''}${likesRange(ids)}</span></div><p class="rw">${writeUp(ids, g, said)}</p><div class="wgrid">${ids.map(wallTile).join('')}</div></section>`; }).join(''); }
   if (WPICK) { wg.querySelector(`.wt[data-post="${WPICK}"]`)?.classList.add('sel'); if (WV === 'recent') playTrail(WPICK, true); }
+}
+/* ---- Recent ⇄ Ranks: the wall morphs rather than redraws. Every post's tile flies from where it stood to where it
+   stands now (moving and resizing as one, the top of each band leading), and the bands' words arrive as the tiles land:
+   its divider draws across, its name rises out of a mask, its count and its line lift in after. Going back, the words
+   step out of the way first. Tiles far off screen both before and after just take their place; one that would cross more
+   than a screen comes in from close by instead of flying the whole way ---- */
+function morphWall() {
+  const wg = $('wg'), wall = $('wall'); if (!wg || !wall || RM) { drawWall(); return; }
+  const H = innerHeight, on = (r) => r.bottom > -60 && r.top < H + 60, wr = wall.getBoundingClientRect();
+  const was = new Map(); wg.querySelectorAll('.wt').forEach((t) => was.set(t.dataset.post, t.getBoundingClientRect()));
+  // the words of the bands now on screen leave as ghosts, a step up and out, while the tiles fly beneath them
+  const ghosts = [...wg.querySelectorAll('.rgp')].flatMap((sec) => [...sec.querySelectorAll(':scope > .rh, :scope > .rw')].map((e_) => ({ e_, c: sec.className, r: e_.getBoundingClientRect() }))).filter((g) => on(g.r));
+  drawWall();
+  ghosts.forEach(({ e_, c, r }, j) => {
+    const box = document.createElement('section'); box.className = `${c} rgh`; box.setAttribute('aria-hidden', 'true');
+    Object.assign(box.style, { left: `${r.left - wr.left}px`, top: `${r.top - wr.top}px`, width: `${r.width}px` }); box.appendChild(e_.cloneNode(true)); wall.appendChild(box);
+    box.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,-16px,0)' }], { duration: 420, delay: j * 40, easing: 'cubic-bezier(.45, 0, .2, 1)', fill: 'forwards' }).onfinish = () => box.remove();
+  });
+  const D = 1250;
+  [...wg.querySelectorAll('.wt')].forEach((t, i) => {
+    const a = was.get(t.dataset.post), b = t.getBoundingClientRect(); if (!a) return;
+    if (!on(a) && !on(b)) return;
+    const delay = 60 + Math.min(i * 14, 460);
+    if (Math.abs(a.top - b.top) > H * .9 || !on(a)) {
+      t.animate([{ opacity: 0, transform: `translate3d(0,${a.top > b.top ? 70 : -70}px,0) scale(.9)` }, { opacity: 1, transform: 'none' }], { duration: D - 150, delay: delay + 160, easing: BEASE, fill: 'backwards' });
+      return;
+    }
+    const dx = a.left - b.left, dy = a.top - b.top, sx = a.width / b.width, sy = a.height / b.height;
+    if (Math.abs(dx) < .5 && Math.abs(dy) < .5 && Math.abs(sx - 1) < .01) return;
+    t.style.zIndex = 3;
+    t.animate([{ transformOrigin: '0 0', transform: `translate3d(${dx}px,${dy}px,0) scale(${sx},${sy})` }, { transformOrigin: '0 0', transform: 'none' }], { duration: D, delay, easing: GROW, fill: 'backwards' }).onfinish = () => { t.style.zIndex = ''; };
+  });
+  // the bands' words come in as their tiles land, a band at a time
+  [...wg.querySelectorAll('.rgp')].forEach((sec, g) => {
+    if (!on(sec.getBoundingClientRect())) return;
+    const t0 = 520 + g * 150, o = (dl, dur = 900) => ({ duration: dur, delay: t0 + dl, easing: BEASE, fill: 'backwards' });
+    const ln = sec.querySelector('.rgl'), nm = sec.querySelector('.rl > span'), rm = sec.querySelector('.rm'), rw = sec.querySelector('.rw');
+    if (ln) ln.animate([{ transform: 'scaleX(0)' }, { transform: 'none' }], o(0, 1200));
+    if (nm) nm.animate([{ transform: 'translate3d(0,120%,0)' }, { transform: 'none' }], o(90, 1000));
+    if (rm) rm.animate([{ opacity: 0, transform: 'translate3d(-12px,0,0)' }, { opacity: 1, transform: 'none' }], o(280));
+    if (rw) rw.animate([{ opacity: 0, transform: 'translate3d(0,16px,0)' }, { opacity: 1, transform: 'none' }], o(380));
+  });
 }
 function beatOf(id, pool) {
   const ch = pool.filter((i) => A.posts[i].top != null), i = ch.indexOf(id), v = A.posts[id].top;
@@ -641,17 +748,49 @@ function wallPick(id) {
   const r = WV === 'recent' ? playTrail(id) : (clearTrail(), beatOf(id, [...A.wall].reverse()));
   const p = A.posts[id], ro = $('ro');
   ro.innerHTML = `<span class="c" style="${coverStyle(id)}"></span><span class="t"><b>${esc(cap1(lab(id)))}</b><span><em>${xPost(id, 'lk') != null ? `${fx(xPost(id, 'lk'))} likes` : 'New'}</em>${p.top != null ? ` · ${top(p.top)}` : ''} · ${esc(r ? r.t.toLowerCase() : '')}${r && r.chain && r.chain.length ? ' on the wall' : ''}</span></span><button class="o" data-open="${id}">Open</button><button class="x" data-unpick aria-label="Clear">${ICX}</button>`;
-  ro.classList.add('on');
+  ro.getAnimations().forEach((a) => a.cancel());
+  const pop = isDesk(); ro.classList.toggle('pop', pop); ro.classList.add('on');
+  if (!pop) return;
+  // (a laptop: the card stands beside the post, and grows out of the side facing it)
+  placeRo();
+  if (!RM) ro.animate([{ opacity: 0, transform: `translate3d(${ro.dataset.side === 'r' ? -12 : 12}px,0,0) scale(.94)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: BEASE });
 }
-function unpick() { WPICK = null; clearTrail(); qa('#wall .wt.sel').forEach((t) => t.classList.remove('sel')); $('ro').classList.remove('on'); }
-
+// the laptop card's place: beside the picked post (right of it, or left where the right has no room), level with its top
+// and kept on screen; it follows the post as the page scrolls
+function placeRo() {
+  const ro = $('ro'); if (!WPICK || !ro.classList.contains('pop')) return;
+  const t = q1(`#wall .wt[data-post="${WPICK}"]`); if (!t) return;
+  const b = t.getBoundingClientRect(), W = ro.offsetWidth, H = ro.offsetHeight, gap = 14, right = b.right + gap + W <= innerWidth - 16;
+  ro.dataset.side = right ? 'r' : 'l';
+  ro.style.left = `${right ? b.right + gap : Math.max(16, b.left - gap - W)}px`;
+  ro.style.top = `${Math.max(16, Math.min(innerHeight - H - 16, b.top))}px`;
+  ro.style.transformOrigin = right ? '0% 24px' : '100% 24px';
+  ro.classList.toggle('off', b.bottom < 40 || b.top > innerHeight - 40);
+}
+let roRaf = 0;
+const roFollow = () => { if (!WPICK || roRaf) return; roRaf = requestAnimationFrame(() => { roRaf = 0; placeRo(); }); };
+function unpick() {
+  WPICK = null; clearTrail(); qa('#wall .wt.sel').forEach((t) => t.classList.remove('sel'));
+  const ro = $('ro');
+  if (!ro.classList.contains('on')) return;
+  if (ro.classList.contains('pop') && !RM) {
+    ro.getAnimations().forEach((a) => a.cancel());
+    ro.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 180, easing: 'ease-in', fill: 'forwards' }).onfinish = (e) => { if (WPICK) return; ro.classList.remove('on'); e.target.cancel(); };
+  } else ro.classList.remove('on');
+}
 /* =====================================================================
    THE PANEL: a slide's posts, or a post's mortem; it steps through its list and keeps what's behind it in step
    ===================================================================== */
 const PN = { open: false, view: null, back: null };
 function openRow(lens, i) { PN.back = null; PN.view = { kind: 'row', lens, i }; showPanel(); }
 function openPost(pid, list) { const back = PN.open && PN.view && PN.view.kind !== 'post' ? PN.view : null; PN.back = back; PN.view = { kind: 'post', id: pid, list: list && list.includes(pid) ? list : [pid] }; showPanel(); }
-function showPanel() { renderPanel(0); PN.open = true; $('pn').classList.add('on'); $('pns').classList.add('on'); markRow(); pickCut(); }
+function showPanel() {
+  const was = PN.open; renderPanel(0); PN.open = true; $('pn').classList.add('on'); $('pns').classList.add('on'); markRow(); pickCut();
+  // (opening, its contents rise in behind the panel, a piece at a time)
+  if (was || RM) return;
+  const v = $('pnb').querySelector('.pnv'); if (!v) return;
+  [...v.children].flatMap((e_) => (e_.matches('.pv-t, .pm-hd') ? [...e_.children] : [e_])).slice(0, 9).forEach((e_, j) => e_.animate([{ opacity: 0, transform: 'translate3d(0,22px,0)' }, { opacity: 1, transform: 'none' }], { duration: 620, delay: 140 + j * 60, easing: BEASE, fill: 'backwards' }));
+}
 function closePanel() { PN.open = false; PN.back = null; const pn = $('pn'); pn.classList.remove('on'); pn.style.transform = ''; $('pns').classList.remove('on'); markRow(); pickSoon(); }
 // the row the panel is on (or came from) stays marked on the page
 const LNAME = Object.fromEntries(LENS.map((l) => [l[0], l[1]]));
@@ -745,7 +884,7 @@ function postView(id) {
   const p = A.posts[id], v = p.top, his = A.his, r = beatOf(id, A.order), bk = p.bk || null;
   const s = A.slices.find((x) => x.name === p.pat), wk = A.weeks.find((w) => w.ids.includes(id)), wr = wk ? byRank(wk.ids).indexOf(id) + 1 : 0;
   const xl = xPost(id, 'lk');
-  const head = { num: xl != null ? fx(xl) : v != null ? top(v) : 'New', unit: xl != null ? `${his} usual likes` : v != null ? `among ${his} posts by day 7` : 'ranked at day 7', line: `${r.t}.`, aside: `${v != null ? `${top(v)} by day 7` : 'Too new to rank'}${wk && wr ? (wr === 1 ? ', the best of its week' : `, the ${ord(wr)} of ${wk.ids.length} that week`) : ''}.`, tone: tx(xl) };
+  const head = { num: xl != null ? fx(xl) : v != null ? top(v) : 'New', unit: xl != null ? `of ${his} usual ${K(Math.round(B.lk))} likes` : v != null ? `among ${his} posts by day 7` : 'ranked at day 7', line: `${r.t}.`, aside: `${v != null ? `${top(v)} by day 7` : 'Too new to rank'}${wk && wr ? (wr === 1 ? ', the best of its week' : `, the ${ord(wr)} of ${wk.ids.length} that week`) : ''}.`, tone: tx(xl) };
   const fr = p.rp || [], sq = p.fmt !== 'Reels';
   const beats = fr.length ? `<div class="rpl">${fr.map((f, k) => { const b = bk && bk.frames && bk.frames[k]; return `<div class="rf${sq ? ' sq' : ''}"><span class="im" style="background-image:url(${BASE}${f.f})">${f.at ? `<span>${esc(f.at)}</span>` : ''}</span><span class="rft">${b ? `<b class="bl">${esc(b.line)}</b>` : ''}<span class="q${f.kind === 'shows' ? ' sh' : ''}">${esc(f.line)}</span></span></div>`; }).join('')}</div>`
     : `<div class="rpl"><div class="rf sq"><span class="im" style="${coverStyle(id)}"></span><span class="q sh">Only the cover is on file: frames start with the posts fingerprinted from ${A.acct === 'anuj' ? '19' : '21'} Sep.</span></div></div>`;
@@ -798,30 +937,98 @@ function hookPanel() {
 let SK = -1;
 function baseX() { if (!isDesk()) return 0; const vp = $('vp'), s = q1('#track .slide'); return vp && s ? (vp.clientWidth - s.offsetWidth) / 2 : 0; }
 function storyPlace() { const p = $('player'); if (p) p.style.setProperty('--bx', baseX() + 'px'); }
+/* ---- a phone's story slides from card to card inside its frame: the card on show slides out whole, settling back a touch
+   and dimming as it goes, while the next slides in beside it. Under a finger it follows the drag; let go, it carries on
+   on a spring that sets off at the finger's speed (SWV) or falls back. Taps, the bars and the clock move it too. As a card lands its pictures drift
+   into place inside their tiles, then its words come in one after another: the kick from the side, the number up out of
+   its mask, what it counts, and the headline a word at a time ---- */
+const BEAT = 54, BEASE = 'cubic-bezier(.16, .9, .2, 1)', SHADE = .5;
+const WORDS = '.foot > .kick, .foot .num > span, .foot .unit, .foot .line .w > span, .foot .tog';
+let SWV = 0, SWT = 600, DRN = null, DRAGGED = false;
+const slideOf = (k) => q1(`.slide[data-k="${k}"]`);
+function faces(dir, p) {
+  return {
+    out: { transform: `translate3d(${-dir * p * 100}%,0,0) scale(${1 - .06 * p})`, transformOrigin: '50% 50%' },
+    in: { transform: `translate3d(${dir * (1 - p) * 100}%,0,0)`, transformOrigin: '50% 50%' },
+  };
+}
+function rest(s_, on) { if (!s_) return; s_.getAnimations().forEach((a) => a.cancel()); s_.style.transform = ''; s_.style.transformOrigin = ''; s_.classList.remove('mv'); s_.classList.toggle('on', on); const d = s_.querySelector('.sdim'); if (d) { d.getAnimations().forEach((a) => a.cancel()); d.style.opacity = ''; } }
+// a drag: the card on show and the one it turns toward, at p of the way
+function turnAt(nb, dir, p) {
+  const a = slideOf(at), b = slideOf(nb), f = faces(dir, p);
+  if (DRN != null && DRN !== nb) rest(slideOf(DRN), false);
+  DRN = nb;
+  [a, b].forEach((s_) => { s_.getAnimations().forEach((x) => x.cancel()); s_.classList.add('mv'); });
+  Object.assign(a.style, f.out); Object.assign(b.style, f.in);
+  a.querySelector('.sdim').style.opacity = p * SHADE; b.querySelector('.sdim').style.opacity = 0;
+}
+function turnTo(from, k, p0) {
+  const SP = spring(SWV, .86, 9.5), D = SP.duration; SWV = 0; SWT = D;
+  const dir = k > from ? 1 : -1, a = slideOf(from), b = slideOf(k);
+  qa('.slide').forEach((s_) => { if (s_ !== a && s_ !== b) rest(s_, false); });
+  if (DRN != null && DRN !== k && DRN !== from) rest(slideOf(DRN), false);
+  DRN = null;
+  if (RM || !a || !b) { rest(a, false); rest(b, true); return; }
+  const f0 = faces(dir, p0), f1 = faces(dir, 1), o = { duration: D, easing: SP.easing, fill: 'forwards' };
+  [a, b].forEach((s_) => { s_.getAnimations().forEach((x) => x.cancel()); s_.classList.add('mv'); });
+  a.classList.remove('on'); b.classList.add('on');
+  a.style.transformOrigin = f0.out.transformOrigin; b.style.transformOrigin = f0.in.transformOrigin;
+  const run = a.animate([{ transform: f0.out.transform }, { transform: f1.out.transform }], o);
+  b.animate([{ transform: f0.in.transform }, { transform: f1.in.transform }], o);
+  a.querySelector('.sdim').animate([{ opacity: p0 * SHADE }, { opacity: SHADE }], o);
+  run.onfinish = () => { if (at !== k) return; rest(a, false); rest(b, true); };
+}
+// a drag let go short of turning: the two fall back
+function settleBack(p0) {
+  const a = slideOf(at), b = DRN != null ? slideOf(DRN) : null; if (!b) return;
+  const SP = spring(0, .9, 12), dir = DRN > at ? 1 : -1, f0 = faces(dir, p0), f1 = faces(dir, 0), o = { duration: SP.duration, easing: SP.easing, fill: 'forwards' }, nb = DRN;
+  const run = a.animate([{ transform: f0.out.transform }, { transform: f1.out.transform }], o);
+  b.animate([{ transform: f0.in.transform }, { transform: f1.in.transform }], o);
+  a.querySelector('.sdim').animate([{ opacity: p0 * SHADE }, { opacity: 0 }], o);
+  run.onfinish = () => { if (DRN !== nb && DRN != null) return; rest(a, true); rest(b, false); DRN = null; };
+}
 function storyArrive(k) {
-  const dir = SK < 0 ? 0 : k > SK ? 1 : k < SK ? -1 : 0; SK = k; storyPlace();
-  if (!dir || RM) return;
-  const card = q1(`.card[data-k="${k}"]`); if (!card) return;
-  [...card.querySelectorAll('.foot > .kick, .foot > .fig, .foot > .lrow, .md .plab')].forEach((el_, j) => el_.animate([{ transform: `translateX(${dir * 46}px)` }, { transform: 'none' }], { duration: 640 + j * 60, easing: 'cubic-bezier(.32, .72, 0, 1)' }));
+  const prev = SK, dir = SK < 0 ? 0 : k > SK ? 1 : k < SK ? -1 : 0; SK = k; storyPlace();
+  const card = q1(`.card[data-k="${k}"]`), ch = $('pch');
+  if (!card || !dir || RM) return;
+  const EASE = 'cubic-bezier(.22, 1, .36, 1)';
+  if (ch) ch.animate([{ opacity: 0, transform: `translate3d(${dir * 10}px,0,0)` }, { opacity: 1, transform: 'none' }], { duration: 560, delay: 120, easing: EASE, fill: 'backwards' });
+  // (a card dragged in has been seen the whole way: it lands as it is)
+  if (DRAGGED) { DRAGGED = false; return; }
+  const D = SWT, at0 = D * .3;
+  const pics = [...card.querySelectorAll('.md img, .md .qc')], labs = [...card.querySelectorAll('.md .plab, .md.pad > *')];
+  const kick = card.querySelector('.foot > .kick'), num = card.querySelector('.foot .num > span'), unit = card.querySelector('.foot .unit'), ws = [...card.querySelectorAll('.foot .line .w > span')], tog = card.querySelector('.foot .tog');
+  [...pics, ...labs, kick, num, unit, ...ws, tog].forEach((e_) => e_ && e_.getAnimations().forEach((a) => a.cancel()));
+  const o = (delay, dur = 820) => ({ duration: dur, delay, easing: EASE, fill: 'backwards' });
+  // the pictures ease back from a breath of zoom; then the words in four beats: the kick, the number out of its mask, what
+  // it counts, and the headline rising whole
+  pics.forEach((e_) => e_.animate([{ transform: 'scale(1.05)' }, { transform: 'none' }], { duration: D + 600, easing: EASE }));
+  labs.forEach((e_) => e_.animate([{ opacity: 0 }, { opacity: 1 }], o(at0 + 120, 600)));
+  if (kick) kick.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], o(at0));
+  if (num) num.animate([{ transform: 'translate3d(0,110%,0)' }, { transform: 'none' }], o(at0 + 80, 900));
+  if (unit) unit.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], o(at0 + 170));
+  ws.forEach((e_) => e_.animate([{ transform: 'translate3d(0,120%,0)' }, { transform: 'none' }], o(at0 + 240, 900)));
+  if (tog) tog.animate([{ opacity: 0 }, { opacity: 1 }], o(at0 + 320, 600));
+}
+// a card's words open (a tap on them): the card darkens and the rest of its words rise in, one piece after another
+function setOpen(card, on) {
+  card.classList.toggle('open', on);
+  if (!on || RM) return;
+  const parts = [...card.querySelectorAll('.more > *')].flatMap((e_) => (e_.matches('.figs, .frows, .rev, .mixk') ? [...e_.children] : [e_]));
+  parts.forEach((e_, j) => { e_.getAnimations().forEach((a) => a.cancel()); e_.animate([{ opacity: 0, transform: 'translate3d(0,18px,0)' }, { opacity: 1, transform: 'none' }], { duration: 560, delay: 120 + Math.min(j, 10) * 58, easing: BEASE, fill: 'backwards' }); });
 }
 /* ---- the story a laptop up: the ten cards stand side by side as spines, and the one on show opens wide, its words on
    the left and its picture on the right. Another picked opens as this one folds, in one move; its words slide in a
    beat behind it, one line after another ---- */
 let DS = false;
-function spineBg(s) {
-  const m = s.media, it = m.items && m.items[0];
-  if (it) return `background-image:url(${BASE}st/${it.id}.jpg)`;
-  const id = (m.ids && m.ids[0]) || (s.reviews && s.reviews[0] && s.reviews[0].id) || (s.rows || []).flatMap((r) => r.ids || [])[0];
-  return id ? coverStyle(id) : '';
-}
 function deskStoryHTML() {
   const best = A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0], n = A.stories.length, no = (k) => String(k + 1).padStart(2, '0');
-  return `<div class="ds" id="ds"><div class="dsr" id="dsr">${A.stories.map((s, k) => `<article class="dsc k-${s.media.kind}${k === 0 ? ' on' : ''}" data-k="${k}">
+  return `<div class="ds" id="ds"><div class="dsr" id="dsr">${A.stories.map((s, k) => `<article class="dsc k-${s.media.kind}${s._t ? ` t-${s._t}` : ''}${k === 0 ? ' on' : ''}" data-k="${k}" style="z-index:${k + 1}">${k ? '<i class="dgut"></i>' : ''}<div class="dsi">
       <div class="dz">${mediaHTML(s, k)}</div>
       <div class="dtx"><div class="dhd"><span class="av" data-cv="${best}" style="${cv(best)}"></span><b>${esc(A.handle.replace('@', ''))}</b><em>${esc(chLabel(s))}</em><span class="dno">${no(k)} / ${n}</span></div>
         <div class="dft">${kickOf(s)}<div class="fig"><b class="num">${esc(s.num)}</b><span class="unit">${esc(s.unit)}</span></div><h3 class="line">${esc(s.line)}</h3>${s.media.kind === 'list' ? '' : `<div class="more">${moreHTML(s)}</div>`}</div></div>
-      <button class="dsp" data-k="${k}" style="${spineBg(s)}" aria-label="${esc(KICK[s.ch] || s.ch)}"><b>${no(k)}</b><span>${esc(KICK[s.ch] || s.ch)}</span><i class="${s.ch.toLowerCase()}"></i></button></article>`).join('')}</div>
-    <div class="dsb"><div class="dpr" id="igbars">${A.stories.map((s, k) => `<button data-k="${k}" aria-label="${esc(KICK[s.ch] || s.ch)}"><i><b></b></i></button>`).join('')}</div>
+      <button class="dsp" data-k="${k}" aria-label="${esc(spineOf(s))}"><b>${no(k)}</b><span>${esc(spineOf(s))}</span>${mark(s)}</button></div></article>`).join('')}</div>
+    <div class="dsb"><div class="dpr" id="igbars">${A.stories.map((s, k) => `<button data-k="${k}" class="${s._t ? `t-${s._t}` : ''}" aria-label="${esc(spineOf(s))}"><i><b></b></i></button>`).join('')}</div>
       <div class="dct"><button class="nb" id="arrp" aria-label="Back">${SV('M15 5l-7 7 7 7')}</button><button class="nb" id="pp" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button><button class="nb" id="arrn" aria-label="Next">${SV('M9 5l7 7-7 7')}</button></div></div></div>`;
 }
 // the open card takes what the spines leave; below 620px of it the words lie over the picture instead
@@ -834,41 +1041,94 @@ function deskSize() {
   ds.style.setProperty('--tw', Math.round(Math.max(340, Math.min(420, dw * .52))) + 'px');
   ds.classList.toggle('ov', dw < 620);
 }
-// the row moves as one: every card glides to its place, the one opening widens its window as the one folding narrows
-// its own, and each spine rides its card's moving edge (tucked behind it once the card is open, out from under it as
-// the card folds). Transforms and a clip only, so nothing reflows or fades while it moves; a pick mid-move carries on
-// from wherever things are
+// the row moves as one, and the card opening grows out of its own spine. Each card lies over the one before it (a gutter
+// in the page's colour between them), so a closed card shows only its sliver; a closed card whose panel is a picture
+// shows a sliver of that picture (from the middle of a single one, from the middle of the left column of four). Picking a
+// card slides the cards after it out of the way while its picture glides from the sliver to its place, its label melts
+// and its words slide in once the picture is under way; the card closing darkens to its spine as it folds. The gutter
+// before a card is part of that card, so the two can never drift apart mid-move (Safari runs each layer's animation on
+// its own). Transforms and opacity only, every moving piece on a layer of its own from the start, so the browser moves
+// it without repainting a thing; a pick mid-move carries on from wherever everything is
 let DSZ = { sw: 48, dw: 680, gap: 8 };
-function deskPlace(k, move) {
-  const { sw, dw, gap } = DSZ;
-  const plan = [...qa('.dsc')].map((c, j) => {
-    const sp = c.querySelector('.dsp'), cs = getComputedStyle(c), ss = getComputedStyle(sp);
-    return { c, sp, from: { transform: cs.transform, clipPath: cs.clipPath }, sfrom: { transform: ss.transform },
-      to: { transform: `translate3d(${j * (sw + gap) + (j > k ? dw - sw : 0)}px,0,0)`, clipPath: `inset(0px ${j === k ? 0 : dw - sw}px 0px 0px round 26px)` },
-      st: { transform: `translate3d(${j === k ? dw : 0}px,0,0)` } };
+const GROW = 'cubic-bezier(.32, .72, 0, 1)';
+/* a spring (a mass on a spring, damped just short of still: it settles with the faintest give, under 1%), sampled into
+   an easing curve, with the time it takes to come to rest. v0 is the speed it sets off at, in whole distances a
+   second: a flick hands its speed on, a tap starts it from rest. Where linear() easings aren't supported, the glide
+   curve stands in */
+const LIN = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('animation-timing-function', 'linear(0, 1)');
+function spring(v0 = 0, zeta = .86, w = 9) {
+  // (zeta 1: critically damped, the fastest glide that never passes its mark)
+  const crit = zeta >= 1, wd = crit ? 0 : w * Math.sqrt(1 - zeta * zeta), B = crit ? 0 : (zeta * w - v0) / wd;
+  const x = crit ? (t) => 1 - Math.exp(-w * t) * (1 + (w - v0) * t) : (t) => 1 - Math.exp(-zeta * w * t) * (Math.cos(wd * t) + B * Math.sin(wd * t));
+  let T = .25; while (T < 2.5 && (crit ? Math.exp(-w * T) * (1 + Math.abs(w - v0) * T) : Math.exp(-zeta * w * T) * (1 + Math.abs(B))) > .002) T += .02;
+  // (at(p): when, in ms, it first gets p of the way)
+  const at = (p) => { for (let t = 0; t < T; t += .004) if (x(t) >= p) return Math.round(t * 1000); return Math.round(T * 1000); };
+  if (!LIN) return { duration: Math.round(T * 1000), easing: GROW, at };
+  const n = 60, pts = Array.from({ length: n + 1 }, (_, i) => (i === n ? 1 : +x((T * i) / n).toFixed(4)));
+  return { duration: Math.round(T * 1000), easing: `linear(${pts.join(', ')})`, at };
+}
+function deskPlace(k, dir) {
+  const move = !!dir;
+  const { sw, dw, gap } = DSZ, ds = $('ds'); if (!ds) return;
+  // (the cards ride one spring, iOS-quick and critically damped: most of the way in a third of a second, then easing into
+  // place without ever passing it. Nothing
+  // inside a card moves: its picture stands at its left, so the spine is the picture's own edge, and opening it is the
+  // window sweeping right across a still picture and then the words beside it)
+  const SP = spring(0, 1, 11.5), D = SP.duration, ov = ds.classList.contains('ov'), tw = ov ? 0 : parseFloat(ds.style.getPropertyValue('--tw')) || 360;
+  const xOf = (j) => j * (sw + gap) + (j > k ? dw - sw : 0);
+  const stateOf = (c, j) => {
+    const open = j === k;
+    return {
+      card: { transform: `translate3d(${xOf(j)}px,0,0)` },
+      tx: { opacity: open ? 1 : 0 },
+      sp: { opacity: open ? 0 : 1 },
+    };
+  };
+  const cards = [...qa('.dsc')];
+  const plan = cards.map((c, j) => {
+    const el = { card: c, tx: c.querySelector('.dtx'), sp: c.querySelector('.dsp') }, to = stateOf(c, j), from = {}, dz = c.querySelector('.dz');
+    Object.keys(el).forEach((n) => { const cs = getComputedStyle(el[n]); from[n] = Object.fromEntries(Object.keys(to[n]).map((p) => [p, cs[p]])); });
+    return { el, to, from, dz, open: j === k, was: c.classList.contains('on') };
   });
-  plan.forEach(({ c, sp, from, sfrom, to, st }) => {
-    c.getAnimations().forEach((a) => a.cancel()); sp.getAnimations().forEach((a) => a.cancel());
-    Object.assign(c.style, to); Object.assign(sp.style, st);
-    if (!move || RM || from.clipPath === 'none') return;
-    c.animate([from, to], { duration: 780, easing: CARRY });
-    sp.animate([sfrom, st], { duration: 780, easing: CARRY });
+  plan.forEach(({ el, to, from, dz, open, was }) => {
+    Object.keys(el).forEach((n) => { el[n].getAnimations().forEach((a) => a.cancel()); Object.assign(el[n].style, to[n]); });
+    if (!move || RM) return;
+    const go = (n, o) => el[n].animate([from[n], to[n]], { duration: D, easing: SP.easing, fill: 'backwards', ...o });
+    go('card');
+    const labs = dz.querySelectorAll('.plab'), words = [el.tx.querySelector('.dhd'), el.tx.querySelector('.dft')].filter(Boolean);
+    [el.tx, ...words, ...labs].forEach((e_) => e_.getAnimations().forEach((a) => a.cancel()));
+    if (open && !was) {
+      // its dark lifts at once as it starts to open; the picture's captions come up once it's mostly open; the words
+      // when the edge has swept half across their panel (beside the whole picture, laid over it on a narrow card)
+      go('sp', { duration: 200, easing: 'ease-out' });
+      const half = ov ? D * .3 : SP.at(Math.min(.95, (dw - tw * .75 - sw) / (dw - sw)));
+      el.tx.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: Math.max(0, half - 80), easing: 'ease-out', fill: 'backwards' });
+      words.forEach((e_) => e_.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: half, easing: 'ease-out', fill: 'backwards' }));
+      labs.forEach((l) => l.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: SP.at(.55), easing: 'ease-out', fill: 'backwards' }));
+    } else if (!open && was) {
+      // its words and captions go at once (the edge is about to cover them); its picture stays clear while it folds, and
+      // its spine's wash only comes on as it narrows to a spine (on the whole picture it would flood it)
+      go('tx', { duration: 120, easing: 'ease-out' }); go('sp', { duration: 240, delay: SP.at(.72), easing: 'ease-out', fill: 'backwards' });
+      labs.forEach((l) => l.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: 'ease-out', fill: 'forwards' }));
+    }
   });
 }
 function deskGo(k) {
   const n = A.stories.length; k = Math.max(0, Math.min(n - 1, k));
   const dir = k > at ? 1 : k < at ? -1 : 0; at = k; el = 0;
   if (!$('dsr')) return;
-  deskPlace(k, dir !== 0);
+  deskPlace(k, dir);
   qa('.dsc').forEach((c, j) => c.classList.toggle('on', j === k));
   $('arrp').disabled = k === 0; $('arrn').disabled = k === n - 1;
   paintBars();
   const c = q1(`.dsc[data-k="${k}"]`); if (!c) return;
   layoutCard(c, k);
-  if (dir && !RM) [c.querySelector('.dhd'), ...c.querySelectorAll('.dft > *')].forEach((e_, j) => e_ && e_.animate([{ transform: `translateX(${dir * 36}px)` }, { transform: 'none' }], { duration: 780 + j * 70, easing: 'cubic-bezier(.32, .72, 0, 1)' }));
 }
 function hookDesk() {
   const ds = $('ds');
+  // a card whose panel is a picture folds to a sliver of it; a chart or a list folds to a plain spine
+  qa('.dsc').forEach((c) => c.classList.toggle('pic', !!c.querySelector('.dz img, .dz .qc')));
+  qa('.dsc img').forEach((im) => { im.loading = 'eager'; if (im.decode) im.decode().catch(() => {}); });
   durs = A.stories.map((s) => Math.max(8000, Math.min(16000, 5000 + words(s) * 170))); el = 0; paused = false;
   ds.addEventListener('click', (e) => { const b = e.target.closest('.dsp, #igbars button'); if (b) { e.stopPropagation(); go(+b.dataset.k); } });
   $('arrp').addEventListener('click', () => go(at - 1));
@@ -902,7 +1162,7 @@ function jumpTo(target) {
 }
 function render() {
   IGS = new Set(A.ig || []); SK = -1; DS = isDesk();
-  baseBuild(); storyX();
+  baseBuild(); storyX(); storyTone();
   ios.forEach((o) => o.disconnect()); ios = [];
   root.innerHTML = `
     <section class="sec wrap" id="story"><header class="op"><span class="ok"><b>01</b>Story · week of 19–25 Oct</span><p class="ol">${esc(SAY[acct])}</p></header>${DS ? deskStoryHTML() : storyHTML()}</section>
@@ -926,19 +1186,27 @@ on(root, 'click', (e) => {
   const rl = e.target.closest('[data-rl]'); if (rl) { const reel = rl.closest('.ls').querySelector('.rl'); reel.scrollBy({ left: +rl.dataset.rl * Math.max(280, reel.clientWidth * .8), behavior: RM ? 'auto' : 'smooth' }); return; }
   const lr = e.target.closest('[data-lens][data-row]'); if (lr) { openRow(lr.dataset.lens, +lr.dataset.row); return; }
   const sv_ = e.target.closest('.seg [data-sv]');
-  if (sv_) { const seg = sv_.closest('.seg'), v = sv_.dataset.sv; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === sv_))); placeSeg(seg); if (seg.dataset.seg === 'wv') { WV = v; localSet('wall', v); $('wh').textContent = v === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'; drawWall(); } return; }
+  if (sv_) { const seg = sv_.closest('.seg'), v = sv_.dataset.sv; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === sv_))); placeSeg(seg); if (seg.dataset.seg === 'wv') { WV = v; localSet('wall', v); const wh = $('wh'); wh.textContent = v === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'; if (!RM) wh.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: BEASE }); morphWall(); } return; }
   const t = e.target.closest('[data-post]'); if (!t) return;
   if (t.dataset.wall) { wallPick(t.dataset.post); return; }
   if (t.closest('.wf')) { openPost(t.dataset.post, S.win); return; }
   const box = t.closest('.pgrid'); openPost(t.dataset.post, box ? [...box.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [t.dataset.post]);
 });
+on(document, 'click', (e) => {
+  if (!WPICK || e.target.closest('.r17 .ro')) return;
+  const tile = e.target.closest('#wall .wt');
+  if (tile && tile.dataset.post === WPICK) return;
+  unpick();
+  if (root.contains(e.target)) { e.stopPropagation(); e.preventDefault(); }
+}, true);
+on(window, 'scroll', roFollow, { passive: true });
 on($('ro'), 'click', (e) => { if (e.target.closest('[data-open]')) openPost(e.target.closest('[data-open]').dataset.open, A.wall); if (e.target.closest('[data-unpick]')) unpick(); });
 on(window, 'keydown', (e) => {
   if (!PN.open) { if (e.key === 'Escape' && WPICK) unpick(); return; }
   if (e.key === 'Escape') closePanel(); else if (e.key === 'ArrowRight') stepPanel(1); else if (e.key === 'ArrowLeft') stepPanel(-1); else return;
   e.preventDefault(); e.stopImmediatePropagation();
 }, true);
-on(window, 'resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (dead) return; if (isDesk() !== DS) { render(); return; } sizePlayer(); measureMore(); go(at); qa('[data-wk16]').forEach((h) => { h.dataset.drawn = ''; }); const c = q1(`.card[data-k="${at}"], .dsc[data-k="${at}"]`); if (c) layoutCard(c, at); drawAll(); if (WPICK && WV === 'recent') playTrail(WPICK, true); }, 140); });
+on(window, 'resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (dead) return; if (isDesk() !== DS) { render(); return; } sizePlayer(); measureMore(); go(at); qa('[data-wk16]').forEach((h) => { h.dataset.drawn = ''; }); const c = q1(`.card[data-k="${at}"], .dsc[data-k="${at}"]`); if (c) layoutCard(c, at); drawAll(); if (WPICK && WV === 'recent') playTrail(WPICK, true); placeRo(); }, 140); });
 hookPanel();
 render();
 raf = requestAnimationFrame(frame);

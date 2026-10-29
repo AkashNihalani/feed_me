@@ -7,11 +7,12 @@ const DIRECTION_NOISE = 4;
 
 /* A jump the page makes itself (Feed's zoom or new pick landing somewhere else on the page) is not a direction: the
    header never folds or unfolds because of which way it went. 'keep': the header stays as it is; 'place': it shows
-   where the page landed (folded in the posts, open near the top). Open at the very top either way. The scroll
-   events within a moment of the mark are the jump's.
+   where the page landed (folded in the posts, open near the top); 'fold': folded wherever it lands (a thing on the
+   page asked for the whole screen: Read's story, gliding to the middle on a tap). Open at the very top either way.
+   The scroll events within a moment of the mark are the jump's.
    `at`: where the page is landing, for a jump made later than it is seen (Feed holds the scroll through a move on
    WebKit and hands it over when it lands): the header answers now, as if the page were already there */
-export type ScrollJump = 'keep' | 'place';
+export type ScrollJump = 'keep' | 'place' | 'fold';
 let jump: { mode: ScrollJump; until: number; at: number | null } | null = null;
 const jumpListeners = new Set<() => void>();
 
@@ -68,6 +69,7 @@ export function watchScrollFold(source: HTMLElement | Window, options: CollapseO
       // the page's own jump: no direction taken from it, the next scroll measures from here
       if (y <= guard) state = false;
       else if (live.mode === 'place') state = y > guard + collapseAt;
+      else if (live.mode === 'fold') state = true;
       anchor = y;
       lastY = y;
       dir = 0;

@@ -16,6 +16,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { appFont } from '@/lib/fonts';
+import { markScrollJump } from '@/lib/useCompressedOnScroll';
 import { mountRead17 } from './read17Engine';
 import './readParts.css';
 
@@ -90,6 +91,8 @@ export default function Read17({
       acct,
       base: BASE,
       onChapter: (part: Part) => chapterRef.current(part),
+      // a tap that glides the story to the middle folds the header and the bottom bar away, wherever it lands
+      fold: (y: number) => markScrollJump('fold', 900, y),
     }) as Mounted;
     jumpRef.current = mounted.jump;
     return () => {
