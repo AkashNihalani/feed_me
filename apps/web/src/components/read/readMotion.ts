@@ -18,6 +18,10 @@
    is on screen; the leaving page takes no taps until it has gone.
    ───────────────────────────────────────────────────────────── */
 
+import { TEMPO } from '@/lib/tempo';
+
+// written at the pace they were designed at, played at the app's (lib/tempo)
+const tm = (o: KeyframeAnimationOptions): KeyframeAnimationOptions => ({ ...o, duration: Number(o.duration ?? 0) * TEMPO, delay: (o.delay ?? 0) * TEMPO });
 const EASE_OUT = 'cubic-bezier(.16, .9, .2, 1)';
 const EASE_IN_OUT = 'cubic-bezier(.45, 0, .2, 1)';
 const EASE_IN = 'cubic-bezier(.4, 0, 1, 1)';
@@ -73,30 +77,30 @@ export function leavePage(root: HTMLElement | null, chosen?: HTMLElement | null)
     if (words.length) {
       const begin = (pivot ? 80 : 20) + at(k);
       words.forEach((word, j) => {
-        anims.push(word.animate([{ transform: 'none' }, { transform: 'translateY(-108%)' }], { duration: 380, delay: begin + j * 16, easing: EASE_IN, fill: 'forwards' }));
+        anims.push(word.animate([{ transform: 'none' }, { transform: 'translateY(-108%)' }], tm({ duration: 380, delay: begin + j * 16, easing: EASE_IN, fill: 'forwards' })));
       });
       return;
     }
     if (pivot) {
       // dim at once, so the row you picked is the only thing lit; then part around it
       const dim = start * 0.3;
-      anims.push(el.animate([{ opacity: start }, { opacity: dim }], { duration: 200, easing: EASE_OUT, fill: 'forwards' }));
+      anims.push(el.animate([{ opacity: start }, { opacity: dim }], tm({ duration: 200, easing: EASE_OUT, fill: 'forwards' })));
       const away = rect.top > pivot.top ? DRIFT : -DRIFT;
       anims.push(el.animate(
         [{ opacity: dim, transform: 'none' }, { opacity: 0, transform: `translateY(${away}px)` }],
-        { duration: LEAVE, delay: 120 + at(k), easing: EASE_IN_OUT, fill: 'forwards' },
-      ));
+        tm({ duration: LEAVE, delay: 120 + at(k), easing: EASE_IN_OUT, fill: 'forwards' },
+      )));
     } else {
       anims.push(el.animate(
         [{ opacity: start, transform: 'none' }, { opacity: 0, transform: `translateY(${-DRIFT}px)` }],
-        { duration: LEAVE, delay: 40 + at(k), easing: EASE_IN_OUT, fill: 'forwards' },
-      ));
+        tm({ duration: LEAVE, delay: 40 + at(k), easing: EASE_IN_OUT, fill: 'forwards' },
+      )));
     }
   });
 
   // a card lets go of its surface once most of its pieces are on their way
   surfaces.forEach((el) => {
-    anims.push(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, delay: (pivot ? 120 : 40) + SPREAD * 0.6, easing: EASE_IN_OUT, fill: 'forwards' }));
+    anims.push(el.animate([{ opacity: 1 }, { opacity: 0 }], tm({ duration: 320, delay: (pivot ? 120 : 40) + SPREAD * 0.6, easing: EASE_IN_OUT, fill: 'forwards' })));
   });
 
   if (chosen) {
@@ -104,14 +108,14 @@ export function leavePage(root: HTMLElement | null, chosen?: HTMLElement | null)
     runs.forEach((box, k) => {
       anims.push(box.animate(
         [{ transform: 'none' }, { transform: 'translateY(-3px) scaleY(1.1)', offset: 0.45 }, { transform: 'none' }],
-        { duration: 440, delay: k * 32, easing: EASE_IN_OUT },
-      ));
+        tm({ duration: 440, delay: k * 32, easing: EASE_IN_OUT },
+      )));
     });
-    anims.push(chosen.animate([{ transform: 'none' }, { transform: 'translateY(-3px)' }], { duration: 260, easing: EASE_OUT, fill: 'forwards' }));
+    anims.push(chosen.animate([{ transform: 'none' }, { transform: 'translateY(-3px)' }], tm({ duration: 260, easing: EASE_OUT, fill: 'forwards' })));
     anims.push(chosen.animate(
       [{ opacity: 1, transform: 'translateY(-3px)' }, { opacity: 0, transform: 'translateY(-26px)' }],
-      { duration: 400, delay: 340, easing: EASE_IN, fill: 'forwards' },
-    ));
+      tm({ duration: 400, delay: 340, easing: EASE_IN, fill: 'forwards' },
+    )));
   }
 
   return Promise.all(anims.map((anim) => anim.finished.catch(() => undefined))).then(() => {

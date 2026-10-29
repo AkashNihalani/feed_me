@@ -975,6 +975,8 @@ export function TabHeaderHost({ tab, onCompressed }: { tab: string | null; onCom
    to the time range's "30D", and labels longer than that widen the trigger, its menu and the track's segments */
 const timeframeLabel = (value: string | number) => `${value}D`;
 const isRoomy = <T extends string | number>(options: readonly T[], label: (value: T) => string) => options.some((option) => label(option).length > 3);
+// a roomy slot is 68px; a value longer than it holds (Read's parts: Strategy) gets one its length
+const slotWidth = <T extends string | number>(options: readonly T[], label: (value: T) => string) => (isRoomy(options, label) ? Math.max(68, Math.ceil(Math.max(...options.map((option) => label(option).length)) * 11.5)) : 32);
 
 /* On a phone the choice is a button that grows down into its menu, as Read's view switch does (readerEngine,
    lnmOpen): a box laid exactly over the button wears its face (the value and the chevron, where they were; the button
@@ -1006,9 +1008,9 @@ const MENU_SHADOW_OPEN = {
 type MenuBox<T> = { top: number; right: number; width: number; height: number; scrollY: number; others: T[]; keys: boolean };
 
 // a value in its slot, rolling when it changes (the button's face, and the open menu's)
-function ValueSlot({ text, dir, roomy, reduce }: { text: string; dir: number; roomy: boolean; reduce: boolean }) {
+function ValueSlot({ text, dir, roomy, width, reduce }: { text: string; dir: number; roomy: boolean; width?: number; reduce: boolean }) {
   return (
-    <span className={cn('relative grid h-[1.08em] shrink-0 place-items-center overflow-hidden leading-none', roomy ? 'w-[68px]' : 'w-8')}>
+    <span className={cn('relative grid h-[1.08em] shrink-0 place-items-center overflow-hidden leading-none', roomy ? 'w-[68px]' : 'w-8')} style={width && width > 68 ? { width } : undefined}>
       <AnimatePresence initial={false} custom={dir}>
         <motion.span
           key={text}
@@ -1027,10 +1029,13 @@ function ValueSlot({ text, dir, roomy, reduce }: { text: string; dir: number; ro
   );
 }
 
-function TimeframePicker<T extends string | number>({ value, options, pending, label, name, applyMs = MENU_APPLY_MS, onChange }: { value: T; options: readonly T[]; pending: boolean; label: (value: T) => string; name?: string; applyMs?: number; onChange: (value: T) => void }) {
+function TimeframePicker<T extends string | number>({ value, options, pending, label, face = label, menuWidth = 0, name, applyMs = MENU_APPLY_MS, onChange }: { value: T; options: readonly T[]; pending: boolean; label: (value: T) => string; face?: (value: T) => string; menuWidth?: number; name?: string; applyMs?: number; onChange: (value: T) => void }) {
   const reduce = Boolean(useReducedMotion());
   const theme = useResolvedTheme();
-  const roomy = isRoomy(options, label);
+  // the button wears the face (by default the value's name); the menu names the others, and opens wider than the
+  // button when it's asked to (a short face, long names: Read's parts)
+  const roomy = isRoomy(options, face);
+  const slot = slotWidth(options, face);
   const panelId = useId();
   // the button's place, read from its slot (the button itself may be mid-press, scaled)
   const slotRef = useRef<HTMLDivElement | null>(null);
@@ -1147,9 +1152,10 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
           role="menu"
           aria-label={name ?? 'Time range'}
           className="fixed z-[160] overflow-hidden text-fg [-webkit-tap-highlight-color:transparent]"
-          style={{ top: box.top, right: box.right, width: box.width, backgroundColor: 'var(--fm-well)' }}
-          initial={reduce ? false : { height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST }}
+          style={{ top: box.top, right: box.right, backgroundColor: 'var(--fm-well)' }}
+          initial={reduce ? false : { width: box.width, height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST }}
           animate={{
+            width: Math.max(box.width, menuWidth),
             height: box.height + MENU_PAD * 2 + box.others.length * MENU_ROW,
             borderRadius: 16,
             boxShadow: MENU_SHADOW_OPEN[theme],
@@ -1157,7 +1163,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
           }}
           exit={reduce
             ? { opacity: 0, transition: { duration: 0 } }
-            : { height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST, transition: MENU_CLOSE }}
+            : { width: box.width, height: box.height, borderRadius: 14, boxShadow: MENU_SHADOW_REST, transition: MENU_CLOSE }}
         >
           {/* the menu's own surface, coming up over the button's */}
           <motion.span
@@ -1168,7 +1174,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             exit={reduce ? undefined : { opacity: [1, 1, 0], transition: { duration: sec(0.4), times: [0, 0.6, 1] } }}
           />
           <span aria-hidden="true" className="pointer-events-none absolute left-[10px] right-[10px] h-px bg-fg/[0.08]" style={{ top: box.height }} />
-          <div className="absolute left-0 z-[1] grid gap-[2px] px-1 py-[6px]" style={{ top: box.height, width: box.width }}>
+          <div className="absolute left-0 z-[1] grid gap-[2px] px-1 py-[6px]" style={{ top: box.height, width: Math.max(box.width, menuWidth) }}>
             {box.others.map((option, index) => (
               <motion.button
                 key={String(option)}
@@ -1210,7 +1216,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             className="absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 text-[16px] font-black uppercase tracking-[-0.02em] text-fg outline-none"
             style={{ width: box.width, height: box.height }}
           >
-            <ValueSlot text={label(shown)} dir={roll.dir} roomy={roomy} reduce={reduce} />
+            <ValueSlot text={face(shown)} dir={roll.dir} roomy={roomy} width={slot} reduce={reduce} />
             <motion.span
               className="grid place-items-center"
               initial={reduce ? false : { transform: 'rotate(0deg)' }}
@@ -1229,7 +1235,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
   ) : null;
 
   return (
-    <div ref={slotRef} className="shrink-0 sm:hidden">
+    <div ref={slotRef} className={cn('shrink-0', face === label && 'sm:hidden')}>
       <button
         ref={triggerRef}
         type="button"
@@ -1240,10 +1246,10 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
         aria-busy={pending}
         onClick={toggle}
         // under the box while the menu is out (the box wears its face), so nothing moves
-        style={box ? { visibility: 'hidden' } : undefined}
+        style={{ ...(box ? { visibility: 'hidden' as const } : null), ...(slot > 68 ? { width: slot + 40 } : null) }}
         className={cn(HEADER_CONTROL, roomy ? 'w-[108px]' : 'w-[76px]', 'text-[16px] tracking-[-0.02em] transition-transform duration-150 active:scale-[0.97]')}
       >
-        <ValueSlot text={label(shown)} dir={roll.dir} roomy={roomy} reduce={reduce} />
+        <ValueSlot text={face(shown)} dir={roll.dir} roomy={roomy} width={slot} reduce={reduce} />
         <span className="grid place-items-center">
           <ChevronDown className="h-3.5 w-3.5 text-fg/54" aria-hidden="true" />
         </span>
@@ -1347,7 +1353,7 @@ const TRACK_LABEL = 'grid h-full place-items-center text-[13px] font-black upper
 export type ControlPlacement = 'header' | 'rail' | 'rail-mini';
 export const ControlPlacementContext = createContext<ControlPlacement>('header');
 
-export function TimeframeControl<T extends string | number>({ value, options, pending = false, label = timeframeLabel, name, applyMs, onChange }: { id: string; value: T; options: readonly T[]; pending?: boolean; label?: (value: T) => string; name?: string; applyMs?: number; onChange: (value: T) => void }) {
+export function TimeframeControl<T extends string | number>({ value, options, pending = false, label = timeframeLabel, face, menuWidth, name, applyMs, onChange }: { id: string; value: T; options: readonly T[]; pending?: boolean; label?: (value: T) => string; face?: (value: T) => string; menuWidth?: number; name?: string; applyMs?: number; onChange: (value: T) => void }) {
   // a pick on its way: the pill and the pressed segment move at the tap, in a render of their own, before the tab's
   // (possibly heavy) switch arrives with the value; worn until the value arrives, or for a while if it never does
   const [picked, setPicked] = useState<T | null>(null);
@@ -1367,7 +1373,7 @@ export function TimeframeControl<T extends string | number>({ value, options, pe
   // the side rail shut: only the value you're on, worn quietly (the rail opens to change it: SideRail)
   if (placement === 'rail-mini') {
     return (
-      <span aria-hidden="true" title={KEYS_HINT} className="grid h-11 w-[72px] place-items-center rounded-[14px] border border-fg/[0.07] bg-(--fm-well) text-[13px] font-black uppercase leading-none tracking-[0.04em] text-fg tabular-nums shadow-(--fm-well-shade)">
+      <span aria-hidden="true" title={KEYS_HINT} className={cn('grid h-11 w-[72px] place-items-center rounded-[14px] border border-fg/[0.07] bg-(--fm-well) font-black uppercase leading-none tracking-[0.04em] text-fg tabular-nums shadow-(--fm-well-shade)', label(shown).length > 6 ? 'text-[11px]' : 'text-[13px]')}>
         {label(shown)}
       </span>
     );
@@ -1399,12 +1405,14 @@ export function TimeframeControl<T extends string | number>({ value, options, pe
       </div>
     );
   }
+  // a face of its own keeps the picker at every width (its options would not fit the header as a track)
+  if (face) return <TimeframePicker value={value} options={options} pending={pending} label={label} face={face} menuWidth={menuWidth} name={name} applyMs={applyMs} onChange={onChange} />;
   return (
     <>
       <TimeframePicker value={value} options={options} pending={pending} label={label} name={name} applyMs={applyMs} onChange={onChange} />
       <div
         className="relative hidden h-11 shrink-0 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:grid"
-        style={{ width: options.length * (isRoomy(options, label) ? 66 : 46), gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+        style={{ width: options.length * (isRoomy(options, label) ? Math.max(66, Math.max(...options.map((option) => label(option).length)) * 10 + 8) : 46), gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
         role="group"
         aria-label={name ?? 'Time range'}
         aria-keyshortcuts="ArrowLeft ArrowRight"

@@ -1,0 +1,2883 @@
+{
+ "version": "sections",
+ "handle": "anuj.mp4",
+ "who": "his",
+ "unit": "posts",
+ "paidWord": "brand deals",
+ "posts": [
+  {
+   "id": "P01",
+   "name": "Four mates act out spotting Yash",
+   "label": "Four mates act out spotting Yash",
+   "rank": 2,
+   "pool": 92,
+   "lane": "reel",
+   "date": "27 Sep",
+   "paid": false,
+   "likes": 154313,
+   "run": 1,
+   "secs": 20,
+   "top": 2,
+   "what": ""
+  },
+  {
+   "id": "P02",
+   "name": "Anuj buys J&B Scotch, mixes drinks at home",
+   "label": "Anuj buys J&B Scotch, mixes drinks at home",
+   "rank": 70,
+   "pool": 93,
+   "lane": "reel",
+   "date": "27 Sep",
+   "paid": false,
+   "likes": 1974,
+   "run": 1,
+   "secs": 58,
+   "top": 75,
+   "what": "",
+   "deal": "J&B Rare Blended Scotch Whis"
+  },
+  {
+   "id": "P03",
+   "name": "Two streamers climb into a parked truck",
+   "label": "Two streamers climb into a parked truck",
+   "rank": 86,
+   "pool": 94,
+   "lane": "reel",
+   "date": "27 Sep",
+   "paid": false,
+   "likes": 817,
+   "run": 1,
+   "secs": 18,
+   "top": 92,
+   "what": ""
+  },
+  {
+   "id": "P04",
+   "name": "Six club portraits with a drink",
+   "label": "Six club portraits with a drink",
+   "rank": 17,
+   "pool": 17,
+   "lane": "carousel",
+   "date": "28 Sep",
+   "paid": false,
+   "likes": 922,
+   "run": 1,
+   "top": 100,
+   "what": ""
+  },
+  {
+   "id": "P05",
+   "name": "Anuj boasts he'll beat Jazz at FC27",
+   "label": "Anuj boasts he'll beat Jazz at FC27",
+   "rank": 89,
+   "pool": 95,
+   "lane": "reel",
+   "date": "28 Sep",
+   "paid": true,
+   "likes": 645,
+   "run": 1,
+   "secs": 25,
+   "top": 94,
+   "what": "",
+   "co": [
+    "talking.goats"
+   ],
+   "coNote": "It went out to their followers too, and still landed under his usual."
+  },
+  {
+   "id": "P06",
+   "name": "Two boyfriends at dinner: cheats versus loyal",
+   "label": "Two boyfriends at dinner: cheats versus loyal",
+   "rank": 18,
+   "pool": 96,
+   "lane": "reel",
+   "date": "29 Sep",
+   "paid": false,
+   "likes": 16667,
+   "run": 1,
+   "secs": 30,
+   "top": 19,
+   "what": ""
+  },
+  {
+   "id": "P07",
+   "name": "Anuj photoshopped as the Indian Drake",
+   "label": "Anuj photoshopped as the Indian Drake",
+   "rank": 10,
+   "pool": 18,
+   "lane": "carousel",
+   "date": "29 Sep",
+   "paid": false,
+   "likes": 2106,
+   "run": 1,
+   "top": 56,
+   "what": ""
+  },
+  {
+   "id": "P08",
+   "name": "Anuj as the Election Commissioner in a bathrobe",
+   "label": "Anuj as the Election Commissioner in a bathrobe",
+   "rank": 56,
+   "pool": 97,
+   "lane": "reel",
+   "date": "30 Sep",
+   "paid": false,
+   "likes": 3608,
+   "run": 1,
+   "secs": 21,
+   "top": 58,
+   "what": ""
+  },
+  {
+   "id": "P09",
+   "name": "Anuj plays crying Ronaldo and calm Messi",
+   "label": "Anuj plays crying Ronaldo and calm Messi",
+   "rank": 64,
+   "pool": 98,
+   "lane": "reel",
+   "date": "1 Oct",
+   "paid": false,
+   "likes": 2734,
+   "run": 1,
+   "secs": 52,
+   "top": 65,
+   "what": ""
+  },
+  {
+   "id": "P10",
+   "name": "Crime Patrol spoof selling a REDMI phone",
+   "label": "Crime Patrol spoof selling a REDMI phone",
+   "rank": 82,
+   "pool": 99,
+   "lane": "reel",
+   "date": "1 Oct",
+   "paid": true,
+   "likes": 1396,
+   "run": 1,
+   "secs": 67,
+   "top": 83,
+   "what": "",
+   "co": [
+    "anupsoni3"
+   ],
+   "coNote": "It went out to their followers too, and still landed under his usual."
+  },
+  {
+   "id": "P11",
+   "name": "Split-screen reaction to a friend's mosquito-refill rant",
+   "label": "Split-screen reaction to a friend's mosquito-refill rant",
+   "rank": 71,
+   "pool": 100,
+   "lane": "reel",
+   "date": "2 Oct",
+   "paid": false,
+   "likes": 2138,
+   "run": 2,
+   "secs": 22,
+   "top": 71,
+   "what": ""
+  },
+  {
+   "id": "P12",
+   "name": "Courtroom set, two friends argue, Anuj watches",
+   "label": "Courtroom set, two friends argue, Anuj watches",
+   "rank": 80,
+   "pool": 101,
+   "lane": "reel",
+   "date": "2 Oct",
+   "paid": true,
+   "likes": 1612,
+   "run": 2,
+   "secs": 30,
+   "top": 79,
+   "what": "",
+   "co": [
+    "aysha_sultan",
+    "youknowarhaan"
+   ],
+   "coNote": "It went out to their followers too, and still landed under his usual."
+  },
+  {
+   "id": "P13",
+   "name": "Anuj plays a drone-happy official and his aide",
+   "label": "Anuj plays a drone-happy official and his aide",
+   "rank": 24,
+   "pool": 102,
+   "lane": "reel",
+   "date": "3 Oct",
+   "paid": false,
+   "likes": 13248,
+   "run": 2,
+   "secs": 23,
+   "top": 24,
+   "what": ""
+  },
+  {
+   "id": "P14",
+   "name": "Mock lecture to a friend named Esha",
+   "label": "Mock lecture to a friend named Esha",
+   "rank": 63,
+   "pool": 103,
+   "lane": "reel",
+   "date": "3 Oct",
+   "paid": false,
+   "likes": 3267,
+   "run": 2,
+   "secs": 20,
+   "top": 61,
+   "what": ""
+  },
+  {
+   "id": "P15",
+   "name": "Anuj gives a sabotage referral on a dating show",
+   "label": "Anuj gives a sabotage referral on a dating show",
+   "rank": 83,
+   "pool": 104,
+   "lane": "reel",
+   "date": "3 Oct",
+   "paid": false,
+   "likes": 1542,
+   "run": 2,
+   "secs": 39,
+   "top": 80,
+   "what": ""
+  },
+  {
+   "id": "P16",
+   "name": "Anuj records his parents debating his waist size",
+   "label": "Anuj records his parents debating his waist size",
+   "rank": 48,
+   "pool": 104,
+   "lane": "reel",
+   "date": "4 Oct",
+   "paid": false,
+   "likes": 4402,
+   "run": 2,
+   "secs": 65,
+   "top": 46,
+   "what": ""
+  },
+  {
+   "id": "P17",
+   "name": "Party reel captioned 'finally convinced the artsy people'",
+   "label": "Party reel captioned 'finally convinced the artsy people'",
+   "rank": 63,
+   "pool": 104,
+   "lane": "reel",
+   "date": "5 Oct",
+   "paid": false,
+   "likes": 3073,
+   "run": 2,
+   "secs": 19,
+   "top": 61,
+   "what": ""
+  },
+  {
+   "id": "P18",
+   "name": "Ten black-and-white noir portraits plus monitor stills",
+   "label": "Ten black-and-white noir portraits plus monitor stills",
+   "rank": 10,
+   "pool": 19,
+   "lane": "carousel",
+   "date": "5 Oct",
+   "paid": false,
+   "likes": 2125,
+   "run": 2,
+   "top": 53,
+   "what": ""
+  },
+  {
+   "id": "P19",
+   "name": "Bar sketch: 1 drink versus 10, Sober pitch",
+   "label": "Bar sketch: 1 drink versus 10, Sober pitch",
+   "rank": 94,
+   "pool": 102,
+   "lane": "reel",
+   "date": "6 Oct",
+   "paid": true,
+   "likes": 677,
+   "run": 2,
+   "secs": 93,
+   "top": 92,
+   "what": "",
+   "co": [
+    "drink.sober",
+    "drinknightoutindia"
+   ],
+   "coNote": "It went out to their followers too, and still landed under his usual."
+  },
+  {
+   "id": "P20",
+   "name": "Rapper plays unreleased verse on his stream",
+   "label": "Rapper plays unreleased verse on his stream",
+   "rank": 21,
+   "pool": 101,
+   "lane": "reel",
+   "date": "6 Oct",
+   "paid": false,
+   "likes": 13597,
+   "run": 2,
+   "secs": 67,
+   "top": 21,
+   "what": ""
+  },
+  {
+   "id": "P21",
+   "name": "Anuj and Don YG lip-sync in robes",
+   "label": "Anuj and Don YG lip-sync in robes",
+   "rank": 51,
+   "pool": 102,
+   "lane": "reel",
+   "date": "7 Oct",
+   "paid": true,
+   "likes": 3763,
+   "run": 3,
+   "secs": 15,
+   "top": 50,
+   "what": "",
+   "co": [
+    "don______yg"
+   ],
+   "coNote": "It went out to their followers too, and still only did his usual."
+  },
+  {
+   "id": "P22",
+   "name": "Briefcase of watches, cash and a lip-sync",
+   "label": "Briefcase of watches, cash and a lip-sync",
+   "rank": 29,
+   "pool": 103,
+   "lane": "reel",
+   "date": "7 Oct",
+   "paid": false,
+   "likes": 8257,
+   "run": 3,
+   "secs": 20,
+   "top": 28,
+   "what": ""
+  },
+  {
+   "id": "P23",
+   "name": "Poster for a Liverpool-City watchalong",
+   "label": "Poster for a Liverpool-City watchalong",
+   "rank": 5,
+   "pool": 6,
+   "lane": "image",
+   "date": "8 Oct",
+   "paid": false,
+   "likes": 2248,
+   "run": 3,
+   "top": 83,
+   "what": "",
+   "deal": "JioHotstar"
+  },
+  {
+   "id": "P24",
+   "name": "An old man tells Rahul to stop drinking",
+   "label": "An old man tells Rahul to stop drinking",
+   "rank": 81,
+   "pool": 104,
+   "lane": "reel",
+   "date": "8 Oct",
+   "paid": false,
+   "likes": 1571,
+   "run": 3,
+   "secs": 18,
+   "top": 78,
+   "what": ""
+  },
+  {
+   "id": "P25",
+   "name": "Anuj loses Amazon's price-guessing game on stream",
+   "label": "Anuj loses Amazon's price-guessing game on stream",
+   "rank": 52,
+   "pool": 103,
+   "lane": "reel",
+   "date": "9 Oct",
+   "paid": false,
+   "likes": 3820,
+   "run": 3,
+   "secs": 74,
+   "top": 51,
+   "what": "",
+   "deal": "Amazon"
+  },
+  {
+   "id": "P26",
+   "name": "Friends' selfie, then a floor-shot salute",
+   "label": "Friends' selfie, then a floor-shot salute",
+   "rank": 5,
+   "pool": 20,
+   "lane": "carousel",
+   "date": "9 Oct",
+   "paid": false,
+   "likes": 3623,
+   "run": 3,
+   "top": 25,
+   "what": ""
+  },
+  {
+   "id": "P27",
+   "name": "The government with two faces, 12 seconds",
+   "label": "The government with two faces, 12 seconds",
+   "rank": 1,
+   "pool": 104,
+   "lane": "reel",
+   "date": "10 Oct",
+   "paid": false,
+   "likes": 867907,
+   "run": 3,
+   "secs": 12,
+   "top": 1,
+   "what": ""
+  },
+  {
+   "id": "P28",
+   "name": "Anuj reacts to the CJP arrests on mic",
+   "label": "Anuj reacts to the CJP arrests on mic",
+   "rank": 16,
+   "pool": 103,
+   "lane": "reel",
+   "date": "11 Oct",
+   "paid": false,
+   "likes": 16806,
+   "run": 3,
+   "secs": 45,
+   "top": 16,
+   "what": ""
+  },
+  {
+   "id": "P29",
+   "name": "Cashier kisses his City badge at 115 rupees",
+   "label": "Cashier kisses his City badge at 115 rupees",
+   "rank": 82,
+   "pool": 104,
+   "lane": "reel",
+   "date": "11 Oct",
+   "paid": false,
+   "likes": 1552,
+   "run": 3,
+   "secs": 9,
+   "top": 79,
+   "what": ""
+  },
+  {
+   "id": "P30",
+   "name": "Studio photos on the Matchday Hangout set",
+   "label": "Studio photos on the Matchday Hangout set",
+   "rank": 11,
+   "pool": 20,
+   "lane": "carousel",
+   "date": "11 Oct",
+   "paid": false,
+   "likes": 2257,
+   "run": 3,
+   "top": 55,
+   "what": "",
+   "deal": "Star Sports"
+  }
+ ],
+ "frags": [
+  {
+   "p": 0,
+   "k": "text",
+   "t": "raste pe chalte chalte yash dikh gaya"
+  },
+  {
+   "p": 0,
+   "k": "ref",
+   "t": "Yash"
+  },
+  {
+   "p": 0,
+   "k": "ref",
+   "t": "a friend in blue shirt"
+  },
+  {
+   "p": 0,
+   "k": "ref",
+   "t": "a friend in striped top"
+  },
+  {
+   "p": 1,
+   "k": "text",
+   "t": "All my friends do"
+  },
+  {
+   "p": 1,
+   "k": "text",
+   "t": "club me jaake vodka peena hai"
+  },
+  {
+   "p": 1,
+   "k": "line",
+   "t": "All my friends do is clubbing. Club me jaake vodka peena hai."
+  },
+  {
+   "p": 1,
+   "k": "line",
+   "t": "Yahi karte rehte hai... I said bro Scotch peene ka. Now I'm going to the most bougiest liquor store I know in Bombay and we're going to pick up some Scotch."
+  },
+  {
+   "p": 1,
+   "k": "ref",
+   "t": "female friend"
+  },
+  {
+   "p": 1,
+   "k": "ref",
+   "t": "Yash"
+  },
+  {
+   "p": 1,
+   "k": "ref",
+   "t": "J&B Rare Blended Scotch Whisky"
+  },
+  {
+   "p": 2,
+   "k": "text",
+   "t": "anuj.mp4 and shaurya climb into a truck"
+  },
+  {
+   "p": 2,
+   "k": "line",
+   "t": "Yo, can we climb up into this truck?"
+  },
+  {
+   "p": 2,
+   "k": "line",
+   "t": "Oh shit! Pull me up."
+  },
+  {
+   "p": 2,
+   "k": "ref",
+   "t": "Shaurya"
+  },
+  {
+   "p": 2,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 2,
+   "k": "ref",
+   "t": "livestream overlay"
+  },
+  {
+   "p": 3,
+   "k": "ref",
+   "t": "@darshweiser"
+  },
+  {
+   "p": 3,
+   "k": "ref",
+   "t": "@magicalsalad"
+  },
+  {
+   "p": 3,
+   "k": "ref",
+   "t": "black t-shirt and sleeve tattoo"
+  },
+  {
+   "p": 4,
+   "k": "text",
+   "t": "Anuj.mp4 vs Jazz in FC27"
+  },
+  {
+   "p": 4,
+   "k": "text",
+   "t": "CREATOR"
+  },
+  {
+   "p": 4,
+   "k": "line",
+   "t": "Mera wrap mere samne pada hua hai, main Jazz ko harate harate khaunga."
+  },
+  {
+   "p": 4,
+   "k": "line",
+   "t": "Main Jazz ko harate harate khaunga."
+  },
+  {
+   "p": 4,
+   "k": "ref",
+   "t": "Jazz"
+  },
+  {
+   "p": 4,
+   "k": "ref",
+   "t": "FC27"
+  },
+  {
+   "p": 4,
+   "k": "ref",
+   "t": "talking.goats"
+  },
+  {
+   "p": 5,
+   "k": "text",
+   "t": "Guys who cheat"
+  },
+  {
+   "p": 5,
+   "k": "text",
+   "t": "Guys who don't"
+  },
+  {
+   "p": 5,
+   "k": "ref",
+   "t": "the cheating boyfriend"
+  },
+  {
+   "p": 5,
+   "k": "ref",
+   "t": "the loyal boyfriend"
+  },
+  {
+   "p": 5,
+   "k": "ref",
+   "t": "Pehli Nazar Mein — Atif Aslam"
+  },
+  {
+   "p": 6,
+   "k": "text",
+   "t": "BREAKING NEWS"
+  },
+  {
+   "p": 6,
+   "k": "text",
+   "t": "POPULAR INSTAGRAM INFLUENCER AND TRENDSETTER"
+  },
+  {
+   "p": 6,
+   "k": "ref",
+   "t": "Drake"
+  },
+  {
+   "p": 6,
+   "k": "ref",
+   "t": "TMZ"
+  },
+  {
+   "p": 6,
+   "k": "ref",
+   "t": "Take Care"
+  },
+  {
+   "p": 7,
+   "k": "text",
+   "t": "Gyanesh Kumar after deleting 13 crore names from the voter rolls thinking no one's gonna notice 💀"
+  },
+  {
+   "p": 7,
+   "k": "ref",
+   "t": "Gyanesh Kumar"
+  },
+  {
+   "p": 7,
+   "k": "ref",
+   "t": "white hotel bathrobe"
+  },
+  {
+   "p": 7,
+   "k": "ref",
+   "t": "Baat Baaki — Asha Bhosle & Bappi Lahiri"
+  },
+  {
+   "p": 8,
+   "k": "text",
+   "t": "Ronaldo leaves the portugal national camp.. meanwhile messi 💀"
+  },
+  {
+   "p": 8,
+   "k": "line",
+   "t": "Kuch khaas toh hai nahi usme kya ek World Cup jeet liya woh bhi rigged, karta hai koi aise?"
+  },
+  {
+   "p": 8,
+   "k": "line",
+   "t": "Antonela..."
+  },
+  {
+   "p": 8,
+   "k": "ref",
+   "t": "Cristiano Ronaldo"
+  },
+  {
+   "p": 8,
+   "k": "ref",
+   "t": "Lionel Messi"
+  },
+  {
+   "p": 8,
+   "k": "ref",
+   "t": "Piers Morgan"
+  },
+  {
+   "p": 9,
+   "k": "text",
+   "t": "REDMI Note 17 Pro 5G"
+  },
+  {
+   "p": 9,
+   "k": "text",
+   "t": "mAhster of Strength"
+  },
+  {
+   "p": 9,
+   "k": "line",
+   "t": "Har ghar mein... ek aisa darinda zaroor hota hai. Jiska phone haath mein kam... aur zameen pe jyada paya jata hai."
+  },
+  {
+   "p": 9,
+   "k": "line",
+   "t": "Abey yaar! Ruk na, ruk na!"
+  },
+  {
+   "p": 9,
+   "k": "ref",
+   "t": "Anup Soni"
+  },
+  {
+   "p": 9,
+   "k": "ref",
+   "t": "a friend on the couch"
+  },
+  {
+   "p": 9,
+   "k": "ref",
+   "t": "REDMI Note 17 Pro 5G"
+  },
+  {
+   "p": 10,
+   "k": "text",
+   "t": "good knight product review"
+  },
+  {
+   "p": 10,
+   "k": "line",
+   "t": "Achha ek review dena tha Good knight ko."
+  },
+  {
+   "p": 10,
+   "k": "line",
+   "t": "Wow review de, crazy."
+  },
+  {
+   "p": 10,
+   "k": "ref",
+   "t": "Shreee"
+  },
+  {
+   "p": 10,
+   "k": "ref",
+   "t": "Good knight liquid refill"
+  },
+  {
+   "p": 10,
+   "k": "ref",
+   "t": "Good knight"
+  },
+  {
+   "p": 11,
+   "k": "text",
+   "t": "pov ur the 3rd friend in the group"
+  },
+  {
+   "p": 11,
+   "k": "text",
+   "t": "ANUJ.MP4's COURT"
+  },
+  {
+   "p": 11,
+   "k": "line",
+   "t": "Acha whenever I give you a call bro, your first reaction is like, what?"
+  },
+  {
+   "p": 11,
+   "k": "line",
+   "t": "Arhaan even if you say what, I will not give a fuck because we talk to each other 20 times a day!"
+  },
+  {
+   "p": 11,
+   "k": "ref",
+   "t": "Aysha Sultan"
+  },
+  {
+   "p": 11,
+   "k": "ref",
+   "t": "Arhaan"
+  },
+  {
+   "p": 11,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 12,
+   "k": "text",
+   "t": "Govt against protesters vs r*pists"
+  },
+  {
+   "p": 12,
+   "k": "line",
+   "t": "Protesters are a very big threat to our nation, okay?"
+  },
+  {
+   "p": 12,
+   "k": "line",
+   "t": "That is exactly why we should use drones and facial recognition and other high-tech tools so we can crack down on this properly, yeah?"
+  },
+  {
+   "p": 12,
+   "k": "ref",
+   "t": "the official"
+  },
+  {
+   "p": 12,
+   "k": "ref",
+   "t": "the subordinate"
+  },
+  {
+   "p": 12,
+   "k": "ref",
+   "t": "distorted face filter"
+  },
+  {
+   "p": 13,
+   "k": "text",
+   "t": "Esha, it's time to grow up"
+  },
+  {
+   "p": 13,
+   "k": "line",
+   "t": "Esha, there is more to life than alcohol and clubbing."
+  },
+  {
+   "p": 13,
+   "k": "line",
+   "t": "Ye roz-roz clubbing jaana Esha, roz party karna, roz daaru peeke nashe mein dhutt raat ko chaar-paanch baje sona."
+  },
+  {
+   "p": 13,
+   "k": "ref",
+   "t": "Esha"
+  },
+  {
+   "p": 13,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 13,
+   "k": "ref",
+   "t": "Esha, it's time to grow up"
+  },
+  {
+   "p": 14,
+   "k": "text",
+   "t": "ROUND Referral"
+  },
+  {
+   "p": 14,
+   "k": "text",
+   "t": "Ved"
+  },
+  {
+   "p": 14,
+   "k": "line",
+   "t": "Let's have a referral for Ved."
+  },
+  {
+   "p": 14,
+   "k": "line",
+   "t": "Okay, so basically—"
+  },
+  {
+   "p": 14,
+   "k": "ref",
+   "t": "Ved"
+  },
+  {
+   "p": 14,
+   "k": "ref",
+   "t": "Ruchika"
+  },
+  {
+   "p": 14,
+   "k": "ref",
+   "t": "Krish"
+  },
+  {
+   "p": 15,
+   "k": "text",
+   "t": "imagine your own parents body shaming you"
+  },
+  {
+   "p": 15,
+   "k": "line",
+   "t": "He is recording, he is recording."
+  },
+  {
+   "p": 15,
+   "k": "line",
+   "t": "Kahan mota hoon?"
+  },
+  {
+   "p": 15,
+   "k": "ref",
+   "t": "Anuj's mother"
+  },
+  {
+   "p": 15,
+   "k": "ref",
+   "t": "Anuj's father"
+  },
+  {
+   "p": 15,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 16,
+   "k": "text",
+   "t": "finally convinced the artsy people i'm one of them"
+  },
+  {
+   "p": 16,
+   "k": "ref",
+   "t": "unidentified rap track"
+  },
+  {
+   "p": 16,
+   "k": "ref",
+   "t": "finally convinced the artsy people I'm one of them"
+  },
+  {
+   "p": 16,
+   "k": "ref",
+   "t": "white short-sleeve button-down shirt"
+  },
+  {
+   "p": 17,
+   "k": "ref",
+   "t": "@soumilsharma7"
+  },
+  {
+   "p": 17,
+   "k": "ref",
+   "t": "black suit and sunglasses"
+  },
+  {
+   "p": 17,
+   "k": "ref",
+   "t": "black t-shirt and sleeve tattoo"
+  },
+  {
+   "p": 18,
+   "k": "text",
+   "t": "10 DRINKS"
+  },
+  {
+   "p": 18,
+   "k": "text",
+   "t": "1 DRINK"
+  },
+  {
+   "p": 18,
+   "k": "line",
+   "t": "Why are you wearing a bathrobe to a nightclub?"
+  },
+  {
+   "p": 18,
+   "k": "line",
+   "t": "Why are you not wearing a bathrobe? Comfort is confidence, baby. Look it up. Feel comfortable."
+  },
+  {
+   "p": 18,
+   "k": "ref",
+   "t": "an unseen patron"
+  },
+  {
+   "p": 18,
+   "k": "ref",
+   "t": "black patterned robe and sunglasses"
+  },
+  {
+   "p": 18,
+   "k": "ref",
+   "t": "Sober"
+  },
+  {
+   "p": 19,
+   "k": "text",
+   "t": "Don YG plays her unreleased verse 🔥"
+  },
+  {
+   "p": 19,
+   "k": "line",
+   "t": "Yeah. Gang."
+  },
+  {
+   "p": 19,
+   "k": "line",
+   "t": "Gang, gang."
+  },
+  {
+   "p": 19,
+   "k": "ref",
+   "t": "Don YG"
+  },
+  {
+   "p": 19,
+   "k": "ref",
+   "t": "black patterned robe and sunglasses"
+  },
+  {
+   "p": 19,
+   "k": "ref",
+   "t": "cropped Chrome Hearts baseball tee"
+  },
+  {
+   "p": 20,
+   "k": "text",
+   "t": "when both u and ur HG can't stand brokies"
+  },
+  {
+   "p": 20,
+   "k": "ref",
+   "t": "don______yg"
+  },
+  {
+   "p": 20,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 20,
+   "k": "ref",
+   "t": "black patterned robe and sunglasses"
+  },
+  {
+   "p": 21,
+   "k": "line",
+   "t": "Don waise hi baitha, bhai baithal ghar pe agar paise ka wish nahi toh maa chuda lawde"
+  },
+  {
+   "p": 21,
+   "k": "line",
+   "t": "Maha maalo shooter mere paise pe paise maine Modi ko bola mera photo daal note pe"
+  },
+  {
+   "p": 21,
+   "k": "ref",
+   "t": "a woman with red hair"
+  },
+  {
+   "p": 21,
+   "k": "ref",
+   "t": "black patterned robe and sunglasses"
+  },
+  {
+   "p": 21,
+   "k": "ref",
+   "t": "briefcase of luxury watches"
+  },
+  {
+   "p": 22,
+   "k": "text",
+   "t": "WATCH YOUR FAVOURITE CREATORS ON"
+  },
+  {
+   "p": 22,
+   "k": "text",
+   "t": "MATCHDAY HANGOUT"
+  },
+  {
+   "p": 22,
+   "k": "ref",
+   "t": "Virgil van Dijk"
+  },
+  {
+   "p": 22,
+   "k": "ref",
+   "t": "Erling Haaland"
+  },
+  {
+   "p": 22,
+   "k": "ref",
+   "t": "Shamik"
+  },
+  {
+   "p": 23,
+   "k": "text",
+   "t": "Rahul bhai please"
+  },
+  {
+   "p": 23,
+   "k": "line",
+   "t": "Rahul yaar daru peena chhod de! Batao?"
+  },
+  {
+   "p": 23,
+   "k": "line",
+   "t": "Rahul, daaru peena chhod de."
+  },
+  {
+   "p": 23,
+   "k": "ref",
+   "t": "an elderly man"
+  },
+  {
+   "p": 23,
+   "k": "ref",
+   "t": "Rahul"
+  },
+  {
+   "p": 23,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 24,
+   "k": "text",
+   "t": "Apple iPad Air M4"
+  },
+  {
+   "p": 24,
+   "k": "text",
+   "t": "Deal price ₹69,990"
+  },
+  {
+   "p": 24,
+   "k": "line",
+   "t": "Shut up! This is a joke, right?"
+  },
+  {
+   "p": 24,
+   "k": "line",
+   "t": "So today I'm playing this game basically where we have to guess how much each item costs. We better get a 10 on 10, if we don't, I'm gonna lose it. Solero Type-C fast charging cable, it has to be higher! 5k for 25?!"
+  },
+  {
+   "p": 24,
+   "k": "ref",
+   "t": "Amazon"
+  },
+  {
+   "p": 24,
+   "k": "ref",
+   "t": "Amazon Great Indian Festival"
+  },
+  {
+   "p": 24,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 25,
+   "k": "ref",
+   "t": "a friend with wavy hair"
+  },
+  {
+   "p": 25,
+   "k": "ref",
+   "t": "a friend with brown hair"
+  },
+  {
+   "p": 25,
+   "k": "ref",
+   "t": "a friend in a dark shirt"
+  },
+  {
+   "p": 26,
+   "k": "text",
+   "t": "Govt when protesters"
+  },
+  {
+   "p": 26,
+   "k": "text",
+   "t": "उठा लेते हैं"
+  },
+  {
+   "p": 26,
+   "k": "line",
+   "t": "Utha lete hain."
+  },
+  {
+   "p": 26,
+   "k": "line",
+   "t": "Utha lete hain. Utha lete hain. Utha lete hain. Utha lete hain. Utha lete hain."
+  },
+  {
+   "p": 26,
+   "k": "ref",
+   "t": "Abhijeet Dipke"
+  },
+  {
+   "p": 26,
+   "k": "ref",
+   "t": "Saurav Das"
+  },
+  {
+   "p": 26,
+   "k": "ref",
+   "t": "Dhruv Rathee"
+  },
+  {
+   "p": 27,
+   "k": "text",
+   "t": "guys, it's not"
+  },
+  {
+   "p": 27,
+   "k": "text",
+   "t": "13,000 votes"
+  },
+  {
+   "p": 27,
+   "k": "line",
+   "t": "And you know what guys, it's not even about 13,000 votes,"
+  },
+  {
+   "p": 27,
+   "k": "line",
+   "t": "the resignation of Gyanesh Kumar, it's not even about the allegations. Allegations kya the truth that three prominent CJP leaders were abducted from a plane."
+  },
+  {
+   "p": 27,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 27,
+   "k": "ref",
+   "t": "blue tinted sunglasses and grey t-shirt"
+  },
+  {
+   "p": 27,
+   "k": "ref",
+   "t": "Gyanesh Kumar"
+  },
+  {
+   "p": 28,
+   "k": "line",
+   "t": "Haan bhaiya kitna hua?"
+  },
+  {
+   "p": 28,
+   "k": "line",
+   "t": "Madam 115 ho gaya."
+  },
+  {
+   "p": 28,
+   "k": "ref",
+   "t": "a customer with a drink"
+  },
+  {
+   "p": 28,
+   "k": "ref",
+   "t": "original audio"
+  },
+  {
+   "p": 28,
+   "k": "ref",
+   "t": "Manchester City jersey"
+  },
+  {
+   "p": 29,
+   "k": "text",
+   "t": "MATCHDAY HANGOUT"
+  },
+  {
+   "p": 29,
+   "k": "text",
+   "t": "ETIHAD AIRWAYS"
+  },
+  {
+   "p": 29,
+   "k": "ref",
+   "t": "female co-host"
+  },
+  {
+   "p": 29,
+   "k": "ref",
+   "t": "male co-host"
+  },
+  {
+   "p": 29,
+   "k": "ref",
+   "t": "Star Sports"
+  }
+ ],
+ "rules": [
+  {
+   "id": "L1",
+   "n": 1,
+   "short": "His 0:00 text holds the whole joke, then he plays it"
+  },
+  {
+   "id": "L2",
+   "n": 2,
+   "short": "A paid post holds when the brand is only the set"
+  },
+  {
+   "id": "L3",
+   "n": 3,
+   "short": "A carousel needs a made look or a twist on slide two"
+  },
+  {
+   "id": "L4",
+   "n": 4,
+   "short": "He plays both sides when the types are ones everyone knows"
+  }
+ ],
+ "heads": {
+  "map": ""
+ },
+ "sun": {
+  "name": "A comedian who plays the types you know, and the news.",
+  "line": "A comedian who posts about twice a day: reels where he plays a type or talks to the phone, photo posts and deals. [The government with two faces](P27) holds 76% of the likes of all 30 posts.",
+  "ps": [
+   26,
+   0,
+   27,
+   5
+  ],
+  "cover": 26,
+  "doss": {
+   "going": "Anuj is a comedian who needs strangers to keep liking him play types they already know, and brands to keep booking him. He posts about twice a day: reels where he plays a character or talks straight to the phone, plus photo carousels and paid posts. It is made for young viewers who follow the news and nightlife and want their own side of it said out loud, funny and fast.",
+   "landing": "One reel carries the account. [The government with two faces](P27) took 76% of the likes and went 218× his usual. Ten of the 30 beat his usual, and the typical post sits at 75% of it. Nine of them are deals, and the deals hold 2% of the likes. The posts where he plays both sides hold 79% from just 5. His form is still climbing: the typical post went from 28% of his usual in Sep 22–26 to about the same in Oct 7–11. Mondays stand out beyond chance, and only 1 of 15 beat his usual.",
+   "take": "Play a type everyone can place, and say the joke in the first line. Let a brand be the set of a bit you would post anyway. Don't count on Mondays: 1 of 15 beat his usual."
+  }
+ },
+ "planets": [
+  {
+   "name": "Plays both sides",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    5,
+    8,
+    12,
+    18,
+    26
+   ],
+   "typx": 3.21,
+   "hits": [
+    3,
+    5
+   ],
+   "what": "Reels where Anuj plays two opposing characters and cuts between them.",
+   "doss": {
+    "going": "He argues a point through two exaggerated versions of the same man, so the contrast does the talking.",
+    "landing": "This is the format that makes him. Three of these five posts beat his usual, and together they hold 79% of the likes. [The government with two faces](P27) went 218×; [the drones reel](P13) did 3.2×. It dies when the second side needs homework or an ad: [the Sober sketch](P19) got 17%, [the Ronaldo and Messi reel](P09) 64%.",
+    "take": "Use two types everyone can place, and make the second a turn on the first.",
+    "each": {
+     "5": "Cheating boyfriend against the loyal one, labelled so every cut explains itself. It went 3.9×.",
+     "8": "Both footballers in one car, with a single rant carrying 52 seconds. It got 64% of his usual.",
+     "12": "A drone-happy official against his reasonable aide, headline at 0:00. It went 3.2×.",
+     "18": "Shy one-drink Anuj against loud ten-drink Anuj, with two brands in the sketch. It got 17% of his usual.",
+     "26": "The government against protesters, then against rapists, flipping at 0:05. It went 218×."
+    }
+   }
+  },
+  {
+   "name": "Talks to the phone",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    13,
+    15,
+    23,
+    27
+   ],
+   "typx": 0.94,
+   "hits": [
+    2,
+    4
+   ],
+   "what": "Handheld takes where Anuj talks straight into the lens, to a friend, his parents or the news.",
+   "doss": {
+    "going": "It is the cheapest thing he makes: one take, a header, and a topic people already have an opinion on.",
+    "landing": "It works when the topic is that week's news. [A CJP arrests recap from a podcast mic](P28) went 4.4×, while [the Rahul reel](P24) got 42% because the old man's answer is the joke and it waits until 0:10. Two of the four beat his usual, and people commented 2.3× as much as usual for the likes. The latest two hit 2.4×.",
+    "take": "Talk straight when the topic is that week's news. Leave out personal set-ups that need a stage.",
+    "each": {
+     "13": "A lecture to Esha with the header naming it at 0:00; it held about his usual and drew 5.5× the usual comments.",
+     "15": "His parents supply every laugh and he only answers. It held about his usual.",
+     "23": "An old man gives the answer at 0:10, so the joke waits. It got 42% of his usual.",
+     "27": "A news recap at a mic, a day after the 218× reel. It went 4.4×."
+    }
+   }
+  },
+  {
+   "name": "Stream clips",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "drags",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    2,
+    4,
+    14,
+    19,
+    24
+   ],
+   "typx": 0.38,
+   "hits": [
+    1,
+    5
+   ],
+   "what": "Cuts from his streams and a live dating show.",
+   "doss": {
+    "going": "He cuts moments from his streams into reels, so the stream stays in the feed for people who never joined it.",
+    "landing": "Mostly these clips need you to have been there. Only one of the five beat his usual: [Don YG finishing her verse](P20) went 3.7×, because the verse and the cash are the show. [The FC27 boast](P05) got 15%, a chat window with no set-up, and [the truck clip](P03) got 19%, its payoff landing only at 0:14. The later clips are doing better than the early ones.",
+    "take": "A stream clip needs a moment worth liking on its own, like a finished verse. Raw chat and gameplay sank.",
+    "each": {
+     "2": "Two streamers climb into a truck and the payoff comes at 0:14. It got 19% of his usual.",
+     "4": "An FC27 boast under a paid label, then a montage. It got 15% of his usual.",
+     "14": "A referral on a stage and a round the viewer never saw. It got 38% of his usual.",
+     "19": "Don YG's verse plays through while he hypes her with cash. It went 3.7×.",
+     "24": "Losing Amazon's price game, with his rage as the bit. It held about his usual."
+    }
+   }
+  },
+  {
+   "name": "Photo posts",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "drags",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    3,
+    17,
+    22,
+    25,
+    29
+   ],
+   "typx": 0.75,
+   "hits": [
+    1,
+    5
+   ],
+   "what": "Photo carousels and posters: portraits, a shoot, a selfie, studio shots.",
+   "doss": {
+    "going": "Photos fill the days between reels, and two of the five carry a football show he is booked on.",
+    "landing": "A photo post earns a swipe only if something changes between slides. [The group selfie](P26) did best at 1.2× because slide two flips the angle, and [the noir shoot](P18) held about his usual by being planned like a shoot. [The club portraits](P04) repeat one look and got 30%; [the watchalong poster](P23) announces something and got 22%. Only one of the five beat his usual.",
+    "take": "Plan the carousel or give slide two a turn. A pile of snapshots or a poster gets no swipe.",
+    "each": {
+     "3": "Six flash poses with a drink, one look repeated. It got 30% of his usual.",
+     "17": "Lit and framed like a real shoot. It held about his usual.",
+     "22": "A poster with six creators and nothing playing. It got 22% of his usual.",
+     "25": "A group selfie, then everyone looks down into the lens. It went 1.2×.",
+     "29": "Five frames of one pose in front of sponsor logos. It got 75% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Plays a type",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "drags",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    6,
+    7,
+    9,
+    28
+   ],
+   "typx": 0.55,
+   "hits": [
+    0,
+    4
+   ],
+   "what": "Posts where Anuj becomes one character or celebrity for the whole post.",
+   "doss": {
+    "going": "He borrows a figure people know, a rapper, an official, a cashier, as the costume for his own joke.",
+    "landing": "A costume needs an audience that already knows the figure, and none of these four got past his usual. [The robe reel](P08) came closest at about his usual. [The City badge reel](P29) lives on one number, the 115 charges, so anyone outside the football gossip loses it: 41%. [The REDMI spoof](P10) runs 28 seconds before the specs show and got 34%. [The Drake carousel](P07) drew 4.7× the usual comments but 70% of the likes.",
+    "take": "A costume is not enough. The viewer has to know the figure and the story behind it.",
+    "each": {
+     "6": "Drake photoshops with quoted lyrics; it got 70% of his usual, with 4.7× the usual comments.",
+     "7": "A hotel bathrobe for an Election Commissioner, and it needs the voter-roll story. It held about his usual.",
+     "9": "Anup Soni hosts a Crime Patrol spoof about a phone-dropper. It got 34% of his usual.",
+     "28": "A cashier kisses his City badge at 115 rupees. It got 41% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Mates' bits",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    0,
+    10,
+    11,
+    16
+   ],
+   "typx": 0.64,
+   "hits": [
+    1,
+    4
+   ],
+   "what": "Reels built on friends and co-creators in the frame, staged or just there.",
+   "doss": {
+    "going": "Friends give him someone to react to, from a street moment to a courtroom set.",
+    "landing": "One staged moment carries the whole group. [Four mates freezing to spot Yash](P01) went 32× because it needs no explaining. The other three land between 39% and 76%, and the quietest are the ones where Anuj only reacts or sits, like [the Shreee split screen](P11) and [the courtroom set](P12). Only that first post beat his usual.",
+    "take": "Friends carry a post when together they stage one clear moment. A friend on screen alone doesn't.",
+    "each": {
+     "0": "Four friends freeze, hold each other back and glare into the sun. It went 32×.",
+     "10": "He cackles beside Shreee's rant in a split screen. It got 52% of his usual.",
+     "11": "He sits silent for 30 seconds while two friends bicker. It got 39% of his usual.",
+     "16": "Party clips where the caption is the joke. It got 76% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Rapper flex",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    20,
+    21
+   ],
+   "typx": 1.6,
+   "hits": [
+    2,
+    2
+   ],
+   "what": "Lip-sync reels where Anuj flaunts robes, chains, cash and wristwatches.",
+   "doss": {
+    "going": "He plays the over-the-top rich rapper as a bit, usually beside a rapper friend.",
+    "landing": "The steadiest thing he makes outside the two big hits. Both posts held his usual or better. [The wristwatch reel](P22) went 2.2×, twenty seconds of pure flexing with a case of wristwatches. [The robe flex with Don YG](P21) sat close to it under the paid label: a caption and a lip-sync, nothing sold.",
+    "take": "Keep making it: it held up both times. Give a flex something to wait for.",
+    "each": {
+     "20": "Robes and chains, lip-syncing to a rap about broke people. It held about his usual.",
+     "21": "A briefcase of wristwatches and wads of cash. It went 2.2×."
+    }
+   }
+  },
+  {
+   "name": "One-offs",
+   "cat": 0,
+   "shelf": "kind",
+   "orbit": 0,
+   "role": "signals",
+   "icon": "film",
+   "kind": "formats",
+   "ps": [
+    1
+   ],
+   "typx": 0.46,
+   "hits": [
+    0,
+    1
+   ],
+   "what": "Posts that aren't a kind yet.",
+   "doss": {
+    "going": "Selling a Scotch brand inside a bit about his friends' nights out.",
+    "landing": "Only [the Scotch deal](P02) sits here: he shops for J&B, then mixes drinks at home, and it got 46%. Nothing else he made is close to it, so it has no kind yet.",
+    "take": "Nothing to take yet; it is one deal that sank. Wait for a second one before naming a kind.",
+    "each": {
+     "1": "A J&B run to a liquor store, then cocktails with friends. It got 46% of his usual."
+    }
+   }
+  },
+  {
+   "name": "The news",
+   "cat": 0,
+   "shelf": "repeat",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "bolt",
+   "kind": "signatures",
+   "ps": [
+    7,
+    12,
+    26,
+    27
+   ],
+   "typx": 3.81,
+   "hits": [
+    3,
+    4
+   ],
+   "what": "The week's political story, played as a joke or talked straight.",
+   "doss": {
+    "going": "He lends his voice to what his side is already thinking that week.",
+    "landing": "When the news is the subject he is at his best. Three of these four beat his usual and the four hold 79% of the likes. [The government with two faces](P27) went 218× and [the CJP recap](P28) 4.4×; on Oct 10 the account gained 1,796 followers against a usual day of 16. [The robe reel](P08) held about his usual because it needs the voter-roll story.",
+    "take": "Be fast on the story everyone is talking about, and play it as a type people can place.",
+    "each": {
+     "7": "A bathrobe Election Commissioner. It held about his usual.",
+     "12": "Drones for protesters only, headline at 0:00. It went 3.2×.",
+     "26": "Critics detained, rapists welcomed, in 12 seconds. It went 218×.",
+     "27": "The CJP arrests recapped straight at a mic. It went 4.4×."
+    }
+   }
+  },
+  {
+   "name": "Football",
+   "cat": 0,
+   "shelf": "repeat",
+   "orbit": 0,
+   "role": "drags",
+   "icon": "bolt",
+   "kind": "signatures",
+   "ps": [
+    4,
+    8,
+    22,
+    28,
+    29
+   ],
+   "typx": 0.41,
+   "hits": [
+    0,
+    5
+   ],
+   "what": "Football as the subject: a game on stream, two stars, a match show, a City jersey.",
+   "doss": {
+    "going": "Football gives him an audience of fans, and a show he is booked on.",
+    "landing": "Football has never worked for him: none of the five beat his usual. The best, [the studio photos](P30), got 75% for five frames of one pose in front of logos, and [the FC27 boast](P05) got 15%. Each one asks the viewer to know the match or the people, from the 115 charges in [the City badge reel](P29) to the gossip behind [the Ronaldo and Messi reel](P09).",
+    "take": "Skip football unless the joke works for someone who didn't see the match.",
+    "each": {
+     "4": "A boast about beating Jazz at FC27. It got 15% of his usual.",
+     "8": "Ronaldo and Messi in one car. It got 64% of his usual.",
+     "22": "A poster for a Liverpool-City show. It got 22% of his usual.",
+     "28": "A City badge kissed at 115 rupees. It got 41% of his usual.",
+     "29": "Studio photos in a City jersey. It got 75% of his usual."
+    }
+   }
+  },
+  {
+   "name": "The patterned robe",
+   "cat": 0,
+   "shelf": "repeat",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "shirt",
+   "kind": "signatures",
+   "ps": [
+    4,
+    18,
+    19,
+    20,
+    21
+   ],
+   "typx": 1.0,
+   "hits": [
+    3,
+    5
+   ],
+   "what": "The black patterned robe and sunglasses, worn as the costume of a pompous big man.",
+   "doss": {
+    "going": "One costume that says 'full of himself' before he says a word.",
+    "landing": "The robe is a good costume and a bad prop. Worn by the rich show-off it did well: [the Don YG stream](P20) went 3.7× and [the wristwatch reel](P22) 2.2×. Worn to sell a boast or a pitch it sank, as [the Sober sketch](P19) (17%) and [the FC27 boast](P05) (15%) show. Three of the five beat his usual.",
+    "take": "Wear it as the joke, not as a prop for an ad.",
+    "each": {
+     "4": "Robe on a stream boast under a paid label. It got 15% of his usual.",
+     "18": "Robe on the ten-drink self in a two-brand sketch. It got 17% of his usual.",
+     "19": "Robe beside Don YG while she plays her verse. It went 3.7×.",
+     "20": "Robe and chains for a lip-sync. It held about his usual.",
+     "21": "Robe and sunglasses over a briefcase of wristwatches. It went 2.2×."
+    }
+   }
+  },
+  {
+   "name": "Joke in text at 0:00",
+   "cat": 0,
+   "shelf": "repeat",
+   "orbit": 0,
+   "role": "carries",
+   "icon": "speech",
+   "kind": "signatures",
+   "ps": [
+    0,
+    5,
+    7,
+    12,
+    13,
+    15,
+    16,
+    20,
+    26
+   ],
+   "typx": 1.08,
+   "hits": [
+    6,
+    9
+   ],
+   "what": "A line of text over the first frame that states the joke before anything is acted.",
+   "doss": {
+    "going": "So a stranger gets the joke in two seconds with the sound off.",
+    "landing": "If you want to know why his biggest posts work, start here. Six of these nine beat his usual, and they hold 94% of the likes. That includes [the government with two faces](P27) at 218× and [the Yash reel](P01) at 32×. Even the weakest, [the party reel](P17), got 76%. It only works when the line holds the joke, as [the set-up rule](L1) says, and the later posts are not keeping up with the early ones.",
+    "take": "Write the line so the joke survives on mute. Naming only the target leaves nothing to wait for.",
+    "each": {
+     "0": "The caption says they spotted Yash, then they act it out. It went 32×.",
+     "5": "Labels name the two men and every cut confirms them. It went 3.9×.",
+     "7": "Text names the target, then pure acting. It held about his usual.",
+     "12": "A headline about drones, then he plays both men. It went 3.2×.",
+     "13": "The header names Esha and the lecture. It held about his usual.",
+     "15": "A headline, then one long argument with his parents. It held about his usual.",
+     "16": "The caption is the joke and the clips are an ordinary party. It got 76% of his usual.",
+     "20": "The caption about broke people carries the lip-sync. It held about his usual.",
+     "26": "'Govt when protesters' tells it before the first cut. It went 218×."
+    }
+   }
+  },
+  {
+   "name": "Drinks and nights out",
+   "cat": 0,
+   "shelf": "repeat",
+   "orbit": 0,
+   "role": "drags",
+   "icon": "bolt",
+   "kind": "signatures",
+   "ps": [
+    1,
+    3,
+    13,
+    16,
+    18,
+    23
+   ],
+   "typx": 0.44,
+   "hits": [
+    0,
+    6
+   ],
+   "what": "Drinking as a subject: Scotch, club portraits, a lecture about partying, a bar sketch.",
+   "doss": {
+    "going": "Nights out are his audience's world, so he uses them as the setting for his bits.",
+    "landing": "Drinking is a setting, and as a subject it has gone nowhere: none of the six beat his usual. The best, [the Esha lecture](P14), got about the same; the worst, [the Sober sketch](P19), got 17%. It isn't improving, either.",
+    "take": "Drinking is a setting, not a joke. Give the bit something else to be about.",
+    "each": {
+     "1": "Shopping for Scotch, then cocktails at home. It got 46% of his usual.",
+     "3": "Six poses with a drink and a 'shh'. It got 30% of his usual.",
+     "13": "A lecture to Esha to stop partying. It held about his usual.",
+     "16": "Wine at a party, caption as the joke. It got 76% of his usual.",
+     "18": "One drink against ten, with two drink brands. It got 17% of his usual.",
+     "23": "Begging Rahul to quit drinking. It got 42% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Friends and co-creators",
+   "cat": 1,
+   "shelf": null,
+   "orbit": 1,
+   "role": "carries",
+   "icon": "people",
+   "kind": "cast",
+   "ps": [
+    0,
+    1,
+    2,
+    10,
+    11,
+    18,
+    25
+   ],
+   "typx": 0.46,
+   "hits": [
+    2,
+    7
+   ],
+   "what": "Yash, Shaurya, Aysha, Arhaan, Shreee and other mates who are in the frame with him.",
+   "doss": {
+    "going": "They give him someone to play against or beside, and the posts they co-star in carry their names.",
+    "landing": "His circle helps only when they stage something. [Four mates freezing to spot Yash](P01) went 32× and is the reason this group looks good; [the group selfie](P26) went 1.2×. The rest run from 17% to 52%, mostly where he only sits or reacts, like [the courtroom set](P12). Two of the seven beat his usual.",
+    "take": "A friend needs a clear shape to carry a post. A friend in the frame is not a joke.",
+    "each": {
+     "0": "Four friends stage spotting Yash. It went 32×.",
+     "1": "A female friend and Yash drink the Scotch. It got 46% of his usual.",
+     "2": "Shaurya climbs into a truck on stream. It got 19% of his usual.",
+     "10": "Shreee rants while he laughs beside her. It got 52% of his usual.",
+     "11": "Aysha and Arhaan bicker while he sits silent. It got 39% of his usual.",
+     "18": "Aysha has a cameo in the bar sketch. It got 17% of his usual.",
+     "25": "Three friends in a group selfie. It went 1.2×."
+    }
+   }
+  },
+  {
+   "name": "Don YG",
+   "cat": 1,
+   "shelf": null,
+   "orbit": 0,
+   "role": "carries",
+   "icon": "person",
+   "kind": "cast",
+   "ps": [
+    19,
+    20
+   ],
+   "typx": 2.36,
+   "hits": [
+    2,
+    2
+   ],
+   "what": "Rapper Don YG, who plays her own track on his stream and flexes beside him.",
+   "doss": {
+    "going": "She brings a finished verse and a flex he can hype, which the post does not need him to write.",
+    "landing": "She is a good guest when she has something to finish. In [the stream clip](P20) her unreleased verse plays through while he hypes her with cash, and it went 3.7×. [The paid robe flex](P21) is a caption and a lip-sync with nothing to wait for, and it only held his usual. One post beat it and the other matched it.",
+    "take": "Give her the verse to finish. As a caption and a lip-sync it only holds his usual.",
+    "each": {
+     "19": "Her unreleased verse, played in full. It went 3.7×.",
+     "20": "A paid lip-sync in robes and chains. It held about his usual."
+    }
+   }
+  },
+  {
+   "name": "Yash",
+   "cat": 1,
+   "shelf": null,
+   "orbit": 0,
+   "role": "carries",
+   "icon": "person",
+   "kind": "cast",
+   "ps": [
+    0,
+    1
+   ],
+   "typx": 16.24,
+   "hits": [
+    1,
+    2
+   ],
+   "what": "Yash, the friend four mates spot on the street in one reel and who is among the friends in the Scotch deal.",
+   "doss": {
+    "going": "Yash is the thing everyone reacts to, not the one speaking.",
+    "landing": "Yash works as the moment, not the guest. In [the street reel](P01) the whole bit is spotting him, and it went 32×. At the J&B table in [the Scotch deal](P02) he is just one of the friends, and that post got 46%.",
+    "take": "Yash works as the moment people react to, not as a guest at someone else's table.",
+    "each": {
+     "0": "The street bit is spotting him. It went 32×.",
+     "1": "He is one of the friends at the Scotch tasting. It got 46% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Politicians and critics",
+   "cat": 1,
+   "shelf": null,
+   "orbit": 0,
+   "role": "carries",
+   "icon": "person",
+   "kind": "cast",
+   "ps": [
+    7,
+    26,
+    27
+   ],
+   "typx": 4.4,
+   "hits": [
+    2,
+    3
+   ],
+   "what": "Gyanesh Kumar, the Election Commissioner, and the critics and politicians named in his news reels.",
+   "doss": {
+    "going": "Real names give the joke a target the viewer already has an opinion on.",
+    "landing": "Real names are his best fuel. These three posts hold 78% of the likes, and two beat his usual. [The government with two faces](P27) flashes five critics and politicians in 12 seconds and went 218×; [the CJP recap](P28) covers the Commissioner's resignation at 4.4×. [The robe reel](P08) plays the Commissioner himself and held about his usual.",
+    "take": "Name the people everyone is already talking about. A name the viewer knows does half the set-up.",
+    "each": {
+     "7": "Played by Anuj in a robe, never shown. It held about his usual.",
+     "26": "Five critics and politicians flash by as names. It went 218×.",
+     "27": "The Commissioner's resignation as news footage. It went 4.4×."
+    }
+   }
+  },
+  {
+   "name": "Star Sports Matchday Hangout",
+   "cat": 2,
+   "shelf": null,
+   "orbit": 2,
+   "role": "signals",
+   "icon": "tag",
+   "kind": "products",
+   "ps": [
+    22,
+    29
+   ],
+   "typx": 0.48,
+   "hits": [
+    0,
+    2
+   ],
+   "what": "A watchalong show with Star Sports and JioHotstar that he is booked on, promoted by a poster and studio photos.",
+   "doss": {
+    "going": "He is one of six creators on the show, so these two posts announce it.",
+    "landing": "The show booked him, and the two posts that announce it gave his followers nothing to laugh at. [The poster](P23) lists six creators with nothing playing and got 22%; [the studio photos](P30) show Anuj in a City jersey in front of the Star Sports logos and got 75%. Neither beat his usual.",
+    "take": "If a show books him, post a clip of him being funny on it, not the poster.",
+    "each": {
+     "22": "A poster with six creators. It got 22% of his usual.",
+     "29": "Five frames on the show's set. It got 75% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Other brand deals",
+   "cat": 2,
+   "shelf": null,
+   "orbit": 2,
+   "role": "drags",
+   "icon": "tag",
+   "kind": "products",
+   "ps": [
+    1,
+    4,
+    9,
+    11,
+    18,
+    20,
+    24
+   ],
+   "typx": 0.39,
+   "hits": [
+    1,
+    7
+   ],
+   "what": "Paid or deal-looking posts: J&B, REDMI, Sober and Amazon, a paid stream boast and two collabs with friends.",
+   "doss": {
+    "going": "To get paid without losing the bit; the best deals make the brand the set of a joke he'd post anyway.",
+    "landing": "One of these seven beat his usual, and the pattern is plain. The ones that held kept the brand in the background: [the robe flex](P21) and [the Amazon game](P25) both stayed level. The ones that sold or announced sank: [the Sober sketch](P19) got 17% and [the FC27 boast](P05) 15%. The later deals are doing better than the early ones.",
+    "take": "Let the brand be the stage and the joke be his. Once the product is the story, people scroll past.",
+    "each": {
+     "1": "J&B is bought, then poured for friends. It got 46% of his usual.",
+     "4": "A paid FC27 boast on stream. It got 15% of his usual.",
+     "9": "A REDMI phone survives a Crime Patrol spoof. It got 34% of his usual.",
+     "11": "A collab with Aysha and Arhaan while he sits silent. It got 39% of his usual.",
+     "18": "Sober and Fast&Up in one sketch. It got 17% of his usual.",
+     "20": "A paid lip-sync with Don YG and nothing sold. It held about his usual.",
+     "24": "Amazon's sale as the backdrop to his rage. It held about his usual."
+    }
+   }
+  },
+  {
+   "name": "Bedroom or hotel room",
+   "cat": 3,
+   "shelf": null,
+   "orbit": 0,
+   "role": "carries",
+   "icon": "pin",
+   "kind": "references",
+   "ps": [
+    7,
+    15,
+    20,
+    23
+   ],
+   "typx": 0.92,
+   "hits": [
+    2,
+    4
+   ],
+   "what": "Posts shot in a hotel room or a bedroom: robes, his parents, a bed.",
+   "doss": {
+    "going": "It is the cheapest set he has: a room, a phone and one costume.",
+    "landing": "A room is a fine set when the person in it is the show. The hotel and robe posts held up: [the robe reel](P08), [the parents reel](P16) and [the robe flex](P21) all sat close to his usual. [The Rahul reel](P24) was shot at an old man's bedside, and the joke waits until 0:10, so it got 42%. Two of the four beat it.",
+    "take": "A room is fine as long as the person in it is the show.",
+    "each": {
+     "7": "A hotel bathrobe across armchair, window and tub. It held about his usual.",
+     "15": "His parents argue in a hotel room. It held about his usual.",
+     "20": "A bedroom lip-sync in robes. It held about his usual.",
+     "23": "An old man in bed answers. It got 42% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Stream set",
+   "cat": 3,
+   "shelf": null,
+   "orbit": 0,
+   "role": "drags",
+   "icon": "pin",
+   "kind": "references",
+   "ps": [
+    4,
+    19,
+    24
+   ],
+   "typx": 1.0,
+   "hits": [
+    1,
+    3
+   ],
+   "what": "His live-stream frame: webcam, chat and overlays.",
+   "doss": {
+    "going": "Streams are where he plays with guests and sponsors, and reels cut from them put it in the feed.",
+    "landing": "What happens on the set decides it. A rapper finishing her verse went 3.7× in [the Don YG clip](P20); losing Amazon's game held about his usual in [the Amazon game](P25) because his rage is the bit. [The FC27 boast](P05) is a boast with no pay-off and got 15%. One of the three beat his usual.",
+    "take": "Use the stream set for a guest who finishes something, or a game he loses. Skip the boast.",
+    "each": {
+     "4": "A four-way split screen with gameplay below. It got 15% of his usual.",
+     "19": "A static webcam frame with Don YG. It went 3.7×.",
+     "24": "The Amazon microsite on his stream. It held about his usual."
+    }
+   }
+  },
+  {
+   "name": "Bar or restaurant",
+   "cat": 3,
+   "shelf": null,
+   "orbit": 0,
+   "role": "drags",
+   "icon": "pin",
+   "kind": "references",
+   "ps": [
+    5,
+    18,
+    28
+   ],
+   "typx": 0.41,
+   "hits": [
+    1,
+    3
+   ],
+   "what": "Restaurant booths, bars and a cafe counter.",
+   "doss": {
+    "going": "Everyone knows what happens at a table or a bar, so the set needs no explaining.",
+    "landing": "The set explains itself, which leaves the joke to do the rest. [The dinner reel](P06) puts two boyfriends in a booth and went 3.9×. [The Sober sketch](P19) got 17% because the pitch interrupts it, and [the City badge reel](P29), at a cafe counter, got 41%. Only the first beat his usual.",
+    "take": "A booth or a bar tells the viewer where they are. The joke still has to stand on its own.",
+    "each": {
+     "5": "A date in a restaurant booth. It went 3.9×.",
+     "18": "A bar with two brands in it. It got 17% of his usual.",
+     "28": "A cafe counter and a bill. It got 41% of his usual."
+    }
+   }
+  },
+  {
+   "name": "Studio set",
+   "cat": 3,
+   "shelf": null,
+   "orbit": 0,
+   "role": "drags",
+   "icon": "pin",
+   "kind": "references",
+   "ps": [
+    11,
+    27,
+    29
+   ],
+   "typx": 0.75,
+   "hits": [
+    1,
+    3
+   ],
+   "what": "Set-ups with a desk or a mic: a courtroom podcast set, a podcast mic, the Star Sports studio.",
+   "doss": {
+    "going": "A set tells the viewer what show this is, without him saying so.",
+    "landing": "A set helps when he talks on it. [The CJP recap](P28) at a podcast mic went 4.4× on the day's news. [The studio photos](P30) are one pose on the Star Sports set and got 75%. [The courtroom set](P12) left him silent for 30 seconds and got 39%. Only the recap beat his usual.",
+    "take": "A set helps when he talks on it. Standing on one does not.",
+    "each": {
+     "11": "Courtroom desks and a judge look. It got 39% of his usual.",
+     "27": "A podcast mic with news footage below. It went 4.4×.",
+     "29": "The Star Sports studio and its gold star. It got 75% of his usual."
+    }
+   }
+  }
+ ],
+ "belt": {
+  "line": "",
+  "items": []
+ },
+ "howLabel": "So",
+ "laws": [
+  {
+   "id": "L1",
+   "law": "His 0:00 text holds the whole joke, then he plays it",
+   "short": "His 0:00 text holds the whole joke, then he plays it",
+   "status": "narrowed",
+   "measure": "usual",
+   "lands": [
+    "P01",
+    "P06",
+    "P08",
+    "P13",
+    "P14",
+    "P16",
+    "P17",
+    "P21",
+    "P27"
+   ],
+   "sinks": [
+    "P03",
+    "P05",
+    "P15",
+    "P24"
+   ],
+   "sides": {
+    "lands": "The text holds the whole joke",
+    "sinks": "Joke needs the room, or comes later"
+   },
+   "stat": {
+    "v": "13 of 13",
+    "u": "posts on the side the rule says"
+   },
+   "why": "Text at 0:00 handed over the whole joke again: [the government with two faces](P27) opens on 'Govt when protesters', and [Anuj and Don YG flexing in robes](P21) on 'when both u and ur HG can't stand brokies'. On mute you already have it. [An old man told to stop Rahul drinking](P24) is what broke it: the text names Rahul, but the joke is the old man's answer at 0:10, 42% of his usual. So the line has to carry the joke, not just the target. [A dating-show referral](P15) still needs a stage the viewer never saw: 38%.",
+   "take": "Put the whole joke in the first line of text, not just who it's about.",
+   "takes": {
+    "own": "Put the whole joke in the first line of text, not just who it's about.",
+    "rival": "Copy the text-first set-up for your own bits and stay off his mates-on-the-street turf.",
+    "partner": "Pitch him a bit you can say in one line, not a stage appearance.",
+    "learn": "Check a stranger gets your reel from the first frame with the sound off."
+   },
+   "limits": "We only see likes and comments, and a live room's laughter isn't in the clip.",
+   "parts": [
+    "Set-up line at 0:00"
+   ],
+   "breaks": {},
+   "kept": [
+    {
+     "post": "P01",
+     "line": "Whole joke is four mates freezing mid-pose, clear on mute",
+     "i": 0
+    },
+    {
+     "post": "P06",
+     "line": "Labels name the two men; every cut confirms them",
+     "i": 5
+    },
+    {
+     "post": "P08",
+     "line": "Text names the target at 0:00, then pure acting",
+     "i": 7
+    },
+    {
+     "post": "P13",
+     "line": "Headline at 0:00, then he plays official and aide",
+     "i": 12
+    },
+    {
+     "post": "P14",
+     "line": "Header names Esha and the lecture at 0:00",
+     "i": 13
+    },
+    {
+     "post": "P16",
+     "line": "Headline at 0:00, then one long argument with his parents",
+     "i": 15
+    },
+    {
+     "post": "P17",
+     "line": "Caption says the joke; the party clips only prove it",
+     "i": 16
+    },
+    {
+     "post": "P21",
+     "line": "Caption states the brokies joke; the robes and rap play it",
+     "i": 20
+    },
+    {
+     "post": "P27",
+     "line": "'Govt when protesters' at 0:00, then five named critics",
+     "i": 26
+    },
+    {
+     "post": "P03",
+     "line": "Joke is a live moment with chat on the side",
+     "i": 2
+    },
+    {
+     "post": "P05",
+     "line": "Bet is spoken on stream, then a montage cuts in",
+     "i": 4
+    },
+    {
+     "post": "P15",
+     "line": "Referral joke needs the stage, the round and Ved",
+     "i": 14
+    },
+    {
+     "post": "P24",
+     "line": "Text names Rahul only; the joke waits for the old man",
+     "i": 23
+    }
+   ],
+   "broke": [],
+   "proof": {
+    "kind": "twin",
+    "rows": [
+     {
+      "id": "P14",
+      "side": "‘Esha, it’s time to grow up’",
+      "likes": 3267,
+      "secs": 20,
+      "at": 0,
+      "mark": "the lecture to Esha, named",
+      "top": 61
+     },
+     {
+      "id": "P24",
+      "side": "Begging ‘Rahul’ to quit drinking",
+      "likes": 1571,
+      "secs": 18,
+      "at": 10,
+      "mark": "the old man's answer",
+      "top": 78,
+      "lo": true
+     }
+    ],
+    "ratio": 2
+   },
+   "proofOf": null,
+   "life": [
+    {
+     "run": 1,
+     "move": "born",
+     "line": "First run: the Yash reel against the truck clip."
+    },
+    {
+     "run": 2,
+     "move": "narrowed",
+     "line": "Don YG's stream verse went 3.7× blind, so streams alone don't sink it."
+    },
+    {
+     "run": 3,
+     "move": "narrowed",
+     "line": "The Rahul reel named a target in text, not the joke: 42%."
+    }
+   ],
+   "record": {
+    "held": 0,
+    "calls": 0,
+    "fit": [
+     13,
+     13
+    ],
+    "blind": true,
+    "since": 3
+   },
+   "born": 1,
+   "n": 1,
+   "ps": {
+    "lands": [
+     0,
+     5,
+     7,
+     12,
+     13,
+     15,
+     16,
+     20,
+     26
+    ],
+    "sinks": [
+     2,
+     4,
+     14,
+     23
+    ],
+    "broke": []
+   },
+   "split": {
+    "kind": "split",
+    "sides": {
+     "lands": "The text holds the whole joke",
+     "sinks": "Joke needs the room, or comes later"
+    },
+    "lands": [
+     {
+      "id": "P27",
+      "top": 1
+     },
+     {
+      "id": "P01",
+      "top": 2
+     },
+     {
+      "id": "P06",
+      "top": 19
+     },
+     {
+      "id": "P13",
+      "top": 24
+     },
+     {
+      "id": "P16",
+      "top": 46
+     },
+     {
+      "id": "P21",
+      "top": 50
+     },
+     {
+      "id": "P08",
+      "top": 58
+     },
+     {
+      "id": "P14",
+      "top": 61
+     },
+     {
+      "id": "P17",
+      "top": 61
+     }
+    ],
+    "sinks": [
+     {
+      "id": "P24",
+      "top": 78
+     },
+     {
+      "id": "P15",
+      "top": 80
+     },
+     {
+      "id": "P03",
+      "top": 92
+     },
+     {
+      "id": "P05",
+      "top": 94
+     }
+    ],
+    "broke": [],
+    "n": 30
+   },
+   "proofHead": "The same idea, side by side"
+  },
+  {
+   "id": "L2",
+   "law": "A paid post holds when the brand is only the set",
+   "short": "A paid post holds when the brand is only the set",
+   "status": "narrowed",
+   "measure": "usual",
+   "lands": [
+    "P21",
+    "P25"
+   ],
+   "sinks": [
+    "P02",
+    "P05",
+    "P10",
+    "P19",
+    "P23"
+   ],
+   "sides": {
+    "lands": "Brand is the set, one sale line",
+    "sinks": "Brand is the plot, or the poster"
+   },
+   "stat": {
+    "v": "2 of 9",
+    "u": "deal posts that held his usual"
+   },
+   "why": "I said paid posts sink, and two didn't. [Anuj and Don YG flexing in robes](P21) carries the paid label and still sits at his usual, 3,763 likes: nothing is sold. [Losing Amazon's price-guessing game on stream](P25) is 74 seconds of ad, but the bit is his rage at every wrong guess, and the sale gets one line at 1:06. [The Matchday Hangout poster](P23) is the other kind, an announcement with nothing happening in it: 22%. The brand can be the stage; once it is the story, people scroll past.",
+   "take": "Give the brand the set, keep the joke his, and sell in one line.",
+   "takes": {
+    "own": "Give the brand the set, keep the joke his, and sell in one line.",
+    "rival": "Don't copy his ad shape; a spoof that waits 28 seconds for the spec draws talk, not likes.",
+    "partner": "Hand him a game or a set to play inside; the Amazon game held his usual, a poster did 22%.",
+    "learn": "If you must sell, make the product the stage, not the story."
+   },
+   "limits": "A paid label and a co-poster's crowd change who sees it; the Amazon post carries no label, so we can't price the label.",
+   "parts": [
+    "Brand deals"
+   ],
+   "breaks": {},
+   "kept": [
+    {
+     "post": "P21",
+     "line": "Paid label, no product: two people lip-syncing in robes",
+     "i": 20
+    },
+    {
+     "post": "P25",
+     "line": "Sale is the backdrop; his rage is the bit, one sale line",
+     "i": 24
+    },
+    {
+     "post": "P02",
+     "line": "Shopping and tasting fill most of 58 seconds",
+     "i": 1
+    },
+    {
+     "post": "P05",
+     "line": "Paid label, co-post, stream boast then montage",
+     "i": 4
+    },
+    {
+     "post": "P10",
+     "line": "Spoof runs 28 seconds, then the spec sheet",
+     "i": 9
+    },
+    {
+     "post": "P19",
+     "line": "Can at 0:27, tube at 0:44; the pitch ends it",
+     "i": 18
+    },
+    {
+     "post": "P23",
+     "line": "Poster for a watchalong; nothing happening or playing",
+     "i": 22
+    }
+   ],
+   "broke": [],
+   "proof": {
+    "kind": "money",
+    "rows": [
+     {
+      "id": "P21",
+      "name": "@don______yg",
+      "pct": 100,
+      "likes": 3763,
+      "usual": 3763
+     },
+     {
+      "id": "P25",
+      "name": "Amazon",
+      "pct": 100,
+      "likes": 3820,
+      "usual": 3820
+     },
+     {
+      "id": "P02",
+      "name": "J&B Rare Blended Scotch Whis",
+      "pct": 46,
+      "likes": 1974,
+      "usual": 4320
+     },
+     {
+      "id": "P10",
+      "name": "REDMI Note 17 Pro 5G",
+      "pct": 34,
+      "likes": 1396,
+      "usual": 4126
+     },
+     {
+      "id": "P23",
+      "name": "JioHotstar",
+      "pct": 22,
+      "likes": 2248,
+      "usual": 10358
+     },
+     {
+      "id": "P19",
+      "name": "Sober",
+      "pct": 17,
+      "likes": 677,
+      "usual": 3976
+     },
+     {
+      "id": "P05",
+      "name": "FC27",
+      "pct": 15,
+      "likes": 645,
+      "usual": 4258
+     }
+    ],
+    "median": 34
+   },
+   "proofOf": null,
+   "life": [
+    {
+     "run": 1,
+     "move": "born",
+     "line": "Three paid posts, none held; the phone spoof drew the most talk."
+    },
+    {
+     "run": 2,
+     "move": "held",
+     "line": "The Sober sketch: the product was the punchline and still 17%."
+    },
+    {
+     "run": 3,
+     "move": "narrowed",
+     "line": "Amazon's price game and the Don YG flex both held his usual."
+    }
+   ],
+   "record": {
+    "held": 0,
+    "calls": 0,
+    "fit": [
+     7,
+     7
+    ],
+    "blind": true,
+    "since": 3
+   },
+   "born": 1,
+   "n": 2,
+   "ps": {
+    "lands": [
+     20,
+     24
+    ],
+    "sinks": [
+     1,
+     4,
+     9,
+     18,
+     22
+    ],
+    "broke": []
+   },
+   "split": {
+    "kind": "split",
+    "sides": {
+     "lands": "Brand is the set, one sale line",
+     "sinks": "Brand is the plot, or the poster"
+    },
+    "lands": [
+     {
+      "id": "P21",
+      "top": 50
+     },
+     {
+      "id": "P25",
+      "top": 51
+     }
+    ],
+    "sinks": [
+     {
+      "id": "P02",
+      "top": 75
+     },
+     {
+      "id": "P10",
+      "top": 83
+     },
+     {
+      "id": "P23",
+      "top": 83
+     },
+     {
+      "id": "P19",
+      "top": 92
+     },
+     {
+      "id": "P05",
+      "top": 94
+     }
+    ],
+    "broke": [],
+    "n": 30
+   },
+   "proofHead": "What each deal got"
+  },
+  {
+   "id": "L3",
+   "law": "A carousel needs a made look or a twist on slide two",
+   "short": "A carousel needs a made look or a twist on slide two",
+   "status": "narrowed",
+   "measure": "usual",
+   "lands": [
+    "P18",
+    "P07",
+    "P26"
+   ],
+   "sinks": [
+    "P04"
+   ],
+   "sides": {
+    "lands": "A shoot, an edit or a twist",
+    "sinks": "Snapshots with no turn"
+   },
+   "stat": {
+    "v": "120% vs 30%",
+    "u": "of his usual carousel, twist vs plain snaps"
+   },
+   "why": "I had it that snapshots sink. [Three friends in a selfie, then all looking down into a floor camera and saluting](P26) went 1.2× his usual carousel: the second slide changes the angle, so the swipe pays. [Six flash poses with a drink](P04) have nothing after slide one: 30%, last of 17. [The noir shoot](P18) landed on his usual with no joke, and [the Indian Drake edits](P07) on 70%, with 53 comments per 1,000 likes. Something planned, or a turn on slide two, earns the swipe.",
+   "take": "Post a carousel only when it's a shoot, an edit, or slide two changes something.",
+   "takes": {
+    "own": "Post a carousel only when it's a shoot, an edit, or slide two changes something.",
+    "rival": "Parody and shoot carousels are open ground; plain flash snapshots are his weakest thing.",
+    "partner": "Ask for a planned shoot or a twist; plain studio shots under logos did 75%.",
+    "learn": "Before posting photos, ask what slide two adds."
+   },
+   "limits": "Four carousels; his mates being in the floor shot could explain it as much as the twist.",
+   "parts": [
+    "Photo carousels"
+   ],
+   "breaks": {},
+   "kept": [
+    {
+     "post": "P18",
+     "line": "Ten styled black-and-white shots, no joke, landed on his usual",
+     "i": 17
+    },
+    {
+     "post": "P07",
+     "line": "Slide 1 names the joke; every slide adds a parody",
+     "i": 6
+    },
+    {
+     "post": "P26",
+     "line": "Slide 2 flips the angle; four people salute the lens",
+     "i": 25
+    },
+    {
+     "post": "P04",
+     "line": "Six flash poses with a drink; nothing made",
+     "i": 3
+    }
+   ],
+   "broke": [],
+   "proof": null,
+   "proofOf": null,
+   "life": [
+    {
+     "run": 1,
+     "move": "born",
+     "line": "Two carousels: the Drake parody against six club portraits."
+    },
+    {
+     "run": 2,
+     "move": "narrowed",
+     "line": "Noir shoot hit his usual with no joke: joke-first was wrong."
+    },
+    {
+     "run": 3,
+     "move": "narrowed",
+     "line": "Floor-shot selfie pair hit 120%: a twist on slide two counts."
+    }
+   ],
+   "record": {
+    "held": 0,
+    "calls": 0,
+    "fit": [
+     4,
+     4
+    ],
+    "blind": true,
+    "since": 3
+   },
+   "born": 1,
+   "n": 3,
+   "ps": {
+    "lands": [
+     17,
+     6,
+     25
+    ],
+    "sinks": [
+     3
+    ],
+    "broke": []
+   },
+   "split": {
+    "kind": "split",
+    "sides": {
+     "lands": "A shoot, an edit or a twist",
+     "sinks": "Snapshots with no turn"
+    },
+    "lands": [
+     {
+      "id": "P26",
+      "top": 25
+     },
+     {
+      "id": "P18",
+      "top": 53
+     },
+     {
+      "id": "P07",
+      "top": 56
+     }
+    ],
+    "sinks": [
+     {
+      "id": "P04",
+      "top": 100
+     }
+    ],
+    "broke": [],
+    "n": 30
+   },
+   "proofHead": null
+  },
+  {
+   "id": "L4",
+   "law": "He plays both sides when the types are ones everyone knows",
+   "short": "He plays both sides when the types are ones everyone knows",
+   "status": "sharpened",
+   "measure": "usual",
+   "lands": [
+    "P06",
+    "P13",
+    "P27"
+   ],
+   "sinks": [
+    "P09"
+   ],
+   "sides": {
+    "lands": "Types anyone can place",
+    "sinks": "Famous people you must follow"
+   },
+   "stat": {
+    "v": "4 of 4",
+    "u": "posts on the side the rule says"
+   },
+   "why": "[The government with two faces](P27) runs twelve seconds: 'Govt when protesters', a glare, five named critics in five cuts, then black and white, 'Govt when r*pists', coy, 'will you join our party?'. It went 867,907 likes, 218× his usual, the best reel of his 90 days. [Guys who cheat against guys who don't](P06) went 3.9× and [an official and his aide](P13) 3.2×: again two men anyone can place. [Ronaldo crying against a calm Messi](P09) needs the football gossip: 64%.",
+   "take": "Play both faces of a fight people already have, and flip in the first third.",
+   "takes": {
+    "own": "Play both faces of a fight people already have, and flip in the first third.",
+    "rival": "Take the two-faces split for your own beat; real-life types are open ground.",
+    "partner": "His biggest reel is political satire; check your brand is comfortable beside that.",
+    "learn": "Name both characters on screen, then let the cruel line be the turn."
+   },
+   "limits": "One reel is most of the proof, and we can't split the two-faces turn from the day's news.",
+   "parts": [
+    "Playing both sides"
+   ],
+   "breaks": {},
+   "kept": [
+    {
+     "post": "P06",
+     "line": "Cheat and loyal men, labelled, on one date",
+     "i": 5
+    },
+    {
+     "post": "P13",
+     "line": "Official and aide; the turn lands at 0:18",
+     "i": 12
+    },
+    {
+     "post": "P27",
+     "line": "Both faces of the government in twelve seconds, flip at 0:05",
+     "i": 26
+    },
+    {
+     "post": "P09",
+     "line": "Two footballers; needs the gossip, runs 52 seconds",
+     "i": 8
+    }
+   ],
+   "broke": [],
+   "proof": null,
+   "proofOf": null,
+   "life": [
+    {
+     "run": 2,
+     "move": "born",
+     "line": "Born: the cheating date and the drones satire, against the footballers."
+    },
+    {
+     "run": 3,
+     "move": "sharpened",
+     "line": "The government reel: two faces, twelve seconds, 218×."
+    }
+   ],
+   "record": {
+    "held": 0,
+    "calls": 0,
+    "fit": [
+     4,
+     4
+    ],
+    "blind": true,
+    "since": 2
+   },
+   "born": 2,
+   "n": 4,
+   "ps": {
+    "lands": [
+     5,
+     12,
+     26
+    ],
+    "sinks": [
+     8
+    ],
+    "broke": []
+   },
+   "split": {
+    "kind": "split",
+    "sides": {
+     "lands": "Types anyone can place",
+     "sinks": "Famous people you must follow"
+    },
+    "lands": [
+     {
+      "id": "P27",
+      "top": 1
+     },
+     {
+      "id": "P06",
+      "top": 19
+     },
+     {
+      "id": "P13",
+      "top": 24
+     }
+    ],
+    "sinks": [
+     {
+      "id": "P09",
+      "top": 65
+     }
+    ],
+    "broke": [],
+    "n": 30
+   },
+   "proofHead": null
+  }
+ ],
+ "dropped": [],
+ "sections": [
+  {
+   "cat": 0,
+   "k": "patterns",
+   "name": "Patterns",
+   "q": "What keeps coming back",
+   "line": "Eight kinds of post cover all 30, and five habits cut across them.",
+   "n": 30,
+   "hits": [
+    10,
+    30
+   ]
+  },
+  {
+   "cat": 1,
+   "k": "people",
+   "name": "People",
+   "q": "Who shows up",
+   "line": "Friends and co-creators, a rapper, Yash and the politicians he names.",
+   "n": 12,
+   "hits": [
+    6,
+    12
+   ]
+  },
+  {
+   "cat": 2,
+   "k": "promoted",
+   "name": "Promoted",
+   "q": "What it sells",
+   "line": "Nine of 30 posts are deals, and only one beat his usual.",
+   "n": 9,
+   "hits": [
+    1,
+    9
+   ]
+  },
+  {
+   "cat": 3,
+   "k": "places",
+   "name": "Places",
+   "q": "Where it happens",
+   "line": "A hotel room, a stream set, a bar and a studio come back.",
+   "n": 13,
+   "hits": [
+    5,
+    13
+   ]
+  }
+ ]
+}

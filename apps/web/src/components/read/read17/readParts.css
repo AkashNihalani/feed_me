@@ -1,0 +1,552 @@
+/* ─────────────────────────────────────────────────────────────
+   READ 17 — the styles of read17Engine's page (.r17-page) and its layer (.r17-layer), scoped under .r17. The page's
+   tokens are the app's (globals.css), so a theme switch recolours it with nothing redrawn; the story cards are dark in
+   both themes. Ported from the v17 prototype by a script, then kept here.
+   ───────────────────────────────────────────────────────────── */
+.r17 {
+  --page: var(--fm-page); --raised: var(--fm-raised); --ink: var(--fm-fg); --ink-rgb: var(--fm-fg-rgb);
+  --ink-2: rgb(var(--fm-fg-rgb) / .66); --ink-3: rgb(var(--fm-fg-rgb) / .44); --hair: rgb(var(--fm-fg-rgb) / .08); --well: rgb(var(--fm-fg-rgb) / .045);
+  --accent: var(--fm-accent); --media: #e4e7ec; --shadow: 0 1px 2px rgb(15 23 42 / .05), 0 10px 30px rgb(15 23 42 / .07);
+  --glass: rgb(255 255 255 / .86); --glass-edge: rgb(11 11 15 / .06);
+  --s0: var(--fm-shade-0); --s1: var(--fm-shade-1); --s2: var(--fm-shade-2); --s3: var(--fm-shade-3); --s4: var(--fm-shade-4); --s5: var(--fm-shade-5); --s6: var(--fm-shade-6); --stx: var(--fm-shade-tx);
+  --card: #0d0d11;
+  --font: var(--fm-font), "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --glide: cubic-bezier(.32, .72, 0, 1); --soft: cubic-bezier(.2, .8, .2, 1); --carry: cubic-bezier(.3, .3, .2, 1);
+  color: var(--ink); font: 400 15px/1.45 var(--font); -webkit-font-smoothing: antialiased; letter-spacing: normal; text-align: left;
+}
+html.dark .r17 {
+  --ink-2: rgb(255 255 255 / .68); --hair: rgb(255 255 255 / .09); --well: rgb(255 255 255 / .05);
+  --media: #111; --shadow: 0 0 0 1px rgb(255 255 255 / .06); --glass: rgb(18 18 21 / .84); --glass-edge: rgb(255 255 255 / .08); --card: #111116;
+}
+.r17 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; letter-spacing: inherit; text-align: inherit; -webkit-tap-highlight-color: transparent }
+.r17 h1, .r17 h2, .r17 h3, .r17 h4, .r17 h5, .r17 p { margin: 0 }
+.r17 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 10px }
+
+/* ---------- the story player ---------- */
+.r17 .player { --ch: 480px; --cw: 340px; width: 100%; max-width: 440px; margin: 0 auto; position: relative }
+.r17 .igtop { position: absolute; z-index: 6; left: 0; top: 0; width: var(--cw); padding: 9px 10px 0; pointer-events: none; color: #fff }
+.r17 .igbars { display: flex; gap: 3px }
+.r17 .igbars button { flex: 1 1 0; height: 12px; display: grid; align-items: start; padding-top: 0; pointer-events: auto }
+.r17 .igbars i { display: block; height: 2.5px; border-radius: 2px; background: rgb(255 255 255 / .35); overflow: hidden; position: relative }
+.r17 .igbars i b { position: absolute; inset: 0; background: #fff; transform-origin: left center; transform: scaleX(0) }
+.r17 .ighead { display: flex; align-items: center; gap: 9px; height: 40px; margin-top: 2px; padding-left: 2px; text-shadow: 0 1px 10px rgb(0 0 0 / .45) }
+.r17 .ighead .av { width: 32px; height: 32px; border-radius: 50%; background: #222 center/cover; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9) }
+.r17 .ighead b { font: 700 14px/1 var(--font); letter-spacing: -.01em }
+.r17 .ighead em { font: 500 13px/1 var(--font); font-style: normal; color: rgb(255 255 255 / .75) }
+.r17 .ighead .pp { margin-left: auto; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; pointer-events: auto; color: #fff }
+.r17 .ighead .pp svg { width: 16px; height: 16px; fill: currentColor }
+.r17 .card::before { content: ""; position: absolute; z-index: 3; left: 0; right: 0; top: 0; height: 96px; pointer-events: none; background: linear-gradient(180deg, rgb(5 5 8 / .55), rgb(5 5 8 / 0)) }
+.r17 .pbar { display: none }
+.r17 .pbar button { flex: 1 1 0; height: 14px; display: grid; align-items: center }
+.r17 .pbar button i { display: block; height: 3px; border-radius: 2px; background: var(--hair); overflow: hidden; position: relative }
+.r17 .pbar button i::after { content: ""; position: absolute; inset: 0; background: var(--ink); transform: scaleX(0); transform-origin: left center; transition: transform .5s var(--glide) }
+.r17 .pbar button.past i::after, .r17 .pbar button.on i::after { transform: none }
+.r17 .phead { display: none }
+.r17 .phead .pav { width: 26px; height: 26px; border-radius: 50%; background: var(--media) center/cover; box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 3px var(--page) }
+.r17 .phead em { font-style: normal; color: var(--ink-3); font-weight: 500 }
+.r17 .phead .cnt { margin-left: auto; font: 600 12.5px/1 var(--font); color: var(--ink-3); font-variant-numeric: tabular-nums }
+.r17 .vp { position: relative; overflow: hidden; touch-action: pan-y; border-radius: 26px }
+.r17 .track { display: flex; gap: 12px; transition: transform .52s var(--glide); will-change: transform }
+.r17 .slide { flex: 0 0 100%; display: grid; gap: 22px; position: relative }
+.r17 .hint { display: flex; justify-content: center; gap: 14px; padding: 12px 0 0; font: 500 12.5px/1.3 var(--font); color: var(--ink-3); text-align: center }
+
+.r17 .card { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .8); --ink-3: rgb(255 255 255 / .54); --hair: rgb(255 255 255 / .12); --raised: var(--card); --page: var(--card);
+  --s0: #1B1B1E; --s1: #252529; --s2: #303035; --s3: #791B26; --s4: #991F2F; --s5: #BA2239; --s6: #DA2E46; --stx: #fff;
+  position: relative; isolation: isolate; height: var(--ch); border-radius: 26px; overflow: hidden; background: var(--card); color: #fff; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer }
+.r17 .md { position: absolute; left: 0; right: 0; top: 0; z-index: 0 }
+.r17 .md.bleed { bottom: 0 }
+.r17 .md.bleed img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; display: block }
+.r17 .md.bleed::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(5 5 8 / .25) 0, rgb(5 5 8 / 0) 22%, rgb(5 5 8 / 0) 40%, rgb(5 5 8 / .6) 56%, rgb(5 5 8 / .92) 72%, rgb(5 5 8 / .97) 100%) }
+.r17 .md.pad { padding: 64px 18px 0 }
+.r17 .k-days .md.pad, .r17 .k-fol .md.pad, .r17 .k-weeks .md.pad { bottom: var(--fh, 160px); display: flex; flex-direction: column; justify-content: center }
+.r17 .pair { display: flex; gap: 2px }
+.r17 .pane { position: relative; flex: 1 1 0; aspect-ratio: 9 / 16; overflow: hidden; background: #15151a }
+.r17 .pane img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block }
+.r17 .pane::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(5 5 8 / 0) 60%, rgb(5 5 8 / .7) 100%) }
+.r17 .plab { position: absolute; z-index: 2; left: 9px; right: 9px; bottom: 9px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px }
+.r17 .plab b { padding: 5px 7px; border-radius: 8px; font: 700 12.5px/1 var(--font); letter-spacing: -.02em; color: var(--stx) }
+.r17 .plab b.w { color: #fff }
+.r17 .plab span { font: 600 11.5px/1.2 var(--font); color: rgb(255 255 255 / .9); text-shadow: 0 1px 8px rgb(0 0 0 / .5) }
+.r17 .md.bleed .plab { top: auto; bottom: calc(var(--fh, 160px) + 10px); left: 18px }
+.r17 .cg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px }
+.r17 .cg i { aspect-ratio: 4 / 5; background: #1a1a1f center/cover }
+.r17 .shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0; background: linear-gradient(180deg, rgb(5 5 8 / .45), rgb(5 5 8 / .88) 40%, rgb(5 5 8 / .96)); transition: opacity .38s var(--soft) }
+.r17 .card.open .shade { opacity: 1 }
+.r17 .foot { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; padding: 16px 18px 18px; display: grid; gap: 6px; transform: translate3d(0, var(--mh, 0px), 0); transition: transform .5s var(--glide) }
+.r17 .card.open .foot { transform: none }
+.r17 .kick { display: flex; align-items: center; gap: 8px; font: 700 11px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .85) }
+.r17 .kick .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; flex: none }
+.r17 .kick.feeding .dot { background: var(--accent) } .r17 .kick.folding .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #fff }
+.r17 .kick em { font-style: normal; color: rgb(255 255 255 / .5) }
+.r17 .fig { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px }
+.r17 .num { font: 700 46px/.92 var(--font); letter-spacing: -.055em; font-variant-numeric: tabular-nums }
+.r17 .num.wd { font-size: 38px; letter-spacing: -.045em }
+.r17 .unit { font: 500 13px/1.3 var(--font); color: rgb(255 255 255 / .74); max-width: 32ch }
+.r17 .lrow { display: flex; align-items: flex-end; gap: 12px; margin-top: 2px }
+.r17 .line { flex: 1; font: 700 18.5px/1.2 var(--font); letter-spacing: -.025em; text-wrap: balance }
+.r17 .tog { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: rgb(255 255 255 / .14); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16) }
+.r17 .tog svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; transition: transform .45s var(--glide) }
+.r17 .card.open .tog svg { transform: rotate(180deg) }
+.r17 .more { display: grid; gap: 11px; padding-top: 10px; transition: opacity .35s var(--soft) }
+.r17 .card:not(.open) .more { opacity: 0 }
+.r17 .why { font: 400 14.5px/1.48 var(--font); color: rgb(255 255 255 / .86); text-wrap: pretty }
+.r17 .so { padding-left: 11px; border-left: 2px solid var(--accent); font: 600 14px/1.4 var(--font); color: #fff; text-wrap: pretty }
+.r17 .figs { display: flex; justify-content: space-between; gap: 10px; padding-top: 4px }
+.r17 .figs span { display: grid; gap: 5px; min-width: 0 }
+.r17 .figs span + span { padding-left: 10px; border-left: 1px solid rgb(255 255 255 / .16) }
+.r17 .figs b { font: 700 19px/.95 var(--font); letter-spacing: -.04em; white-space: nowrap; font-variant-numeric: tabular-nums }
+.r17 .figs em { font: 500 11px/1.2 var(--font); font-style: normal; color: rgb(255 255 255 / .6) }
+.r17 .mix { display: flex; height: 7px; border-radius: 4px; overflow: hidden; gap: 2px }
+.r17 .mix i { display: block; background: rgb(255 255 255 / .85) }
+.r17 .mix i:nth-child(2) { background: rgb(255 255 255 / .62) } .r17 .mix i:nth-child(3) { background: rgb(255 255 255 / .44) } .r17 .mix i:nth-child(4) { background: rgb(255 255 255 / .3) } .r17 .mix i:nth-child(n+5) { background: rgb(255 255 255 / .18) }
+.r17 .mixk { display: flex; flex-wrap: wrap; gap: 3px 12px; font: 500 12px/1.3 var(--font); color: rgb(255 255 255 / .7) }
+.r17 .mixk b { color: #fff; font-weight: 600 }
+.r17 .ramp { display: grid; grid-template-columns: auto repeat(7, 1fr); gap: 3px; align-items: center }
+.r17 .ramp b { font: 600 10.5px/1 var(--font); color: rgb(255 255 255 / .7); padding-right: 4px }
+.r17 .ramp span { display: grid; place-items: center; height: 21px; border-radius: 6px; font: 600 10px/1 var(--font); color: var(--stx); font-variant-numeric: tabular-nums }
+.r17 .keyl { font: 500 12.5px/1.4 var(--font); color: rgb(255 255 255 / .7) }
+.r17 .frows { display: grid; gap: 0 }
+.r17 .frow { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid rgb(255 255 255 / .1) }
+.r17 .frow:first-child { border-top: 0; padding-top: 0 }
+.r17 .frow b { font: 700 15px/1.2 var(--font) } .r17 .frow .u { font: 600 12.5px/1 var(--font); color: rgb(255 255 255 / .55); font-variant-numeric: tabular-nums }
+.r17 .frow .v { font: 700 14px/1 var(--font); font-variant-numeric: tabular-nums }
+.r17 .frow .nt { grid-column: 1 / -1; font: 500 12px/1.3 var(--font); color: rgb(255 255 255 / .58) }
+.r17 .rev { display: grid; gap: 9px }
+.r17 .rev p { font: 500 13.5px/1.42 var(--font); color: rgb(255 255 255 / .8) }
+.r17 .rev p b { color: #fff; font-weight: 700 }
+/* the media zone's own visuals */
+.r17 .thumbs { display: grid; gap: 4px }
+.r17 .thumbs .hd { display: flex; justify-content: space-between; font: 700 10.5px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; color: rgb(255 255 255 / .6); padding: 2px 0 4px }
+.r17 .tg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px }
+.r17 .tg .c { position: relative; aspect-ratio: 4 / 5; border-radius: 7px; background: #1d1d22 center/cover; overflow: hidden }
+.r17 .tg .c b, .r17 .rv4 .c b { position: absolute; left: 3px; bottom: 3px; padding: 2px 4px; border-radius: 4px; font: 700 10px/1 var(--font); color: var(--stx) }
+.r17 .tg .c b.w, .r17 .rv4 .c b.w { color: #fff }
+.r17 .rv4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px }
+.r17 .rv4 .c { position: relative; aspect-ratio: 4 / 5; border-radius: 9px; background: #1d1d22 center/cover; overflow: hidden }
+.r17 .rv4 em { display: block; margin-top: 5px; font: 600 11px/1.2 var(--font); font-style: normal; color: rgb(255 255 255 / .75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .dweek { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 190px; position: relative }
+.r17 .dweek .dc { display: grid; justify-items: center; gap: 5px; align-content: end; height: 100% }
+.r17 .dweek .dots { display: flex; flex-direction: column-reverse; gap: 4px; align-items: center }
+.r17 .dweek .dots i { width: 15px; height: 15px; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform .5s var(--glide); transition-delay: calc(var(--j) * 60ms + var(--k) * 30ms) }
+.r17 .on .dweek .dots i, .r17 .side .dweek .dots i { transform: none }
+.r17 .dweek .dl { font: 600 11px/1 var(--font); color: rgb(255 255 255 / .6) }
+.r17 .dweek .dn { font: 700 13px/1 var(--font); color: #fff; font-variant-numeric: tabular-nums }
+.r17 .dweek .us { position: absolute; left: 0; right: 0; border-top: 1px dashed rgb(255 255 255 / .35) }
+.r17 .dweek .us span { position: absolute; right: 0; top: -16px; font: 600 10.5px/1 var(--font); color: rgb(255 255 255 / .55) }
+.r17 .fol7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; height: 150px; position: relative }
+.r17 .fol7 .b { position: relative; display: grid; align-items: end; justify-items: center }
+.r17 .fol7 .b i { width: 70%; border-radius: 5px; transform-origin: 50% 0; transform: scaleY(0); transition: transform .6s var(--glide); transition-delay: calc(var(--j) * 60ms) }
+.r17 .on .fol7 .b i, .r17 .side .fol7 .b i { transform: none }
+.r17 .fol7 .b.up i { transform-origin: 50% 100%; background: #fff } .r17 .fol7 .b.dn i { background: var(--accent) }
+.r17 .fol7 .z { position: absolute; left: 0; right: 0; border-top: 1px solid rgb(255 255 255 / .3) }
+.r17 .fol7 .lb { font: 600 10.5px/1 var(--font); color: rgb(255 255 255 / .6) }
+.r17 .rk { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; margin-top: 14px }
+.r17 .rk i { height: 16px; border-radius: 3px; background: rgb(255 255 255 / .16) }
+.r17 .rk i.me { background: var(--accent) }
+.r17 .rkl { display: flex; justify-content: space-between; margin-top: 6px; font: 600 10.5px/1 var(--font); color: rgb(255 255 255 / .55) }
+.r17 .erows { display: grid; gap: 8px }
+.r17 .erow { display: grid; grid-template-columns: 24px 1fr; gap: 2px 10px; padding: 12px 12px 12px 10px; border-radius: 16px; background: rgb(255 255 255 / .07); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08) }
+.r17 .erow .n { grid-row: span 3; font: 700 15px/1.3 var(--font); color: rgb(255 255 255 / .45) }
+.r17 .erow .ek { font: 700 10px/1.2 var(--font); letter-spacing: .14em; text-transform: uppercase; color: rgb(255 255 255 / .6) }
+.r17 .erow .ev { font: 700 18px/1.15 var(--font); letter-spacing: -.03em }
+.r17 .erow .ew { font: 500 12.5px/1.35 var(--font); color: rgb(255 255 255 / .66) }
+.r17 .card.k-list { display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 64px 18px 18px; cursor: default }
+.r17 .card.k-list .foot { position: static; transform: none; padding: 0; order: -1 }
+.r17 .card.k-list .md { position: static }
+.r17 .wk16 svg { display: block; width: 100%; overflow: visible }
+.r17 .side { display: none }
+@media (max-width: 380px) { .r17 .num { font-size: 40px } .r17 .line { font-size: 17px } .r17 .why { font-size: 13.5px } }
+
+/* ---------- the story a laptop up: ten spines, and the card on show opened wide, its words on the left and its picture
+   on the right (below 620px of card the words lie over the picture). Every card is laid out at full width and shown
+   through a window (a clip); picking another moves the row as one, its spines riding the moving edges ---------- */
+.r17 .arr { display: none }
+.r17 .ds { --sw: 48px; --dw: 680px; --tw: 360px; --dh: 640px; display: grid; gap: 18px }
+.r17 .dsr { position: relative; height: var(--dh) }
+.r17 .dsc { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .8); --ink-3: rgb(255 255 255 / .54); --hair: rgb(255 255 255 / .12); --raised: var(--card); --page: var(--card);
+  --s0: #1B1B1E; --s1: #252529; --s2: #303035; --s3: #791B26; --s4: #991F2F; --s5: #BA2239; --s6: #DA2E46; --stx: #fff;
+  position: absolute; top: 0; left: 0; width: var(--dw); height: 100%; overflow: hidden; border-radius: 26px; background: var(--card); color: #fff; isolation: isolate;
+  clip-path: inset(0px calc(var(--dw) - var(--sw)) 0px 0px round 26px); will-change: transform, clip-path }
+.r17 .dz { position: absolute; z-index: 0; top: 0; bottom: 0; left: var(--tw); width: calc(var(--dw) - var(--tw)); overflow: hidden; background: #0a0a0d }
+.r17 .dz .md { position: absolute; inset: 0 }
+.r17 .dz .md.bleed::after { background: linear-gradient(90deg, rgb(13 13 17 / .5) 0, rgb(13 13 17 / 0) 22%, rgb(13 13 17 / 0) 70%, rgb(13 13 17 / .55) 100%) }
+.r17 .dz .md.bleed .plab { left: 16px; right: 16px; top: auto; bottom: 18px }
+.r17 .dz .md.quad::after { background: linear-gradient(90deg, rgb(13 13 17 / .45) 0, rgb(13 13 17 / 0) 26%) }
+.r17 .dz .md.quad .qd .plab { top: 12px }
+.r17 .dz .md.pad { bottom: 0; padding: 40px 26px; display: flex; flex-direction: column; justify-content: center }
+.r17 .dsc.k-list .dz .md { padding: 30px 24px; display: flex; flex-direction: column; justify-content: center; overflow: hidden }
+.r17 .dtx { position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; width: var(--tw); display: flex; flex-direction: column; padding: 22px 26px 28px }
+.r17 .dhd { display: flex; align-items: center; gap: 9px; min-width: 0 }
+.r17 .dhd .av { flex: none; width: 30px; height: 30px; border-radius: 50%; background: #222 center/cover; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9) }
+.r17 .dhd b { font: 700 14px/1 var(--font); letter-spacing: -.01em }
+.r17 .dhd em { font: 500 13px/1 var(--font); font-style: normal; color: rgb(255 255 255 / .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .dhd .dno { margin-left: auto; flex: none; font: 700 12px/1 var(--font); color: rgb(255 255 255 / .42); font-variant-numeric: tabular-nums }
+.r17 .dft { margin-top: auto; display: grid; gap: 8px }
+.r17 .dft .num { font-size: 64px } .r17 .dft .num.wd { font-size: 50px }
+.r17 .dft .unit { font-size: 14px; max-width: 36ch }
+.r17 .dft .line { font-size: 22px; line-height: 1.18; text-wrap: balance }
+.r17 .dft .more { display: grid; gap: 12px; padding-top: 8px }
+.r17 .dft .why { font-size: 15px }
+.r17 .dsp { position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: var(--sw); display: grid; grid-template-rows: auto 1fr auto; justify-items: center; padding: 18px 0 16px; border-radius: 26px; background: #15151a center/cover; color: #fff; will-change: transform }
+.r17 .dsp::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(5 5 8 / .5), rgb(5 5 8 / .8)); transition: background .35s var(--soft) }
+.r17 .dsp > * { position: relative }
+.r17 .dsp b { font: 700 13px/1 var(--font); font-variant-numeric: tabular-nums }
+.r17 .dsp span { align-self: end; writing-mode: vertical-rl; transform: rotate(180deg); font: 800 11px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .82); white-space: nowrap; overflow: hidden }
+.r17 .dsp i { width: 7px; height: 7px; margin-top: 14px; border-radius: 50%; background: #fff }
+.r17 .dsp i.feeding { background: var(--accent) } .r17 .dsp i.folding { background: transparent; box-shadow: inset 0 0 0 1.5px #fff }
+.r17 .dsp:hover::before { background: linear-gradient(180deg, rgb(5 5 8 / .25), rgb(5 5 8 / .6)) }
+.r17 .dsc.on .dsp { pointer-events: none }
+.r17 .ds.ov .dz { left: 0; width: var(--dw) }
+.r17 .ds.ov .dtx { width: var(--dw); background: linear-gradient(180deg, rgb(5 5 8 / .45) 0, rgb(5 5 8 / 0) 18%, rgb(5 5 8 / 0) 38%, rgb(5 5 8 / .86) 60%, rgb(5 5 8 / .96)) }
+.r17 .dsb { display: flex; align-items: center; gap: 20px }
+.r17 .dpr { flex: 1; display: flex; gap: 6px }
+.r17 .dpr button { flex: 1 1 0; height: 20px; display: grid; align-items: center }
+.r17 .dpr i { display: block; height: 3px; border-radius: 2px; background: rgb(var(--ink-rgb) / .12); overflow: hidden; position: relative }
+.r17 .dpr i b { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; transform: scaleX(0) }
+.r17 .dct { display: flex; gap: 8px }
+.r17 .dct .nb { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--hair); transition: opacity .3s }
+.r17 .dct .nb[disabled] { opacity: .3; pointer-events: none }
+.r17 .dct svg { width: 16px; height: 16px; fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+.r17 .dct #pp svg { fill: var(--ink); stroke: none }
+
+
+/* ---------- the page: under the phone's header capsule (where it sits open: its top, then 152px of capsule and a gap),
+   beside the laptop's side rail; a part jumped to stops under the capsule folded (68px) ---------- */
+.r17-page { --r17-cap: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px)); padding-top: calc(var(--r17-cap) + 166px); padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; background: var(--page); overflow-x: clip }
+@media (min-width: 640px) { .r17-page { --r17-cap: calc(14px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px)) } }
+@media (min-width: 768px) { .r17-page { --r17-cap: calc(20px + var(--pwa-top-fix, 0px)) } }
+@media (min-width: 1024px) { .r17-page { --r17-cap: 0px; padding-top: var(--fm-desk-top, 24px); padding-bottom: 150px } }
+.r17 .sec { scroll-margin-top: calc(var(--r17-cap) + 82px - 56px) }
+.r17 .ls { scroll-margin-top: calc(var(--r17-cap) + 82px) }
+@media (min-width: 1024px) { .r17 .sec { scroll-margin-top: calc(var(--fm-desk-top, 24px) - 56px) } .r17 .ls { scroll-margin-top: var(--fm-desk-top, 24px) } }
+.r17 .wrap { max-width: 1260px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) }
+@media (min-width: 640px) { .r17 .wrap { padding-inline: 24px } }
+@media (min-width: 1024px) { .r17 .wrap { padding-inline: clamp(20px, 2.6vw, 36px) } }
+.r17 .sec { padding-top: 56px }
+.r17 .sec:first-child { padding-top: 0 }
+.r17 .op { display: grid; gap: 10px; padding-bottom: 18px }
+.r17 .ok { display: flex; align-items: center; gap: 10px; font: 800 11px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .ok b { display: inline-grid; place-items: center; height: 22px; padding: 0 7px; border-radius: 7px; background: var(--accent); color: #fff; letter-spacing: .06em }
+.r17 .ol { margin: 0; font: 700 clamp(23px, 5.8vw, 34px)/1.12 var(--font); letter-spacing: -.035em; text-wrap: balance; max-width: 30ch }
+
+/* ---------- a caption in the Lead's grammar ---------- */
+.r17 .cap { --n: 50px; --s: 17px; display: grid; gap: 10px; min-width: 0 }
+@media (min-width: 640px) { .r17 .cap { --n: 60px; --s: 20px } }
+@media (min-width: 1024px) { .r17 .cap { --n: 76px; --s: 22px } }
+.r17 .hd1 { display: flex; align-items: flex-end; gap: 12px; min-width: 0 }
+.r17 .hd1 .nm { flex: none; font: 700 var(--n)/.9 var(--font); letter-spacing: -.065em; font-variant-numeric: tabular-nums; white-space: nowrap }
+.r17 .hd1 .un { min-width: 0; margin-bottom: calc(var(--n) * .05); font: 800 10.5px/1.25 var(--font); letter-spacing: .13em; text-transform: uppercase; color: rgb(var(--ink-rgb) / .52); max-width: 26ch }
+.r17 .cap .ln { margin: 0; font: 700 var(--s)/1.26 var(--font); letter-spacing: -.028em; text-wrap: pretty }
+.r17 .cap .as { color: rgb(var(--ink-rgb) / .42) }
+.r17 .c[data-tone="beating"] .nm { color: var(--accent) }
+
+/* four pictures fill the card or there is one picture */
+.r17 .md.quad { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; background: #000 }
+.r17 .md.quad .qd { position: relative; overflow: hidden; background: #15151a }
+.r17 .md.quad .qd img, .r17 .md.quad .qd .qc { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background-position: center; background-size: cover }
+.r17 .md.quad::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgb(5 5 8 / .25) 0, rgb(5 5 8 / 0) 18%, rgb(5 5 8 / 0) 42%, rgb(5 5 8 / .7) 60%, rgb(5 5 8 / .95) 78%) }
+.r17 .md.quad .plab { position: absolute; z-index: 2; left: 9px; right: 9px; top: 10px; bottom: auto }
+.r17 .md.quad .qd:nth-child(-n+2) .plab { top: 70px }
+
+/* ---------- Strategy: the current 100 read five ways. Each part opens on its headline, its numbers in red, then a reel
+   of read cards. A card is the posts behind its number: on top its evidence (a cut of the post that says it best, its
+   beats playing like a gif; its stills; for a side, the posts with it over the posts without; for a run, the run and
+   the post that ended it), under it the number, what it counts and its line ---------- */
+.r17 .osb { margin: 0; font: 500 14.5px/1.4 var(--font); color: var(--ink-3); max-width: 62ch }
+.r17 .lz { display: grid; gap: 46px; padding-top: 8px }
+.r17 .ls { display: grid; gap: 16px; min-width: 0 }
+@media (min-width: 1024px) { .r17 .lz { gap: 60px } .r17 .ls { grid-template-columns: 286px minmax(0, 1fr); gap: 34px; align-items: start } }
+.r17 .lh { display: grid; gap: 10px; align-content: start; min-width: 0 }
+@media (min-width: 1024px) { .r17 .lh { padding-top: 6px } }
+.r17 .lk { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px }
+.r17 .lk b { font: 800 12px/1 var(--font); letter-spacing: .18em; text-transform: uppercase; color: var(--accent) }
+.r17 .lk span { font: 500 13px/1.2 var(--font); color: var(--ink-3) }
+.r17 .lhl { margin: 0; font: 700 21px/1.24 var(--font); letter-spacing: -.028em; text-wrap: balance }
+.r17 .lhl b { font-weight: 700; color: var(--accent); white-space: nowrap }
+@media (min-width: 1024px) { .r17 .lhl { font-size: 25px; line-height: 1.2 } }
+.r17 .lhs { margin: 0; font: 500 14px/1.45 var(--font); color: var(--ink-3); text-wrap: pretty }
+.r17 .lnv { display: none; gap: 8px; margin-top: 8px }
+@media (min-width: 1024px) { .r17 .lnv { display: flex } }
+.r17 .lnv .nb { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--hair); transition: transform .3s var(--soft) }
+.r17 .lnv .nb:active { transform: scale(.94) }
+.r17 .lnv svg { width: 16px; height: 16px; fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+
+/* the reel: swiped on a phone, out to the screen's edge; stepped with the arrows on a laptop, out to the window's */
+.r17 .rl { --cw: min(74vw, 300px); display: grid; grid-auto-flow: column; grid-auto-columns: var(--cw); gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; margin-inline: -16px; padding: 6px 16px 12px; scroll-padding-inline: 16px }
+.r17 .rl::-webkit-scrollbar { display: none }
+@media (min-width: 640px) { .r17 .rl { margin-inline: -24px; padding-inline: 24px; scroll-padding-inline: 24px } }
+@media (min-width: 1024px) { .r17 .rl { --cw: 282px; gap: 14px; margin: 0 calc(-1 * clamp(20px, 2.6vw, 36px)) 0 0; padding: 6px clamp(20px, 2.6vw, 36px) 14px 0; scroll-padding-inline: 0 } }
+
+/* a read card: dark in both themes, as the story's cards are; the reel snaps to its wrapper */
+.r17 .rcw { display: grid; min-width: 0; scroll-snap-align: start }
+.r17 .rc { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .8); --ink-3: rgb(255 255 255 / .54); --hair: rgb(255 255 255 / .12); --stx: #fff;
+  --s0: #1B1B1E; --s1: #252529; --s2: #303035; --s3: #791B26; --s4: #991F2F; --s5: #BA2239; --s6: #DA2E46;
+  position: relative; display: flex; flex-direction: column; min-height: 488px; border-radius: 24px; overflow: hidden; isolation: isolate; background: var(--card); color: #fff; text-align: left;
+  box-shadow: 0 1px 2px rgb(15 23 42 / .08), 0 24px 44px -28px rgb(15 23 42 / .6); transition: transform .5s var(--glide), box-shadow .45s var(--soft) }
+@media (hover: hover) { .r17 .rc:hover { transform: translateY(-4px) } }
+.r17 .rc:active { transform: scale(.985) }
+.r17 .rc.on { box-shadow: 0 0 0 3px var(--page), 0 0 0 5.5px var(--accent), 0 24px 44px -28px rgb(15 23 42 / .6) }
+.r17 .rcm { position: relative; z-index: 0; flex: none; height: 290px; overflow: hidden; background: #0a0a0d }
+.r17 .rcm::after { content: ""; position: absolute; z-index: 1; inset: auto 0 0; height: 24%; pointer-events: none; background: linear-gradient(180deg, rgb(13 13 17 / 0), var(--card)) }
+.r17 .rcm:has(.vs)::after, .r17 .rcm:has(.run)::after { height: 12% }
+.r17 .rcm .bdg { z-index: 2 }
+.r17 .rct { position: relative; z-index: 1; flex: 1; display: grid; gap: 5px; align-content: start; padding: 12px 18px 18px }
+.r17 .rck { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; min-width: 0 }
+.r17 .rck b { min-width: 0; font: 800 11px/1.25 var(--font); letter-spacing: .14em; text-transform: uppercase }
+.r17 .rck em { flex: none; font: 600 11.5px/1 var(--font); font-style: normal; color: rgb(255 255 255 / .55); white-space: nowrap }
+.r17 .rcn { margin-top: 2px; font: 700 44px/.95 var(--font); letter-spacing: -.055em; font-variant-numeric: tabular-nums; white-space: nowrap }
+.r17 .rcn.up { color: var(--accent) }
+.r17 .rcu { font: 800 10px/1.25 var(--font); letter-spacing: .12em; text-transform: uppercase; color: rgb(255 255 255 / .55) }
+.r17 .rcl { margin-top: 3px; font: 700 14.5px/1.3 var(--font); letter-spacing: -.01em; text-wrap: pretty }
+.r17 .rca { font: 500 12.5px/1.35 var(--font); color: rgb(255 255 255 / .6); text-wrap: pretty }
+.r17 .rce { position: absolute; inset: 0; display: grid; place-items: center; font: 700 30px/1 var(--font); letter-spacing: -.04em; color: rgb(255 255 255 / .3) }
+
+/* a cut: the post's frames one after another. Only the cut you're on plays: each frame drifts in slowly as the last one
+   dissolves, and its bar fills while it holds; the rest sit on their first frame */
+.r17 .cut { --hold: 1.7s; position: absolute; inset: 0; display: block; background: #0a0a0d; overflow: hidden }
+.r17 .cut img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; opacity: 0; transform: scale(1.02); transition: opacity .7s var(--soft), transform 0s linear .7s }
+.r17 .cut img.on { opacity: 1; transition: opacity .7s var(--soft), transform 1.2s var(--soft) }
+.r17 .cut.play img.on { transform: scale(1.08); transition: opacity .7s var(--soft), transform calc(var(--hold) + .7s) linear }
+.r17 .cbar { position: absolute; z-index: 2; inset: 10px 10px auto; display: flex; gap: 3px }
+.r17 .cbar i { position: relative; flex: 1 1 0; height: 2.5px; border-radius: 2px; overflow: hidden; background: rgb(255 255 255 / .32) }
+.r17 .cbar i b { position: absolute; inset: 0; background: #fff; transform: scaleX(0); transform-origin: left center; transition: transform .35s var(--soft) }
+.r17 .cbar i.done b { transform: none }
+.r17 .cbar i.run b { transform: none; transition: transform var(--hold) linear }
+@media (prefers-reduced-motion: reduce) { .r17 .cut img, .r17 .cbar i b { transition: none !important } }
+.r17 .crole { position: absolute; z-index: 2; left: 10px; top: 22px; padding: 5px 8px; border-radius: 999px; background: rgb(5 5 8 / .55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font: 800 9.5px/1 var(--font); font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: #fff }
+.r17 .cut .bdg { z-index: 2; left: auto; right: 10px; top: 20px; bottom: auto }
+/* stills: two or four covers, each with its rank */
+.r17 .sts { position: absolute; inset: 0; display: grid; gap: 2px; background: #0a0a0d }
+.r17 .sts.n4 { grid-template: 1fr 1fr / 1fr 1fr }
+.r17 .sts.n2 { grid-template-columns: 1fr 1fr }
+.r17 .stl { position: relative; display: block; min-width: 0; background: #1a1a1f center/cover }
+.r17 .stl .bdg { left: 6px; bottom: 6px; padding: 4px 6px; border-radius: 7px; font-size: 11px }
+/* a side: the posts with it over the posts without */
+.r17 .vs { position: absolute; inset: 0; display: grid; grid-template-rows: 1fr 1fr; gap: 2px; background: #0a0a0d }
+.r17 .vsr { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; min-height: 0 }
+.r17 .vsr > em { position: absolute; z-index: 2; left: 8px; top: 8px; padding: 5px 8px; border-radius: 999px; background: var(--accent); font: 800 9.5px/1 var(--font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: #fff }
+.r17 .vsr.wo > em { background: rgb(5 5 8 / .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px) }
+.r17 .vsr.wo .stl::before { content: ""; position: absolute; inset: 0; background: rgb(10 10 14 / .32) } /* a veil, not a filter: the badge on top stays crisp */
+/* a run: the run itself as a strip, the post that ended it under it */
+.r17 .run { position: absolute; inset: 0; display: grid; grid-template-rows: 46px minmax(0, 1fr); gap: 2px; background: #0a0a0d }
+.r17 .rst { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px }
+.r17 .rst i { display: block; background: #1a1a1f center/cover; filter: saturate(.35) brightness(.78) }
+.r17 .rbk { position: relative; display: block; overflow: hidden }
+.r17 .rbk .stl { position: absolute; inset: 0 }
+.r17 .rbk > em { position: absolute; z-index: 4; right: 10px; bottom: 12px; padding: 5px 8px; border-radius: 999px; background: #fff; font: 800 9.5px/1 var(--font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: #0b0b0f }
+
+@media (prefers-reduced-motion: reduce) { .r17 .rc { transition: none !important } }
+
+/* ---------- the switch (the wall's Recent · Ranks): the app's well with the ink pill ---------- */
+.r17 .seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; height: 44px; padding: 4px; border-radius: 15px; background: var(--fm-well); border: 1px solid var(--fm-well-edge); box-shadow: var(--fm-well-shade) }
+.r17 .seg button { position: relative; z-index: 1; padding: 0 14px; border-radius: 11px; font: 800 12.5px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--ink-rgb) / .56); transition: color .35s }
+.r17 .seg button[aria-pressed="true"] { color: var(--page) }
+.r17 .seg .pill { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; border-radius: 11px; background: var(--ink); box-shadow: 0 4px 14px rgb(var(--fm-shadow-rgb) / .22); transition: transform .5s var(--carry), width .5s var(--carry) }
+
+/* ---------- Split: the wall ---------- */
+.r17 .wbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; margin: 18px 0 16px }
+.r17 .wbar .seg { min-width: 230px }
+.r17 .wbar .wh { font: 500 13.5px/1.35 var(--font); color: var(--ink-3) }
+.r17 .wall { position: relative }
+.r17 .wgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px 7px }
+@media (min-width: 640px) { .r17 .wgrid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 10px } }
+@media (min-width: 1024px) { .r17 .wgrid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 16px 13px } }
+@media (min-width: 1280px) { .r17 .wgrid { grid-template-columns: repeat(8, minmax(0, 1fr)) } }
+.r17 .wt { position: relative; display: block; aspect-ratio: 4 / 5; cursor: pointer; text-align: left; container-type: inline-size }
+.r17 .wt .plt { position: absolute; inset: 0; border-radius: 11px; transform: translate(3px, 3px) }
+.r17 .wt .cv { position: absolute; inset: 0; border-radius: 11px; background: var(--well) center/cover; box-shadow: 0 8px 18px -12px rgb(15 23 42 / .5); transition: filter .4s }
+.r17 .wt .dt { position: absolute; z-index: 2; left: 7px; top: 6px; font: 700 clamp(9.5px, 8cqi, 11.5px)/1 var(--font); color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / .6) }
+.r17 .bdg { position: absolute; left: 7px; bottom: 7px; padding: 5px 7px; border-radius: 9px; font: 700 12.5px/1 var(--font); letter-spacing: -.02em; color: var(--stx); font-variant-numeric: tabular-nums; white-space: nowrap }
+.r17 .bdg.w { color: #fff }
+.r17 .bdg.fl { background: #0d0d11; color: #fff } .r17 .bdg.fl.dn { background: var(--accent) }
+.r17 .wt .bdg { z-index: 2; left: 5px; bottom: 5px; font-size: clamp(9.5px, 8.5cqi, 12px); padding: 4px 6px; border-radius: 7px }
+.r17 .wt .rgn { position: absolute; z-index: 3; inset: 0; border-radius: 11px; pointer-events: none; transition: box-shadow .3s }
+.r17 .wt .mk { position: absolute; z-index: 4; right: 5px; top: 5px; min-width: 1.9em; padding: .34em .5em; border-radius: 999px; background: var(--accent); color: #fff; font: 800 clamp(9px, 8.5cqi, 12px)/1 var(--font); text-align: center; box-shadow: 0 4px 10px -4px rgb(0 0 0 / .5); opacity: 0; transform: scale(.6); transition: opacity .2s, transform .35s var(--carry) }
+.r17 .wt.beat .mk, .r17 .wt.above .mk { opacity: 1; transform: none }
+.r17 .wt.above .mk { background: var(--ink) }
+.r17 .wt.beat::after { content: ""; position: absolute; z-index: 4; left: 12%; right: 12%; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent) }
+.r17 .wt.sel .rgn { box-shadow: 0 0 0 3px var(--accent), 0 14px 28px -10px rgb(15 23 42 / .5) }
+.r17 .wt.sel { z-index: 5 }
+.r17 .wt.stop .rgn { box-shadow: 0 0 0 3px var(--ink) }
+.r17 .wt .fl { position: absolute; z-index: 6; left: 50%; top: -11px; transform: translateX(-50%); padding: 4px 8px; border-radius: 999px; background: var(--ink); color: var(--page); font: 800 9.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap }
+.r17 .wall.trail .wt:not(.sel):not(.beat):not(.above):not(.stop) .cv { filter: saturate(.2) brightness(1.06) }
+.r17 .tlx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 4 }
+.r17 .tlx line { stroke: var(--accent); stroke-width: 3; stroke-linecap: round }
+.r17 .tlx line.dn { stroke: var(--ink) }
+.r17 .thd { position: absolute; z-index: 7; left: 0; top: 0; padding: 6px 10px; border-radius: 999px; background: var(--accent); color: #fff; font: 800 10.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transform: translate(-50%, 2px); box-shadow: 0 8px 18px -8px rgb(0 0 0 / .5); transition: opacity .2s, left var(--dt, 0ms) linear, top var(--dt, 0ms) linear }
+.r17 .thd.dn { background: var(--ink); color: var(--page) }
+.r17 .thd.on { opacity: 1 }
+.r17 .rgp { display: grid; gap: 12px; padding: 22px 0 26px; border-top: 1px solid var(--hair) }
+.r17 .rgp:first-child { border-top: 0; padding-top: 4px }
+.r17 .rgp .rh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px }
+.r17 .rgp .rl { font: 700 clamp(34px, 8vw, 54px)/.88 var(--font); letter-spacing: -.06em }
+.r17 .rgp.hot .rl { color: var(--accent) }
+.r17 .rgp.new .rl { color: var(--ink-3) }
+.r17 .rgp .rm { font: 800 10.5px/1.2 var(--font); letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .rgp .rw { margin: 0; font: 700 clamp(16px, 4.2vw, 20px)/1.28 var(--font); letter-spacing: -.025em; max-width: 46ch; text-wrap: pretty }
+.r17 .rgp .rw span { color: rgb(var(--ink-rgb) / .42) }
+
+/* ---------- posts as tiles (panel grids) ---------- */
+.r17 .pt { display: grid; gap: 7px; align-content: start; text-align: left; cursor: pointer; min-width: 0 }
+.r17 .pt .cv { position: relative; display: block; aspect-ratio: 4 / 5; border-radius: 14px; background: var(--well) center/cover; overflow: hidden }
+.r17 .ptg { position: absolute; left: 7px; top: 7px; padding: 5px 8px; border-radius: 999px; background: var(--accent); color: #fff; font: 800 9.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase }
+.r17 .pt .m1 { display: flex; justify-content: space-between; gap: 6px; min-width: 0; font: 700 12.5px/1.2 var(--font) }
+.r17 .pt .m1 b { font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .pt .m1 span { flex: none; font-weight: 500; color: var(--ink-3) }
+.r17 .pt .m2 { font: 500 12px/1.35 var(--font); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.r17 .pt.mk .cv { box-shadow: 0 0 0 3px var(--raised), 0 0 0 5.5px var(--accent) }
+.r17 .pgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px }
+.r17 .pgrid .pt .m2 { display: none }
+
+/* ---------- the pick at the foot ---------- */
+.r17 .ro { position: fixed; z-index: 190; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); width: min(560px, calc(100vw - 20px)); display: grid; grid-template-columns: 42px minmax(0, 1fr) auto auto; gap: 12px; align-items: center;
+  padding: 8px; border-radius: 22px; background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); box-shadow: 0 18px 40px -16px rgb(15 23 42 / .45), inset 0 0 0 1px var(--glass-edge);
+  transform: translate(-50%, calc(100% + 140px)); visibility: hidden; transition: transform .5s var(--glide), visibility 0s linear .5s }
+.r17 .ro.on { transform: translate(-50%, 0); visibility: visible; transition: transform .5s var(--glide) }
+/* (the readout and the sheet are hidden once they're off screen: a fixed box resting at the bottom edge is taken by iOS
+   Safari for a bar, and it paints its address bar's strip solid to match) */
+.r17 .ro .c { width: 42px; height: 52px; border-radius: 9px; background: var(--well) center/cover }
+.r17 .ro .t { min-width: 0 }
+.r17 .ro .t b { display: block; font: 700 14.5px/1.2 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .ro .t span { display: block; margin-top: 3px; font: 600 12.5px/1.25 var(--font); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .ro .t span em { font-style: normal; color: var(--accent) }
+.r17 .ro .o { height: 42px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--page); font: 800 12.5px/1 var(--font); letter-spacing: .04em; text-transform: uppercase }
+.r17 .ro .x { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--well) }
+.r17 .ro svg, .r17 .pnh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+@media (min-width: 1024px) { .r17 .ro { left: calc(var(--fm-rail-x, 124px) + (100vw - var(--fm-rail-x, 124px)) / 2); bottom: 24px } }
+
+/* ---------- the panel: a sheet on a phone, a panel at the side on a laptop ---------- */
+.r17 .pns { position: fixed; inset: 0; z-index: 398; background: rgb(5 5 8 / .32); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .35s, visibility 0s linear .35s }
+.r17 .pns.on { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity .35s }
+.r17 .pn { position: fixed; z-index: 399; left: 0; right: 0; bottom: 0; height: 88vh; height: 88dvh; display: flex; flex-direction: column; border-radius: 28px 28px 0 0; background: var(--raised); box-shadow: 0 -24px 60px -24px rgb(0 0 0 / .4);
+  transform: translateY(105%); visibility: hidden; transition: transform .55s var(--glide), visibility 0s linear .55s; touch-action: pan-y; color: var(--ink); font: 400 15px/1.45 var(--font) }
+.r17 .pn.on { transform: none; visibility: visible; transition: transform .55s var(--glide) }
+.r17 .pn.drag { transition: none }
+.r17 .pn .grab { flex: none; width: 44px; height: 5px; margin: 10px auto 2px; border-radius: 3px; background: rgb(var(--ink-rgb) / .16) }
+.r17 .pnh { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 14px 10px 18px; border-bottom: 1px solid var(--hair) }
+.r17 .pnh .bk { display: none; height: 38px; padding: 0 12px 0 8px; border-radius: 999px; align-items: center; gap: 4px; background: var(--well); font: 700 13px/1 var(--font); white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis }
+.r17 .pnh .bk.on { display: inline-flex }
+.r17 .pnh .hk { flex: 1; min-width: 0; font: 800 10.5px/1.3 var(--font); letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .pnh .nb { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--well); box-shadow: inset 0 0 0 1px var(--hair) }
+.r17 .pnh .nb[disabled] { opacity: .3; pointer-events: none }
+.r17 .pnb { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 18px 18px calc(30px + env(safe-area-inset-bottom, 0px)); scrollbar-width: none }
+.r17 .pnb::-webkit-scrollbar { display: none }
+.r17 .pnv { display: grid; gap: 22px }
+@media (min-width: 1024px) {
+  .r17 .pns { background: rgb(5 5 8 / .1) }
+  .r17 .pn { left: auto; top: 16px; right: 16px; bottom: 16px; width: 500px; height: auto; border-radius: 30px; transform: translateX(calc(100% + 40px)); box-shadow: 0 30px 80px -24px rgb(0 0 0 / .45) }
+  .r17 .pn .grab { display: none }
+  .r17 .pnh { padding: 14px 16px 12px 24px }
+  .r17 .pnb { padding: 22px 26px 30px }
+}
+.r17 .pv-t { display: grid; gap: 14px }
+.r17 .pst { display: flex; flex-wrap: wrap; gap: 14px 24px }
+.r17 .pst span { display: grid; gap: 5px }
+.r17 .pst b { font: 700 28px/.95 var(--font); letter-spacing: -.045em; font-variant-numeric: tabular-nums; white-space: nowrap }
+.r17 .pst em { font: 800 9.5px/1.2 var(--font); letter-spacing: .12em; text-transform: uppercase; font-style: normal; color: var(--ink-3); max-width: 15ch }
+.r17 .pl2 { margin: 0 0 -10px; font: 800 10.5px/1.2 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3) }
+/* a row's panel: what happened across its posts and why, then the posts themselves, each said in a line */
+.r17 .pwh { display: grid; gap: 10px; padding-top: 2px }
+.r17 .pwh h5, .r17 .pps h5 { margin: 0; font: 800 11px/1.2 var(--font); letter-spacing: .15em; text-transform: uppercase; color: var(--ink) }
+.r17 .pps h5 em { margin-left: 8px; font: 500 13px/1.3 var(--font); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--ink-3) }
+.r17 .pw1 { margin: 0; font: 600 17px/1.45 var(--font); letter-spacing: -.015em; text-wrap: pretty }
+.r17 .pw2 { margin: 0; font: 500 15px/1.5 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .pw2 b { margin-right: 8px; font: 800 10.5px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--accent) }
+.r17 .pps { display: grid; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--hair); min-width: 0 }
+.r17 .pps .pl2 { margin: 8px 0 -2px }
+.r17 .ppl { display: grid; gap: 10px }
+.r17 .ppr { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 14px; align-items: start; padding: 10px; border-radius: 18px; text-align: left; background: var(--pg-tile, var(--well)); box-shadow: inset 0 0 0 1px var(--pg-tile-rim, transparent); transition: transform .45s var(--glide) }
+.r17 .ppr.mk { box-shadow: inset 0 0 0 1.5px var(--accent) }
+@media (hover: hover) { .r17 .ppr:hover { transform: translateY(-2px) } }
+.r17 .ppr:active { transform: scale(.985) }
+.r17 .ppc { display: block; aspect-ratio: 4 / 5; border-radius: 12px; background: var(--well) center/cover }
+.r17 .ppt { display: grid; gap: 5px; min-width: 0; padding-top: 1px }
+.r17 .pph { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px }
+.r17 .pph b { font: 700 15px/1.2 var(--font); letter-spacing: -.02em; font-variant-numeric: tabular-nums }
+.r17 .pph b.up { color: var(--accent) }
+.r17 .pph em { font: 600 12px/1.2 var(--font); font-style: normal; color: var(--ink-3) }
+.r17 .ppd { font: 500 14px/1.42 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .ppg { margin: 0; padding: 2px 0; text-align: center; font: 600 12px/1.2 var(--font); color: var(--ink-3) }
+@media (min-width: 1024px) { .r17 .ppr { grid-template-columns: 74px minmax(0, 1fr) } }
+/* the post mortem */
+.r17 .pm-hd { display: grid; gap: 12px }
+.r17 .pm-k { margin: 0 0 -4px; font: 800 10.5px/1.3 var(--font); letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .pm-w { margin: 0; font: 600 17px/1.45 var(--font); letter-spacing: -.015em; text-wrap: pretty }
+.r17 .pms2 { display: grid; gap: 14px; padding-top: 18px; border-top: 1px solid var(--hair); min-width: 0 }
+.r17 .pms2 h5 { margin: 0; font: 800 11px/1.2 var(--font); letter-spacing: .15em; text-transform: uppercase; color: var(--ink) }
+.r17 .pms2 h5 em { font: 500 13px/1.3 var(--font); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--ink-3); margin-left: 8px }
+/* the breakdown as a storyboard: a frame's picture beside its whole caption, one under another; nothing scrolls sideways,
+   nothing is clipped */
+.r17 .rpl { display: grid; gap: 12px }
+.r17 .rf { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: start; padding: 10px; border-radius: 18px; background: var(--pg-tile, var(--well)); box-shadow: inset 0 0 0 1px var(--pg-tile-rim, transparent) }
+@media (min-width: 1024px) { .r17 .rf { grid-template-columns: 112px minmax(0, 1fr) } }
+.r17 .rf .im { position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--well) center/cover; overflow: hidden }
+.r17 .rf.sq .im { aspect-ratio: 4 / 5 }
+.r17 .rf .im span { position: absolute; left: 6px; top: 6px; padding: 4px 6px; border-radius: 7px; background: rgb(5 5 8 / .55); color: #fff; font: 800 10px/1 var(--font); font-variant-numeric: tabular-nums; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px) }
+.r17 .rft { display: grid; gap: 6px; padding-top: 2px; min-width: 0 }
+.r17 .rf .bl { font: 700 14.5px/1.38 var(--font); letter-spacing: -.01em; text-wrap: pretty }
+.r17 .rf .q { font: 500 13px/1.42 var(--font); color: var(--ink-3); text-wrap: pretty }
+.r17 .pm-p { margin: 0; font: 500 16px/1.5 var(--font); text-wrap: pretty }
+.r17 .pm-q { margin: 0; font: 500 13.5px/1.4 var(--font); color: var(--ink-3) }
+.r17 .pm-l p { margin: 0; padding: 10px 0; border-top: 1px solid var(--hair); font: 600 15px/1.45 var(--font); text-wrap: pretty }
+.r17 .pm-l p:first-child { border-top: 0; padding-top: 0 }
+.r17 .pmn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+.r17 .pmn > div { padding: 14px 14px 12px; border-radius: 18px; background: var(--well); min-width: 0 }
+.r17 .pmn b { display: block; font: 700 27px/.92 var(--font); letter-spacing: -.05em; font-variant-numeric: tabular-nums }
+.r17 .pmn em { display: block; margin-top: 8px; font: 800 9.5px/1.2 var(--font); letter-spacing: .12em; text-transform: uppercase; font-style: normal; color: var(--ink-3) }
+.r17 .pmn span { display: block; margin-top: 3px; font: 600 12px/1.3 var(--font); color: var(--ink-2) }
+.r17 .lvs { display: grid }
+.r17 .lv { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px 0; border-top: 1px solid var(--hair) }
+.r17 .lv:first-child { border-top: 0 }
+.r17 .lv .ar2 { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 800 10px/1 var(--font); color: #fff; background: var(--ink) }
+.r17 .lv .ar2.up { background: var(--accent) } .r17 .lv .ar2.no { background: rgb(var(--ink-rgb) / .2); color: var(--ink) }
+.r17 .lv .t2 { font: 700 15px/1.3 var(--font); letter-spacing: -.015em }
+.r17 .lv .t2 span { display: block; margin-top: 3px; font: 500 13px/1.35 var(--font); color: var(--ink-3); letter-spacing: 0 }
+.r17 .lv .g2 { font: 800 10.5px/1.2 var(--font); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; padding-top: 3px }
+.r17 .lv .g2.up { color: var(--accent) }
+.r17 .pmig { justify-self: start; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border-radius: 999px; background: var(--well); box-shadow: inset 0 0 0 1px var(--hair); font: 700 13.5px/1 var(--font); color: var(--ink); text-decoration: none }
+.r17 .foot2 { padding-block: 60px 20px; color: var(--ink-3); font-size: 13px }
+.r17 .foot2 p { max-width: 72ch; margin: 0 0 10px }
+@media (prefers-reduced-motion: reduce) { .r17 .seg .pill, .r17 .ro, .r17 .pn, .r17 .pns, .r17 .wt .cv, .r17 .wt .mk, .r17 .thd { transition: none !important } }
+
+/* ---------- the panel and the pick's readout in the app's glass: frosted, the page behind showing through blurred,
+   lit at the rim with a soft sheen down from the top edge. Tiles inside are lighter glass on the glass. The panel
+   glides in on the carry curve with a breath of depth (a laptop: from just smaller, at its right edge) ---------- */
+.r17 { --pg-bg: rgb(255 255 255 / .8); --pg-rim: rgb(255 255 255 / .78); --pg-top: rgb(255 255 255 / .96); --pg-tile: rgb(255 255 255 / .56); --pg-tile-rim: rgb(255 255 255 / .82); --pg-shade: rgb(15 23 42 / .3);
+  --pg-sheen: linear-gradient(180deg, rgb(255 255 255 / .6), rgb(255 255 255 / 0) 20%) }
+html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09); --pg-top: rgb(255 255 255 / .17); --pg-tile: rgb(255 255 255 / .05); --pg-tile-rim: rgb(255 255 255 / .08); --pg-shade: rgb(0 0 0 / .62);
+  --pg-sheen: linear-gradient(180deg, rgb(255 255 255 / .07), rgb(255 255 255 / 0) 22%) }
+.r17 .pn { isolation: isolate; background: var(--pg-bg); -webkit-backdrop-filter: blur(30px) saturate(170%); backdrop-filter: blur(30px) saturate(170%);
+  box-shadow: inset 0 0 0 1px var(--pg-rim), inset 0 1px 0 var(--pg-top), 0 -18px 60px -26px var(--pg-shade); transition: transform .62s var(--glide), visibility 0s linear .62s }
+.r17 .pn.on { transition: transform .62s var(--glide) }
+.r17 .pn.on.drag { transition: none }
+.r17 .pn::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--pg-sheen); pointer-events: none }
+.r17 .pns { background: rgb(5 5 8 / .22) }
+@media (min-width: 1024px) {
+  .r17 .pn { transform-origin: 100% 50%; transform: translateX(calc(100% + 40px)) scale(.97); box-shadow: inset 0 0 0 1px var(--pg-rim), inset 0 1px 0 var(--pg-top), 0 2px 6px rgb(15 23 42 / .05), 0 34px 90px -30px var(--pg-shade) }
+  .r17 .pn.on { transform: none }
+  .r17 .pns { background: rgb(5 5 8 / .05) }
+}
+.r17 .pnh { border-bottom-color: rgb(var(--ink-rgb) / .07) }
+.r17 .pnh .nb, .r17 .pnh .bk, .r17 .pmig { background: var(--pg-tile); box-shadow: inset 0 0 0 1px var(--pg-tile-rim), 0 1px 2px rgb(15 23 42 / .05) }
+.r17 .pn .grab { background: rgb(var(--ink-rgb) / .22) }
+.r17 .ro { background: var(--pg-bg); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%); box-shadow: inset 0 0 0 1px var(--pg-rim), inset 0 1px 0 var(--pg-top), 0 18px 40px -18px var(--pg-shade) }
+.r17 .ro .x { background: var(--pg-tile); box-shadow: inset 0 0 0 1px var(--pg-tile-rim) }
+@media (prefers-reduced-motion: reduce) { .r17 .pn { transition: none !important } }
+
+/* ---------- scroll: motion tied to each block's place on screen, run by the browser off the main thread (no script,
+   no fades, nothing hidden). A reel's cards glide in from the right as it comes up, done before it reaches the middle;
+   heads rise into place as they arrive; cards and the story sit back a touch as they pass up under the header.
+   Scrolling back plays it in reverse, so re-reading never waits on anything ---------- */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .r17 .rl { view-timeline: --r17-reel block; overflow-y: hidden }
+    .r17 .rcw > .rc { transform-origin: 50% 100%; animation: r17-in linear both, r17-back linear both; animation-timeline: --r17-reel, --r17-reel; animation-range: entry 0% entry 80%, exit 30% exit 100% }
+    .r17 .lh, .r17 .op { animation: r17-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 90% }
+    .r17 #ds { transform-origin: 50% 100%; animation: r17-back linear both; animation-timeline: view(); animation-range: exit 35% exit 100% }
+  }
+}
+@keyframes r17-in { from { translate: calc(64px + var(--i, 0) * 36px) 0 } to { translate: 0 0 } }
+@keyframes r17-rise { from { translate: 0 40px } to { translate: 0 0 } }
+@keyframes r17-back { from { scale: 1 } to { scale: .94 } }
+

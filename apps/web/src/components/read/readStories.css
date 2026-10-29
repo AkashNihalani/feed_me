@@ -1,0 +1,327 @@
+/* ─────────────────────────────────────────────────────────────
+   READ STORIES (ReadStories.tsx) — the top of a read, played as
+   Instagram plays a story. What makes it one is its top: the bars
+   (the one in view filling) and which story it is.
+
+   - A phone or a tablet: the read's start (whose, how many posts,
+     when, read for whom), then a stack of cards as tall as the room
+     between the folded header and the nav (scrolled to, the header
+     folds and the card has the screen). On a card: the top over its
+     picture, its number and line over its foot; a tap on those opens
+     the rest over the picture, as a Feed card's reading opens. Each
+     card is rounded on its own, so going on it can slide away past
+     the screen's edge while the next rises from under it.
+   - A laptop up (1024, where the rail takes over the chrome): the
+     top runs across the whole stage (the reader switch at its end);
+     under it the stories are cards in a row, the one in view first
+     (its post 4:5, the whole reading beside it), the next dimmed at
+     its side.
+
+   The read's own tokens (.rd in readTab.css), light and dark; type
+   on a picture is white in either theme, crimson only for meaning.
+   The only buttons are what open something: a story's post mortem
+   (white, as the Feed's "Open on Instagram") and its place on the
+   map (glass).
+   ───────────────────────────────────────────────────────────── */
+
+.rs {
+  /* a phone: the foot of the app's header open and folded, and the top of its nav (FeedStream's probes) */
+  --rs-top: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px) + var(--fm-mobile-header-chrome-height, 152px));
+  --rs-fold: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px) + var(--fm-mobile-header-chrome-compressed-height, 68px));
+  --rs-foot: calc(86px + env(safe-area-inset-bottom, 0px));
+  /* the card: the screen less its gutters, as tall as the room between the folded header and the nav */
+  --rs-cw: min(calc(100vw - 32px), 480px);
+  --rs-ch: min(860px, max(380px, calc(100svh - var(--rs-fold) - var(--rs-foot) - 26px)));
+  --rs-pic: #0c0c10;
+  position: relative;
+  display: block;
+  padding: calc(var(--rs-top) + 12px) 0 30px;
+  background: var(--bg);
+}
+@media (min-width: 640px) {
+  .rs {
+    --rs-top: calc(14px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px) + var(--fm-mobile-header-chrome-height, 152px));
+    --rs-fold: calc(14px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px) + var(--fm-mobile-header-chrome-compressed-height, 68px));
+  }
+}
+@media (min-width: 768px) {
+  .rs {
+    --rs-top: calc(20px + var(--pwa-top-fix, 0px) + var(--fm-mobile-header-chrome-height, 152px));
+    --rs-fold: calc(20px + var(--pwa-top-fix, 0px) + var(--fm-mobile-header-chrome-compressed-height, 68px));
+  }
+}
+.rs-probe { position: absolute; left: 0; top: 0; width: 0; height: var(--rs-fold); visibility: hidden; pointer-events: none; }
+
+.rs button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent; }
+.rs h2, .rs h3, .rs p, .rs ul { margin: 0; }
+
+/* who the read is for: one switch for the whole read (the read's start on a phone, the top's end on a laptop) */
+.rs .rs-who { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 14px; border-radius: 999px; background: var(--s2); color: var(--ink); font: 600 13px/1 var(--display); letter-spacing: -.005em; white-space: nowrap; transition: transform calc(150ms * var(--fm-tempo, 1)) ease; }
+.rs .rs-who span { font-weight: 500; color: var(--ink-3); }
+.rs .rs-who i { font-style: normal; font-size: 1.15em; line-height: 0; color: var(--rose); transform: translateY(-.12em); }
+.rs .rs-who:active { transform: scale(.97); }
+
+/* ---------- the story: its top, its picture ---------- */
+.rs-stage { touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.rs-top { pointer-events: none; }
+.rs-top .rs-who { pointer-events: auto; }
+.rs-bars { display: flex; gap: 4px; }
+.rs-bar { position: relative; flex: 1 1 0; min-width: 0; height: 2.5px; border-radius: 2px; overflow: hidden; background: rgba(255, 255, 255, .34); }
+.rs-bar i { position: absolute; inset: 0; background: #fff; transform: scaleX(0); transform-origin: left center; }
+.rs-bar.past i { transform: none; }
+.rs-head { display: flex; align-items: center; gap: 10px; min-width: 0; font: 600 14.5px/1.2 var(--display); letter-spacing: -.005em; color: #fff; }
+.rs-head b { font-weight: 600; white-space: nowrap; }
+.rs-head em { font: 500 13.5px/1 var(--display); font-style: normal; color: rgba(255, 255, 255, .7); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* the story's badge, where Instagram puts the account's picture: its chapter's glyph in a ring */
+/* the head's picture: the feeder's own, round, as Instagram's */
+.rs-av { flex: none; display: grid; place-items: center; overflow: hidden; width: 32px; height: 32px; border-radius: 50%; background: #1b1b20; color: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, .28); }
+.rs-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rs-av i { font: 700 13px/1 var(--display); font-style: normal; }
+/* its pause: holds the story until it's played again */
+.rs .rs-pp { flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin: -4px -6px -4px auto; border-radius: 50%; color: #fff; pointer-events: auto; }
+.rs-pp svg { width: 17px; height: 17px; fill: currentColor; stroke: none; }
+.rs .rs-pp:active { background: rgba(255, 255, 255, .14); }
+.rs-media { position: absolute; inset: 0; overflow: hidden; background: var(--rs-pic); }
+.rs-cv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+/* a post of another shape than a reel: whole, over a soft wash of itself */
+.rs-cv.fit { object-fit: contain; }
+.rs-wash { position: absolute; inset: -48px; background: center / cover no-repeat; filter: blur(30px) saturate(1.15) brightness(.6); }
+.rs-glow { background: radial-gradient(110% 70% at 14% 0%, rgba(218, 46, 70, .36), transparent 62%), radial-gradient(90% 60% at 100% 100%, rgba(218, 46, 70, .14), transparent 60%), var(--rs-pic); }
+/* the read's start: every post, dimmed to a ground for its words */
+.rs-mo { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-content: start; gap: 2px; filter: brightness(.5) saturate(.85); }
+.rs-mo i { display: block; aspect-ratio: 9 / 16; background: #17171c center / cover no-repeat; }
+/* the end: the map */
+.rs-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: radial-gradient(60% 34% at 50% 50%, rgba(218, 46, 70, .22), transparent 72%), #09090c; }
+.rs-map circle { fill: none; stroke: rgba(255, 255, 255, .13); stroke-width: 1; }
+.rs-map rect { fill: rgba(255, 255, 255, .34); }
+.rs-map rect.up { fill: var(--rose); }
+.rs-map .hx { fill: rgba(255, 255, 255, .05); stroke: rgba(255, 255, 255, .5); stroke-width: 1.2; }
+.rs-map .hx.up { fill: var(--rose); stroke: none; }
+.rs-map .core { fill: #fff; stroke: none; }
+.rs-scrim { position: absolute; inset: 0; pointer-events: none; }
+.rs-foot { --t1: #fff; --t2: rgba(255, 255, 255, .86); --t3: rgba(255, 255, 255, .66); --bar: rgba(255, 255, 255, .22); position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; color: var(--t1); pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 16px rgba(0, 0, 0, .38); }
+.rs-foot .rs-act, .rs-foot .rs-tog { text-shadow: none; }
+/* which story it is: a quiet kicker over its number */
+.rs .rs-kk { display: block; margin-bottom: 10px; font: 700 11px/1.2 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--t2); }
+.rs-foot a, .rs-foot button { pointer-events: auto; }
+/* a card beneath the one moving darkens, and clears as it comes up */
+.rs-shade { position: absolute; inset: 0; z-index: 5; background: #000; opacity: 0; pointer-events: none; }
+/* where a click goes (a laptop's mouse sees a chevron at that edge; a phone's tap is read from where it lands) */
+.rs-tap { position: absolute; top: 0; bottom: 0; z-index: 6; display: none; align-items: center; }
+.rs-tap.prev { left: 0; width: 30%; justify-content: flex-start; }
+.rs-tap.next { right: 0; width: 70%; justify-content: flex-end; }
+
+/* ---------- the reading: white on the picture, the read's ink beside it ---------- */
+.rs .rs-num { display: block; font: 700 clamp(46px, 13vw, 58px)/.86 var(--display); letter-spacing: -.055em; font-variant-numeric: tabular-nums; color: var(--t1); }
+.rs .rs-unit { display: block; margin-top: 8px; max-width: 34ch; font: 500 13.5px/1.38 var(--body); color: var(--t2); }
+.rs-stat + .rs-line1, .rs-stat + .rs-body { margin-top: 12px; }
+.rs-body { display: flex; flex-direction: column; min-width: 0; }
+.rs .rs-verdict { font: 700 clamp(26px, 7.4vw, 32px)/1.05 var(--display); letter-spacing: -.04em; color: var(--t1); text-wrap: balance; }
+.rs .rs-claim { font: 700 clamp(21px, 6vw, 25px)/1.1 var(--display); letter-spacing: -.035em; color: var(--t1); text-wrap: balance; }
+.rs .rs-why { margin-top: 10px; font: 500 14.5px/1.5 var(--body); color: var(--t2); text-wrap: pretty; }
+.rs .rs-why .ql, .rs .rs-so .ql { color: var(--t1); }
+.rs-foot .ql, .rs-sr .ql { text-decoration-color: rgba(255, 255, 255, .42); }
+/* what the posts are made of: each thing, how many of its posts landed */
+.rs .rs-rows { margin-top: 14px; padding: 0; list-style: none; display: grid; gap: 11px; }
+.rs .rs-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 14px; row-gap: 7px; }
+.rs .rs-rows b { font: 600 15px/1.2 var(--display); letter-spacing: -.015em; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs .rs-rows em { font: 600 13px/1 var(--display); font-style: normal; color: var(--t2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rs .rs-rb { grid-column: 1 / -1; display: block; height: 3px; border-radius: 3px; background: var(--bar); overflow: hidden; }
+.rs .rs-rb i { display: block; height: 100%; border-radius: 3px; background: var(--rose); transform-origin: left center; }
+/* a rule's two sides: what lands, what sinks */
+.rs .rs-sides { margin-top: 2px; display: grid; gap: 7px; }
+.rs .rs-sides span { display: flex; align-items: baseline; gap: .55em; font: 600 17px/1.25 var(--display); letter-spacing: -.02em; }
+.rs .rs-sides i { flex: none; font-style: normal; font-size: .6em; transform: translateY(-.14em); }
+.rs .rs-sides .lands { color: var(--t1); }
+.rs .rs-sides .lands i { color: var(--rose); }
+.rs .rs-sides .sinks { color: var(--t3); }
+.rs .rs-rec { display: block; margin-top: 12px; font: 600 12.5px/1.3 var(--display); letter-spacing: .02em; color: var(--t3); }
+/* what to do, for whoever is reading: a crimson rule down its side, whose read it is over it */
+.rs .rs-so { margin-top: 16px; display: grid; justify-items: start; gap: 7px; padding-left: 13px; border-left: 2px solid var(--rose); }
+.rs .rs-so em { font: 700 10.5px/1.2 var(--display); font-style: normal; letter-spacing: .15em; text-transform: uppercase; color: var(--t2); }
+.rs .rs-so > span { font: 600 15px/1.4 var(--display); letter-spacing: -.012em; color: var(--t1); text-wrap: pretty; }
+/* where a story leads: its post mortem (white, the way out) and its place on the map (glass) */
+.rs .rs-acts { margin-top: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rs .rs-act {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px;
+  background: #fff; color: #0b0b0f; font: 700 13px/1 var(--display); letter-spacing: -.005em; text-decoration: none; white-space: nowrap;
+  transition: transform calc(150ms * var(--fm-tempo, 1)) ease-out; -webkit-tap-highlight-color: transparent;
+}
+.rs .rs-act.ghost { background: rgba(255, 255, 255, .14); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); padding-left: 13px; }
+.rs .rs-act svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform calc(200ms * var(--fm-tempo, 1)) ease-out; }
+.rs .rs-act.ghost svg { stroke-width: 2; }
+.rs .rs-act:active { transform: scale(.97); }
+@media (hover: hover) { .rs .rs-act:not(.ghost):hover svg { transform: translate3d(1px, -1px, 0); } .rs .rs-act.ghost:hover { background: rgba(255, 255, 255, .2); } }
+.rs .rs-act:focus-visible, .rs .rs-who:focus-visible, .rs .rs-tog:focus-visible { outline: 2px solid rgba(255, 255, 255, .8); outline-offset: 2px; }
+
+/* ---------- a phone or a tablet: the read's start, the stack ---------- */
+@media (max-width: 1023.98px) {
+  .rs-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: var(--rs-cw); min-height: 56px; margin: 0 auto 14px; }
+  .rs-intro-t { display: grid; gap: 4px; min-width: 0; }
+  .rs-intro-t b { font: 700 21px/1.05 var(--display); letter-spacing: -.035em; color: var(--ink); }
+  .rs-intro-t span { font: 500 13px/1.2 var(--display); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rs-stage { position: relative; isolation: isolate; container: rs-card / size; width: var(--rs-cw); height: var(--rs-ch); margin: 0 auto; }
+  /* the bars and the pause stay put over the cards (each card brings its own head and its own shade under them) */
+  /* the top stays still over the frame while the stories move under it: the bars, whose stories, the pause */
+  .rs-top { position: absolute; z-index: 7; top: 0; left: 0; right: 0; padding: 10px 10px 34px; border-radius: 24px 24px 0 0; background: linear-gradient(180deg, rgba(5, 5, 8, .74) 0%, rgba(5, 5, 8, .52) 42%, rgba(5, 5, 8, .2) 74%, rgba(5, 5, 8, 0) 100%); }
+  .rs-top .rs-bars { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+  .rs-fh { height: 36px; margin-top: 10px; padding: 0 0 0 4px; text-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 1px 12px rgba(0, 0, 0, .4); }
+  .rs-fh b { overflow: hidden; text-overflow: ellipsis; }
+  .rs-fh .rs-pp { margin: 0 -2px 0 auto; pointer-events: auto; }
+  /* its post's date changes with the story, in a breath */
+  .rs-when { animation: rs-when calc(240ms * var(--fm-tempo, 1)) ease both; }
+  .rs-card { position: absolute; inset: 0; cursor: pointer; overflow: hidden; isolation: isolate; border-radius: 24px; clip-path: inset(0 round 24px); background: var(--rs-pic); }
+  /* each story a card of its own (rounded, its picture inside it), the one in view on top */
+  .rs-face { position: absolute; inset: 0; visibility: hidden; overflow: hidden; isolation: isolate; background: var(--rs-pic); color: #fff; }
+  .rs-face.turn { will-change: transform; }
+  .rs-face.turn .rs-media { will-change: transform; }
+  .rs-face.on, .rs-face.turn { z-index: 3; visibility: visible; }
+  /* each card's shade: dark under its head at the top, and under its words at the foot */
+  .rs-scrim { background: linear-gradient(180deg, rgba(5, 5, 8, .3) 0%, rgba(5, 5, 8, 0) 16%, rgba(5, 5, 8, 0) 30%, rgba(5, 5, 8, .5) 45%, rgba(5, 5, 8, .84) 61%, rgba(5, 5, 8, .95) 78%, rgba(5, 5, 8, .97) 100%); }
+  .rs-face.k-end .rs-scrim { background: linear-gradient(180deg, rgba(5, 5, 8, .3) 0%, rgba(5, 5, 8, 0) 16%, rgba(5, 5, 8, 0) 56%, rgba(5, 5, 8, .84) 74%, rgba(5, 5, 8, .95) 100%); }
+  .rs-face.k-made .rs-scrim, .rs-face.k-verdict .rs-scrim, .rs-face.k-take .rs-scrim { background: linear-gradient(180deg, rgba(5, 5, 8, .3) 0%, rgba(5, 5, 8, 0) 16%, rgba(5, 5, 8, .62) 42%, rgba(5, 5, 8, .9) 60%, rgba(5, 5, 8, .96) 100%); }
+  .rs-foot { padding: 0 18px 18px; }
+  /* its foot: the number and the line; a tap on them opens the rest over the picture, a Feed card's way */
+  .rs-sum { position: relative; }
+  .rs-sum.more { pointer-events: auto; cursor: pointer; }
+  .rs-line1 { display: flex; align-items: flex-end; gap: 12px; }
+  .rs-line1 > h2, .rs-line1 > h3 { flex: 1 1 auto; min-width: 0; }
+  .rs .rs-tog { flex: none; display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 1px; border-radius: 50%; background: rgba(255, 255, 255, .14); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+  .rs-tog svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; transition: transform calc(380ms * var(--fm-tempo, 1)) cubic-bezier(.32, .72, 0, 1); }
+  .rs-face.open .rs-tog svg { transform: rotate(180deg); }
+  .rs-more { display: none; }
+  .rs-face.open .rs-more {
+    display: block; margin-top: 4px; max-height: calc(var(--rs-ch) * .52); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+    pointer-events: auto; touch-action: pan-y; padding-bottom: 6px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+  }
+  .rs-more::-webkit-scrollbar { display: none; }
+  .rs-fshade { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0, 0, 0, .3) 0%, rgba(0, 0, 0, .74) 34%, rgba(0, 0, 0, .88) 100%); transition: opacity calc(300ms * var(--fm-tempo, 1)) ease; }
+  .rs-face.open .rs-fshade { opacity: 1; }
+  .rs-stage.open .rs-top { opacity: .4; transition: opacity calc(240ms * var(--fm-tempo, 1)) ease; }
+}
+/* a short card: the type comes down so the line still fits under the picture */
+@container rs-card (max-height: 520px) {
+  .rs .rs-num { font-size: 42px; }
+  .rs .rs-unit { margin-top: 6px; font-size: 12.5px; }
+  .rs .rs-verdict { font-size: 26px; }
+  .rs .rs-claim { font-size: 20.5px; }
+  .rs .rs-why { font-size: 13.5px; }
+  .rs .rs-rows { gap: 9px; }
+  .rs .rs-rows b { font-size: 14.5px; }
+}
+
+/* ---------- a laptop up: the top across the stage, the stories as cards in a row ---------- */
+@media (min-width: 1024px) {
+  .rs {
+    /* a card: its post 4:5 at about two thirds of the window's height, its reading beside it (narrower where the
+       window is, so the next card still shows) */
+    --rs-ch: clamp(380px, 64vh, 580px);
+    --rs-mw: calc(var(--rs-ch) * .8);
+    --rs-rw: clamp(280px, min(calc(var(--rs-ch) * .92), calc(100vw - var(--fm-rail-x) - 2 * var(--gut) - var(--rs-mw) - 140px)), 500px);
+    --rs-sw: calc(var(--rs-mw) + var(--rs-rw));
+    --rs-sg: 20px;
+    /* the read's own gutter: the stories start on the line the wall starts on */
+    padding: var(--fm-desk-top) var(--gut) 30px;
+  }
+  .rs-stage { display: grid; row-gap: 18px; }
+  .rs-top { display: grid; gap: 14px; }
+  .rs-bars { gap: 6px; }
+  .rs-bar { height: 3px; background: var(--hair-2); }
+  .rs-bar i { background: var(--ink); }
+  .rs-head { gap: 12px; font-size: 15px; color: var(--ink); }
+  .rs-head em { color: var(--ink-3); font-size: 13.5px; }
+  .rs-av { width: 30px; height: 30px; box-shadow: 0 0 0 1px var(--hair-2); }
+  .rs-sr .rs-kk { margin-bottom: clamp(10px, 1.6vh, 14px); }
+  .rs .rs-pp { margin: -6px -6px -6px 6px; color: var(--ink); }
+  .rs .rs-pp:hover { background: var(--s2); }
+  .rs-whose { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13.5px/1.2 var(--display); color: var(--ink-3); }
+  .rs-head .rs-who { align-self: center; height: 30px; margin-left: 14px; font-size: 12.5px; }
+  /* the row: the card in view at the start, the next at its side; a tap slides the row along, each card whole */
+  .rs-view { position: relative; overflow: hidden; height: var(--rs-ch); }
+  .rs-track {
+    display: flex; gap: var(--rs-sg); height: 100%;
+    transform: translate3d(calc(var(--at, 0) * -1 * (var(--rs-sw) + var(--rs-sg))), 0, 0);
+    transition: transform calc(620ms * var(--fm-tempo, 1)) cubic-bezier(.32, .72, 0, 1);
+  }
+  .rs-slide { position: relative; isolation: isolate; flex: none; display: grid; grid-template-columns: var(--rs-mw) var(--rs-rw); width: var(--rs-sw); height: 100%; overflow: hidden; border-radius: 22px; background: var(--rs-pic); color: #fff; cursor: pointer; }
+  .rs-pic { position: relative; overflow: hidden; }
+  .rs-mo { filter: brightness(.82) saturate(.95); }
+  /* a little of the story on its post: its number at the foot */
+  .rs-scrim { background: linear-gradient(180deg, rgba(5, 5, 8, 0) 54%, rgba(5, 5, 8, .68) 82%, rgba(5, 5, 8, .86) 100%); }
+  .k-made .rs-scrim, .k-end .rs-scrim { opacity: 0; }
+  .rs-foot { padding: 0 22px 22px; }
+  .rs .rs-num { font-size: clamp(50px, 7.2vh, 78px); }
+  .rs .rs-unit { margin-top: 10px; font-size: 14px; }
+  /* the rest of its reading, beside the post on the card */
+  .rs-sr { --t1: #fff; --t2: rgba(255, 255, 255, .78); --t3: rgba(255, 255, 255, .58); --bar: rgba(255, 255, 255, .18); align-self: center; min-width: 0; padding: 30px clamp(24px, 2.6vw, 38px); color: var(--t1); }
+  .rs-sr .ql { text-decoration-color: rgba(255, 255, 255, .42); }
+  .rs-sr .rs-verdict { font-size: clamp(26px, min(4.6vh, 2.9vw), 44px); line-height: 1.05; font-weight: 600; letter-spacing: -.04em; }
+  .rs-sr .rs-claim { font-size: clamp(22px, min(3.6vh, 2.4vw), 34px); line-height: 1.1; font-weight: 600; letter-spacing: -.03em; }
+  .rs-sr .rs-why { margin-top: clamp(10px, 1.8vh, 16px); font-size: clamp(14.5px, 1.85vh, 17px); line-height: 1.55; }
+  .rs-sr .rs-verdict + .rs-why { margin-top: clamp(12px, 2vh, 18px); font-size: clamp(15.5px, 2vh, 18px); }
+  .rs-sr .rs-rows { margin-top: clamp(14px, 2.4vh, 22px); gap: clamp(10px, 1.6vh, 14px); }
+  .rs-sr .rs-rows b { font-size: 16px; }
+  .rs-sr .rs-rb { height: 4px; }
+  .rs-sr .rs-sides { margin-top: clamp(12px, 2vh, 18px); gap: 9px; }
+  .rs-sr .rs-claim + .rs-why, .rs-sr .rs-claim + .rs-rows { margin-top: clamp(12px, 2vh, 18px); }
+  .rs-sr .rs-sides span { font-size: clamp(16px, 2.2vh, 20px); line-height: 1.3; }
+  .rs-sr .rs-so { margin-top: clamp(14px, 2.2vh, 20px); gap: 8px; padding-left: 15px; }
+  .rs-sr .rs-so > span { font-size: clamp(14.5px, 1.85vh, 17px); line-height: 1.45; }
+  .rs-sr .rs-acts { margin-top: clamp(16px, 2.6vh, 24px); }
+  /* a card waiting: dimmed toward the page, clearing as it comes into view */
+  .rs-dim { position: absolute; inset: 0; z-index: 8; background: var(--bg); opacity: .62; pointer-events: none; transition: opacity calc(460ms * var(--fm-tempo, 1)) ease; }
+  .rs-slide.on .rs-dim { opacity: 0; }
+  @media (hover: hover) { .rs-slide:not(.on):hover .rs-dim { opacity: .46; } }
+  /* pointing at the post in view: the edge a click would take darkens a little and shows its chevron */
+  .rs-tap { display: flex; }
+  .rs-tap::before { content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity calc(260ms * var(--fm-tempo, 1)) ease; }
+  .rs-tap.prev::before { background: linear-gradient(90deg, rgba(5, 5, 8, .38), rgba(5, 5, 8, 0)); }
+  .rs-tap.next::before { background: linear-gradient(270deg, rgba(5, 5, 8, .38), rgba(5, 5, 8, 0) 46%); }
+  .rs-tap i { position: relative; display: grid; place-items: center; width: 40px; height: 60px; margin: 0 6px; opacity: 0; transition: opacity calc(260ms * var(--fm-tempo, 1)) ease; }
+  .rs-tap svg { width: 28px; height: 28px; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 1px 8px rgba(0, 0, 0, .45)); }
+  .rs-stage.first .rs-tap.prev { visibility: hidden; }
+  @media (hover: hover) { .rs-tap:hover::before, .rs-tap:hover i { opacity: 1; } }
+}
+
+/* ---------- the Feeder File, tucked away: a layer over the read, sliding up from the foot (ReadTab) ---------- */
+/* (a frame over a layer of its own: readLayerMotion moves both as it opens out of a story's card and closes back. It
+   has the read's tokens but isn't an .rd: the read's own rules never reach the map in it) */
+.rff { position: fixed; inset: 0; z-index: 1900; overflow: hidden; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--body); -webkit-font-smoothing: antialiased; transform-origin: 0 0; }
+.rff, .rff * { box-sizing: border-box; }
+.rff-in { position: absolute; inset: 0; display: flex; flex-direction: column; transform-origin: 0 0; }
+.rff[hidden] { display: none; }
+/* parked: put together ahead, out of sight (off the screen, so the map doesn't draw) until it's opened */
+.rff[data-parked] { visibility: hidden; pointer-events: none; transform: translate3d(0, 120vh, 0); }
+/* (the map's sheet shows itself when it's up: in the layer it shows only while the layer does) */
+.rff .ff.ffx.on { visibility: inherit; }
+.rff-bar {
+  flex: none; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--hair); background: var(--bg);
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+}
+.rff-bar button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 11px; border: 0; border-radius: 999px; background: var(--s2); color: var(--ink); font: 600 13px/1 var(--body); cursor: pointer; }
+.rff-bar button:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.rff-bar b { font: 600 16px/1.1 var(--display); letter-spacing: -.02em; color: var(--ink); }
+.rff-bar span { margin-left: auto; font: 500 12.5px/1 var(--body); color: var(--ink-3); }
+.rff-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+/* (the map in the layer's own flow; its full screen, also in the layer, keeps its own ground) */
+.rff-body > .ff { --ff-top: 14px; --ff-gut: 0px; background: none; }
+/* a post mortem or a run's read opened from it comes up over it */
+body.ff-layer .rd .ov { z-index: 2100; }
+/* on a phone the map's reading sheet lives in the layer, so the nav goes under the layer and the sheet covers it, as the
+   map's own full screen has it (v9.1); the header pill stays over the map */
+body.ff-layer.ff-full-n [data-fm-bottom-nav] { z-index: 1800; }
+
+@keyframes rs-when { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* nothing plays on its own: the story in view shows its bar full */
+  .rs-bar.on i { transform: none; }
+  .rs-tap::before, .rs-tap i, .rs-track, .rs-dim, .rs-tog svg, .rs-fshade, .rs-act, .rs-who { transition: none; }
+}
+
+/* the posts behind a finding, each with what it shows (tap opens it) */
+.rs .rs-pfl { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.rs .rs-pfl li { font: 500 13.5px/1.45 var(--body); color: var(--t2); padding-left: 12px; position: relative; text-wrap: pretty; }
+.rs .rs-pfl li::before { content: ''; position: absolute; left: 0; top: .62em; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .5; }
+.rs .rs-pfl li .ql { color: var(--t1); }

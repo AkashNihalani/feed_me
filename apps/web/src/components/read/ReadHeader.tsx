@@ -12,7 +12,10 @@
    - the view switch on the right (Runs · Repeats · Ranks), only
      while a read is open and only on a phone, where the lens
      isn't stuck under the header. It carries data-drop="lens",
-     which the engine's click router handles;
+     which the engine's click router handles. A read in three
+     parts (Read17) puts its part switch there instead (Story ·
+     Strategy · Split, Lead's timeframe control), docked at the
+     side rail's foot too;
    - the engine owns the moment a post is picked: it fills the
      readout (#rd-hread) and toggles `reading` on the title row
      (#rd-hdr), and the two trade places (readTab.css). It also
@@ -22,9 +25,10 @@
 import { useState, type Ref } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, useTabHeader } from '@/components/shell/TabHeader';
+import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, TimeframeControl, useTabHeader } from '@/components/shell/TabHeader';
 import { cn } from '@/lib/utils';
 import { readOf, type RailFeed, type RailFeeder } from '@/components/read/readFeeds';
+import { CHAPTERS, PARTS, chapterName, chapterOf, partName, partNumber, type Chapter, type Part } from '@/components/read/read17/Read17';
 
 const VIEW_LABEL: Record<string, string> = { runs: 'Runs', repeats: 'Repeats', ranks: 'Ranks' };
 const VIEW_ORDER: Record<string, number> = { runs: 0, repeats: 1, ranks: 2 };
@@ -41,6 +45,7 @@ export default function ReadHeader({
   eyebrow,
   view,
   showView,
+  chapter = null,
   leaving,
   armed,
   compressed,
@@ -59,6 +64,8 @@ export default function ReadHeader({
   eyebrow: string;
   view: string;
   showView: boolean;
+  // a read in three parts: the part on screen, and going to one
+  chapter?: { value: Part; onChange: (part: Part | Chapter) => void } | null;
   // the page is leaving for somewhere you just tapped: 'all', 'feed:<id>' or 'feeder:<handle>' (armed)
   leaving: boolean;
   armed: string | null;
@@ -114,13 +121,23 @@ export default function ReadHeader({
     </AnimatePresence>
   );
 
+  // the part switch: in the header it wears the part's number, as Lead's wears its range (so the row keeps the room the
+  // other tabs give the handle), and opens on every part by name; the side rail docks the three parts as a track
+  const partSwitch = chapter ? (
+    <TimeframeControl id="read" value={chapter.value} options={PARTS} label={partName} face={partNumber} menuWidth={184} name="Part of the read" onChange={chapter.onChange} />
+  ) : null;
+  const partTrack = chapter ? (
+    <TimeframeControl id="read-rail" value={chapterOf(chapter.value)} options={CHAPTERS} label={chapterName} name="Part of the read" onChange={chapter.onChange} />
+  ) : null;
+
   useTabHeader('read', {
     title: 'READ',
     eyebrow,
     label,
-    control: viewSwitch,
-    // (a laptop up the view switch is the page's own lens, stuck under the window's top: the side rail carries none)
-    railControl: null,
+    control: partSwitch ?? viewSwitch,
+    // (a laptop up the view switch is the page's own lens, stuck under the window's top: the side rail carries none; the
+    // part switch docks at its foot)
+    railControl: partTrack,
     compressed,
     className: `rd-header ${fontClass}`,
     feeds,

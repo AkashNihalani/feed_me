@@ -22,10 +22,11 @@ import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'reac
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion, type MotionProps } from 'framer-motion';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { SCENES } from '@/components/read/readerEngine';
-import { RUN_SIZE, RUN_SLOTS, cachedBoard, loadBoard, type BoardFeeder, type BoardPost, type BoardRun, type Momentum } from '@/components/read/readBoard';
+import { RUN_SIZE, RUN_SLOTS, cachedBoard, counted, loadBoard, noteFor, summaryOf, type BoardFeeder, type BoardPost, type Momentum } from '@/components/read/readBoard';
 import { READ_POSTS, readOf as READ_INDEX_OF, titleCase, type RailFeed, type RailFeeder } from '@/components/read/readFeeds';
 import { RAMP, shadeStyle } from '@/components/read/readShade';
 import feedReadsData from '@/data/readerFeedPreview.json';
+import { sec } from '@/lib/tempo';
 
 const SOFT_EASE = [0.16, 0.9, 0.2, 1] as const;
 
@@ -42,19 +43,12 @@ const ROW = { at: 60, gap: 40 };
 function cascade(base: number, k: number, beat: typeof TRAJ): CSSProperties {
   return { ['--rd' as string]: `${base + beat.at + k * beat.gap}ms` };
 }
-const WORDS = ['No one', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
-
 const GROUPS: { id: Momentum; title: string; line: string }[] = [
   { id: 'up', title: 'On the up', line: 'Their latest run beat the one before it.' },
   { id: 'down', title: 'Sliding', line: 'Their latest run fell short of the one before it.' },
   { id: 'level', title: 'Holding', line: 'Landing about where they were.' },
   { id: 'early', title: 'Too early to call', line: 'Not two runs of posts yet.' },
 ];
-
-function counted(n: number, lower = false) {
-  const word = n <= 10 ? WORDS[n] : String(n);
-  return lower ? word.toLowerCase() : word;
-}
 
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -70,41 +64,6 @@ function ago(row: BoardFeeder, post: BoardPost) {
   if (days < 14) return `${days}d ago`;
   if (days < 60) return `${Math.round(days / 7)}w ago`;
   return `${Math.round(days / 30)}mo ago`;
-}
-
-/* the line under a feeder's handle: the run the move is read from, against the one before it */
-function noteFor(row: BoardFeeder) {
-  if (row.momentum === 'early' || !row.now || row.now.tp == null) {
-    const core = row.total ? `${plural(row.total, 'post')} so far` : 'No posts tracked yet';
-    return { pre: '', core, full: core };
-  }
-  const pre = `${row.now.live ? 'This run' : 'Last run'}: typical post `;
-  const core = `top ${row.now.tp}%${row.before?.tp != null ? `, was ${row.before.tp}%` : ''}`;
-  return { pre, core, full: pre + core };
-}
-
-/* the board's headline and the line under it: how the group splits, who is strongest, who moved most */
-function summaryOf(rows: BoardFeeder[], where: string) {
-  const count = (m: Momentum) => rows.filter((row) => row.momentum === m).length;
-  const up = count('up');
-  const down = count('down');
-  const level = count('level');
-  const head = up && down ? `${counted(up)} on the up, ${counted(down, true)} sliding`
-    : up ? `${counted(up)} on the up, nobody sliding`
-    : down ? `${counted(down)} sliding, nobody on the up`
-    : level ? 'Everyone is holding steady'
-    : rows.length ? 'Too early to call anyone' : 'Nobody to read here yet';
-  const ranked = rows.filter((row): row is BoardFeeder & { now: BoardRun & { tp: number } } => row.now?.tp != null);
-  const strongest = [...ranked].sort((a, b) => a.now.tp - b.now.tp)[0] || null;
-  const moved = (row: (typeof ranked)[number]) => (row.before?.tp != null ? Math.abs(row.before.tp - row.now.tp) : 0);
-  const mover = [...ranked].sort((a, b) => moved(b) - moved(a))[0] || null;
-  const lines: string[] = [];
-  // every top % is against the feeder's own posts, so "strongest" means outdoing themselves the most
-  if (strongest) lines.push(`@${strongest.handle} is outdoing themselves the most ${where}: the typical post of their ${strongest.now.live ? 'current' : 'last'} run sits in their own top ${strongest.now.tp}%.`);
-  if (mover && mover !== strongest && mover.before?.tp != null && moved(mover) >= 8) {
-    lines.push(`@${mover.handle} moved the most, from their own top ${mover.before.tp}% to top ${mover.now.tp}%.`);
-  }
-  return { head, sub: lines.join(' ') };
 }
 
 /* a headline arrives word by word, each word sliding up out of its own mask, one after another (it leaves the
@@ -347,6 +306,7 @@ const MOVES: Record<string, { word: string; tone: '' | 'up' | 'dn'; weight: numb
   dropped: { word: 'Dropped', tone: 'dn', weight: 2 },
   sharpened: { word: 'Sharpened', tone: 'up', weight: 1 },
   tweaked: { word: 'Tweaked', tone: '', weight: 1 },
+  narrowed: { word: 'Narrowed', tone: '', weight: 1 },
   held: { word: 'Held', tone: '', weight: 0 },
 };
 const VERDICT: Record<FeedCall['verdict'], string> = { called: 'Called it', missed: 'Missed', open: 'Still open' };
@@ -386,10 +346,10 @@ function FeedRow({ handle, read, row, pic, rank, top, open, delay, onToggle, onO
   const counts = read.moves.reduce<Record<string, number>>((acc, move) => ({ ...acc, [move.move]: (acc[move.move] || 0) + 1 }), {});
   const hasFull = readable(handle);
   return (
-    <motion.div layout="position" transition={{ layout: { duration: 0.6, ease: SOFT_EASE } }} className={`rbd-row fb-row${throne ? ' throne' : ''}`} data-open={open || undefined}>
+    <motion.div layout="position" transition={{ layout: { duration: sec(0.6), ease: SOFT_EASE } }} className={`rbd-row fb-row${throne ? ' throne' : ''}`} data-open={open || undefined}>
       <button type="button" className="rbd-hd fb-hd" onClick={onToggle} aria-expanded={open} aria-label={`@${handle}: ${lead.law} ${open ? 'Close' : 'Show'} the read`}>
-        <motion.span className="rbd-fill" aria-hidden="true" initial={reduce ? false : { scaleX: 0 }} animate={{ scaleX: strength }} transition={{ duration: 1.1, delay: (delay + 160) / 1000, ease: SOFT_EASE }} />
-        {throne ? <motion.span className="rbd-crown" aria-hidden="true" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: (delay + 300) / 1000 }} /> : null}
+        <motion.span className="rbd-fill" aria-hidden="true" initial={reduce ? false : { scaleX: 0 }} animate={{ scaleX: strength }} transition={{ duration: sec(1.1), delay: sec((delay + 160) / 1000), ease: SOFT_EASE }} />
+        {throne ? <motion.span className="rbd-crown" aria-hidden="true" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: sec(0.9), delay: sec((delay + 300) / 1000)}} /> : null}
         <span className="rbd-n" aria-hidden="true">{pad2(rank)}</span>
         <span className="fb-av"><FeederStoryAvatar feeder={{ handle, profilePicUrl: pic }} className="text-[12px]" /></span>
         <span className="rbd-main">
@@ -414,11 +374,11 @@ function FeedRow({ handle, read, row, pic, rank, top, open, delay, onToggle, onO
             initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
             animate={reduce ? { opacity: 1 } : { height: 'auto', opacity: 1 }}
             exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ height: { duration: 0.56, ease: SOFT_EASE }, opacity: { duration: 0.36 } }}
+            transition={{ height: { duration: sec(0.56), ease: SOFT_EASE }, opacity: { duration: sec(0.36) } }}
           >
             <div className="fb-in">
-              <motion.p className="fb-line" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.12, ease: SOFT_EASE }}>{read.who}</motion.p>
-              <motion.div className="fb-rules" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2, ease: SOFT_EASE }}>
+              <motion.p className="fb-line" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: sec(0.6), delay: sec(0.12), ease: SOFT_EASE }}>{read.who}</motion.p>
+              <motion.div className="fb-rules" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: sec(0.6), delay: sec(0.2), ease: SOFT_EASE }}>
                 <span className="k">Its rules</span>
                 <ol>
                   {read.rules.map((rule, k) => (
@@ -430,20 +390,20 @@ function FeedRow({ handle, read, row, pic, rank, top, open, delay, onToggle, onO
                   ))}
                 </ol>
               </motion.div>
-              <motion.div className="fb-run" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.28, ease: SOFT_EASE }}>
+              <motion.div className="fb-run" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: sec(0.6), delay: sec(0.28), ease: SOFT_EASE }}>
                 <span className="k">Run {read.run} · what moved</span>
                 <p className="fb-head">{read.head}</p>
                 <ul>
                   {read.moves.map((move) => <li key={move.law + move.move}><span className={`mv ${MOVES[move.move]?.tone ?? ''}`}>{MOVES[move.move]?.word ?? move.move}</span><span><b>{move.law}</b>{move.line}</span></li>)}
                 </ul>
               </motion.div>
-              <motion.div className={`fb-call ${read.call.verdict}`} initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.36, ease: SOFT_EASE }}>
+              <motion.div className={`fb-call ${read.call.verdict}`} initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: sec(0.6), delay: sec(0.36), ease: SOFT_EASE }}>
                 <span className="k">On the record</span>
                 <p>{read.call.text}</p>
                 <span className="fb-v"><b>{VERDICT[read.call.verdict]}</b>{read.call.line}</span>
                 <span className="fb-next"><span className="k">Watching next</span>{read.next}</span>
               </motion.div>
-              <motion.div className="fb-ft" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.44 }}>
+              <motion.div className="fb-ft" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: sec(0.5), delay: sec(0.44) }}>
                 {hasFull
                   ? <button type="button" className="tj-go" onClick={(event) => onOpen(event.currentTarget)}>Open the full read<Chevron /></button>
                   : <span className="fb-soon">Full read for @{handle} is a placeholder for now</span>}
@@ -677,7 +637,7 @@ export default function ReadIndex({
     : {
       initial: depth ? { opacity: 0, y: 20, scale: 0.985 } : { opacity: 0, y: 16 },
       animate: depth ? { opacity: 1, y: 0, scale: 1 } : { opacity: 1, y: 0 },
-      transition: { duration: depth ? 0.8 : 0.72, delay: stepDelay(step) / 1000, ease: SOFT_EASE },
+      transition: { duration: sec(depth ? 0.8 : 0.72), delay: sec(stepDelay(step) / 1000), ease: SOFT_EASE },
     });
   const list = useMemo(() => (feed ? [feed] : feeds || []), [feed, feeds]);
   const pics = useMemo(() => {

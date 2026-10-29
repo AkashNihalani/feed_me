@@ -1,74 +1,352 @@
 {
-  "_note": "Hand-written placeholders for the Read feed page (one row per feeder the reader has read). anuj.mp4 mirrors readerPreview.json; the other three are stand-ins grounded in a couple of post cards each, until their real reads exist.",
-  "feeders": {
-    "anuj.mp4": {
-      "run": 4,
-      "posts": 40,
-      "who": "A man far too sure of himself, and a crowd that loves watching it backfire.",
-      "head": "Wrong and loud beats right and loud",
-      "rules": [
-        { "law": "He needs people in the frame.", "carry": [6, 10], "held": [20, 22], "move": "held" },
-        { "law": "He has to be the problem.", "carry": [6, 10], "held": [14, 17], "move": "sharpened" },
-        { "law": "The joke has to be his crowd’s life.", "carry": [4, 10], "held": [8, 9], "move": "sharpened" }
-      ],
-      "moves": [
-        { "move": "sharpened", "law": "He has to be the problem.", "line": "Same-day rants: Ronaldo “rigged” came 5th, the flyover 30th." },
-        { "move": "sharpened", "law": "The joke has to be his crowd’s life.", "line": "“Andheri East” came 6th; “UP” came 35th." },
-        { "move": "dropped", "law": "Mumbai vs Delhi is a lane.", "line": "City takes stalled. Folded into “his crowd’s life”." }
-      ],
-      "call": { "verdict": "called", "text": "When the crew comes back, the floor comes back.", "line": "Four crew posts, all in his top quarter." },
-      "next": "His next brand deal makes his top 10 only if it casts his ego."
+ "_note": "Hand-written placeholders for the Read feed page (one row per feeder the reader has read). anuj.mp4 mirrors readerPreview.json; the other three are stand-ins grounded in a couple of post cards each, until their real reads exist.",
+ "feeders": {
+  "anuj.mp4": {
+   "run": 3,
+   "posts": 30,
+   "who": "A comedian who plays the types you know, and the news.",
+   "head": "The government reel took 867,907 likes and 1,796 followers in a day, and only the news reel after it kept any of that crowd.",
+   "rules": [
+    {
+     "law": "His 0:00 text holds the whole joke, then he plays it",
+     "carry": [
+      6,
+      10
+     ],
+     "held": [
+      0,
+      0
+     ],
+     "move": "narrowed"
     },
-    "sufimotiwala": {
-      "run": 4,
-      "posts": 40,
-      "who": "A fashion historian with a grudge, roasting the red carpet one name-check at a time.",
-      "head": "The Met Gala made him; the family saga kept him",
-      "rules": [
-        { "law": "The roast lands when he knows more than the room.", "carry": [5, 10], "held": [11, 13], "move": "sharpened" },
-        { "law": "Desi craft on a global carpet is his home turf.", "carry": [3, 10], "held": [7, 8], "move": "held" },
-        { "law": "Family sagas outlast single looks.", "carry": [2, 10], "held": [3, 3], "move": "born" }
-      ],
-      "moves": [
-        { "move": "sharpened", "law": "The roast lands when he knows more than the room.", "line": "“The Met Gala should just be called the Indian Gala”: a dozen name-checks deep, and it landed." },
-        { "move": "born", "law": "Family sagas outlast single looks.", "line": "Three “new icon enters our dynasty” posts, all in his top half." }
-      ],
-      "call": { "verdict": "open", "text": "The dynasty series keeps climbing.", "line": "One more episode will tell." },
-      "next": "Whether the saga holds without a wedding to hang it on."
+    {
+     "law": "A paid post holds when the brand is only the set",
+     "carry": [
+      1,
+      10
+     ],
+     "held": [
+      0,
+      0
+     ],
+     "move": "narrowed"
     },
-    "rohitraghv_": {
-      "run": 3,
-      "posts": 30,
-      "who": "The friend who does everyone’s most insufferable impression, and a crowd that tags who it’s about.",
-      "head": "Lalit Modi’s podcast flex carried the run",
-      "rules": [
-        { "law": "Parody a real flexer, not a made-up type.", "carry": [5, 10], "held": [9, 11], "move": "sharpened" },
-        { "law": "Pop-culture TV is his safest lane.", "carry": [3, 10], "held": [8, 10], "move": "held" },
-        { "law": "A list needs a plea at the end.", "carry": [1, 10], "held": [4, 6], "move": "broke" }
-      ],
-      "moves": [
-        { "move": "sharpened", "law": "Parody a real flexer, not a made-up type.", "line": "Lalit Modi “casually flexing in every answer” beat everything before it." },
-        { "move": "broke", "law": "A list needs a plea at the end.", "line": "The teen-drama list had the plea and still sat mid-table." }
-      ],
-      "call": { "verdict": "missed", "text": "The teen-drama list makes his top 10.", "line": "It came 14th of 30. The plea wasn’t enough." },
-      "next": "Whether a second real-person parody repeats the Modi landing."
+    {
+     "law": "A carousel needs a made look or a twist on slide two",
+     "carry": [
+      1,
+      10
+     ],
+     "held": [
+      0,
+      0
+     ],
+     "move": "narrowed"
     },
-    "srishtigargg": {
-      "run": 4,
-      "posts": 40,
-      "who": "A sad-girl diary that brands pay to be the punchline of.",
-      "head": "Google Maps paid for her best sad-girl post",
-      "rules": [
-        { "law": "Her loneliness is the hook; the brand is the punchline.", "carry": [4, 10], "held": [9, 11], "move": "sharpened" },
-        { "law": "Voiceover diaries beat talking to camera.", "carry": [3, 10], "held": [7, 9], "move": "held" },
-        { "law": "A friend dragging her out sells the brand.", "carry": [2, 10], "held": [4, 4], "move": "born" }
-      ],
-      "moves": [
-        { "move": "born", "law": "A friend dragging her out sells the brand.", "line": "“My best friend never leaves the house” turned an Ask Maps plug into her best post of the run." },
-        { "move": "sharpened", "law": "Her loneliness is the hook; the brand is the punchline.", "line": "The Maps post and the Copenhagen café diary both landed in her top quarter." }
-      ],
-      "call": { "verdict": "called", "text": "Her next paid post lands if it stays a diary entry.", "line": "The Ask Maps post did, and came 3rd of 40." },
-      "next": "Whether a brand that isn’t a lifestyle app fits the diary."
+    {
+     "law": "He plays both sides when the types are ones everyone knows",
+     "carry": [
+      3,
+      10
+     ],
+     "held": [
+      0,
+      0
+     ],
+     "move": "sharpened"
     }
+   ],
+   "moves": [
+    {
+     "move": "narrowed",
+     "law": "His 0:00 text holds the whole joke, then he plays it.",
+     "line": "The Rahul reel named a target in text, not the joke: 42%."
+    },
+    {
+     "move": "narrowed",
+     "law": "A paid post holds when the brand is only the set.",
+     "line": "Amazon's price game and the Don YG flex both held his usual."
+    },
+    {
+     "move": "narrowed",
+     "law": "A carousel needs a made look or a twist on slide two.",
+     "line": "Floor-shot selfie pair hit 120%: a twist on slide two counts."
+    },
+    {
+     "move": "sharpened",
+     "law": "He plays both sides when the types are ones everyone knows.",
+     "line": "The government reel: two faces, twelve seconds, 218×."
+    }
+   ],
+   "call": {
+    "verdict": "missed",
+    "text": "Another two-sided reel of types people know will pass his usual, and the next paid post will sit under it again.",
+    "line": "Half right. The government reel was the two-sided reel I called, but the next paid posts, the Don YG flex and the Amazon game, held his usual."
+   },
+   "next": "Whether a second news reel goes big without the first one's crowd behind it.",
+   "since": [
+    "Two faces of the government sharpened the two-sided rule: 218× his usual in twelve seconds.",
+    "Set-up first narrowed after the Rahul reel.",
+    "Brand as the set replaces 'pitch as plot': Amazon's game and Don YG's flex held his usual."
+   ]
+  },
+  "sufimotiwala": {
+   "run": 4,
+   "posts": 40,
+   "who": "A fashion historian with a grudge, roasting the red carpet one name-check at a time.",
+   "head": "The Met Gala made him; the family saga kept him",
+   "rules": [
+    {
+     "law": "The roast lands when he knows more than the room.",
+     "carry": [
+      5,
+      10
+     ],
+     "held": [
+      11,
+      13
+     ],
+     "move": "sharpened"
+    },
+    {
+     "law": "Desi craft on a global carpet is his home turf.",
+     "carry": [
+      3,
+      10
+     ],
+     "held": [
+      7,
+      8
+     ],
+     "move": "held"
+    },
+    {
+     "law": "Family sagas outlast single looks.",
+     "carry": [
+      2,
+      10
+     ],
+     "held": [
+      3,
+      3
+     ],
+     "move": "born"
+    }
+   ],
+   "moves": [
+    {
+     "move": "sharpened",
+     "law": "The roast lands when he knows more than the room.",
+     "line": "“The Met Gala should just be called the Indian Gala”: a dozen name-checks deep, and it landed."
+    },
+    {
+     "move": "born",
+     "law": "Family sagas outlast single looks.",
+     "line": "Three “new icon enters our dynasty” posts, all in his top half."
+    }
+   ],
+   "call": {
+    "verdict": "open",
+    "text": "The dynasty series keeps climbing.",
+    "line": "One more episode will tell."
+   },
+   "next": "Whether the saga holds without a wedding to hang it on."
+  },
+  "rohitraghv_": {
+   "run": 3,
+   "posts": 30,
+   "who": "The friend who does everyone’s most insufferable impression, and a crowd that tags who it’s about.",
+   "head": "Lalit Modi’s podcast flex carried the run",
+   "rules": [
+    {
+     "law": "Parody a real flexer, not a made-up type.",
+     "carry": [
+      5,
+      10
+     ],
+     "held": [
+      9,
+      11
+     ],
+     "move": "sharpened"
+    },
+    {
+     "law": "Pop-culture TV is his safest lane.",
+     "carry": [
+      3,
+      10
+     ],
+     "held": [
+      8,
+      10
+     ],
+     "move": "held"
+    },
+    {
+     "law": "A list needs a plea at the end.",
+     "carry": [
+      1,
+      10
+     ],
+     "held": [
+      4,
+      6
+     ],
+     "move": "broke"
+    }
+   ],
+   "moves": [
+    {
+     "move": "sharpened",
+     "law": "Parody a real flexer, not a made-up type.",
+     "line": "Lalit Modi “casually flexing in every answer” beat everything before it."
+    },
+    {
+     "move": "broke",
+     "law": "A list needs a plea at the end.",
+     "line": "The teen-drama list had the plea and still sat mid-table."
+    }
+   ],
+   "call": {
+    "verdict": "missed",
+    "text": "The teen-drama list makes his top 10.",
+    "line": "It came 14th of 30. The plea wasn’t enough."
+   },
+   "next": "Whether a second real-person parody repeats the Modi landing."
+  },
+  "srishtigargg": {
+   "run": 4,
+   "posts": 40,
+   "who": "A sad-girl diary that brands pay to be the punchline of.",
+   "head": "Google Maps paid for her best sad-girl post",
+   "rules": [
+    {
+     "law": "Her loneliness is the hook; the brand is the punchline.",
+     "carry": [
+      4,
+      10
+     ],
+     "held": [
+      9,
+      11
+     ],
+     "move": "sharpened"
+    },
+    {
+     "law": "Voiceover diaries beat talking to camera.",
+     "carry": [
+      3,
+      10
+     ],
+     "held": [
+      7,
+      9
+     ],
+     "move": "held"
+    },
+    {
+     "law": "A friend dragging her out sells the brand.",
+     "carry": [
+      2,
+      10
+     ],
+     "held": [
+      4,
+      4
+     ],
+     "move": "born"
+    }
+   ],
+   "moves": [
+    {
+     "move": "born",
+     "law": "A friend dragging her out sells the brand.",
+     "line": "“My best friend never leaves the house” turned an Ask Maps plug into her best post of the run."
+    },
+    {
+     "move": "sharpened",
+     "law": "Her loneliness is the hook; the brand is the punchline.",
+     "line": "The Maps post and the Copenhagen café diary both landed in her top quarter."
+    }
+   ],
+   "call": {
+    "verdict": "called",
+    "text": "Her next paid post lands if it stays a diary entry.",
+    "line": "The Ask Maps post did, and came 3rd of 40."
+   },
+   "next": "Whether a brand that isn’t a lifestyle app fits the diary."
+  },
+  "lakmeindia": {
+   "run": 3,
+   "posts": 30,
+   "who": "A brand playing office, its skin officer stopping people mid-trend",
+   "head": "The big reels come from a person playing one trend out on screen, not from the costume or the coming-soon card.",
+   "rules": [
+    {
+     "law": "Open on one trend people really do, shown being done.",
+     "carry": [
+      5,
+      10
+     ],
+     "held": [
+      2,
+      3
+     ],
+     "move": "sharpened"
+    },
+    {
+     "law": "Give the real dates and times, not just 'coming soon'.",
+     "carry": [
+      2,
+      10
+     ],
+     "held": [
+      0,
+      0
+     ],
+     "move": "narrowed"
+    },
+    {
+     "law": "A product carousel shows Aneet holding the tube, after the facts.",
+     "carry": [
+      1,
+      10
+     ],
+     "held": [
+      2,
+      2
+     ],
+     "move": "sharpened"
+    }
+   ],
+   "moves": [
+    {
+     "move": "sharpened",
+     "law": "Open on one trend people really do, shown being done.",
+     "line": "The chilli episode: a trend played out, 74× against the list episode's 1.9×."
+    },
+    {
+     "move": "narrowed",
+     "law": "Give the real dates and times, not just 'coming soon'.",
+     "line": "The schedule carousel, 7.4×, against the montage's single date at 1.3×."
+    },
+    {
+     "move": "sharpened",
+     "law": "A product carousel shows Aneet holding the tube, after the facts.",
+     "line": "The lip balm and CC carousels: Aneet last, both about twice the usual."
+    }
+   ],
+   "call": {
+    "verdict": "called",
+    "text": "The next officer reel that names one plain habit in its first two seconds goes over 4× the usual again, while product carousels with no one presenting stay under 2×.",
+    "line": "Both episodes went past 4×, the Monday-calendar reel stayed at 2.6×; no-one-presenting posts stayed under 2× except the festive collage at 2.5×."
+   },
+   "next": "Whether episode 5 keeps a woman doing the trend, or goes back to Aneet alone to camera.",
+   "since": [
+    "A trend played out sharpened: chilli and layering episodes went 74× and 65×, the Monday-calendar reel 2.6×.",
+    "Coming soon alone broke twice; I narrowed it to real dates after the schedule carousel.",
+    "Aneet in carousels held on both new carousels, at about 2×."
+   ]
   }
+ }
 }

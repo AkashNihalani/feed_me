@@ -1,0 +1,964 @@
+/* The Feeder File (feederFileEngine.js, mounted by FeederFile.tsx): the Read tab's top component, a card on the page's
+   own column above the rules and the wall. The maps keep their own shape (circles stay circles). Two modes (Split and
+   Map: a small pill in the map's corner) share one panel: the account in a line, the reader's headline, what feeding and
+   fading mean, the things on both sides, then the account's world kind by kind, every row tied to the map. On a wide card the panel sits
+   beside the map and an opened thing's card takes its place; on a narrow one it sits under the map and the card rises
+   as a peek sheet on it. Full screen lifts the whole card into .ff-portal over everything.
+   It sits outside .rd (the tab's styles reuse generic class names), but it reads the tab's one token layer (the
+   `.rd, .ff` blocks in readTab.css), so the ground, ink, crimson and motion are the read's in both themes; the --ff-*
+   names below only point at them. Every rule is scoped under .ff. */
+.ff {
+  --ff-bg: var(--bg); --ff-bg-rgb: var(--bg-rgb); --ff-ink: var(--ink); --ff-ink-rgb: var(--ink-rgb); --ff-red: var(--rose); --ff-inv: var(--inv); --ff-inv-rgb: var(--inv-rgb);
+  /* the card's surface, as the read's cards */
+  --ff-surface: var(--s1); --ff-surface-rgb: var(--s1-rgb);
+  --ff-ease: var(--ease);
+  --ff-font: var(--body);
+  /* the header capsule's top and height, as #rd-main clears them (readTab.css) */
+  --ff-cap-top: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px));
+  --ff-top: calc(var(--ff-cap-top) + 166px);
+  --ff-gut: 16px;
+  --ff-card-h: clamp(620px, 82vh, 860px);
+  container: ff / inline-size;
+  position: relative; display: block; padding-top: var(--ff-top); padding-inline: var(--ff-gut); background: var(--ff-bg); color: var(--ff-ink);
+  font: 16px/1.5 var(--ff-font); -webkit-font-smoothing: antialiased; overflow-x: clip; color-scheme: light;
+}
+@media (min-width: 640px) { .ff { --ff-cap-top: calc(14px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px)); } }
+@media (min-width: 768px) { .ff { --ff-cap-top: calc(20px + var(--pwa-top-fix, 0px)); } }
+@media (min-width: 1024px) { .ff { --ff-top: var(--fm-desk-top); --ff-gut: clamp(24px, 3.4vw, 72px); } }
+/* before the engine has loaded, hold the card's place so nothing below jumps */
+.ff:empty::before { content: ""; display: block; height: min(var(--ff-card-h), 128vw); border-radius: 26px; background: var(--ff-surface); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .07); }
+/* the read below starts right under it, not under a second header gap */
+.ff + .rd.rd-page #rd-main { padding-top: 34px; }
+
+.ff * { box-sizing: border-box; }
+.ff button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ff button:focus-visible { outline: 1px solid var(--ff-red); outline-offset: 2px; }
+.ff .ic { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- the card. Inside it the page's tokens are the card's, so every plate and label sits on the surface it
+   floats over, and the engine paints the scene from the same --ff-bg */
+.ff .ff-wrap {
+  --ff-bg: var(--ff-surface); --ff-bg-rgb: var(--ff-surface-rgb);
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "stage" "tools" "body"; gap: 10px;
+  padding: 12px; border-radius: 26px; background: var(--ff-surface); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .07), 0 18px 40px -30px rgb(0 0 0 / .35);
+}
+.ff .ff-head { grid-area: head; min-width: 0; }
+.ff .ff-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 2px 4px 0; }
+.ff .ff-eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 10px/1.3 var(--ff-font); letter-spacing: .22em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ff-eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--ff-red); animation: none; }
+.ff .ff-status { text-align: right; font: 600 10px/1.45 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-status .r { color: var(--ff-red); font-weight: 700; }
+
+/* the map: keeps its own shape; a near-square box on a narrow card, the whole height beside the panel on a wide one */
+.ff .ff-stage { grid-area: stage; position: relative; width: 100%; aspect-ratio: 1 / 1.08; max-height: 66svh; min-height: 300px; overflow: hidden; border-radius: 18px; background: var(--ff-surface); user-select: none; -webkit-user-select: none; touch-action: pan-y; isolation: isolate; }
+.ff .ff-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: inherit; }
+/* how you're looking at it: a small pill in the map's corner */
+.ff .ff-hud { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 3; display: grid; justify-items: start; gap: 7px; pointer-events: none; }
+.ff .ff-lenses { pointer-events: auto; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgb(var(--ff-bg-rgb) / .8); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .1); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.ff .ff-lenses button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px; border-radius: 999px; color: rgb(var(--ff-ink-rgb) / .6); transition: background-color .3s var(--ff-ease), color .3s var(--ff-ease); }
+.ff .ff-lenses button svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ff .ff-lenses button b { font: 600 12px/1 var(--ff-font); letter-spacing: normal; }
+.ff .ff-lenses button.on { background: var(--ff-ink); color: var(--ff-inv); }
+@media (hover: hover) { .ff .ff-lenses button:not(.on):hover { color: var(--ff-ink); } }
+.ff .ff-key { margin: 0 0 0 8px; font: 600 12px/1.4 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+
+/* the map's buttons, bold, right by it */
+.ff .ff-tools { grid-area: tools; display: flex; gap: 6px; }
+.ff .ff-tool { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 14px; background: rgb(var(--ff-ink-rgb) / .06); font: 700 12px/1 var(--ff-font); letter-spacing: normal; color: var(--ff-ink); transition: background-color .3s var(--ff-ease); }
+.ff .ff-tool .ic { width: 16px; height: 16px; stroke-width: 2; }
+.ff .ff-tool.sq { width: 44px; padding: 0; font-size: 18px; font-weight: 600; }
+.ff .ff-tool[data-ff="full"] { flex: 1; }
+@media (hover: hover) { .ff .ff-tool:hover { background: rgb(var(--ff-ink-rgb) / .1); } }
+
+/* ---------- the panel: the view's own read, as a short scouting report */
+.ff .ff-body { grid-area: body; position: relative; min-width: 0; }
+.ff .ff-panel { padding: 8px 4px 4px; }
+.ff .ff-ph { padding: 0 2px; }
+.ff .ff-pk { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; font: 600 12px/1.4 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-pk b { color: var(--ff-ink); font-weight: 700; }
+.ff .ff-head1 { margin: 9px 0 0; font: 700 22px/1.1 var(--ff-font); letter-spacing: -0.04em; text-wrap: balance; color: var(--ff-ink); }
+.ff .ff-psub { margin: 9px 0 0; font: 400 14px/1.5 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .62); text-wrap: pretty; }
+.ff .ff-sec { margin-top: 20px; }
+.ff .ff-sh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 0 2px 7px; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .12); }
+.ff .ff-sh b { font: 700 14px/1.2 var(--ff-font); letter-spacing: normal; color: var(--ff-ink); }
+.ff .ff-sh b.up { color: var(--ff-red); }
+.ff .ff-sh span { font: 600 12px/1.3 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); text-align: right; }
+.ff .ff-row { width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 4px 10px 2px; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .06); text-align: left; transition: background-color .25s var(--ff-ease); }
+@media (hover: hover) { .ff .ff-row:hover, .ff .ff-grp:hover, .ff .ff-bh:hover, .ff .ff-vs:hover { background: rgb(var(--ff-ink-rgb) / .035); } }
+.ff .ff-ri { width: 28px; height: 28px; display: grid; place-items: center; background: rgb(var(--ff-ink-rgb) / .08); color: var(--ff-ink); clip-path: polygon(50% 0, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%); }
+.ff .ff-ri .ic { width: 13px; height: 13px; stroke-width: 2.2; }
+.ff .ff-rt { display: grid; gap: 2px; min-width: 0; }
+.ff .ff-rt b { font: 600 14px/1.2 var(--ff-font); letter-spacing: normal; color: var(--ff-ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ff .ff-rt i { font: 400 12px/1.35 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .6); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ff .ff-rr { display: grid; justify-items: end; gap: 2px; min-width: 40px; }
+.ff .ff-rr em { font: 700 16px/1 var(--ff-font); font-style: normal; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--ff-ink); }
+.ff .ff-rr i { font: 600 12px/1 var(--ff-font); font-style: normal; letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-rr.hot em { color: var(--ff-red); }
+.ff .ff-ktiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.ff .ff-ktile { display: grid; justify-items: center; gap: 4px; padding: 11px 4px 9px; border-radius: 14px; background: rgb(var(--ff-ink-rgb) / .05); transition: background-color .25s var(--ff-ease); }
+@media (hover: hover) { .ff .ff-ktile:hover { background: rgb(var(--ff-ink-rgb) / .09); } }
+.ff .ff-ktile .ic { width: 18px; height: 18px; stroke-width: 2; }
+.ff .ff-ktile b { font: 600 12px/1.1 var(--ff-font); letter-spacing: normal; }
+.ff .ff-ktile em { font: 700 10px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-back { display: inline-flex; align-items: center; height: 30px; margin: 0 0 12px; padding: 0 12px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 600 12px/1 var(--ff-font); }
+
+/* ---------- the split, everywhere: Feeding = above his usual post, Fading = under it. A post shows its side the same way
+   in every row, patch and card: red his top 10, ink feeding, grey (and a greyscale cover) fading */
+.ff .ff-kick { margin: 8px 0 0; font: 600 12px/1.45 var(--ff-font); letter-spacing: .06em; color: rgb(var(--ff-ink-rgb) / .6); font-variant-numeric: tabular-nums; }
+.ff .ff-sd { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; max-width: 136px; }
+.ff .ff-sd i { width: 7px; height: 7px; border-radius: 50%; background: var(--ff-ink); }
+.ff .ff-sd i.hot { background: var(--ff-red); }
+.ff .ff-sd i.dn { background: none; box-shadow: inset 0 0 0 1.3px rgb(var(--ff-ink-rgb) / .32); }
+.ff .ff-rd { display: grid; justify-items: end; min-width: 40px; }
+/* a post's cover, small: a red ring for his top 10, grey when it faded */
+/* a post's cover, round like the story rail: a gap ring in red for his top 10, in black when it fed; a post that faded
+   goes grey with no ring */
+.ff .ff-cv { position: relative; width: 32px; height: 32px; flex: none; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: rgb(var(--ff-ink-rgb) / .08); }
+.ff .ff-cv img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ff .ff-cv b { font: 700 12px/1 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .6); }
+/* no cover left (the media expired): the post's scene colours and its first letter */
+.ff .ff-cv .ff-cvf { position: absolute; inset: 0; display: grid; place-items: center; font: 700 12px/1 var(--ff-font); font-style: normal; color: rgb(255 255 255 / .92); }
+.ff .ff-cv.dn .ff-cvf { filter: grayscale(1) contrast(.92) brightness(1.04); opacity: .62; }
+.ff .ff-pmc .ff-cvf { position: relative; width: 100%; height: 100%; display: grid; place-items: center; font: 700 12px/1 var(--ff-font); font-style: normal; color: #fff; }
+.ff .ff-cv.up { box-shadow: 0 0 0 2px var(--ff-surface), 0 0 0 3.25px var(--ff-ink); }
+.ff .ff-cv.hot { box-shadow: 0 0 0 2px var(--ff-surface), 0 0 0 4px var(--ff-red); }
+.ff .ff-cv.dn { box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .1); }
+.ff .ff-cv.dn img { filter: grayscale(1) contrast(.92) brightness(1.04); opacity: .62; }
+html.dark .ff .ff-cv.dn img { opacity: .5; }
+.ff .ff-row.post { grid-template-columns: 38px minmax(0, 1fr) auto; }
+.ff .ff-row.post .ff-cv { margin-left: 3px; }
+/* the key to the dots, under the panel's headline */
+.ff .ff-lg { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; font: 600 12px/1 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-lg span { display: inline-flex; align-items: center; gap: 6px; }
+.ff .ff-lg i { width: 7px; height: 7px; border-radius: 50%; background: var(--ff-ink); }
+.ff .ff-lg i.hot { background: var(--ff-red); }
+.ff .ff-lg i.dn { background: none; box-shadow: inset 0 0 0 1.3px rgb(var(--ff-ink-rgb) / .32); }
+.ff .ff-psub b { color: var(--ff-ink); font-weight: 600; }
+/* new in his last 10, or not seen in it */
+.ff .ff-nw { display: inline-block; vertical-align: 1px; margin-left: 7px; padding: 3px 6px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 700 10px/1 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-nw.new { background: color-mix(in srgb, var(--ff-red) 12%, transparent); color: var(--ff-red); }
+.ff .ff-ex u { text-decoration: none; margin-left: 4px; font-weight: 700; font-size: 12px; color: var(--ff-ink); }
+.ff .ff-ex u.hot { color: var(--ff-red); }
+.ff .ff-ex u.dn { color: rgb(var(--ff-ink-rgb) / .6); }
+/* every one of a kind */
+.ff .ff-more { display: inline-flex; align-items: center; gap: 8px; height: 32px; margin: 10px 0 0 40px; padding: 0 12px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 600 12px/1 var(--ff-font); color: var(--ff-ink); transition: background-color .25s var(--ff-ease); }
+.ff .ff-more i { font-style: normal; color: rgb(var(--ff-ink-rgb) / .6); }
+@media (hover: hover) { .ff .ff-more:hover { background: rgb(var(--ff-ink-rgb) / .1); } }
+/* the codebook: the meaning, then where it turns up */
+.ff .ff-row.code { align-items: start; }
+.ff .ff-row.code .ff-ri { margin-top: 1px; }
+.ff .ff-row.code .ff-rt i { display: block; -webkit-line-clamp: unset; overflow: visible; color: rgb(var(--ff-ink-rgb) / .68); font-size: 12px; line-height: 1.42; }
+.ff .ff-ex { display: block; margin-top: 3px; padding-left: 10px; border-left: 1.5px solid rgb(var(--ff-ink-rgb) / .14); font: 400 12px/1.42 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-row.code .ff-rd, .ff .ff-row.code .ff-rr { margin-top: 2px; }
+.ff .ff-all { height: 22px; padding: 0 9px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 700 12px/1 var(--ff-font) !important; letter-spacing: normal; text-transform: none; color: var(--ff-ink) !important; }
+/* a group (who's in it, a storyline): its name and span, a plain line, then its covers or its track */
+.ff .ff-grp { width: 100%; display: grid; gap: 5px; padding: 12px 4px 12px 2px; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .06); text-align: left; transition: background-color .25s var(--ff-ease); }
+.ff .ff-gt { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ff .ff-gt b { font: 600 14px/1.2 var(--ff-font); letter-spacing: normal; color: var(--ff-ink); }
+.ff .ff-gt em { flex: none; font: 600 12px/1.2 var(--ff-font); font-style: normal; letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-grp > i { font: 400 12px/1.42 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .6); }
+/* a storyline across his window: the line runs first post to last, his last 10 shaded at the right */
+.ff .ff-tl { position: relative; display: block; height: 16px; margin-top: 4px; }
+.ff .ff-tl::before { content: ""; position: absolute; left: 0; right: 0; top: 7.5px; height: 1px; background: rgb(var(--ff-ink-rgb) / .14); }
+.ff .ff-tl > i { position: absolute; top: 2px; bottom: 2px; right: 0; border-radius: 3px; background: color-mix(in srgb, var(--ff-red) 9%, transparent); box-shadow: inset 1px 0 0 color-mix(in srgb, var(--ff-red) 45%, transparent); }
+.ff .ff-tl > u { position: absolute; top: 7px; height: 2px; border-radius: 1px; background: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ff-tl > b { position: absolute; top: 4.5px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--ff-ink); box-shadow: 0 0 0 2px var(--ff-surface); }
+.ff .ff-tl > b.hot { background: var(--ff-red); }
+.ff .ff-tl > b.dn { background: var(--ff-surface); box-shadow: 0 0 0 2px var(--ff-surface), inset 0 0 0 1.4px rgb(var(--ff-ink-rgb) / .45); }
+/* on both sides: the thing, then its best feeding post against its worst fading one, then the rule that decides it */
+.ff .ff-both { display: grid; gap: 8px; padding: 12px 0 14px; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .06); }
+.ff .ff-bh { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 2px 4px 2px 2px; border-radius: 10px; text-align: left; transition: background-color .25s var(--ff-ease); }
+.ff .ff-bh > b { font: 600 14px/1.2 var(--ff-font); letter-spacing: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ff .ff-vss { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding-left: 40px; }
+.ff .ff-vs { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 8px; border-radius: 14px; background: rgb(var(--ff-ink-rgb) / .04); text-align: left; transition: background-color .25s var(--ff-ease); }
+.ff .ff-vs .ff-cv { width: 34px; height: 34px; margin: 3px; }
+.ff .ff-vt { display: grid; gap: 3px; min-width: 0; }
+.ff .ff-vt em { white-space: nowrap; font: 700 12px/1.2 var(--ff-font); font-style: normal; letter-spacing: normal; text-transform: none; color: var(--ff-ink); }
+.ff .ff-vt em.hot { color: var(--ff-red); }
+.ff .ff-vt em.dn { color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-vt b { font: 600 12px/1.2 var(--ff-font); letter-spacing: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ff .ff-both > .ff-chip, .ff .ff-both > .ff-open { margin-left: 40px; justify-self: start; }
+.ff .ff-open { font: 500 12px/1.3 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .6); }
+/* a chip that brings up the rule that explains it, in the read below */
+.ff .ff-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 7px; min-height: 28px; padding: 5px 12px; border-radius: 14px; box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .16); font: 600 12px/1.2 var(--ff-font); letter-spacing: normal; color: var(--ff-ink); text-align: left; transition: background-color .25s var(--ff-ease), box-shadow .25s var(--ff-ease); }
+.ff .ff-chip em { flex-basis: 100%; white-space: nowrap; font: 700 12px/1.2 var(--ff-font); font-style: normal; letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-chip i { font-style: normal; color: var(--ff-red); }
+@media (hover: hover) { .ff .ff-chip:hover { background: rgb(var(--ff-ink-rgb) / .05); box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .3); } }
+.ff .ff-cr { margin-top: 16px; }
+/* where a thing stands now */
+.ff .ff-st { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 700 10px/1 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-st.new { background: color-mix(in srgb, var(--ff-red) 12%, transparent); color: var(--ff-red); }
+.ff .ff-card .kv .hot { color: var(--ff-red); font-weight: 700; }
+.ff .ff-card .kv .up { color: var(--ff-ink); font-weight: 700; }
+.ff .ff-card .cl + .ff-row { margin-top: 4px; }
+/* a post's card ends on its post mortem, in the read below */
+.ff .ff-pm { width: 100%; display: flex; align-items: center; gap: 10px; height: 48px; margin-top: 16px; padding: 0 14px 0 8px; border-radius: 14px; background: var(--ff-ink); color: var(--ff-inv); font: 700 14px/1 var(--ff-font); letter-spacing: normal; }
+.ff .ff-pm > span:nth-child(2) { flex: 1; text-align: left; }
+.ff .ff-pm i { font-style: normal; opacity: .7; }
+.ff .ff-pmc { width: 32px; height: 32px; flex: none; overflow: hidden; border-radius: 50%; background: rgb(var(--ff-inv-rgb) / .2); }
+.ff .ff-pmc img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* the moments he rode, marked on the spiral */
+.ff .ff-gl.mom { display: flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 999px; background: rgb(var(--ff-bg-rgb) / .84); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .12); color: var(--ff-ink); letter-spacing: .14em; cursor: pointer; }
+.ff .ff-gl.mom .ic { width: 10px; height: 10px; stroke-width: 2.4; }
+.ff .ff-gl.mom.red { color: var(--ff-red); }
+
+/* ---------- a wide card: the panel beside the map */
+@container ff (min-width: 860px) {
+  .ff .ff-wrap { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "head stage" "body stage" "tools stage"; column-gap: 18px; row-gap: 14px; height: var(--ff-card-h); padding: 16px; }
+  .ff .ff-stage { aspect-ratio: auto; max-height: none; min-height: 0; height: 100%; }
+  .ff .ff-body { min-height: 0; margin: 0 -4px; }
+  .ff .ff-panel { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 6px 14px; scrollbar-width: thin; transition: opacity calc(.3s * var(--fm-tempo)) var(--ff-ease); }
+  .ff .ff-body.carded .ff-panel { opacity: 0; pointer-events: none; }
+  /* the card of what you opened takes the panel's place */
+  .ff .ff-body .ff-card { position: absolute; inset: 0; z-index: 2; max-height: none; width: auto; border-radius: 16px; background: var(--ff-surface); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .08); -webkit-backdrop-filter: none; backdrop-filter: none; transition: opacity calc(.3s * var(--fm-tempo)) var(--ff-ease), transform calc(.4s * var(--fm-tempo)) var(--ff-ease); }
+  .ff .ff-body .ff-card.hide { transform: translate3d(-10px, 0, 0); opacity: 0; }
+  .ff .ff-body .ff-card .grab, .ff .ff-body .ff-card .exp { display: none; }
+  .ff .ff-body .ff-card .peek { padding-top: 14px; }
+  .ff .ff-body .ff-card .ch, .ff .ff-body .ff-card .kv { padding-right: 0; }
+  .ff .ff-body .ff-card .more { display: block; flex: 1; min-height: 0; }
+}
+
+/* full screen: the same card lifted over everything, every gesture to the map */
+.ff.ff-portal { position: fixed; inset: 0; z-index: 2000; padding: calc(10px + env(safe-area-inset-top, 0px)) 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--ff-bg); }
+.ff.ff-portal .ff-wrap { height: 100%; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.ff.ff-portal .ff-stage { aspect-ratio: auto; max-height: none; height: 100%; min-height: 0; touch-action: none; }
+@container ff (min-width: 860px) { .ff.ff-portal .ff-wrap { grid-template-rows: auto minmax(0, 1fr) auto; } }
+@container ff (max-width: 859px) { .ff.ff-portal .ff-wrap:not(.sys) .ff-body { display: none; } }
+
+/* labels: crisp HTML over the canvas */
+.ff .ff-labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.ff .ff-lb { position: absolute; left: 0; top: 0; padding: 3px 6px; border-radius: 6px; background: rgb(var(--ff-bg-rgb) / .78); white-space: nowrap; will-change: transform, opacity; transition: opacity calc(.35s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ff-lb b { display: flex; align-items: center; gap: 5px; font: 700 10px/1.15 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ff-lb b .ic { width: 11px; height: 11px; stroke-width: 2.4; }
+.ff .ff-lb i { display: block; font: 500 10px/1.3 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-lb.post b { font: 600 12px/1.15 var(--ff-font); letter-spacing: normal; text-transform: none; }
+.ff .ff-lb.red b, .ff .ff-lb.red i { color: var(--ff-red); }
+.ff .ff-lb.brief { padding: 2px 5px; background: rgb(var(--ff-bg-rgb) / .62); }
+.ff .ff-lb.brief i { display: none; }
+.ff .ff-lb.hov { padding: 4px 8px; background: rgb(var(--ff-bg-rgb) / .86); box-shadow: 0 6px 18px -12px rgb(0 0 0 / .45); }
+.ff .ff-lb.hov b { font-size: 12px; }
+.ff .ff-lb.post.hov b { font-size: 14px; }
+.ff .ff-lb.sel { padding: 5px 9px; box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .16), 0 8px 20px -12px rgb(0 0 0 / .5); }
+.ff .ff-lb.sel b { font-size: 12px; }
+.ff .ff-lb.post.sel b { font-size: 14px; }
+.ff .ff-hring { position: absolute; left: 0; top: 0; width: 40px; height: 40px; pointer-events: none; opacity: 0; transform-origin: 20px 20px; transition: transform calc(.32s * var(--fm-tempo)) var(--ff-ease), opacity calc(.25s * var(--fm-tempo)) var(--ff-ease); will-change: transform, opacity; }
+.ff .ff-hring svg { width: 100%; height: 100%; overflow: visible; }
+.ff .ff-hring circle { fill: none; stroke: var(--ff-ink); stroke-width: 1.4px; vector-effect: non-scaling-stroke; opacity: .85; }
+.ff .ff-hring.red circle { stroke: var(--ff-red); opacity: 1; }
+.ff .ff-hring.on { opacity: 1; }
+.ff .ff-gl { position: absolute; left: 0; top: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px; font: 700 10px/1.2 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .6); pointer-events: none; transition: opacity calc(.35s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ff-gl.red { color: var(--ff-red); }
+.ff .ff-gl.btn { display: grid; gap: 2px; justify-items: center; padding: 5px 8px; border-radius: 8px; background: rgb(var(--ff-bg-rgb) / .82); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .14); color: var(--ff-ink); cursor: pointer; }
+.ff .ff-gl.btn b { font: 700 10px/1 var(--ff-font); letter-spacing: .14em; }
+.ff .ff-gl.btn i { font: 500 10px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-gl.btn.red b, .ff .ff-gl.btn.red i { color: var(--ff-red); }
+.ff .ff-axis { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; font: 600 10px/1.2 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .66); opacity: 0; transition: opacity calc(.4s * var(--fm-tempo)) var(--ff-ease); white-space: nowrap; }
+.ff .ff-axis.mid { color: rgb(var(--ff-ink-rgb) / .66); }
+.ff [data-ff="axisHi"] { color: var(--ff-red); }
+
+/* the card of what you opened, as a peek sheet on a narrow map: pull it up or tap More for the full read */
+.ff .ff-card { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 4; display: flex; flex-direction: column; max-height: 64%; border-radius: 20px; background: rgb(var(--ff-bg-rgb) / .9); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .12), 0 24px 50px -24px rgb(0 0 0 / .6); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); transition: transform calc(.5s * var(--fm-tempo)) var(--ff-ease), opacity calc(.35s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ff-card.hide { transform: translate3d(0, calc(100% + 24px), 0); opacity: 0; pointer-events: none; }
+.ff .ff-card .grab { flex: none; height: 16px; position: relative; touch-action: none; }
+.ff .ff-card .grab::after { content: ""; position: absolute; left: 50%; top: 6px; width: 34px; height: 4px; margin-left: -17px; border-radius: 2px; background: rgb(var(--ff-ink-rgb) / .2); }
+.ff .ff-card .peek { position: relative; padding: 0 14px 12px; touch-action: none; }
+.ff .ff-card .more { display: none; overflow: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 2px 14px 14px; border-top: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+.ff .ff-card.open .more { display: block; }
+.ff .ff-card .ck { display: flex; align-items: center; gap: 8px; font: 700 12px/1.3 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ff-card .ck .t { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ff-card .ck .t.r { color: var(--ff-red); }
+.ff .ff-card .ck .x { margin-left: auto; width: 28px; height: 28px; margin-top: -8px; margin-right: -8px; border-radius: 50%; display: grid; place-items: center; color: rgb(var(--ff-ink-rgb) / .6); font-size: 14px; }
+.ff .ff-card .ch { margin: 4px 0 0; font: 700 18px/1.1 var(--ff-font); letter-spacing: -0.04em; text-wrap: balance; padding-right: 50px; }
+.ff .ff-card .kv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; font: 500 12px/1.3 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .58); padding-right: 50px; }
+.ff .ff-card .kv b { color: var(--ff-ink); font-weight: 700; }
+.ff .ff-card .kv .up, .ff .ff-card .kv .up b { color: var(--ff-red); }
+.ff .ff-card .exp { position: absolute; right: 12px; bottom: 11px; height: 26px; padding: 0 10px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .08); font: 700 12px/1 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .7); }
+.ff .ff-card .cm { margin: 10px 0 0; font: 400 14px/1.45 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .7); }
+.ff .ff-card .cl { margin-top: 12px; font: 700 12px/1 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+/* a map wider than a phone floats the card at its right */
+@container ff (min-width: 700px) and (max-width: 859px) {
+  .ff .ff-stage .ff-card { left: auto; right: 12px; top: 12px; bottom: auto; width: 340px; max-height: calc(100% - 24px); }
+  .ff .ff-stage .ff-card .grab, .ff .ff-stage .ff-card .exp { display: none; }
+  .ff .ff-stage .ff-card .ch, .ff .ff-stage .ff-card .kv { padding-right: 0; }
+}
+.ff .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.ff .pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .07); font: 500 12px/1 var(--ff-font); white-space: nowrap; }
+.ff .pill i { font: 700 12px/1 var(--ff-font); font-style: normal; letter-spacing: .06em; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .pill i.r { color: var(--ff-red); }
+.ff .said { margin-top: 8px; padding: 9px 11px; border-radius: 12px; background: rgb(var(--ff-ink-rgb) / .05); font: 400 14px/1.45 var(--ff-font); }
+.ff .said span { display: block; margin-bottom: 3px; font: 700 12px/1 var(--ff-font); letter-spacing: normal; text-transform: none; color: rgb(var(--ff-ink-rgb) / .6); }
+
+@media (prefers-reduced-motion: reduce) { .ff .ff-card, .ff .ff-hring { transition: none; } }
+
+/* ---------- the system (feederSystemEngine). Its panel is the reading: the account, a strip of its numbers, what it
+   feeds and fades on, then each wedge (Cast, Formats, Products & deals, Signatures, References) with its things in full
+   words and each one's landed score; opening a thing turns the panel to its page. Everything wraps, nothing is cut */
+.ff .ff-hx { position: relative; flex: none; display: grid; place-items: center; width: 30px; height: 34px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: rgb(var(--ff-ink-rgb) / .9); }
+.ff .ff-hx::before { content: ""; position: absolute; inset: 1.7px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: var(--ff-surface); }
+.ff .ff-hx .ic { position: relative; width: 14px; height: 14px; stroke-width: 2; color: var(--ff-ink); }
+.ff .ff-hx.hot { background: var(--ff-red); }
+.ff .ff-hx.hot::before { display: none; }
+.ff .ff-hx.hot .ic { color: #fff; }
+.ff .ff-hx.dn { background: rgb(var(--ff-ink-rgb) / .28); }
+.ff .ff-hx.dn .ic { color: rgb(var(--ff-ink-rgb) / .45); }
+.ff .ff-hx.big { width: 52px; height: 60px; }
+.ff .ff-hx.big::before { inset: 2.5px; }
+.ff .ff-hx.big .ic { width: 22px; height: 22px; stroke-width: 1.9; }
+.ff .ff-lg.sys i { border-radius: 0; }
+.ff .ff-lg.sys i.o { width: 12px; height: 12px; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1.3px rgb(var(--ff-ink-rgb) / .5); }
+.ff .ff-lg.sys i.b, .ff .ff-lg.sys i.g { width: 10px; height: 11.5px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.ff .ff-lg.sys i.b { background: rgb(var(--ff-ink-rgb) / .8); }
+.ff .ff-lg.sys i.g { background: var(--ff-red); }
+.ff .ff-lb.sun b { font-size: 11px; }
+/* a post's name may be a whole sentence: it wraps to two balanced lines inside the stage instead of running off it */
+.ff .ff-lb.post { max-width: min(250px, 64cqw); white-space: normal; }
+.ff .ff-lb.post b { text-wrap: balance; }
+.ff .ff-gl.orb { padding: 2px 7px; border-radius: 999px; background: rgb(var(--ff-bg-rgb) / .82); font-size: 9px; letter-spacing: .2em; color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ff-gl.cat { padding: 3px 9px; border-radius: 999px; background: rgb(var(--ff-bg-rgb) / .86); box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .14); font-size: 10px; letter-spacing: .18em; color: var(--ff-ink); }
+.ff .ff-key.ff-lg { margin: 2px 0 0 6px; gap: 5px 14px; font-size: 11px; }
+.ff .pill.more { background: none; color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .pill.hot { color: var(--ff-red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ff-red) 40%, transparent); background: none; }
+.ff .pill .ic { width: 12px; height: 12px; }
+
+.ff .ffs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding-bottom: 8px; }
+/* every grid in the panel keeps to its column: nothing inside may push it wider than the card */
+.ff .ffs-top, .ff .ffs-cat, .ff .ffs-once, .ff .ffs-page, .ff .ffs-blk { grid-template-columns: minmax(0, 1fr); }
+.ff .ffs .pills, .ff .ffs-page .pills { min-width: 0; }
+.ff .ffs .pill, .ff .ffs-page .pill { max-width: 100%; height: auto; min-height: 28px; padding: 6px 11px; white-space: normal; text-align: left; line-height: 1.25; overflow-wrap: anywhere; }
+.ff .ffs-top { display: grid; gap: 18px; }
+.ff .ffs-me { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: start; width: 100%; text-align: left; }
+.ff .ffs-av { flex: none; width: 58px; height: 58px; border-radius: 50%; padding: 3px; background: var(--ff-surface); box-shadow: 0 0 0 2.5px var(--ff-red), 0 10px 22px -12px rgb(0 0 0 / .55); overflow: hidden; }
+.ff .ffs-av.big { width: 64px; height: 64px; }
+.ff .ffs-av img, .ff .ffs-av .ff-cvf { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.ff .ffs-av .ff-cvf { display: grid; place-items: center; font: 700 18px/1 var(--ff-font); font-style: normal; background: rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-id { display: grid; gap: 4px; min-width: 0; }
+.ff .ffs-id em, .ff .ffs-dh em { font: 700 10px/1.3 var(--ff-font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-id em, .ff .ffs-dh em.r { color: var(--ff-red); }
+.ff .ffs-id b { font: 700 22px/1.12 var(--ff-font); letter-spacing: -.015em; color: var(--ff-ink); text-wrap: balance; }
+.ff .ffs-id span { font: 400 14px/1.45 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .7); text-wrap: pretty; }
+.ff .ffs-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-stats > div { display: grid; gap: 5px; align-content: start; padding: 12px 8px 12px 0; }
+.ff .ffs-stats > div + div { padding-left: 12px; border-left: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+.ff .ffs-stats b, .ff .ffs-did b { font: 700 24px/1 var(--ff-font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--ff-ink); }
+.ff .ffs-stats b.r, .ff .ffs-did b.r { color: var(--ff-red); }
+.ff .ffs-stats span, .ff .ffs-did span { font: 500 11.5px/1.3 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-split { display: grid; gap: 10px; }
+.ff .ffs-split > div { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.ff .ffs-split em { font: 700 10px/1.5 var(--ff-font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-split .up em { color: var(--ff-red); }
+.ff .ffs-split p { margin: 0; font: 600 15px/1.4 var(--ff-font); color: var(--ff-ink); text-wrap: pretty; }
+.ff .ffs-split .dn p { font-weight: 500; color: rgb(var(--ff-ink-rgb) / .7); }
+.ff .ffs-head { margin: 0; font: 600 16px/1.4 var(--ff-font); }
+.ff .ffs-cat { display: grid; }
+.ff .ffs-ch { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding-bottom: 10px; border-bottom: 1.5px solid var(--ff-ink); }
+.ff .ffs-ch b { font: 700 12px/1 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ffs-ch span { font: 500 13px/1.2 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-ch i { font: 700 12px/1 var(--ff-font); font-style: normal; font-variant-numeric: tabular-nums; color: rgb(var(--ff-ink-rgb) / .45); }
+.ff .ffs-it { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: start; width: 100%; padding: 14px 4px 14px 0; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .07); text-align: left; transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+@media (hover: hover) { .ff .ffs-it:hover, .ff .ffs-post:hover { background: rgb(var(--ff-ink-rgb) / .035); } .ff button.ffs-av:hover { transform: scale(1.04); } }
+.ff .ffs-av { transition: transform calc(.22s * var(--fm-tempo)) var(--ff-ease); -webkit-tap-highlight-color: transparent; }
+.ff button.ffs-av:active { transform: scale(.96); }
+.ff .ffs-it .ff-hx { margin-top: 1px; }
+.ff .ffs-tx { display: grid; gap: 5px; min-width: 0; }
+.ff .ffs-tx b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: 600 15px/1.25 var(--ff-font); color: var(--ff-ink); }
+.ff .ffs-tx b .nw { padding: 3px 5px 2px; border-radius: 4px; font: 700 9px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: var(--ff-red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ff-red) 45%, transparent); }
+.ff .ffs-tx > span { font: 400 13.5px/1.45 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .72); text-wrap: pretty; }
+.ff .ffs-tx em { font: 600 10px/1.2 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .45); }
+.ff .ffs-score { display: grid; justify-items: end; gap: 4px; min-width: 44px; padding-top: 1px; }
+.ff .ffs-score b { font: 700 20px/1 var(--ff-font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--ff-ink); }
+.ff .ffs-score b i { font-size: 13px; font-weight: 600; font-style: normal; color: rgb(var(--ff-ink-rgb) / .4); }
+.ff .ffs-score.r b { color: var(--ff-red); }
+.ff .ffs-score em { font: 600 9px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .45); }
+.ff .ffs-once { display: grid; gap: 8px; padding: 14px 0 2px; }
+.ff .ffs-once > span, .ff .ffs-blk h4 { margin: 0; font: 700 10px/1.2 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .48); }
+.ff .ffs-once .pills { margin-top: 0; }
+/* a thing's page */
+.ff .ffs-page { display: grid; gap: 18px; padding-bottom: 8px; min-width: 0; }
+.ff .ffs-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ff .ffs-back { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px 0 11px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 600 12px/1 var(--ff-font); transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-nv { display: inline-flex; gap: 4px; }
+.ff .ffs-nv button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgb(var(--ff-ink-rgb) / .06); font: 600 18px/1 var(--ff-font); transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+@media (hover: hover) { .ff .ffs-back:hover, .ff .ffs-nv button:hover { background: rgb(var(--ff-ink-rgb) / .1); } }
+.ff .ffs-dh { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+.ff .ffs-dh h2 { margin: 4px 0 0; font: 700 24px/1.1 var(--ff-font); letter-spacing: -.02em; color: var(--ff-ink); text-wrap: balance; }
+.ff .ffs-dh .ff-cv.big { width: 56px; height: 56px; }
+.ff .ffs-meta { display: block; margin-top: 5px; font: 500 12px/1.3 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-what { margin: 0; font: 500 17px/1.45 var(--ff-font); color: var(--ff-ink); text-wrap: pretty; }
+.ff .ffs-blk { display: grid; gap: 10px; padding-top: 16px; border-top: 1px solid rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-blk > p { margin: 0; font: 400 14.5px/1.55 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .8); text-wrap: pretty; }
+.ff .ffs-blk > p.ffs-q { font-weight: 500; color: var(--ff-ink); }
+.ff .ffs-did { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ff .ffs-did > div { display: grid; gap: 5px; align-content: start; }
+.ff .ffs-mix { display: flex; flex-wrap: wrap; gap: 6px; }
+.ff .ffs-mix span { display: inline-flex; align-items: baseline; gap: 6px; height: 30px; padding: 7px 11px 0; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 500 12px/1 var(--ff-font); }
+.ff .ffs-mix b { font: 700 14px/1 var(--ff-font); font-variant-numeric: tabular-nums; }
+.ff .ffs-post { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 9px 4px 9px 0; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .06); text-align: left; transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-pt { display: grid; gap: 3px; min-width: 0; }
+.ff .ffs-pt b { font: 600 14px/1.25 var(--ff-font); color: var(--ff-ink); text-wrap: pretty; }
+.ff .ffs-pt i { font: 500 12px/1.3 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .5); }
+/* how it did: a bullet chart. The track runs from the bottom of its format's pool to the top; the bar is its typical
+   place (red when above the account's usual), the line through the middle is the usual post, each dot one of its posts */
+.ff .ffs-bul { display: grid; gap: 7px; margin-top: 2px; }
+.ff .ffs-bul .tr { position: relative; height: 22px; border-radius: 5px; background: rgb(var(--ff-ink-rgb) / .06); }
+.ff .ffs-bul .me { position: absolute; left: 0; top: 7px; height: 8px; border-radius: 0 4px 4px 0; background: rgb(var(--ff-ink-rgb) / .78); transform-origin: left center; animation: ffs-grow calc(.8s * var(--fm-tempo)) cubic-bezier(.3, .3, .2, 1) calc(.25s * var(--fm-tempo)) both; }
+.ff .ffs-bul .me.r { background: var(--ff-red); }
+.ff .ffs-bul .us { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ff-ink); }
+.ff .ffs-bul .pt { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--ff-ink); box-shadow: 0 0 0 2px var(--ff-surface); animation: ffs-in calc(.4s * var(--fm-tempo)) ease-out calc(.7s * var(--fm-tempo)) both; }
+.ff .ffs-bul .pt.hot { background: var(--ff-red); }
+.ff .ffs-bul .pt.dn { background: var(--ff-surface); box-shadow: 0 0 0 2px var(--ff-surface), inset 0 0 0 1.5px rgb(var(--ff-ink-rgb) / .4); }
+.ff .ffs-bul .ax { display: flex; justify-content: space-between; font: 600 9px/1 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .45); }
+@keyframes ffs-grow { from { transform: scaleX(0); } }
+@keyframes ffs-in { from { opacity: 0; transform: scale(.3); } }
+@media (prefers-reduced-motion: reduce) { .ff .ffs-bul .me, .ff .ffs-bul .pt { animation: none; } }
+/* on a narrow card the page rises as a sheet on the system: its head is the peek, the rest scrolls under it */
+.ff .ff-card .peek .ffs-bar { margin-bottom: 12px; }
+.ff .ff-card .peek .ffs-dh h2 { font-size: 20px; }
+.ff .ff-card .more.ffs-page { gap: 16px; }
+/* the key sits on the system on a wide card; on a narrow one it moves to the panel just under it, so the system keeps
+   the stage */
+.ff .ff-plg { display: none; }
+@container ff (max-width: 520px) {
+  .ff .ff-key.ff-lg { display: none; }
+  .ff .ff-plg { display: flex; }
+  .ff .ffs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ff .ffs-stats > div:nth-child(3) { padding-left: 0; border-left: 0; border-top: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+  .ff .ffs-stats > div:nth-child(4) { border-top: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+}
+
+/* ---------- the system's card layout. Its buttons sit on the map, small and solid (only the app's two chrome bars blur).
+   On a narrow card the reading sits right under the map, in the page itself: no sheet over the map, so a swipe anywhere
+   on the card scrolls the page */
+.ff .ff-wrap.sys .ff-tools.ov { position: absolute; right: 10px; bottom: 10px; z-index: 4; display: flex; gap: 6px; }
+.ff .ff-wrap.sys .ff-tools.ov .ff-tool { flex: none; width: 38px; height: 38px; padding: 0; border-radius: 12px; background: rgb(var(--ff-bg-rgb) / .94); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .1), 0 8px 18px -12px rgb(0 0 0 / .45); }
+.ff .ff-wrap.sys .ff-tools.ov .ff-tool span { display: none; }
+/* Oct 22 night: roaming (the read's layer, full screen) on a laptop the map moves one way only, and says so beside its
+   buttons: drag to turn (round, and up and down), scroll to zoom toward the pointer */
+.ff .ff-wrap.sys .ff-tools.ov .ff-hint { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .ff .ff-wrap.sys.roam .ff-tools.ov .ff-hint { display: inline-flex; align-items: center; gap: 14px; height: 38px; margin-right: 8px; padding: 0 2px; font: 600 12px/1 var(--ff-font); white-space: nowrap; color: rgb(var(--ff-ink-rgb) / .62); pointer-events: none; }
+  .ff .ff-wrap.sys.roam .ff-tools.ov .ff-hint > span { display: inline-flex; align-items: center; gap: 6px; }
+  .ff .ff-wrap.sys.roam .ff-tools.ov .ff-hint .ic { width: 15px; height: 15px; stroke-width: 2; color: rgb(var(--ff-ink-rgb) / .78); }
+}
+.ff .ff-lb.bit { max-width: min(200px, 52cqw); white-space: normal; }
+.ff .ff-lb.bit b { text-wrap: balance; }
+@container ff (max-width: 859px) {
+  /* the map runs nearly to the phone's edges, as tall as it is wide, with the reading under it */
+  .ff .ff-wrap.sys { grid-template-areas: "head" "stage" "body"; grid-template-rows: auto auto auto; gap: 8px; margin-inline: calc(8px - var(--ff-gut)); padding: 8px 4px 4px; border-radius: 24px; }
+  .ff .ff-wrap.sys .ff-stage { aspect-ratio: 1 / 1.06; height: auto; max-height: min(64svh, 640px); min-height: 330px; border-radius: 20px; }
+  .ff .ff-wrap.sys .ff-head { padding-inline: 10px; }
+  .ff .ff-wrap.sys .ff-panel { padding: 14px 12px 12px; }
+  .ff .ff-wrap.sys .ff-tools.ov { top: 10px; bottom: auto; }
+  .ff .ff-wrap.sys .ff-tools.ov .ff-tool.sq { display: none; }
+  /* on a phone a name wraps to two short lines, so more of them find room beside their bodies */
+  .ff .ff-lb.brief { max-width: 112px; white-space: normal; padding: 1px 4px; }
+  .ff .ff-lb.brief b { font-size: 9px; letter-spacing: .12em; gap: 4px; }
+  .ff .ff-lb.brief b .ic { width: 10px; height: 10px; }
+  .ff .ff-lb.brief b { align-items: flex-start; text-wrap: balance; }
+  .ff .ff-lb.brief b .ic { margin-top: 1px; }
+  .ff .ff-lb.sun { max-width: 168px; white-space: normal; }
+  .ff .ff-lb.sun b { text-wrap: balance; }
+  /* full screen on a phone is the map, its reading folded into the strip at the foot; what's open reads in the reading
+     sheet over it (v6.1) */
+  .ff.ff-portal .ff-wrap.sys { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .ff.ff-portal .ff-wrap.sys .ff-stage { aspect-ratio: auto; height: 100%; max-height: none; }
+  .ff.ff-portal .ff-wrap.sys .ff-body { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 6; margin: 0; }
+  .ff.ff-portal .ff-wrap.sys .ff-panel { padding: 0; }
+}
+.ff.ff-portal .ff-wrap.sys { height: 100%; margin-inline: 0; }
+
+/* ---------- the reading's wedges (Read v4.1, Oct 21): one row each, its name and question, its planets as small hexes
+   (red landed, grey faded), how many things; it opens in place to its things with their numbers, the rest stays shut */
+.ff .ffs-wds { display: grid; border-top: 1.5px solid var(--ff-ink); }
+.ff .ffs-wd { display: grid; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-wh { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 18px; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 10px 2px; text-align: left; -webkit-tap-highlight-color: transparent; transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+@media (hover: hover) { .ff .ffs-wh:hover, .ff .ffs-row:hover { background: rgb(var(--ff-ink-rgb) / .035); } }
+.ff .ffs-wh:active { background: rgb(var(--ff-ink-rgb) / .05); }
+.ff .ffs-wn { display: grid; gap: 5px; min-width: 0; }
+.ff .ffs-wn b { font: 700 12px/1 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ffs-wn span { font: 500 13px/1.2 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .52); }
+.ff .ffs-wm { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; max-width: 74px; }
+.ff .ffs-wm i { width: 9px; height: 10.4px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: rgb(var(--ff-ink-rgb) / .78); }
+.ff .ffs-wm i.hot { background: var(--ff-red); }
+.ff .ffs-wm i.dn { background: rgb(var(--ff-ink-rgb) / .2); }
+.ff .ffs-wc { min-width: 18px; text-align: right; font: 700 14px/1 var(--ff-font); font-style: normal; font-variant-numeric: tabular-nums; color: var(--ff-ink); }
+.ff .ffs-wv { position: relative; width: 18px; height: 18px; }
+.ff .ffs-wv::before { content: ""; position: absolute; left: 5px; top: 3px; width: 7px; height: 7px; border-right: 2px solid rgb(var(--ff-ink-rgb) / .55); border-bottom: 2px solid rgb(var(--ff-ink-rgb) / .55); transform: rotate(45deg); transition: transform calc(.42s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-wd.on .ffs-wv::before { transform: translateY(5px) rotate(-135deg); }
+.ff .ffs-wd.on .ffs-wn b { color: var(--ff-red); }
+.ff .ffs-wl { display: grid; padding: 0 0 12px; }
+.ff .ffs-wl[hidden] { display: none; }
+.ff .ffs-wl .ffs-once { padding-top: 12px; }
+.ff .ffs-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 10px 2px 10px 0; border-top: 1px solid rgb(var(--ff-ink-rgb) / .06); text-align: left; -webkit-tap-highlight-color: transparent; transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-row:active { background: rgb(var(--ff-ink-rgb) / .05); }
+.ff .ffs-rt { display: grid; gap: 4px; min-width: 0; }
+.ff .ffs-rt b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: 600 15px/1.25 var(--ff-font); color: var(--ff-ink); }
+.ff .ffs-rt b .nw { padding: 3px 5px 2px; border-radius: 4px; font: 700 9px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: var(--ff-red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ff-red) 45%, transparent); }
+.ff .ffs-rt em { font: 600 12px/1.25 var(--ff-font); font-style: normal; font-variant-numeric: tabular-nums; color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-more { justify-self: start; display: inline-flex; align-items: center; height: 32px; margin: 8px 0 0 42px; padding: 0 13px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 600 12px/1 var(--ff-font); color: var(--ff-ink); }
+/* a thing's posts: a strip of covers, best first, each with where it landed; it scrolls sideways */
+.ff .ffs-strip { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -12px; padding: 4px 12px 4px; scroll-snap-type: x proximity; }
+.ff .ffs-strip::-webkit-scrollbar { display: none; }
+.ff .ffs-sc { flex: none; display: grid; gap: 7px; justify-items: start; width: 66px; scroll-snap-align: start; -webkit-tap-highlight-color: transparent; }
+.ff .ffs-sci { position: relative; display: block; width: 66px; aspect-ratio: 4 / 5; overflow: hidden; border-radius: 9px; background: rgb(var(--ff-ink-rgb) / .1); box-shadow: 0 0 0 2px var(--ff-surface), 0 0 0 3.5px var(--ff-ink); transition: transform calc(.22s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-sc.hot .ffs-sci { box-shadow: 0 0 0 2px var(--ff-surface), 0 0 0 4.5px var(--ff-red); }
+.ff .ffs-sc.dn .ffs-sci { box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-sci img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ff .ffs-sc.dn .ffs-sci img { filter: grayscale(1) contrast(.92) brightness(1.04); opacity: .62; }
+.ff .ffs-sci .ff-cvf { position: absolute; inset: 0; display: grid; place-items: center; font: 700 16px/1 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ffs-sc:active .ffs-sci { transform: scale(.96); }
+@media (hover: hover) { .ff .ffs-sc:hover .ffs-sci { transform: translateY(-3px); } }
+.ff .ffs-sc em { font: 700 12px/1 var(--ff-font); font-style: normal; font-variant-numeric: tabular-nums; color: var(--ff-ink); white-space: nowrap; }
+.ff .ffs-sc.hot em { color: var(--ff-red); }
+.ff .ffs-sc.dn em { color: rgb(var(--ff-ink-rgb) / .55); }
+/* a rule a line names: its number, a link to the rule in the read below */
+.ff .ff-rn { display: inline-block; padding: 1px 5px; border-radius: 6px; background: rgb(var(--ff-ink-rgb) / .08); font: 700 .86em/1.25 var(--ff-font); font-variant-numeric: tabular-nums; color: var(--ff-ink); vertical-align: .04em; transition: background-color calc(.2s * var(--fm-tempo)) var(--ff-ease); }
+@media (hover: hover) { .ff .ff-rn:hover { background: rgb(var(--ff-ink-rgb) / .16); } }
+.ff .ffs-page > .ff-cr { margin-top: -4px; }
+.ff .ffs-page > .ff-cr .ff-chip { width: 100%; padding: 10px 14px; border-radius: 14px; }
+/* beside the map on a wide card the reading has to fit its height: each wedge is one line, its question beside its name */
+@container ff (min-width: 860px) {
+  .ff .ffs { gap: 18px; }
+  .ff .ffs-top { gap: 14px; }
+  .ff .ffs-wh { min-height: 46px; padding: 8px 2px; }
+  .ff .ffs-wn { display: flex; align-items: baseline; gap: 10px; }
+  .ff .ffs-wn span { display: none; }
+  .ff .ffs-stats > div { padding-block: 10px; }
+  .ff .ffs-split { gap: 8px; }
+  .ff .ffs-split p { font-size: 14px; }
+}
+
+
+/* ---------- the laws (Read v5, Oct 21): the reading's main section, under the account. Each row is the law, its
+   record and its receipt; it opens the law's page: its proof (readProofs, styled under .pf in readTab.css), why it
+   works, what to do, the posts that kept and broke it as strips, how it came to be run by run, the parts it covers */
+.ff .ffs-laws { display: grid; }
+.ff .ffs-lh { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; padding-bottom: 10px; border-bottom: 1.5px solid var(--ff-ink); }
+.ff .ffs-lh b { font: 700 12px/1 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ffs-lh span { font: 500 12px/1.2 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-law { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; width: 100%; padding: 14px 2px 13px; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .08); text-align: left; -webkit-tap-highlight-color: transparent; transition: background-color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+@media (hover: hover) { .ff .ffs-law:hover { background: rgb(var(--ff-ink-rgb) / .035); } }
+.ff .ffs-law:active { background: rgb(var(--ff-ink-rgb) / .05); }
+.ff .ffs-ln { padding-top: 2px; font: 700 12px/1.3 var(--ff-font); font-variant-numeric: tabular-nums; color: rgb(var(--ff-ink-rgb) / .42); }
+.ff .ffs-lt { display: grid; gap: 6px; min-width: 0; }
+.ff .ffs-lt b { font: 600 15.5px/1.3 var(--ff-font); color: var(--ff-ink); text-wrap: pretty; }
+.ff .ffs-lt em { font: 600 11.5px/1.25 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-lr { display: grid; justify-items: end; gap: 4px; max-width: 96px; padding-top: 1px; text-align: right; }
+.ff .ffs-lr b { font: 700 20px/1 var(--ff-font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ff-red); }
+.ff .ffs-lr em { font: 600 10.5px/1.25 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-ld { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; padding: 12px 2px 4px 38px; font: 500 12.5px/1.4 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-ld em { font: 700 10px/1.6 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-ld s { font-weight: 600; color: rgb(var(--ff-ink-rgb) / .62); text-decoration-thickness: 1.5px; text-decoration-color: rgb(var(--ff-ink-rgb) / .35); }
+.ff .ffs-ld span { grid-column: 1 / -1; }
+/* a law's page */
+.ff .ffs-lw { display: grid; gap: 7px; }
+.ff .ffs-lw em { font: 700 10px/1.3 var(--ff-font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: var(--ff-red); }
+.ff .ffs-lw h2 { margin: 0; font: 700 24px/1.12 var(--ff-font); letter-spacing: -.02em; color: var(--ff-ink); text-wrap: balance; }
+.ff .ffs-page > .pf { padding: 14px 0 4px; border-top: 1px solid rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-do { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--rose-wash); font: 600 14px/1.42 var(--ff-font); color: var(--ff-ink); }
+.ff .ffs-do em { flex: none; font: 700 10px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: var(--ff-red); }
+.ff .ffs-lim { margin: -8px 0 0; font: 500 12px/1.45 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .5); }
+/* the posts that kept it (and broke it): covers in a strip, each with where it landed and what in it the law is about */
+.ff .ffs-strip.ks { align-items: start; }
+.ff .ffs-kc { flex: none; display: grid; gap: 6px; justify-items: start; width: 112px; scroll-snap-align: start; text-align: left; -webkit-tap-highlight-color: transparent; }
+.ff .ffs-kc .ffs-sci { width: 64px; }
+.ff .ffs-kc.hot .ffs-sci { box-shadow: 0 0 0 2px var(--ff-surface), 0 0 0 4.5px var(--ff-red); }
+.ff .ffs-kc.dn .ffs-sci { box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-kc.dn .ffs-sci img { filter: grayscale(1) contrast(.92) brightness(1.04); opacity: .62; }
+.ff .ffs-kc em { font: 700 12px/1 var(--ff-font); font-style: normal; font-variant-numeric: tabular-nums; color: var(--ff-ink); }
+.ff .ffs-kc.hot em { color: var(--ff-red); }
+.ff .ffs-kc.dn em { color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-kc span:last-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font: 500 12px/1.35 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .7); }
+/* how it came to be: each run that moved it, opening that run's read */
+.ff .ffs-life { display: grid; margin: 0; padding: 0; list-style: none; }
+.ff .ffs-life li { border-top: 1px solid rgb(var(--ff-ink-rgb) / .07); }
+.ff .ffs-life li:first-child { border-top: 0; }
+.ff .ffs-life button { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: baseline; gap: 4px 10px; width: 100%; padding: 10px 2px; text-align: left; -webkit-tap-highlight-color: transparent; }
+.ff .ffs-life b { font: 700 10px/1.4 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ffs-life em { padding: 3px 7px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 700 10px/1 var(--ff-font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .62); }
+.ff .ffs-life em.up { background: var(--rose-wash); color: var(--ff-red); }
+.ff .ffs-life span { font: 500 13.5px/1.4 var(--ff-font); color: var(--ff-ink); text-wrap: pretty; }
+.ff .ffs-life i { font-style: normal; color: rgb(var(--ff-ink-rgb) / .4); }
+@media (hover: hover) { .ff .ffs-life button:hover { background: rgb(var(--ff-ink-rgb) / .035); } }
+.ff .ff-pm.lt { margin-top: 4px; background: rgb(var(--ff-ink-rgb) / .06); color: var(--ff-ink); }
+.ff .ff-pm.lt > span:first-child { flex: 1; padding-left: 6px; text-align: left; }
+/* beside the map the account and its laws fit the card's height: a smaller account block, the laws in one tight column */
+@container ff (min-width: 860px) {
+  .ff .ffs-av { width: 48px; height: 48px; }
+  .ff .ffs-id b { font-size: 19px; }
+  .ff .ffs-id span { font-size: 13px; line-height: 1.4; }
+  .ff .ffs-law { gap: 10px; padding: 10px 2px 9px; }
+  .ff .ffs-lt { gap: 4px; }
+  .ff .ffs-lt b { font-size: 14px; line-height: 1.28; }
+  .ff .ffs-lt em { font-size: 11px; }
+  .ff .ffs-lr b { font-size: 17px; }
+  .ff .ffs-lr em { font-size: 10px; }
+  .ff .ffs-ld { padding-top: 9px; font-size: 12px; }
+}
+
+
+/* ---------- Read v6 (Oct 21): on a narrow card a page reads in a sheet over the page, the whole height of the screen,
+   like a post mortem (the read's own sheet, readTab.css .rd .sheet): a law, a thing or a post opens it, its × or a pull
+   on its top bar closes it, and the map keeps what's open lit under it. Above the app's bottom bar, under a post mortem
+   opened from it */
+.ff.ffx { position: fixed; inset: 0; z-index: 190; display: block; padding: 0; background: none; pointer-events: none; visibility: hidden; overflow: visible; }
+.ff.ffx.on { visibility: visible; pointer-events: none; }
+/* over full screen while it's on */
+.ff.ffx.over { z-index: 2010; }
+.ff .ffx-x .ic { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
+.ff .ffx-scrim { position: absolute; left: 0; right: 0; top: 12px; height: 120lvh; background: var(--scrim); }
+.ff .ffx-sheet { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; height: calc(100dvh - 30px); border-radius: 26px 26px 0 0; background: var(--s1); box-shadow: 0 -20px 60px rgb(var(--shadow-rgb) / calc(.5 * var(--sa))), inset 0 0 0 1px var(--hair-2); overflow: hidden; }
+.ff .ffx-hd { position: relative; z-index: 2; flex: none; padding: 20px 14px 10px; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.ff .ffx-grab { position: absolute; left: 50%; top: 8px; width: 40px; height: 5px; margin-left: -20px; border-radius: 3px; background: var(--s3); }
+.ff .ffx-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.ff .ffx-t { overflow: hidden; padding-left: 6px; font: 600 14px/1.2 var(--ff-font); white-space: nowrap; text-overflow: ellipsis; color: var(--ff-ink); opacity: 0; transform: translateY(6px); transition: opacity calc(.3s * var(--fm-tempo)) var(--ff-ease), transform calc(.4s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffx-hd { transition: box-shadow calc(.3s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffx-hd.stuck { box-shadow: inset 0 -1px 0 var(--hair); }
+.ff .ffx-hd.stuck .ffx-t { opacity: 1; transform: none; }
+.ff .ffx-x { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgb(var(--ff-ink-rgb) / .06); font: 600 20px/1 var(--ff-font); }
+.ff .ffx-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 4px 18px calc(30px + env(safe-area-inset-bottom, 0px)); scrollbar-width: none; }
+.ff .ffx-body::-webkit-scrollbar { display: none; }
+.ff .ffx-body .ffs-page { gap: 20px; }
+/* a law's proof, folded under its split until asked for */
+.ff .ffs-pf { gap: 0; }
+.ff .ffs-pfb { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 2px 0; text-align: left; }
+.ff .ffs-pfb span { display: grid; gap: 5px; min-width: 0; font: 600 14.5px/1.35 var(--ff-font); color: var(--ff-ink); }
+.ff .ffs-pfb em { font: 700 10px/1.2 var(--ff-font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .48); }
+.ff .ffs-pfb i { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgb(var(--ff-ink-rgb) / .06); font: 600 18px/1 var(--ff-font); font-style: normal; transition: transform calc(.42s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-pfb[aria-expanded="true"] i { transform: rotate(45deg); }
+.ff .ffs-pfx { padding-top: 14px; }
+/* the account's read, as words: the reader's take on what it's doing and what it's getting */
+.ff .ffs-id span .ql { font-weight: 500; }
+@container ff (max-width: 859px) {
+  .ff .ffs-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ff .ffs-stats > div { padding: 10px 6px 10px 0; }
+  .ff .ffs-stats > div + div { padding-left: 8px; }
+  .ff .ffs-stats > div:nth-child(3), .ff .ffs-stats > div:nth-child(4) { border-top: 0; }
+  .ff .ffs-stats > div:nth-child(3) { padding-left: 8px; border-left: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+  .ff .ffs-stats b { font-size: 20px; }
+  .ff .ffs-stats span { font-size: 11px; }
+}
+/* a thing's posts (v6): a list, best first, what each one is and where it landed; the account's usual runs between the
+   ones above it and the ones under, the way the rules' split shows it. Each opens its post mortem */
+.ff .ffs-prs { list-style: none; margin: 0; padding: 0; display: grid; }
+.ff .ffs-pr { width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 7px 0; text-align: left; -webkit-tap-highlight-color: transparent; }
+.ff .ffs-pr .ffs-sci { width: 40px; border-radius: 7px; }
+.ff .ffs-pr.hot .ffs-sci { box-shadow: 0 0 0 2px var(--ff-surface), 0 0 0 3.5px var(--ff-red); }
+.ff .ffs-pr.dn .ffs-sci { box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .1); }
+.ff .ffs-pr.dn .ffs-sci img { filter: grayscale(1) contrast(.92) brightness(1.04); opacity: .62; }
+.ff .ffs-pr:active .ffs-sci { transform: scale(.96); }
+@media (hover: hover) { .ff .ffs-pr:hover .ffs-sci { transform: translateY(-2px); } .ff .ffs-pr:hover .ffs-prt b { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: .2em; text-decoration-color: rgb(var(--ff-ink-rgb) / .3); } }
+.ff .ffs-prt { display: grid; gap: 3px; min-width: 0; }
+.ff .ffs-prt b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font: 600 14px/1.3 var(--ff-font); color: var(--ff-ink); text-wrap: pretty; }
+.ff .ffs-prt em { font: 500 12px/1.2 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-prp { font: 700 13px/1 var(--ff-font); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ff-ink); }
+.ff .ffs-pr.hot .ffs-prp { color: var(--ff-red); }
+.ff .ffs-pr.dn .ffs-prp { color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-us { display: flex; align-items: center; gap: 10px; margin: 5px 0; font: 700 10px/1 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-us::before { content: ""; flex: 1; border-top: 1px solid rgb(var(--ff-ink-rgb) / .22); }
+/* Oct 21, v6: the Feeder File never traps the page's scroll.
+   A wide card: the map stays pinned beside the reading while the page scrolls the reading (no scroll inside the card); a
+   plain scroll over the map moves the page too (⌘/ctrl + scroll, a pinch or the buttons zoom it). Full screen keeps the
+   reading's own column.
+   A narrow card: the map in the page takes a sideways drag, a pinch and a tap (its labels count); an up-or-down swipe is
+   the page's. Its reading folds into a bold strip under it and opens in the sheet (v6.1 below) */
+@container ff (min-width: 860px) {
+  .ff:not(.ff-portal) .ff-wrap.sys { --ff-stick: 16px; height: auto; grid-template-rows: auto 1fr; grid-template-areas: "head stage" "body stage"; align-items: start; }
+  .ff:not(.ff-portal) .ff-wrap.sys .ff-stage { position: sticky; top: var(--ff-stick); height: min(calc(var(--ff-card-h) - 32px), calc(100svh - 2 * var(--ff-stick))); align-self: start; }
+  .ff:not(.ff-portal) .ff-wrap.sys .ff-body { align-self: stretch; }
+  .ff:not(.ff-portal) .ff-wrap.sys .ff-panel { position: static; overflow: visible; overscroll-behavior: auto; }
+}
+/* v6.1 (Oct 21): on a narrow card the reading is a strip under the map and a sheet that peeks and pulls.
+   The strip: the account's line in bold on ink, what's in the reading, an arrow up; it opens the whole reading */
+.ff .ffs-fold { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 12px 12px 10px; border-radius: 18px; background: var(--ff-ink); color: var(--ff-inv); text-align: left; -webkit-tap-highlight-color: transparent; transition: transform calc(.22s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-fold:active { transform: scale(.985); }
+.ff .ffs-fold .ffs-av { width: 48px; height: 48px; padding: 2px; background: var(--ff-ink); box-shadow: 0 0 0 2px var(--ff-red); }
+.ff .ffs-bt { display: grid; gap: 4px; min-width: 0; }
+.ff .ffs-bt em { font: 700 10px/1.2 var(--ff-font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: rgb(var(--ff-inv-rgb) / .6); }
+.ff .ffs-bt b { font: 700 17px/1.16 var(--ff-font); letter-spacing: -.01em; color: var(--ff-inv); text-wrap: balance; }
+.ff .ffs-bt i { font: 600 12px/1.3 var(--ff-font); font-style: normal; color: rgb(var(--ff-inv-rgb) / .62); }
+.ff .ffs-bu { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgb(var(--ff-inv-rgb) / .14); font: 700 16px/1 var(--ff-font); color: var(--ff-inv); }
+/* the sheet: peeking, only the sheet takes touches (the map above stays live); at full height the dimmed edge settles it
+   back to a peek. Peeking, the reading doesn't scroll: a pull raises it */
+.ff .ffx-sheet { pointer-events: auto; will-change: transform; }
+.ff .ffx-scrim { pointer-events: none; opacity: 0; }
+.ff.ffx.full .ffx-scrim { pointer-events: auto; }
+.ff.ffx.peek .ffx-body { overflow: hidden; touch-action: none; }
+.ff .ffx-hd { cursor: grab; }
+.ff .ffx-bar { grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto auto; }
+.ff .ffx-back { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; height: 34px; padding: 0 12px 0 10px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 600 12px/1 var(--ff-font); color: var(--ff-ink); }
+.ff .ffx-back[hidden] { display: none; }
+/* back names where it goes; a long name gives way at its end */
+.ff .ffx-back > span:last-child, .ff .ffs-back > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ff .ffs-back { max-width: calc(100% - 88px); min-width: 0; }
+@media (hover: hover) { .ff .ffx-back:hover { background: rgb(var(--ff-ink-rgb) / .1); } }
+.ff .ffx-bar > .ffx-back { grid-column: 1; }
+.ff .ffx-bar > .ffx-t { grid-column: 2; }
+.ff .ffx-bar > .ffs-nv { grid-column: 3; }
+.ff .ffx-bar > .ffx-x { grid-column: 4; }
+/* a page's glance (v6.1): under its title, the few numbers you take in at once; it's all a peeking sheet shows */
+.ff .ffs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.ff .ffs-lw .ffs-chips { margin-top: 2px; }
+.ff .ffs-chips > span { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: rgb(var(--ff-ink-rgb) / .06); font: 600 12px/1 var(--ff-font); letter-spacing: normal; white-space: nowrap; color: rgb(var(--ff-ink-rgb) / .78); }
+.ff .ffs-chips > span.r { background: color-mix(in srgb, var(--ff-red) 10%, transparent); color: var(--ff-red); }
+/* peeking, a long title keeps to two lines so the glance stays small; risen, it reads in full */
+.ff.ffx.peek .ffs-page > :first-child h2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+/* the strip's arrow: in the page it takes the map full screen, in full screen it opens the reading */
+.ff .ffs-bu .ic { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ff .ffs-bu .go-up { display: none; font-style: normal; }
+.ff.ff-portal .ffs-bu .go-full { display: none; }
+.ff.ff-portal .ffs-bu .go-up { display: inline; }
+/* full screen beside the reading: a layer over everything, clipped to the card's frame while it opens and closes (a phone's
+   moves by transform instead, v9) */
+.ff.ff-portal:not(.ff-pn) { will-change: clip-path; }
+/* the card's head rides above the map while full screen opens and closes (it crosses the map on the way) */
+.ff .ff-head { position: relative; z-index: 5; }
+/* ---------- v7 (Oct 22): the reading as things you can see. Each rule a card: its number and state, its short name, its
+   headline number, a small picture of where its posts landed (or followers day by day), its record. Each proof its own
+   card with its chart. On a phone's full screen they're the reading's sheet (v9) */
+.ff .rks { display: grid; gap: 10px; }
+.ff .rk { position: relative; display: grid; align-content: start; gap: 6px; width: 100%; padding: 14px 14px 12px; border-radius: 18px; background: var(--ff-surface); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .08), 0 10px 24px -20px rgb(0 0 0 / .45); text-align: left; color: var(--ff-ink); -webkit-tap-highlight-color: transparent; transition: transform calc(.22s * var(--fm-tempo)) var(--ff-ease), box-shadow calc(.22s * var(--fm-tempo)) var(--ff-ease); }
+@media (hover: hover) { .ff .rk:hover { box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .18), 0 14px 30px -20px rgb(0 0 0 / .5); } }
+.ff .rk:active { transform: scale(.985); }
+.ff .rk-k { display: block; font: 600 10px/1.2 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .rk-k b { font-weight: 700; color: var(--ff-red); }
+.ff .rk-t { display: block; font: 700 16px/1.2 var(--ff-font); letter-spacing: -.01em; color: var(--ff-ink); text-wrap: balance; }
+.ff .rk-n { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ff .rk-n b { font: 700 26px/1 var(--ff-font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--ff-red); white-space: nowrap; }
+.ff .rk-n em { min-width: 0; font: 500 12px/1.25 var(--ff-font); font-style: normal; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .rk-v { display: block; margin-top: 2px; }
+.ff .rk-r { display: block; font: 600 11px/1.25 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .5); }
+/* the two sides a rule splits the posts into: what lands, what sinks */
+.ff .rk-sd { display: grid; gap: 3px; margin-top: 1px; }
+.ff .rk-sd > span { display: flex; align-items: baseline; gap: 7px; min-width: 0; font: 500 12.5px/1.3 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .72); }
+.ff .rk-sd i { flex: none; font: 700 8px/1 var(--ff-font); font-style: normal; transform: translateY(-1px); }
+.ff .rk-sd .up i { color: var(--ff-red); }
+.ff .rk-sd .dn i { color: rgb(var(--ff-ink-rgb) / .4); }
+.ff .ffs-shr > .rk .rk-sd > span { font-size: 12px; }
+/* where a rule's posts usually land: one track, best to worst; its posts red, the others ink, the usual a tick */
+.ff .mk-sp { position: relative; display: block; height: 44px; margin: 0 4px; }
+.ff .mk-sp .tr { position: absolute; left: 0; right: 0; top: 22px; height: 4px; border-radius: 2px; background: rgb(var(--ff-ink-rgb) / .08); }
+.ff .mk-sp .us { position: absolute; left: 50%; top: 17px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: rgb(var(--ff-ink-rgb) / .3); }
+.ff .mk-sp .gp { position: absolute; top: 23px; height: 2px; background: linear-gradient(90deg, var(--ff-red), rgb(var(--ff-ink-rgb) / .45)); }
+.ff .mk-sp .dt { position: absolute; top: 18px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; }
+.ff .mk-sp .dt.hi { background: var(--ff-red); box-shadow: 0 0 0 3px var(--ff-surface); }
+.ff .mk-sp .dt.lo { background: var(--ff-surface); box-shadow: inset 0 0 0 2.5px rgb(var(--ff-ink-rgb) / .7), 0 0 0 3px var(--ff-surface); }
+.ff .mk-sp .dt b { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); font: 700 10.5px/1 var(--ff-font); white-space: nowrap; color: rgb(var(--ff-ink-rgb) / .7); }
+.ff .mk-sp .dt.hi b { color: var(--ff-red); }
+.ff .mk-sp em { position: absolute; top: 33px; font: 600 9px/1 var(--ff-font); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .4); }
+.ff .mk-sp .e0 { left: 0; }
+.ff .mk-sp .e1 { right: 0; }
+/* followers day by day: gains up, losses down, the biggest day red */
+.ff .mk-fo { display: flex; align-items: stretch; gap: 2px; height: 46px; background: linear-gradient(rgb(var(--ff-ink-rgb) / .14), rgb(var(--ff-ink-rgb) / .14)) center / 100% 1px no-repeat; }
+.ff .mk-fo i { position: relative; flex: 1; min-width: 0; }
+.ff .mk-fo i::after { content: ""; position: absolute; left: 0; right: 0; bottom: 50%; height: max(1.5px, calc(var(--h, 0) * 50%)); border-radius: 1.5px; background: rgb(var(--ff-ink-rgb) / .3); }
+.ff .mk-fo i.neg::after { bottom: auto; top: 50%; background: rgb(var(--ff-ink-rgb) / .16); }
+.ff .mk-fo i.top::after { background: var(--ff-red); }
+.ff .mk-fo i.gap::after { height: 0; border-top: 1.5px dashed rgb(var(--ff-ink-rgb) / .25); background: none; }
+/* each paid post as a share of the usual (the dashed line) */
+.ff .mk-mo { position: relative; display: flex; align-items: flex-end; gap: 4px; height: 46px; }
+.ff .mk-mo i { flex: 1; height: calc(var(--h) * 100%); border-radius: 3px 3px 1px 1px; background: rgb(var(--ff-ink-rgb) / .22); }
+.ff .mk-mo i.ok { background: var(--ff-red); }
+.ff .mk-mo i.us { position: absolute; left: 0; right: 0; bottom: calc(var(--y) * 100%); flex: none; height: 0; border-top: 1.5px dashed rgb(var(--ff-ink-rgb) / .5); border-radius: 0; background: none; }
+.ff .mk-mo i { position: relative; }
+.ff .mk-mo i.us { position: absolute; }
+.ff .mk-mo i b, .ff .mk-mo i.us em { display: none; }
+/* on the proof card: each share over its bar, the usual named */
+.ff .ck-m .mk-mo { margin-top: 16px; }
+.ff .ck-m .mk-mo i b { display: block; position: absolute; left: 50%; bottom: calc(100% + 3px); transform: translateX(-50%); font: 700 9.5px/1 var(--ff-font); font-variant-numeric: tabular-nums; white-space: nowrap; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ck-m .mk-mo i.ok b { color: var(--ff-red); }
+.ff .ck-m .mk-mo i.us em { display: block; position: absolute; right: 0; bottom: 3px; padding: 1px 4px; border-radius: 4px; background: var(--ff-surface); font: 600 9px/1 var(--ff-font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .5); }
+/* the same idea twice: two bars of likes */
+.ff .mk-tw { display: grid; gap: 7px; padding-top: 2px; }
+.ff .mk-tw > span { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 8px; }
+.ff .mk-tw em { overflow: hidden; font: 600 11px/1.1 var(--ff-font); font-style: normal; white-space: nowrap; text-overflow: ellipsis; color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .mk-tw > span > span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ff .mk-tw i { flex: none; height: 10px; width: calc(var(--w) * (100% - 44px)); min-width: 4px; border-radius: 5px; background: rgb(var(--ff-ink-rgb) / .25); }
+.ff .mk-tw b { font: 700 11px/1 var(--ff-font); font-variant-numeric: tabular-nums; white-space: nowrap; color: rgb(var(--ff-ink-rgb) / .7); }
+.ff .mk-tw i.hi + b { color: var(--ff-red); }
+.ff .mk-tw i.hi { background: var(--ff-red); }
+/* in the order they went up: each post at the height it landed */
+.ff .mk-ar { display: flex; justify-content: space-between; height: 46px; padding: 0 8px; background: linear-gradient(rgb(var(--ff-ink-rgb) / .14), rgb(var(--ff-ink-rgb) / .14)) center / 100% 1px no-repeat; }
+.ff .mk-ar i { position: relative; width: 12px; }
+.ff .mk-ar i::after { content: ""; position: absolute; left: 0; top: calc(var(--y) * (100% - 12px)); width: 12px; height: 12px; border-radius: 50%; background: rgb(var(--ff-ink-rgb) / .35); }
+.ff .mk-ar i.hot::after { background: var(--ff-red); }
+/* each teaser beside its episode */
+.ff .mk-pa { display: flex; align-items: flex-end; gap: 12px; height: 46px; }
+.ff .mk-pa > span { display: flex; align-items: flex-end; gap: 3px; height: 100%; }
+.ff .mk-pa i { width: 9px; height: calc(var(--h) * 100%); min-height: 2px; border-radius: 2px; background: rgb(var(--ff-ink-rgb) / .25); }
+.ff .mk-pa i.ep { background: var(--ff-red); }
+.ff .mk-pa .off i.ep { background: rgb(var(--ff-ink-rgb) / .45); }
+/* a proof, whole: its card's head opens its page, its chart sits under it */
+.ff .ck { display: grid; gap: 8px; padding: 14px 14px 12px; border-radius: 18px; background: var(--ff-surface); box-shadow: 0 0 0 1px rgb(var(--ff-ink-rgb) / .08), 0 10px 24px -20px rgb(0 0 0 / .45); }
+.ff .ck-h { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; text-align: left; color: var(--ff-ink); }
+.ff .ck-h .rk-k, .ff .ck-h .rk-t { grid-column: 1; }
+.ff .ck-h > i { grid-column: 2; grid-row: 1 / span 2; font-style: normal; font-weight: 700; color: var(--ff-red); }
+.ff .ck .pf { margin: 0; }
+.ff .ffs-pfs { margin-top: 4px; }
+/* a phone's proof card: the chart is the card */
+.ff .ck-m .rk-v { margin: 4px 0 2px; }
+.ff .ck-m .mk-fo, .ff .ck-m .mk-mo, .ff .ck-m .mk-ar, .ff .ck-m .mk-pa { height: 72px; }
+.ff .ck-m .mk-tw { gap: 10px; }
+.ff .ck-m .mk-tw i { height: 16px; border-radius: 8px; }
+/* deals: a collab (in ink, it reads first), Instagram's paid label, an ad with no label */
+.ff .ffs-dl { display: inline-block; margin-left: 6px; padding: 2px 5px 2px; border-radius: 4px; vertical-align: 1px; font: 700 9px/1.1 var(--ff-font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; background: rgb(var(--ff-ink-rgb) / .08); color: rgb(var(--ff-ink-rgb) / .7); }
+.ff .ffs-dl.co { background: var(--ff-ink); color: var(--ff-inv); }
+.ff .ffs-chips .dl { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 10.5px; }
+.ff .ffs-chips .dl.co { background: var(--ff-ink); color: var(--ff-inv); }
+.ff .ffs-deal { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 10px; margin: 2px 0 14px; padding: 12px 14px; border-radius: 14px; background: rgb(var(--ff-ink-rgb) / .045); box-shadow: inset 0 0 0 1px rgb(var(--ff-ink-rgb) / .06); }
+.ff .ffs-deal .dl { padding: 5px 8px; border-radius: 999px; font: 700 10px/1 var(--ff-font); letter-spacing: .1em; text-transform: uppercase; background: rgb(var(--ff-ink-rgb) / .1); color: var(--ff-ink); }
+.ff .ffs-deal .dl.co { background: var(--ff-ink); color: var(--ff-inv); }
+.ff .ffs-deal b { min-width: 0; overflow-wrap: anywhere; font: 600 14px/1.3 var(--ff-font); color: var(--ff-ink); }
+.ff .ffs-deal p { grid-column: 1 / -1; margin: 0; font: 400 14px/1.45 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .72); }
+/* v8: a wedge (Cast, Formats, ...) as a card that leads the reading: its question, its top things with how many of their
+   posts landed, and the way to the rest (in place in the reading, its own page from a phone's sheet) */
+.ff .wk { display: grid; gap: 8px; align-content: start; }
+.ff .wk-h { display: grid; gap: 5px; width: 100%; text-align: left; color: var(--ff-ink); -webkit-tap-highlight-color: transparent; }
+.ff .wk-rows { display: grid; min-width: 0; }
+.ff .wk-r { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 7px 0; border-top: 1px solid rgb(var(--ff-ink-rgb) / .07); text-align: left; -webkit-tap-highlight-color: transparent; }
+.ff .wk-r .ff-hx { width: 22px; height: 25px; }
+.ff .wk-r .ff-hx .ic { width: 11px; height: 11px; }
+.ff .wk-r > b { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 600 13.5px/1.25 var(--ff-font); color: var(--ff-ink); }
+.ff .wk-r .ffs-score { min-width: 0; padding: 0; }
+.ff .wk-r .ffs-score b { font-size: 15px; }
+.ff .wk-r .ffs-score b i { font-size: 11px; }
+.ff .wk-r .ffs-score em { display: none; }
+@media (hover: hover) { .ff .wk-r:hover > b, .ff .wk-h:hover .rk-t { color: var(--ff-red); } }
+.ff .wk-more { justify-self: start; padding: 2px 0; font: 600 12px/1.2 var(--ff-font); color: var(--ff-red); -webkit-tap-highlight-color: transparent; }
+.ff .wk-more.none { display: none; }
+.ff .wk .ffs-row { padding-block: 8px; }
+.ff .wk .ffs-once { margin-top: 6px; }
+.ff .ffs-made { margin-bottom: 18px; }
+.ff .wk-all { display: grid; }
+/* v8: the map layer. Beside the reading it fills the stage; on a phone it's the screen's size all the time, centred on the
+   card and cropped by it, so going full screen only opens the frame round it (sized and placed by the engine) */
+.ff .ff-map { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+/* full screen on a phone runs edge to edge: the map is the screen, its head and buttons sit over it inside the safe area,
+   the reading's sheet at the foot. v9: the layer is a frame that scales from the card to the screen (its corners set once
+   by the engine), the layer inside it scaled back, transforms only. It holds the page still itself (no overflow on the
+   root, so Safari's bars and viewport never move) */
+.ff.ff-portal.ff-pn { padding: 0; overflow: hidden; transform-origin: 0 0; touch-action: none; overscroll-behavior: none; }
+.ff .ff-pin { position: absolute; inset: 0; transform-origin: 0 0; }
+.ff.ff-pn .ff-wrap.sys .ff-body { display: none; }
+.ff.ff-pn .ff-wrap.sys { position: relative; display: block; height: 100%; margin: 0; padding: 0; border-radius: 0; }
+.ff.ff-pn .ff-wrap.sys .ff-stage { position: absolute; inset: 0; width: auto; height: auto; min-height: 0; max-height: none; aspect-ratio: auto; border-radius: 0; }
+.ff.ff-pn .ff-wrap.sys .ff-head { position: absolute; z-index: 5; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top, 0px) + 18px) 22px 0; pointer-events: none; }
+.ff.ff-pn .ff-wrap.sys .ff-tools.ov { top: calc(env(safe-area-inset-top, 0px) + 10px); right: 12px; }
+.ff.ff-pn .ff-wrap.sys .ff-hud { top: calc(env(safe-area-inset-top, 0px) + 10px); }
+.ff.ff-pn .ff-wrap.sys .ff-body { position: absolute; left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); z-index: 6; margin: 0; }
+.ff.ff-pn .ff-wrap.sys .ff-panel { padding: 0; }
+/* the strip's stand-in during the full-screen move keeps the card's icon */
+.ff.ff-portal .ffs-ghost .ffs-bu .go-full { display: inline; }
+.ff.ff-portal .ffs-ghost .ffs-bu .go-up { display: none; }
+/* ---------- v9 (Oct 22): a phone's full screen reads in one sheet with three heights. Docked: the grab and one line of who
+   this is (the engine's DOCK = 18 + 2 + 56 + 14 keeps these heights). Half: the reading in the bottom half, with room under
+   its end to scroll it all into view. Full: the reading at full height. The list has no bar; a page brings it in */
+.ff.ffx[data-ffview="home"] .ffx-bar { display: none; }
+.ff.ffx[data-ffview="home"] .ffx-hd { padding: 18px 14px 0; }
+.ff.ffx[data-ffview="home"] .ffx-body { padding-top: 2px; }
+.ff.ffx.dock .ffx-body { overflow: hidden; touch-action: none; }
+.ff.ffx.half .ffx-body { padding-bottom: calc(var(--ffx-off, 0px) + 30px + env(safe-area-inset-bottom, 0px)); }
+.ff .ffs-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; height: 56px; }
+.ff .ffs-dock .ffs-av { width: 46px; height: 46px; padding: 2px; box-shadow: 0 0 0 2px var(--ff-red); }
+.ff .ffs-dkt { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center; min-width: 0; height: 100%; text-align: left; color: var(--ff-ink); -webkit-tap-highlight-color: transparent; }
+.ff .ffs-dkt > em, .ff .ffs-dkt > b, .ff .ffs-dkt > i { grid-column: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-style: normal; }
+.ff .ffs-dkt > em { font: 700 10px/1.2 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: var(--ff-red); }
+.ff .ffs-dkt > b { font: 700 16px/1.2 var(--ff-font); letter-spacing: -.01em; }
+.ff .ffs-dkt > i { font: 600 12px/1.25 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ffs-dku { grid-column: 2; grid-row: 1 / span 3; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgb(var(--ff-ink-rgb) / .06); font: 700 15px/1 var(--ff-font); transition: transform calc(.5s * var(--fm-tempo)) var(--ff-ease); }
+.ff.ffx:not(.dock) .ffs-dku { transform: rotate(180deg); }
+.ff .ffs-dkt:active .ffs-dku { background: rgb(var(--ff-ink-rgb) / .1); }
+/* the head under it says what the account is doing; the line above already says who */
+.ff .ffs-ln { font-size: 15px; font-weight: 400; color: rgb(var(--ff-ink-rgb) / .78); }
+/* v9.1: on a phone the app's header pill and nav stay over the full-screen map (the sheet still covers the nav), so the
+   frame opens and closes under them; the Feeder File's head and buttons sit under the header pill (--ff-top) */
+body.ff-full-n [data-fm-bottom-nav], body.ff-full-n [data-fm-header-layer] { z-index: 2005; }
+.ff.ff-pn .ff-wrap.sys .ff-head { padding-top: calc(var(--ff-top, env(safe-area-inset-top, 0px)) + 18px); }
+.ff.ff-pn .ff-wrap.sys .ff-tools.ov, .ff.ff-pn .ff-wrap.sys .ff-hud { top: calc(var(--ff-top, env(safe-area-inset-top, 0px)) + 10px); }
+/* the card never anchors the page's scroll: moved into full screen, the browser would otherwise scroll the page by the
+   card's height to "keep it in place" (Chrome and Firefox anchor scroll; Safari doesn't) */
+.ff { overflow-anchor: none; }
+/* ---------- v10 (Oct 22): a phone's list is two shelves under the dock line, each a row of cards that snaps card by card
+   with the next one peeking at the edge. Both fit the sheet at half height, so the list never scrolls up and down; the
+   card a shelf has snapped to lights on the map */
+.ff .ffs-sh { display: grid; gap: 10px; }
+.ff .ffs-shf { display: grid; gap: 10px; min-width: 0; }
+.ff .ffs-shf .ffs-lh { padding-bottom: 8px; }
+.ff .ffs-shr { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding-inline: 18px; touch-action: pan-x; scrollbar-width: none; margin: 0 -18px; padding: 2px 18px 6px; }
+.ff .ffs-shr::-webkit-scrollbar { display: none; }
+.ff .ffs-shr > .rk { flex: none; width: calc(100% - 64px); max-width: 320px; scroll-snap-align: start; scroll-snap-stop: always; padding: 12px 14px 10px; }
+.ff .ffs-shr > .rk:last-child { margin-right: 0; }
+/* a shelf's card is its head and the gist: a wedge's top two things (its head says how many and opens the rest), a rule's
+   number and its picture (its page has the record) */
+.ff .ffs-shr > .rk { gap: 5px; }
+.ff .ffs-shr > .wk .wk-r { padding: 5px 0; }
+.ff .ffs-shr > .wk .wk-r:nth-child(n+3), .ff .ffs-shr > .wk .wk-more, .ff .ffs-shr > .rk .rk-r { display: none; }
+.ff .ffs-shr > .rk .rk-t { font-size: 15px; }
+.ff .ffs-shr > .rk .rk-n b { font-size: 22px; }
+.ff .ffs-sh .ffs-lh { padding-bottom: 6px; }
+.ff .ffs-sh .ffs-shf { gap: 8px; }
+.ff.ffx.fit[data-ffview="home"]:not(.full) .ffx-body { overflow-y: hidden; padding-bottom: 12px; }
+/* on the account's own page (a phone), its numbers and the map's key */
+.ff.ffx .ffs-page > .ff-plg { display: flex; }
+.ff.ffx .ffs-page > .ffs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ff.ffx .ffs-page > .ffs-stats > div:nth-child(3) { padding-left: 0; border-left: 0; border-top: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+.ff.ffx .ffs-page > .ffs-stats > div:nth-child(4) { border-top: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+
+/* ---------- Read v7 (Oct 22): a rule's takes, one per reader (the account, a rival, a partner, someone learning), as rows
+   in the "Do this" plate */
+.ff .ffs-takes { display: grid; gap: 10px; }
+.ff .ffs-takes p { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 0; }
+.ff .ffs-takes p + p { padding-top: 10px; border-top: 1px solid rgb(var(--ff-ink-rgb) / .08); }
+@media (min-width: 640px) { .ff .ffs-takes p { grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: baseline; } }
+
+/* v10: a thing explained: each post's line under its name, and the takeaway set a little stronger */
+.ffs-each .ffs-ln { display: block; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ff-fg2, rgba(20, 20, 24, .66)); white-space: normal; }
+.ffs-tk { font-weight: 600; }
+
+/* v12: the Profile page lists its sections, each opening its wedge */
+.ff .ffs-secs { display: grid; gap: 0; }
+.ff .ffs-sec { display: grid; gap: 4px; justify-items: start; text-align: left; width: 100%; padding: 12px 0; border: 0; border-top: 1px solid rgb(var(--ff-ink-rgb) / .1); background: none; color: var(--ff-ink); cursor: pointer; }
+.ff .ffs-sec:first-child { border-top: 0; padding-top: 2px; }
+.ff .ffs-sec b { font: 700 15px/1.2 var(--ff-font); letter-spacing: -.01em; }
+.ff .ffs-sec .ffs-sl { font: 500 13px/1.4 var(--ff-font); color: rgb(var(--ff-ink-rgb) / .75); text-wrap: pretty; }
+.ff .ffs-sec em { font: 600 11.5px/1.3 var(--ff-font); font-style: normal; font-variant-numeric: tabular-nums; color: rgb(var(--ff-ink-rgb) / .55); }
+@media (hover: hover) { .ff .ffs-sec:hover b { color: var(--ff-red); } }
+
+/* v12 sections: a sector's name at the rim of the map, and the reading's switcher + one section at a time */
+.ff .ff-gl.cat.sx { display: grid; gap: 3px; justify-items: center; padding: 6px 12px 6px; border-radius: 10px; font-size: 13px; letter-spacing: .2em; pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: opacity calc(.35s * var(--fm-tempo)) var(--ff-ease), color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ff-gl.cat.sx b { font: 700 13px/1 var(--ff-font); letter-spacing: .2em; }
+.ff .ff-gl.cat.sx i { font: 500 10px/1 var(--ff-font); font-style: normal; letter-spacing: .12em; text-transform: none; color: rgb(var(--ff-ink-rgb) / .55); }
+.ff .ff-gl.cat.sx.on b { color: var(--ff-red); }
+@media (max-width: 600px) { .ff .ff-gl.cat.sx { padding: 5px 9px; } .ff .ff-gl.cat.sx b { font-size: 11px; letter-spacing: .16em; } }
+.ff .ffs-tabs { display: flex; gap: 2px; margin: 0 0 14px; padding: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; border-bottom: 1px solid rgb(var(--ff-ink-rgb) / .12); }
+.ff .ffs-tabs::-webkit-scrollbar { display: none; }
+.ff .ffs-tab { position: relative; flex: none; min-height: 40px; padding: 0 12px; border: 0; background: none; font: 700 11px/1 var(--ff-font); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--ff-ink-rgb) / .5); cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent; transition: color calc(.25s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-tab::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--ff-ink); transform: scaleX(0); transform-origin: left; transition: transform calc(.4s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ffs-tab.on { color: var(--ff-ink); }
+.ff .ffs-tab.on::after { transform: scaleX(1); }
+@media (hover: hover) { .ff .ffs-tab:hover { color: var(--ff-ink); } }
+.ff .ffs-sx { display: grid; gap: 0; align-content: start; }
+.ff .ffs-sx > .ffs-dock { margin-bottom: 10px; }
+.ff .ffs-sxb { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.ff .ffs-sxh { display: grid; gap: 10px; }
+.ff .ffs-gp { display: grid; gap: 6px; }
+.ff .ffs-gh { display: flex; align-items: baseline; justify-content: space-between; margin: 6px 0 0; padding-bottom: 8px; border-bottom: 1.5px solid var(--ff-ink); font: 700 12px/1 var(--ff-font); letter-spacing: .16em; text-transform: uppercase; color: var(--ff-ink); }
+.ff .ffs-gh span { font: 500 12px/1 var(--ff-font); letter-spacing: 0; font-variant-numeric: tabular-nums; color: rgb(var(--ff-ink-rgb) / .5); }
+.ff .ffs-gl { display: grid; }
+.ff .ffs-gl .ffs-row:first-child { border-top: 0; }
+.ff .ffs-bar { display: flex; gap: 2px; height: 8px; margin: 2px 0 6px; }
+.ff .ffs-bar i { display: block; min-width: 2px; border-radius: 2px; background: var(--ff-ink); }
+@media (max-width: 480px) { .ff .ffs-tab { padding: 0 10px; } .ff .ffs-tab::after { left: 10px; right: 10px; } }
+
+/* v12 review fixes: plain labels with a soft halo, no boxes; legend steps aside while something is picked */
+.ff .ff-wrap.sect .ff-lb, .ff .ff-wrap.sect .ff-lb.brief, .ff .ff-wrap.sect .ff-lb.hov, .ff .ff-wrap.sect .ff-lb.sel { background: none; box-shadow: none; text-shadow: 0 0 3px rgb(var(--ff-bg-rgb)), 0 0 8px rgb(var(--ff-bg-rgb) / .95), 0 0 14px rgb(var(--ff-bg-rgb) / .8); }
+.ff .ff-wrap.sect .ff-key { transition: opacity calc(.35s * var(--fm-tempo)) var(--ff-ease); }
+.ff .ff-wrap.sect.pk .ff-key { opacity: 0; }
+.ff .ff-gl.cat.sx { background: none; box-shadow: none; padding: 2px 4px; text-shadow: 0 0 3px rgb(var(--ff-bg-rgb)), 0 0 9px rgb(var(--ff-bg-rgb) / .95), 0 0 16px rgb(var(--ff-bg-rgb) / .8); }
+.ff .ff-gl.cat.sx i { color: rgb(var(--ff-ink-rgb) / .6); }
+.ff .ffs-tabs { gap: 0; justify-content: space-between; }
+.ff .ffs-tab { flex: 1 1 auto; padding: 0 7px; font-size: 10.5px; letter-spacing: .07em; }
+.ff .ffs-tab::after { left: 7px; right: 7px; }
+@media (max-width: 480px) { .ff .ffs-tab { padding: 0 8px; } .ff .ffs-tab::after { left: 8px; right: 8px; } }
+.ff .ffs-kb { display: flex; align-items: stretch; gap: 2px; height: 6px; margin: 2px 0 8px; }
+.ff .ffs-kb i { display: block; height: 6px; min-width: 2px; border-radius: 2px; background: var(--ff-ink); }
+.ff .ffs-kb i.hot { background: var(--ff-red); }

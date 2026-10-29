@@ -16,8 +16,19 @@
    tears down when it is hidden (Activity) or when the rail moves
    to something it has no read for.
 
+   Above a read sits its preview (ReadStories: the read as stories, in
+   the same order every time), then the wall. The Feeder File
+   (FeederFile), the feeder's world as one map, is tucked away: a layer
+   over the read, opened from a story, its door, or a rule or thing the
+   wall names, flown to what was asked for (Anuj and Lakmé for now).
+
    Reads are sample data for now (two feeders), see
    data/readerPreview.json; the feeds are the app's own.
+
+   A feeder read in three parts (Read17: Story · Strategy · Split,
+   Anuj and Lakmé for now) takes the page instead: none of the above
+   is mounted for it, the header folds on the window's scroll as the
+   index's does, and its switch is the part switch.
    ───────────────────────────────────────────────────────────── */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -28,6 +39,11 @@ import { leavePage } from '@/components/read/readMotion';
 import { LAYER_HTML } from '@/components/read/readMarkup';
 import ReadHeader from '@/components/read/ReadHeader';
 import ReadIndex from '@/components/read/ReadIndex';
+import FeederFile, { feederAvatar, hasFeederFile } from '@/components/read/FeederFile';
+import ReadStories, { type ReadOpen } from '@/components/read/ReadStories';
+import ReadSections, { FileDoor, sectionsFor } from '@/components/read/ReadSections';
+import { closeLayer, openLayer, originBox } from '@/components/read/readLayerMotion';
+import Read17, { read17Of, type Chapter, type Part } from '@/components/read/read17/Read17';
 import {
   READ_POSTS,
   cachedFeeds,
@@ -100,10 +116,124 @@ export default function ReadTab() {
 
   const feedId = scope.feedId !== undefined ? scope.feedId : feeds ? feedOf(feeds, scope.handle) : undefined;
   const activeFeed = feeds && feedId ? feeds.find((feed) => feed.id === feedId) || null : null;
-  const readIndex = readOf(scope.handle);
+  // a read in three parts takes the page: the engine, the stories, the sections and the Feeder File stand down for it
+  const r17 = read17Of(scope.handle);
+  const [part, setPart] = useState<Part>('story');
+  const jump17 = useRef<((target: string) => void) | null>(null);
+  // a part picked in the header (or one of the three on the side rail): the page goes there
+  const toPart = useCallback((next: Part | Chapter) => {
+    setPart(next === 'strategy' ? 'slices' : next);
+    jump17.current?.(next);
+  }, []);
+  const readIndex = r17 ? null : readOf(scope.handle);
   const reading = readIndex != null;
   const compressed = reading ? engineCompressed : indexCompressed;
   const readable = useMemo(() => readFeeders(feeds), [feeds]);
+  // the read's sections (This week · Phases · Lanes · Drivers), for the feeders they've been counted for
+  const sec = useMemo(() => (r17 ? null : sectionsFor(scope.handle)), [scope.handle, r17]);
+  // a read with a Feeder File (preview data: Anuj and Lakmé) opens on its stories, the Feeder File tucked away
+  const fileHandle = reading && hasFeederFile(scope.handle) ? scope.handle : null;
+  // the read as stories (the reader's preview data carries them as reader.stories)
+  const storyFeeder = useMemo(() => {
+    if (!fileHandle) return null;
+    const f = (readerData as unknown as { feeders: { handle: string; posts: { id: string; thumb?: string; label?: string }[]; reader?: { stories?: unknown[] } }[] }).feeders.find((x) => x.handle === fileHandle);
+    return f && f.reader?.stories?.length ? (f as Parameters<typeof ReadStories>[0]['feeder']) : null;
+  }, [fileHandle]);
+  // the Feeder File's layer: which feeder it's for (anything else reads as closed), whether it's up, and what to fly to
+  // (k counts the asks, so asking for the same thing again flies there again). Once opened it stays mounted, hidden,
+  // until the feeder changes, so it opens again at once
+  const [file, setFile] = useState<{ handle: string | null; open: boolean; id: string | null; k: number }>({ handle: null, open: false, id: null, k: 0 });
+  const fileUp = !!fileHandle && file.handle === fileHandle;
+  const fileOpen = fileUp && file.open;
+  // the layer is a frame (fileLayer) over a layer of its own (fileInner, where the map's full screen and sheet go too);
+  // it opens out of what was tapped (from) and closes back into it (readLayerMotion)
+  const fileLayer = useRef<HTMLDivElement | null>(null);
+  const fileInner = useRef<HTMLDivElement | null>(null);
+  const fileFrom = useRef<(() => DOMRect | null) | null>(null);
+  const closing = useRef(false);
+  // the map ready (in its full screen, on a phone) before the layer opens out of the card: a map still loading would
+  // open as an empty window. It's put together ahead, out of sight, once the stories have had a moment
+  const fileReady = useRef(false);
+  const revealWait = useRef<number | null>(null);
+  const reveal = useCallback(() => {
+    if (revealWait.current != null) { window.clearTimeout(revealWait.current); revealWait.current = null; }
+    const el = fileLayer.current;
+    const inner = fileInner.current;
+    if (!el || !inner) return;
+    el.style.opacity = '';
+    openLayer(el, inner, originBox(fileFrom.current));
+  }, []);
+  const onFileReady = useCallback(() => {
+    fileReady.current = true;
+    if (revealWait.current != null) reveal();
+  }, [reveal]);
+  useEffect(() => {
+    fileReady.current = false;
+    if (!fileHandle) return undefined;
+    const park = () => setFile((f) => (f.handle === fileHandle ? f : { handle: fileHandle, open: false, id: null, k: 0 }));
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    let idle = 0;
+    const t = window.setTimeout(() => { if (w.requestIdleCallback) idle = w.requestIdleCallback(park, { timeout: 1500 }); else park(); }, 1400);
+    return () => { window.clearTimeout(t); if (idle && w.cancelIdleCallback) w.cancelIdleCallback(idle); };
+  }, [fileHandle]);
+  const openFile = useCallback((id: string | null, from?: (() => DOMRect | null) | null) => {
+    if (!fileHandle) return;
+    fileFrom.current = from ?? null;
+    closing.current = false;
+    setFile((f) => ({ handle: fileHandle, open: true, id: id ?? (f.handle === fileHandle ? f.id : null), k: id ? f.k + 1 : f.k }));
+  }, [fileHandle]);
+  // the layer shrinks back into what it opened from, then hides
+  const closeFile = useCallback(() => {
+    const el = fileLayer.current;
+    const inner = fileInner.current;
+    const done = () => { closing.current = false; setFile((f) => ({ ...f, open: false })); };
+    if (!el || !inner) { done(); return; }
+    if (closing.current) return;
+    closing.current = true;
+    closeLayer(el, inner, originBox(fileFrom.current), done);
+  }, []);
+  const onStories = useCallback((o: ReadOpen) => {
+    if (o.posts) { document.getElementById('rd-main')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (o.file) openFile(o.file === true ? null : o.file.post || o.file.law || o.file.node || null, o.from);
+  }, [openFile]);
+  // up: it opens out of what was tapped, the page under it holds still, and the read's sheets come up over it
+  useLayoutEffect(() => {
+    if (!fileOpen) return undefined;
+    const el = fileLayer.current;
+    if (fileReady.current) reveal();
+    else if (el) {
+      // (held unseen until the map is ready; if it never says so, it opens anyway)
+      el.style.opacity = '0';
+      revealWait.current = window.setTimeout(reveal, 2500);
+    }
+    // (the page under it held still with a mouse; a finger's touches are the layer's own, and on an iPhone locking the
+    // page's scroll moves it when it's let go)
+    const lock = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const prev = document.documentElement.style.overflow;
+    if (lock) document.documentElement.style.overflow = 'hidden';
+    document.body.classList.add('ff-layer');
+    return () => { if (lock) document.documentElement.style.overflow = prev; document.body.classList.remove('ff-layer'); };
+  }, [fileOpen, reveal]);
+  // a rule or a thing the wall names opens the layer, flown there; a run or a post mortem opened from the map belongs to
+  // the read below, so the layer gives way; on a phone, closing the map's own full screen closes the layer with it
+  useEffect(() => {
+    if (!fileHandle) return undefined;
+    const ask = (e: Event) => { const d = (e as CustomEvent).detail; openFile(d && typeof d === 'object' ? d.id : d); };
+    // the map's own "Close" (in its full screen on a phone) hands back here: the layer closes into the card
+    const leave = () => closeFile();
+    const away = () => setFile((f) => ({ ...f, open: false }));
+    const full = (e: Event) => { if (!(e as CustomEvent).detail && window.innerWidth < 860) away(); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && document.body.classList.contains('ff-layer') && !document.body.classList.contains('ff-full')) closeFile(); };
+    window.addEventListener('rd:law', ask); window.addEventListener('rd:node', ask);
+    ['ff:run', 'ff:rule', 'ff:reopen'].forEach((n) => window.addEventListener(n, away));
+    window.addEventListener('ff:full', full); window.addEventListener('keydown', key); window.addEventListener('ff:leave', leave);
+    return () => {
+      window.removeEventListener('ff:leave', leave);
+      window.removeEventListener('rd:law', ask); window.removeEventListener('rd:node', ask);
+      ['ff:run', 'ff:rule', 'ff:reopen'].forEach((n) => window.removeEventListener(n, away));
+      window.removeEventListener('ff:full', full); window.removeEventListener('keydown', key);
+    };
+  }, [fileHandle, openFile, closeFile]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -129,7 +259,7 @@ export default function ReadTab() {
 
   // a new page (a read opening, or the index moving) starts from the top; one read to another is the
   // engine's own fade, which scrolls itself
-  const page = reading ? `read:${readIndex}` : `index:${feedId ?? 'all'}:${scope.handle ?? ''}`;
+  const page = r17 ? `r17:${r17}` : reading ? `read:${readIndex}` : `index:${feedId ?? 'all'}:${scope.handle ?? ''}`;
   const lastPage = useRef(page);
   useLayoutEffect(() => {
     if (lastPage.current === page) return;
@@ -184,6 +314,8 @@ export default function ReadTab() {
   const leaving = useRef<{ next: Scope } | null>(null);
   const feedIdOf = (next: Scope) => (next.feedId !== undefined ? next.feedId : feeds ? feedOf(feeds, next.handle) : undefined);
   const pageOf = (next: Scope) => {
+    const three = read17Of(next.handle);
+    if (three) return `r17:${three}`;
     const read = readOf(next.handle);
     return read != null ? `read:${read}` : `index:${feedIdOf(next) ?? 'all'}:${next.handle ?? ''}`;
   };
@@ -236,7 +368,7 @@ export default function ReadTab() {
   const label = scope.handle ? `@${scope.handle}` : activeFeed ? titleCase(activeFeed.title) : 'All feeds';
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const eyebrow = scope.handle
-    ? readIndex != null ? `${engine.f === readIndex && engine.n ? engine.n : READ_POSTS[readIndex]} of 100 posts` : 'Not read yet'
+    ? r17 ? 'Week of 19–25 Oct' : readIndex != null ? `${engine.f === readIndex && engine.n ? engine.n : READ_POSTS[readIndex]} of 100 posts` : sec ? `${sec.since} posts since April` : 'Not read yet'
     : activeFeed ? plural(activeFeed.feeders.length, 'feeder') : feeds ? plural(feeds.length, 'feed') : 'Feeds';
 
   return (
@@ -250,6 +382,7 @@ export default function ReadTab() {
         eyebrow={eyebrow}
         view={engine.lens}
         showView={reading}
+        chapter={r17 ? { value: part, onChange: toPart } : null}
         leaving={leavingTo != null}
         armed={armed}
         compressed={compressed}
@@ -259,25 +392,47 @@ export default function ReadTab() {
         onFeed={pickFeed}
         onFeeder={pickFeeder}
       />
+      {storyFeeder && !sec ? <ReadStories key={`stories-${fileHandle}`} feeder={storyFeeder} avatar={feederAvatar(fileHandle)} onOpen={onStories} /> : null}
       {/* min-height only: Read scrolls the page at every width, so it never takes the fixed shell height
           that tabs with their own inner scroller use on desktop */}
+      {r17 ? <Read17 key={r17} acct={r17} minHeight={appShellStyle.minHeight} onChapter={setPart} jumpRef={jump17} /> : null}
       {/* data-tab-arrival: Read plays its own arrival when the tab comes back (the engine's, the index's), so the
           tab host leaves it be */}
-      <div className={`rd rd-page ${appFont.variable}`} data-tab-arrival="own" style={{ minHeight: appShellStyle.minHeight }}>
-        <div className="wrap" id="rd-main" ref={setMain} hidden={!reading} />
-        {reading ? null : (
-          <div ref={indexBox}>
-            <ReadIndex
-              key={page}
-              feeds={feeds}
-              feed={activeFeed}
-              handle={scope.handle}
-              readable={readable}
-              onFeeder={pickFeeder}
-            />
-          </div>
-        )}
-      </div>
+      {r17 ? null : (
+        <div className={`rd rd-page ${appFont.variable}`} data-tab-arrival="own" style={{ minHeight: appShellStyle.minHeight }}>
+          {sec ? <ReadSections key={`sections-${scope.handle}`} data={sec} ownWall={!reading} onFile={fileHandle ? () => openFile(null) : null} /> : null}
+          <div className="wrap" id="rd-main" ref={setMain} hidden={!reading} />
+          {sec && reading && fileHandle ? <div className="rv wrap rv-after"><FileDoor name={sec.name} onFile={() => openFile(null)} /></div> : null}
+          {reading || sec ? null : (
+            <div ref={indexBox}>
+              <ReadIndex
+                key={page}
+                feeds={feeds}
+                feed={activeFeed}
+                handle={scope.handle}
+                readable={readable}
+                onFeeder={pickFeeder}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {portalTarget && fileUp && fileHandle
+        ? createPortal(
+          // (parked out of sight until it's opened: laid out, so the map is drawn and ready, but unseen, untouchable and
+          // not drawing)
+          <div ref={fileLayer} className={`rff ${appFont.variable}`} data-parked={fileOpen ? undefined : ''} inert={!fileOpen} aria-hidden={!fileOpen} role="dialog" aria-modal={fileOpen} aria-label="The Feeder File">
+            <div ref={fileInner} className="rff-in">
+              <div className="rff-bar">
+                <button type="button" onClick={closeFile}><span aria-hidden="true">←</span>Read</button>
+                <b>The Feeder File</b><span>@{fileHandle}</span>
+              </div>
+              <div className="rff-body"><FeederFile key={fileHandle} handle={fileHandle} target={file.id} targetKey={file.k} full shown={fileOpen} layer={fileInner} onReady={onFileReady} /></div>
+            </div>
+          </div>,
+          portalTarget,
+        )
+        : null}
       {portalTarget
         ? createPortal(
           <div
