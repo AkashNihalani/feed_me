@@ -69,7 +69,9 @@ function xBadge(id, v) {
 function labelHTML(it) { return `<div class="plab">${xBadge(it.id, it.v)}<span>${esc(it.label)}</span></div>`; }
 function mediaHTML(s, k) {
   const m = s.media;
-  if (m.kind === 'grid') return quadHTML(m.ids.slice(0, 4).map((id) => ({ id, lab: labelHTML({ id, v: A.posts[id] && A.posts[id].top, label: '' }) })));
+  if (m.kind === 'grid') return quadHTML(m.ids.slice(0, 4).map((id) => ({ id, lab: labelHTML({ id, v: A.posts[id] && A.posts[id].top, label: (m.labels || {})[id] || '' }) })));
+  // (one post by its cover, for posts with no story still)
+  if (m.kind === 'post') { const it = m.items[0]; return `<div class="md bleed"><span class="qc" data-cv="${it.id}" style="${coverStyle(it.id)}"></span>${labelHTML(it)}</div>`; }
   if (m.kind === 'pair') {
     const fr = m.items.map((it) => (A.posts[it.id] && A.posts[it.id].rp) || []);
     if (m.items.length === 2 && fr.every((f) => f.length >= 2)) {
@@ -130,7 +132,10 @@ function footHTML(s) {
     <div class="lrow"><h3 class="line" aria-label="${esc(s.line)}">${wordsHTML(s.line)}</h3>${list ? '' : '<span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></span>'}</div>
     ${list ? '' : `<div class="more">${moreHTML(s)}</div>`}</div>`;
 }
-const KICK = { Since: 'Since the last read', Profile: 'Who this is', Feeding: 'What landed', Folding: 'What sank', Format: 'Formats this week', Frequency: 'Posting this week', Followers: 'Followers this week', Feedback: "Feeder Reader's take", 'Follow-up': 'Next week' };
+// the story's kicks: the bookends keep their places, and the pointers between them are named by their kind (a post that
+// broke out or sank, a run, a group gone quiet, a trend, a pattern, a post whose likes arrived late with no talk)
+const KICK = { Since: 'Since the last read', Profile: 'Who this is', Feeding: 'What landed', Folding: 'What sank', Format: 'Formats this week', Frequency: 'Posting this week', Followers: 'Followers this week', Feedback: "Feeder Reader's take", 'Follow-up': 'Next week',
+  Breakout: 'Breakout', Sank: 'Sank', Streak: 'Streak', Quiet: 'Gone quiet', Trend: 'Trend', Pattern: 'Pattern', Boosted: 'Looks boosted' };
 function storyHTML() {
   const best = A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0], n = A.stories.length;
   return `<div class="player" id="player">
@@ -367,6 +372,8 @@ function storyTone() {
   const prev = W.slice(Math.max(0, i - 10), Math.max(0, i)).map((w) => w.g).filter((g) => g != null), uw = prev.length ? medOf(prev) : null;
   A.stories.forEach((s) => {
     let t = '';
+    // (a pointer says which way it went: crimson for good, grey for bad, none for neither)
+    if (s.tone) { s._t = s.tone === 'none' ? '' : s.tone; return; }
     if (s.ch === 'Since') { const r = s.media.rows.find((x) => x.k === s.media.lead); t = r && r.a != null && r.b != null ? (r.b >= r.a ? 'up' : 'dn') : ''; }
     else if (s.ch === 'Feeding') t = 'up';
     else if (s.ch === 'Folding') t = 'dn';

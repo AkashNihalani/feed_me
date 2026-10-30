@@ -61,6 +61,7 @@ html.dark .r17 {
 .r17 .md { position: absolute; left: 0; right: 0; top: 0; z-index: 0 }
 .r17 .md.bleed { bottom: 0 }
 .r17 .md.bleed img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; display: block }
+.r17 .md.bleed > .qc { position: absolute; inset: 0; display: block; background: #111 50% 28% / cover no-repeat }
 .r17 .md.bleed::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(5 5 8 / .25) 0, rgb(5 5 8 / 0) 22%, rgb(5 5 8 / 0) 40%, rgb(5 5 8 / .6) 56%, rgb(5 5 8 / .92) 72%, rgb(5 5 8 / .97) 100%) }
 .r17 .md.pad { padding: 64px 18px 0 }
 .r17 .k-days .md.pad, .r17 .k-fol .md.pad, .r17 .k-weeks .md.pad { bottom: var(--fh, 160px); display: flex; flex-direction: column; justify-content: center }
