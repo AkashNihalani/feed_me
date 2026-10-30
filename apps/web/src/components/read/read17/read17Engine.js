@@ -318,14 +318,18 @@ function coverStyle(id) {
   const layers = [h, lo ? `url(${lo})` : ''].filter(Boolean);
   return layers.length ? `background-image:${layers.join(',')}` : '';
 }
-// a post named the way a fan would: the name the story gave it, else its caption where that's a short line of its own
-// (handles and tags off), else who's in it, else its slice; the last two with its format and its day
+// a post named the way a fan would: the name the read file gives it (voice.names), else the name the story gave it, else
+// its caption where that's a short line of its own (handles and tags off), else a longer caption by its opening words,
+// else who's in it, else its slice; the last two with its format and its day
 function lab(id) {
   const p = A.posts[id]; if (!p) return '';
+  const nm = ((A.voice || {}).names || {})[id]; if (nm) return nm;
   const rv = A.stories.flatMap((s) => s.reviews || []).find((r) => r.id === id);
   if (rv) return `‘${rv.t.split(' · ')[0]}’`;
-  const c = (p.cap || '').split('\n')[0].replace(/[@#][\w.]+/g, '').replace(/[^\p{L}\p{N}'’?!,. ]/gu, ' ').replace(/\s+/g, ' ').replace(/[\s,.]+$/, '').trim(), nw = c.split(' ').length;
+  const c = (p.cap || '').split('\n')[0].replace(/[@#][\w.]+/g, '').replace(/[^\p{L}\p{N}'’?!,. ]/gu, ' ').replace(/\s+/g, ' ').replace(/[\s,.]+$/, '').trim(), cw = c.split(' '), nw = cw.length;
   if (nw >= 2 && nw <= 7 && c.length <= 44) return `‘${c}’`;
+  const op = cw.slice(0, 5).join(' ').replace(/[\s,.!?;:]+$/, '');
+  if (nw > 7 && op.length <= 36) return `‘${op}…’`;
   const who = regsAll().find((g) => g.kind === 'person' && g.re.test(txtOf(id)));
   return `the ${who ? who.name : low(p.pat)} ${FMT1[p.fmt] || 'post'} from ${day(p.d)}`;
 }
@@ -736,6 +740,8 @@ function readCards() {
 
   // Act 1, slices: best typical likes first, each led by the count it stands out on, its four numbers under it
   const SL = S.L.slices;
+  // (a slice of one post says nothing a post mortem doesn't)
+  SL.rows = SL.rows.filter((r) => r.n >= 2);
   SL.rows.sort((a, b) => (b.f.lk ?? -1) - (a.f.lk ?? -1));
   SL.rows.forEach((r) => {
     const k = r.lead, f = r.f, b = [...r.ids].filter((i) => P[i][k] != null).sort((p, q) => P[q][k] - P[p][k])[0];
