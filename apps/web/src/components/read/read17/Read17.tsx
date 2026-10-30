@@ -25,12 +25,12 @@ const BASE = '/read17/';
 const READ17: Record<string, string> = { 'anuj.mp4': 'anuj', lakmeindia: 'lakme' };
 export const read17Of = (handle: string | null) => (handle ? READ17[handle] ?? null : null);
 
-// the read's three parts, and the six pieces Strategy is cut into: the header names whichever is on screen
+// the read's three parts, and the eight parts Strategy's three acts are cut into: the header names whichever is on screen
 export type Chapter = 'story' | 'strategy' | 'split';
-export type Part = 'story' | 'slices' | 'sides' | 'streaks' | 'frequency' | 'followers' | 'formats' | 'split';
+export type Part = 'story' | 'slices' | 'views' | 'likes' | 'comments' | 'follows' | 'streaks' | 'shifts' | 'frequency' | 'split';
 export const CHAPTERS: readonly Chapter[] = ['story', 'strategy', 'split'];
-export const PARTS: readonly Part[] = ['story', 'slices', 'sides', 'streaks', 'frequency', 'followers', 'formats', 'split'];
-const NAME: Record<Chapter | Part, string> = { story: 'Story', strategy: 'Strategy', split: 'Split', slices: 'Slices', sides: 'Sides', streaks: 'Streaks', frequency: 'Frequency', followers: 'Followers', formats: 'Formats' };
+export const PARTS: readonly Part[] = ['story', 'slices', 'views', 'likes', 'comments', 'follows', 'streaks', 'shifts', 'frequency', 'split'];
+const NAME: Record<Chapter | Part, string> = { story: 'Story', strategy: 'Strategy', split: 'Split', slices: 'Slices', views: 'Views', likes: 'Likes', comments: 'Comments', follows: 'Follows', streaks: 'Streaks', shifts: 'Shifts', frequency: 'Frequency' };
 export const chapterName = (chapter: Chapter) => NAME[chapter];
 export const partName = (part: Part) => NAME[part];
 export const chapterOf = (part: Part): Chapter => (part === 'story' || part === 'split' ? part : 'strategy');
