@@ -31,7 +31,7 @@ const SV = (d) => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
 // the covers (small, inline), fetched once a feeder and kept across mounts
 const coverCache = {};
 // the parts the header names: the story, Strategy's five pieces, the wall
-const PARTS = ['story', 'slices', 'sides', 'streaks', 'followers', 'formats', 'split'];
+const PARTS = ['story', 'slices', 'sides', 'streaks', 'frequency', 'followers', 'formats', 'split'];
 
 export function mountRead17({ root, layer, data, acct, base, onChapter, fold }) {
 const BASE = base;
@@ -57,10 +57,16 @@ const SAY = { anuj: 'A holiday week. Eleven posts, six from Japan, and his worst
    ===================================================================== */
 let at = 0;
 const kickOf = (s) => `<span class="kick ${s.ch.toLowerCase()}${s._t ? ` t-${s._t}` : ''}"><span class="dot"></span>${esc((typeof KICK !== 'undefined' && KICK[s.ch]) || s.ch)}</span>`;
-function labelHTML(it) { const v = it.v; return `<div class="plab">${v != null ? `<b class="${wt(v).trim()}" style="background:${sv(v)}">${top(v)}</b>` : ''}<span>${esc(it.label)}</span></div>`; }
+// a picture's label: the post's likes against the usual post (its rank only where it has no count yet)
+function xBadge(id, v) {
+  const m = id ? xPost(id, 'lk') : null;
+  if (m != null) { const h = xshade(m); return `<b class="${h >= 5 ? 'w' : ''}" style="background:var(--s${h})">${fx(m)}</b>`; }
+  return v != null ? `<b class="${wt(v).trim()}" style="background:${sv(v)}">${top(v)}</b>` : '';
+}
+function labelHTML(it) { return `<div class="plab">${xBadge(it.id, it.v)}<span>${esc(it.label)}</span></div>`; }
 function mediaHTML(s, k) {
   const m = s.media;
-  if (m.kind === 'grid') return quadHTML(m.ids.slice(0, 4).map((id) => ({ id, lab: labelHTML({ v: A.posts[id] && A.posts[id].top, label: '' }) })));
+  if (m.kind === 'grid') return quadHTML(m.ids.slice(0, 4).map((id) => ({ id, lab: labelHTML({ id, v: A.posts[id] && A.posts[id].top, label: '' }) })));
   if (m.kind === 'pair') {
     const fr = m.items.map((it) => (A.posts[it.id] && A.posts[it.id].rp) || []);
     if (m.items.length === 2 && fr.every((f) => f.length >= 2)) {
@@ -72,16 +78,16 @@ function mediaHTML(s, k) {
   }
   if (m.kind === 'single') { const it = m.items[0]; return `<div class="md bleed"><img src="${BASE}st/${it.id}.jpg" alt="" draggable="false" loading="lazy">${labelHTML(it)}</div>`; }
   if (m.kind === 'weeks') return `<div class="md pad"><div class="wk16" data-wk16="${k}"></div></div>`;
-  if (m.kind === 'formats') { const ids = byRank(s.rows.flatMap((r) => r.ids || [])).slice(0, 4); return ids.length === 4 ? quadHTML(ids.map((id) => ({ id, lab: labelHTML({ v: A.posts[id].top, label: `${cap1(FMT1[A.posts[id].fmt] || 'post')} · ${day(A.posts[id].d)}` }) }))) : `<div class="md pad">${formatThumbs(s)}</div>`; }
+  if (m.kind === 'formats') { const ids = byRank(s.rows.flatMap((r) => r.ids || [])).slice(0, 4); return ids.length === 4 ? quadHTML(ids.map((id) => ({ id, lab: labelHTML({ id, v: A.posts[id].top, label: `${cap1(FMT1[A.posts[id].fmt] || 'post')} · ${day(A.posts[id].d)}` }) }))) : `<div class="md pad">${formatThumbs(s)}</div>`; }
   if (m.kind === 'days') return `<div class="md pad">${daysViz(s)}</div>`;
   if (m.kind === 'fol') return `<div class="md pad">${folViz(s)}</div>`;
-  if (m.kind === 'reviews' && s.reviews.length >= 4) return quadHTML(s.reviews.slice(0, 4).map((r) => ({ id: r.id, lab: labelHTML({ v: A.posts[r.id] && A.posts[r.id].top, label: r.t.split(' · ')[0] }) })));
-  if (m.kind === 'reviews') return `<div class="md pad"><div class="rv4">${s.reviews.map((r) => { const v = A.posts[r.id]?.top; return `<div><div class="c" data-cv="${r.id}" style="${cv(r.id)}"><b class="${wt(v).trim()}" style="background:${sv(v)}">${v == null ? 'new' : r1(v)}</b></div><em>${esc(r.t)}</em></div>`; }).join('')}</div></div>`;
+  if (m.kind === 'reviews' && s.reviews.length >= 4) return quadHTML(s.reviews.slice(0, 4).map((r) => ({ id: r.id, lab: labelHTML({ id: r.id, v: A.posts[r.id] && A.posts[r.id].top, label: r.t.split(' · ')[0] }) })));
+  if (m.kind === 'reviews') return `<div class="md pad"><div class="rv4">${s.reviews.map((r) => `<div><div class="c" data-cv="${r.id}" style="${cv(r.id)}">${xBadge(r.id, A.posts[r.id]?.top) || '<b>new</b>'}</div><em>${esc(r.t)}</em></div>`).join('')}</div></div>`;
   if (m.kind === 'list') return `<div class="md"><div class="erows">${s.rows.map((r, j) => `<div class="erow"><span class="n">${j + 1}</span><span class="ek">${esc(r.k)}</span><span class="ev">${esc(r.v)}</span><span class="ew">${esc(r.why)}</span></div>`).join('')}</div></div>`;
   return '';
 }
 function formatThumbs(s) {
-  return `<div class="thumbs">${s.rows.filter((r) => r.n).map((r) => `<div class="hd"><span>${esc(r.k)} · ${r.n}</span><span>${top(r.top)}</span></div><div class="tg">${r.ids.map((i) => { const v = A.posts[i].top; return `<span class="c" data-cv="${i}" style="${cv(i)}"><b class="${wt(v).trim()}" style="background:${sv(v)}">${v == null ? 'new' : r1(v)}</b></span>`; }).join('')}</div>`).join('')}</div>`;
+  return `<div class="thumbs">${s.rows.filter((r) => r.n).map((r) => `<div class="hd"><span>${esc(r.k)} · ${r.n}</span><span>${fx(xSet(r.ids, 'lk'))}</span></div><div class="tg">${r.ids.map((i) => `<span class="c" data-cv="${i}" style="${cv(i)}">${xBadge(i, A.posts[i].top) || '<b>new</b>'}</span>`).join('')}</div>`).join('')}</div>`;
 }
 function daysViz(s) {
   const mx = Math.max(6, ...s.days.map((d) => d.n)), per = s.usual / 7, H = 150;
@@ -100,12 +106,14 @@ function folViz(s) {
 function moreHTML(s) {
   let x = '';
   if (s.why) x += `<p class="why">${esc(s.why)}</p>`;
-  if (s.rows && s.media.kind === 'formats') x += `<div class="frows">${s.rows.map((r) => `<div class="frow"><b>${esc(r.k)} · ${r.n}</b><span class="u">${r.usual != null ? `usual ${top(r.usual)}` : ''}</span><span class="v">${r.n ? top(r.top) : '–'}</span>${r.n ? `<span class="nt">${esc(r.note)} · likes ${top(r.lt)} · comments ${top(r.ct)}</span>` : `<span class="nt">${esc(r.note)}</span>`}</div>`).join('')}</div>`;
+  // (each format's week against the usual post, beside what that format does lately)
+  if (s.rows && s.media.kind === 'formats') x += `<div class="frows">${s.rows.map((r) => { const ids = r.ids || [], xl = xSet(ids, 'lk'), xc = xSet(ids, 'cm'), u = xSet(A.order.slice(-100).filter((i) => A.posts[i].fmt === r.k), 'lk'); return `<div class="frow"><b>${esc(r.k)} · ${r.n}</b><span class="u">${u != null ? `lately ${fx(u)}` : ''}</span><span class="v">${r.n && xl != null ? fx(xl) : '–'}</span><span class="nt">${esc(r.note)}${r.n && xc != null ? ` · comments ${fx(xc)}` : ''}</span></div>`; }).join('')}</div>`;
   if (s.reviews) x += `<div class="rev">${s.reviews.map((r) => `<p><b>${esc(r.t)}.</b> ${esc(r.s)}</p>`).join('')}</div>`;
   if (s.so) x += `<p class="so">${esc(s.so)}</p>`;
   if (s.figs) x += `<div class="figs">${s.figs.map(([b, e]) => `<span><b>${esc(b)}</b><em>${esc(e)}</em></span>`).join('')}</div>`;
   if (s.mix) { const tot = A.n; x += `<div class="mix">${s.mix.map(([, n]) => `<i style="flex:${n}"></i>`).join('')}</div><div class="mixk">${s.mix.slice(0, 5).map(([nm, n]) => `<span><b>${Math.round(n / tot * 100)}%</b> ${esc(nm.toLowerCase())}</span>`).join('')}</div>`; }
-  if (s.key) x += `<p class="keyl">${esc(s.key)}</p><div class="ramp"><b>Top</b>${[['1–3', 6], ['4–10', 5], ['11–25', 4], ['26–50', 3], ['51–70', 2], ['71–85', 1], ['86–100', 0]].map(([l, v]) => `<span style="background:var(--s${v});${v >= 5 ? 'color:#fff' : ''}">${l}</span>`).join('')}</div>`;
+  // (the ramp the badges are shaded on: each step a likes multiple, from well under the usual post to three times it)
+  if (s.key) x += `<p class="keyl">${esc(s.key)}</p><div class="ramp"><b>×</b>${[['3+', 6], ['2', 5], ['1.5', 4], ['1', 3], ['0.8', 2], ['0.5', 1], ['0.3', 0]].map(([l, v]) => `<span style="background:var(--s${v});${v >= 5 ? 'color:#fff' : ''}">${l}</span>`).join('')}</div>`;
   return x;
 }
 // a line set word by word, each word in a mask of its own, so it can rise into place
@@ -117,7 +125,7 @@ function footHTML(s) {
     <div class="lrow"><h3 class="line" aria-label="${esc(s.line)}">${wordsHTML(s.line)}</h3>${list ? '' : '<span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></span>'}</div>
     ${list ? '' : `<div class="more">${moreHTML(s)}</div>`}</div>`;
 }
-const KICK = { Profile: 'Who this is', Feeding: 'What landed', Folding: 'What sank', Format: 'Formats this week', Frequency: 'Posting this week', Followers: 'Followers this week', Feedback: "The reader's review", 'Follow-up': 'Next week' };
+const KICK = { Profile: 'Who this is', Feeding: 'What landed', Folding: 'What sank', Format: 'Formats this week', Frequency: 'Posting this week', Followers: 'Followers this week', Feedback: "Feeder Reader's take", 'Follow-up': 'Next week' };
 function storyHTML() {
   const best = A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0], n = A.stories.length;
   return `<div class="player" id="player">
@@ -262,16 +270,18 @@ function layoutCard(card, k) {
   const s = A.stories[k];
   if (s.media.kind === 'weeks') { const h = card.querySelector('[data-wk16]'); if (h && !h.dataset.drawn) { drawWk16(h, s); h.dataset.drawn = 1; } }
 }
+// the weeks as bars on the usual post: each week's typical post, over it or under it, as far as its likes multiple
+// (on a log scale, a quarter to four times)
 function drawWk16(host, s) {
-  const card = host.closest('.card'), ws = A.weeks.filter((w) => !w.part).slice(-s.media.n), W = host.clientWidth || 300, H = Math.max(170, (card ? card.clientHeight : 480) - 230), N = ws.length, cw = W / N, bw = cw * .62, mid = 20 + (H - 40) * .38;
+  const card = host.closest('.card'), ws = A.weeks.filter((w) => !w.part).slice(-s.media.n), W = host.clientWidth || 300, H = Math.max(170, (card ? card.clientHeight : 480) - 230), N = ws.length, cw = W / N, bw = cw * .62, mid = 20 + (H - 40) / 2, amp = (H - 40) / 2;
   let x = `<svg viewBox="0 0 ${W} ${H}" height="${H}"><line x1="0" x2="${W}" y1="${mid}" y2="${mid}" stroke="rgb(255 255 255 / .35)" stroke-dasharray="3 3"/>`;
   ws.forEach((w, i) => {
-    const xx = i * cw + (cw - bw) / 2;
-    if (w.r == null) { x += `<rect x="${xx}" y="${mid - 1}" width="${bw}" height="2" fill="rgb(255 255 255 / .3)"/>`; }
-    else { const h = Math.max(3, Math.abs(50 - w.r) / 50 * ((H - 40) / 2)), up = w.r < 50, me = i === N - 1; x += `<rect x="${xx}" y="${up ? mid - h : mid}" width="${bw}" height="${h}" rx="3" fill="${up ? '#fff' : me ? 'var(--accent)' : 'rgb(255 255 255 / .28)'}"/>`; }
+    const xx = i * cw + (cw - bw) / 2, m = w.ids.length ? xSet(w.ids, 'lk') : null;
+    if (m == null) { x += `<rect x="${xx}" y="${mid - 1}" width="${bw}" height="2" fill="rgb(255 255 255 / .3)"/>`; }
+    else { const L = Math.max(-2, Math.min(2, Math.log2(Math.max(m, .01)))), h = Math.max(3, Math.abs(L) / 2 * amp), up = L >= 0, me = i === N - 1; x += `<rect x="${xx}" y="${up ? mid - h : mid}" width="${bw}" height="${h}" rx="3" fill="${up ? '#fff' : me ? 'var(--accent)' : 'rgb(255 255 255 / .28)'}"/>`; }
     const lb = w.s.split(' '); if ((+lb[0] <= 7 && i < N - 2) || i === N - 1) x += `<text x="${i === N - 1 ? W : i * cw + cw / 2}" y="${H - 2}" text-anchor="${i === N - 1 ? 'end' : 'middle'}" font-size="10" fill="rgb(255 255 255 / ${i === N - 1 ? '.9' : '.5'})">${i === N - 1 ? 'This week' : lb[1]}</text>`;
   });
-  x += `<text x="0" y="${mid - 7}" font-size="10" font-weight="600" fill="rgb(255 255 255 / .7)" stroke="var(--card)" stroke-width="3" paint-order="stroke">Top 50%, his middle</text><text x="0" y="16" font-size="10" fill="rgb(255 255 255 / .5)">↑ beat the middle</text><text x="0" y="${H - 18}" font-size="10" fill="rgb(255 255 255 / .5)">↓ below it</text>`;
+  x += `<text x="0" y="${mid - 7}" font-size="10" font-weight="600" fill="rgb(255 255 255 / .7)" stroke="var(--card)" stroke-width="3" paint-order="stroke">${esc(A.his)} usual post</text><text x="0" y="16" font-size="10" fill="rgb(255 255 255 / .5)">↑ over it</text><text x="0" y="${H - 18}" font-size="10" fill="rgb(255 255 255 / .5)">↓ under it</text>`;
   host.innerHTML = x + '</svg>';
 }
 
@@ -345,7 +355,7 @@ function storyTone() {
     else if (/×$/.test(s.num)) t = parseFloat(s.num) >= 1 ? 'up' : 'dn';
     else if (s.ch === 'Followers' && i >= 0 && W[i].g != null) {
       const g = W[i].g, m = g > 0 && uw > 0 ? g / uw : null;
-      if (!s._u && uw != null) { s._u = true; s.unit = `followers this week · ${m != null ? `${fx(m)} ` : ''}a usual week: ${sg(Math.round(uw))}${s.unit.replace(/^followers this week/, '')}`; }
+      if (!s._u && uw != null && !/usual week/.test(s.unit)) { s._u = true; s.unit = `followers this week · ${m != null ? `${fx(m)} ` : ''}a usual week: ${sg(Math.round(uw))}${s.unit.replace(/^followers this week/, '')}`; }
       t = g < 0 || (uw > 0 && g < uw * .5) ? 'dn' : uw != null && g >= uw ? 'up' : '';
     } else if (s.ch === 'Feedback' && /^\d+ of \d+$/.test(s.num)) { const [a, b] = s.num.split(' of ').map(Number); t = a / b >= .55 ? 'up' : a / b <= .4 ? 'dn' : ''; }
     s._t = t;
@@ -394,7 +404,7 @@ const bodyHTML = (f) => `<p class="ln">${esc(plain(f.line))}${f.aside ? ` <span 
    on one side of the middle. Followers: the days, and what brings them. Formats: the 100, post by post. Last week's
    posts are red in every one. A row opens its posts in the panel, and the panel steps through the piece's rows.
    ===================================================================== */
-const LENS = [['slices', 'Slices', 'Where each slice lands'], ['sides', 'Sides', 'What lifts a post, what drags it'], ['streaks', 'Streaks', 'The 100 in order'], ['followers', 'Followers', 'The days, and what brings them'], ['formats', 'Formats', 'The 100, post by post']];
+const LENS = [['slices', 'Slices', 'Where each slice lands'], ['sides', 'Sides', 'What lifts a post, what drags it'], ['streaks', 'Streaks', 'The 100 in order'], ['frequency', 'Frequency', 'How often, and what it does'], ['followers', 'Followers', 'The days, and what brings them'], ['formats', 'Formats', 'The 100, post by post']];
 const S = { win: [], inW: new Set(), wk: new Set(), wkDays: new Set(), span: '', L: {} };
 const rankOf = (ids, key = 'top') => medOf(ids.map((i) => A.posts[i][key]));
 const ofW = (ids) => ids.filter((i) => S.inW.has(i));
@@ -468,6 +478,25 @@ function strategyBuild() {
     ].filter(Boolean),
   };
 
+  // frequency: how often it posts, and what that does. A usual week is the median count of the full weeks on file (weeks
+  // we collected nothing for are left out); the rows are the busiest week the 100 spans, the week after it where the
+  // busiest ran well past the usual, the best and the worst of those weeks, and the busiest day where it ran at three
+  // usual days or more. A week's number is its typical post against the usual post
+  const FW = A.weeks.filter((w) => !w.part && !w.gap && w.n), uw = medOf(FW.map((w) => w.n));
+  const spanW = A.weeks.filter((w) => !w.part && !w.gap && w.ids.some((i) => S.inW.has(i)));
+  const wkRow = (w, key) => ({ key, title: `Week of ${w.s}`, week: w.s, ids: byRank(w.ids), n: w.n, g: w.g, x: xSet(w.ids, 'lk') });
+  const fq = [], peak = [...spanW].sort((a, b) => b.n - a.n)[0];
+  if (peak) {
+    fq.push(wkRow(peak, 'peak'));
+    const nx = A.weeks[A.weeks.indexOf(peak) + 1];
+    if (nx && !nx.part && !nx.gap && nx.n && peak.n >= uw * 1.6) fq.push(wkRow(nx, 'after'));
+  }
+  const byX = spanW.filter((w) => xSet(w.ids, 'lk') != null).sort((a, b) => xSet(b.ids, 'lk') - xSet(a.ids, 'lk'));
+  [['best', byX[0]], ['worst', byX[byX.length - 1]]].forEach(([k, w]) => { if (w && !fq.some((r) => r.week === w.s)) fq.push(wkRow(w, k)); });
+  const dd = Object.entries(W.reduce((m, i) => ((m[P[i].d] = m[P[i].d] || []).push(i), m), {})).sort((a, b) => b[1].length - a[1].length)[0];
+  if (dd && dd[1].length >= Math.max(4, (uw / 7) * 3)) fq.push({ key: 'day', title: `${WD[dow(dd[0])]} ${day(dd[0])}`, iso: dd[0], week: (A.weeks.find((w) => w.ids.includes(dd[1][0])) || {}).s, ids: byRank(dd[1]), n: dd[1].length, x: xSet(dd[1], 'lk') });
+  S.L.frequency = { usual: uw, rows: fq, head: { num: `${uw}`, unit: `posts in ${his} usual week`, line: '', aside: '', tone: 'plain' } };
+
   // formats: the 100 post by post, and what each format lands
   const fm = ['Reels', 'Carousels', 'Photos'].map((f) => { const ids = W.filter((i) => P[i].fmt === f); return { key: f, title: f, ids: byRank(ids), n: ids.length, rank: rankOf(ids), wk: inWk(ids) }; }).filter((r) => r.n).sort((x, z) => z.n - x.n);
   const main = fm[0], second = fm[1];
@@ -498,12 +527,72 @@ function cutHTML(id, metric = 'xlk') {
 }
 const stillHTML = (id, metric) => `<span class="stl" data-cv="${id}" style="${coverStyle(id)}">${badgeOf(A.posts[id], metric)}</span>`;
 function stillsHTML(ids, metric, used) { const n = ids.length >= 4 ? 4 : ids.length >= 2 ? 2 : 1, pick = used ? fresh(ids, used, n) : ids.slice(0, n); return `<span class="sts n${n}">${pick.map((id) => stillHTML(id, metric)).join('')}</span>`; }
+/* every post a set holds, as one cover: the best of them large in the corner (playing, where it has frames to play), the
+   rest packed around it best first, as many as there are (a few large; dozens small, a wall of the set). `aspect` is the
+   box's width over its height, so the grid fills it; `k` is the count they're ranked and badged on */
+// (the grid is fitted to the count, so it fills the box with no empty cell: the lead takes whatever block of cells is left
+// over, and the cells stay close to the covers' own 4:5)
+function mosaicFit(n, aspect) {
+  if (n <= 1) return { c: 1, r: 1, sx: 1, sy: 1 };
+  let best = null;
+  for (let c = 1; c <= 14; c++) for (let r = 1; r <= 14; r++) {
+    const A = c * r - (n - 1); if (A < 1 || A > 9 || A > c * r * .5 || (n >= 3 && r < 2)) continue;
+    for (let sx = 1; sx <= Math.min(c, 4); sx++) {
+      if (A % sx) continue; const sy = A / sx; if (sy > Math.min(r, 4)) continue;
+      const cell = (aspect * r) / c, leadA = (cell * sx) / sy;
+      // (a full card wants its best post large; a half-height strip is fine with even tiles)
+      const score = Math.abs(Math.log(cell / .8)) + .6 * Math.abs(Math.log(leadA / .8)) + (n >= 5 && A < 4 && aspect < 1.5 ? .8 : 0);
+      if (!best || score < best.score) best = { c, r, sx, sy, score };
+    }
+  }
+  return best || { c: Math.ceil(Math.sqrt(n * aspect)), r: Math.ceil(n / Math.ceil(Math.sqrt(n * aspect))), sx: 1, sy: 1 };
+}
+function mosaicHTML(ids, k = 'lk', aspect = 1, play = true) {
+  const P = A.posts, by = k === 'f48' ? (i) => P[i].f48 : (i) => P[i][k];
+  const L = [...ids].sort((a, b) => (by(b) ?? -1e9) - (by(a) ?? -1e9)), n = L.length; if (!n) return '';
+  const badge = k === 'f48' ? 'f48' : 'x' + k, { c, r, sx, sy } = mosaicFit(n, aspect);
+  const big = c <= 4, first = L[0], cut = play && (P[first].rp || []).length >= 2;
+  const leadHTML = `<span class="mt ml" style="--sx:${sx};--sy:${sy};${cut ? '' : coverStyle(first)}"${cut ? '' : ` data-cv="${first}"`}>${cut ? cutHTML(first, badge) : badgeOf(P[first], badge)}</span>`;
+  return `<span class="mos${big ? ' big' : ''}" style="--c:${c};--r:${r}">${leadHTML}${L.slice(1).map((id) => `<span class="mt" data-cv="${id}" style="${coverStyle(id)}">${big ? badgeOf(P[id], badge) : ''}</span>`).join('')}</span>`;
+}
+/* ---- the course: every week on file a column, every post in it a square, shaded by its likes against the usual post,
+   so how often and how well read together, week by week. A set shows only its own posts; a week we collected nothing for
+   stands as a gap, and the week a row is about is marked ---- */
+function courseHTML(sel, mark) {
+  const has = new Set(sel), ws = A.weeks;
+  const cols = ws.map((w) => w.ids.filter((i) => has.has(i)).sort((a, b) => (xPost(b, 'lk') ?? -1) - (xPost(a, 'lk') ?? -1)));
+  const mx = Math.max(1, ...cols.map((c) => c.length));
+  return `<span class="crs" style="--n:${ws.length};--g:${mx > 14 ? 0 : 1}px">${ws.map((w, j) => { const c = cols[j]; return `<span class="cc${w.gap ? ' gap' : ''}${mark === w.s ? ' on' : ''}"><span class="cb" style="height:${c.length ? Math.max(5, Math.round((c.length / mx) * 100)) : 0}%">${c.map((i) => { const m = xPost(i, 'lk'); return `<i class="q${m == null ? 'n' : xshade(m)}"></i>`; }).join('')}</span></span>`; }).join('')}</span>
+    <span class="crl" style="--n:${ws.length}">${ws.map((w) => { const [d, mo] = w.s.split(' '); return mark === w.s ? `<span class="on">${esc(w.s)}</span>` : `<span>${+d <= 7 ? esc(mo) : ''}</span>`; }).join('')}</span>
+    <span class="crk"><span><i class="q6"></i>3× or more</span><span><i class="q3"></i>over the usual</span><span><i class="q1"></i>under it</span><span>${mx} in the busiest week</span></span>`;
+}
+/* ---- a run as a trace, the way a heart monitor draws one: every post a beat at the hour it went up, so how often it
+   posted is the spacing between beats; a beat rises for a post over the usual and dips for one under it, as far as its
+   multiple on the run's own count (on a log scale, a sixth to six times). The run's beats are crimson, the post that
+   ended it ringed. On a card it is the run and a few posts either side; in the panel every post of the 100, the weeks
+   marked under it. Posts are the ones the runs are counted on: ranked, with the count ---- */
+function ecgHTML(r, tight) {
+  const P = A.posts, k = r.k || 'lk', all = S.win.filter((i) => (P[i].top != null || r.run.includes(i)) && P[i][k] != null && B[k] > 0);
+  const a = all.indexOf(r.run[0]), b = all.indexOf(r.brk || r.run[r.run.length - 1]);
+  const ids = tight ? all.slice(Math.max(0, a - 4), b + 5) : all; if (ids.length < 2) return '';
+  const t = (i) => new Date(P[i].at).getTime(), t0 = t(ids[0]), sp = Math.max(1, t(ids[ids.length - 1]) - t0);
+  const VW = 600, VH = 100, y0 = 50, amp = 46, hw = Math.max(1.2, Math.min(5, (VW / ids.length) * .32));
+  const pts = ids.map((i) => { const L = Math.max(-2.5, Math.min(2.5, Math.log2(Math.max(P[i][k] / B[k], .01)))); return { i, x: 8 + ((t(i) - t0) / sp) * (VW - 16), y: y0 - (L / 2.5) * amp }; });
+  const beats = (list) => list.map((p) => `L${(p.x - hw).toFixed(1)},${y0} L${p.x.toFixed(1)},${p.y.toFixed(1)} L${(p.x + hw).toFixed(1)},${y0}`).join(' ');
+  const inRun = new Set(r.run), rp = pts.filter((p) => inRun.has(p.i)), bk = r.brk ? pts.find((p) => p.i === r.brk) : null;
+  const pc = (x) => `${((x / VW) * 100).toFixed(2)}%`, yr = P[ids[0]].d.slice(0, 4);
+  // (the weeks under it: every Monday the trace spans, every other one once there are more than nine)
+  const mons = tight ? [] : A.weeks.map((w) => { const [d, mo] = w.s.split(' '); return { s: w.s, t: new Date(`${yr}-${String(MON.indexOf(mo) + 1).padStart(2, '0')}-${String(+d).padStart(2, '0')}T00:00:00`).getTime() }; }).filter((w) => w.t >= t0 && w.t <= t0 + sp);
+  const step = mons.length > 9 ? 2 : 1, ticks = mons.filter((_, j) => j % step === 0).map((w) => `<span class="et" style="left:${pc(8 + ((w.t - t0) / sp) * (VW - 16))}">${esc(w.s)}</span>`).join('');
+  return `<span class="ecg${tight ? ' tight' : ''}"><span class="ei"><svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" aria-hidden="true"><line class="e0" x1="0" x2="${VW}" y1="${y0}" y2="${y0}"/><path class="e1" d="M0,${y0} ${beats(pts)} L${VW},${y0}"/>${rp.length ? `<path class="e2" d="M${(rp[0].x - hw).toFixed(1)},${y0} ${beats(rp)} L${(rp[rp.length - 1].x + hw).toFixed(1)},${y0}"/>` : ''}</svg>${bk ? `<i class="ek" style="left:${pc(bk.x)};top:${((bk.y / VH) * 100).toFixed(1)}%"></i>` : ''}</span>${ticks ? `<span class="ets">${ticks}</span>` : ''}</span>`;
+}
 const evidenceOf = (ids, metric, used) => { const c = metric ? null : cutOf(ids, used); return c ? cutHTML(c) : ids.length ? stillsHTML(ids, metric || 'xlk', used) : ''; };
 const typical = (ids, key, used, n) => { const m = rankOf(ids, key); return fresh([...ids].filter((i) => A.posts[i][key] != null).sort((a, b) => Math.abs(A.posts[a][key] - m) - Math.abs(A.posts[b][key] - m)), used, n); };
-function vsHTML(r, used) { const k = r.metric === 'ct' ? 'xcm' : 'xlk'; return `<span class="vs"><span class="vsr">${typical(r.ids, r.metric, used, 2).map((id) => stillHTML(id, k)).join('')}<em>With it · ${fx(r.xa)} usual</em></span><span class="vsr wo">${typical(r.wo, r.metric, used, 2).map((id) => stillHTML(id, k)).join('')}<em>Without · ${fx(r.xo)} usual</em></span></span>`; }
+function vsHTML(r) { const k = r.metric === 'ct' ? 'cm' : 'lk'; return `<span class="vs"><span class="vsr">${mosaicHTML(r.ids, k, 2, false)}<em>With it · ${r.ids.length} · ${fx(r.xa)} usual</em></span><span class="vsr wo">${mosaicHTML(r.wo, k, 2, false)}<em>Without · ${r.wo.length} · ${fx(r.xo)} usual</em></span></span>`; }
 function runHTML(r, used) {
-  const run = r.run.slice(-12), big = r.brk || r.run[r.run.length - 1]; used.add(big);
-  return `<span class="run"><span class="rst">${run.map((id) => `<i data-cv="${id}" style="${coverStyle(id)}"></i>`).join('')}</span><span class="rbk">${(A.posts[big].rp || []).length >= 2 ? cutHTML(big, 'x' + r.k) : stillHTML(big, 'x' + r.k)}<em>${r.brk ? 'Ended it' : 'Latest'}</em></span></span>`;
+  const run = r.run, big = r.brk || r.run[r.run.length - 1]; used.add(big);
+  // (the run as its trace on top, a few posts either side of it; the post that ended it, or its latest, under it)
+  return `<span class="run"><span class="rst">${ecgHTML(r, true) || run.map((id) => `<i data-cv="${id}" style="${coverStyle(id)}"></i>`).join('')}</span><span class="rbk">${(A.posts[big].rp || []).length >= 2 ? cutHTML(big, 'x' + r.k) : stillHTML(big, 'x' + r.k)}<em>${r.brk ? 'Ended it' : 'Latest'}</em></span></span>`;
 }
 // the inside of a set: its best and worst slice, three posts or more each
 function insideOf(ids) {
@@ -520,7 +609,7 @@ function readCards() {
   const SL = S.L.slices;
   SL.rows.forEach((r) => { r.x = xSet(r.ids, 'lk'); });
   SL.rows.sort((a, b) => (b.x ?? -1) - (a.x ?? -1));
-  SL.rows.forEach((r) => { const b = bestX(r.ids); r.card = { kick: r.title, count: `${r.n} posts · ${top(r.rank)}`, num: fx(r.x), unit: `of ${his} usual ${K(Math.round(B.lk))} likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: b ? `Best: ${lab(b)}, ${fx(xPost(b, 'lk'))} likes.` : '', tone: tx(r.x), media: evidenceOf(r.ids, null, used) }; r.head = head(r.card); });
+  SL.rows.forEach((r) => { const b = bestX(r.ids); r.card = { kick: r.title, count: `${r.n} posts`, num: fx(r.x), unit: `${his} usual likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: b ? `Best: ${lab(b)}, ${fx(xPost(b, 'lk'))} likes.` : '', tone: tx(r.x), media: mosaicHTML(r.ids, 'lk') }; r.head = head(r.card); });
   const bs = SL.rows.find((g) => g.n >= 4 && g.x != null) || SL.rows[0], bg = [...SL.rows].sort((x, z) => z.n - x.n)[0];
   SL.hl = bg !== bs && bg.x ? `${esc(cap1(low(bs.title)))} gets ${em_(fx(bs.x / bg.x))} the likes of ${esc(low(bg.title))}, ${his} biggest slice.` : `${esc(cap1(low(bs.title)))} leads ${his} slices on likes.`;
   SL.sub = SL.head.aside;
@@ -532,7 +621,7 @@ function readCards() {
   const vsWhat = (r) => (r.slice ? `${low(r.slice)} without it` : 'posts without it');
   SD.rows.forEach((r) => {
     const k = kOf(r), other = (k === 'lk' ? ['cm', 'pl'] : ['lk']).map((q) => { const a = xSet(r.ids, q), o = xSet(r.wo, q); return a != null && o ? `${KEYN[q]} ${fx(a / o)}` : null; }).filter(Boolean);
-    r.card = { kick: r.title, count: r.slice ? `in ${low(r.slice)}` : `${r.n} posts`, num: fx(r.x), unit: `the ${KEYN[k]} of ${vsWhat(r)}`, line: other.length ? `${cap1(other.join(' · '))} too.` : '', aside: `${top(r.w)} with it, ${top(r.o)} without${k === 'cm' ? ', on comments' : ''}. ${r.wk ? `${r.wk} of last week’s ${nwk} had it.` : `None of last week’s ${nwk} had it.`}`, tone: tx(r.x), media: vsHTML(r, used) };
+    r.card = { kick: r.title, count: r.slice ? `in ${low(r.slice)}` : `${r.n} posts`, num: fx(r.x), unit: `the ${KEYN[k]} of ${vsWhat(r)}`, line: other.length ? `${cap1(other.join(' · '))} too.` : '', aside: r.wk ? `${r.wk} of last week’s ${nwk} had it.` : `None of last week’s ${nwk} had it.`, tone: tx(r.x), media: vsHTML(r, used) };
     r.head = head(r.card);
   });
   const lift = SD.rows.find((r) => r.x != null && r.x > 1), drag = [...SD.rows].reverse().find((r) => r.x != null && r.x < 1), nm = (r) => `${esc(cap1(low(r.title)))}${r.slice ? ` in ${esc(low(r.slice))}` : ''}`;
@@ -557,21 +646,39 @@ function readCards() {
   FL.rows.filter((r) => r.key !== 't10').forEach((r) => {
     const b = r.ids[0], xd = B.day > 0 && r.g > 0 ? r.g / B.day : null, xb = b ? xPost(b, 'lk') : null;
     if (b) used.add(b);
-    r.card = { kick: `${WD[dow(r.iso)]} ${day(r.iso)}`, count: r.sub.replace(/^The /, '').replace(' in the 100', ''), num: xd != null ? fx(xd) : sg(r.g), unit: xd != null ? 'a usual day’s follows' : 'followers that day', line: xd != null ? `${sg(r.g)} that day; a usual day, ${sg(Math.round(B.day))}.` : `A usual day: ${sg(Math.round(B.day))}.`, aside: b ? `Behind it: ${lab(b)}${xb != null ? `, ${fx(xb)} likes` : ''}.` : 'No post that day or the day before.', tone: r.g >= 0 ? 'beating' : 'plain', media: b ? ((P[b].rp || []).length >= 2 ? cutHTML(b) : stillsHTML(r.ids, 'xlk')) : `<span class="rce">${esc(day(r.iso))}</span>` };
+    r.card = { kick: `${WD[dow(r.iso)]} ${day(r.iso)}`, count: r.sub.replace(/^The /, '').replace(' in the 100', ''), num: xd != null ? fx(xd) : sg(r.g), unit: xd != null ? 'a usual day’s follows' : 'followers that day', line: xd != null ? `${sg(r.g)} that day; a usual day, ${sg(Math.round(B.day))}.` : `A usual day: ${sg(Math.round(B.day))}.`, aside: b ? `Behind it: ${lab(b)}${xb != null ? `, ${fx(xb)} likes` : ''}.` : 'No post that day or the day before.', tone: r.g >= 0 ? 'beating' : 'plain', media: r.ids.length ? mosaicHTML(r.ids, 'f48') : `<span class="rce">${esc(day(r.iso))}</span>` };
     r.head = head(r.card);
   });
   const t = FL.rows.find((r) => r.key === 't10'), tr = t && t.fb > 0 ? t.fa / t.fb : null;
-  if (t) { t.card = { kick: `After ${his} best posts`, count: `${t.ids.length} posts · Top 10%`, num: tr != null ? fx(tr) : sg(Math.round(t.fa)), unit: tr != null ? 'the follows after the rest' : 'follows in the 48h after', line: `${sg(Math.round(t.fa))} in the 48 hours after, against ${sg(Math.round(t.fb))}.`, aside: '', tone: 'beating', media: stillsHTML(t.ids, 'f48', used) }; t.head = head(t.card); }
+  if (t) { t.card = { kick: `After ${his} best posts`, count: `${t.ids.length} posts`, num: tr != null ? fx(tr) : sg(Math.round(t.fa)), unit: tr != null ? 'the follows after the rest' : 'follows in the 48h after', line: `${sg(Math.round(t.fa))} in the 48 hours after, against ${sg(Math.round(t.fb))}.`, aside: '', tone: tr == null || tr >= 1 ? 'beating' : 'plain', media: mosaicHTML(t.ids, 'f48') }; t.head = head(t.card); }
   const tot = FL.days.reduce((q, x) => q + x[1], 0), lwk = A.weeks.find((w) => w.s === '19 Oct');
   FL.hl = `${em_(sg(tot))} followers over the ${FL.days.length} days of the 100${lwk && lwk.g != null ? `; last week, ${em_(sg(lwk.g))}` : ''}.`;
   FL.sub = '';
 
   // formats: each format's typical likes against the usual post
   const FM = S.L.formats;
-  FM.rows.forEach((r) => { r.x = xSet(r.ids, 'lk'); r.card = { kick: r.title, count: `${r.n} of 100 · ${top(r.rank)}`, num: fx(r.x), unit: `of ${his} usual ${K(Math.round(B.lk))} likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: insideOf(r.ids), tone: tx(r.x), media: evidenceOf(r.ids, null, used) }; r.head = head(r.card); });
+  FM.rows.forEach((r) => { r.x = xSet(r.ids, 'lk'); r.card = { kick: r.title, count: `${r.n} of 100`, num: fx(r.x), unit: `${his} usual likes`, line: ctxLine(r.ids, ['cm', 'pl']), aside: insideOf(r.ids), tone: tx(r.x), media: mosaicHTML(r.ids, 'lk') }; r.head = head(r.card); });
   const mn = FM.rows[0], sec = FM.rows[1];
   FM.hl = `${em_(`${mn.n} of the 100`)} are ${esc(mn.title.toLowerCase())}${sec ? `, ${em_(`${sec.n}`)} ${esc(sec.title.toLowerCase())}` : ''}.`;
   FM.sub = FM.head.aside;
+
+  // frequency: a week (or the day) with every post in it, led by how much it posted against a usual week (or a usual
+  // day); how those posts did stays in the words and the panel, the rest of the page already counts posts
+  const FQ = S.L.frequency, uday = FQ.usual / 7;
+  FQ.rows.forEach((r) => { const day_ = r.key === 'day', m = r.n / (day_ ? uday : FQ.usual); r.fx = m; r.card = { kick: r.title, count: `${r.n} posts`, num: fx(m), unit: day_ ? `a usual day’s posts` : `${his} usual week’s posts`, line: day_ ? `${r.n} posts in a day; a usual day has ${uday.toFixed(1)}.` : `${r.n} posts; ${his} usual week has ${FQ.usual}.`, aside: r.g != null ? `${sg(r.g)} followers that week.` : '', tone: 'plain', media: mosaicHTML(r.ids, 'lk') }; r.head = head(r.card); });
+  FQ.hl = `${esc(cap1(his))} usual week is ${em_(`${FQ.usual} posts`)}.`; FQ.sub = '';
+
+  // Feeder Reader's own words, where the read file has them: a card's kick, count, line and aside, a part's headline
+  // (its numbers marked **so**) and the line under it. The numbers on the cards stay counted
+  const V = A.voice || {}, rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  Object.entries(S.L).forEach(([lens, L]) => {
+    L.rows.forEach((r) => {
+      const v = (V.cards || {})[`${lens}:${r.key}`]; if (!v || !r.card) return;
+      ['kick', 'count', 'line', 'aside'].forEach((f) => { if (v[f] != null) r.card[f] = v[f]; });
+      r.head = head(r.card); if (lens === 'streaks' && !r.brk) r.head.unit += ', still running';
+    });
+    const pv = (V.parts || {})[lens]; if (pv) { if (pv.hl) L.hl = rich(pv.hl); if (pv.sub != null) L.sub = pv.sub; }
+  });
 }
 // (each card sits in a wrapper the reel snaps to: the card glides on scroll, its wrapper stays put)
 function readCard(key, i, r) {
@@ -638,8 +745,8 @@ const RANKG = [
   { l: 'Below the middle', f: (v) => v != null && v > 50 && v <= 75, c: '' }, { l: 'Bottom 25%', f: (v) => v != null && v > 75, c: '' }, { l: 'Too new to rank', f: (v) => v == null, c: 'new' },
 ];
 function splitHTML() {
-  const L = A.lead.split, b = A.posts[L.best], w = A.posts[L.worst], nrank = A.wall.filter((i) => A.posts[i].top != null).length;
-  const f = { num: L.num, unit: L.unit, line: `The best was ${lab(L.best)}, at ${fx(xPost(L.best, 'lk'))} ${A.his} usual likes; the lowest, ${lab(L.worst)}, at ${fx(xPost(L.worst, 'lk'))}.`, aside: A.wall.length > nrank ? `${A.wall.length - nrank} are too new to rank.` : '', tone: 'plain' };
+  const L = A.lead.split, V = (A.voice && A.voice.split) || {}, rk = A.wall.filter((i) => A.posts[i].top != null), nrank = rk.length, up = rk.filter((i) => xPost(i, 'lk') >= 1).length;
+  const f = { num: `${up} of ${nrank}`, unit: `beat ${A.his} usual likes by day 7`, line: V.line || `The best was ${lab(L.best)}, at ${fx(xPost(L.best, 'lk'))} ${A.his} usual likes; the lowest, ${lab(L.worst)}, at ${fx(xPost(L.worst, 'lk'))}.`, aside: V.aside != null ? V.aside : A.wall.length > nrank ? `${A.wall.length - nrank} are too new to count.` : '', tone: up / Math.max(1, nrank) >= .5 ? 'beating' : 'plain' };
   return `<header class="op"><span class="ok"><b>03</b>Split · the last ${A.wall.length} posts</span></header><div class="cap capx"><div class="w1"><div class="c">${headHTML(f)}</div></div><div class="w2"><div class="c">${bodyHTML(f)}</div></div></div>
     <div class="wbar">${segHTML('wv', [['recent', 'Recent'], ['ranks', 'Ranks']], WV)}<span class="wh" id="wh">${WV === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'}</span></div>
     <div class="wall" id="wall"><svg class="tlx" id="tlx"></svg><span class="thd" id="thd"></span><div id="wg"></div></div>`;
@@ -869,10 +976,15 @@ function rowView(lens, i) {
     : r.run ? postListHTML('The run', r.brk ? 'in order, and the post that ended it' : 'in order, still going', ids, xk, r.tag || {})
     : r.metric === 'f48' ? postListHTML(r.key === 't10' ? 'The posts' : 'That day and the day before', 'most followers first', ids, 'f48')
     : postListHTML('The posts', `${ids.length}, most ${kn} first`, ids, xk);
+  // the course of it: a slice week by week since the first week on file, every post week by week with the row's week
+  // marked, or a run as its trace across the 100
+  const course = lens === 'slices' ? `<section class="pcs"><h5>Week by week<em>every ${esc(low(r.title))} post since ${esc(A.weeks[0].s)}</em></h5>${courseHTML(A.order.filter((x) => P[x].pat === r.key))}</section>`
+    : lens === 'frequency' ? `<section class="pcs"><h5>Week by week<em>every post since ${esc(A.weeks[0].s)}</em></h5>${courseHTML(A.order, r.week)}</section>`
+    : lens === 'streaks' ? `<section class="pcs"><h5>How it ran<em>every post, ${esc(S.span)}, on ${esc(A.his)} usual ${KEYN[r.k || 'lk']}</em></h5>${ecgHTML(r, false)}</section>` : '';
   return `<div class="pv-t">${capHTML(h)}
     ${stats.length ? `<div class="pst">${stats.map(([b, e]) => `<span><b>${b}</b><em>${e}</em></span>`).join('')}</div>` : ''}
     ${rd ? `<section class="pwh"><h5>What happened</h5><p class="pw1">${esc(rd.what)}</p><p class="pw2"><b>Why</b>${esc(rd.why)}</p></section>` : ''}</div>
-    ${lists}`;
+    ${course}${lists}`;
 }
 function postKicker(id) { const p = A.posts[id]; return `${WD[new Date(p.at).getDay()]} ${day(p.d)}`; }
 
@@ -880,37 +992,83 @@ function postKicker(id) { const p = A.posts[id]; return `${WD[new Date(p.at).get
    for, how it landed and why, and against its closest posts ---- */
 const PEOPLE = { 0: 'nobody on screen', 1: 'one person on screen', 2: 'two people on screen', 3: 'three or more on screen' };
 const STYLE = { talking: 'talking to camera', skit: 'an acted skit', vlog: 'a vlog', photo: 'a posed photo', graphic: 'a designed graphic', meme: 'a meme', product: 'a product shot', event: 'an event' };
+// the regulars: the people, brands, products, places and bits that keep coming back on this feed, named in the read file
+// (voice.regulars) and found in a post's caption and description. A post's regulars give it a record: every other post
+// with the same one, how those typically did, and the last one before it
+let REGS = null;
+function regsOf(id) {
+  if (!REGS) REGS = ((A.voice || {}).regulars || []).map((g) => ({ ...g, re: new RegExp(g.rx, 'i') }));
+  const txt = (i) => { const p = A.posts[i]; return `${p.cap || ''} ${p.sum || ''} ${p.prem || ''}`; };
+  return REGS.filter((g) => g.re.test(txt(id))).map((g) => {
+    const others = A.order.filter((i) => i !== id && g.re.test(txt(i)));
+    const before = others.filter((i) => A.posts[i].d < A.posts[id].d && xPost(i, 'lk') != null);
+    return { ...g, label: g.kind === 'person' ? `With ${g.name}` : g.kind === 'place' ? `In ${g.name}` : g.kind === 'event' ? `At ${g.name}` : g.name, others, n: others.length, x: xSet(others, 'lk'), last: before[before.length - 1] || null };
+  });
+}
+// what a post has, each with its record, the reason most likely first: its regulars, its slice, the sides it has that
+// hold up, and what it did for followers
+function whyOf(id, xl) {
+  const p = A.posts[id], his = A.his, out = [], seen = new Set();
+  regsOf(id).forEach((g) => {
+    // (two regulars that only ever share the same posts are one record: the first named stands for both)
+    const key = g.others.join(); if (g.n && seen.has(key)) return; seen.add(key);
+    if (!g.n) { out.push({ t: g.label, s: 'The first time on file.', g: 'First', d: 'no', w: 3 }); return; }
+    const last = g.last ? `; the last one before this, ${day(A.posts[g.last].d)}, did ${fx(xPost(g.last, 'lk'))}` : '';
+    out.push({ t: g.label, s: `${g.n === 1 ? '1 other post' : `${g.n} other posts`}${g.x != null ? `, ${g.n === 1 ? 'at' : 'typically'} ${fx(g.x)} ${his} usual likes` : ''}${last}.`, g: g.x != null ? fx(g.x) : `${g.n}`, d: g.x == null ? 'no' : g.x >= 1 ? 'up' : 'dn', w: 2 + (g.x != null ? Math.abs(Math.log(g.x)) : 0) });
+  });
+  const sl = S.win.filter((i) => A.posts[i].pat === p.pat), sx = xSet(sl, 'lk');
+  if (sx != null) out.push({ t: cap1(low(p.pat)), s: `${cap1(his)} ${sl.length} lately typically did ${fx(sx)}${xl != null ? `; this one ${fx(xl)}` : ''}.`, g: fx(sx), d: sx >= 1 ? 'up' : 'dn', w: 1 + Math.abs(Math.log(sx)) });
+  A.sides.forEach((g) => g.rows.forEach((x) => {
+    if (/real/.test(g.name) || !x.wi.includes(id) || (x.slice && x.slice !== p.pat)) return;
+    const k = x.key === 'ct' ? 'cm' : 'lk', ma = xSet(x.wi, k), mo = xSet(x.wo_ids, k), m = ma != null && mo ? ma / mo : null; if (m == null) return;
+    out.push({ t: `${x.name}${x.slice ? `, in ${low(x.slice)}` : ''}`, s: `Posts with it get ${fx(m)} the ${KEYN[k]} of posts without${x.slice ? ` in ${low(x.slice)}` : ''}.`, g: fx(m), d: m >= 1 ? 'up' : 'dn', w: Math.abs(Math.log(m)) });
+  }));
+  const best = out.sort((a, b) => b.w - a.w).slice(0, 4);
+  if (p.f48 != null && B.f48 != null) best.push({ t: 'Followers', s: `${sg(p.f48)} in the two days after; a usual post brings ${sg(Math.round(B.f48))}.`, g: sg(p.f48), d: p.f48 >= B.f48 ? 'up' : 'dn' });
+  return best;
+}
+// plays it takes to earn a like on a usual reel lately
+const usualPPL = () => medOf(S.win.filter((i) => A.posts[i].fmt === 'Reels' && A.posts[i].pl && A.posts[i].lk).map((i) => A.posts[i].pl / A.posts[i].lk));
+/* ---- the post mortem, in the page's own grammar: the count it moved most against the usual post, Feeder Reader's
+   take and read where the read file has them, the breakdown, why it went the way it did (what it has, and how that has
+   gone before), every other time the same regular turned up, where it sits in the run of posts, and its closest posts ---- */
 function postView(id) {
-  const p = A.posts[id], v = p.top, his = A.his, r = beatOf(id, A.order), bk = p.bk || null;
-  const s = A.slices.find((x) => x.name === p.pat), wk = A.weeks.find((w) => w.ids.includes(id)), wr = wk ? byRank(wk.ids).indexOf(id) + 1 : 0;
-  const xl = xPost(id, 'lk');
-  const head = { num: xl != null ? fx(xl) : v != null ? top(v) : 'New', unit: xl != null ? `of ${his} usual ${K(Math.round(B.lk))} likes` : v != null ? `among ${his} posts by day 7` : 'ranked at day 7', line: `${r.t}.`, aside: `${v != null ? `${top(v)} by day 7` : 'Too new to rank'}${wk && wr ? (wr === 1 ? ', the best of its week' : `, the ${ord(wr)} of ${wk.ids.length} that week`) : ''}.`, tone: tx(xl) };
+  const p = A.posts[id], v = p.top, his = A.his, r = beatOf(id, A.order), bk = p.bk || null, PV = ((A.voice || {}).posts || {})[id] || null;
+  // (its place in its week on the count the page reads: likes, where the overall rank leans on a wrong follower count)
+  const rkey = A.yard === 'likes' ? 'lt' : 'top', wk = A.weeks.find((w) => w.ids.includes(id)), wr = wk && p[rkey] != null ? byRank(wk.ids, rkey).indexOf(id) + 1 : 0;
+  const xl = xPost(id, 'lk'), xc = xPost(id, 'cm');
+  // (it leads on comments only where they ran much further from the usual than its likes did)
+  const byC = xc != null && xl != null && Math.abs(Math.log(Math.max(xc, .01))) > Math.abs(Math.log(Math.max(xl, .01))) + .5, hx = byC ? xc : xl;
+  const head = { num: hx != null ? fx(hx) : 'New', unit: hx != null ? `${his} usual ${byC ? 'comments' : 'likes'}` : 'counted at day 7', line: PV && PV.take ? PV.take : `${r.t}.`,
+    aside: v == null ? 'Still counting: it’s under a week old.' : wk && wr ? (wr === 1 ? `The best of its week’s ${wk.ids.length}.` : `The ${ord(wr)} of ${wk.ids.length} that week.`) : '', tone: tx(hx) };
+  const ppl = p.pl && p.lk ? Math.round(p.pl / p.lk) : null, upl = usualPPL();
+  const stats = [
+    p.lk != null ? [K(p.lk), `likes${!byC || xl == null ? '' : ` · ${fx(xl)} usual`}`] : null,
+    p.cm != null ? [K(p.cm), `comments${byC || xc == null ? '' : ` · ${fx(xc)} usual`}`] : null,
+    p.pl ? [K(p.pl), `plays · a like every ${ppl}${upl ? `, usual ${Math.round(upl)}` : ''}`] : null,
+    p.f48 != null ? [sg(p.f48), `followers in two days · usual ${sg(Math.round(B.f48))}`] : null,
+  ].filter(Boolean);
   const fr = p.rp || [], sq = p.fmt !== 'Reels';
   const beats = fr.length ? `<div class="rpl">${fr.map((f, k) => { const b = bk && bk.frames && bk.frames[k]; return `<div class="rf${sq ? ' sq' : ''}"><span class="im" style="background-image:url(${BASE}${f.f})">${f.at ? `<span>${esc(f.at)}</span>` : ''}</span><span class="rft">${b ? `<b class="bl">${esc(b.line)}</b>` : ''}<span class="q${f.kind === 'shows' ? ' sh' : ''}">${esc(f.line)}</span></span></div>`; }).join('')}</div>`
     : `<div class="rpl"><div class="rf sq"><span class="im" style="${coverStyle(id)}"></span><span class="q sh">Only the cover is on file: frames start with the posts fingerprinted from ${A.acct === 'anuj' ? '19' : '21'} Sep.</span></div></div>`;
   const f = p.fx || {}, bits = [PEOPLE[f.people], f.shot === 'self' ? 'self-shot' : f.shot === 'other' ? 'filmed by someone else' : null, STYLE[f.style], f.hook ? 'words on the cover' : null, f.known ? 'a famous face' : null].filter(Boolean);
-  const xs = (k) => (xPost(id, k) != null ? `${fx(xPost(id, k))} usual` : '');
-  const nums = [[p.lk != null ? K(p.lk) : '–', 'likes', xl != null ? (p.lt != null ? `${top(p.lt)} on likes` : '') : xs('lk')], [p.cm != null ? K(p.cm) : '–', 'comments', [xs('cm'), p.ct != null ? top(p.ct) : ''].filter(Boolean).join(' · ')],
-    p.pl ? [K(p.pl), 'plays', [xs('pl'), p.lk ? `a like every ${Math.round(p.pl / p.lk)}` : ''].filter(Boolean).join(' · ')] : null, [p.f48 != null ? sg(p.f48) : '–', 'followers', `in the 48h after${B.f48 ? ` · usual ${sg(Math.round(B.f48))}` : ''}`]].filter(Boolean);
-  const lv = [];
-  const sx = xSet(A.order.slice(-100).filter((i) => A.posts[i].pat === p.pat), 'lk');
-  if (sx != null) lv.push({ d: sx >= 1 ? 'up' : 'dn', t: `${p.pat}`, s: `${cap1(his)} ${low(p.pat)} posts typically get ${fx(sx)} ${his} usual likes; this one ${fx(xl)}.`, g: `${fx(sx)} usual` });
-  A.sides.forEach((g) => g.rows.forEach((x) => {
-    if (!x.wi.includes(id) || (x.slice && x.slice !== p.pat)) return;
-    const fake = /real/.test(g.name), better = x.w < x.wo;
-    const k = x.key === 'ct' ? 'cm' : 'lk', ma = xSet(x.wi, k), mo = xSet(x.wo_ids, k), m = ma != null && mo ? ma / mo : null;
-    lv.push({ d: fake ? 'no' : better ? 'up' : 'dn', t: `${x.name}${x.slice ? ` in ${low(x.slice)}` : ''}${x.key === 'ct' ? ', on comments' : ''}`, s: fake ? `It looks like it matters${m != null ? ` (${fx(m)} the ${KEYN[k]} of posts without it)` : ''}, but inside each slice the gap is gone.` : m != null ? `Posts with it get ${fx(m)} the ${KEYN[k]} of posts without it.` : `Posts with it land ${top(x.w)}, without ${top(x.wo)}.`, g: fake ? 'not real' : m != null ? fx(m) : `${Math.abs(x.wo - x.w)} pts ${better ? 'lift' : 'drag'}` });
-  }));
+  const why = whyOf(id, xl);
+  // every other time: the regular with the longest record, else the last posts of its slice
+  const rg = regsOf(id).filter((g) => g.n).sort((a, b) => b.n - a.n)[0];
+  const again = rg ? [...rg.others].reverse().slice(0, 9) : S.win.filter((i) => i !== id && A.posts[i].pat === p.pat).reverse().slice(0, 9);
+  const againHd = rg ? `${rg.label.replace(/^With /, 'with ').replace(/^In /, 'in ').replace(/^At /, 'at ')} · ${rg.n === 1 ? '1 other post' : `${rg.n} other posts`}${rg.x != null ? `, ${rg.n === 1 ? 'at' : 'typically'} ${fx(rg.x)}` : ''}` : `the last ${again.length} ${low(p.pat)} posts`;
   const near = (bk && bk.near) || [];
   const going = bk ? bk.going_for : p.prem || '';
   const what = p.sum ? esc(p.sum) : p.cap ? `“${esc(p.cap)}”` : esc(cap1(bits.join(', ')));
-  return `<div class="pm-hd"><p class="pm-k">${esc(`${p.at.slice(11, 16)} · ${cap1(FMT1[p.fmt] || 'post')} · ${p.pat}`)}</p><div class="cap capx"><div class="w1"><div class="c" data-tone="${head.tone}">${headHTML(head)}</div></div><div class="w2"><div class="c">${bodyHTML(head)}</div></div></div><p class="pm-w">${what}</p></div>
+  return `<div class="pm-hd"><p class="pm-k">${esc(`${p.at.slice(11, 16)} · ${cap1(FMT1[p.fmt] || 'post')} · ${p.pat}`)}</p><div class="cap capx"><div class="w1"><div class="c" data-tone="${head.tone}">${headHTML(head)}</div></div><div class="w2"><div class="c">${bodyHTML(head)}</div></div></div><p class="pm-w">${what}</p>
+      ${stats.length ? `<div class="pst">${stats.map(([b, e]) => `<span><b>${b}</b><em>${esc(e)}</em></span>`).join('')}</div>` : ''}</div>
+    ${PV && PV.read ? `<section class="pwh"><h5>What happened</h5><p class="pw1">${esc(PV.read)}</p></section>` : ''}
     <section class="pms2"><h5>The breakdown<em>${fr.length ? `${fr.length} frame${fr.length === 1 ? '' : 's'}` : 'the cover'}</em></h5>${beats}</section>
     ${going ? `<section class="pms2"><h5>What it was going for</h5><p class="pm-p">${esc(going)}</p>${bits.length ? `<p class="pm-q">On screen: ${esc(bits.join(', '))}.</p>` : ''}</section>` : ''}
-    <section class="pms2"><h5>How it landed<em>and why</em></h5><div class="pmn">${nums.map(([b, e, x]) => `<div><b>${b}</b><em>${e}</em>${x ? `<span>${x}</span>` : ''}</div>`).join('')}</div>
-      ${bk && bk.landed && bk.landed.length ? `<div class="pm-l">${bk.landed.map((x) => `<p>${esc(x)}</p>`).join('')}</div>` : ''}
-      <div class="lvs">${lv.map((x) => `<div class="lv"><span class="ar2 ${x.d}">${x.d === 'up' ? '▲' : x.d === 'dn' ? '▼' : '·'}</span><span class="t2">${esc(x.t)}<span>${esc(x.s)}</span></span><span class="g2${x.d === 'up' ? ' up' : ''}">${esc(x.g)}</span></div>`).join('')}</div></section>
-    ${near.length ? `<section class="pms2"><h5>Against its closest posts<em>same slice, same format</em></h5>${bk && bk.vs ? `<p class="pm-p">${esc(bk.vs)}</p>` : ''}<div class="pgrid">${near.map((i) => tileHTML(i)).join('')}</div></section>` : ''}
+    ${why.length ? `<section class="pms2"><h5>Its record<em>what it has, and how that has gone before</em></h5><div class="lvs why">${why.map((x, j) => `<div class="lv"><span class="ar2 ${x.d}">${j + 1}</span><span class="t2">${esc(x.t)}<span>${esc(x.s)}</span></span><span class="g2${x.d === 'up' ? ' up' : ''}">${esc(x.g)}</span></div>`).join('')}</div></section>` : ''}
+    ${again.length ? `<section class="pms2"><h5>Every other time<em>${esc(againHd)}, newest first</em></h5><div class="pgrid">${again.map((i) => tileHTML(i, { metric: 'xlk' })).join('')}</div></section>` : ''}
+    ${S.win.includes(id) ? `<section class="pms2"><h5>Where it sits<em>every post, ${esc(S.span)}, on ${his} usual likes</em></h5>${ecgHTML({ k: 'lk', run: [id], brk: null }, false)}</section>` : ''}
+    ${near.length ? `<section class="pms2"><h5>Against its closest posts<em>same slice, same format</em></h5>${PV && PV.twin ? `<p class="pm-p">${esc(PV.twin)}</p>` : ''}<div class="pgrid">${near.filter((i) => A.posts[i]).map((i) => tileHTML(i, { metric: 'xlk' })).join('')}</div></section>` : ''}
     <a class="pmig" href="https://www.instagram.com/p/${id}/" target="_blank" rel="noopener">Open on Instagram ↗</a>`;
 }
 
@@ -1148,7 +1306,8 @@ function quadHTML(items) { return `<div class="md quad">${items.map((x) => `<div
    ===================================================================== */
 function strategyHTML() {
   strategyBuild(); readCards();
-  return `<header class="op"><span class="ok"><b>02</b>Strategy · the current 100</span><p class="ol">${esc(A.lead.strategy)}</p><p class="osb">The latest 100 posts, ${S.span}, read five ways. Every multiple is against ${A.his} usual post: ${K(Math.round(B.lk))} likes, ${K(Math.round(B.cm))} comments${B.pl ? `, ${K(Math.round(B.pl))} plays` : ''}.</p></header>
+  const V = A.voice || {};
+  return `<header class="op"><span class="ok"><b>02</b>Strategy · the current 100</span><p class="ol">${esc(V.strategy || A.lead.strategy)}</p><p class="osb">${esc(cap1(A.his))} last 100 posts, ${S.span}, read ${['one', 'two', 'three', 'four', 'five', 'six', 'seven'][LENS.length - 1]} ways. Every × is against ${A.his} usual post: ${K(Math.round(B.lk))} likes, ${K(Math.round(B.cm))} comments${B.pl ? `, ${K(Math.round(B.pl))} plays` : ''}.</p></header>
     <div class="lz">${LENS.map(([k]) => lensSection(k)).join('')}</div>`;
 }
 function drawAll() { qa('.seg').forEach(placeSeg); if (!DS) storyPlace(); }
@@ -1165,10 +1324,10 @@ function render() {
   baseBuild(); storyX(); storyTone();
   ios.forEach((o) => o.disconnect()); ios = [];
   root.innerHTML = `
-    <section class="sec wrap" id="story"><header class="op"><span class="ok"><b>01</b>Story · week of 19–25 Oct</span><p class="ol">${esc(SAY[acct])}</p></header>${DS ? deskStoryHTML() : storyHTML()}</section>
+    <section class="sec wrap" id="story"><header class="op"><span class="ok"><b>01</b>Story · week of 19–25 Oct</span><p class="ol">${esc((A.voice && A.voice.say) || SAY[acct])}</p></header>${DS ? deskStoryHTML() : storyHTML()}</section>
     <section class="sec wrap" id="strategy">${strategyHTML()}</section>
     <section class="sec wrap" id="split">${splitHTML()}</section>
-    <div class="wrap foot2"><p>${A.yard === 'likes' ? 'Top % here ranks likes: Lakmē’s overall rank leans on a follower count recorded wrong for 57 of its posts.' : `Top % is where a post lands among ${esc(A.own)} own posts, by day 7.`} A multiple compares a post (or the typical post of a set) with the usual post among the latest 100 that have reached day 7. Top 1% is the best, Top 50% the middle. ${A.dropped} posts with no cover on file are left out of every count. A side holds up when it survives a shuffle test inside each slice.</p>
+    <div class="wrap foot2"><p>Feeder Reader reads every post on ${esc(A.own)} feed: its likes, comments and plays, the followers each day, and what happens on screen, frame by frame. Every × compares a post (or the typical post of a set) with the usual post among the latest 100 that have reached day 7. The wall’s Top % is where a post ranks among ${esc(A.own)} own posts by day 7${A.yard === 'likes' ? ', on likes: Lakmē’s overall rank leans on a follower count recorded wrong for 57 of its posts' : ''}. ${A.dropped} posts with no cover on file are left out of every count. A side holds up when it survives a shuffle test inside each slice.</p>
       <p>Plays are Instagram’s own counts from a 27 Oct check. Followers are daily snapshots; “in the 48h after” runs from the day before a post to two days after. Breakdown frames are cut from each post at the beats its fingerprint timed; the lines on them are written by a model from the post’s own beats and checked against these counts.</p></div>`;
   at = 0;
   sizePlayer(); if (DS) hookDesk(); else hookPlayer(); measureMore(); go(0);

@@ -355,13 +355,13 @@ html.dark .r17 {
 .r17 .stl .bdg { left: 6px; bottom: 6px; padding: 4px 6px; border-radius: 7px; font-size: 11px }
 /* a side: the posts with it over the posts without */
 .r17 .vs { position: absolute; inset: 0; display: grid; grid-template-rows: 1fr 1fr; gap: 2px; background: #0a0a0d }
-.r17 .vsr { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; min-height: 0 }
-.r17 .vsr > em { position: absolute; z-index: 2; left: 8px; top: 8px; padding: 5px 8px; border-radius: 999px; background: var(--accent); font: 800 9.5px/1 var(--font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: #fff }
+.r17 .vsr { position: relative; display: block; min-height: 0; overflow: hidden }
+.r17 .vsr > em { position: absolute; z-index: 2; right: 8px; top: 8px; padding: 5px 8px; border-radius: 999px; background: var(--accent); font: 800 9.5px/1 var(--font); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: #fff }
 .r17 .vsr.wo > em { background: rgb(5 5 8 / .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px) }
-.r17 .vsr.wo .stl::before { content: ""; position: absolute; inset: 0; background: rgb(10 10 14 / .32) } /* a veil, not a filter: the badge on top stays crisp */
+.r17 .vsr.wo .mt::before, .r17 .vsr.wo .stl::before { content: ""; position: absolute; inset: 0; background: rgb(10 10 14 / .32) } /* a veil, not a filter: the badge on top stays crisp */
 /* a run: the run itself as a strip, the post that ended it under it */
-.r17 .run { position: absolute; inset: 0; display: grid; grid-template-rows: 46px minmax(0, 1fr); gap: 2px; background: #0a0a0d }
-.r17 .rst { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px }
+.r17 .run { position: absolute; inset: 0; display: grid; grid-template-rows: 74px minmax(0, 1fr); gap: 2px; background: #0a0a0d }
+.r17 .rst { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px }
 .r17 .rst i { display: block; background: #1a1a1f center/cover; filter: saturate(.35) brightness(.78) }
 .r17 .rbk { position: relative; display: block; overflow: hidden }
 .r17 .rbk .stl { position: absolute; inset: 0 }
@@ -664,4 +664,55 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 .r17 .ro.pop .t span { white-space: normal; line-height: 1.35 }
 .r17 .ro.pop .x { grid-column: 3; grid-row: 1; width: 34px; height: 34px }
 .r17 .ro.pop .o { grid-column: 1 / -1; grid-row: 2; height: 40px; width: 100%; display: grid; place-items: center }
+
+/* ---------- a set's cover: every post in it. The best large in the corner (playing where it can), the rest packed around
+   it, best first; a few posts make a few large tiles, dozens make a wall of the set ---------- */
+.r17 .mos { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--c), minmax(0, 1fr)); grid-template-rows: repeat(var(--r), minmax(0, 1fr)); grid-auto-flow: dense; gap: 2px; background: #0a0a0d }
+.r17 .mt { position: relative; display: block; min-width: 0; min-height: 0; overflow: hidden; background: #1a1a1f center/cover }
+.r17 .mt.ml { grid-column: span var(--sx); grid-row: span var(--sy) }
+.r17 .mt .bdg { left: 5px; bottom: 5px; padding: 3px 5px; border-radius: 6px; font-size: 10.5px }
+.r17 .mt.ml > .bdg, .r17 .mos.big .mt .bdg { left: 7px; bottom: 7px; padding: 4px 6px; border-radius: 7px; font-size: 12px }
+.r17 .mt.ml .cut .bdg { top: auto; bottom: 7px; left: 7px; right: auto }
+
+/* ---------- the course: every week on file a column, every post in it a square shaded by its likes against the usual
+   post (crimson over it, grey under it), so how often and how well read together. A gap week is a dash; the week a row
+   is about is ringed ---------- */
+.r17 .pcs { display: grid; gap: 12px; min-width: 0 }
+.r17 .pcs h5 { margin: 0; font: 800 11px/1.2 var(--font); letter-spacing: .15em; text-transform: uppercase; color: var(--ink) }
+.r17 .pcs h5 em { margin-left: 8px; font: 500 13px/1.3 var(--font); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--ink-3) }
+.r17 .crs { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 3px; align-items: end; height: 96px; padding: 12px 12px 0; border-radius: 16px 16px 0 0; background: var(--pg-tile, var(--well)) }
+.r17 .cc { position: relative; display: flex; align-items: flex-end; height: 100%; min-width: 0 }
+.r17 .cc .cb { display: flex; flex-direction: column-reverse; gap: var(--g); width: 100%; border-radius: 3px; overflow: hidden }
+.r17 .cc .cb i { flex: 1 1 0; min-height: 1px; display: block }
+.r17 .cc.gap::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: 0; height: 2px; border-radius: 1px; background: rgb(var(--ink-rgb) / .16) }
+.r17 .cc.on::before { content: ""; position: absolute; inset: -6px -2px -3px; border-radius: 6px; box-shadow: 0 0 0 1.5px var(--accent) }
+.r17 .crl { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 3px; padding: 7px 12px 10px; margin-top: -12px; border-radius: 0 0 16px 16px; background: var(--pg-tile, var(--well)) }
+.r17 .crl span { min-width: 0; font: 600 10px/1 var(--font); color: var(--ink-3); white-space: nowrap; overflow: visible }
+.r17 .crl span.on { color: var(--accent); font-weight: 800 }
+.r17 .crk { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 500 12px/1.2 var(--font); color: var(--ink-3) }
+.r17 .crk span { display: inline-flex; align-items: center; gap: 6px }
+.r17 .crk i { width: 9px; height: 9px; border-radius: 2px }
+.r17 .crs .q0, .r17 .crk .q0 { background: rgb(var(--ink-rgb) / .12) } .r17 .crs .q1, .r17 .crk .q1 { background: rgb(var(--ink-rgb) / .2) } .r17 .crs .q2 { background: rgb(var(--ink-rgb) / .3) }
+.r17 .crs .q3, .r17 .crk .q3 { background: var(--s3) } .r17 .crs .q4 { background: var(--s4) } .r17 .crs .q5 { background: var(--s5) } .r17 .crs .q6, .r17 .crk .q6 { background: var(--s6) }
+.r17 .crs .qn { background: rgb(var(--ink-rgb) / .07) }
+/* a run as a trace: every post a beat, rising over the usual and dipping under it; the run in crimson, the post that
+   ended it ringed. On a card it fills the strip over the post that ended the run */
+.r17 .ecg { position: relative; display: block; padding: 12px 0 10px; border-radius: 16px; background: var(--pg-tile, var(--well)) }
+.r17 .ecg .ei { position: relative; display: block; height: 92px }
+.r17 .ecg svg { display: block; width: 100%; height: 100% }
+.r17 .ecg .e0 { stroke: rgb(var(--ink-rgb) / .22); stroke-dasharray: 3 4; vector-effect: non-scaling-stroke }
+.r17 .ecg .e1 { fill: none; stroke: rgb(var(--ink-rgb) / .4); stroke-width: 1.3; stroke-linejoin: round; vector-effect: non-scaling-stroke }
+.r17 .ecg .e2 { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke }
+.r17 .ecg .ek { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--raised); box-shadow: 0 0 0 2px var(--ink) }
+.r17 .ecg .ets { position: relative; display: block; height: 12px; margin: 8px 12px 0 }
+.r17 .ecg .et { position: absolute; top: 0; transform: translateX(-50%); font: 600 10px/1 var(--font); color: var(--ink-3); white-space: nowrap }
+.r17 .ecg.tight { position: absolute; inset: 0; padding: 10px 0; border-radius: 0; background: #0d0d11 }
+.r17 .ecg.tight .ei { height: 100% }
+.r17 .ecg.tight .ek { background: #0d0d11 }
+/* the post mortem's own read: Feeder Reader on this post, on a tile so it reads as his; the reasons, numbered, each with
+   its record's multiple at the end */
+.r17 .pfr { gap: 8px; padding: 16px 18px; border-radius: 18px; background: var(--pg-tile, var(--well)); box-shadow: inset 0 0 0 1px var(--pg-tile-rim, transparent) }
+.r17 .pfr h5 { color: var(--accent) }
+.r17 .lvs.why .g2 { font: 700 19px/1 var(--font); letter-spacing: -.03em; text-transform: none; padding-top: 0; font-variant-numeric: tabular-nums }
+.r17 .lvs.why .lv { align-items: center }
 
