@@ -146,18 +146,19 @@ function Plate({ lit, marked, armed, reduce, children }: { lit: boolean; marked:
       <span aria-hidden="true" className={cn(PLATE_LAYER, PLATE_REST)} style={{ opacity: !lit ? 1 : 0, transition: fade }} />
       <span aria-hidden="true" className={cn(PLATE_LAYER, PLATE_LIT)} style={{ opacity: lit ? 1 : 0, transition: fade }} />
       {/* something new: the red story ring round it (not round what you're on: that wears the ink ring) */}
-      {marked && !lit ? <FreshRing /> : null}
+      {marked ? <FreshRing shown={!lit} reduce={reduce} /> : null}
       {children}
     </span>
   );
 }
 
 /* a circle's name: ink, and bold ink for the one you're on (a feeder's with its @) — two copies cross-fading (a colour
-   or weight change would repaint) */
+   or weight change would repaint). When its circle comes or goes in a fan it moves on its own (data-ledger-label):
+   carried along, the names piled up over each other in flight */
 function RailLabel({ text, litText = text, lit, reduce, className }: { text: string; litText?: string; lit: boolean; reduce: boolean; className: string }) {
   const fade = pickFade(reduce);
   return (
-    <span className="grid w-full">
+    <span data-ledger-label="" className="grid w-full">
       <span className={cn(LABEL_CLASS, className, LABEL_REST, '[grid-area:1/1]')} style={{ opacity: lit ? 0 : 1, transition: fade }}>{text}</span>
       <span aria-hidden="true" className={cn(LABEL_CLASS, className, LABEL_LIT, '[grid-area:1/1]')} style={{ opacity: lit ? 1 : 0, transition: fade }}>{litText}</span>
     </span>
@@ -168,7 +169,7 @@ function RailLabel({ text, litText = text, lit, reduce, className }: { text: str
    An SVG stroke drawing itself on (its dash offset redrawn every frame) is main-thread paint: it lags whenever the
    page is busy. So the ring is built from parts that only ever rotate: two half-rings, each turning into its own
    half of the circle behind a window that shows only that half, and a dot at each end for the round caps. Every
-   moving part is a rotation (or a cap's opacity) the browser runs on the compositor (WAAPI). Every circle has its
+   moving part is a rotation (or an opacity) the browser runs on the compositor (WAAPI). Every circle has its
    ring, drawn back, from the start: a pick sweeps it round (or back) and adds nothing to the page. */
 
 function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
@@ -197,8 +198,9 @@ function ringFrames(angleAt: (t: number) => number) {
   for (let k = 0; k <= RING_SAMPLES; k += 1) {
     const offset = k / RING_SAMPLES;
     const angle = angleAt(offset);
-    first.push({ offset, transform: `rotate(${-180 + Math.min(angle, 180)}deg)` });
-    second.push({ offset, transform: `rotate(${-180 + Math.max(angle - 180, 0)}deg)` });
+    // (an arc shows while it is in its half, and is hidden once it is turned all the way out of it: see RING_POSE)
+    first.push({ offset, transform: `rotate(${-180 + Math.min(angle, 180)}deg)`, opacity: angle > 0 ? 1 : 0 });
+    second.push({ offset, transform: `rotate(${-180 + Math.max(angle - 180, 0)}deg)`, opacity: angle > 180 ? 1 : 0 });
     lead.push({ offset, transform: `rotate(${angle}deg)` });
   }
   return { first, second, lead };
@@ -207,10 +209,12 @@ function ringFrames(angleAt: (t: number) => number) {
 const undrawCurve = cubicBezier(0.4, 0, 0.6, 1);
 const RING_DRAW = ringFrames((t) => 360 * carryCurve(t));
 const RING_UNDRAW = ringFrames((t) => 360 * (1 - undrawCurve(t)));
-// the ring at rest, drawn round or drawn back (what each part shows once a sweep is over)
+/* the ring at rest, drawn round or drawn back (what each part shows once a sweep is over). Drawn back, the arcs are
+   also hidden: turned out of their halves, their ends lie on the halves' edge, and a circle on the move (a rail
+   fanning, scaling as it goes) showed a hairline of them at 12 and 6 o'clock, a dotted trail down the rail */
 const RING_POSE = {
-  on: { first: 'rotate(0deg)', second: 'rotate(0deg)', lead: 'rotate(360deg)', caps: 1 },
-  off: { first: 'rotate(-180deg)', second: 'rotate(-180deg)', lead: 'rotate(0deg)', caps: 0 },
+  on: { first: 'rotate(0deg)', second: 'rotate(0deg)', lead: 'rotate(360deg)', caps: 1, arcs: 1 },
+  off: { first: 'rotate(-180deg)', second: 'rotate(-180deg)', lead: 'rotate(0deg)', caps: 0, arcs: 0 },
 };
 const RING_ARC = 'block h-full w-full';
 const RING_CAP = 'absolute left-1/2 top-[1.25%] h-[7.5%] w-[7.5%] -translate-x-1/2 rounded-full bg-fg';
@@ -265,7 +269,7 @@ function RingDraw({ on, reduce }: { on: boolean; reduce: boolean }) {
       </svg>
       {/* the right half: a half-ring turning into view, top round to bottom */}
       <span className="absolute inset-y-0 right-0 w-1/2 overflow-hidden">
-        <span ref={first} className="absolute inset-y-0 right-0 w-[200%] origin-center" style={{ transform: pose.first }}>
+        <span ref={first} className="absolute inset-y-0 right-0 w-[200%] origin-center" style={{ transform: pose.first, opacity: pose.arcs }}>
           <svg className={RING_ARC} viewBox="0 0 100 100">
             <path d="M 50 5 A 45 45 0 0 1 50 95" fill="none" style={{ stroke: 'var(--fm-fg)' }} strokeWidth="7.5" />
           </svg>
@@ -273,7 +277,7 @@ function RingDraw({ on, reduce }: { on: boolean; reduce: boolean }) {
       </span>
       {/* the left half: bottom round to top */}
       <span className="absolute inset-y-0 left-0 w-1/2 overflow-hidden">
-        <span ref={second} className="absolute inset-y-0 left-0 w-[200%] origin-center" style={{ transform: pose.second }}>
+        <span ref={second} className="absolute inset-y-0 left-0 w-[200%] origin-center" style={{ transform: pose.second, opacity: pose.arcs }}>
           <svg className={RING_ARC} viewBox="0 0 100 100">
             <path d="M 50 95 A 45 45 0 0 1 50 5" fill="none" style={{ stroke: 'var(--fm-fg)' }} strokeWidth="7.5" />
           </svg>
@@ -319,9 +323,11 @@ export function ArmTrack({ reduce }: { reduce: boolean }) {
 }
 
 /* something new on a circle (a post in the last 24 hours): the story ring, a still sweep round it where the pick's ring
-   would be (what you're on wears the ink ring instead). Only on the circles it marks (globals.css, .fm-fresh-ring) */
-export function FreshRing({ className = 'inset-px' }: { className?: string }) {
-  return <span aria-hidden="true" className={cn('fm-fresh-ring pointer-events-none absolute z-10 rounded-full', className)} />;
+   would be (what you're on wears the ink ring instead). Only on the circles it marks (globals.css, .fm-fresh-ring).
+   It gives way to the ink ring as a pick draws it round, on the pick's clock, and comes back as it draws back (taken
+   away at once, it blinked out at the tap) */
+export function FreshRing({ className = 'inset-px', shown = true, reduce = false }: { className?: string; shown?: boolean; reduce?: boolean }) {
+  return <span aria-hidden="true" className={cn('fm-fresh-ring pointer-events-none absolute z-10 rounded-full', className)} style={{ opacity: shown ? 1 : 0, transition: pickFade(reduce) }} />;
 }
 
 // the wedge: a pie with a slice out (all of your feeds), in a 42×42 box
@@ -648,6 +654,9 @@ function TabHeader({
   const reduce = Boolean(useReducedMotion());
   // who you're on, for the token: a feeder (with its face), the open feed, or all of them
   const { activeFeed, pickedFeeder, pickKey } = whoOf(feeds, feedId, handle);
+  // the feed the rail last opened, kept once it closes: closing is the gesture back into it (the rail's hub)
+  const [hubFeed, setHubFeed] = useState<string | null>(activeFeed?.id ?? null);
+  if (activeFeed && activeFeed.id !== hubFeed) setHubFeed(activeFeed.id);
   const railRef = useRef<HTMLDivElement | null>(null);
   /* A tap on who you're on: folded, it opens the rail over the page (the page stays put); open, it brings the circle
      you're on into view if the rail has scrolled it away */
@@ -724,8 +733,10 @@ function TabHeader({
     />
   );
 
-  // first over last: a circle coming out of the one before it comes out from behind it
+  // first over last: a circle coming out of the one before it comes out from behind it; the feed the rail opens out of
+  // and closes back into stacks over every circle, the ones before it too (the wedge stays over it)
   const stackOf = (index: number) => 30 - Math.min(index, 29);
+  const HUB_STACK = 31;
   const circle = (feeder: HeaderFeeder, index: number) => (
     <FeederCircle
       key={`feeder:${feeder.handle}`}
@@ -823,6 +834,7 @@ function TabHeader({
                 deal={railDeal}
                 axis="x"
                 fan
+                hub={hubFeed ? `rail:feed:${hubFeed}` : undefined}
                 moveMs={RAIL_MOVE_MS}
                 startOnDeal
                 dealOnMount={false}
@@ -834,7 +846,7 @@ function TabHeader({
                 {railFeeds.map((feed, index) => (
                   <FeedBadge
                     key={`feed:${feed.id}`}
-                    stack={stackOf(index)}
+                    stack={feed.id === hubFeed ? HUB_STACK : stackOf(index)}
                     feed={feed}
                     marked={feed.feeders.some((feeder) => isMarked(feeder.handle))}
                     selected={feed.id === activeFeed?.id && !handle}
