@@ -64,13 +64,14 @@ const SCREEN_MARGIN_PX = 120;
 /* A fan (a rail of circles) moves as one glide, all of it at once, on Feed's carry curve: the item that stays (the
    feed you tapped) glides to its new place, and everything else comes out of, or goes back into, the place it was
    tapped in. What arrives slides out from there to its own place (from behind it: the rail stacks first over last),
-   so the far ones travel furthest and the rail is seen to open out of the feed; what leaves slides back into that
-   place and is gone as it tucks in. No beats, no ripple, no bounce: one gesture, the way Feed's posts move. */
+   so the far ones travel furthest and the rail is seen to open out of the feed; what leaves slides back into it,
+   following it to where it lands, and is gone as it tucks in. Either way they keep to the feed as it moves: nothing
+   passes through it. No beats, no ripple, no bounce: one gesture, the way Feed's posts move. */
 export const FAN_MS = ms(600);
 const FAN_SCALE = 0.94;
-/* A fan's item may carry a name beside its circle (data-ledger-label: the side rail's rows). Its circle makes the
-   gesture alone: the name goes at once as it leaves, and comes in beside it as it lands, so names never pass over one
-   another on the way */
+/* A fan's item may carry a name beside or under its circle (data-ledger-label: the side rail's rows, the header
+   rail's circles). Its circle makes the gesture alone: the name goes at once as it leaves, and comes in by it as it
+   lands, so names never pass over one another on the way */
 const FAN_LABEL_IN_MS = ms(300);
 const FAN_LABEL_OUT_MS = ms(90);
 const labelOf = (item: HTMLElement) => item.querySelector<HTMLElement>('[data-ledger-label]');
@@ -357,6 +358,9 @@ export class Ledger extends Component<LedgerProps> {
     const span = (rect: { width: number; height: number }) => (across ? rect.width : rect.height);
     const pitch = items.length > 1 ? Math.abs(along(items[1]) - along(items[0])) || span(items[0].rect) : (items[0] ? span(items[0].rect) : 64) + 8;
     const hubWas = fan && hub ? snapshot.places.get(hub) : undefined;
+    // the hub where it lands, and how high it stacks: what arrives from under it comes out of it whole
+    const hubNow = hubWas ? items.find(({ id }) => id === hub) : undefined;
+    const hubStack = hubNow ? Number(hubNow.item.style.zIndex || NaN) : NaN;
     const holders = !fan ? [] : hubWas ? [along(hubWas)] : items.filter(({ id }) => snapshot.places.has(id)).map(({ id }) => along(snapshot.places.get(id) as Place));
     const originFor = (at: number) => (holders.length ? holders.reduce((best, there) => (Math.abs(there - at) < Math.abs(best - at) ? there : best)) : at - pitch);
     const fanAt = (by: number, scale: number) => (across ? `translate3d(${by.toFixed(1)}px, 0, 0) scale(${scale})` : `translate3d(0, ${by.toFixed(1)}px, 0) scale(${scale})`);
@@ -369,11 +373,13 @@ export class Ledger extends Component<LedgerProps> {
       Object.assign(copy.style, { position: 'absolute', left: `${gone.x + scroll.left}px`, top: `${gone.y + scroll.top}px`, width: `${gone.width}px`, height: `${gone.height}px`, margin: '0' });
       layer.appendChild(copy);
       if (fan) {
-        // its name goes at once; its circle slides back into the place the gesture comes from (under every item: it
-        // tucks in behind), gone as it gets there
+        // its name goes at once; its circle slides back into the hub, following it to where it lands (or into the
+        // place the gesture comes from), gone as it gets there. It goes under every item, whatever it stacked at
+        // before: it tucks in behind
+        copy.style.zIndex = '0';
         const name = labelOf(copy);
         if (name) run(copies, name, [{ opacity: 1 }, { opacity: 0 }], { duration: FAN_LABEL_OUT_MS, easing: 'ease-in', fill: 'both' });
-        const into = originFor(along(gone)) - along(gone);
+        const into = (hubNow ? along(hubNow) : originFor(along(gone))) - along(gone);
         run(copies, copy, [
           { offset: 0, transform: fanAt(0, 1), opacity: gone.opacity },
           { offset: 0.45, opacity: gone.opacity },
@@ -419,13 +425,17 @@ export class Ledger extends Component<LedgerProps> {
         : `translate3d(${dx.toFixed(1)}px, ${(dy + rise).toFixed(1)}px, 0)`);
       if (!was && fan) {
         // out of the place the gesture comes from, to its own place, as one with everything else; its name comes in
-        // beside it as it lands
+        // beside it as it lands. Stacked under the hub it starts hidden behind it and comes out whole (fading in, it
+        // showed through the circles it passed); with nothing over it, it comes up as it goes
         this.arrivals.set(id, now);
-        run(rows, item, [
-          { offset: 0, transform: fanAt(originFor(along({ x, y })) - along({ x, y }), FAN_SCALE), opacity: 0 },
-          { offset: 0.22, opacity: 1 },
-          { offset: 1, transform: fanAt(0, 1), opacity: 1 },
-        ], { duration: FAN_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
+        const start = fanAt(originFor(along({ x, y })) - along({ x, y }), FAN_SCALE);
+        run(rows, item, Number(item.style.zIndex) < hubStack
+          ? [{ transform: start }, { transform: fanAt(0, 1) }]
+          : [
+            { offset: 0, transform: start, opacity: 0 },
+            { offset: 0.22, opacity: 1 },
+            { offset: 1, transform: fanAt(0, 1), opacity: 1 },
+          ], { duration: FAN_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
         const name = labelOf(item);
         if (name) run(rows, name, [{ transform: 'translate3d(-10px, 0, 0)', opacity: 0 }, { transform: 'translate3d(0, 0, 0)', opacity: 1 }], { duration: FAN_LABEL_IN_MS, delay: FAN_MS * 0.5, easing: LEDGER_ENTER_EASE, fill: 'backwards' });
         continue;

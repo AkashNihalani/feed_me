@@ -264,6 +264,9 @@ const NAME = 'truncate leading-[1.15]';
 const PICKED_SCALE = 1.08;
 // first over last: what comes out of a row comes out from behind it
 const stackOf = (index: number) => 40 - Math.min(index, 39);
+// the feed the list opens out of and closes back into stacks over every row, the ones before it too: the feeds coming
+// back out of it come from behind it
+const HUB_STACK = 41;
 
 /* a row's circle: the pick's ring round it (drawn round when it is picked, back when something else is), its lift, the
    faint track while what was tapped waits for its page, and the accent dot for something new */
@@ -280,7 +283,7 @@ function RowCircle({ ring, lit, marked, armed, reduce, className, children }: { 
       {armed ? <ArmTrack reduce={reduce} /> : null}
       {/* something new: the red story ring (not round what you're on: that wears the ink ring) */}
       {/* (round the whole circle: its face sits 3px in, a step closer to the edge than the header rail's) */}
-      {marked && !ring && !lit ? <FreshRing className="inset-0" /> : null}
+      {marked ? <FreshRing className="inset-0" shown={!ring && !lit} reduce={reduce} /> : null}
       <span className="relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-2 border-white dark:border-[var(--fm-ink)]">
         {children}
       </span>
@@ -290,12 +293,15 @@ function RowCircle({ ring, lit, marked, armed, reduce, className, children }: { 
 
 /* a row's name, in bold ink, past the column's edge (the one you're on is told by its ring, its lift and its raised
    tile, never by its name changing); a feed's count of feeders under it. It moves on its own when its row comes or
-   goes (data-ledger-label) */
+   goes (data-ledger-label), coming in from behind its own left edge: sliding in over the column's edge, its first
+   letters showed beside the circles in the shut rail */
 function RowName({ text, sub, className }: { text: string; sub?: string; className: string }) {
   return (
-    <span data-ledger-label="" className="relative z-10 grid min-w-0 flex-1 gap-1 pr-3">
-      <span className={cn(NAME, 'font-bold text-fg', className)}>{text}</span>
-      {sub ? <span className="truncate text-[12px] font-semibold leading-none text-fg/60">{sub}</span> : null}
+    <span className="relative z-10 min-w-0 flex-1 overflow-hidden pr-3">
+      <span data-ledger-label="" className="grid gap-1">
+        <span className={cn(NAME, 'font-bold text-fg', className)}>{text}</span>
+        {sub ? <span className="truncate text-[12px] font-semibold leading-none text-fg/60">{sub}</span> : null}
+      </span>
     </span>
   );
 }
@@ -501,7 +507,7 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
           leaving={leaving}
           open={open}
           reduce={reduce}
-          stack={stackOf(ids.length)}
+          stack={feed.id === hubFeed ? HUB_STACK : stackOf(ids.length)}
           onPick={pickFeed}
         />,
       );
