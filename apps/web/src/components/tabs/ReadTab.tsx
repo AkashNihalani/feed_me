@@ -25,8 +25,8 @@
    Reads are sample data for now (two feeders), see
    data/readerPreview.json; the feeds are the app's own.
 
-   A feeder read in three parts (Read17: Story · Strategy · Split,
-   Anuj and Lakmé for now) takes the page instead: none of the above
+   A feeder read in three parts (Read17: its front, Strategy and Split,
+   Anuj and Lakmé for now; its story plays on Feed) takes the page instead: none of the above
    is mounted for it, the header folds on the window's scroll as the
    index's does, and its switch is the part switch.
    ───────────────────────────────────────────────────────────── */
@@ -118,11 +118,11 @@ export default function ReadTab() {
   const activeFeed = feeds && feedId ? feeds.find((feed) => feed.id === feedId) || null : null;
   // a read in three parts takes the page: the engine, the stories, the sections and the Feeder File stand down for it
   const r17 = read17Of(scope.handle);
-  const [part, setPart] = useState<Part>('story');
+  const [part, setPart] = useState<Part>('score');
   const jump17 = useRef<((target: string) => void) | null>(null);
   // a part picked in the header (or one of the three on the side rail): the page goes there
   const toPart = useCallback((next: Part | Chapter) => {
-    setPart(next === 'strategy' ? 'slices' : next);
+    setPart(next === 'strategy' ? 'score' : next);
     jump17.current?.(next);
   }, []);
   const readIndex = r17 ? null : readOf(scope.handle);

@@ -30,7 +30,7 @@ html.dark .r17 {
 .r17 .igbars i { display: block; height: 2.5px; border-radius: 2px; background: rgb(255 255 255 / .35); overflow: hidden; position: relative }
 .r17 .igbars i b { position: absolute; inset: 0; background: #fff; transform-origin: left center; transform: scaleX(0) }
 .r17 .ighead { display: flex; align-items: center; gap: 9px; height: 40px; margin-top: 2px; padding-left: 2px; text-shadow: 0 1px 10px rgb(0 0 0 / .45) }
-.r17 .ighead .av { width: 32px; height: 32px; border-radius: 50%; background: #222 center/cover; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9) }
+.r17 .ighead .av { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #222 center/cover; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9) }
 .r17 .ighead b { font: 700 14px/1 var(--font); letter-spacing: -.01em }
 .r17 .ighead em { font: 500 13px/1 var(--font); font-style: normal; color: rgb(255 255 255 / .75) }
 .r17 .ighead .pp { margin-left: auto; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; pointer-events: auto; color: #fff }
@@ -215,8 +215,13 @@ html.dark .r17 {
 .r17 .dsc:not(.on) .dz .plab { visibility: hidden; transition: visibility 0s linear .45s }
 .r17 .dsp::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(5 5 8 / .5), rgb(5 5 8 / .8)); transition: background .35s var(--soft) }
 .r17 .dsp > * { position: relative }
-.r17 .dsp b { font: 700 13px/1 var(--font); font-variant-numeric: tabular-nums }
-.r17 .dsp span { align-self: end; writing-mode: vertical-rl; transform: rotate(180deg); font: 800 11px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .82); white-space: nowrap; overflow: hidden }
+.r17 .dsp b { font: 600 12px/1 var(--font); letter-spacing: .02em; font-variant-numeric: tabular-nums; color: rgb(255 255 255 / .58) }
+.r17 .dsp span { align-self: end; writing-mode: vertical-rl; -webkit-text-orientation: sideways; text-orientation: sideways; transform: rotate(180deg); padding-block: 2px; font: 700 21px/1.12 var(--font); letter-spacing: -.022em; color: #fff; white-space: nowrap; overflow: hidden; text-shadow: 0 1px 14px rgb(0 0 0 / .35) }
+/* (its figure, the number that says how far the part went, leads the headline up the spine) */
+.r17 .dsp .fg { margin-inline-end: 10px; font: 800 27px/1 var(--font); font-style: normal; letter-spacing: -.035em; font-variant-numeric: tabular-nums }
+.r17 .dsp .fg small { margin-inline-start: 5px; font: 700 15px/1 var(--font); letter-spacing: -.01em; color: rgb(255 255 255 / .78) }
+/* (the sliver's glass edge: a lit top, a hairline round it) */
+.r17 .dsp::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--sw); border-radius: 26px; pointer-events: none; box-shadow: inset 0 1px 0 rgb(255 255 255 / .2), inset 0 0 0 1px rgb(255 255 255 / .07) }
 /* a slide's verdict mark: an arrow in a crimson disc for one that went well, in a white ring for one that went badly, a
    plain dot for one that only states something */
 .r17 .mk { display: grid; place-items: center; flex: none; width: 7px; height: 7px; border-radius: 50%; background: #fff }
@@ -224,26 +229,20 @@ html.dark .r17 {
 .r17 .mk.t-up, .r17 .mk.t-dn { width: 26px; height: 26px; color: #fff }
 .r17 .mk.t-up { background: var(--accent); box-shadow: 0 6px 16px -6px rgb(218 46 70 / .9) }
 .r17 .mk.t-dn { background: rgb(255 255 255 / .06); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .7) }
-.r17 .dsp .mk { margin-top: 14px }
+.r17 .dsp .mk { margin-top: 16px }
+.r17 .dsp .mk.t-up, .r17 .dsp .mk.t-dn { width: 24px; height: 24px }
+.r17 .dsp .mk.t-up { background: rgb(255 255 255 / .2); box-shadow: inset 0 1px 0 rgb(255 255 255 / .5), inset 0 0 0 1px rgb(255 255 255 / .28) }
+.r17 .dsp .mk.t-dn { background: none; box-shadow: inset 0 0 0 1.25px rgb(255 255 255 / .55) }
+.r17 .dsp .mk svg { width: 12px; height: 12px }
 .r17 .dsp:hover::before { background: linear-gradient(180deg, rgb(5 5 8 / .25), rgb(5 5 8 / .6)) }
 .r17 .dsc.on .dsp { pointer-events: none }
 .r17 .ds.ov .dz { left: 0; width: var(--dw) }
 .r17 .ds.ov .dtx { left: 0; width: var(--dw); background: linear-gradient(180deg, rgb(5 5 8 / .45) 0, rgb(5 5 8 / 0) 18%, rgb(5 5 8 / 0) 38%, rgb(5 5 8 / .86) 60%, rgb(5 5 8 / .96)) }
-.r17 .dsb { display: flex; align-items: center; gap: 20px }
-.r17 .dpr { flex: 1; display: flex; gap: 6px }
-.r17 .dpr button { flex: 1 1 0; height: 20px; display: grid; align-items: center }
-.r17 .dpr i { display: block; height: 3px; border-radius: 2px; background: rgb(var(--ink-rgb) / .12); overflow: hidden; position: relative }
-.r17 .dpr i b { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; transform: scaleX(0); will-change: transform }
-.r17 .dct { display: flex; gap: 8px }
-.r17 .dct .nb { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--hair); transition: opacity .3s }
-.r17 .dct .nb[disabled] { opacity: .3; pointer-events: none }
-.r17 .dct svg { width: 16px; height: 16px; fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
-.r17 .dct #pp svg { fill: var(--ink); stroke: none }
 
 
 /* ---------- the page: under the phone's header capsule (where it sits open: its top, then 152px of capsule and a gap),
    beside the laptop's side rail; a part jumped to stops under the capsule folded (68px) ---------- */
-.r17-page { --r17-cap: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px)); padding-top: calc(var(--r17-cap) + 166px); padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; background: var(--page); overflow-x: clip }
+.r17-page { --r17-cap: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px)); padding-top: calc(var(--r17-cap) + 166px); padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; background: var(--page); overflow-x: clip }
 @media (min-width: 640px) { .r17-page { --r17-cap: calc(14px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px)) } }
 @media (min-width: 768px) { .r17-page { --r17-cap: calc(20px + var(--pwa-top-fix, 0px)) } }
 @media (min-width: 1024px) { .r17-page { --r17-cap: 0px; padding-top: var(--fm-desk-top, 24px); padding-bottom: 150px } }
@@ -258,8 +257,9 @@ html.dark .r17 {
 .r17 .sec:first-child { padding-top: 0 }
 .r17 .op { display: grid; gap: 10px; padding-bottom: 18px }
 .r17 .ok { display: flex; align-items: center; gap: 10px; font: 800 11px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3) }
-.r17 .ok b { display: inline-grid; place-items: center; height: 22px; padding: 0 7px; border-radius: 7px; background: var(--accent); color: #fff; letter-spacing: .06em }
+.r17 .ok b { font: 800 12px/1 var(--font); letter-spacing: .04em; color: var(--ink) }
 .r17 .ol { margin: 0; font: 700 clamp(23px, 5.8vw, 34px)/1.12 var(--font); letter-spacing: -.035em; text-wrap: balance; max-width: 30ch }
+.r17 .osub { margin: 0; font: 500 clamp(15px, 3.9vw, 17px)/1.5 var(--font); letter-spacing: -.01em; color: var(--ink-2); text-wrap: pretty; max-width: 68ch }
 
 /* ---------- a caption in the Lead's grammar ---------- */
 .r17 .cap { --n: 50px; --s: 17px; display: grid; gap: 10px; min-width: 0 }
@@ -333,6 +333,16 @@ html.dark .r17 {
 .r17 .rcl { margin-top: 3px; font: 700 14.5px/1.3 var(--font); letter-spacing: -.01em; text-wrap: pretty }
 .r17 .rca { font: 500 12.5px/1.35 var(--font); color: rgb(255 255 255 / .6); text-wrap: pretty }
 .r17 .rce { position: absolute; inset: 0; display: grid; place-items: center; font: 700 30px/1 var(--font); letter-spacing: -.04em; color: rgb(255 255 255 / .3) }
+/* the reader's tiles keep their words for the panel, so a tile is its picture and its number. A phone's tile is the
+   laptop's: 282px across, its picture a shade taller than wide. Only where the screen is too short for it to sit whole
+   between the header and the bottom bar, both open, with room to spare does it narrow, picture and all, so it keeps that
+   shape. The band is the small viewport less the open capsule (its top, then 152px) and the bar (68px, 12px up) */
+.r17 .r5p .rc { min-height: 0 }
+@media (max-width: 1023px) {
+  .r17 .r5p { --r17-band: calc(100svh - var(--r17-cap) - 232px - env(safe-area-inset-bottom, 0px)) }
+  .r17 .r5p .rl { --cw: max(220px, min(74vw, 282px, calc((var(--r17-band) - 208px) * 282 / 290))) }
+  .r17 .r5p .rcm { height: auto; aspect-ratio: 282 / 290 }
+}
 
 /* a cut: the post's frames one after another. Only the cut you're on plays: each frame drifts in slowly as the last one
    dissolves, and its bar fills while it holds; the rest sit on their first frame */
@@ -354,6 +364,11 @@ html.dark .r17 {
 .r17 .sts.n2 { grid-template-columns: 1fr 1fr }
 .r17 .stl { position: relative; display: block; min-width: 0; background: #1a1a1f center/cover }
 .r17 .stl .bdg { left: 6px; bottom: 6px; padding: 4px 6px; border-radius: 7px; font-size: 11px }
+/* a why's pair: the two closest posts that went opposite ways, each named by its one difference (the one that went
+   under carries the side's veil) */
+.r17 .sts.pr .stl > em { position: absolute; z-index: 2; left: 8px; top: 8px; max-width: calc(100% - 16px); padding: 5px 8px; border-radius: 9px; background: var(--accent); font: 800 9.5px/1.2 var(--font); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: #fff; text-wrap: balance }
+.r17 .sts.pr .stl.wo > em { background: rgb(5 5 8 / .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px) }
+.r17 .sts.pr .stl.wo::before { content: ""; position: absolute; inset: 0; background: rgb(10 10 14 / .32) }
 /* a side: the posts with it over the posts without */
 .r17 .vs { position: absolute; inset: 0; display: grid; grid-template-rows: 1fr 1fr; gap: 2px; background: #0a0a0d }
 .r17 .vsr { position: relative; display: block; min-height: 0; overflow: hidden }
@@ -500,11 +515,17 @@ html.dark .r17 {
 .r17 .pw1 { margin: 0; font: 600 17px/1.45 var(--font); letter-spacing: -.015em; text-wrap: pretty }
 .r17 .pw2 { margin: 0; font: 500 15px/1.5 var(--font); color: var(--ink-2); text-wrap: pretty }
 .r17 .pw2 b { margin-right: 8px; font: 800 10.5px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--accent) }
+/* a why's close: what it rules out, what can't be told yet, what it means */
+.r17 .pwx { display: grid; gap: 18px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--hair); min-width: 0 }
+.r17 .pno ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none }
+.r17 .pno li { position: relative; padding-left: 18px; font: 500 15px/1.5 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .pno li::before { content: ""; position: absolute; left: 1px; top: .72em; width: 8px; height: 2px; border-radius: 1px; background: var(--accent) }
 .r17 .pps { display: grid; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--hair); min-width: 0 }
 .r17 .pps .pl2 { margin: 8px 0 -2px }
 .r17 .ppl { display: grid; gap: 10px }
 .r17 .ppr { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 14px; align-items: start; padding: 10px; border-radius: 18px; text-align: left; background: var(--pg-tile, var(--well)); box-shadow: inset 0 0 0 1px var(--pg-tile-rim, transparent); transition: transform .45s var(--glide) }
-.r17 .ppr.mk { box-shadow: inset 0 0 0 1.5px var(--accent) }
+/* (a tagged row: the post that ended a run, or one of a why's pair. Not .mk, which is the wall's dot) */
+.r17 .ppr.tg { box-shadow: inset 0 0 0 1.5px var(--accent) }
 @media (hover: hover) { .r17 .ppr:hover { transform: translateY(-2px) } }
 .r17 .ppr:active { transform: scale(.985) }
 .r17 .ppc { display: block; aspect-ratio: 4 / 5; border-radius: 12px; background: var(--well) center/cover }
@@ -592,7 +613,7 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
     .r17 .rl { view-timeline: --r17-reel block; overflow-y: hidden }
     .r17 .rcw > .rc { transform-origin: 50% 100%; animation: r17-in linear both, r17-back linear both; animation-timeline: --r17-reel, --r17-reel; animation-range: entry 0% entry 85%, exit 25% exit 100% }
     .r17 .lh, .r17 .op { animation: r17-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 90% }
-    .r17 #ds, .r17 .player { transform-origin: 50% 100%; animation: r17-back linear both; animation-timeline: view(); animation-range: exit 30% exit 100% }
+    .r17 #ds, .r17 .sgm { transform-origin: 50% 100%; animation: r17-back linear both; animation-timeline: view(); animation-range: exit 30% exit 100% }
   }
 }
 @keyframes r17-in { from { translate: calc(110px + var(--i, 0) * 56px) 0 } to { translate: 0 0 } }
@@ -616,12 +637,12 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 /* ---------- the verdict on the outside. A spine that went well glows crimson from its foot, its phrase in bold white; one
    that went badly sinks into a cool dark, its picture drained, its phrase dimmed; a plain one stays as it is. On a
    phone the same lean colours the story's bars and the line under the handle ---------- */
-.r17 .dsc.t-up .dsp::before { background: linear-gradient(180deg, rgb(5 5 8 / .42) 0%, rgb(5 5 8 / .5) 38%, rgb(140 18 36 / .78) 76%, rgb(218 46 70 / .94) 100%) }
+.r17 .dsc.t-up .dsp::before { background: linear-gradient(180deg, rgb(5 5 8 / .38) 0%, rgb(5 5 8 / .5) 34%, rgb(122 16 34 / .62) 70%, rgb(218 46 70 / .9) 100%) }
 .r17 .dsc.t-up .dsp:hover::before { background: linear-gradient(180deg, rgb(5 5 8 / .2) 0%, rgb(5 5 8 / .3) 38%, rgb(140 18 36 / .7) 76%, rgb(218 46 70 / .9) 100%) }
 .r17 .dsc.t-dn .dsp::before { background: linear-gradient(180deg, rgb(10 12 17 / .7), rgb(10 12 17 / .92)) }
 .r17 .dsc.t-dn .dsp:hover::before { background: linear-gradient(180deg, rgb(10 12 17 / .5), rgb(10 12 17 / .82)) }
-.r17 .dsc.t-up .dsp span { color: #fff; font-size: 12px; font-weight: 800 }
-.r17 .dsc.t-dn .dsp span { color: rgb(255 255 255 / .6) }
+.r17 .dsc.t-dn .dsp span { color: rgb(255 255 255 / .8) }
+.r17 .dsc.t-dn .dsp .fg { color: rgb(255 255 255 / .66) }
 .r17 .dsc.t-dn .dsp b { color: rgb(255 255 255 / .55) }
 
 .r17 .ighead em.vd { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden }
@@ -634,8 +655,6 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 .r17 .igbars button.t-up i { background: rgb(218 46 70 / .5) }
 .r17 .igbars button.t-up i b { background: var(--accent) }
 .r17 .igbars button.t-dn i { background: rgb(255 255 255 / .2) }
-.r17 .dpr button.t-up i { background: rgb(218 46 70 / .24) }
-.r17 .dpr button.t-up i b { background: var(--accent) }
 
 /* a story card's words, each in a mask to rise out of: the number, and the headline word by word (the masks give the
    descenders room) */
@@ -650,9 +669,6 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 
 /* (beside its picture, a card's words sit on a panel of their own, so the picture slides out from behind them and never
    runs under the text; the slide's lean glows on that panel) */
-.r17 .ds:not(.ov) .dtx { background: var(--card) }
-.r17 .ds:not(.ov) .dsc.t-up .dtx { background: radial-gradient(110% 80% at 100% 100%, rgb(218 46 70 / .24), rgb(218 46 70 / 0) 70%), var(--card) }
-.r17 .ds:not(.ov) .dsc.t-dn .dtx { background: radial-gradient(110% 80% at 100% 100%, rgb(150 160 176 / .13), rgb(150 160 176 / 0) 70%), var(--card) }
 
 /* ---------- a laptop's readout: a card beside the post it's about (placed by the engine), grown out of the side facing it.
    The cover, what it got, then Open across the foot ---------- */
@@ -809,10 +825,10 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 .r17 .lvk i { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: r17live 1.6s var(--soft) infinite }
 @keyframes r17live { 50% { opacity: .25 } }
 @media (prefers-reduced-motion: reduce) { .r17 .lvk i { animation: none } }
-.r17 .lvr { display: grid; grid-auto-flow: column; grid-auto-columns: 128px; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: -16px; padding: 4px 16px 8px }
+.r17 .lvr { display: grid; grid-auto-flow: column; grid-auto-columns: 128px; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: -16px; padding: 4px 16px 8px; scroll-padding-inline: 16px }
 .r17 .lvr::-webkit-scrollbar { display: none }
-@media (min-width: 640px) { .r17 .lvr { margin-inline: -24px; padding-inline: 24px } }
-@media (min-width: 1024px) { .r17 .lvr { grid-auto-columns: 148px; margin-inline: 0; padding-inline: 0 } }
+@media (min-width: 640px) { .r17 .lvr { margin-inline: -24px; padding-inline: 24px; scroll-padding-inline: 24px } }
+@media (min-width: 1024px) { .r17 .lvr { grid-auto-columns: 148px; margin-inline: 0; padding-inline: 0; scroll-padding-inline: 0 } }
 .r17 .lvt { display: grid; gap: 7px; align-content: start; scroll-snap-align: start; text-align: left; container-type: inline-size; transition: transform .45s var(--glide) }
 @media (hover: hover) { .r17 .lvt:hover { transform: translateY(-3px) } }
 .r17 .lvt .cv { position: relative; display: block; aspect-ratio: 4 / 5; border-radius: 12px; background: var(--well) center/cover; box-shadow: 0 8px 18px -12px rgb(15 23 42 / .5) }
@@ -821,3 +837,209 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 .r17 .lvc { display: grid; gap: 3px; min-width: 0 }
 .r17 .lvc b { font: 800 10.5px/1.2 var(--font); letter-spacing: .1em; text-transform: uppercase }
 .r17 .lvc em { font: 500 12px/1.3 var(--font); font-style: normal; color: var(--ink-3) }
+
+/* ---------- a phone's read, kept short (the laptop's is untouched). A Strategy part is its name and the first sentence of
+   its line, on its reel: the question and the rest of the line are the laptop's left column, and on a phone the tiles
+   right under it say them, so a part sits whole between the folded header and the bar. The story opens on its line
+   alone. The method opens in the panel from one line at the end (.howb) instead of sitting under Strategy's opener and
+   in a footnote. The live posts carry their day-3 call on the wall itself (.wlv), so the lane of the same covers above it
+   goes and its line stays ---------- */
+.r17 .howb { display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 14px 0 16px; border-radius: 999px; background: var(--fm-well); border: 1px solid var(--fm-well-edge); box-shadow: var(--fm-well-shade); font: 700 13.5px/1 var(--font); letter-spacing: -.01em; color: var(--ink); transition: transform .3s var(--soft) }
+.r17 .howb svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+.r17 .howb:active { transform: scale(.97) }
+.r17 .pn.one #pnp, .r17 .pn.one #pnn { display: none }
+.r17 .wlv { display: none; align-items: center; gap: 5px }
+.r17 .wlv i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor }
+.r17 .wlv em { font-style: normal; font-weight: 600; opacity: .72 }
+@media (max-width: 1023px) {
+  .r17 .sec { padding-top: 36px }
+  .r17 .lz { gap: 30px }
+  .r17 .r5p { gap: 12px }
+  .r17 .r5p .lk span, .r17 .r5p .lhs, .r17 #story .osub, .r17 #strategy .osb, .r17 .foot2 p, .r17 .lvr { display: none }
+  .r17 .foot2 { padding-block: 34px 0 }
+  .r17 .wt.lv > .bdg:not(.wlv) { display: none }
+  .r17 .wt.lv > .wlv { display: inline-flex }
+}
+
+/* a story card led by its kicker (no number of its own) */
+.r17 .unit.lone { font: 600 14px/1.3 var(--font); color: rgb(255 255 255 / .86); max-width: none }
+
+/* ---------- the read's front: its line as big as the page allows, then the three figures it stands on, each a door to
+   its frame on the stage. Under a laptop's width the figures sit in a row under the line, split by hairlines; a laptop up
+   they stack at the right of it, the line's foot and the last figure's on one line ---------- */
+.r17 .cvx { display: grid; gap: 22px }
+.r17 .cvh { display: grid; gap: 14px; min-width: 0 }
+.r17 .cvl { margin: 0; font: 800 clamp(38px, 11vw, 52px)/.98 var(--font); letter-spacing: -.05em; text-wrap: balance; max-width: 15ch }
+.r17 .cvl.long { font-size: clamp(32px, 8.8vw, 44px); line-height: 1.02; max-width: 17ch }
+.r17 .cvf { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--hair) }
+.r17 .cvi { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 14px 10px 2px 0; text-align: left; -webkit-tap-highlight-color: transparent }
+.r17 .cvi + .cvi { padding-left: 12px; border-left: 1px solid var(--hair) }
+.r17 .cvn { font: 800 clamp(24px, 7.4vw, 30px)/1 var(--font); letter-spacing: -.045em; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap }
+.r17 .cvi.t-up .cvn { color: var(--accent) }
+.r17 .cvu { font: 500 12.5px/1.32 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .cvk { display: inline-flex; align-items: center; gap: 2px; margin-top: 4px; font: 800 10px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); transition: color .3s var(--soft) }
+.r17 .cvk svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round }
+.r17 .cvi:active .cvn { transform: scale(.97) }
+@media (hover: hover) { .r17 .cvi:hover .cvk { color: var(--ink) } }
+@media (min-width: 1024px) {
+  .r17 .cvx { grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); align-items: end; gap: 56px }
+  .r17 .cvl { font-size: 84px; max-width: 13ch } .r17 .cvl.long { font-size: 62px; max-width: 16ch }
+  .r17 .cvf { grid-template-columns: minmax(0, 1fr); border-top: 0 }
+  .r17 .cvi { grid-template-columns: minmax(3.2ch, auto) minmax(0, 1fr); align-items: center; column-gap: 18px; row-gap: 4px; padding: 13px 0; border-top: 1px solid var(--hair) }
+  .r17 .cvi + .cvi { padding-left: 0; border-left: 0 }
+  .r17 .cvn { grid-row: span 2; font-size: 44px }
+  .r17 .cvk { margin-top: 0 }
+  .r17 #strategy { padding-top: 44px }
+}
+
+/* ---------- the story's viewer: over everything, the whole screen on a phone; a laptop up, a tall card on the dark. It
+   grows out of the face and shrinks back into it (read17Engine: openStory, closeStory) ---------- */
+/* (shut, it isn't drawn at all: a story card sets itself visible, so hiding the viewer wouldn't hide it, and on an iPhone
+   anything fixed at the top edge tints Safari's bars) */
+.r17 .sv { position: fixed; inset: 0; z-index: 420; display: none; touch-action: none; overscroll-behavior: contain }
+.r17 .sv.on { display: block }
+.r17 .svs { position: absolute; inset: 0; display: block; background: #050507 }
+.r17 .svb { position: absolute; inset: 0; overflow: hidden; isolation: isolate; background: #0b0b0e; transform-origin: 50% 50%; will-change: transform }
+.r17 .sv .player { position: absolute; inset: 0; width: auto; max-width: none; margin: 0; animation: none !important }
+.r17 .sv .vp { position: absolute; inset: 0; border-radius: inherit; touch-action: none }
+.r17 .sv .track { height: 100% }
+.r17 .sv .card, .r17 .sv .sdim { height: 100%; border-radius: inherit }
+/* (the head spans the viewer inside its padding: 100% plus padding ran 24px past the edge, and the row squeezed the face
+   into an oval and the buttons to 22px to make room) */
+.r17 .sv .igtop { left: 0; right: 0; width: auto; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0 }
+.r17 .ighead .pp { flex: none }
+.r17 .sv .foot { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) }
+.r17 .sv .ighead .svx { margin-left: 0 }
+.r17 .svx svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round }
+/* (the face the viewer grows out of and shuts into, over the circle it starts and ends as: engine faceCopy) */
+.r17 .svf { position: absolute; z-index: 40; left: 50%; top: 50%; width: var(--fd); height: var(--fd); margin: calc(var(--fd) / -2) 0 0 calc(var(--fd) / -2); border-radius: 50%; overflow: hidden; pointer-events: none; background: #222 }
+@media (min-width: 1024px) {
+  .r17 .svs { background: rgb(6 6 8 / .92); cursor: zoom-out }
+  .r17 .svb { inset: auto; left: 50%; top: 50%; width: var(--cw); height: var(--ch); margin: calc(var(--ch) / -2) 0 0 calc(var(--cw) / -2); border-radius: 26px; box-shadow: 0 40px 120px -30px rgb(0 0 0 / .85) }
+  .r17 .sv .igtop { padding-top: 10px }
+  .r17 .sv .foot { padding-bottom: 22px }
+}
+
+/* ---------- Strategy on the stage. A frame's words: its kick (its count on the right), its number out of a mask, what it
+   counts; a laptop up, its one-line why; then the way into its read. Its number wears the frame's own call ---------- */
+.r17 .sgw .kick em { margin-left: auto; font: 600 12px/1 var(--font); font-style: normal; letter-spacing: 0; text-transform: none; color: rgb(255 255 255 / .55); white-space: nowrap }
+.r17 .sgw .num { display: block; padding-bottom: .12em; margin-bottom: -.12em; clip-path: inset(-.4em -.3em 0 -.3em) }
+.r17 .sgw .num > span { display: inline-block }
+.r17 .sgrd { justify-self: start; display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; height: 36px; padding: 0 12px 0 15px; border-radius: 999px; background: rgb(255 255 255 / .12); box-shadow: inset 0 1px 0 rgb(255 255 255 / .26), inset 0 0 0 1px rgb(255 255 255 / .1); font: 700 12.5px/1 var(--font); color: #fff; transition: background .3s var(--soft), transform .3s var(--soft) }
+.r17 .sgrd svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round }
+.r17 .sgrd:active { transform: scale(.96) }
+@media (hover: hover) { .r17 .sgrd:hover { background: rgb(255 255 255 / .18) } }
+
+/* a laptop up: the story's row, a card a part. A closed part is a sliver of its frame's picture, washed with its call;
+   the open one has its frame's picture at the left and its words at the right: the part, its question and how many
+   frames, the reader's line on it, then the frame. Under the row, a bar a frame, each in its tile's call */
+.r17 .sgd .dz .sgpic { position: absolute; inset: 0; overflow: hidden }
+.r17 .sgd .dsc .num { color: #fff }
+.r17 .sgd .dsc.t-dn .dz img, .r17 .sgd .dsc.t-dn .dz .qc { filter: none }
+.r17 .sgd .dsc.t-dn:not(.on) .sgpic { filter: saturate(.42) brightness(.86) }
+.r17 .sgd .dsc:not(.on) .sgpic :is(.bdg, .sts em, .vsr > em, .rbk > em, .crole, .cbar) { visibility: hidden }
+.r17 .sgd .dtx { gap: 22px }
+.r17 .sgd .dhd { align-items: center; min-height: 36px }
+.r17 .sgd .dhd b { display: flex; align-items: baseline; gap: 9px; flex: none; font: 800 12px/1 var(--font); letter-spacing: .18em; text-transform: uppercase; color: var(--accent) }
+.r17 .sgd .dhd b i { font: 700 12px/1 var(--font); font-style: normal; letter-spacing: .02em; color: rgb(255 255 255 / .5) }
+/* (the method opens from one line at the end, on every screen) */
+.r17 #strategy:has(.sgd, .sgm) .op .osb, .r17 .foot2:has(.howb) p { display: none }
+.r17 .foot2:has(.howb) { padding-block: 34px 0 }
+.r17 .sgh { display: grid; gap: 12px }
+.r17 .sgd .sghl { margin: 0; font: 700 38px/1.04 var(--font); letter-spacing: -.04em; text-wrap: balance }
+.r17 .sgsb { margin: 0; font: 500 15px/1.45 var(--font); color: rgb(255 255 255 / .68); text-wrap: pretty }
+.r17 .sgd .dft { gap: 7px }
+.r17 .sgd .dft .num { font-size: 78px; letter-spacing: -.05em } .r17 .sgd .dft .num.wd { font-size: 54px }
+.r17 .sgd .dft .line { font: 600 15.5px/1.42 var(--font); letter-spacing: -.01em; color: rgb(255 255 255 / .84); text-wrap: pretty }
+.r17 .sgd .dsc.nosub .sgsb, .r17 .sgd .dsc.noline .dft .line { display: none }
+.r17 .sgd .dsc.tight .dtx { gap: 14px } .r17 .sgd .dsc.tight .sghl { font-size: 32px } .r17 .sgd .dsc.tight .dft .num { font-size: 64px }
+.r17 .sgw.t-up .num { color: var(--accent) }
+.r17 .sgw.t-dn .num { color: rgb(255 255 255 / .62) }
+/* the glass the words sit on: the frame's own picture, blurred into the panel's light (a still layer, only on the card
+   that's open: a card folding keeps its light until it has folded), with a lit edge where it meets the picture */
+.r17 .sgd .dgl { position: absolute; z-index: 0; top: 0; bottom: 0; left: calc(var(--dw) - var(--tw)); width: var(--tw); overflow: hidden; background: #0e0e12 }
+.r17 .amb { display: block; background: #15151a center / cover no-repeat; pointer-events: none }
+.r17 .sgd .dgl .amb { position: absolute; inset: -90px; filter: blur(50px) saturate(1.35) brightness(.6); transform: translateZ(0) }
+.r17 .sgd .dsc:not(.on) .dgl .amb { visibility: hidden; transition: visibility 0s linear .8s }
+.r17 .sgd .dgl::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(10 10 14 / .18), rgb(10 10 14 / .5) 70%, rgb(10 10 14 / .62)); box-shadow: inset 1px 0 0 rgb(255 255 255 / .16), inset 0 1px 0 rgb(255 255 255 / .08) }
+.r17 .ds.ov .dgl { display: none }
+/* the frame counter: a glass pill with its two steps (the row of arrows under the stage is gone) */
+.r17 .dnv { margin-left: auto; flex: none; display: inline-flex; align-items: center; height: 36px; padding: 0 3px; border-radius: 999px; background: rgb(255 255 255 / .1); box-shadow: inset 0 1px 0 rgb(255 255 255 / .22), inset 0 0 0 1px rgb(255 255 255 / .08) }
+.r17 .dnb { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; transition: background .3s var(--soft), transform .3s var(--soft) }
+.r17 .dnb:active { transform: scale(.92) }
+@media (hover: hover) { .r17 .dnb:hover { background: rgb(255 255 255 / .12) } }
+.r17 .dnb[disabled] { opacity: .28; pointer-events: none }
+.r17 .dnb svg { width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+.r17 .dnv .dno { padding: 0 3px; font: 700 12px/1 var(--font); color: rgb(255 255 255 / .82); font-variant-numeric: tabular-nums }
+/* the bars, a frame each, on the glass (a laptop) or the card's top (a phone): hairlines, white for a frame that's level,
+   dimmer for one under the usual, crimson for one over it; the frame on show lit, with a crimson glow if it beat it */
+.r17 .dcb { display: flex; gap: 4px; margin: -10px 0 -8px }
+.r17 .dcb button, .r17 .sgcb button { flex: 1 1 0; height: 14px; display: grid; align-items: center }
+.r17 .dcb i, .r17 .sgcb i { display: block; height: 2.5px; border-radius: 2px; background: rgb(255 255 255 / .34); transition: background .45s var(--soft), box-shadow .45s var(--soft) }
+.r17 .dcb .t-dn i, .r17 .sgcb .t-dn i { background: rgb(255 255 255 / .17) }
+.r17 .dcb .t-up i, .r17 .sgcb .t-up i { background: rgb(218 46 70 / .62) }
+.r17 .dcb button.on i, .r17 .sgcb button.on i { background: #fff; box-shadow: 0 0 10px rgb(255 255 255 / .5) }
+.r17 .dcb button.t-up.on i, .r17 .sgcb button.t-up.on i { background: #ff4a62; box-shadow: 0 0 12px rgb(218 46 70 / .95) }
+/* (a narrow card, its words over its picture: the words sit low, so the picture's own labels keep its top) */
+.r17 .ds.ov .dcb { margin-top: -6px }
+.r17 .ds.ov .sgh { margin-top: auto } .r17 .ds.ov .dft { margin-top: 0 }
+
+/* a phone: the parts as a row of small spines (the open one wide, with its name; each washed with its call), the open
+   part's name, call and headline (rolling to the next part's), then its card: its frames' bars, its picture, its words */
+.r17 .sgm { --sgch: clamp(440px, calc(100svh - 222px), 540px); display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0 }
+/* (the row: a card a part, sideways, each a glimpse of it: its number, name and call over a sliver of its picture
+   washed with that call, then the few words that say what it found. The open one wears a ring and keeps in view) */
+.r17 .msp { display: grid; grid-auto-flow: column; grid-auto-columns: 172px; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: -16px; padding: 4px 16px 6px; scroll-padding-inline: 16px }
+.r17 .msp::-webkit-scrollbar { display: none }
+@media (min-width: 640px) { .r17 .msp { margin-inline: -24px; padding-inline: 24px; scroll-padding-inline: 24px } }
+.r17 .msb { position: relative; height: 124px; display: flex; flex-direction: column; gap: 8px; padding: 12px 13px 13px 14px; border-radius: 20px; box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), inset 0 0 0 1px rgb(255 255 255 / .06); overflow: hidden; isolation: isolate; scroll-snap-align: start; background: #15151a; color: #fff; text-align: left; transition: box-shadow .35s var(--soft), transform .35s var(--glide) }
+.r17 .msb:active { transform: scale(.97) }
+.r17 .msb.on { box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 0 0 2px var(--page), 0 0 0 3.5px rgb(var(--ink-rgb) / .9) }
+.r17 .msi { position: absolute; z-index: -1; inset: 0; display: block; background: #15151a center 30% / cover }
+.r17 .msi::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(8 8 12 / .55), rgb(8 8 12 / .82)) }
+.r17 .msb.t-up .msi::after { background: linear-gradient(180deg, rgb(8 8 12 / .5) 0%, rgb(8 8 12 / .55) 30%, rgb(122 16 34 / .7) 72%, rgb(218 46 70 / .92) 100%) }
+.r17 .msb.t-dn .msi { filter: saturate(.35) brightness(.75) }
+.r17 .msb.t-dn .msi::after { background: linear-gradient(90deg, rgb(10 12 17 / .94), rgb(10 12 17 / .8)) }
+.r17 .msk { display: flex; align-items: center; gap: 6px; min-width: 0; font: 800 10px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; color: rgb(255 255 255 / .74); white-space: nowrap }
+.r17 .msk b { font: 700 10.5px/1 var(--font); letter-spacing: 0; color: rgb(255 255 255 / .5); font-variant-numeric: tabular-nums }
+.r17 .msk .mk { margin-left: auto; width: 5px; height: 5px; background: rgb(255 255 255 / .7) }
+.r17 .msk .mk.t-up, .r17 .msk .mk.t-dn { width: 18px; height: 18px }
+.r17 .msk .mk.t-up svg, .r17 .msk .mk.t-dn svg { width: 11px; height: 11px }
+.r17 .msk .mk.t-up { background: rgb(255 255 255 / .22); box-shadow: inset 0 1px 0 rgb(255 255 255 / .5), inset 0 0 0 1px rgb(255 255 255 / .28) }
+.r17 .msk .mk.t-dn { background: none; box-shadow: inset 0 0 0 1.25px rgb(255 255 255 / .55) }
+/* (its figure: how far the part went, in one number) */
+.r17 .msf { font: 800 30px/1 var(--font); letter-spacing: -.045em; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap }
+.r17 .msb.t-dn .msf { color: rgb(255 255 255 / .7) }
+.r17 .msf small { margin-left: 5px; font: 700 13px/1 var(--font); letter-spacing: -.01em; color: rgb(255 255 255 / .78) }
+.r17 .msl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: auto; font: 700 17px/1.14 var(--font); letter-spacing: -.024em; color: #fff; text-wrap: balance }
+.r17 .msb.t-dn .msl { color: rgb(255 255 255 / .84) }
+.r17 .sgslot { position: relative; overflow: clip }
+.r17 .sgsl { display: none; gap: 9px }
+.r17 .sgsl.on { display: grid }
+.r17 .sgsl.out { display: grid; position: absolute; left: 0; right: 0; top: 0; pointer-events: none }
+.r17 .sgk, .r17 .sgsl .sghl { display: block; overflow: clip }
+.r17 .rw { display: block }
+.r17 .sgk .rw { display: flex; align-items: center; gap: 10px; min-height: 28px }
+.r17 .sgk b { flex: none; font: 800 12px/1 var(--font); letter-spacing: .18em; text-transform: uppercase; color: var(--accent) }
+.r17 .sgk em { font: 600 12.5px/1 var(--font); font-style: normal; color: var(--ink-3) }
+.r17 .sgsl .sghl { margin: 0; padding-bottom: .12em; margin-bottom: -.12em; font: 700 22px/1.22 var(--font); letter-spacing: -.028em; text-wrap: balance }
+.r17 .sgv { position: relative; height: var(--sgch); border-radius: 26px; overflow: hidden; isolation: isolate; background: #0b0b0e; touch-action: pan-y }
+.r17 .sgc { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .8); --ink-3: rgb(255 255 255 / .54); --hair: rgb(255 255 255 / .12); --raised: var(--card); --page: var(--card);
+  --s0: #1B1B1E; --s1: #252529; --s2: #303035; --s3: #791B26; --s4: #991F2F; --s5: #BA2239; --s6: #DA2E46; --stx: #fff;
+  position: absolute; inset: 0; display: flex; flex-direction: column; border-radius: 26px; overflow: hidden; isolation: isolate; background: var(--card); color: #fff; visibility: hidden; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none }
+/* (lit by its frame, as the laptop's glass is, with the same lit edge) */
+.r17 .sgc > .amb { position: absolute; z-index: 0; inset: -70px; filter: blur(46px) saturate(1.3) brightness(.46); transform: translateZ(0) }
+.r17 .sgc > .sgct, .r17 .sgc > .sgw { position: relative; z-index: 1 }
+.r17 .sgc > .sgpic { z-index: 1 }
+.r17 .sgc::after { content: ""; position: absolute; z-index: 2; inset: 0; border-radius: 26px; pointer-events: none; box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), inset 0 0 0 1px rgb(255 255 255 / .06) }
+.r17 .sgc.on, .r17 .sgc.mv { visibility: visible }
+.r17 .sgc.mv { will-change: transform }
+.r17 .sgc .sdim { border-radius: 26px }
+.r17 .sgct { flex: none; padding: 10px 12px 9px }
+.r17 .sgcb { display: flex; gap: 4px }
+/* (a frame's clip keeps its beats but not its own bars: the card's bars are the only ones on it) */
+.r17 .sgpic .cbar { display: none }
+.r17 .sgpic { position: relative; flex: 1 1 auto; min-height: 0; margin: 0 12px; border-radius: 16px; overflow: hidden; isolation: isolate; background: #0a0a0d }
+.r17 .sgm .sgw { flex: none; display: grid; gap: 5px; align-content: start; padding: 14px 18px 16px }
+.r17 .sgm .sgw .num { font-size: 44px } .r17 .sgm .sgw .num.wd { font-size: 36px }
+.r17 .sgm > .hint { padding-top: 0 }

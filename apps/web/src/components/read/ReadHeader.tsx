@@ -13,9 +13,9 @@
      while a read is open and only on a phone, where the lens
      isn't stuck under the header. It carries data-drop="lens",
      which the engine's click router handles. A read in three
-     parts (Read17) puts its part switch there instead (Story ·
-     Strategy · Split, Lead's timeframe control), docked at the
-     side rail's foot too;
+     parts (Read17) puts its part switch there instead (Strategy ·
+     Split, Lead's timeframe control), docked at the side rail's
+     foot too;
    - the engine owns the moment a post is picked: it fills the
      readout (#rd-hread) and toggles `reading` on the title row
      (#rd-hdr), and the two trade places (readTab.css). It also
@@ -121,8 +121,8 @@ export default function ReadHeader({
     </AnimatePresence>
   );
 
-  // the part switch: the read's three parts by name, Story · Strategy · Split (a picker in the phone's header, a track
-  // where there's room, and the same track docked on the side rail)
+  // the part switch: the read's parts by name, Strategy · Split (a picker in the phone's header, a track where there's
+  // room, and the same track docked on the side rail); the read's front is the page's start, and its story is on Feed
   const partSwitch = chapter ? (
     <TimeframeControl id="read" value={chapterOf(chapter.value)} options={CHAPTERS} label={chapterName} name="Part of the read" onChange={chapter.onChange} />
   ) : null;

@@ -1,11 +1,13 @@
 /* ─────────────────────────────────────────────────────────────
-   READ 17 — a feeder's read in three parts, mounted by Read17 into the Read tab:
-   - Story: the week as cards, shown the way Instagram shows stories (a laptop up: the card on show in the middle, the
-     ones either side smaller), opening on what changed in views, likes, comments and follows since the last read; a
-     tap reads a card, a swipe moves on, and its words settle a beat after it lands.
+   READ 17 — a feeder's read, mounted by Read17 into the Read tab:
+   - The front: the read's line, as big as the page allows, and the three figures it stands on, each a door to its
+     frame on the stage. No face: the read's story plays on Feed, out of the feeder's face (mode 'story' below, mounted
+     by Read17Story only while it's open): the week as cards, the way Instagram shows stories, tap to read, swipe on.
    - Strategy: the current 100 in three acts. Slices, each with its four numbers; Views, Likes, Comments and Follows,
      each the things that move it; Streaks, Shifts and Frequency, the 100 over time. Every part heads with its own
-     course, week by week, and every card is marked New, Shifted or Held against the last read.
+     course, week by week, and every card is marked New, Shifted or Held against the last read. A read file that carries
+     the reader's own read (voice.read) shows that instead: its six parts, Score, Slices, Streaks, Frequency, Formats and
+     Followers, each a question, the reader's answer and the posts it stands on; and its Story is the reader's picks.
    - Split: the wall, newest first or in rank groups, under a live lane of the posts under a week old and their day-3
      calls; a pick lights the run of posts it beat.
    Depth opens in one panel (a sheet on a phone, a panel at the side on a laptop): a fact's posts, or a post's mortem
@@ -34,16 +36,25 @@ const SV = (d) => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
 // the covers (small, inline), fetched once a feeder and kept across mounts
 const coverCache = {};
 // the parts the header names: the story, Strategy's eight parts, the wall
-const PARTS = ['story', 'slices', 'views', 'likes', 'comments', 'follows', 'streaks', 'shifts', 'frequency', 'split'];
+const PARTS = ['story', 'score', 'slices', 'views', 'likes', 'comments', 'follows', 'streaks', 'shifts', 'frequency', 'formats', 'followers', 'split'];
 
-export function mountRead17({ root, layer, data, acct, base, onChapter, fold }) {
+/** @param {{ root: HTMLElement | null, layer: HTMLElement, data: any, acct: string, base: string, onChapter?: ((part: any) => void) | null, avatar?: string | null, mode?: 'page' | 'story', face?: HTMLElement | null, onClose?: (() => void) | null }} opts */
+export function mountRead17({ root, layer, data, acct, base, onChapter, avatar, mode = 'page', face = null, onClose = null }) {
 const BASE = base;
+// 'story': the story alone, in its viewer, opened out of a face somewhere else (Feed's profile) and gone when it shuts;
+// 'page': the read's page, its stage and its wall
+const STORY = mode === 'story';
+if (!root) root = document.createElement('div');
 let A = data, covers = coverCache[acct] || {}, dead = false, raf = 0, rt = 0;
 const offs = [];
 const on = (el_, type, fn, opt) => { el_.addEventListener(type, fn, opt); offs.push(() => el_.removeEventListener(type, fn, opt)); };
 const $ = (id) => root.querySelector(`#${id}`) || layer.querySelector(`#${id}`);
 const qa = (sel) => root.querySelectorAll(sel);
 const q1 = (sel) => root.querySelector(sel);
+// the story plays in a viewer of its own, over everything (in the layer): its pieces are looked up there
+let SVEL = null;
+const pq1 = (sel) => (SVEL ? SVEL.querySelector(sel) : null);
+const pqa = (sel) => (SVEL ? SVEL.querySelectorAll(sel) : []);
 function localGet(k) { try { return localStorage.getItem('read17.' + k); } catch { return null; } }
 function localSet(k, v) { try { localStorage.setItem('read17.' + k, v); } catch {} }
 const cv = (id) => covers[id] ? `background-image:url(${covers[id]})` : '';
@@ -128,41 +139,41 @@ const wordsHTML = (t) => String(t).split(/\s+/).filter(Boolean).map((w) => `<spa
 function footHTML(s) {
   const wide = /[a-z]/i.test(s.num) && !/^Top/.test(s.num) && !/K$|M$|weeks/.test(s.num);
   const list = s.media.kind === 'list';
-  return `<div class="foot">${kickOf(s)}<div class="fig"><b class="num${wide ? ' wd' : ''}"><span>${esc(s.num)}</span></b><span class="unit">${esc(s.unit)}</span></div>
+  return `<div class="foot">${kickOf(s)}<div class="fig">${s.num ? `<b class="num${wide ? ' wd' : ''}"><span>${esc(s.num)}</span></b>` : ''}<span class="unit${s.num ? '' : ' lone'}">${esc(s.unit)}</span></div>
     <div class="lrow"><h3 class="line" aria-label="${esc(s.line)}">${wordsHTML(s.line)}</h3>${list ? '' : '<span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></span>'}</div>
     ${list ? '' : `<div class="more">${moreHTML(s)}</div>`}</div>`;
 }
 // the story's kicks: the bookends keep their places, and the pointers between them are named by their kind (a post that
 // broke out or sank, a run, a group gone quiet, a trend, a pattern, a post whose likes arrived late with no talk)
 const KICK = { Since: 'Since the last read', Profile: 'Who this is', Feeding: 'What landed', Folding: 'What sank', Format: 'Formats this week', Frequency: 'Posting this week', Followers: 'Followers this week', Feedback: "Feeder Reader's take", 'Follow-up': 'Next week',
-  Breakout: 'Breakout', Sank: 'Sank', Streak: 'Streak', Quiet: 'Gone quiet', Trend: 'Trend', Pattern: 'Pattern', Boosted: 'Looks boosted' };
+  Breakout: 'Breakout', Sank: 'Sank', Streak: 'Streak', Quiet: 'Gone quiet', Trend: 'Trend', Pattern: 'Pattern', Boosted: 'Looks boosted',
+  Called: 'Called it', Late: 'Late climb', Stalled: 'Stalled' };
+// the feeder's face: their own picture where the read has one, else the cover of their best post
+const best = () => A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0];
+const faceAttrs = () => (avatar ? `style="background-image:url('${esc(avatar)}')"` : `data-cv="${best()}" style="${cv(best())}"`);
 function storyHTML() {
-  const best = A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0], n = A.stories.length;
   return `<div class="player" id="player">
     <div class="vp" id="vp"><div class="track" id="track">${A.stories.map((s, k) => `<article class="slide${k === 0 ? ' on' : ''}" data-k="${k}"><i class="sdim"></i>
         <div class="card k-${s.media.kind}${s._t ? ` t-${s._t}` : ''}" data-k="${k}">${mediaHTML(s, k)}<span class="shade"></span>${footHTML(s)}</div></article>`).join('')}</div>
       <div class="igtop"><div class="igbars" id="igbars">${A.stories.map((s, k) => `<button data-k="${k}" class="${s._t ? `t-${s._t}` : ''}" aria-label="${esc(spineOf(s))}"><i><b></b></i></button>`).join('')}</div>
-        <div class="ighead"><span class="av" data-cv="${best}" style="${cv(best)}"></span><b>${esc(A.handle.replace('@', ''))}</b><em id="pch" class="vd${A.stories[0]._t ? ` t-${A.stories[0]._t}` : ''}">${verdictHTML(A.stories[0])}</em>
-          <button class="pp" id="pp" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button></div></div>
-      <button class="arr p" id="arrp" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><button class="arr n" id="arrn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div>
-    <div class="hint" id="hint">${isDesk() ? '<span>Click the card to read it · ← → for the next · hold to pause</span>' : '<span>Tap a side to move · tap the words to read</span>'}</div></div>`;
+        <div class="ighead"><span class="av" ${faceAttrs()}></span><b>${esc(A.handle.replace('@', ''))}</b><em id="pch" class="vd${A.stories[0]._t ? ` t-${A.stories[0]._t}` : ''}">${verdictHTML(A.stories[0])}</em>
+          <button class="pp" id="pp" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button><button class="pp svx" id="svx" aria-label="Close">${ICX}</button></div></div>
+      <button class="arr p" id="arrp" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><button class="arr n" id="arrn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`;
 }
-const chLabel = (s) => (s.ch === 'Since' ? KICK.Since : s.ch) + (s.idx ? ` · ${s.idx} of 2` : '');
 // a slide's verdict, said on the outside: its short phrase (what's inside, good or bad) behind an arrow that leans the
 // way it went, or a plain dot for a slide that only states something
 const ARW = { up: '<svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>', dn: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/></svg>' };
 const mark = (s) => `<i class="mk${s._t ? ` t-${s._t}` : ''}">${ARW[s._t] || ''}</i>`;
 const spineOf = (s) => s.spine || KICK[s.ch] || s.ch;
 const verdictHTML = (s) => `${mark(s)}<span>${esc(spineOf(s))}</span>`;
+// the viewer: the whole screen on a phone; a laptop up, a tall card in the middle of the dark
 function sizePlayer() {
-  if (DS) { deskSize(); return; }
   const p = $('player'); if (!p) return;
-  if (isDesk()) { const h = Math.round(Math.max(520, Math.min(660, innerHeight * .74))); p.style.setProperty('--ch', h + 'px'); p.style.setProperty('--cw', Math.round(h / 1.42) + 'px'); }
-  else { const w = p.clientWidth; p.style.setProperty('--ch', Math.round(Math.min(w * 1.42, Math.max(420, innerHeight - 170))) + 'px'); p.style.setProperty('--cw', w + 'px'); }
+  const h = isDesk() ? Math.round(Math.min(860, innerHeight - 48)) : innerHeight, w = isDesk() ? Math.round(h * .58) : innerWidth;
+  [p, $('svb')].forEach((x) => { if (x) { x.style.setProperty('--ch', h + 'px'); x.style.setProperty('--cw', w + 'px'); } });
 }
 function measureMore() {
-  if (DS) return;
-  qa('.card').forEach((c) => { const m = c.querySelector('.more'), f = c.querySelector('.foot'); if (!m) return; c.style.setProperty('--mh', `${m.offsetHeight + 6}px`); c.style.setProperty('--fh', `${f.offsetHeight - m.offsetHeight - 6 + 8}px`); });
+  pqa('.card').forEach((c) => { const m = c.querySelector('.more'), f = c.querySelector('.foot'); if (!m) return; c.style.setProperty('--mh', `${m.offsetHeight + 6}px`); c.style.setProperty('--fh', `${f.offsetHeight - m.offsetHeight - 6 + 8}px`); });
 }
 function slideW() { const v = $('vp'); return v ? v.clientWidth : 0; }
 let el = 0, held = false, paused = false, inView = true, last = 0, durs = [];
@@ -173,7 +184,7 @@ const words = (s) => [s.unit, s.line, s.why, s.so].filter(Boolean).join(' ').spl
 // sixty times a second
 let barA = null, barRun = null;
 function paintBars() {
-  const bs = qa('#igbars b'), d = durs[at] || 9000;
+  const bs = pqa('#igbars b'), d = durs[at] || 9000;
   if (barA) barA.cancel(); barA = null; barRun = null;
   bs.forEach((b, j) => { b.style.transform = j < at ? 'scaleX(1)' : 'scaleX(0)'; });
   const b = bs[at]; if (!b || RM) return;
@@ -181,24 +192,24 @@ function paintBars() {
   barA.pause();
 }
 function go(k, p0 = 0) {
-  if (DS) { deskGo(k); return; }
   const n = A.stories.length; k = Math.max(0, Math.min(n - 1, k));
   const from = at;
-  if (k !== at) qa('.card.open').forEach((c) => c.classList.remove('open'));
+  if (k !== at) pqa('.card.open').forEach((c) => c.classList.remove('open'));
   at = k; el = 0;
   DRAGGED = p0 > .04;
-  if (k !== from) turnTo(from, k, p0); else { qa('.slide').forEach((s_, j) => s_.classList.toggle('on', j === k)); if (p0) settleBack(p0); }
+  if (k !== from) turnTo(from, k, p0); else { pqa('.slide').forEach((s_, j) => s_.classList.toggle('on', j === k)); if (p0) settleBack(p0); }
   { const ch = $('pch'), s = A.stories[k]; ch.className = `vd${s._t ? ` t-${s._t}` : ''}`; ch.innerHTML = verdictHTML(s); }
   $('arrp').disabled = k === 0; $('arrn').disabled = k === n - 1;
   paintBars();
-  const c = q1(`.card[data-k="${k}"]`); if (c) layoutCard(c, k);
+  const c = pq1(`.card[data-k="${k}"]`); if (c) layoutCard(c, k);
   storyArrive(k);
 }
+// (the story's clock runs only while its viewer is open; the last card, run out, closes it, as on Instagram)
 function frame(t) {
   if (dead) return;
   const dt = last ? Math.min(100, t - last) : 0; last = t;
-  const run = !!(A && durs.length && !held && !paused && !q1('.card.open') && inView && !document.hidden);
-  if (run) { el += dt; const d = durs[at] || 9000; if (el >= d) { if (at < A.stories.length - 1) go(at + 1); else el = d; } }
+  const run = !!(A && SVO && durs.length && !held && !paused && !pq1('.card.open') && inView && !document.hidden);
+  if (run) { el += dt; const d = durs[at] || 9000; if (el >= d) { if (at < A.stories.length - 1) go(at + 1); else { el = d; closeStory(); } } }
   if (barA && run !== barRun) { barRun = run; if (run) barA.play(); else barA.pause(); }
   raf = requestAnimationFrame(frame);
 }
@@ -207,32 +218,17 @@ function setPaused(p) {
   $('ppi').innerHTML = p ? '<path d="M7 5v14l12-7z"/>' : '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
   $('pp').setAttribute('aria-label', p ? 'Play' : 'Pause');
 }
-// a tap on the story when it isn't square on the screen: the page glides it to the middle of what the header and the
-// bottom bar leave once both are folded (and folds them), and that is all the tap does; once it's there a tap reads it.
-// True when the tap was spent on that
-function centreStory() {
-  const vp = $('vp'); if (!vp || DS) return false;
-  const hd = document.querySelector('header[aria-label="Read"]'), row = hd && hd.querySelector(':scope > div > div');
-  const nav = document.querySelector('[data-fm-bottom-nav]'), H = innerHeight;
-  // the header folds to its title row; the bar to its 56px circle
-  const top = row ? row.getBoundingClientRect().bottom + 18 : 150, bottom = nav ? nav.getBoundingClientRect().bottom - 56 - 12 : H - 90;
-  const b = vp.getBoundingClientRect(), off = (b.top + b.bottom) / 2 - (top + bottom) / 2;
-  const y = Math.max(0, Math.min(document.documentElement.scrollHeight - H, Math.round(scrollY + off)));
-  const folded = !nav || nav.hasAttribute('data-mini');
-  if (Math.abs(y - scrollY) < 12) { if (folded) return false; if (fold) fold(scrollY); return true; }
-  if (fold) fold(y);
-  scrollTo({ top: y, behavior: RM ? 'auto' : 'smooth' });
-  return true;
-}
 function hookPlayer() {
-  const vp = $('vp');
+  const vp = $('vp'), box = $('svb');
   durs = A.stories.map((s) => Math.max(8000, Math.min(16000, 5000 + words(s) * 170))); el = 0; paused = false;
   let drag = null, holdT = null;
-  vp.addEventListener('pointerdown', (e) => { if (e.button > 0 || e.target.closest('.godeep, .arr, .pp, .igbars')) return; drag = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, mode: null, id: e.pointerId, target: e.target }; clearTimeout(holdT); holdT = setTimeout(() => { held = true; }, 220); });
+  vp.addEventListener('pointerdown', (e) => { if (e.button > 0 || e.target.closest('.godeep, .arr, .pp, .igbars')) return; drag = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, dy: 0, mode: null, id: e.pointerId, target: e.target }; clearTimeout(holdT); holdT = setTimeout(() => { held = true; }, 220); });
   vp.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.mode) { if (Math.abs(dx) > 8 || Math.abs(dy) > 10) { clearTimeout(holdT); held = false; } if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) { drag.mode = 'x'; try { vp.setPointerCapture(e.pointerId); } catch {} } else if (Math.abs(dy) > 10) drag.mode = 'y'; }
+    if (!drag.mode) { if (Math.abs(dx) > 8 || Math.abs(dy) > 10) { clearTimeout(holdT); held = false; } if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) { drag.mode = 'x'; try { vp.setPointerCapture(e.pointerId); } catch {} } else if (Math.abs(dy) > 10) { drag.mode = 'y'; try { vp.setPointerCapture(e.pointerId); } catch {} } }
+    // (pulled down, the story comes away with the finger, as on Instagram; let go far enough and it closes)
+    if (drag.mode === 'y') { drag.dy = Math.max(0, dy); if (!RM) box.style.transform = `translate3d(0,${drag.dy}px,0) scale(${1 - Math.min(.12, drag.dy / 2400)})`; $('svs').style.opacity = String(1 - Math.min(.6, drag.dy / 600)); return; }
     if (drag.mode === 'x') { const now = performance.now(); drag.v = (dx - drag.dx) / Math.max(1, now - (drag.lt || drag.t)); drag.lt = now; drag.dx = dx; const nb = at + (dx < 0 ? 1 : -1), cur = slideOf(at); if (RM || !cur) return;
       // (past the first or the last card it only gives a little, as if held at the edge)
       if (nb < 0 || nb >= A.stories.length) { if (DRN != null) { rest(slideOf(DRN), false); DRN = null; } cur.style.transform = `translate3d(${dx * .22}px,0,0)`; return; }
@@ -241,6 +237,13 @@ function hookPlayer() {
   const end = (e) => {
     clearTimeout(holdT); const wasHeld = held; held = false;
     if (!drag || e.pointerId !== drag.id) return; const d = drag; drag = null;
+    if (d.mode === 'y') {
+      const vy = d.dy / Math.max(1, performance.now() - d.t);
+      if (d.dy > 110 || vy > .55) { closeStory(); return; }
+      box.animate([{ transform: box.style.transform || 'none' }, { transform: 'none' }], { duration: 420, easing: GROW }); box.style.transform = '';
+      $('svs').animate([{ opacity: $('svs').style.opacity || 1 }, { opacity: 1 }], { duration: 420, easing: GROW }); $('svs').style.opacity = '';
+      return;
+    }
     if (wasHeld && !d.mode) return;
     if (d.mode === 'x') {
       const v = d.v ?? d.dx / Math.max(1, performance.now() - d.t), W = slideW(), k = d.dx < -W * .16 || v < -.45 ? at + 1 : d.dx > W * .16 || v > .45 ? at - 1 : at;
@@ -252,29 +255,36 @@ function hookPlayer() {
       go(k, p0); return;
     }
     if (d.mode) return;
-    if (centreStory()) return;
     // a tap: on (or just above) the words, they open or close; elsewhere the left third goes back and the rest goes on,
     // as on Instagram. An open card closes on any tap
-    const card = q1(`.card[data-k="${at}"]`); if (!card || !d.target.closest('.slide')) return;
+    const card = pq1(`.card[data-k="${at}"]`); if (!card || !d.target.closest('.slide')) return;
     if (card.classList.contains('open')) { setOpen(card, false); return; }
     const foot = card.querySelector('.foot'), r = card.getBoundingClientRect();
     if (!card.classList.contains('k-list') && foot && d.y >= foot.getBoundingClientRect().top - 28) { setOpen(card, true); return; }
     if (d.x - r.left < r.width / 3) { if (at > 0) go(at - 1); else { el = 0; paintBars(); } } else if (at < A.stories.length - 1) go(at + 1);
   };
-  vp.addEventListener('pointerup', end); vp.addEventListener('pointercancel', (e) => { if (drag && drag.mode === 'x') { const p0 = Math.min(1, Math.abs(drag.dx) / slideW()); drag = null; if (DRN != null) settleBack(p0); } else drag = null; });
+  vp.addEventListener('pointerup', end); vp.addEventListener('pointercancel', (e) => { if (drag && drag.mode === 'x') { const p0 = Math.min(1, Math.abs(drag.dx) / slideW()); drag = null; if (DRN != null) settleBack(p0); } else { if (drag && drag.mode === 'y') { box.style.transform = ''; $('svs').style.opacity = ''; } drag = null; } });
   let acc = 0, lock = false;
   vp.addEventListener('wheel', (e) => { if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; e.preventDefault(); if (lock) return; acc += e.deltaX; if (Math.abs(acc) > 46) { go(at + (acc > 0 ? 1 : -1)); acc = 0; lock = true; setTimeout(() => { lock = false; }, 520); } }, { passive: false });
   $('arrp').addEventListener('click', () => go(at - 1));
   $('arrn').addEventListener('click', () => go(at + 1));
-  qa('#igbars button').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); go(+b.dataset.k); }));
+  pqa('#igbars button').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); go(+b.dataset.k); }));
   $('pp').addEventListener('click', (e) => { e.stopPropagation(); setPaused(!paused); });
-  const io = new IntersectionObserver((es) => es.forEach((x) => { inView = x.intersectionRatio > .5; }), { threshold: [0, .5, 1] }); io.observe(vp); ios.push(io);
+  $('svx').addEventListener('click', (e) => { e.stopPropagation(); closeStory(); });
 }
+// the keys: the story while its viewer is open (Escape closes it), else Strategy's frames while the stage is on screen.
+// Over Feed the story's keys are caught first and go no further: the feed under it zooms on the same keys
+if (STORY) on(window, 'keydown', (e) => {
+  if (!SVO || PN.open || (e.target.closest && e.target.closest('input,textarea,select'))) return;
+  if (e.key === 'Escape') closeStory(); else if (e.key === 'ArrowRight') go(at + 1); else if (e.key === 'ArrowLeft') go(at - 1); else return;
+  e.preventDefault(); e.stopPropagation();
+}, true);
 on(window, 'keydown', (e) => {
-  if (!A || e.target.closest('input,textarea,select')) return;
-  const p = $('player') || $('ds'); if (!p) return; const r = p.getBoundingClientRect();
+  if (!A || (e.target.closest && e.target.closest('input,textarea,select')) || PN.open) return;
+  if (SVO) { if (e.key === 'Escape') closeStory(); else if (e.key === 'ArrowRight') go(at + 1); else if (e.key === 'ArrowLeft') go(at - 1); else return; e.preventDefault(); return; }
+  const s = $('ds') || $('sgm'); if (!s || !ST) return; const r = s.getBoundingClientRect();
   if (r.bottom < 80 || r.top > innerHeight - 80) return;
-  if (e.key === 'ArrowRight') { go(at + 1); e.preventDefault(); } if (e.key === 'ArrowLeft') { go(at - 1); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { sgStep(1); e.preventDefault(); } if (e.key === 'ArrowLeft') { sgStep(-1); e.preventDefault(); }
 });
 function layoutCard(card, k) {
   const s = A.stories[k];
@@ -354,7 +364,8 @@ function baseBuild() {
   const DD = Object.fromEntries(A.daily.map((x) => [x[0], x[1]]));
   A.order.forEach((i) => { const p = P[i]; if ('fd' in p) return; const around = p.f48 == null ? [] : [...Array.from({ length: 10 }, (_, j) => isoAdd(p.d, -10 + j)), ...Array.from({ length: 10 }, (_, j) => isoAdd(p.d, 3 + j))].map((x) => DD[x]).filter((x) => x != null); p.fd = around.length >= 7 ? p.f48 - 3 * medOf(around) : null; });
 }
-const xPost = (id, k) => (B[k] > 0 && A.posts[id] && A.posts[id][k] != null ? A.posts[id][k] / B[k] : null);
+// (a reader's card, while it draws, reads its posts at the multiples the reader was given: see withX)
+const xPost = (id, k) => (XOV && XOV.k === k && XOV.m.has(A.posts[id]) ? XOV.m.get(A.posts[id]) : B[k] > 0 && A.posts[id] && A.posts[id][k] != null ? A.posts[id][k] / B[k] : null);
 const xSet = (ids, k) => {
   if (!(B[k] > 0)) return null;
   const P = A.posts, r = ids.filter((i) => P[i].top != null), v = (r.length ? r : ids).map((i) => P[i][k]).filter((x) => x != null);
@@ -406,7 +417,7 @@ function storyX() {
   });
 }
 function badgeOf(p, metric) {
-  if (metric && metric[0] === 'x') { const m = B[metric.slice(1)] > 0 && p[metric.slice(1)] != null ? p[metric.slice(1)] / B[metric.slice(1)] : null, h = xshade(m); return `<span class="bdg${h >= 5 ? ' w' : ''}" style="background:var(--s${h})">${m == null ? (p.top == null ? 'New' : '–') : fx(m)}</span>`; }
+  if (metric && metric[0] === 'x') { const ov = XOV && XOV.k === metric.slice(1) && XOV.m.has(p) ? XOV.m.get(p) : undefined, m = ov !== undefined ? ov : B[metric.slice(1)] > 0 && p[metric.slice(1)] != null ? p[metric.slice(1)] / B[metric.slice(1)] : null, h = xshade(m); return `<span class="bdg${h >= 5 ? ' w' : ''}" style="background:var(--s${h})">${m == null ? (p.top == null ? 'New' : '–') : fx(m)}</span>`; }
   if (metric === 'f48' || metric === 'fd') return p[metric] == null ? '' : `<span class="bdg fl${p[metric] < 0 ? ' dn' : ''}">${sg(Math.round(p[metric]))}</span>`;
   const v = p[metric || 'top'];
   return `<span class="bdg${wt(v)}" style="background:${v == null ? 'var(--s0)' : sv(v)}">${v == null ? 'New' : top(v)}</span>`;
@@ -633,6 +644,8 @@ function cutHTML(id, metric = 'xlk') {
 }
 const stillHTML = (id, metric) => `<span class="stl" data-cv="${id}" style="${coverStyle(id)}">${badgeOf(A.posts[id], metric)}</span>`;
 function stillsHTML(ids, metric, used) { const n = ids.length >= 4 ? 4 : ids.length >= 2 ? 2 : 1, pick = used ? fresh(ids, used, n) : ids.slice(0, n); return `<span class="sts n${n}">${pick.map((id) => stillHTML(id, metric)).join('')}</span>`; }
+// a why's proof: the two closest posts that went opposite ways, side by side, each named by its one difference
+const pairHTML = (pair, metric) => `<span class="sts n2 pr">${pair.map((p, j) => `<span class="stl${j ? ' wo' : ''}" data-cv="${p.id}" style="${coverStyle(p.id)}">${badgeOf(A.posts[p.id], metric)}<em>${esc(p.lab)}</em></span>`).join('')}</span>`;
 /* every post a set holds, as one cover: the best of them large in the corner (playing, where it has frames to play), the
    rest packed around it best first, as many as there are (a few large; dozens small, a wall of the set). `aspect` is the
    box's width over its height, so the grid fills it; `k` is the count they're ranked and badged on */
@@ -873,7 +886,7 @@ function fourHTML(f, lead) {
 function readCard(key, i, r) {
   const c = r.card, m = r.mark;
   const mk = m ? `<i class="mkc ${m.t}"><b>${MK[m.t]}</b>${m.was ? `<span>${m.was === 'running' ? 'ended since' : `was ${esc(m.was)}`}</span>` : ''}</i>` : '';
-  return `<span class="rcw" style="--i:${Math.min(i, 4)}"><button class="rc" data-lens="${key}" data-row="${i}"><span class="rcm">${c.media}</span><span class="rct"><span class="rck"><b>${esc(c.kick)}</b>${c.count ? `<em>${esc(c.count)}</em>` : ''}</span><span class="rcnr"><span class="rcn${c.tone === 'beating' ? ' up' : ''}">${esc(c.num)}</span>${mk}</span><span class="rcu">${esc(c.unit)}</span>${c.four ? fourHTML(c.four, c.lead) : ''}<span class="rcl">${esc(c.line)}</span>${c.aside ? `<span class="rca">${esc(c.aside)}</span>` : ''}</span></button></span>`;
+  return `<span class="rcw" style="--i:${Math.min(i, 4)}"><button class="rc" data-lens="${key}" data-row="${i}"><span class="rcm">${c.media}</span><span class="rct"><span class="rck"><b>${esc(c.kick)}</b>${c.count ? `<em>${esc(c.count)}</em>` : ''}</span><span class="rcnr"><span class="rcn${c.tone === 'beating' ? ' up' : ''}">${esc(c.num)}</span>${mk}</span><span class="rcu">${esc(c.unit)}</span>${c.four ? fourHTML(c.four, c.lead) : ''}${c.line ? `<span class="rcl">${esc(c.line)}</span>` : ''}${c.aside ? `<span class="rca">${esc(c.aside)}</span>` : ''}</span></button></span>`;
 }
 function lensSection(key) {
   const [, name, sub] = LENS.find((l) => l[0] === key), L = S.L[key];
@@ -909,7 +922,9 @@ function playCut(c) {
 }
 function pickCut() {
   if (dead) return;
-  if (PN.open || document.hidden) { playCut(null); return; }
+  if (PN.open || SVO || document.hidden) { playCut(null); return; }
+  // (the stage's open frame plays while the stage is on screen)
+  if (SGCUT && SGCUT.isConnected && stageOn()) { playCut(SGCUT); return; }
   if (cutPin && cutPin.isConnected) { playCut(cutPin); return; }
   const mid = innerHeight / 2; let best = null, bs = Infinity;
   cutVis.forEach((c) => {
@@ -938,7 +953,8 @@ function sinceStory() {
   const rows = [['pl', 'Views'], ['lk', 'Likes'], ['cm', 'Comments']].map(([k, nm]) => { const a = xSet(was.ids, k), b = xSet(now.ids, k); return { k, nm, a, b, s: a != null && b != null ? Math.abs(Math.log(b / a)) : -1 }; });
   const ga = was.g, gb = now.g;
   rows.push({ k: 'f48', nm: 'Follows', a: ga, b: gb, s: ga == null || gb == null ? -1 : Math.sign(ga) !== Math.sign(gb) ? 3 : Math.abs(Math.log(Math.max(1, Math.abs(gb)) / Math.max(1, Math.abs(ga)))) });
-  const lead = [...rows].sort((p, q) => q.s - p.s)[0];
+  // the reader's line can name the count it is about (voice.since.lead); otherwise the card leads on the one that moved most
+  const lead = (V.lead && rows.find((r) => r.k === V.lead)) || [...rows].sort((p, q) => q.s - p.s)[0];
   A.stories.unshift({ ch: 'Since', spine: 'Since the last read', num: fourSay(lead, lead.b), unit: lead.k === 'f48' ? `followers this week · ${sg(lead.a)} the week before` : `${A.his} usual ${KEYN[lead.k]} this week · ${fx(lead.a)} the week before`,
     line: V.line || `${lead.nm} moved most since the last read.`, why: V.why || '', media: { kind: 'four', rows, lead: lead.k } });
 }
@@ -974,13 +990,20 @@ const RANKG = [
 function splitHTML() {
   const L = A.lead.split, V = (A.voice && A.voice.split) || {}, rk = A.wall.filter((i) => A.posts[i].top != null), nrank = rk.length, up = rk.filter((i) => xPost(i, 'lk') >= 1).length;
   const f = { num: `${up} of ${nrank}`, unit: `beat ${A.his} usual likes by day 7`, line: V.line || `The best was ${lab(L.best)}, at ${fx(xPost(L.best, 'lk'))} ${A.his} usual likes; the lowest, ${lab(L.worst)}, at ${fx(xPost(L.worst, 'lk'))}.`, aside: V.aside != null ? V.aside : A.wall.length > nrank ? `${A.wall.length - nrank} are too new to count.` : '', tone: up / Math.max(1, nrank) >= .5 ? 'beating' : 'plain' };
-  return `<header class="op"><span class="ok"><b>03</b>Split · the last ${A.wall.length} posts</span></header><div class="cap capx"><div class="w1"><div class="c">${headHTML(f)}</div></div><div class="w2"><div class="c">${bodyHTML(f)}</div></div></div>
+  return `<header class="op"><span class="ok"><b>02</b>Split · the last ${A.wall.length} posts</span></header><div class="cap capx"><div class="w1"><div class="c">${headHTML(f)}</div></div><div class="w2"><div class="c">${bodyHTML(f)}</div></div></div>
     ${liveHTML()}<div class="wbar">${segHTML('wv', [['recent', 'Recent'], ['ranks', 'Ranks']], WV)}<span class="wh" id="wh">${WV === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'}</span></div>
     <div class="wall" id="wall"><svg class="tlx" id="tlx"></svg><span class="thd" id="thd"></span><div id="wg"></div></div>`;
 }
 function wallTile(id) {
-  const p = A.posts[id], v = p.top, pl = v == null ? 'var(--s0)' : v <= 10 ? 'var(--s5)' : v <= 25 ? 'var(--s4)' : v <= 50 ? 'var(--s3)' : 'var(--s1)';
-  return `<button class="wt" data-post="${id}" data-wall="1"><span class="plt" style="background:${pl}"></span><span class="cv" data-cv="${id}" style="${coverStyle(id)}"></span><span class="dt">${day(p.d)}</span>${badgeOf(p)}<span class="mk"></span><span class="rgn"></span></button>`;
+  const p = A.posts[id], v = p.top, pl = v == null ? 'var(--s0)' : v <= 10 ? 'var(--s5)' : v <= 25 ? 'var(--s4)' : v <= 50 ? 'var(--s3)' : 'var(--s1)', lv = LVS.has(id);
+  return `<button class="wt${lv ? ' lv' : ''}" data-post="${id}" data-wall="1"><span class="plt" style="background:${pl}"></span><span class="cv" data-cv="${id}" style="${coverStyle(id)}"></span><span class="dt">${day(p.d)}</span>${badgeOf(p)}${lv ? liveBadge(id) : ''}<span class="mk"></span><span class="rgn"></span></button>`;
+}
+// (on a phone the live lane's covers would be the wall's first row again, so its calls ride on the wall: a post under a
+// week old shows its day-3 call where the rest show their rank, or the day the call comes)
+let LVS = new Set();
+function liveBadge(id) {
+  const c = callOf(id), h = c ? xshade(c.x) : 0;
+  return `<span class="bdg wlv${h >= 5 ? ' w' : ''}" style="background:var(--s${h})"><i></i>${c ? `${fx(c.x)}<em>day 3</em>` : `Call ${day(isoAdd(A.posts[id].d, 3))}`}</span>`;
 }
 function likesRange(ids) { const v = ids.map((i) => A.posts[i].lk).filter((x) => x != null); return v.length ? ` · ${K(Math.min(...v))}${v.length > 1 ? `–${K(Math.max(...v))}` : ''} likes` : ''; }
 function writeUp(ids, g, said) {
@@ -995,6 +1018,7 @@ function writeUp(ids, g, said) {
 }
 function drawWall() {
   const wg = $('wg'); if (!wg) return; clearTrail();
+  LVS = new Set(liveIds());
   if (WV === 'recent') { wg.className = 'wgrid'; wg.innerHTML = A.wall.map(wallTile).join(''); }
   else { const said = new Set(); wg.className = ''; wg.innerHTML = RANKG.map((g) => { const ids = byRank(A.wall.filter((i) => g.f(A.posts[i].top))); if (!ids.length) return ''; return `<section class="rgp ${g.c}"><i class="rgl"></i><div class="rh"><b class="rl"><span>${g.l}</span></b><span class="rm">${ids.length} post${ids.length > 1 ? 's' : ''}${likesRange(ids)}</span></div><p class="rw">${writeUp(ids, g, said)}</p><div class="wgrid">${ids.map(wallTile).join('')}</div></section>`; }).join(''); }
   if (WPICK) { wg.querySelector(`.wt[data-post="${WPICK}"]`)?.classList.add('sel'); if (WV === 'recent') playTrail(WPICK, true); }
@@ -1118,6 +1142,13 @@ function unpick() {
 const PN = { open: false, view: null, back: null };
 function openRow(lens, i) { PN.back = null; PN.view = { kind: 'row', lens, i }; showPanel(); }
 function openPost(pid, list) { const back = PN.open && PN.view && PN.view.kind !== 'post' ? PN.view : null; PN.back = back; PN.view = { kind: 'post', id: pid, list: list && list.includes(pid) ? list : [pid] }; showPanel(); }
+// how it's counted: the page's own method lines (the foot's, then Strategy's), which a phone reads here, from one line at
+// the end of the page, instead of under Strategy's opener and in a footnote
+function openHow() { PN.back = null; PN.view = { kind: 'how' }; showPanel(); }
+function howView() {
+  const st = q1('#strategy .osb');
+  return `<div class="pv-t">${[...qa('.foot2 p')].map((p) => `<p class="pw2">${esc(p.textContent)}</p>`).join('')}${st ? `<p class="pw2"><b>Strategy</b>${esc(st.textContent)}</p>` : ''}</div>`;
+}
 function showPanel() {
   const was = PN.open; renderPanel(0); PN.open = true; $('pn').classList.add('on'); $('pns').classList.add('on'); markRow(); pickCut();
   // (opening, its contents rise in behind the panel, a piece at a time)
@@ -1127,7 +1158,7 @@ function showPanel() {
 }
 function closePanel() { PN.open = false; PN.back = null; const pn = $('pn'); pn.classList.remove('on'); pn.style.transform = ''; $('pns').classList.remove('on'); markRow(); pickSoon(); }
 // the row the panel is on (or came from) stays marked on the page
-const LNAME = Object.fromEntries(LENS.map((l) => [l[0], l[1]]));
+const LNAME = { ...Object.fromEntries(LENS.map((l) => [l[0], l[1]])), score: 'Score', formats: 'Formats', followers: 'Followers' };
 function markRow() {
   qa('[data-lens].on').forEach((b) => b.classList.remove('on'));
   const v = !PN.open ? null : PN.view && PN.view.kind === 'row' ? PN.view : PN.back;
@@ -1135,17 +1166,20 @@ function markRow() {
 }
 function stepPanel(d) {
   const v = PN.view;
+  if (v.kind === 'how') return;
   if (v.kind === 'post') { const i = v.list.indexOf(v.id), j = i + d; if (j < 0 || j >= v.list.length) return; v.id = v.list[j]; renderPanel(d); return; }
   const j = v.i + d; if (j < 0 || j >= S.L[v.lens].rows.length) return; v.i = j; renderPanel(d); markRow();
 }
 function renderPanel(dir) {
-  const v = PN.view, bk = $('pnbk');
+  const v = PN.view, bk = $('pnbk'), how = v.kind === 'how';
   bk.classList.toggle('on', !!PN.back && v.kind === 'post');
   if (PN.back) bk.innerHTML = `${ICL}<span>${esc(LNAME[PN.back.lens])}</span>`;
-  const rows = v.kind === 'row' ? S.L[v.lens].rows : null, n = rows ? rows.length : v.list.length, i = rows ? v.i : v.list.indexOf(v.id);
+  // (how it's counted is one page: no steps either side)
+  $('pn').classList.toggle('one', how);
+  const rows = v.kind === 'row' ? S.L[v.lens].rows : null, n = how ? 1 : rows ? rows.length : v.list.length, i = how ? 0 : rows ? v.i : v.list.indexOf(v.id);
   $('pnp').disabled = i <= 0; $('pnn').disabled = i >= n - 1;
-  $('pnk').textContent = rows ? `${LNAME[v.lens]} · ${i + 1} of ${n}` : postKicker(v.id);
-  const html = rows ? rowView(v.lens, v.i) : postView(v.id);
+  $('pnk').textContent = how ? 'How it’s counted' : rows ? `${LNAME[v.lens]} · ${i + 1} of ${n}` : postKicker(v.id);
+  const html = how ? howView() : rows ? rowView(v.lens, v.i) : postView(v.id);
   const body = $('pnb'), nv = document.createElement('div'); nv.className = 'pnv'; nv.innerHTML = html;
   const ov = body.querySelector('.pnv');
   if (!ov || RM || !dir) { body.replaceChildren(nv); body.scrollTop = 0; return; }
@@ -1169,7 +1203,7 @@ function postRowHTML(id, xk, tag) {
   const p = A.posts[id], fol = xk === 'f48' || xk === 'fd', v = fol ? null : xPost(id, xk.slice(1));
   const m = xk === 'fd' ? (p.fd != null ? `${sg(Math.round(p.fd))} followers against ${A.his} pace` : 'Followers not counted') : xk === 'f48' ? (p.f48 != null ? `${sg(p.f48)} followers in 48h` : 'Followers not counted') : v == null ? (p.top == null && p.d >= isoAdd(A.posts[A.order[A.order.length - 1]].d, -7) ? 'Too new to count' : xk === 'xpl' ? 'No plays on file' : 'Not counted') : `${fx(v)} ${KEYN[xk.slice(1)]}`;
   const up = fol ? p[xk] > 0 : v != null && v >= 1;
-  return `<button class="ppr${tag ? ' mk' : ''}" data-post="${id}"><span class="ppc" data-cv="${id}" style="${coverStyle(id)}"></span><span class="ppt"><span class="pph"><b${up ? ' class="up"' : ''}>${esc(m)}</b><em>${day(p.d)} · ${cap1(FMT1[p.fmt] || 'post')}${tag ? ` · ${esc(tag)}` : ''}</em></span><span class="ppd">${esc(saidOf(p))}</span></span></button>`;
+  return `<button class="ppr${tag ? ' tg' : ''}" data-post="${id}"><span class="ppc" data-cv="${id}" style="${coverStyle(id)}"></span><span class="ppt"><span class="pph"><b${up ? ' class="up"' : ''}>${esc(m)}</b><em>${day(p.d)} · ${cap1(FMT1[p.fmt] || 'post')}${tag ? ` · ${esc(tag)}` : ''}</em></span><span class="ppd">${esc(saidOf(p))}</span></span></button>`;
 }
 // a set of posts, each said in a line: all of them up to eight; past that the four best and the three worst in words,
 // and the rest as covers (no post shows twice)
@@ -1182,15 +1216,17 @@ function postListHTML(label, sub, ids, xk, tags = {}) {
     <div class="ppl">${lines(best)}${many ? `<p class="ppg">${counted.length - 7} more between them</p>${lines(worst)}` : ''}</div>
     ${rest.length ? `<p class="pl2">The other ${rest.length}</p>${gridHTML(rest, { metric: xk })}` : ''}</section>`;
 }
-function rowView(lens, i) {
+function rowView(lens, i) { const r0 = S.L[lens].rows[i]; return r0 && r0.r5 ? withX(r0, () => rowView1(lens, i)) : rowView1(lens, i); }
+function rowView1(lens, i) {
   const r = S.L[lens].rows[i], P = A.posts, f48 = r.k === 'f48' || r.k === 'fd' || r.metric === 'f48', k = r.k && !f48 ? r.k : r.metric === 'ct' ? 'cm' : 'lk', xk = f48 ? (r.k === 'fd' ? 'fd' : 'f48') : 'x' + k;
   const most = (ids, kk = k) => [...ids].sort((a, b) => (P[b][kk] ?? -1e9) - (P[a][kk] ?? -1e9)), byF = (ids) => (r.k === 'fd' ? most(ids, 'fd') : byF48(ids));
   const ids = r.run ? r.ids : f48 ? byF(r.ids) : most(r.ids);
   const lw = ids.filter((x) => S.wk.has(x)).length, fol = medOf(ids.map((x) => P[x].f48)), xl = xSet(ids, 'lk'), xc = xSet(ids, 'cm'), xp = ids.filter((x) => P[x].pl != null).length >= 3 ? xSet(ids, 'pl') : null, h = { ...r.head };
-  // the posts below name the best one, the one that ended a run and the one behind a day, so the head doesn't
-  if (/^(Best:|Highest:|Lowest:|Ended by|Behind it:)/.test(h.aside || '')) h.aside = '';
+  // the posts below name the best one, the one that ended a run and the one behind a day, so the head doesn't; a why
+  // lists everything it rules out below, so its head drops the one its card carries
+  if (/^(Best:|Highest:|Lowest:|Ended by|Behind it:)/.test(h.aside || '') || (r.r5 && r.not && r.not.length)) h.aside = '';
   const said = [h.num, h.unit, h.line, h.aside].join(' ').toLowerCase(), has = (w) => said.includes(w);
-  const stats = [
+  const stats = r.r5 ? [] : [
     xp != null && !has('plays') ? [fx(xp), 'usual plays'] : null,
     xl != null && !has('likes') ? [fx(xl), `${A.his} usual likes`] : null,
     xc != null && !has('comments') ? [fx(xc), 'usual comments'] : null,
@@ -1199,23 +1235,32 @@ function rowView(lens, i) {
   ].filter(Boolean);
   // what happened across these posts, and why they land where they do: written from every post's own description
   const rd = voiceOf(A.reads, lens, r);
+  // a reader's why: the evidence under its head, then its pair (each post said in a line, named by its difference), then
+  // what it rules out, what can't be told yet and what it means. The posts listed after it leave the pair out
+  const pairIds = new Set(r.pair ? r.pair.map((p) => p.id) : []);
+  const whyHTML = r.r5 && r.why ? `${r.pair ? `<section class="pps pr"><h5>The pair<em>the closest two that went opposite ways</em></h5><div class="ppl">${r.pair.map((p) => postRowHTML(p.id, xk, p.lab)).join('')}</div></section>` : ''}
+    <section class="pwx">${(r.not || []).length ? `<section class="pwh pno"><h5>Ruled out</h5><ul>${r.not.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></section>` : ''}
+      ${r.open ? `<p class="pw2"><b>Can’t tell yet</b>${esc(r.open)}</p>` : ''}
+      ${r.means ? `<section class="pwh"><h5>What it means</h5><p class="pw1">${esc(r.means)}</p></section>` : ''}</section>` : '';
+  if (pairIds.size && !r.run) ids.splice(0, ids.length, ...ids.filter((x) => !pairIds.has(x)));
   const kn = f48 ? 'followers' : KEYN[k], [la, lb] = r.lw || ['With it', 'Without it'], lists = r.wo
     ? postListHTML(la, `${r.ids.length}, most ${kn} first`, f48 ? byF(r.ids) : most(r.ids), xk) + postListHTML(lb, `${r.wo.length}, most ${kn} first`, f48 ? byF(r.wo) : most(r.wo), xk)
     : r.run ? postListHTML('The run', r.brk ? 'in order, and the post that ended it' : 'in order, still going', ids, xk, r.tag || {})
     : f48 ? postListHTML(r.key === 't10' ? 'The posts' : 'That day and the day before', 'most followers first', ids, xk)
-    : postListHTML('The posts', `${ids.length}, most ${kn} first`, ids, xk);
+    : postListHTML(pairIds.size ? 'The rest' : 'The posts', `${ids.length}, most ${kn} first`, ids, xk);
   // the course of it: a slice week by week since the first week on file, a mover's posts and a shift's halves week by
   // week across the 100, every post week by week with the row's week marked, or a run as its trace across the 100
   const pcs = (t, e, x) => `<section class="pcs"><h5>${t}<em>${esc(e)}</em></h5>${x}</section>`, wkOf = (iso) => (A.weeks.find((w) => w.ids.some((x) => P[x].d >= iso)) || {}).s;
-  const course = lens === 'slices' ? pcs('Week by week', `every ${low(r.title)} post since ${A.weeks[0].s}`, courseHTML(A.order.filter((x) => P[x].pat === r.key)))
+  const course = r.r5 ? (r.run ? pcs('How it ran', `every post, ${S.span}, on ${A.his} usual ${KEYN[r.k || 'lk']}`, ecgHTML(r, false)) : '') : lens === 'slices' ? pcs('Week by week', `every ${low(r.title)} post since ${A.weeks[0].s}`, courseHTML(A.order.filter((x) => P[x].pat === r.key)))
     : lens === 'frequency' ? pcs('Week by week', `every post since ${A.weeks[0].s}`, courseHTML(A.order, r.week))
     : lens === 'streaks' ? pcs('How it ran', `every post, ${S.span}, on ${A.his} usual ${KEYN[r.k || 'lk']}`, ecgHTML(r, false))
     : lens === 'shifts' ? (r.kind === 'days' ? pcs('Day by day', `every day of the 100, since ${day(r.d1)} in red`, daysHTML(r.d0, r.d1)) : pcs('Week by week', `${r.kind === 'slice' ? `every ${low(r.title)} post` : 'every post'} in the 100, the newer half from ${day(r.d1)}`, courseHTML([...r.ids, ...r.wo], wkOf(r.d1), k, true)))
     : r.wiAll ? pcs('Week by week', `every post ${r.kind === 'side' ? 'with it' : r.kind === 'format' ? `of the ${r.title.toLowerCase()}` : `${low(r.title)}`} in the 100, on ${A.his} usual ${KEYN[r.k] || 'follows'}`, courseHTML(r.wiAll, null, f48 ? 'f48' : r.k, true)) : '';
   return `<div class="pv-t">${capHTML(h)}
     ${stats.length ? `<div class="pst">${stats.map(([b, e]) => `<span><b>${b}</b><em>${e}</em></span>`).join('')}</div>` : ''}
+    ${r.r5 && r.why ? `<section class="pwh"><h5>Why</h5><p class="pw1">${esc(r.why)}</p></section>` : ''}
     ${rd ? `<section class="pwh"><h5>What happened</h5><p class="pw1">${esc(rd.what)}</p><p class="pw2"><b>Why</b>${esc(rd.why)}</p></section>` : ''}</div>
-    ${course}${lists}`;
+    ${whyHTML}${course}${lists}`;
 }
 function postKicker(id) { const p = A.posts[id]; return `${WD[new Date(p.at).getDay()]} ${day(p.d)}`; }
 
@@ -1323,7 +1368,7 @@ function hookPanel() {
    side of it smaller. A card's words ride with it and settle a beat after it lands
    ===================================================================== */
 let SK = -1;
-function baseX() { if (!isDesk()) return 0; const vp = $('vp'), s = q1('#track .slide'); return vp && s ? (vp.clientWidth - s.offsetWidth) / 2 : 0; }
+function baseX() { if (!isDesk()) return 0; const vp = $('vp'), s = pq1('#track .slide'); return vp && s ? (vp.clientWidth - s.offsetWidth) / 2 : 0; }
 function storyPlace() { const p = $('player'); if (p) p.style.setProperty('--bx', baseX() + 'px'); }
 /* ---- a phone's story slides from card to card inside its frame: the card on show slides out whole, settling back a touch
    and dimming as it goes, while the next slides in beside it. Under a finger it follows the drag; let go, it carries on
@@ -1333,7 +1378,7 @@ function storyPlace() { const p = $('player'); if (p) p.style.setProperty('--bx'
 const BEAT = 54, BEASE = 'cubic-bezier(.16, .9, .2, 1)', SHADE = .5;
 const WORDS = '.foot > .kick, .foot .num > span, .foot .unit, .foot .line .w > span, .foot .tog';
 let SWV = 0, SWT = 600, DRN = null, DRAGGED = false;
-const slideOf = (k) => q1(`.slide[data-k="${k}"]`);
+const slideOf = (k) => pq1(`.slide[data-k="${k}"]`);
 function faces(dir, p) {
   return {
     out: { transform: `translate3d(${-dir * p * 100}%,0,0) scale(${1 - .06 * p})`, transformOrigin: '50% 50%' },
@@ -1353,7 +1398,7 @@ function turnAt(nb, dir, p) {
 function turnTo(from, k, p0) {
   const SP = spring(SWV, .86, 9.5), D = SP.duration; SWV = 0; SWT = D;
   const dir = k > from ? 1 : -1, a = slideOf(from), b = slideOf(k);
-  qa('.slide').forEach((s_) => { if (s_ !== a && s_ !== b) rest(s_, false); });
+  pqa('.slide').forEach((s_) => { if (s_ !== a && s_ !== b) rest(s_, false); });
   if (DRN != null && DRN !== k && DRN !== from) rest(slideOf(DRN), false);
   DRN = null;
   if (RM || !a || !b) { rest(a, false); rest(b, true); return; }
@@ -1377,7 +1422,7 @@ function settleBack(p0) {
 }
 function storyArrive(k) {
   const prev = SK, dir = SK < 0 ? 0 : k > SK ? 1 : k < SK ? -1 : 0; SK = k; storyPlace();
-  const card = q1(`.card[data-k="${k}"]`), ch = $('pch');
+  const card = pq1(`.card[data-k="${k}"]`), ch = $('pch');
   if (!card || !dir || RM) return;
   const EASE = 'cubic-bezier(.22, 1, .36, 1)';
   if (ch) ch.animate([{ opacity: 0, transform: `translate3d(${dir * 10}px,0,0)` }, { opacity: 1, transform: 'none' }], { duration: 560, delay: 120, easing: EASE, fill: 'backwards' });
@@ -1405,27 +1450,117 @@ function setOpen(card, on) {
   const parts = [...card.querySelectorAll('.more > *')].flatMap((e_) => (e_.matches('.figs, .frows, .rev, .mixk') ? [...e_.children] : [e_]));
   parts.forEach((e_, j) => { e_.getAnimations().forEach((a) => a.cancel()); e_.animate([{ opacity: 0, transform: 'translate3d(0,18px,0)' }, { opacity: 1, transform: 'none' }], { duration: 560, delay: 120 + Math.min(j, 10) * 58, easing: BEASE, fill: 'backwards' }); });
 }
-/* ---- the story a laptop up: the ten cards stand side by side as spines, and the one on show opens wide, its words on
-   the left and its picture on the right. Another picked opens as this one folds, in one move; its words slide in a
-   beat behind it, one line after another ---- */
-let DS = false;
-function deskStoryHTML() {
-  const best = A.grid.top.reduce((a, b) => (b[1] < a[1] ? b : a))[0], n = A.stories.length, no = (k) => String(k + 1).padStart(2, '0');
-  return `<div class="ds" id="ds"><div class="dsr" id="dsr">${A.stories.map((s, k) => `<article class="dsc k-${s.media.kind}${s._t ? ` t-${s._t}` : ''}${k === 0 ? ' on' : ''}" data-k="${k}" style="z-index:${k + 1}">${k ? '<i class="dgut"></i>' : ''}<div class="dsi">
-      <div class="dz">${mediaHTML(s, k)}</div>
-      <div class="dtx"><div class="dhd"><span class="av" data-cv="${best}" style="${cv(best)}"></span><b>${esc(A.handle.replace('@', ''))}</b><em>${esc(chLabel(s))}</em><span class="dno">${no(k)} / ${n}</span></div>
-        <div class="dft">${kickOf(s)}<div class="fig"><b class="num">${esc(s.num)}</b><span class="unit">${esc(s.unit)}</span></div><h3 class="line">${esc(s.line)}</h3>${s.media.kind === 'list' ? '' : `<div class="more">${moreHTML(s)}</div>`}</div></div>
-      <button class="dsp" data-k="${k}" aria-label="${esc(spineOf(s))}"><b>${no(k)}</b><span>${esc(spineOf(s))}</span>${mark(s)}</button></div></article>`).join('')}</div>
-    <div class="dsb"><div class="dpr" id="igbars">${A.stories.map((s, k) => `<button data-k="${k}" class="${s._t ? `t-${s._t}` : ''}" aria-label="${esc(spineOf(s))}"><i><b></b></i></button>`).join('')}</div>
-      <div class="dct"><button class="nb" id="arrp" aria-label="Back">${SV('M15 5l-7 7 7 7')}</button><button class="nb" id="pp" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button><button class="nb" id="arrn" aria-label="Next">${SV('M9 5l7 7-7 7')}</button></div></div></div>`;
+/* =====================================================================
+   STRATEGY ON THE STAGE. The parts are spines: a laptop up they stand side by side with the open one wide (the story's
+   old row), on a phone they sit in a short row over one card. A part's tiles are its frames, the way one person's
+   stories follow each other on Instagram. A spine wears its part's call (crimson for a part that's working, a cool dark
+   for one that isn't, plain for level); the bars, one a frame, wear each tile's own (over the usual, under it, level). A
+   frame is a tile made big: its evidence on the picture side, its number on the words side, and its words open the
+   tile's read in the panel. Nothing plays on its own: a click or a tap steps it
+   ===================================================================== */
+let DS = false, ST = null;
+const no2 = (j) => String(j + 1).padStart(2, '0');
+const markT = (t) => `<i class="mk${t ? ` t-${t}` : ''}">${ARW[t] || ''}</i>`;
+const wideNum = (n) => /[a-z]/i.test(n) && !/^Top/.test(n) && !/K$|M$|weeks/.test(n);
+const urlsOf = (html) => [...String(html).matchAll(/(?:src="|url\()['"]?([^"')]+)/g)].map((m) => m[1]).filter((u) => !u.startsWith('data:'));
+// Profile, the part before the reader's six: who this is (its line is the reader's character for the account), what
+// usual looks like here (the post every × is set against) and the regulars, by how many of the 100 they turn up in
+function profilePart() {
+  const P = A.posts, W = A.order.slice(-100), his = A.his, frames = [];
+  if (B.lk > 0) {
+    const id = typical(W.filter((i) => P[i].top != null && P[i].lk != null), 'lk', new Set(), 1)[0];
+    if (id) frames.push({ kick: 'The usual post', count: `the middle of ${his} last 100`, num: K(Math.round(B.lk)), unit: `likes${B.cm ? ` · ${K(Math.round(B.cm))} comments` : ''}${B.pl ? ` · ${K(Math.round(B.pl))} plays` : ''}`, line: `Every × on this read sets a post against this one, at the same age.`, media: stillsHTML([id], 'xlk'), t: '', ids: [id], amb: id });
+  }
+  const regs = regsAll().map((g) => ({ g, ids: byRank(W.filter((i) => g.re.test(txtOf(i)))) })).filter((x) => x.ids.length >= 2).sort((a, b) => b.ids.length - a.ids.length);
+  if (regs.length) {
+    const top = regs.slice(0, 4), pics = [];
+    top.forEach((x) => { const i = x.ids.find((id) => !pics.includes(id)); if (i) pics.push(i); });
+    frames.push({ kick: 'Regulars', count: `${regs.length} in two or more posts`, num: String(top[0].ids.length), unit: `of ${his} last 100 have ${top[0].g.name} in them, the most of any`, line: `${cap1(listOf(top.map((x) => `${x.g.name} in ${x.ids.length}`)))}.`, media: stillsHTML(pics, 'xlk'), t: '', ids: pics, amb: pics[0] });
+  }
+  const bt = (A.voice || {}).beat || {};
+  // (its figure is the account's size: its followers now)
+  const fol = A.fol && A.fol.now, fg = fol ? { num: fol >= 1e6 ? `${(fol / 1e6).toFixed(1).replace(/\.0$/, '')}M` : fol >= 1e4 ? `${Math.round(fol / 1e3)}K` : K(fol), u: 'followers' } : null;
+  return frames.length ? { k: 'profile', name: 'Profile', q: 'Who this is, and what usual looks like here', hl: esc(bt.character || ''), sub: '', tone: '', spine: bt.spine || 'Who this is', frames, fg } : null;
+}
+// the parts: Profile, then the reader's six, each its call and its frames (the tiles r5Build made, in the same order, so a
+// frame's read is its row's)
+function stageBuild() {
+  const R = A.voice.read;
+  const parts = R.parts.filter((pt) => S.L[pt.k] && S.L[pt.k].rows.length).map((pt) => {
+    const L = S.L[pt.k], [, sub] = firstOf(pt.line);
+    return { k: pt.k, name: R5[pt.k], q: pt.q, hl: L.hl, sub, tone: pt.tone || '', spine: pt.spine || R5[pt.k], frames: L.rows.map((r) => ({ kick: r.card.kick, count: r.card.count, num: r.card.num, unit: r.card.unit, line: r.head.line, media: r.card.media, t: r.card.t || '', amb: ambOf(r.card.media) || (r.pair && r.pair[0].id) || r.ids[0] || (r.run && r.run[0]) || null })), fg: pt.fig };
+  });
+  const pf = profilePart(); if (pf) parts.unshift(pf);
+  parts.forEach((p) => { p.fig = figOf(p); });
+  // each part's picture for its small spine: the first in its frames that no other part has taken
+  const used = new Set(); parts.forEach((p) => { p.pic = p.frames.flatMap((fr) => urlsOf(fr.media)).find((u) => !used.has(u)) || null; if (p.pic) used.add(p.pic); });
+  ST = { parts, at: pf && parts.length > 1 ? 1 : 0, f: parts.map(() => 0), cur: 0 };
+}
+const frameT = (fr) => (fr.t ? ` t-${fr.t}` : '');
+// the post a frame's picture is (the first picture on show), so the glass beside it is lit by that same picture
+const ambOf = (media) => { for (const u of urlsOf(media)) { const m = u.match(/\/rp\/(.+)-\d+\.\w+$/) || u.match(/\/ig\/(.+)\.\w+$/); if (m && A.posts[m[1]]) return m[1]; } return null; };
+// the light a frame's glass takes: its post's small cover, blurred (a still layer, drawn once a frame)
+const ambHTML = (fr) => `<i class="amb"${fr.amb ? ` data-cv="${fr.amb}" style="${cv(fr.amb)}"` : ''}></i>`;
+// a new frame's light comes up over the last one's, which then goes
+function setAmb(host, id, anim) {
+  const all = host ? host.querySelectorAll(':scope > .amb') : [], a = all[all.length - 1]; if (!a) return;
+  const url = id && covers[id] ? `url(${covers[id]})` : '';
+  if (!anim || RM || a.dataset.cv === (id || '')) { a.dataset.cv = id || ''; a.style.backgroundImage = url; return; }
+  const b = a.cloneNode(false); b.dataset.cv = id || ''; b.style.backgroundImage = url; a.after(b);
+  b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 640, easing: 'cubic-bezier(.22, 1, .36, 1)' }).onfinish = () => { host.querySelectorAll(':scope > .amb').forEach((x) => { if (x !== b) x.remove(); }); };
+}
+// the frame counter, a glass pill with its two steps
+const stepNav = (f, n) => `<span class="dnv"><button class="dnb" data-step="-1" aria-label="Back">${SV('M15 5l-7 7 7 7')}</button><span class="dno">${f + 1} / ${n}</span><button class="dnb" data-step="1" aria-label="Next">${SV('M9 5l7 7-7 7')}</button></span>`;
+// a part's figure, the number its folded tile carries: the reader's pick where it made one, else the first frame that
+// went the part's way (its first frame for a part that's level)
+function figOf(p) {
+  const fg = p.fg || {}, want = p.tone === 'up' || p.tone === 'dn' ? p.tone : null;
+  if (fg.num) return { num: fg.num, u: fg.u || '', t: fg.t || '', f: fg.i || 0 };
+  let f = fg.i != null ? fg.i : p.frames.findIndex((x) => want && x.t === want);
+  if (f < 0 || !p.frames[f]) f = 0;
+  const fr = p.frames[f];
+  return fr && fr.num ? { num: fr.num, u: fg.u || '', t: fr.t || '', f } : null;
+}
+// a figure as a tile carries it: the number, short, and what it counts in small type after it
+const figHTML = (fg) => `${esc(cmp(fg.num))}${fg.u ? `<small>${esc(fg.u)}</small>` : ''}`;
+// a long count, short: +18,536 is +18.5K where room is tight (a folded tile, the front)
+const cmp = (n) => { const m = String(n).match(/^([+−-]?)([\d,]+)$/); if (!m) return n; const v = +m[2].replace(/,/g, ''); return v >= 10000 ? `${m[1]}${(Math.round(v / 100) / 10).toFixed(1).replace(/\.0$/, '')}K` : n; };
+function sgWordsHTML(fr, desk, p) {
+  const read = fr.ids ? (fr.ids.length > 1 ? 'Open the posts' : 'Open the post') : 'Read why';
+  const same = p && String(fr.kick).toLowerCase() === String(p.spine).toLowerCase();
+  return `<span class="kick${frameT(fr)}"><span class="dot"></span>${same ? esc(fr.count || '') : `${esc(fr.kick)}${fr.count ? `<em>${esc(fr.count)}</em>` : ''}`}</span>
+    <div class="fig">${fr.num ? `<b class="num${wideNum(fr.num) ? ' wd' : ''}"><span>${esc(fr.num)}</span></b>` : ''}<span class="unit${fr.num ? '' : ' lone'}">${esc(fr.unit)}</span></div>
+    ${desk && fr.line ? `<p class="line">${esc(fr.line)}</p>` : ''}<button class="sgrd" data-read>${read}${ICR}</button>`;
+}
+const sgBarsHTML = (p, f) => p.frames.map((fr, i) => `<button data-f="${i}" class="${fr.t ? `t-${fr.t}` : 't-lv'}${i === f ? ' on' : ''}" aria-label="${esc(fr.kick)}"><i></i></button>`).join('');
+// a laptop's stage: the story's row of cards, a card a part
+function stageDeskHTML() {
+  return `<div class="ds sgd" id="ds"><div class="dsr" id="dsr">${ST.parts.map((p, j) => { const f = ST.f[j], fr = p.frames[f]; return `<article class="dsc${p.tone ? ` t-${p.tone}` : ''}${j === ST.at ? ' on' : ''}" data-p="${j}" style="z-index:${j + 1}">${j ? '<i class="dgut"></i>' : ''}<div class="dsi">
+      <div class="dz"><div class="sgpic">${fr.media}</div></div><div class="dgl">${ambHTML(fr)}</div>
+      <div class="dtx"><div class="dcb">${sgBarsHTML(p, f)}</div><div class="dhd"><b><i>${no2(j)}</i>${esc(p.name)}</b>${stepNav(f, p.frames.length)}</div>
+        <div class="sgh"><p class="sghl">${esc(p.spine)}</p>${p.hl ? `<p class="sgsb">${p.hl}</p>` : ''}</div>
+        <div class="dft sgw${frameT(fr)}">${sgWordsHTML(fr, true, p)}</div></div>
+      <button class="dsp" data-p="${j}" aria-label="${esc(p.name)}: ${esc(p.spine)}${p.fig ? `, ${esc(p.fig.num)}${p.fig.u ? ` ${esc(p.fig.u)}` : ''}` : ''}"><b>${no2(j)}</b><span>${p.fig ? `<em class="fg">${figHTML(p.fig)}</em>` : ''}${esc(p.spine)}</span>${markT(p.tone)}</button></div></article>`; }).join('')}</div></div>`;
+}
+// a phone's stage: the small spines, the open part's name, call and headline, then its card
+function sgCardHTML(j) {
+  const p = ST.parts[j], f = ST.f[j], fr = p.frames[f];
+  return `${ambHTML(fr)}<i class="sdim"></i><div class="sgct"><div class="sgcb">${sgBarsHTML(p, f)}</div></div><div class="sgpic">${fr.media}</div><div class="sgw${frameT(fr)}">${sgWordsHTML(fr, false, p)}</div>`;
+}
+function stagePhoneHTML() {
+  return `<div class="sgm" id="sgm"><div class="msp" id="msp">${ST.parts.map((p, j) => `<button class="msb${p.tone ? ` t-${p.tone}` : ''}${j === ST.at ? ' on' : ''}" data-p="${j}" aria-label="${esc(p.name)}: ${esc(p.spine)}"><i class="msi"${p.pic ? ` style="background-image:url('${esc(p.pic)}')"` : ''}></i><span class="msk"><b>${no2(j)}</b>${esc(p.name)}${markT(p.tone)}</span>${p.fig ? `<span class="msf">${figHTML(p.fig)}</span>` : ''}<span class="msl">${esc(p.spine)}</span></button>`).join('')}</div>
+    <div class="sgslot" id="sgslot">${ST.parts.map((p, j) => `<div class="sgsl${j === ST.at ? ' on' : ''}" data-p="${j}"><span class="sgk"><span class="rw"><b>${esc(p.name)}</b><em>${p.frames.length} ${p.frames.length === 1 ? 'frame' : 'frames'}</em></span></span><p class="sghl"><span class="rw">${p.hl}</span></p></div>`).join('')}</div>
+    <div class="sgv" id="sgv"><article class="sgc on" id="sgc0" data-p="${ST.at}" data-f="${ST.f[ST.at]}">${sgCardHTML(ST.at)}</article><article class="sgc" id="sgc1"></article></div>
+    <p class="hint">Tap the sides to step · swipe for the next part</p></div>`;
 }
 // the open card takes what the spines leave; below 620px of it the words lie over the picture instead
 function deskSize() {
   const ds = $('ds'); if (!ds) return;
-  const W = ds.clientWidth, n = A.stories.length, gap = 8, sw = Math.max(40, Math.min(58, Math.round((W - 680) / (n - 1) - gap)));
+  const W = ds.clientWidth, n = ST ? ST.parts.length : 1, gap = 8, sw = Math.max(44, Math.min(66, Math.round((W - 680) / Math.max(1, n - 1) - gap)));
   const dw = W - (n - 1) * (sw + gap); DSZ = { sw, dw, gap };
   ds.style.setProperty('--sw', sw + 'px'); ds.style.setProperty('--dw', dw + 'px');
-  ds.style.setProperty('--dh', Math.round(Math.max(540, Math.min(680, innerHeight - 190))) + 'px');
+  // (tall enough for a frame and its words, short enough that the stage and its bars sit in the first screen under the face)
+  ds.style.setProperty('--dh', Math.round(Math.max(500, Math.min(680, innerHeight - 320))) + 'px');
   ds.style.setProperty('--tw', Math.round(Math.max(340, Math.min(420, dw * .52))) + 'px');
   ds.classList.toggle('ov', dw < 620);
 }
@@ -1483,7 +1618,7 @@ function deskPlace(k, dir) {
     if (!move || RM) return;
     const go = (n, o) => el[n].animate([from[n], to[n]], { duration: D, easing: SP.easing, fill: 'backwards', ...o });
     go('card');
-    const labs = dz.querySelectorAll('.plab'), words = [el.tx.querySelector('.dhd'), el.tx.querySelector('.dft')].filter(Boolean);
+    const labs = dz.querySelectorAll('.plab, .bdg, .sts em, .vsr > em, .rbk > em, .crole, .cbar'), words = [...el.tx.children];
     [el.tx, ...words, ...labs].forEach((e_) => e_.getAnimations().forEach((a) => a.cancel()));
     if (open && !was) {
       // its dark lifts at once as it starts to open; the picture's captions come up once it's mostly open; the words
@@ -1501,88 +1636,419 @@ function deskPlace(k, dir) {
     }
   });
 }
-function deskGo(k) {
-  const n = A.stories.length; k = Math.max(0, Math.min(n - 1, k));
-  const dir = k > at ? 1 : k < at ? -1 : 0; at = k; el = 0;
-  if (!$('dsr')) return;
-  deskPlace(k, dir);
-  qa('.dsc').forEach((c, j) => c.classList.toggle('on', j === k));
-  $('arrp').disabled = k === 0; $('arrn').disabled = k === n - 1;
-  paintBars();
-  const c = q1(`.dsc[data-k="${k}"]`); if (!c) return;
-  layoutCard(c, k);
+// a part opened: on a laptop its card opens out of its spine as the last one folds (the row's own move); on a phone the
+// card slides in over the last one and the headline above rolls to it. f, when given, is the frame it opens on
+function sgOpen(j, f, p0 = 0) {
+  j = Math.max(0, Math.min(ST.parts.length - 1, j));
+  if (f != null) ST.f[j] = Math.max(0, Math.min(ST.parts[j].frames.length - 1, f));
+  if (j === ST.at) { if (f != null) sgShowFrame(ST.f[j]); return; }
+  const from = ST.at, dir = j > from ? 1 : -1; ST.at = j;
+  if (DS) {
+    const c = q1(`.dsc[data-p="${j}"]`); if (c && +c.dataset.f !== ST.f[j]) sgFill(c, j, false); sgFit(c);
+    deskPlace(j, dir); qa('.dsc').forEach((x) => x.classList.toggle('on', +x.dataset.p === j));
+  } else { sgSlide(from, j, dir, p0); sgRoll(from, j); sgSpines(); }
+  sgBars(); sgCut();
 }
-function hookDesk() {
+// another frame of the part that's open, in place: its picture settles in and its words rise, the card holds still
+function sgShowFrame(f) {
+  const j = ST.at, p = ST.parts[j]; f = Math.max(0, Math.min(p.frames.length - 1, f));
+  if (f === ST.f[j]) return;
+  ST.f[j] = f; sgFill(DS ? q1(`.dsc[data-p="${j}"]`) : $('sgc' + ST.cur), j, true); sgBars(); sgCut();
+}
+// a step: the next frame, or past a part's last, the next part's first (back: the last part's last)
+function sgStep(d) {
+  const p = ST.parts[ST.at], f = ST.f[ST.at] + d;
+  if (f >= 0 && f < p.frames.length) { sgShowFrame(f); return; }
+  const j = ST.at + d; if (j < 0 || j >= ST.parts.length) return;
+  sgOpen(j, d > 0 ? 0 : ST.parts[j].frames.length - 1);
+}
+function sgFill(card, j, anim) {
+  if (!card) return;
+  const p = ST.parts[j], f = ST.f[j], fr = p.frames[f], pic = card.querySelector('.sgpic'), w = card.querySelector('.sgw'), no = card.querySelector('.dno'), bars = card.querySelector('.sgcb');
+  card.dataset.f = f;
+  pic.innerHTML = fr.media; w.className = `${DS ? 'dft ' : ''}sgw${frameT(fr)}`; w.innerHTML = sgWordsHTML(fr, DS, p);
+  if (no) no.textContent = `${f + 1} / ${p.frames.length}`;
+  if (bars) bars.innerHTML = sgBarsHTML(p, f);
+  const db = card.querySelector('.dcb'); if (db) db.innerHTML = sgBarsHTML(p, f);
+  setAmb(card.querySelector('.dgl') || card, fr.amb, anim);
+  card.querySelectorAll('.dnb').forEach((b) => { b.disabled = +b.dataset.step < 0 ? j === 0 && f === 0 : j === ST.parts.length - 1 && f === p.frames.length - 1; });
+  paintCovers(); sgFit(card);
+  if (anim && !RM) sgArrive(card);
+}
+// the open card's words fit its panel: on a short screen the part's second sentence steps out first, then the frame's line,
+// so nothing is ever cut off mid-way
+function sgFit(card) {
+  if (!DS || !card) return; const tx = card.querySelector('.dtx'); if (!tx) return;
+  card.classList.remove('nosub', 'noline', 'tight');
+  ['nosub', 'noline', 'tight'].forEach((k) => { if (tx.scrollHeight > tx.clientHeight + 1) card.classList.add(k); });
+}
+// a frame landing: its picture eases back from a breath of zoom; its words come up in four calm beats (the kick, the
+// number out of its mask, what it counts, the rest), never word by word
+function sgArrive(card) {
+  const E = 'cubic-bezier(.22, 1, .36, 1)', o = (delay, dur = 760) => ({ duration: dur, delay, easing: E, fill: 'backwards' });
+  const pic = card.querySelector('.sgpic > *'), w = card.querySelector('.sgw'), kick = w.querySelector('.kick'), num = w.querySelector('.num > span'), unit = w.querySelector('.unit'), rest = [...w.querySelectorAll('.line, .sgrd')];
+  if (pic) pic.animate([{ transform: 'scale(1.045)' }, { transform: 'none' }], { duration: 1100, easing: E });
+  if (kick) kick.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], o(40));
+  if (num) num.animate([{ transform: 'translate3d(0,110%,0)' }, { transform: 'none' }], o(110, 860));
+  if (unit) unit.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], o(190));
+  rest.forEach((e_) => e_.animate([{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], o(260)));
+}
+function sgBars() {
+  const p = ST.parts[ST.at], f = ST.f[ST.at];
+  if (DS) {
+    const c = q1(`.dsc[data-p="${ST.at}"]`); if (!c) return;
+    const db = c.querySelector('.dcb'); if (db) db.innerHTML = sgBarsHTML(p, f);
+    c.querySelectorAll('.dnb').forEach((b) => { b.disabled = +b.dataset.step < 0 ? ST.at === 0 && f === 0 : ST.at === ST.parts.length - 1 && f === p.frames.length - 1; });
+  }
+}
+function sgSpines(instant) {
+  const row = $('msp'); if (!row) return; let on = null;
+  row.querySelectorAll('.msb').forEach((b) => { const o = +b.dataset.p === ST.at; b.classList.toggle('on', o); if (o) on = b; });
+  if (on) row.scrollTo({ left: Math.max(0, on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2), behavior: instant || RM ? 'auto' : 'smooth' });
+}
+// the open frame's cut is the one that plays (while the stage is on screen and nothing is over it)
+let SGCUT = null;
+function sgCut() { SGCUT = (DS ? q1('.dsc.on .sgpic .cut') : ($('sgc' + ST.cur) || root).querySelector('.sgpic .cut')) || null; pickSoon(); }
+const stageOn = () => { const s_ = $('ds') || $('sgm'); if (!s_) return false; const r = s_.getBoundingClientRect(); return r.bottom > 90 && r.top < innerHeight - 90; };
+// a frame's words: its tile's read in the panel; Profile's frames open their posts
+function sgRead() { const p = ST.parts[ST.at], f = ST.f[ST.at], fr = p.frames[f]; if (fr.ids) openPost(fr.ids[0], fr.ids); else openRow(p.k, f); }
+function hookStageDesk() {
   const ds = $('ds');
-  // a card whose panel is a picture folds to a sliver of it; a chart or a list folds to a plain spine
-  qa('.dsc').forEach((c) => c.classList.toggle('pic', !!c.querySelector('.dz img, .dz .qc')));
-  qa('.dsc img').forEach((im) => { im.loading = 'eager'; if (im.decode) im.decode().catch(() => {}); });
-  durs = A.stories.map((s) => Math.max(8000, Math.min(16000, 5000 + words(s) * 170))); el = 0; paused = false;
-  ds.addEventListener('click', (e) => { const b = e.target.closest('.dsp, #igbars button'); if (b) { e.stopPropagation(); go(+b.dataset.k); } });
-  $('arrp').addEventListener('click', () => go(at - 1));
-  $('arrn').addEventListener('click', () => go(at + 1));
-  $('pp').addEventListener('click', () => setPaused(!paused));
-  // a mouse resting on the story holds it, as a finger does on a phone
-  ds.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') held = true; });
-  ds.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') held = false; });
+  // a part whose frame is a picture folds to a sliver of it; one that's a chart folds to a plain spine
+  qa('.dsc').forEach((c, j) => { c.classList.toggle('pic', !!c.querySelector('.dz img, .dz [style*="background-image"]')); c.dataset.f = ST.f[j]; });
+  ds.addEventListener('click', (e) => {
+    const sp = e.target.closest('.dsp'); if (sp) { e.stopPropagation(); sgOpen(+sp.dataset.p); return; }
+    const bar = e.target.closest('.dsc.on .dcb button'); if (bar) { sgShowFrame(+bar.dataset.f); return; }
+    const st = e.target.closest('.dsc.on [data-step]'); if (st) { sgStep(+st.dataset.step); return; }
+    if (e.target.closest('[data-read]')) { sgRead(); return; }
+    // (a click on the open card's picture steps it, Instagram's way: its left third back, the rest on)
+    const z = e.target.closest('.dsc.on .dz'); if (!z) return;
+    const r = z.getBoundingClientRect(); sgStep(e.clientX - r.left < r.width / 3 ? -1 : 1);
+  });
   let acc = 0, lock = false;
-  ds.addEventListener('wheel', (e) => { if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; e.preventDefault(); if (lock) return; acc += e.deltaX; if (Math.abs(acc) > 46) { go(at + (acc > 0 ? 1 : -1)); acc = 0; lock = true; setTimeout(() => { lock = false; }, 620); } }, { passive: false });
-  const io = new IntersectionObserver((es) => es.forEach((x) => { inView = x.intersectionRatio > .5; }), { threshold: [0, .5, 1] }); io.observe(ds); ios.push(io);
+  ds.addEventListener('wheel', (e) => { if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; e.preventDefault(); if (lock) return; acc += e.deltaX; if (Math.abs(acc) > 46) { sgStep(acc > 0 ? 1 : -1); acc = 0; lock = true; setTimeout(() => { lock = false; }, 620); } }, { passive: false });
+}
+/* ---- a phone's stage: one card at a time, two cards taking turns. A tap steps the frames (its left third back), a tap on
+   the words reads the tile; a swipe takes the card to the next part, following the finger and carrying on at its speed,
+   as the story does. The small spines above jump straight to a part ---- */
+function sgPrep(j) {
+  const b = $('sgc' + (1 - ST.cur));
+  if (+b.dataset.p !== j || +b.dataset.f !== ST.f[j]) { b.innerHTML = sgCardHTML(j); b.dataset.p = j; b.dataset.f = ST.f[j]; paintCovers(); }
+  return b;
+}
+function sgRestCard(c, on) { if (!c) return; c.getAnimations().forEach((x) => x.cancel()); c.style.transform = ''; c.style.transformOrigin = ''; c.classList.remove('mv'); c.classList.toggle('on', on); const d = c.querySelector('.sdim'); if (d) { d.getAnimations().forEach((x) => x.cancel()); d.style.opacity = ''; } }
+function sgSlide(from, j, dir, p0 = 0) {
+  const a = $('sgc' + ST.cur), b = sgPrep(j);
+  ST.cur = 1 - ST.cur;
+  const SP = spring(SWV, .86, 9.5), o = { duration: SP.duration, easing: SP.easing, fill: 'forwards' }; SWV = 0;
+  if (RM) { sgRestCard(a, false); sgRestCard(b, true); return; }
+  const f0 = faces(dir, p0), f1 = faces(dir, 1);
+  [a, b].forEach((x) => { x.getAnimations().forEach((y) => y.cancel()); x.classList.add('mv'); });
+  a.classList.remove('on'); b.classList.add('on');
+  const run = a.animate([{ transform: f0.out.transform }, { transform: f1.out.transform }], o);
+  b.animate([{ transform: f0.in.transform }, { transform: f1.in.transform }], o);
+  a.querySelector('.sdim').animate([{ opacity: p0 * SHADE }, { opacity: SHADE }], o);
+  run.onfinish = () => { if ($('sgc' + ST.cur) !== b) return; sgRestCard(a, false); sgRestCard(b, true); };
+}
+// a swipe let go short of turning: the two fall back
+function sgSettle(p0, dx) {
+  const a = $('sgc' + ST.cur), b = $('sgc' + (1 - ST.cur));
+  if (!b.classList.contains('mv')) { if (a.style.transform) { a.animate([{ transform: a.style.transform }, { transform: 'none' }], { duration: 380, easing: GROW }); a.style.transform = ''; } return; }
+  const SP = spring(0, .9, 12), dir = dx < 0 ? 1 : -1, f0 = faces(dir, p0), f1 = faces(dir, 0), o = { duration: SP.duration, easing: SP.easing, fill: 'forwards' };
+  const run = a.animate([{ transform: f0.out.transform }, { transform: f1.out.transform }], o);
+  b.animate([{ transform: f0.in.transform }, { transform: f1.in.transform }], o);
+  a.querySelector('.sdim').animate([{ opacity: p0 * SHADE }, { opacity: 0 }], o);
+  run.onfinish = () => { sgRestCard(a, true); sgRestCard(b, false); };
+}
+// the headline over the card rolls to the next part's, row by row (the name and its call, then the line), each in a slit
+// of its own; what's under it glides to its new place instead of jumping
+function sgRoll(from, j) {
+  const slot = $('sgslot'); if (!slot) return;
+  const a = slot.querySelector(`.sgsl[data-p="${from}"]`), b = slot.querySelector(`.sgsl[data-p="${j}"]`); if (!a || !b) return;
+  const h0 = slot.offsetHeight; a.classList.remove('on'); b.classList.add('on'); const h1 = slot.offsetHeight;
+  if (RM) return;
+  const E = 'cubic-bezier(.16, 1, .3, 1)', D = 640;
+  a.classList.add('out');
+  [['.sgk', 0], ['.sghl', 64]].forEach(([sel, dl]) => {
+    const x = a.querySelector(`${sel} .rw`), y = b.querySelector(`${sel} .rw`);
+    x.animate([{ transform: 'none' }, { transform: 'translate3d(0,-115%,0)' }], { duration: D, delay: dl, easing: E, fill: 'both' });
+    y.animate([{ transform: 'translate3d(0,115%,0)' }, { transform: 'none' }], { duration: D, delay: dl, easing: E, fill: 'backwards' });
+  });
+  setTimeout(() => { a.classList.remove('out'); a.querySelectorAll('.rw').forEach((x) => x.getAnimations().forEach((y) => y.cancel())); }, D + 120);
+  if (h0 !== h1) [$('sgv'), q1('.sgm > .hint')].forEach((x) => x && x.animate([{ transform: `translate3d(0,${h0 - h1}px,0)` }, { transform: 'none' }], { duration: D, easing: E }));
+}
+// the stage keeps the height of its longest headline, so nothing under it moves when a part changes
+function sgSlotFit() {
+  const m = $('sgm'), slot = $('sgslot'); if (!m || !slot) return;
+  m.style.minHeight = '';
+  const ls = [...slot.children], on = ls.find((x) => x.classList.contains('on')), cur = slot.offsetHeight; let mx = cur;
+  ls.forEach((x) => { if (x === on) return; on.classList.remove('on'); x.classList.add('on'); mx = Math.max(mx, slot.offsetHeight); x.classList.remove('on'); on.classList.add('on'); });
+  m.style.minHeight = `${m.offsetHeight + mx - cur}px`;
+}
+function hookStagePhone() {
+  const v = $('sgv'); let d = null;
+  v.addEventListener('pointerdown', (e) => { if (e.button > 0 || e.target.closest('.sgrd, .sgcb')) return; d = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, mode: null, id: e.pointerId, target: e.target, nb: null }; });
+  v.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.mode) { if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) { d.mode = 'x'; try { v.setPointerCapture(e.pointerId); } catch {} } else if (Math.abs(dy) > 10) d.mode = 'y'; }
+    if (d.mode !== 'x') return;
+    const now = performance.now(); d.v = (dx - d.dx) / Math.max(1, now - (d.lt || d.t)); d.lt = now; d.dx = dx;
+    const a = $('sgc' + ST.cur), b = $('sgc' + (1 - ST.cur)), nb = ST.at + (dx < 0 ? 1 : -1);
+    if (RM) return;
+    // (past the first part or the last it only gives a little, as if held at the edge)
+    if (nb < 0 || nb >= ST.parts.length) { if (d.nb != null) { sgRestCard(b, false); d.nb = null; } a.style.transform = `translate3d(${dx * .22}px,0,0)`; return; }
+    if (nb !== d.nb) { d.nb = nb; sgPrep(nb); }
+    const p = Math.min(1, Math.abs(dx) / v.clientWidth), f = faces(dx < 0 ? 1 : -1, p);
+    [a, b].forEach((x) => { x.getAnimations().forEach((y) => y.cancel()); x.classList.add('mv'); });
+    Object.assign(a.style, f.out); Object.assign(b.style, f.in);
+    a.querySelector('.sdim').style.opacity = p * SHADE;
+  });
+  const end = (e) => {
+    if (!d || e.pointerId !== d.id) return; const g = d; d = null;
+    if (g.mode === 'x') {
+      const W = v.clientWidth, vv = g.v ?? g.dx / Math.max(1, performance.now() - g.t), step = g.dx < -W * .16 || vv < -.45 ? 1 : g.dx > W * .16 || vv > .45 ? -1 : 0, j = ST.at + step, p0 = Math.min(1, Math.abs(g.dx) / W);
+      if (!step || j < 0 || j >= ST.parts.length || g.nb == null) { sgSettle(p0, g.dx); return; }
+      SWV = Math.min(7, (Math.abs(vv) * 1000) / Math.max(40, (1 - p0) * W));
+      sgOpen(j, null, p0); return;
+    }
+    if (g.mode) return;
+    // a tap: on the words, the tile's read; elsewhere the left third steps back and the rest steps on
+    if (g.target.closest('.sgw')) { sgRead(); return; }
+    const r = v.getBoundingClientRect(); sgStep(g.x - r.left < r.width / 3 ? -1 : 1);
+  };
+  v.addEventListener('pointerup', end);
+  v.addEventListener('pointercancel', () => { if (d && d.mode === 'x') sgSettle(Math.min(1, Math.abs(d.dx) / v.clientWidth), d.dx); d = null; });
+  v.addEventListener('click', (e) => {
+    if (e.target.closest('[data-read]')) { e.stopPropagation(); sgRead(); return; }
+    const b = e.target.closest('.sgcb button'); if (b) { e.stopPropagation(); sgShowFrame(+b.dataset.f); }
+  });
+  $('msp').addEventListener('click', (e) => { const b = e.target.closest('.msb'); if (b) sgOpen(+b.dataset.p); });
+}
+
+/* =====================================================================
+   THE FRONT: the read's line, as big as the page allows, and the three figures it stands on, each a door to its frame
+   on the stage (the reader's picks where the read names them, else the first three parts' figures). The story isn't
+   here: it plays on Feed, out of the feeder's face
+   ===================================================================== */
+function coverPicks() {
+  if (!ST) return [];
+  const at = (k, i, line) => {
+    const j = ST.parts.findIndex((p) => p.k === k); if (j < 0) return null;
+    const p = ST.parts[j], f = Math.max(0, Math.min(p.frames.length - 1, i || 0)), fr = p.frames[f];
+    return fr && fr.num ? { j, f, num: cmp(fr.num), unit: line || fr.unit, t: fr.t || '', name: p.name } : null;
+  };
+  const picks = ((A.voice || {}).cover || []).map((x) => at(x.k, x.i, x.line)).filter(Boolean);
+  return (picks.length ? picks : ST.parts.filter((p) => p.k !== 'profile' && p.fig).map((p) => at(p.k, p.fig.f, null)).filter(Boolean)).slice(0, 3);
+}
+function coverHTML() {
+  const R = A.voice && A.voice.read, say = (A.voice && A.voice.say) || SAY[acct] || '', picks = coverPicks();
+  return `<header class="cvh"><span class="ok">${R ? `Read ${R.n} · ${day(R.d)} · after ${R.after} posts` : 'The read'}</span><h1 class="cvl${say.length > 34 ? ' long' : ''}">${esc(say)}</h1></header>
+    ${picks.length ? `<div class="cvf">${picks.map((x) => `<button class="cvi${x.t ? ` t-${x.t}` : ''}" data-cov="${x.j}:${x.f}"><b class="cvn">${esc(x.num)}</b><span class="cvu">${esc(x.unit)}</span><span class="cvk">${esc(x.name)}${ICR}</span></button>`).join('')}</div>` : ''}`;
+}
+// a figure on the front: the stage comes into view and opens on its frame
+function coverGo(j, f) {
+  const s_ = $('strategy'); if (s_) s_.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'start' });
+  setTimeout(() => { if (!dead) sgOpen(j, f); }, RM ? 0 : 300);
+}
+
+/* =====================================================================
+   THE STORY, on Feed: the feeder's face wears a ring while there's a story to watch; a tap mounts this engine for the
+   story alone and opens it out of that face, over everything (the whole screen on a phone, a tall card on the dark a
+   laptop up), playing on its clock. Pulled down, the close button, Escape or its last card running out, it shrinks back
+   into the face, and the engine goes with it (onClose)
+   ===================================================================== */
+let SVO = false;
+// where the viewer's card sits when it's open (its own box, without any pull on it)
+const svBox = () => { const b = $('svb'); return { left: b.offsetLeft, top: b.offsetTop, width: b.offsetWidth, height: b.offsetHeight }; };
+/* the face's circle inside the viewer: a square as wide as the viewer's narrower side, in its middle, rounded all the
+   way. Scaled down to the face's width, that circle is the face, exactly: the viewer grows out of it and shuts back into
+   it as a circle (scaling the whole viewer by width alone made a pill as tall as the screen is, a squashed face) */
+const faceD = (b) => Math.min(b.width, b.height);
+const faceClip = (b) => `inset(${Math.max(0, (b.height - b.width) / 2)}px ${Math.max(0, (b.width - b.height) / 2)}px round ${faceD(b) / 2}px)`;
+const openClip = () => `inset(0px 0px round ${isDesk() ? 26 : 0}px)`;
+function faceMove(a, b) { const s = a.width / faceD(b); return `translate3d(${a.left + a.width / 2 - (b.left + b.width / 2)}px,${a.top + a.height / 2 - (b.top + b.height / 2)}px,0) scale(${s})`; }
+// the face itself, laid over that circle while the story grows out of it (and as it shuts back in): the face melts into
+// the story, never a jump from the face to a small copy of the story's first picture
+function faceCopy(av, b) {
+  const old = $('svf'); if (old) old.remove();
+  const f = document.createElement('div'); f.id = 'svf'; f.className = 'svf'; f.setAttribute('aria-hidden', 'true');
+  f.style.setProperty('--fd', `${faceD(b)}px`);
+  const c = av.cloneNode(true), cs = getComputedStyle(av); c.removeAttribute('id');
+  // (a face drawn as its own background keeps how it's drawn: rules aimed at the original's id don't reach the copy)
+  Object.assign(c.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', margin: '0', transform: 'none', boxShadow: 'none', backgroundImage: cs.backgroundImage, backgroundSize: cs.backgroundSize, backgroundPosition: cs.backgroundPosition, backgroundRepeat: cs.backgroundRepeat, backgroundColor: cs.backgroundColor });
+  f.appendChild(c); $('svb').appendChild(f);
+  return f;
+}
+function openStory() {
+  if (SVO || !SVEL || !pq1('.slide')) return; SVO = true;
+  const sv = $('sv'), box = $('svb'), av = face || q1('.pfa .av');
+  sv.classList.add('on'); sv.setAttribute('aria-hidden', 'false');
+  sizePlayer(); measureMore();
+  pqa('.card.open').forEach((c) => c.classList.remove('open'));
+  pqa('[data-wk16]').forEach((h) => { h.dataset.drawn = ''; });
+  pqa('.slide').forEach((s_, j) => rest(s_, j === 0)); SK = -1; at = 0; el = 0; go(0); setPaused(false);
+  pickCut();
+  if (RM || !av) return;
+  const a = av.getBoundingClientRect(), b = svBox(), SP = spring(0, 1, 11.5);
+  box.animate([{ transform: faceMove(a, b), clipPath: faceClip(b) }, { transform: 'none', clipPath: openClip() }], { duration: SP.duration, easing: SP.easing });
+  // (the face melts as the circle grows, timed to how far the spring has carried it, not to the clock)
+  const fc = faceCopy(av, b), o = (p) => Math.min(1, SP.at(p) / SP.duration);
+  fc.animate([{ opacity: 1, offset: 0 }, { opacity: 1, offset: o(.1) }, { opacity: 0, offset: o(.55) }, { opacity: 0, offset: 1 }], { duration: SP.duration, fill: 'forwards' }).onfinish = () => fc.remove();
+  $('svs').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+}
+function closeStory() {
+  if (!SVO) return; SVO = false;
+  const sv = $('sv'), box = $('svb'), svs = $('svs'), av = face || q1('.pfa .av');
+  if (barA) barA.pause(); held = false;
+  const done = () => { box.getAnimations().forEach((x) => x.cancel()); svs.getAnimations().forEach((x) => x.cancel()); const fc = $('svf'); if (fc) fc.remove(); box.style.transform = ''; svs.style.opacity = ''; sv.classList.remove('on'); sv.setAttribute('aria-hidden', 'true'); pickSoon(); if (onClose) onClose(); };
+  if (RM) { done(); return; }
+  const a = av && av.getBoundingClientRect(), b = svBox(), seen = a && a.bottom > 0 && a.top < innerHeight, SP = spring(0, 1, 12.5), D = Math.round(SP.duration * .9);
+  // (back into the face when it's on screen, the face coming up in the circle as it lands; otherwise it sinks away where
+  // it is)
+  const to = seen ? { transform: faceMove(a, b), clipPath: faceClip(b) } : { transform: 'translate3d(0,8%,0) scale(.86)', clipPath: openClip(), opacity: 0 };
+  box.animate([{ transform: box.style.transform || 'none', clipPath: openClip(), opacity: 1 }, { opacity: 1, ...to }], { duration: D, easing: SP.easing, fill: 'forwards' }).onfinish = done;
+  // (the face comes up in the circle over the last of the way in, so the story never sits on the face as a dark disc)
+  const o = (p) => Math.min(1, SP.at(p) / SP.duration);
+  if (seen) faceCopy(av, b).animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: o(.5) }, { opacity: 1, offset: o(.9) }, { opacity: 1, offset: 1 }], { duration: D, fill: 'forwards' });
+  svs.animate([{ opacity: svs.style.opacity || 1 }, { opacity: 0 }], { duration: Math.round(SP.duration * .7), easing: 'ease-in', fill: 'forwards' });
 }
 function quadHTML(items) { return `<div class="md quad">${items.map((x) => `<div class="qd">${x.img ? `<img src="${x.img}" alt="" draggable="false" loading="lazy">` : `<span class="qc" style="${coverStyle(x.id)}"></span>`}${x.lab || ''}</div>`).join('')}</div>`; }
+
+/* =====================================================================
+   STRATEGY, the reader's way (voice.read): the same reels of read cards, cut into the reader's six parts, the same
+   every read (Score, Slices, Streaks, Frequency, Formats, Followers). A part heads with its question and the reader's
+   line on it; its cards are the rows that line stands on: the reader's picks with the reader's lines, and the counted
+   rows (the ten, a day of followers, a run). Every multiple on them is the one the reader was given, a post's count at
+   day 3 against the usual post at day 3, so the tiles never say a different number from the words; the panel lists a
+   card's posts the same way
+   ===================================================================== */
+const R5 = { score: 'Score', slices: 'Slices', streaks: 'Streaks', frequency: 'Frequency', formats: 'Formats', followers: 'Followers' };
+// a line's first sentence, and the rest ("I.V." and "Mon 19 Oct." don't end one: the next word has to start a sentence)
+const firstOf = (s) => { const m = String(s || '').match(/^(.+?[.!?])\s+(?=[A-Z0-9“‘"+−-])/); return m ? [m[1], s.slice(m[0].length)] : [String(s || ''), '']; };
+// the reader's multiples, while a card of theirs draws (or its panel): `XOV.k` the count, `XOV.m` post → multiple
+let XOV = null;
+const withX = (r, fn) => { const was = XOV; XOV = r && r.xo ? { k: r.k, m: new Map(Object.entries(r.xo).map(([id, x]) => [A.posts[id], x])) } : null; try { return fn(); } finally { XOV = was; } };
+// a stretch of follower days as bars over and under zero, the days a card is about in crimson
+function r5DaysHTML(d0, d1) {
+  const end = A.daily[A.daily.length - 1][0], a = isoAdd(d0, d0 === d1 ? -7 : -10), b = d0 === d1 ? (isoAdd(d1, 3) < end ? isoAdd(d1, 3) : end) : end;
+  const ds = A.daily.filter((x) => x[0] >= a && x[0] <= b), mx = Math.max(1, ...ds.map((x) => Math.abs(x[1])));
+  if (!ds.length) return '';
+  return `<span class="dys"><span class="dyb" style="--n:${ds.length}">${ds.map(([d, g]) => `<span class="${g >= 0 ? 'up' : 'dn'}${d >= d0 && d <= d1 ? ' nw' : ''}"><i style="--h:${Math.max(.02, Math.abs(g) / mx).toFixed(3)}"></i></span>`).join('')}</span><em>${esc(day(ds[0][0]))}</em><em class="r">${esc(day(ds[ds.length - 1][0]))}</em></span>`;
+}
+function r5Build() {
+  const R = A.voice.read, P = A.posts, used = new Set();
+  S.win = A.order.slice(-100); S.inW = new Set(S.win); S.wk = new Set(); S.L = {};
+  S.span = `${day(P[S.win[0]].d)} – ${day(P[S.win[S.win.length - 1]].d)}`;
+  R.parts.forEach((pt) => {
+    const [hl, sub] = firstOf(pt.line);
+    const rows = (pt.rows || []).map((x, i) => {
+      const k = x.m === 'cm' ? 'cm' : 'lk', ids = x.ids.filter((id) => P[id]);
+      const r = { key: `${pt.k}:${i}`, r5: true, k, metric: k === 'cm' ? 'ct' : 'lt', title: x.kick, ids, xo: x.xo, run: x.run ? x.run.filter((id) => P[id]) : null, brk: x.brk && P[x.brk] ? x.brk : null };
+      if (r.run) r.tag = r.brk ? { [r.brk]: 'Ended it' } : null;
+      // its why, for the panel: the evidence, the pair, what it rules out, what can't be told yet, what it means
+      const pair = (x.pair || []).filter((p) => P[p.id]);
+      Object.assign(r, { why: x.why, pair: pair.length === 2 ? pair : null, not: x.not, open: x.open, means: x.means });
+      const media = withX(r, () => {
+        if (x.media === 'pair' && r.pair) { r.pair.forEach((p) => used.add(p.id)); return pairHTML(r.pair, 'x' + k); }
+        if (x.media === 'run' && r.run) return runHTML(r, used);
+        if (x.media === 'days' && x.d0) return r5DaysHTML(x.d0, x.d1 || x.d0);
+        if (!ids.length) return '';
+        if (x.media === 'post') { const id = ids[0]; return (P[id].rp || []).length >= 2 ? cutHTML(id, 'x' + k) : stillsHTML(ids.slice(0, ids.length >= 4 ? 4 : ids.length >= 2 ? 2 : 1), 'x' + k); }
+        return mosaicHTML(ids, k);
+      });
+      // (a why's tile is its picture and its number: its line and what it rules out open in the panel)
+      r.card = { kick: x.kick, count: x.count, num: x.num, unit: x.unit, line: r.why ? '' : x.line, aside: r.why ? '' : x.aside, tone: x.tone, t: x.t || '', media };
+      r.head = { num: x.num, unit: `${x.unit} · ${x.kick.toLowerCase()}${x.count ? `, ${x.count}` : ''}`, line: x.line, aside: x.aside, tone: x.tone };
+      return r;
+    }).filter((r) => r.card.media || r.ids.length);
+    S.L[pt.k] = { rows, hl: esc(hl), sub, q: pt.q, none: 'Nothing the reader picked this time.' };
+  });
+}
+function r5Section(k) {
+  const L = S.L[k];
+  return `<article class="ls ls-${k} r5p" id="${k}"><header class="lh"><span class="lk"><b>${R5[k]}</b><span>${esc(L.q)}</span></span><p class="lhl">${L.hl}</p>${L.sub ? `<p class="lhs">${esc(L.sub)}</p>` : ''}
+      ${L.rows.length > 1 ? `<span class="lnv"><button class="nb" data-rl="-1" aria-label="Back">${SV('M15 5l-7 7 7 7')}</button><button class="nb" data-rl="1" aria-label="More">${SV('M9 5l7 7-7 7')}</button></span>` : ''}</header>
+    <div class="rl">${L.rows.length ? L.rows.map((r, i) => readCard(k, i, r)).join('') : `<p class="rl0">${esc(L.none)}</p>`}</div></article>`;
+}
+function strategy5HTML() {
+  r5Build(); stageBuild();
+  const R = A.voice.read;
+  return `<header class="op"><span class="ok"><b>01</b>Strategy · the last 100</span><p class="osb">Six questions, asked the same way every read${R.why ? ', each answered with its why: the pair of posts that proves it, and what it rules out' : ''}. Every × here is a post’s count against ${esc(A.his)} usual post at the same age${R.why ? `, at the latest check it had reached by ${esc(day(R.d))}` : ' (day 3)'}, the middle of ${esc(A.his)} last 100.</p></header>
+    ${DS ? stageDeskHTML() : stagePhoneHTML()}`;
+}
 
 /* =====================================================================
    PAGE
    ===================================================================== */
 function strategyHTML() {
-  strategyBuild(); readCards();
+  if (A.voice && A.voice.read) return strategy5HTML();
+  ST = null; strategyBuild(); readCards();
   const V = A.voice || {}, usual = [[B.pl, K(Math.round(B.pl || 0)), 'plays'], [B.lk, K(Math.round(B.lk || 0)), 'likes'], [B.cm, K(Math.round(B.cm || 0)), 'comments'], [B.f48, sg(Math.round(B.f48 || 0)), 'followers in 48h']].filter((x) => x[0] != null);
   let act = 0;
-  return `<header class="op"><span class="ok"><b>02</b>Strategy · the current 100</span><p class="ol">${esc(V.strategy || A.lead.strategy)}</p><p class="osb">${esc(cap1(A.his))} last 100 posts, since ${day(A.posts[S.win[0]].d)}, in three acts. Every × is against ${A.his} usual post, and every card is marked against the last read, on ${day(S.last)}.</p>
+  return `<header class="op"><span class="ok"><b>01</b>Strategy · the current 100</span><p class="ol">${esc(V.strategy || A.lead.strategy)}</p><p class="osb">${esc(cap1(A.his))} last 100 posts, since ${day(A.posts[S.win[0]].d)}, in three acts. Every × is against ${A.his} usual post, and every card is marked against the last read, on ${day(S.last)}.</p>
       <div class="usl"><span class="ut">${esc(cap1(A.his))} usual post</span>${usual.map(([, b, e]) => `<span><b>${b}</b><em>${e}</em></span>`).join('')}</div></header>
     <div class="lz">${LENS.map(([k, , , a]) => (a !== act ? ((act = a), actHTML(a)) : '') + lensSection(k)).join('')}</div>`;
 }
-function drawAll() { qa('.seg').forEach(placeSeg); if (!DS) storyPlace(); }
+function drawAll() { qa('.seg').forEach(placeSeg); storyPlace(); }
 
 /* =====================================================================
    PAGE
    ===================================================================== */
 function jumpTo(target) {
-  if (target === 'story') { scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' }); return; }
   const e_ = $(target); if (e_) e_.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'start' });
 }
 function render() {
   IGS = new Set(A.ig || []); SK = -1; DS = isDesk();
-  baseBuild(); sinceStory(); storyX(); storyTone();
+  // (a read in the reader's six parts has no since card: its Score part says how the last ten went)
+  baseBuild(); if (!(A.voice && A.voice.read)) sinceStory(); storyX(); storyTone();
   ios.forEach((o) => o.disconnect()); ios = [];
+  if (STORY) {
+    SVEL.innerHTML = storyHTML(); SVO = false; $('sv').classList.remove('on'); at = 0;
+    sizePlayer(); hookPlayer(); measureMore(); go(0);
+    // (its covers only if a visit to the read already brought them: the story's pictures are its own stills)
+    if (coverCache[acct]) covers = coverCache[acct];
+    paintCovers();
+    return;
+  }
+  const strat = strategyHTML();
   root.innerHTML = `
-    <section class="sec wrap" id="story"><header class="op"><span class="ok"><b>01</b>Story · week of 19–25 Oct</span><p class="ol">${esc((A.voice && A.voice.say) || SAY[acct])}</p></header>${DS ? deskStoryHTML() : storyHTML()}</section>
-    <section class="sec wrap" id="strategy">${strategyHTML()}</section>
+    <section class="sec wrap cvx" id="cover">${coverHTML()}</section>
+    <section class="sec wrap" id="strategy">${strat}</section>
     <section class="sec wrap" id="split">${splitHTML()}</section>
     <div class="wrap foot2"><p>Feeder Reader reads every post on ${esc(A.own)} feed: its likes, comments and plays, the followers each day, and what happens on screen, frame by frame. Every × compares a post (or the typical post of a set) with the usual post among the latest 100 that have reached day 7. The wall’s Top % is where a post ranks among ${esc(A.own)} own posts by day 7${A.yard === 'likes' ? ', on likes: Lakmē’s overall rank leans on a follower count recorded wrong for 57 of its posts' : ''}. ${A.dropped} posts with no cover on file are left out of every count. A side holds up when it survives a shuffle test inside each slice.</p>
-      <p>Plays are Instagram’s own counts from a 27 Oct check. Followers are daily snapshots; “in the 48h after” is the change over a post’s day and the two after it. On a card, follows are that change against the pace of the ten days either side. A live post’s call sets its likes at day 3 against what the usual post has by then. Breakdown frames are cut from each post at the beats its fingerprint timed; the lines on them are written by a model from the post’s own beats and checked against these counts.</p></div>`;
-  at = 0;
-  sizePlayer(); if (DS) hookDesk(); else hookPlayer(); measureMore(); go(0);
+      <p>Plays are Instagram’s own counts from a 27 Oct check. Followers are daily snapshots; “in the 48h after” is the change over a post’s day and the two after it. On a card, follows are that change against the pace of the ten days either side. A live post’s call sets its likes at day 3 against what the usual post has by then. Breakdown frames are cut from each post at the beats its fingerprint timed; the lines on them are written by a model from the post’s own beats and checked against these counts.</p>
+      <button class="howb" data-how>How it’s counted${ICR}</button></div>`;
+  // Strategy's stage, on the page (the story plays on Feed)
+  SVEL.innerHTML = ''; SVO = false; $('sv').classList.remove('on');
+  if (ST) { if (DS) { deskSize(); hookStageDesk(); deskPlace(ST.at, 0); sgBars(); qa('.dsc').forEach(sgFit); } else { hookStagePhone(); sgSlotFit(); sgSpines(true); } }
   WPICK = null; $('ro').classList.remove('on'); closePanel();
   drawWall(); drawAll(); hookCuts();
   // the part you're in, for the header's switch
-  const ch = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting && onChapter) onChapter(e.target.id === 'strategy' ? 'slices' : e.target.id); }), { rootMargin: '-35% 0px -60% 0px' });
+  const ch = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting && onChapter) onChapter(e.target.id === 'strategy' ? (A.voice && A.voice.read ? 'score' : 'slices') : e.target.id); }), { rootMargin: '-35% 0px -60% 0px' });
   [...PARTS, 'strategy'].forEach((id) => { const e_ = $(id); if (e_) ch.observe(e_); }); ios.push(ch);
   paintCovers(); loadCovers();
-  requestAnimationFrame(() => { if (dead) return; sizePlayer(); measureMore(); go(at); drawAll(); });
+  requestAnimationFrame(() => { if (dead) return; drawAll(); if (ST) { if (DS) { deskSize(); deskPlace(ST.at, 0); qa('.dsc').forEach(sgFit); } else sgSlotFit(); sgCut(); } });
 }
 layer.innerHTML = `<div class="ro" id="ro"></div><div class="pns" id="pns"></div>
-  <aside class="pn" id="pn" aria-label="Detail"><div class="grab"></div><div class="pnh"><button class="bk" id="pnbk"></button><span class="hk" id="pnk"></span><button class="nb" id="pnp" aria-label="Previous">${SV('M15 5l-7 7 7 7')}</button><button class="nb" id="pnn" aria-label="Next">${SV('M9 5l7 7-7 7')}</button><button class="nb" id="pnx" aria-label="Close">${SV('M6 6l12 12M18 6L6 18')}</button></div><div class="pnb" id="pnb"></div></aside>`;
+  <aside class="pn" id="pn" aria-label="Detail"><div class="grab"></div><div class="pnh"><button class="bk" id="pnbk"></button><span class="hk" id="pnk"></span><button class="nb" id="pnp" aria-label="Previous">${SV('M15 5l-7 7 7 7')}</button><button class="nb" id="pnn" aria-label="Next">${SV('M9 5l7 7-7 7')}</button><button class="nb" id="pnx" aria-label="Close">${SV('M6 6l12 12M18 6L6 18')}</button></div><div class="pnb" id="pnb"></div></aside>
+  <div class="sv" id="sv" aria-hidden="true" role="dialog" aria-label="Story"><i class="svs" id="svs"></i><div class="svb" id="svb"></div></div>`;
+SVEL = $('svb');
+// (over the story nothing under it scrolls; a tap on the dark round it, a laptop up, closes it)
+on($('sv'), 'wheel', (e) => e.preventDefault(), { passive: false });
+on($('svs'), 'click', () => closeStory());
 on(root, 'click', (e) => {
   const rl = e.target.closest('[data-rl]'); if (rl) { const reel = rl.closest('.ls').querySelector('.rl'); reel.scrollBy({ left: +rl.dataset.rl * Math.max(280, reel.clientWidth * .8), behavior: RM ? 'auto' : 'smooth' }); return; }
   const lr = e.target.closest('[data-lens][data-row]'); if (lr) { openRow(lr.dataset.lens, +lr.dataset.row); return; }
+  if (e.target.closest('[data-how]')) { openHow(); return; }
+  const cov = e.target.closest('[data-cov]'); if (cov) { const [j, f] = cov.dataset.cov.split(':').map(Number); coverGo(j, f); return; }
   const sv_ = e.target.closest('.seg [data-sv]');
   if (sv_) { const seg = sv_.closest('.seg'), v = sv_.dataset.sv; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === sv_))); placeSeg(seg); if (seg.dataset.seg === 'wv') { WV = v; localSet('wall', v); const wh = $('wh'); wh.textContent = v === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'; if (!RM) wh.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: BEASE }); morphWall(); } return; }
   const t = e.target.closest('[data-post]'); if (!t) return;
   if (t.dataset.wall) { wallPick(t.dataset.post); return; }
   if (t.dataset.live) { openPost(t.dataset.post, liveIds()); return; }
   if (t.closest('.wf')) { openPost(t.dataset.post, S.win); return; }
-  const box = t.closest('.pgrid'); openPost(t.dataset.post, box ? [...box.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [t.dataset.post]);
+  const box = t.closest('.pgrid, .r5g'); openPost(t.dataset.post, box ? [...box.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [t.dataset.post]);
 });
 on(document, 'click', (e) => {
   if (!WPICK || e.target.closest('.r17 .ro')) return;
@@ -1598,7 +2064,7 @@ on(window, 'keydown', (e) => {
   if (e.key === 'Escape') closePanel(); else if (e.key === 'ArrowRight') stepPanel(1); else if (e.key === 'ArrowLeft') stepPanel(-1); else return;
   e.preventDefault(); e.stopImmediatePropagation();
 }, true);
-on(window, 'resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (dead) return; if (isDesk() !== DS) { render(); return; } sizePlayer(); measureMore(); go(at); qa('[data-wk16]').forEach((h) => { h.dataset.drawn = ''; }); const c = q1(`.card[data-k="${at}"], .dsc[data-k="${at}"]`); if (c) layoutCard(c, at); drawAll(); if (WPICK && WV === 'recent') playTrail(WPICK, true); placeRo(); }, 140); });
+on(window, 'resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (dead) return; if (isDesk() !== DS) { if (SVO) closeStory(); render(); return; } if (STORY) { sizePlayer(); measureMore(); go(at); pqa('[data-wk16]').forEach((h) => { h.dataset.drawn = ''; }); const c = pq1(`.card[data-k="${at}"]`); if (c) layoutCard(c, at); return; } if (ST) { if (DS) { deskSize(); deskPlace(ST.at, 0); qa('.dsc').forEach(sgFit); } else sgSlotFit(); } drawAll(); if (WPICK && WV === 'recent') playTrail(WPICK, true); placeRo(); }, 140); });
 hookPanel();
 render();
 raf = requestAnimationFrame(frame);
@@ -1612,6 +2078,8 @@ on(root, 'pointerover', (e) => {
 });
 return {
   jump: jumpTo,
+  open: openStory,
+  close: closeStory,
   unmount() {
     dead = true; cancelAnimationFrame(raf); clearTimeout(rt); clearTimeout(cutT); clearTimeout(cutPick); TRT.forEach(clearTimeout);
     ios.forEach((o) => o.disconnect()); offs.forEach((off) => off());
