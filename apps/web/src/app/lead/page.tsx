@@ -15,7 +15,7 @@ import { ChevronDown } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { usePageReady } from '@/components/shell/AppShell';
-import { MENU_APPLY_AFTER_CLOSE_MS, TimeframeControl, useTabHeader } from '@/components/shell/TabHeader';
+import { MENU_APPLY_AFTER_CLOSE_MS, TimeframeControl, headerChoice, useTabHeader } from '@/components/shell/TabHeader';
 import SlotText from '@/components/SlotText';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
@@ -598,6 +598,7 @@ function LeadHeader({
     eyebrow: 'Feederboard',
     label: scopeLabel,
     control: <TimeframeControl id="lead" value={days} options={TIMEFRAMES} pending={pending} applyMs={MENU_APPLY_AFTER_CLOSE_MS} onChange={onDaysChange} />,
+    choice: headerChoice({ name: 'Time range', value: days, options: TIMEFRAMES, label: (range) => `${range}D`, onChange: onDaysChange }),
     controlLabel: 'Time range',
     compressed,
     // none yet means still loading (the header keeps the rail it has)
@@ -980,17 +981,17 @@ function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
 
 /* ── Feederboard rows ────────────────────────────────────────────────────── */
 
-/* bring a piece into view clear of the header (which floats over the page) and the nav below */
+/* bring a piece into view clear of the page's top (the status bar on a phone) and the dock below: the page's own scroll
+   padding says where */
 function revealBelowHeader(el: HTMLElement) {
-  const header = document.querySelector('.fm-tab-header-shell')?.getBoundingClientRect();
-  const top = (header?.bottom ?? 0) + 12;
+  const page = el.closest<HTMLElement>('[data-testid="lead-v3-page"]');
+  const top = (page ? parseFloat(getComputedStyle(page).scrollPaddingTop) : NaN) || 12;
   const bottom = window.innerHeight - 110;
   const rect = el.getBoundingClientRect();
   let delta = 0;
   if (rect.top < top) delta = rect.top - top;
   else if (rect.bottom > bottom) delta = Math.min(rect.bottom - bottom, rect.top - top);
   if (Math.abs(delta) < 2) return;
-  const page = el.closest<HTMLElement>('[data-testid="lead-v3-page"]');
   if (page && page.scrollHeight > page.clientHeight + 10) page.scrollBy({ top: delta, behavior: 'smooth' });
   else window.scrollBy({ top: delta, behavior: 'smooth' });
 }
@@ -1955,8 +1956,9 @@ export default function LeadBoardPage() {
         const hall = document.getElementById('lead-v3-hall-title')?.closest<HTMLElement>('section');
         if (!hall) return;
         hallAsked.current = false;
-        // a phone scrolls the window, under the folded header (Lead's own scroll padding is its desktop panel's)
-        hall.style.scrollMarginTop = window.matchMedia('(min-width: 1024px)').matches ? '' : 'calc(84px + env(safe-area-inset-top))';
+        // a phone scrolls the window, clear of what is over the page's top (Lead's own scroll padding is its desktop
+        // panel's)
+        hall.style.scrollMarginTop = window.matchMedia('(min-width: 1024px)').matches ? '' : 'calc(16px + env(safe-area-inset-top) + var(--fm-mobile-header-chrome-compressed-height, 68px))';
         hall.scrollIntoView({ block: 'start' });
       });
     });
@@ -2039,7 +2041,7 @@ export default function LeadBoardPage() {
       ref={pageScrollRef}
       data-testid="lead-v3-page"
       className={cn(
-        '[overflow-anchor:none] fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(84px+env(safe-area-inset-top))] lg:scroll-pt-6 text-fg',
+        '[overflow-anchor:none] fm-lead fm-dashboard-mesh w-full min-w-0 max-w-[100vw] scroll-pb-[calc(126px+env(safe-area-inset-bottom))] scroll-pt-[calc(16px+env(safe-area-inset-top)+var(--fm-mobile-header-chrome-compressed-height,68px))] lg:scroll-pt-6 text-fg',
         useTranslucentBrowserChrome ? 'bg-transparent' : 'bg-(--fm-page)',
         useBrowserPageScroll
           ? 'min-h-[100lvh] overflow-x-hidden overflow-y-visible'
@@ -2066,7 +2068,7 @@ export default function LeadBoardPage() {
           startTimeframe(() => setDays(nextDays));
         }}
       />
-      <main className="relative z-10 mx-auto w-full min-w-0 max-w-[1500px] px-3 pb-[calc(148px+env(safe-area-inset-bottom))] pt-[calc(172px+env(safe-area-inset-top))] sm:px-5 sm:pt-[calc(172px+env(safe-area-inset-top))] md:pt-[calc(178px+env(safe-area-inset-top))] lg:px-7 lg:pt-(--fm-desk-top)">
+      <main className="relative z-10 mx-auto w-full min-w-0 max-w-[1500px] px-3 pb-[calc(148px+env(safe-area-inset-bottom))] pt-[calc(20px+env(safe-area-inset-top)+var(--fm-mobile-header-chrome-height,152px))] sm:px-5 lg:px-7 lg:pt-(--fm-desk-top)">
         {loading && !feeds.length ? <LoadingState /> : error ? (
           <div className="flex min-h-[55vh] items-center justify-center px-6 text-center">
             <div>

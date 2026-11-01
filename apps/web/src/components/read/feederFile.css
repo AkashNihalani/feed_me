@@ -13,9 +13,9 @@
   --ff-surface: var(--s1); --ff-surface-rgb: var(--s1-rgb);
   --ff-ease: var(--ease);
   --ff-font: var(--body);
-  /* the header capsule's top and height, as #rd-main clears them (readTab.css) */
+  /* the page's top clearance, as #rd-main's (readTab.css): whatever the shell keeps over the page on a phone */
   --ff-cap-top: calc(10px + env(safe-area-inset-top, 0px) + var(--pwa-top-fix, 0px));
-  --ff-top: calc(var(--ff-cap-top) + 166px);
+  --ff-top: calc(var(--ff-cap-top) + var(--fm-mobile-header-chrome-height, 152px) + 14px);
   --ff-gut: 16px;
   --ff-card-h: clamp(620px, 82vh, 860px);
   container: ff / inline-size;

@@ -248,6 +248,13 @@ html.dark .r17 {
 @media (min-width: 1024px) { .r17-page { --r17-cap: 0px; padding-top: var(--fm-desk-top, 24px); padding-bottom: 150px } }
 .r17 .sec { scroll-margin-top: calc(var(--r17-cap) + 82px - 56px) }
 .r17 .ls { scroll-margin-top: calc(var(--r17-cap) + 82px) }
+/* below a laptop the read clears whatever the shell keeps over the page's top, open and folded (AppShell: no header
+   now, so it starts, and a part jumped to stops, under the status bar) */
+@media (max-width: 1023.98px) {
+  .r17-page { padding-top: calc(var(--r17-cap) + var(--fm-mobile-header-chrome-height, 152px) + 14px) }
+  .r17 .sec { scroll-margin-top: calc(var(--r17-cap) + var(--fm-mobile-header-chrome-compressed-height, 68px) + 14px - 56px) }
+  .r17 .ls { scroll-margin-top: calc(var(--r17-cap) + var(--fm-mobile-header-chrome-compressed-height, 68px) + 14px) }
+}
 @media (min-width: 1024px) { .r17 .sec { scroll-margin-top: calc(var(--fm-desk-top, 24px) - 56px) } .r17 .ls { scroll-margin-top: var(--fm-desk-top, 24px) } }
 /* the page's column: on a laptop it sits Feed's 20px off the rail and grows to Feed's 1400px, centred past that */
 .r17 .wrap { max-width: 1440px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) }

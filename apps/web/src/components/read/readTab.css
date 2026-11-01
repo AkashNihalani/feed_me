@@ -175,8 +175,9 @@ html.dark .rd, html.dark .ff, html.dark .rff {
   .rd .hdrop { top: auto; bottom: 90px; left: var(--fm-rail-x); right: 0; margin: 0 auto; width: min(620px, calc(100vw - var(--fm-rail-x) - 48px)); max-height: min(58vh, calc(100vh - 140px)); transform: translateY(8px); }
 }
 
-/* the page clears the capsule (152px tall on a phone, from its top); a laptop up, the page's own heading */
-.rd #rd-main { padding-top: calc(var(--rd-cap-top) + 166px); padding-bottom: 140px; }
+/* the page clears whatever the shell keeps over its top on a phone (AppShell: no header now, so it starts under the
+   status bar); a laptop up, the page's own heading */
+.rd #rd-main { padding-top: calc(var(--rd-cap-top) + var(--fm-mobile-header-chrome-height, 152px) + 14px); padding-bottom: 140px; }
 @media (min-width: 1024px) { .rd #rd-main { padding-top: var(--fm-desk-top); padding-bottom: 150px; } }
 
 /* ---------- the index: what Read shows before you pick someone with a full read ---------- */
@@ -184,7 +185,7 @@ html.dark .rd, html.dark .ff, html.dark .rff {
    own shades, grouped by which way their latest run moved. A feeder without a full read gets that trajectory
    large (the read's own .traj card), their latest run post by post and their best post. Left-aligned on the
    page's full width; the rows turn into one wide line each on desktop. */
-.rd .ix { display: grid; align-content: start; gap: 28px; padding-top: calc(var(--rd-cap-top) + 166px); padding-bottom: 140px; }
+.rd .ix { display: grid; align-content: start; gap: 28px; padding-top: calc(var(--rd-cap-top) + var(--fm-mobile-header-chrome-height, 152px) + 14px); padding-bottom: 140px; }
 @media (min-width: 1024px) { .rd .ix { gap: 34px; padding-top: var(--fm-desk-top); padding-bottom: 150px; } }
 .rd .ix-hd { display: grid; gap: 10px; max-width: 860px; }
 .rd .ix-hd > .tj-k { white-space: normal; line-height: 1.3; }

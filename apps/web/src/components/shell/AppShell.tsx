@@ -18,9 +18,9 @@ import '@/lib/motionFinish';
 import { HEADER_ROUTE_MORPH, PAGE_SURFACE_MOTION, ROUTE_CONTENT_SETTLE } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import AppTabHost from './AppTabHost';
+import Dock, { type DockTab } from './Dock';
 import LaunchVeil from './LaunchVeil';
 import { DeskRow, SideRail } from './SideRail';
-import { TabHeaderHost } from './TabHeader';
 
 type PageReadyContextValue = {
   isRoutePresent: boolean;
@@ -168,14 +168,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
     ));
   }, [pathname]);
   const headerCompressed = headerCompression.pathname === pathname && headerCompression.compressed;
-  /* the shared header (Feed, Lead, Read): 152px open / 68px folded on a phone. From a laptop up these tabs have no bar
-     over the page: the side rail stands at the left (the page's column starts after it) and the page is content from
-     its first line (SideRail) */
+  /* the tabs that share their chrome (Feed, Lead, Read) have no top section: on a phone the dock at the foot is all of
+     it (Dock), and from a laptop up the side rail stands at the left (the page's column starts after it; SideRail). Their
+     pages start under the status bar: the room they keep for a header is none */
   const sharedHeader = currentHeaderId === 'lead' || currentHeaderId === 'read' || currentHeaderId === 'feed';
   const shellStyle = sharedHeader
     ? {
-        '--fm-mobile-header-chrome-height': '152px',
-        '--fm-mobile-header-chrome-compressed-height': '68px',
+        '--fm-mobile-header-chrome-height': '0px',
+        '--fm-mobile-header-chrome-compressed-height': '0px',
       } as CSSProperties
     : undefined;
   const headerLayerValue = useMemo(() => ({
@@ -196,13 +196,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         ) : null}
         {/* placed by its top, not padded down from the screen's edge: a fixed box that reaches the top edge is taken by
             iOS Safari for a fixed header, and the status bar over it is painted solid instead of letting the page show
-            through */}
+            through. Only the tabs that bring a header of their own (AppHeader) have one here; Feed, Lead and Read have
+            none */}
         <div
           data-fm-header-layer
           className={cn(
             'pointer-events-none fixed inset-x-0 top-[calc(10px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] z-[100] flex flex-col items-center px-2 sm:top-[calc(14px+env(safe-area-inset-top)+var(--pwa-top-fix,0px))] sm:px-4 md:top-[calc(20px+var(--pwa-top-fix,0px))] lg:px-4',
-            sharedHeader && 'lg:hidden',
-            !hasTabChrome && 'hidden',
+            (sharedHeader || !hasTabChrome) && 'hidden',
           )}
         >
           <div className="relative fm-tab-header-shell">
@@ -213,11 +213,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               )}
             >
               <div className="relative h-full overflow-hidden">
-                {/* the tabs that share one header (Lead, Read): drawn once here and adapted as you switch */}
-                <TabHeaderHost tab={currentHeaderId} onCompressed={setHeaderCompressed} />
-                {/* the tabs that bring their own (AppHeader portals into this; what it brings takes taps itself). Empty,
-                    it lies over the shared header and must never take a tap meant for it: while that header comes in
-                    (fading and rising) it stacks under this, and every tap on it landed here */}
+                {/* the tabs that bring their own (AppHeader portals into this; what it brings takes taps itself) */}
                 <div ref={setHeaderLayerElement} className="pointer-events-none relative h-full overflow-hidden" />
               </div>
             </div>
@@ -231,6 +227,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {hasTabChrome ? <LaunchVeil /> : null}
         {sharedHeader ? <DeskRow tab={currentHeaderId} /> : null}
         {sharedHeader ? <SideRail tab={currentHeaderId} /> : null}
+        {sharedHeader ? <Dock tab={currentHeaderId as DockTab} /> : null}
       </div>
     </HeaderLayerContext.Provider>
   );

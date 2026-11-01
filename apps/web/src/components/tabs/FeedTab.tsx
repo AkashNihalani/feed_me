@@ -29,10 +29,10 @@ import { FeedEmptyState } from '@/components/feed/stream/FeedEmptyState';
 import FeedManageSheet from '@/components/feed/stream/FeedManageSheet';
 import FeedStream, { type FeedStreamBlank, type FeedStreamHandle, type StreamProfileView, type StreamSlide } from '@/components/feed/stream/FeedStream';
 import { usePageReady } from '@/components/shell/AppShell';
-import { HEADER_CONTROL, useTabHeader } from '@/components/shell/TabHeader';
+import { HEADER_CONTROL, headerChoice, useTabHeader } from '@/components/shell/TabHeader';
 import { normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { feederLookup, useFeeds, type AppFeed } from '@/lib/feedsStore';
-import { relativeTime, scopeKey, type FeedMode, type FeedOrder, type StreamFeeder, type StreamScope } from '@/lib/feedStream/contract';
+import { ZOOM_LABEL, ZOOM_ORDER, relativeTime, scopeKey, type FeedMode, type FeedOrder, type StreamFeeder, type StreamScope } from '@/lib/feedStream/contract';
 import { useStreamIndex } from '@/lib/feedStream/store';
 import { initialMode, readStoredOrder, writeStoredOrder } from '@/lib/feedStream/zoom';
 import { useAppHaptics } from '@/lib/haptics';
@@ -217,6 +217,7 @@ const FeedHeader = memo(function FeedHeader({ feeds, order, mode, compressed, fr
     eyebrow: order === 'results' ? 'Feed · latest results' : 'Feed · newest posts',
     label,
     control: <FeedControl mode={mode} onModeChange={onModeChange} onModeIntent={onModeIntent} />,
+    choice: headerChoice({ name: 'Zoom', value: mode, options: ZOOM_ORDER, label: (zoom) => ZOOM_LABEL[zoom], onChange: onModeChange }),
     controlLabel: 'Zoom',
     compressed,
     // none yet means still loading (the header keeps the rail it has)

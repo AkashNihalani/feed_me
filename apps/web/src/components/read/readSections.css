@@ -3,7 +3,7 @@
    what it counts in caps), then one line in ink running on into its aside in grey. Below it, one picture of the
    answer. Inside .rd, on Read's tokens (readTab.css); the page clears the header as the wall does. */
 
-.rd .rv { padding-top: calc(var(--rd-cap-top) + 166px); }
+.rd .rv { padding-top: calc(var(--rd-cap-top) + var(--fm-mobile-header-chrome-height, 152px) + 14px); }
 @media (min-width: 1024px) { .rd .rv { padding-top: var(--fm-desk-top); } }
 /* the app's own wall follows the sections: no second clearance */
 .rd .rv ~ #rd-main { padding-top: 6px; }

@@ -67,9 +67,11 @@ export default function BottomNav() {
     const target = pendingHref?.fromPathname === pathname ? pendingHref.href : primaryTabHref(pathname);
     return NAV_ITEMS.findIndex((item) => target === item.href);
   }, [pendingHref, pathname]);
-  // the routes that show no bar at all, and whether the bar holds the tab you're on (only then does it fold: what it
-  // folds down to is that tab's icon)
-  const hidden = pathname === '/login' || !!pathname?.startsWith('/command') || !!pathname?.startsWith('/drop') || !!pathname?.startsWith('/visit') || !!pathname?.startsWith('/read/') || !!pathname?.startsWith('/living-world');
+  // the routes that show no bar at all (Feed, Lead and Read steer from the dock on a phone and the side rail from a
+  // laptop up: AppShell), and whether the bar holds the tab you're on (only then does it fold: what it folds down to is
+  // that tab's icon)
+  const docked = pathname === '/' || pathname === '/lead' || pathname === '/read';
+  const hidden = docked || pathname === '/login' || !!pathname?.startsWith('/command') || !!pathname?.startsWith('/drop') || !!pathname?.startsWith('/visit') || !!pathname?.startsWith('/read/') || !!pathname?.startsWith('/living-world');
   const onTab = activeIndex >= 0;
 
   useLayoutEffect(() => {
@@ -236,8 +238,7 @@ export default function BottomNav() {
   if (hidden) return null;
 
   return (
-    // (from a laptop up Feed, Lead and Read are reached from the side rail: SideRail)
-    <div ref={navRef} data-fm-bottom-nav="true" className={cn('fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5', (pathname === '/' || pathname === '/lead' || pathname === '/read') && 'lg:hidden')}>
+    <div ref={navRef} data-fm-bottom-nav="true" className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-0 right-0 z-[180] flex justify-center pointer-events-none md:bottom-5">
       {/* the bar's shadow, on a still plate behind it rather than on the glass itself (globals.css, .fm-chrome-shadow) */}
       <div ref={barRef} className="fm-nav-bar relative pointer-events-auto">
       <span aria-hidden="true" className="fm-nav-fade fm-chrome-shadow rounded-full" />
