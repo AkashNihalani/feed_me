@@ -4,36 +4,37 @@
    SIDE RAIL — the app's chrome from a laptop up. The browser
    already stacks its own bars across the top, and a laptop is
    short of height with width to spare, so the tabs, your feeds
-   and the tab's setting stand down the left, in one floating
-   glass panel, and the page is all content from its first line.
+   and the tab's setting stand down the left, and the page is all
+   content from its first line.
 
-   Shut, it is a quiet column of big circles: the tabs' icons,
-   your feeds (a feed's badge, a feeder's face), Manage and the
-   tab's setting. Point at it (or tab into it, or tap its ground)
-   and it opens over the page as glass, every name riding in
-   beside its circle; leave it and it shuts. The page never moves
-   for it. Every icon and circle sits on one line 48px in from the
-   rail's edge, open or shut: opening only uncovers what is to
-   their right.
+   It floats, as the phone's dock does: no panel. Shut, it is a
+   quiet column of big circles standing on the page: the tabs'
+   icons, your feeds (a feed's badge, a feeder's face), Manage and
+   the tab's setting on its ink chip. Point at it (or tab into it,
+   or tap its ground) and the page beside it frosts over, the
+   phone's frost, every name riding in beside its circle; leave it
+   and it shuts (sideRail.css). The page never moves for it. Every
+   icon and circle sits on one line 48px in from the rail's edge,
+   open or shut, and what's near the pointer swells a touch, the
+   way the Dock's icons do, in place.
 
    How it moves, all on the carry curve:
-   - a tab: the ink pill glides to it at the click (before the
-     page has answered), and the icon and name turn to the page's
-     colour exactly where the pill is, as it passes; the page is
+   - a tab: the ink tile glides to its icon at the click (before
+     the page has answered), and the icon turns to the page's
+     colour exactly where the tile is, as it passes; the page is
      simply there, as you left it (AppTabHost, lib/tabSheet), and
-     the setting at the foot rolls over the way the pill went;
+     the setting at the foot rolls over the way the tile went;
    - a feed: the phone's story rail stood on end. Its circle
      rises to the top while the other feeds tuck into its place
      and its feeders fan out of it, from behind it; closing, they
      go back in and the feeds come out again (Ledger, fan). All
      feeds, at the top, is the way back: its wedge turns round to
      point back, as the phone's does;
-   - a pick: the one you're on grows a touch, wears the pick's
-     gradient ring and a soft shadow, and (open) one raised row
-     glides to it from the last;
-   - the setting at the foot (Lead's time range, Feed's zoom; Read
-     keeps its view on the page) crosses over in a place that is
-     always there, so nothing moves around it.
+   - a pick: the one you're on grows a touch and wears the pick's
+     ring and a soft shadow;
+   - the setting at the foot (Lead's time range, Feed's zoom,
+     Read's part) crosses over in a place that is always there, so
+     nothing moves around it, and opening spreads it into chips.
    ───────────────────────────────────────────────────────────── */
 
 import dynamic from 'next/dynamic';
@@ -42,13 +43,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { BookOpenText, LayoutGrid, SlidersHorizontal, Trophy, type LucideIcon } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { FAN_MS, Ledger } from '@/components/motion/Ledger';
-import { CARRY_EASE_CSS, carryCurve } from '@/lib/feedStream/motion';
+import { carryCurve } from '@/lib/feedStream/motion';
 import { feedInitials, titleCase } from '@/lib/feedLabels';
 import { ms, sec } from '@/lib/tempo';
 import { useFreshHandles } from '@/lib/feedStream/fresh';
 import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { leaveTab, stayOnTab } from '@/lib/tabSheet';
 import { cn } from '@/lib/utils';
+import './sideRail.css';
 import {
   ArmTrack,
   ControlPlacementContext,
@@ -75,17 +77,13 @@ const REDUCED = { duration: 0.14 } as const;
 
 /* ── shut or open ─────────────────────────────────────────────────────────── */
 
-/* The rail is laid out open (296px) and cut to the column (96px) by a clip; a row's own grounds (the tab pill, the
-   hover wash, the feed's well) are cut the same way, to the column's 72px. Opening is that clip letting go, with the
-   names riding in on its edge; shutting is quicker */
+/* The rail is laid out open (296px). What takes the pointer is cut to the column (96px) by a clip while it is shut, so
+   the page beside a shut rail is the page's own: the clip lets go at once as the rail opens, and comes back as it
+   shuts once the names have gone (they fade first: sideRail.css) */
 const FOLD_PX = 200;
-const OPEN_MS = ms(360);
-const SHUT_MS = ms(260);
-const foldClip = (open: boolean, round: string) => `inset(0 ${open ? 0 : FOLD_PX}px 0 0 round ${round})`;
-const foldTime = (open: boolean) => (open ? OPEN_MS : SHUT_MS);
-const foldMove = (open: boolean, reduce: boolean) => (reduce ? undefined : `clip-path ${foldTime(open)}ms ${CARRY_EASE_CSS}`);
-/* The names sit just past the column's edge (100px in: the column shows 96), so shut they are simply out of sight, and
-   opening uncovers them with everything else, crisp, in the one sweep: nothing fades or slides on its own */
+const NAMES_OUT_MS = ms(140);
+const hitClip = (open: boolean) => `inset(0 ${open ? 0 : FOLD_PX}px 0 0 round 28px)`;
+const hitMove = (open: boolean, reduce: boolean) => (open || reduce ? undefined : `clip-path 0s linear ${NAMES_OUT_MS}ms`);
 // a pointer passing over the rail on its way somewhere doesn't open it: it opens once the pointer rests a moment, and
 // shuts a moment after it leaves (coming back in time keeps it open)
 const OPEN_AFTER_MS = 110;
@@ -100,14 +98,15 @@ const TABS: ReadonlyArray<{ key: string; label: string; href: string; icon: Luci
 ];
 // where a tab stands in the rail, top to bottom
 const tabOrder = (key: string | null) => TABS.findIndex((item) => item.key === key);
-// a tab's row (48px) and the gap under it: what the ink pill glides by, row to row
+// a tab's row (48px) and the gap under it: what the ink tile glides by, row to row
 const TAB_PITCH = 52;
-const TAB_PILL_MS = ms(400);
-const pillGlide = (reduce: boolean, open: boolean) => (reduce ? undefined : `transform ${TAB_PILL_MS}ms ${PICK_EASE}, clip-path ${foldTime(open)}ms ${CARRY_EASE_CSS}, opacity ${foldTime(open)}ms ${CARRY_EASE_CSS}`);
+const TAB_TILE_MS = ms(400);
+const tileGlide = (reduce: boolean) => (reduce ? undefined : `transform ${TAB_TILE_MS}ms ${PICK_EASE}`);
 // an icon in a big circle's box: icons and circles share the rail's one centre line
 const ICON_BOX = 'grid h-full w-14 shrink-0 place-items-center';
 const TAB_ROW_CLASS = 'flex h-12 items-center gap-6 rounded-[18px] pl-2';
-const TAB_NAME = 'min-w-0 truncate text-[16px] font-bold leading-none tracking-[-0.01em]';
+// (the phone's tab words: big, the one you're on in ink and the others a step back)
+const TAB_NAME = 'min-w-0 truncate text-[22px] font-bold leading-none tracking-[-0.035em]';
 
 /* Between the tabs (all kept alive) the address changes in place, as the bottom bar does it; Feed again goes back to
    its newest post */
@@ -141,26 +140,16 @@ function useTabKeys(onTab: (key: string) => void) {
   }, []);
 }
 
-// a row's hover wash, cut to the column's 72px while the rail is shut
-function RowWash({ open, reduce, round = '16px' }: { open: boolean; reduce: boolean; round?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-y-[3px] left-0 right-0 bg-fg/[0.055] opacity-0 transition-opacity duration-150 group-hover/row:opacity-100"
-      style={{ clipPath: foldClip(open, round), transition: reduce ? undefined : `opacity 150ms ease, clip-path ${foldTime(open)}ms ${CARRY_EASE_CSS}` }}
-    />
-  );
-}
-
-// a name beside its icon or circle, past the column's edge
+// a name beside its icon or circle, past the column's edge: out of sight while the rail is shut, riding in over the
+// frost as it opens (sideRail.css)
 function SideName({ className, children }: { className: string; children: ReactNode }) {
-  return <span className={cn('relative min-w-0 truncate', className)}>{children}</span>;
+  return <span className={cn('fm-rail-name relative min-w-0 truncate', className)}>{children}</span>;
 }
 
-function RailTabs({ tab, open, reduce }: { tab: string | null; open: boolean; reduce: boolean }) {
-  /* The pill answers the click at once, in a render of its own: the address (and the page) follow in a heavier one a
-     moment later, and a pill waiting for that set off late. It wears the tab tapped until the page arrives; the tab
-     you're on, chosen again, takes back any pill still waiting */
+function RailTabs({ tab, reduce }: { tab: string | null; reduce: boolean }) {
+  /* The tile answers the click at once, in a render of its own: the address (and the page) follow in a heavier one a
+     moment later, and a tile waiting for that set off late. It wears the tab tapped until the page arrives; the tab
+     you're on, chosen again, takes back any tile still waiting */
   const [pending, setPending] = useState<{ key: string; from: string | null } | null>(null);
   if (pending && pending.from !== tab) setPending(null);
   const shownKey = pending ? pending.key : tab;
@@ -186,44 +175,25 @@ function RailTabs({ tab, open, reduce }: { tab: string | null; open: boolean; re
   const y = Math.max(0, index) * TAB_PITCH;
   return (
     <nav aria-label="Tabs" className="relative grid shrink-0 gap-1 p-3">
+      {/* the tab you're on: an ink tile on its icon alone (the circles below are people; a control isn't one), and in it
+          the icons again in the page's colour, held still while it glides (they move back by as much as it moves on):
+          an icon turns over exactly where the tile is, as it passes, and both moves are the compositor's. It swells
+          with the icon it sits on (useMagnify) */}
       {index >= 0 ? (
-        <>
-          {/* the pill's lift, on plates its clip can't cut: the column's, and the open rail's */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-3 h-12 w-[72px] rounded-[18px] shadow-[0_4px_14px_rgb(var(--fm-shadow-rgb)/0.22),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.45)]"
-            style={{ transform: `translateY(${y}px)`, opacity: open ? 0 : 1, transition: pillGlide(reduce, open) }}
-          />
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 right-3 top-3 h-12 rounded-[18px] shadow-[0_4px_14px_rgb(var(--fm-shadow-rgb)/0.22),0_1px_2px_rgba(0,0,0,0.08)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.45)]"
-            style={{ transform: `translateY(${y}px)`, opacity: open ? 1 : 0, transition: pillGlide(reduce, open) }}
-          />
-          {/* the ink pill, and in it the same rows in the page's colour, held still while it glides (they move back
-              by as much as it moves on): the tab you're on turns over exactly where the pill is, as it passes, and
-              both moves are the compositor's */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 right-3 top-3 z-[15] h-12 overflow-hidden rounded-[18px] bg-fg"
-            style={{ transform: `translateY(${y}px)`, clipPath: foldClip(open, '18px'), transition: pillGlide(reduce, open) }}
-          >
-            <span
-              className="absolute inset-x-0 top-0 grid gap-1 text-(--fm-page)"
-              style={{ transform: `translateY(${-y}px)`, transition: reduce ? undefined : `transform ${TAB_PILL_MS}ms ${PICK_EASE}` }}
-            >
-              {TABS.map((item) => (
-                <span key={item.key} className={TAB_ROW_CLASS}>
-                  <span className={ICON_BOX}>
-                    <item.icon aria-hidden="true" size={23} strokeWidth={2.3} />
-                  </span>
-                  <SideName className={TAB_NAME}>
-                    {item.label}
-                  </SideName>
-                </span>
-              ))}
-            </span>
+        <span
+          aria-hidden="true"
+          data-rail-tile=""
+          className="pointer-events-none absolute left-6 top-3 z-[15] h-12 w-12 overflow-hidden rounded-[15px] bg-fg shadow-[0_10px_22px_-10px_rgb(var(--fm-shadow-rgb)/0.55)] dark:shadow-[0_10px_24px_-8px_rgba(0,0,0,0.8)]"
+          style={{ transform: `translateY(${y}px)`, transition: tileGlide(reduce) }}
+        >
+          <span className="absolute inset-x-0 top-0 grid gap-1 text-(--fm-page)" style={{ transform: `translateY(${-y}px)`, transition: tileGlide(reduce) }}>
+            {TABS.map((item) => (
+              <span key={item.key} className="grid h-12 w-12 place-items-center">
+                <item.icon aria-hidden="true" size={23} strokeWidth={2.3} />
+              </span>
+            ))}
           </span>
-        </>
+        </span>
       ) : null}
       {TABS.map((item, at) => (
         <a
@@ -236,10 +206,9 @@ function RailTabs({ tab, open, reduce }: { tab: string | null; open: boolean; re
           }}
           aria-current={tab === item.key ? 'page' : undefined}
           aria-label={`${item.label} (${item.label[0]})`}
-          className={cn('group/row relative z-10 text-fg/62 outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]', TAB_ROW_CLASS)}
+          className={cn('group/row relative z-10 outline-none transition-colors duration-200 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]', at === index ? 'text-fg' : 'text-fg/62', TAB_ROW_CLASS)}
         >
-          {at === index ? null : <RowWash open={open} reduce={reduce} round="18px" />}
-          <span className={cn(ICON_BOX, 'relative')}>
+          <span data-rail-mag={at === index ? 'tab' : ''} className={cn(ICON_BOX, 'relative')}>
             <item.icon aria-hidden="true" size={23} strokeWidth={2.3} />
           </span>
           <SideName className={TAB_NAME}>
@@ -273,7 +242,7 @@ const HUB_STACK = 41;
 function RowCircle({ ring, lit, marked, armed, reduce, className, children }: { ring: boolean; lit: boolean; marked: boolean; armed: boolean; reduce: boolean; className: string; children: ReactNode }) {
   const lift = reduce ? undefined : `transform ${PICK_MS}ms ${PICK_EASE}`;
   return (
-    <span className={cn('relative z-10 grid shrink-0 place-items-center rounded-full p-[3px]', className)} style={{ transform: `scale(${lit ? PICKED_SCALE : 1})`, transition: lift }}>
+    <span data-rail-mag="" className={cn('relative z-10 grid shrink-0 place-items-center rounded-full p-[3px]', className)} style={{ transform: `scale(${lit ? PICKED_SCALE : 1})`, transition: lift }}>
       <span
         aria-hidden="true"
         className="pointer-events-none absolute inset-[4px] rounded-full shadow-[0_10px_22px_-8px_rgb(var(--fm-shadow-rgb)/0.55)] dark:shadow-[0_10px_24px_-6px_rgba(0,0,0,0.8)]"
@@ -291,13 +260,12 @@ function RowCircle({ ring, lit, marked, armed, reduce, className, children }: { 
   );
 }
 
-/* a row's name, in bold ink, past the column's edge (the one you're on is told by its ring, its lift and its raised
-   tile, never by its name changing); a feed's count of feeders under it. It moves on its own when its row comes or
-   goes (data-ledger-label), coming in from behind its own left edge: sliding in over the column's edge, its first
-   letters showed beside the circles in the shut rail */
+/* a row's name, in bold ink, past the column's edge (the one you're on is told by its ring and its lift, never by its
+   name changing); a feed's count of feeders under it. It rides in as the rail opens (fm-rail-name), and moves on its
+   own when its row comes or goes (data-ledger-label), coming in from behind its own left edge */
 function RowName({ text, sub, className }: { text: string; sub?: string; className: string }) {
   return (
-    <span className="relative z-10 min-w-0 flex-1 overflow-hidden pr-3">
+    <span className="fm-rail-name relative z-10 min-w-0 flex-1 overflow-hidden pr-3">
       <span data-ledger-label="" className="grid gap-1">
         <span className={cn(NAME, 'font-bold text-fg', className)}>{text}</span>
         {sub ? <span className="truncate text-[12px] font-semibold leading-none text-fg/60">{sub}</span> : null}
@@ -310,15 +278,13 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 /* All feeds: with a feed open it is the way back, and its wedge itself turns round to point back, on the fan's clock,
    the way the phone's does (TabHeader's WedgeMark) */
-const AllRow = memo(function AllRow({ count, back, current, armed, leaving, open, reduce, stack, onPick }: { count: number | null; back: boolean; current: boolean; armed: boolean; leaving: boolean; open: boolean; reduce: boolean; stack: number; onPick: () => void }) {
+const AllRow = memo(function AllRow({ count, back, current, armed, leaving, reduce, stack, onPick }: { count: number | null; back: boolean; current: boolean; armed: boolean; leaving: boolean; reduce: boolean; stack: number; onPick: () => void }) {
   const lit = (current && !leaving) || armed;
   const ref = useRef<HTMLButtonElement | null>(null);
   useHeldPick(ref, lit);
   const turn = reduce ? undefined : `transform ${FAN_MS}ms ${PICK_EASE}`;
   return (
     <button ref={ref} type="button" data-ledger="rail:all" data-rail-all="" onClick={onPick} aria-pressed={current} aria-label={back ? 'Back to all feeds' : 'All feeds'} className={cn(ROW, 'h-16 gap-6 pl-2')} style={{ zIndex: stack }}>
-      <RowTile lit={lit} open={open} reduce={reduce} />
-      <RowWash open={open} reduce={reduce} />
       <RowCircle ring={current && !leaving} lit={lit} marked={false} armed={armed} reduce={reduce} className="h-14 w-14">
         <span className="relative grid h-full w-full place-items-center" style={{ background: 'var(--lead-wedge-surface)' }}>
           <svg aria-hidden="true" viewBox="0 0 42 42" className="block h-[26px] w-[26px]" style={{ transform: back ? 'rotate(180deg)' : 'rotate(0deg)', transition: turn }}>
@@ -331,7 +297,7 @@ const AllRow = memo(function AllRow({ count, back, current, armed, leaving, open
   );
 });
 
-const FeedRow = memo(function FeedRow({ feed, expanded, current, marked, armed, leaving, open, reduce, stack, onPick }: { feed: HeaderFeed; expanded: boolean; current: boolean; marked: boolean; armed: boolean; leaving: boolean; open: boolean; reduce: boolean; stack: number; onPick: (id: string) => void }) {
+const FeedRow = memo(function FeedRow({ feed, expanded, current, marked, armed, leaving, reduce, stack, onPick }: { feed: HeaderFeed; expanded: boolean; current: boolean; marked: boolean; armed: boolean; leaving: boolean; reduce: boolean; stack: number; onPick: (id: string) => void }) {
   const lit = (current && !leaving) || armed;
   const ref = useRef<HTMLButtonElement | null>(null);
   useHeldPick(ref, lit);
@@ -349,8 +315,6 @@ const FeedRow = memo(function FeedRow({ feed, expanded, current, marked, armed, 
       className={cn(ROW, 'h-16 gap-6 pl-2')}
       style={{ zIndex: stack }}
     >
-      <RowTile lit={lit} open={open} reduce={reduce} />
-      <RowWash open={open} reduce={reduce} />
       <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-14 w-14">
         <span className="grid h-full w-full place-items-center text-[16px] font-black leading-none tracking-[-0.02em]" style={{ color: 'rgb(11 11 15 / 0.82)', background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)' }}>
           {feedInitials(feed.title)}
@@ -364,7 +328,7 @@ const FeedRow = memo(function FeedRow({ feed, expanded, current, marked, armed, 
 // a feeder's place in the list carries the feed it sits in (the same handle in two feeds is two rows)
 const feederId = (feedId: string | null, handle: string) => `rail:feeder:${feedId ?? ''}:${handle}`;
 
-const FeederRow = memo(function FeederRow({ feeder, rowId, current, marked, armed, leaving, open, reduce, stack, label, onPick }: { feeder: HeaderFeeder; rowId: string; current: boolean; marked: boolean; armed: boolean; leaving: boolean; open: boolean; reduce: boolean; stack: number; label: string; onPick: (handle: string) => void }) {
+const FeederRow = memo(function FeederRow({ feeder, rowId, current, marked, armed, leaving, reduce, stack, label, onPick }: { feeder: HeaderFeeder; rowId: string; current: boolean; marked: boolean; armed: boolean; leaving: boolean; reduce: boolean; stack: number; label: string; onPick: (handle: string) => void }) {
   const lit = (current && !leaving) || armed;
   const ref = useRef<HTMLButtonElement | null>(null);
   useHeldPick(ref, lit);
@@ -380,8 +344,6 @@ const FeederRow = memo(function FeederRow({ feeder, rowId, current, marked, arme
       className={cn(ROW, 'h-[60px] gap-[26px] pl-[10px]')}
       style={{ zIndex: stack }}
     >
-      <RowTile lit={lit} open={open} reduce={reduce} />
-      <RowWash open={open} reduce={reduce} />
       <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-[52px] w-[52px]">
         {/* decoded ahead by the phone's header, and asked for at once: a face never arrives after its row */}
         <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} loading="eager" className="text-[13px]" />
@@ -391,25 +353,7 @@ const FeederRow = memo(function FeederRow({ feeder, rowId, current, marked, arme
   );
 });
 
-/* The one you're on sits on a raised tile (the page's own raised white, or a lift of light on dark): behind its circle
-   in the shut column, the whole row once the rail opens (cut like the tab pill). It belongs to its row, so it lands
-   where the pick is (coming up there, quickly, as the last one's goes) and travels with its row */
-const ROW_TILE = 'pointer-events-none absolute inset-[3px] rounded-[18px] bg-(--fm-raised) shadow-[0_1px_2px_rgba(0,0,0,0.05),0_10px_24px_-10px_rgb(var(--fm-shadow-rgb)/0.3)] dark:bg-white/[0.09] dark:shadow-none';
-function RowTile({ lit, open, reduce }: { lit: boolean; open: boolean; reduce: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={ROW_TILE}
-      style={{
-        opacity: lit ? 1 : 0,
-        clipPath: foldClip(open, '18px'),
-        transition: reduce ? undefined : `opacity ${lit ? ms(220) : ms(140)}ms ease, clip-path ${foldTime(open)}ms ${CARRY_EASE_CSS}`,
-      }}
-    />
-  );
-}
-
-function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; open: boolean; reduce: boolean }) {
+function RailFeeds({ config, reduce }: { config: TabHeaderConfig | null; reduce: boolean }) {
   const feeds = config?.feeds ?? null;
   const handle = config?.handle ?? null;
   const { activeFeed, pickKey } = whoOf(feeds, config?.feedId, handle);
@@ -471,7 +415,7 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
   // has)
   const ids: string[] = ['rail:all'];
   const rows: ReactNode[] = [
-    <AllRow key="rail:all" count={feeds ? feeds.length : null} back={Boolean(activeFeed)} current={Boolean(feeds) && !activeFeed && !handle} armed={armed === 'all'} leaving={leaving} open={open} reduce={reduce} stack={stackOf(0)} onPick={pickAll} />,
+    <AllRow key="rail:all" count={feeds ? feeds.length : null} back={Boolean(activeFeed)} current={Boolean(feeds) && !activeFeed && !handle} armed={armed === 'all'} leaving={leaving} reduce={reduce} stack={stackOf(0)} onPick={pickAll} />,
   ];
   const feederRow = (feeder: HeaderFeeder, feedId: string | null) => {
     const rowId = feederId(feedId, feeder.handle);
@@ -484,7 +428,6 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
         marked={isMarked(feeder.handle)}
         armed={armed === `feeder:${feeder.handle}`}
         leaving={leaving}
-        open={open}
         reduce={reduce}
         stack={stackOf(ids.length)}
         label={nameFeeder(feeder.handle)}
@@ -505,7 +448,6 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
           marked={feed.feeders.some((feeder) => isMarked(feeder.handle))}
           armed={armed === `feed:${feed.id}`}
           leaving={leaving}
-          open={open}
           reduce={reduce}
           stack={feed.id === hubFeed ? HUB_STACK : stackOf(ids.length)}
           onPick={pickFeed}
@@ -520,10 +462,34 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
   // opening or closing a feed deals the list again (a feeder picked inside it only moves the rings)
   const deal = !feeds ? 'loading' : activeFeed ? `feed:${activeFeed.id}` : 'all';
 
+  // the list fades out at an edge with more of it to scroll to (sideRail.css): there's no box to cut it against
+  useEffect(() => {
+    const scroller = list?.firstElementChild as HTMLElement | null | undefined;
+    if (!scroller) return undefined;
+    const edges = () => {
+      const top = scroller.scrollTop > 1;
+      const foot = scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1;
+      scroller.toggleAttribute('data-cut', top || foot);
+      scroller.style.setProperty('--fm-rail-fade-top', top ? '28px' : '0px');
+      scroller.style.setProperty('--fm-rail-fade-foot', foot ? '52px' : '0px');
+    };
+    edges();
+    // (a feed opening or closing deals its rows in and out on the fan's clock: read it again once they're in)
+    const settled = window.setTimeout(edges, FAN_MS + 80);
+    const resize = new ResizeObserver(edges);
+    resize.observe(scroller);
+    scroller.addEventListener('scroll', edges, { passive: true });
+    return () => {
+      window.clearTimeout(settled);
+      resize.disconnect();
+      scroller.removeEventListener('scroll', edges);
+    };
+  }, [list, deal]);
+
   return (
     <div
       ref={setList}
-      className="relative flex min-h-0 flex-1 flex-col border-t border-fg/10"
+      className="relative flex min-h-0 flex-1 flex-col"
       onPointerOver={intent}
       onPointerDown={intent}
       onFocus={intent}
@@ -542,7 +508,7 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
         dealOnMount={false}
         role="group"
         label={activeFeed ? `Feeders in ${titleCase(activeFeed.title)}` : 'Feeds'}
-        className="hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2"
+        className="fm-rail-list hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2"
       >
         {rows}
       </Ledger>
@@ -552,10 +518,10 @@ function RailFeeds({ config, open, reduce }: { config: TabHeaderConfig | null; o
 
 /* ── the foot: Manage and the tab's setting ───────────────────────────────── */
 
-/* Lead's time range, Feed's zoom: the control the tab gives its header, drawn the rail's way (ControlPlacement): the
-   track its width while the rail is open, the value alone while it is shut. Both are there, one showing, so the rail
-   opening crosses one over to the other in place. Its place at the foot is always there, held at its height whether a
-   tab brings a setting or not (Read's view is on the page), so a tab switch never moves anything around it */
+/* Lead's time range, Feed's zoom, Read's part: the control the tab gives its header, drawn the rail's way
+   (ControlPlacement), as the phone's chips: shut, the value alone on its ink capsule in the column; open, the others
+   spread out beside it (sideRail.css). Its place at the foot is always there, held at its height whether a tab brings a
+   setting or not, so a tab switch never moves anything around it */
 const DOCK_IN_S = sec(0.36);
 const DOCK_OUT_S = sec(0.14);
 /* A tab's setting comes in from the side the tab is on (below the last, from below) as the last one goes the other
@@ -571,8 +537,7 @@ const DOCK_FADE = {
   exit: { opacity: 0, transition: REDUCED },
 };
 
-function RailDock({ owner, dir, control, open, reduce, trackRef }: { owner: string | null; dir: number; control: ReactNode; open: boolean; reduce: boolean; trackRef: RefObject<HTMLDivElement | null> }) {
-  const swap = (shown: boolean) => ({ opacity: shown ? 1 : 0, transition: reduce ? undefined : shown ? `opacity ${ms(200)}ms ease ${ms(90)}ms` : `opacity ${ms(90)}ms ease` });
+function RailDock({ owner, dir, control, reduce, trackRef }: { owner: string | null; dir: number; control: ReactNode; reduce: boolean; trackRef: RefObject<HTMLDivElement | null> }) {
   return (
     <div className="grid h-11">
       <AnimatePresence initial={false} custom={dir}>
@@ -595,19 +560,84 @@ function RailDock({ owner, dir, control, open, reduce, trackRef }: { owner: stri
                 };
               }}
               className="[grid-area:1/1]"
-              style={swap(open)}
-              inert={!open}
             >
               <ControlPlacementContext.Provider value="rail">{control}</ControlPlacementContext.Provider>
-            </div>
-            <div className="pointer-events-none w-[72px] [grid-area:1/1]" style={swap(!open)}>
-              <ControlPlacementContext.Provider value="rail-mini">{control}</ControlPlacementContext.Provider>
             </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
     </div>
   );
+}
+
+/* ── magnify ──────────────────────────────────────────────────────────────── */
+
+/* What's near the pointer swells, the way the Dock's icons do, in place: nothing moves along the column (the rail never
+   jumps), and at 1.2× a circle still clears the next one. Each eases toward the pointer once a frame, a breath behind
+   it, on its own `scale` (the pick's lift is its transform), and the ink tile swells with the icon it sits on. A mouse
+   only, while it is over the rail */
+const MAG_PEAK = 1.2;
+const MAG_REACH = 100;
+const MAG_LAG = 70;
+
+function useMagnify(panelRef: RefObject<HTMLDivElement | null>, reduce: boolean) {
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || reduce) return undefined;
+    const scales = new WeakMap<HTMLElement, number>();
+    let raf = 0;
+    let last = 0;
+    let y: number | null = null;
+    const tick = (now: number) => {
+      raf = 0;
+      const dt = last ? Math.min(50, now - last) : 16;
+      last = now;
+      const ease = 1 - Math.exp(-dt / MAG_LAG);
+      let moving = false;
+      let tile = 1;
+      panel.querySelectorAll<HTMLElement>('[data-rail-mag]').forEach((el) => {
+        let target = 1;
+        if (y !== null) {
+          const box = el.getBoundingClientRect();
+          const away = Math.abs(y - (box.top + box.height / 2));
+          if (away < MAG_REACH) target = 1 + (MAG_PEAK - 1) * (0.5 + 0.5 * Math.cos((Math.PI * away) / MAG_REACH));
+        }
+        const was = scales.get(el) ?? 1;
+        let next = was + (target - was) * ease;
+        if (Math.abs(target - next) < 0.002) next = target;
+        else moving = true;
+        if (next !== was) {
+          el.style.scale = next === 1 ? '' : next.toFixed(4);
+          scales.set(el, next);
+        }
+        if (el.dataset.railMag === 'tab') tile = next;
+      });
+      const tileEl = panel.querySelector<HTMLElement>('[data-rail-tile]');
+      if (tileEl) tileEl.style.scale = tile === 1 ? '' : tile.toFixed(4);
+      // rows on their way somewhere (a feed opening) carry their circles past a resting pointer: keep reading them
+      if (moving || (y !== null && panel.getAnimations({ subtree: true }).length > 0)) raf = requestAnimationFrame(tick);
+      else last = 0;
+    };
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return;
+      y = event.clientY;
+      kick();
+    };
+    const onLeave = () => {
+      y = null;
+      kick();
+    };
+    panel.addEventListener('pointermove', onMove);
+    panel.addEventListener('pointerleave', onLeave);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      panel.removeEventListener('pointermove', onMove);
+      panel.removeEventListener('pointerleave', onLeave);
+    };
+  }, [panelRef, reduce]);
 }
 
 /* ── the rail ─────────────────────────────────────────────────────────────── */
@@ -621,6 +651,7 @@ function SideRailBody({ tab }: { tab: string | null }) {
   // the tab's setting, as the rail carries it (Read keeps its own on the page)
   const control = config ? (config.railControl === undefined ? config.control : config.railControl) ?? null : null;
   const asideRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const manageRef = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -685,7 +716,7 @@ function SideRailBody({ tab }: { tab: string | null }) {
       document.removeEventListener('keydown', keys);
     };
   }, [open]);
-  // shutting with the keys on the setting's track (it goes inert): they move to Manage, beside it, not to the page
+  // shutting with the keys on the setting's chips (shut, they're out of sight): they move to Manage, beside it, not to the page
   useIsoLayoutEffect(() => {
     if (open) return;
     if (trackRef.current?.contains(document.activeElement)) manageRef.current?.focus({ preventScroll: true });
@@ -697,7 +728,7 @@ function SideRailBody({ tab }: { tab: string | null }) {
     setManage({ mounted: true, open: true });
   };
   const closeManage = useCallback(() => setManage((current) => ({ ...current, open: false })), []);
-  const plateFade = reduce ? undefined : `opacity ${foldTime(open)}ms ${CARRY_EASE_CSS}`;
+  useMagnify(panelRef, reduce);
 
   return (
     <>
@@ -707,24 +738,23 @@ function SideRailBody({ tab }: { tab: string | null }) {
         id={config?.railId}
         aria-label="Tabs and feeds"
         data-open={open ? '' : undefined}
-        className="pointer-events-none fixed bottom-3 left-3 top-[calc(12px+var(--pwa-top-fix,0px))] z-[100] w-[296px]"
+        className="fm-rail pointer-events-none fixed bottom-3 left-3 top-[calc(12px+var(--pwa-top-fix,0px))] z-[100] w-[296px]"
       >
-        {/* the shadow, on still plates behind the glass (its clip would cut its own): the column's, and the deeper one
-            of the rail lying open over the page */}
-        <span aria-hidden="true" className="fm-rail-shadow inset-y-0 left-0 w-[96px]" style={{ opacity: open ? 0 : 1, transition: plateFade }} />
-        <span aria-hidden="true" className="fm-rail-shadow fm-rail-shadow--open inset-0" style={{ opacity: open ? 1 : 0, transition: plateFade }} />
+        {/* the page beside the open rail, frosted: the phone's frost, out from the window's edge (sideRail.css) */}
+        <span aria-hidden="true" className="fm-rail-frost" />
         <div
-          className="fm-depth-chrome fm-depth-chrome--rail pointer-events-auto flex h-full min-h-0 w-full flex-col"
-          style={{ clipPath: foldClip(open, '28px'), transition: foldMove(open, reduce) }}
+          ref={panelRef}
+          className="pointer-events-auto relative flex h-full min-h-0 w-full flex-col"
+          style={{ clipPath: hitClip(open), transition: hitMove(open, reduce) }}
           onPointerEnter={onPointerEnter}
           onPointerLeave={onPointerLeave}
           onPointerDown={onPointerDown}
           onFocus={onFocus}
           onBlur={onBlur}
         >
-          <RailTabs tab={tab} open={open} reduce={reduce} />
-          <RailFeeds config={config} open={open} reduce={reduce} />
-          <div className="grid shrink-0 gap-2 border-t border-fg/10 p-3">
+          <RailTabs tab={tab} reduce={reduce} />
+          <RailFeeds config={config} reduce={reduce} />
+          <div className="grid shrink-0 gap-2 p-3">
             <button
               ref={manageRef}
               type="button"
@@ -732,15 +762,14 @@ function SideRailBody({ tab }: { tab: string | null }) {
               aria-label="Manage your feeds"
               className="group/row relative flex h-11 items-center gap-6 rounded-[16px] pl-2 text-fg/62 outline-none transition-colors duration-200 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]"
             >
-              <RowWash open={open} reduce={reduce} />
-              <span className={cn(ICON_BOX, 'relative')}>
+              <span data-rail-mag="" className={cn(ICON_BOX, 'relative')}>
                 <SlidersHorizontal aria-hidden="true" size={20} strokeWidth={2.4} />
               </span>
-              <SideName className="text-[15px] font-bold leading-none">
+              <SideName className="text-[16px] font-bold leading-none">
                 Manage feeds
               </SideName>
             </button>
-            <RailDock owner={owner} dir={dock.dir} control={control} open={open} reduce={reduce} trackRef={trackRef} />
+            <RailDock owner={owner} dir={dock.dir} control={control} reduce={reduce} trackRef={trackRef} />
           </div>
         </div>
       </aside>

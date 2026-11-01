@@ -1520,12 +1520,12 @@ html[data-perf-noshadow] .fm-chrome-shadow {
   }
 }
 
-/* ── the side rail (SideRail) ──────────────────────────────────────────────
+/* ── the side rail (SideRail, sideRail.css) ────────────────────────────────
    From a laptop up Feed, Lead and Read have no bar over the page: their chrome (the tabs, the feeds, the tab's
-   setting) is one floating panel down the left, 12px in from the window's edges: a 96px column of icons and circles,
-   which opens over the page to 296px, names and all, while you point at it. Each page's column starts 16px past the
-   column (--fm-rail-x) and never moves for the rail; it is content from its first line, level with the rail's first
-   row (--fm-desk-top). The phone's bottom bar and folding header are gone at this width. */
+   setting) floats down the left, 12px in from the window's edges: a 96px column of icons and circles standing on the
+   page, which opens over a frost of the page to 296px, names and all, while you point at it. Each page's column
+   starts 16px past the column (--fm-rail-x) and never moves for the rail; it is content from its first line, level
+   with the rail's first row (--fm-desk-top). The phone's bottom bar and folding header are gone at this width. */
 :root {
   --fm-rail-x: 0px;
   --fm-desk-top: 0px;
@@ -1536,57 +1536,6 @@ html[data-perf-noshadow] .fm-chrome-shadow {
     --fm-rail-x: 124px;
     --fm-desk-top: 24px;
   }
-}
-
-/* The rail is the phone bars' glass, the bottom bar's frost and tint: open, it lies over the page (Day's date, a post,
-   the board), which shows through it frosted. It is cut to the column, or opened, by a clip, which would cut its shadow
-   too: the shadow is on still plates behind it (never redrawn under the live blur), the column's and the deeper one of
-   the rail lying open, crossing over as it opens (.fm-rail-shadow) */
-/* (its rim is drawn inside it, not as a border: a border would put the rail's content 1px off the 48px line its icons
-   and circles share, and off the column's 72px its grounds are cut to) */
-.fm-depth-chrome--rail {
-  border-width: 0;
-  border-radius: 28px;
-  background: var(--fm-nav-bg);
-  will-change: auto;
-  box-shadow:
-    inset 0 0 0 1px var(--fm-chrome-border),
-    inset 0 1px 0 var(--fm-chrome-border-top),
-    0 -1px 0 rgba(0, 0, 0, 0.03) inset;
-}
-
-.dark .fm-depth-chrome--rail {
-  box-shadow:
-    inset 0 0 0 1px var(--fm-chrome-border),
-    inset 0 1px 0 var(--fm-chrome-border-top),
-    0 -1px 0 rgba(0, 0, 0, 0.5) inset;
-}
-
-.fm-rail-shadow {
-  position: absolute;
-  pointer-events: none;
-  border-radius: 28px;
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.03),
-    0 16px 34px -10px rgba(0, 0, 0, 0.12);
-}
-
-.fm-rail-shadow--open {
-  box-shadow:
-    0 6px 14px rgba(0, 0, 0, 0.05),
-    0 28px 60px -18px rgba(0, 0, 0, 0.24);
-}
-
-.dark .fm-rail-shadow {
-  box-shadow:
-    0 8px 16px rgba(0, 0, 0, 0.4),
-    0 18px 34px -10px rgba(0, 0, 0, 0.58);
-}
-
-.dark .fm-rail-shadow--open {
-  box-shadow:
-    0 10px 22px rgba(0, 0, 0, 0.5),
-    0 30px 64px -16px rgba(0, 0, 0, 0.72);
 }
 
 .fm-depth-chrome--header-compressed {

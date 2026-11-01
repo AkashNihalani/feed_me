@@ -21,7 +21,7 @@
    (TimeframeControl).
    ───────────────────────────────────────────────────────────── */
 
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from 'react';
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
@@ -920,9 +920,9 @@ const KEYS_HINT = 'Press ← or → to step';
 const TRACK_LABEL = 'grid h-full place-items-center text-[13px] font-black uppercase leading-none tracking-[0.06em]';
 
 /* Where a tab's control is drawn: in the phone's header (a chip with a menu on a phone, a track from sm up), or, from a
-   laptop up, docked at the side rail's foot: a track the rail's width while it is open, the value alone while it is
-   shut */
-export type ControlPlacement = 'header' | 'rail' | 'rail-mini';
+   laptop up, at the side rail's foot as the phone's chips: the value alone on its ink capsule while the rail is shut,
+   the others spread out beside it while it is open */
+export type ControlPlacement = 'header' | 'rail';
 export const ControlPlacementContext = createContext<ControlPlacement>('header');
 
 export function TimeframeControl<T extends string | number>({ value, options, pending = false, label = timeframeLabel, face, menuWidth, name, applyMs, onChange }: { id: string; value: T; options: readonly T[]; pending?: boolean; label?: (value: T) => string; face?: (value: T) => string; menuWidth?: number; name?: string; applyMs?: number; onChange: (value: T) => void }) {
@@ -942,38 +942,29 @@ export function TimeframeControl<T extends string | number>({ value, options, pe
     if (option !== shown) setPicked(option);
     onChange(option);
   };
-  // the side rail shut: only the value you're on, worn quietly (the rail opens to change it: SideRail)
-  if (placement === 'rail-mini') {
-    return (
-      <span aria-hidden="true" title={KEYS_HINT} className={cn('grid h-11 w-[72px] place-items-center rounded-[14px] border border-fg/[0.07] bg-(--fm-well) font-black uppercase leading-none tracking-[0.04em] text-fg tabular-nums shadow-(--fm-well-shade)', label(shown).length > 6 ? 'text-[11px]' : 'text-[13px]')}>
-        {label(shown)}
-      </span>
-    );
-  }
-  // the open rail: a track its width
+  /* the side rail: the phone's chips (sideRail.css). Shut, the value alone on the ink capsule in the column; open, the
+     others spread out beside it and the capsule glides to its own place among them, its word riding with it (inside
+     it the words again in the page's colour, held still while it glides) */
   if (placement === 'rail') {
     return (
       <div
-        className="relative grid h-11 w-full shrink-0 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade)"
-        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+        className={cn('fm-rail-chips', options.some((option) => label(option).length > 6) && 'is-small')}
+        style={{ '--i': Math.max(0, index), '--n': options.length } as CSSProperties}
         role="group"
         aria-label={name ?? 'Time range'}
         aria-keyshortcuts="ArrowLeft ArrowRight"
         title={KEYS_HINT}
       >
         {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => pick(option)}
-            aria-busy={pending}
-            aria-pressed={shown === option}
-            className={cn('relative rounded-[10px] text-fg/60 transition-colors hover:text-fg', TRACK_LABEL)}
-          >
+          <button key={option} type="button" onClick={() => pick(option)} aria-busy={pending} aria-pressed={shown === option} className="fm-rail-chip">
             {label(option)}
           </button>
         ))}
-        {index >= 0 ? <TimeframePill index={index} count={options.length}>{options.map((option) => <span key={option} className={TRACK_LABEL}>{label(option)}</span>)}</TimeframePill> : null}
+        <span aria-hidden="true" className="fm-rail-capsule">
+          <span className="fm-rail-capsule-words">
+            {options.map((option) => <span key={option}>{label(option)}</span>)}
+          </span>
+        </span>
       </div>
     );
   }
