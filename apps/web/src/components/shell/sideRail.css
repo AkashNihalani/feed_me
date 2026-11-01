@@ -1,0 +1,188 @@
+/* ─────────────────────────────────────────────────────────────
+   SIDE RAIL (components/shell/SideRail) — the rail floats: there
+   is no panel. Shut, its icons and circles stand on the page by
+   themselves (nothing sits under the shut column, so there is
+   nothing for glass to frost); open (data-open on the rail), the
+   page beside them frosts over the way the phone's dock frosts it,
+   and every name rides in beside its circle, over the frost.
+
+   The frost is the one blurred layer. It slides out from the
+   window's edge and is gone entirely while the rail is shut; its
+   blur never animates. Everything else moves on transform and
+   opacity alone.
+   ───────────────────────────────────────────────────────────── */
+
+.fm-rail {
+  --fm-rail-open: calc(380ms * var(--fm-tempo, 1));
+  --fm-rail-shut: calc(260ms * var(--fm-tempo, 1));
+  --fm-rail-ease: cubic-bezier(0.3, 0.3, 0.2, 1);
+  /* words over the frost: the dock's soft halo of the page's colour, so they read over any picture behind it */
+  --fm-rail-halo: 0 0 10px color-mix(in srgb, var(--fm-page) 90%, transparent), 0 0 2px color-mix(in srgb, var(--fm-page) 70%, transparent);
+}
+
+/* the frost: the page beside the open rail blurred and washed toward the page's own colour, strongest at the window's
+   edge and clear by the middle of the second post, with no edge of its own. It reaches the window's edges as an
+   absolute child of the fixed rail: Safari on an iPad takes a fixed box at the window's edge for a bar of the page's
+   and tints its own bars from it, and leaves an absolute child of a fixed box alone */
+.fm-rail-frost {
+  position: absolute;
+  z-index: -1;
+  top: calc(-12px - var(--pwa-top-fix, 0px));
+  bottom: -12px;
+  left: -12px;
+  width: 600px;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  backdrop-filter: blur(12px) saturate(130%);
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--fm-page) 86%, transparent),
+    color-mix(in srgb, var(--fm-page) 74%, transparent) 34%,
+    color-mix(in srgb, var(--fm-page) 36%, transparent) 62%,
+    transparent 92%
+  );
+  -webkit-mask-image: linear-gradient(to right, #000 46%, transparent 96%);
+  mask-image: linear-gradient(to right, #000 46%, transparent 96%);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-220px);
+  transition: opacity 260ms ease, transform var(--fm-rail-shut) var(--fm-rail-ease), visibility 0s linear var(--fm-rail-shut);
+}
+
+.fm-rail[data-open] .fm-rail-frost {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 300ms ease, transform var(--fm-rail-open) var(--fm-rail-ease), visibility 0s;
+}
+
+/* a name: out of sight while the rail is shut, riding in beside its circle as it opens, and the first thing gone as it
+   shuts */
+.fm-rail-name {
+  opacity: 0;
+  translate: -14px 0;
+  text-shadow: var(--fm-rail-halo);
+  transition: opacity 140ms ease, translate var(--fm-rail-shut) var(--fm-rail-ease);
+}
+
+.fm-rail[data-open] .fm-rail-name {
+  opacity: 1;
+  translate: 0 0;
+  transition: opacity 320ms ease 60ms, translate var(--fm-rail-open) var(--fm-rail-ease) 20ms;
+}
+
+/* the list fades out where there is more of it to scroll to: there is no box to cut it against (SideRail marks it) */
+.fm-rail-list[data-cut] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fm-rail-fade-top, 0px), #000 calc(100% - var(--fm-rail-fade-foot, 0px)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fm-rail-fade-top, 0px), #000 calc(100% - var(--fm-rail-fade-foot, 0px)), transparent 100%);
+}
+
+/* the tab's setting at the foot, the phone's chips (TabHeader's TimeframeControl, placed 'rail'): shut, the value alone
+   on its ink capsule in the column; open, the others spread out beside it and the capsule glides to its own place in
+   the row, its word riding with it */
+.fm-rail-chips {
+  /* (as many as fit the rail's 272px: Lead's four ranges come a little narrower) */
+  --fm-rail-chip: min(72px, calc(272px / var(--n, 3)));
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 44px;
+}
+
+.fm-rail-chip {
+  flex: none;
+  width: var(--fm-rail-chip);
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--fm-rail-halo);
+  cursor: pointer;
+  outline: none;
+  opacity: 0;
+  translate: -10px 0;
+  transition: opacity 140ms ease, translate var(--fm-rail-shut) var(--fm-rail-ease), color 200ms ease;
+}
+
+.fm-rail-chip:hover {
+  color: var(--foreground);
+}
+
+.fm-rail-chip:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--fm-accent-bright);
+}
+
+.fm-rail[data-open] .fm-rail-chip {
+  opacity: 1;
+  translate: 0 0;
+  transition: opacity 300ms ease 90ms, translate var(--fm-rail-open) var(--fm-rail-ease) 30ms, color 200ms ease;
+}
+
+/* (it takes the pointer even shut: the first chip, unseen, is under it) */
+.fm-rail-capsule {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: var(--fm-rail-chip);
+  height: 36px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--foreground);
+  box-shadow: 0 10px 22px -12px rgb(var(--fm-shadow-rgb) / 0.6);
+  transform: translateX(0);
+  transition: transform calc(400ms * var(--fm-tempo, 1)) var(--fm-rail-ease);
+}
+
+.fm-rail[data-open] .fm-rail-capsule {
+  transform: translateX(calc(var(--i, 0) * var(--fm-rail-chip)));
+}
+
+.fm-rail-capsule-words {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  height: 100%;
+  transform: translateX(calc(var(--i, 0) * var(--fm-rail-chip) * -1));
+  transition: transform calc(400ms * var(--fm-tempo, 1)) var(--fm-rail-ease);
+}
+
+.fm-rail-capsule-words > span {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--fm-rail-chip);
+  height: 100%;
+  color: var(--fm-page);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* (a longer word, Read's STRATEGY, sets the row a size down: every chip the same) */
+.fm-rail-chips.is-small .fm-rail-chip,
+.fm-rail-chips.is-small .fm-rail-capsule-words > span {
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-rail-frost,
+  .fm-rail-name,
+  .fm-rail-chip,
+  .fm-rail-capsule,
+  .fm-rail-capsule-words {
+    transition-duration: 1ms;
+    transition-delay: 0ms;
+  }
+}
