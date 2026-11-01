@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react';
 
 /* ─────────────────────────────────────────────────────────────
    PRESS — a thumbnail's give under the finger. CSS :active can't
@@ -66,3 +66,39 @@ export function notePageScroll() {
 export function pageGliding(): boolean {
   return performance.now() - scrolledAt < GLIDE_GAP_MS;
 }
+
+/* The same for the header, which stays put over a page that scrolls under it (any tab's: the window scrolls): a touch
+   that begins while the page glides and lifts where it landed is a tap on the button under it, so the header's circles,
+   its control and who you're on never want a second tap after a scroll. Spread `glideTaps` on the bar */
+const TAP_SLOP_PX = 10;
+const TAP_MAX_MS = 500;
+let watching = false;
+let glideTouch: { x: number; y: number; t: number } | null = null;
+
+export function watchPageGlide() {
+  if (watching || typeof window === 'undefined') return;
+  watching = true;
+  window.addEventListener('scroll', notePageScroll, { passive: true });
+}
+
+export const glideTaps = {
+  onTouchStart(event: ReactTouchEvent<HTMLElement>) {
+    const touch = event.touches[0];
+    glideTouch = event.touches.length === 1 && touch && pageGliding() ? { x: touch.clientX, y: touch.clientY, t: performance.now() } : null;
+  },
+  onTouchEnd(event: ReactTouchEvent<HTMLElement>) {
+    const start = glideTouch;
+    glideTouch = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch || event.touches.length) return;
+    if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > TAP_SLOP_PX || performance.now() - start.t > TAP_MAX_MS) return;
+    const control = (event.target as Element).closest('button');
+    if (!control || control.disabled) return;
+    // (no click of the browser's own follows; one from a pointer, not the keys: detail 1)
+    event.preventDefault();
+    control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1, view: window }));
+  },
+  onTouchCancel() {
+    glideTouch = null;
+  },
+};

@@ -35,7 +35,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
-import { press } from '@/components/feed/stream/press';
+import { glideTaps, press, watchPageGlide } from '@/components/feed/stream/press';
 import { FAN_MS, Ledger } from '@/components/motion/Ledger';
 import { CARRY_EASE_CSS, carryCurve } from '@/lib/feedStream/motion';
 import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
@@ -676,6 +676,9 @@ function TabHeader({
   const isMarked = (feederHandle: string) => (marked ? marked(feederHandle) : fresh.has(feederHandle));
   const nameFeeder = (feederHandle: string) => (feederLabel ? feederLabel(feederHandle) : `@${feederHandle}`);
 
+  // a tap on the header just after a scroll is the header's (press: glideTaps)
+  useEffect(watchPageGlide, []);
+
   // every face on the rail is fetched and decoded ahead, so a feeder flying out of its badge never waits on (or
   // decodes mid-flight) its picture
   useEffect(() => {
@@ -753,7 +756,8 @@ function TabHeader({
   );
 
   return (
-    <header className={cn('h-full px-3 py-2 sm:px-4', className)} aria-label={titleCase(title)}>
+    // (a touch that lands while the page still glides is spent by iOS on stopping it: the header takes it as its tap)
+    <header className={cn('h-full px-3 py-2 sm:px-4', className)} aria-label={titleCase(title)} {...glideTaps}>
         {/* the title row over the story rail, which folds away under it */}
         <div className="relative z-10 flex h-full flex-col gap-1.5 pt-1">
           {/* the title row. A tab that writes into it from outside React (Read toggles a class on it) gets a class
@@ -1106,15 +1110,9 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
     };
   }, [open, box]);
 
-  const toggle = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    if (box) {
-      setOpen(false);
-      return;
-    }
+  const openBox = (keys: boolean) => {
     const rect = slotRef.current?.getBoundingClientRect();
     if (!rect || !rect.width) return;
-    // a click with no pointer behind it (Enter, Space) came from the keys: focus goes into the menu and back
-    const keys = event.detail === 0;
     refocusRef.current = keys;
     setBox({
       top: rect.top,
@@ -1127,6 +1125,22 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
     });
     setOpen(true);
   };
+  /* Open, a tap closes it. Still closing (the box going back into the button, over it), a tap opens it again from where
+     it is: the box used to take that tap and do nothing, so the switch wanted a second tap for half a second after
+     every pick */
+  const toggle = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    // a click with no pointer behind it (Enter, Space) came from the keys: focus goes into the menu and back
+    openBox(event.detail === 0);
+  };
+  // (the face of a box still closing keeps the props it was last drawn with: it asks for this render's toggle)
+  const toggleRef = useRef(toggle);
+  useIsomorphicLayoutEffect(() => {
+    toggleRef.current = toggle;
+  });
 
   const pick = (option: T) => {
     if (option === shown) {
@@ -1224,7 +1238,7 @@ function TimeframePicker<T extends string | number>({ value, options, pending, l
             type="button"
             tabIndex={-1}
             aria-label="Close"
-            onClick={() => setOpen(false)}
+            onClick={(event) => toggleRef.current(event)}
             className={cn('absolute right-0 top-0 z-[2] flex touch-manipulation items-center justify-center gap-1 font-black uppercase text-fg outline-none', slot > 68 ? 'text-[13px] tracking-[0.02em]' : 'text-[16px] tracking-[-0.02em]')}
             style={{ width: box.width, height: box.height }}
           >
