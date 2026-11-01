@@ -215,8 +215,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <div className="relative h-full overflow-hidden">
                 {/* the tabs that share one header (Lead, Read): drawn once here and adapted as you switch */}
                 <TabHeaderHost tab={currentHeaderId} onCompressed={setHeaderCompressed} />
-                {/* the tabs that bring their own (AppHeader portals into this) */}
-                <div ref={setHeaderLayerElement} className="relative h-full overflow-hidden" />
+                {/* the tabs that bring their own (AppHeader portals into this; what it brings takes taps itself). Empty,
+                    it lies over the shared header and must never take a tap meant for it: while that header comes in
+                    (fading and rising) it stacks under this, and every tap on it landed here */}
+                <div ref={setHeaderLayerElement} className="pointer-events-none relative h-full overflow-hidden" />
               </div>
             </div>
           </div>

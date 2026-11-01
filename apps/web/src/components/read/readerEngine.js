@@ -2497,6 +2497,9 @@ function lnmOpen(tr, keys) {
   tr.style.visibility = 'hidden'; tr.setAttribute('aria-expanded', 'true');
   listen(m, 'click', (e) => {
     e.stopPropagation();
+    // still closing back into the button (over it, wearing its face), a tap on the face opens it again: the box used to
+    // take that tap and do nothing, so the switch wanted a second tap for a moment after every pick
+    if (LNM.el !== m) { if (e.target.closest('.lnm-face')) lnmOpen(tr, e.detail === 0); return; }
     const o = e.target.closest('[data-lnm]'); if (o) { lnmPick(o.dataset.lnm); return; }
     if (e.target.closest('[data-lnm-x]')) lnmClose();
   });
@@ -2519,7 +2522,8 @@ function lnmOpen(tr, keys) {
 function lnmClose(to) {
   const m = LNM.el, tr = LNM.tr; if (!m) return;
   LNM.el = null; tr.setAttribute('aria-expanded', 'false');
-  const done = () => { m.remove(); tr.style.visibility = ''; };
+  // (opened again before this one has gone, the button stays under the new box)
+  const done = () => { m.remove(); if (!(LNM.el && LNM.tr === tr)) tr.style.visibility = ''; };
   if (RM) { done(); return; }
   const face = m.querySelector('.lnm-face'), chev = face && face.querySelector('svg');
   if (to) {
