@@ -1,13 +1,14 @@
 /* ─────────────────────────────────────────────────────────────
    TAB SWITCH — how the page changes when you pick another tab.
 
-   A phone settles the tab in as it always has (AppTabHost: one
-   transform on the tab, Lead's pieces arriving, Read's own
-   arrival). From a laptop up (the side rail) the tab you pick is
-   there at once, as you left it, and its page comes in as its own
-   pieces rising into place: every block on screen (a card, a
-   section, a row) a touch from below, a row at a time from the
-   top, on one even beat, every time, cached or not (riseIn).
+   A phone's dock pushes the next tab in over this one from the
+   side (lib/tabPush), its pieces a beat behind it from that side
+   (riseIn with `from`). From a laptop up (the side rail) the tab
+   you pick is there at once, as you left it, and its page comes
+   in as its own pieces rising into place: every block on screen
+   (a card, a section, a row) a touch from below, a row at a time
+   from the top, on one even beat, every time, cached or not
+   (riseIn).
    Transform alone (no fade: iOS and WebKit draw a fading subtree
    with its shadows afresh every frame), set off only once the
    frame that shows the tab is on screen, and a finger or a wheel
@@ -21,6 +22,8 @@ import { ms } from '@/lib/tempo';
 const RISE_PX = 16;
 const RISE_MS = ms(520);
 const RISE_EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
+// ...and from the side (a push's): setting off as gently as the page around them (lib/tabPush)
+const SIDE_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
 const ROW_STEP_MS = ms(42);
 const ROW_MAX = 5;
 // pieces whose tops are this close share a row (a beat)
@@ -34,7 +37,7 @@ const STATUS_CLEAR_PX = 64;
 
 const reduced = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// a laptop up (the side rail): a switch rises (riseIn); a phone settles the tab as it always has (AppTabHost)
+// a laptop up (the side rail): a switch rises (riseIn); a phone's is a push from the dock, or settles in (AppTabHost)
 export function wideTabMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
 }
@@ -89,9 +92,10 @@ function blocksOf(root: HTMLElement, screen: number): HTMLElement[] {
   return found;
 }
 
-/* The tab host revealing `page` (laid out, scrolled to its place, its CSS entrances settled): its blocks rise into place.
-   Returns how to land it at once, or null when there is nothing on screen to move */
-export function riseIn(page: HTMLElement): (() => void) | null {
+/* The tab host revealing `page` (laid out, scrolled to its place, its CSS entrances settled): its blocks rise into place,
+   or with `from` (a push's side) come in from it. Returns how to land it at once, or null when there is nothing on
+   screen to move */
+export function riseIn(page: HTMLElement, from?: { x: number }): (() => void) | null {
   if (reduced()) return null;
   const screen = window.innerHeight;
   // every read first, then every write
@@ -110,7 +114,7 @@ export function riseIn(page: HTMLElement): (() => void) | null {
     }
     const delay = Math.min(row, ROW_MAX) * ROW_STEP_MS;
     // (added to whatever the piece already wears, so nothing it is placed by is lost)
-    run(flight, el, [{ transform: `translate3d(0px, ${RISE_PX}px, 0px)` }, { transform: 'translate3d(0px, 0px, 0px)' }], { duration: RISE_MS, delay, easing: RISE_EASE, fill: 'backwards', composite: 'add' });
+    run(flight, el, [{ transform: from ? `translate3d(${from.x}px, 0px, 0px)` : `translate3d(0px, ${RISE_PX}px, 0px)` }, { transform: 'translate3d(0px, 0px, 0px)' }], { duration: RISE_MS, delay, easing: from ? SIDE_EASE : RISE_EASE, fill: 'backwards', composite: 'add' });
   });
   let frameId = 0;
   const land = () => {

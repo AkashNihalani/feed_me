@@ -95,6 +95,8 @@ function bezier(x1: number, y1: number, x2: number, y2: number): (x: number) => 
 }
 
 export const carryCurve = bezier(0.3, 0.3, 0.2, 1);
+// a glide at one pace both ways: its second half the mirror of its first, so going and coming back look alike
+export const evenCurve = bezier(0.42, 0, 0.58, 1);
 export const CARRY_EASE_CSS = 'cubic-bezier(0.3, 0.3, 0.2, 1)';
 
 export function reducedMotion(): boolean {

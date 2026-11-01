@@ -1,0 +1,683 @@
+/* ─────────────────────────────────────────────────────────────
+   DOCK (components/shell/Dock) — the phone's one piece of chrome
+   for Feed, Lead and Read: its hero (the rail's circle for who
+   you're on) and the ring a swipe draws round it, the tabs that
+   show over it while a swipe is under way, and the layers it
+   opens into.
+
+   Nothing fixed here touches the screen's edges, and the frost
+   lies in the page: iOS Safari tints its status bar and toolbar
+   from fixed boxes at the edges and would paint them solid,
+   taking back the page's full height. Everything moves on
+   transform and opacity alone, and what moves every frame is a
+   layer of its own; a shadow never sits on live glass (WebKit
+   draws it again every frame the page moves under it): it is a
+   still plate behind.
+   ───────────────────────────────────────────────────────────── */
+
+.fm-dock {
+  --p: 0;
+  --fm-dock-ease: cubic-bezier(0.3, 0.3, 0.2, 1);
+  /* words over the frost: a soft halo of the page's colour, so they read over any picture behind it */
+  --fm-dock-halo: 0 0 10px color-mix(in srgb, var(--fm-page) 90%, transparent), 0 0 2px color-mix(in srgb, var(--fm-page) 70%, transparent);
+  --fm-dock-ink-2: color-mix(in srgb, var(--foreground) 62%, transparent);
+  --fm-dock-ink-3: color-mix(in srgb, var(--foreground) 34%, transparent);
+  /* a tab's name you're not on: plainly readable over the frost or the pill, a clear step under the one you're on */
+  --fm-dock-ink-tab: color-mix(in srgb, var(--foreground) 66%, transparent);
+  /* its glass: denser and whiter than the header's (dark: a step up out of the page), a hairline holding its edge on a
+     pale page, its shadow, and round it a glow of the page's own colour that clears the page's words off its edge, so
+     it reads over text as well as over a picture */
+  --fm-dock-tint: rgb(255 255 255 / 0.74);
+  --fm-dock-blur: 16px;
+  --fm-dock-rim: rgb(var(--fm-shadow-rgb) / 0.1);
+  --fm-dock-rim-top: rgb(255 255 255 / 0.9);
+  --fm-dock-drop: rgb(var(--fm-shadow-rgb) / 0.2);
+  --fm-dock-glow: color-mix(in srgb, var(--fm-page) 58%, transparent);
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 180;
+  height: 0;
+  pointer-events: none;
+}
+
+html.dark .fm-dock {
+  --fm-dock-tint: rgb(28 28 32 / 0.74);
+  --fm-dock-rim: rgb(255 255 255 / 0.1);
+  --fm-dock-rim-top: rgb(255 255 255 / 0.14);
+  --fm-dock-drop: rgb(0 0 0 / 0.55);
+}
+
+@media (min-width: 1024px) {
+  .fm-dock {
+    display: none;
+  }
+}
+
+/* the frost: a veil over the page under the layers, blurred and washed toward the page's colour, strongest at the foot
+   and clear by the top: the page still there to see through it, the layers' words always clear over it. It lies in the page, not over
+   the screen (a fixed box at the screen's foot is taken by iOS Safari for a bar, and its toolbar filled solid with the
+   box's colour): laid where the screen is as the layers rise (Dock), and on past the screen's foot, under the toolbar
+   (iOS 26's large viewport stops at the toolbar's top). Drawn only while they are up (data-live), so it costs nothing
+   while the page scrolls */
+.fm-dock-frost {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 170;
+  display: none;
+  height: calc(100lvh + 96px);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+  backdrop-filter: blur(10px) saturate(125%);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--fm-page) 74%, transparent),
+    color-mix(in srgb, var(--fm-page) 48%, transparent) 36%,
+    color-mix(in srgb, var(--fm-page) 14%, transparent) 68%,
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(to top, #000 44%, transparent 86%);
+  mask-image: linear-gradient(to top, #000 44%, transparent 86%);
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+}
+
+.fm-dock-frost[data-live] {
+  display: block;
+}
+
+.fm-dock-frost[data-open] {
+  pointer-events: auto;
+  /* (iOS Safari sends a tap's click only to what it takes for clickable) */
+  cursor: pointer;
+}
+
+/* ── the dock ── */
+
+.fm-dock-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 2;
+  width: min(312px, calc(100vw - 48px));
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 13px 0 4px;
+  border: 0;
+  border-radius: 32px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  isolation: isolate;
+  pointer-events: auto;
+  touch-action: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  translate: -50% 0;
+  transition: scale 240ms var(--fm-dock-ease);
+}
+
+.fm-dock-bar:active {
+  scale: 0.98;
+}
+
+.fm-dock-bar.is-dragging {
+  scale: 1;
+}
+
+.fm-dock-bar:focus-visible {
+  box-shadow: 0 0 0 2px var(--fm-accent-bright);
+}
+
+/* its glass, and the still plate of its shadow behind, a layer of their own (folded, it draws in behind the handle);
+   both give way to the frost as the layers rise */
+.fm-dock-glass {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.fm-dock-glass::before,
+.fm-dock-glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: calc(1 - clamp(0, calc(var(--p) * 2.5), 1));
+}
+
+.fm-dock-glass::before {
+  background: var(--fm-dock-tint);
+  box-shadow: inset 0 1px 0 var(--fm-dock-rim-top);
+  -webkit-backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
+  backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
+}
+
+/* (the plate: its hairline, its shadow, and the glow round it, on top of one another in that order) */
+.fm-dock-glass::after {
+  z-index: -1;
+  box-shadow:
+    0 0 0 0.5px var(--fm-dock-rim),
+    0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08),
+    0 12px 28px -10px var(--fm-dock-drop),
+    0 -2px 22px 6px var(--fm-dock-glow);
+}
+
+/* the handle's own glass (folded): the bar's glass and plate, round, a little wider than the hero */
+.fm-dock-pad {
+  position: absolute;
+  inset: -6px;
+  z-index: -1;
+  border-radius: 50%;
+  background: var(--fm-dock-tint);
+  box-shadow: inset 0 1px 0 var(--fm-dock-rim-top);
+  -webkit-backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
+  backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fm-dock-pad::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 0.5px var(--fm-dock-rim),
+    0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08),
+    0 12px 28px -10px var(--fm-dock-drop),
+    0 -2px 22px 6px var(--fm-dock-glow);
+}
+
+/* what the bar carries beside the handle: the line and the tab's disc. Folded, it draws in to the bar's middle with the
+   glass (the bar's middle, from this piece's left: past the handle, 4 + 56 + 12) */
+.fm-dock-rest {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 100%;
+  transform-origin: calc(min(312px, 100vw - 48px) / 2 - 72px) 50%;
+}
+
+/* the hero: who you're on, the rail's own circle (its 64pt plate drawn at 56). It leaves for the row the moment the
+   layers start (the same circle flies up there), and a new pick comes in in its place */
+.fm-dock-face {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  opacity: clamp(0, calc(1 - var(--p) * 1000), 1);
+}
+
+.fm-dock-hero {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  transform: scale(0.875);
+  animation: fm-dock-hero-in calc(440ms * var(--fm-tempo, 1)) var(--fm-dock-ease) backwards;
+}
+
+@keyframes fm-dock-hero-in {
+  from {
+    opacity: 0;
+    scale: 0.84;
+  }
+}
+
+/* its ring at rest (the rail's, drawn whole), dimmed to a track while a swipe draws one round over it */
+.fm-dock-story {
+  position: absolute;
+  inset: 0;
+  transition: opacity 240ms ease;
+}
+
+.fm-dock-bar[data-swiping] .fm-dock-story {
+  opacity: 0.22;
+}
+
+/* the ring a swipe draws round: the rail's ring (45 of 100, 7.5 wide, round caps), its two halves each turning into
+   view behind a window that shows only its half, so drawing it is rotations alone (Dock writes them as the thumb
+   goes). Clockwise to the next tab, the other way back */
+.fm-dock-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.fm-dock-bar[data-ring-dir='back'] .fm-dock-ring {
+  transform: scaleX(-1);
+}
+
+.fm-dock-ring-half {
+  position: absolute;
+  inset: 0 0 0 50%;
+  overflow: hidden;
+}
+
+.fm-dock-ring-half.is-left {
+  inset: 0 50% 0 0;
+}
+
+.fm-dock-ring-arc {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 200%;
+  opacity: 0;
+  transform: rotate(-180deg);
+  will-change: transform, opacity;
+}
+
+.fm-dock-ring-half.is-left .fm-dock-ring-arc {
+  right: auto;
+  left: 0;
+}
+
+.fm-dock-ring-arc svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.fm-dock-ring-arc path {
+  fill: none;
+  stroke: var(--fm-fg);
+  stroke-width: 7.5;
+}
+
+.fm-dock-ring-cap {
+  position: absolute;
+  left: 50%;
+  top: 1.25%;
+  width: 7.5%;
+  height: 7.5%;
+  border-radius: 50%;
+  background: var(--fm-fg);
+  opacity: 0;
+  translate: -50% 0;
+}
+
+.fm-dock-ring-lead {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.fm-dock-text,
+.fm-dock-tab {
+  opacity: clamp(0, calc(1 - var(--p) * 4), 1);
+}
+
+/* the line: who you're on, and where; each rolls in afresh as it changes */
+.fm-dock-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.fm-dock-text > * {
+  overflow: hidden;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: fm-dock-line-in calc(440ms * var(--fm-tempo, 1)) var(--fm-dock-ease) backwards;
+}
+
+.fm-dock-text b {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.fm-dock-text span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fm-dock-ink-2);
+  font-variant-numeric: tabular-nums;
+  animation-delay: calc(50ms * var(--fm-tempo, 1));
+}
+
+@keyframes fm-dock-line-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* the tab you're on, its icon in a small ink disc: the ring closing turns it into the next tab's */
+.fm-dock-tab {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--foreground);
+  color: var(--fm-page);
+}
+
+.fm-dock-tab > [data-icon] {
+  grid-area: 1 / 1;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  scale: 0.7;
+  transition: opacity calc(260ms * var(--fm-tempo, 1)) ease, scale calc(460ms * var(--fm-tempo, 1)) var(--fm-dock-ease);
+}
+
+.fm-dock-bar:not([data-ring-shut]) .fm-dock-tab > .is-on,
+.fm-dock-bar[data-ring-shut][data-ring-to='lead'] [data-icon='lead'],
+.fm-dock-bar[data-ring-shut][data-ring-to='feed'] [data-icon='feed'],
+.fm-dock-bar[data-ring-shut][data-ring-to='read'] [data-icon='read'] {
+  opacity: 1;
+  scale: 1;
+}
+
+/* ── the tabs over the dock, while a swipe is under way: clear of the thumb (the dock is under it), the one you're on
+   lit, and a mark sliding toward the one the thumb heads for. All of it on the ring's progress, written by Dock: it
+   comes up with the thumb's first move and goes as the ring unwinds, or with the old page once the switch is made ── */
+
+.fm-dock-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 32px;
+  padding: 0 15px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--fm-page) 92%, transparent);
+  box-shadow: 0 0 0 0.5px var(--fm-dock-rim), 0 10px 24px -12px var(--fm-dock-drop), 0 -2px 20px 6px var(--fm-dock-glow);
+  opacity: 0;
+  translate: -50% 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.fm-dock-hud span {
+  position: relative;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--fm-dock-ink-tab);
+}
+
+.fm-dock-hud b {
+  position: absolute;
+  inset: 0;
+  font-weight: 700;
+  color: var(--foreground);
+  will-change: opacity;
+}
+
+.fm-dock-hud i {
+  position: absolute;
+  left: 0;
+  bottom: 4px;
+  width: 14px;
+  height: 2.5px;
+  margin-left: -7px;
+  border-radius: 2px;
+  background: var(--foreground);
+  will-change: transform;
+}
+
+/* ── folded (the page scrolled down): the bar's glass and what it carries draw in to its middle, behind the handle,
+   which glides there a size up, on its own glass, and takes the dock's swipes, pulls and taps. Nothing of it goes below
+   where the dock rests: crossing the foot of the page's view, it would cost Safari's clear toolbar (it rises a touch) ── */
+
+.fm-dock[data-folded] .fm-dock-bar {
+  pointer-events: none;
+}
+
+.fm-dock[data-folded] .fm-dock-glass,
+.fm-dock[data-folded] .fm-dock-rest {
+  transform: scale(0.2);
+}
+
+.fm-dock[data-folded] .fm-dock-rest {
+  opacity: 0;
+}
+
+/* (the handle's middle, 4 + 28 in from the bar's left, to the bar's) */
+.fm-dock[data-folded] .fm-dock-face {
+  translate: calc(min(312px, 100vw - 48px) / 2 - 32px) -4px;
+  scale: 1.1;
+  pointer-events: auto;
+}
+
+.fm-dock[data-folded] .fm-dock-pad {
+  opacity: 1;
+}
+
+/* (the tabs a swipe brings up stand clear of the handle) */
+.fm-dock[data-folded] .fm-dock-hud {
+  bottom: 86px;
+}
+
+/* ── the layers: over the dock, so the circle flying home lands on its glass, never under it ── */
+
+.fm-dock-layers {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 3;
+  height: 0;
+}
+
+.fm-dock-layers > * {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+.fm-dock[data-open] .fm-dock-layers > * {
+  pointer-events: auto;
+}
+
+/* the rail's circles, nearly edge to edge: each fades out where the row runs on (Dock), never cut by a mask, which
+   would cut off the one flying down to the dock too */
+.fm-dock-faces {
+  bottom: 76px;
+  width: min(calc(100vw - 8px), 440px);
+  height: 100px;
+  touch-action: none;
+}
+
+.fm-dock-track {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+
+/* a circle: placed by Dock every frame, about its plate's middle; dealt out (WAAPI) on its inner layer */
+.fm-dock-item {
+  position: absolute;
+  top: -32px;
+  left: -35px;
+  width: 70px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0;
+  transform-origin: 35px 32px;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform, opacity;
+}
+
+.fm-dock-deal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: scale 200ms var(--fm-dock-ease);
+}
+
+.fm-dock-item[data-hot] .fm-dock-deal {
+  scale: 1.08;
+}
+
+/* (the one flying home lets its name go first) */
+.fm-dock-item [data-ledger-label] {
+  opacity: var(--name, 1);
+  text-shadow: var(--fm-dock-halo);
+}
+
+/* the tab words rise over the row: the one you're on first, the others a beat behind; the finger's takes the mark */
+.fm-dock-words {
+  bottom: 190px;
+  display: grid;
+  grid-template-columns: repeat(3, var(--fm-dock-step, 76px));
+  justify-items: center;
+  align-items: center;
+  height: 36px;
+}
+
+.fm-dock-words button {
+  --q: clamp(0, calc((var(--p) - var(--st, 0.35)) / 0.42), 1.08);
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--fm-dock-ink-tab);
+  text-shadow: var(--fm-dock-halo);
+  opacity: clamp(0, var(--q), 1);
+  transform: translateY(calc((1 - var(--q)) * 26px)) scale(calc(0.88 + 0.12 * min(var(--q), 1)));
+  transition: color 260ms ease, scale 220ms var(--fm-dock-ease);
+  will-change: transform, opacity;
+}
+
+.fm-dock-words button::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: 18px;
+  height: 3px;
+  margin-left: -9px;
+  border-radius: 2px;
+  background: var(--foreground);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.fm-dock-words .is-on,
+.fm-dock-words [data-hot] {
+  color: var(--foreground);
+}
+
+.fm-dock-words .is-on::after,
+.fm-dock-words [data-hot]::after {
+  opacity: 1;
+}
+
+.fm-dock-words:has([data-hot]) .is-on:not([data-hot]) {
+  color: var(--fm-dock-ink-tab);
+}
+
+.fm-dock-words:has([data-hot]) .is-on:not([data-hot])::after {
+  opacity: 0;
+}
+
+.fm-dock-words [data-hot] {
+  scale: 1.08;
+}
+
+/* the choice: the dock's second line spread out in its place, a chip each, out from the middle */
+.fm-dock-chips {
+  --w: min(calc(100vw - 48px), calc(40px + var(--n, 4) * 70px));
+  --cw: calc(var(--w) / var(--n, 4));
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr));
+  width: var(--w);
+  height: 40px;
+}
+
+.fm-dock-chips button {
+  --e: clamp(0, calc((var(--p) - 0.06) / 0.42), 1);
+  --cx: calc((var(--i, 0) + 0.5 - var(--n, 4) / 2) * var(--cw));
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 20px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fm-dock-ink-2);
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--fm-dock-halo);
+  opacity: var(--e);
+  transform: translateX(calc(var(--cx) * (var(--e) - 1))) scale(calc(0.82 + 0.18 * var(--e)));
+  transition: background-color 240ms ease, color 240ms ease, box-shadow 240ms ease, scale 220ms var(--fm-dock-ease);
+  will-change: transform, opacity;
+}
+
+.fm-dock-chips .is-on,
+.fm-dock-chips [data-hot] {
+  background: var(--foreground);
+  color: var(--fm-page);
+  text-shadow: none;
+  box-shadow: 0 10px 22px -12px rgb(var(--fm-shadow-rgb) / 0.5);
+}
+
+.fm-dock-chips:has([data-hot]) .is-on:not([data-hot]) {
+  background: transparent;
+  color: var(--fm-dock-ink-2);
+  box-shadow: none;
+}
+
+.fm-dock-chips [data-hot] {
+  scale: 1.06;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-dock-bar,
+  .fm-dock-story,
+  .fm-dock-deal,
+  .fm-dock-words button,
+  .fm-dock-chips button,
+  .fm-dock-tab > [data-icon] {
+    transition-duration: 1ms;
+  }
+
+  .fm-dock-hero,
+  .fm-dock-text > * {
+    animation: none;
+  }
+}

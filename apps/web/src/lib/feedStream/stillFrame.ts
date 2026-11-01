@@ -118,10 +118,12 @@ function pictureCanvas(original: HTMLImageElement, copied: HTMLImageElement): HT
   return canvas;
 }
 
-/* `edge`: the strip at the screen's top it leaves alone (Safari's status bar: none from a laptop up); `into`: where the
-   layer goes (the body, or a page's own surface, to lie under the page); `held`: drawn but not shown until show();
-   `freeze`: pieces mid-animation copied where they stand (below) */
-export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, into, held = false, freeze = false }: { zIndex: number; edge?: number; into?: HTMLElement; held?: boolean; freeze?: boolean }): StillFrame {
+/* `edge`: the strip at the screen's top it leaves alone (Safari's status bar: none from a laptop up); `foot`: the same
+   at the screen's foot (Safari 26 takes a fixed layer at its toolbar's edge for a bar of the page's and paints the
+   toolbar solid in its colour, until the page next scrolls): given, the copy stops that far short of the foot instead
+   of running on past it; `into`: where the layer goes (the body, or a page's own surface, to lie under the page);
+   `held`: drawn but not shown until show(); `freeze`: pieces mid-animation copied where they stand (below) */
+export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, foot, into, held = false, freeze = false }: { zIndex: number; edge?: number; foot?: number; into?: HTMLElement; held?: boolean; freeze?: boolean }): StillFrame {
   const height = window.innerHeight;
   const rect = source.getBoundingClientRect();
   const copy = source.cloneNode(true) as HTMLElement;
@@ -229,10 +231,10 @@ export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, int
   Object.assign(cover.style, {
     position: 'fixed',
     left: '0px',
-    // below the strip Safari colours the status bar from, and taller than the screen (above)
+    // below the strip Safari colours the status bar from, and taller than the screen (above), or short of its foot
     top: `${edge}px`,
     width: '100%',
-    height: `${Math.round(TALLER * 100)}%`,
+    ...(foot == null ? { height: `${Math.round(TALLER * 100)}%` } : { bottom: `${foot}px` }),
     overflow: 'hidden',
     pointerEvents: 'none',
     zIndex: String(zIndex),

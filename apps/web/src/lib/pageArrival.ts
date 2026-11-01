@@ -15,7 +15,9 @@ import { BEAT_ARRIVE_S, BEAT_EASE_CSS, beatDelay } from '@/lib/motion';
 const RISE_PX = 14;
 const ARRIVAL_ID = 'tab-arrival';
 
-export function arrivePieces(root: HTMLElement | null): number {
+/* `from`: a push's side (lib/tabPush): the pieces come in from it, a beat behind the page, so the page lands in
+   layers rather than as one block */
+export function arrivePieces(root: HTMLElement | null, from?: { x: number }): number {
   if (!root || typeof window === 'undefined') return 0;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
   const height = window.innerHeight;
@@ -30,7 +32,7 @@ export function arrivePieces(root: HTMLElement | null): number {
       if (animation.id === ARRIVAL_ID) animation.cancel();
     });
     el.animate(
-      [{ opacity: 0, transform: `translateY(${RISE_PX}px)` }, { opacity: 1, transform: 'none' }],
+      [{ opacity: 0, transform: from ? `translateX(${from.x}px)` : `translateY(${RISE_PX}px)` }, { opacity: 1, transform: 'none' }],
       { id: ARRIVAL_ID, duration: BEAT_ARRIVE_S * 1000, delay: beatDelay(step) * 1000, easing: BEAT_EASE_CSS, fill: 'backwards' },
     );
   });

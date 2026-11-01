@@ -1,57 +1,44 @@
 'use client';
 
 /* ─────────────────────────────────────────────────────────────
-   TAB HEADER — the one top section the tabs share, drawn ONCE in
-   the app's glass capsule (TabHeaderHost, from AppShell) and fed
-   by whichever tab is on screen (useTabHeader). Switching tabs
-   never swaps it out: the same header adapts. Only what differs
-   moves: the tab's name rolls letter by letter (LEAD → READ),
-   the eyebrow rolls, the control on the right crosses over; the
-   rail stays put, because every tab shares the pick (tabScope).
+   TAB HEADER — what the tabs that share their chrome (Feed, Lead,
+   Read) say about themselves, and the pieces that draw it. Every
+   render a tab says its title, where you are, its rail of feeds
+   and feeders and its one short choice (useTabHeader); whatever
+   draws the chrome reads it for the tab on screen
+   (useShownHeader). Every tab shares the pick (tabScope).
 
-   The title row: the tab's name, a hairline, then where you are
-   (an eyebrow on desktop over the scope), and the tab's 44px
-   control. Under it, the story rail: the wedge (all feeds, or
-   back), then your feeds; open one and its badge moves to the
-   front while its feeders fly out of it. The rail folds away as
-   you scroll down and comes back as you scroll up (compressed,
-   from useCompressedOnScroll: 150 / 64 / 30).
+   On a phone there is no top section: the page has the whole
+   screen, and the dock at its foot is all of its chrome (Dock:
+   the rail's circles in its layers, the choice as chips). From a
+   laptop up the tabs and the feeds stand down the left (SideRail)
+   and the page wears a heading of its own that scrolls away with
+   it (DeskHeading).
 
-   Everything moves on the page beat (lib/motion), the same clock
-   as the page's pieces, so a feeder flying out and the row it
-   summons land together. A tab that choreographs its own page
-   change (Read) holds the header in step: while `leaving`, what
-   was tapped arms at once, the ring you were on draws back and
-   the scope lets go of its name; they return with the page.
-
-   From a laptop up there is no bar over the page: the tabs and
-   the feeds stand down the left (SideRail) and the page wears a
-   heading of its own that scrolls away with it (DeskHeading),
-   both fed by the same useTabHeader.
+   The rail's circles are drawn here once for both (Plate,
+   StoryRing, RailFace, RailLabel), on the page beat (lib/motion),
+   and so is the choice's control the side rail docks at its foot
+   (TimeframeControl).
    ───────────────────────────────────────────────────────────── */
 
-import { createContext, memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type SyntheticEvent } from 'react';
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
-import { glideTaps, press, watchPageGlide } from '@/components/feed/stream/press';
-import { FAN_MS, Ledger } from '@/components/motion/Ledger';
+import { FAN_MS } from '@/components/motion/Ledger';
 import { CARRY_EASE_CSS, carryCurve } from '@/lib/feedStream/motion';
 import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
-import SlotText from '@/components/SlotText';
-import { feedInitials, titleCase } from '@/lib/feedLabels';
-import { BEAT_EASE, BEAT_LEAVE_EASE, BEAT_LEAVE_S, HEADER_ROUTE_MORPH, beatArrive, beatLeave } from '@/lib/motion';
+import { feedInitials } from '@/lib/feedLabels';
+import { BEAT_EASE } from '@/lib/motion';
 import { ms, sec, slowSpring } from '@/lib/tempo';
 import { getTabScope, type TabScope } from '@/lib/tabScope';
-import { useFreshHandles } from '@/lib/feedStream/fresh';
 import { useResolvedTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 export const SOFT_EASE = BEAT_EASE;
 export const LEAVE_EASE = [0.4, 0, 1, 1] as const;
 export const SLOT_SPRING = slowSpring({ type: 'spring', stiffness: 540, damping: 42, mass: 0.7 } as const);
-const REDUCED = { duration: 0.14, ease: SOFT_EASE } as const;
 const RING_R = 45;
 // the rail re-dealt (a feed opening or closing) is one glide, the ledger's fan (already at the app's tempo): the wedge
 // turns with it
@@ -97,9 +84,6 @@ const FACE_PRESS = 'transition-transform duration-150 ease-out group-data-[press
 // a circle reached from the keys shows it on its face (inside the circle: the rail's scroll would clip a ring outside it)
 const FACE_FOCUS = 'group-focus-visible:ring-2 group-focus-visible:ring-inset group-focus-visible:ring-[var(--fm-accent-bright)]';
 
-// each circle is a layer of its own (the rail moves them), stacked first over last so a circle coming out of the one
-// before it comes out from behind it
-const ITEM_CLASS = 'group relative flex w-[70px] shrink-0 flex-col items-center gap-1 border-0 bg-transparent p-0 text-inherit outline-none [user-select:none] [will-change:transform] [-webkit-tap-highlight-color:transparent]';
 // 12px: the small type's floor for a name (the header keeps its height: the rail had 5px spare under the names)
 const LABEL_CLASS = 'block w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[12px] leading-none';
 // the one you're on in bold ink; the rest in ink too, lighter (never greyed out: 5:1 on the glass at 60%)
@@ -137,8 +121,8 @@ export function useHeldPick(ref: { current: HTMLElement | null }, key: unknown) 
 }
 
 /* a circle's plate: full size and lit for the one you're on, scaled down for the rest; armed (tapped, waiting for
-   the page) it swells a touch */
-function Plate({ lit, marked, armed, reduce, children }: { lit: boolean; marked: boolean; armed: boolean; reduce: boolean; children: ReactNode }) {
+   the page) it swells a touch. (The phone's dock draws its circles from the same parts: Dock) */
+export function Plate({ lit, marked, armed, reduce, children }: { lit: boolean; marked: boolean; armed: boolean; reduce: boolean; children: ReactNode }) {
   const scale = (lit ? 1 : PLATE_REST_SCALE) * (armed && !reduce ? 1.06 : 1);
   const fade = pickFade(reduce);
   return (
@@ -155,7 +139,7 @@ function Plate({ lit, marked, armed, reduce, children }: { lit: boolean; marked:
 /* a circle's name: ink, and bold ink for the one you're on (a feeder's with its @) — two copies cross-fading (a colour
    or weight change would repaint). When its circle comes or goes in a fan it moves on its own (data-ledger-label):
    carried along, the names piled up over each other in flight */
-function RailLabel({ text, litText = text, lit, reduce, className }: { text: string; litText?: string; lit: boolean; reduce: boolean; className: string }) {
+export function RailLabel({ text, litText = text, lit, reduce, className }: { text: string; litText?: string; lit: boolean; reduce: boolean; className: string }) {
   const fade = pickFade(reduce);
   return (
     <span data-ledger-label="" className="grid w-full">
@@ -347,201 +331,42 @@ function WedgeMark({ active, reduce, stroke }: { active: boolean; reduce: boolea
   );
 }
 
-/* the wedge: "Feeds" while you're looking at all of them, "Back" once you've opened one */
-const WedgeButton = memo(function WedgeButton({ active, current, armed, leaving, reduce, onBack }: { active: boolean; current: boolean; armed: boolean; leaving: boolean; reduce: boolean; onBack: () => void }) {
-  const lit = (current && !leaving) || armed;
-  const ref = useRef<HTMLButtonElement | null>(null);
-  useHeldPick(ref, `${lit}|${active}`);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      // not `disabled`: Back taken from the keys would drop the focus to the page as the button turns off
-      aria-disabled={!active}
-      tabIndex={active ? 0 : -1}
-      data-rail-all={active ? '' : undefined}
-      onClick={() => {
-        if (active) onBack();
-      }}
-      {...(active ? press : {})}
-      className={cn(ITEM_CLASS, 'z-[40] aria-disabled:cursor-default')}
-      aria-label={active ? 'Back to all feeds' : 'All feeds'}
-    >
-      <Plate lit={lit} marked={false} armed={armed} reduce={reduce}>
-        <StoryRing on={current && !leaving} reduce={reduce} glow={false} />
-        {armed ? <ArmTrack reduce={reduce} /> : null}
-        <span className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white dark:border-[var(--fm-ink)]', active && FACE_PRESS, FACE_FOCUS)} style={{ background: 'var(--lead-wedge-surface)' }}>
-          {/* it turns to point back as a feed opens, on the rail's clock */}
-          <WedgeMark active={active} reduce={reduce} stroke="var(--lead-wedge-mark)" />
-        </span>
-      </Plate>
-      <RailLabel text={active ? 'BACK' : 'FEEDS'} lit={lit} reduce={reduce} className="uppercase" />
-    </button>
-  );
-});
+/* a circle's face, inside its plate: All feeds' wedge (turned to point back while a feed is open), a feed's initials,
+   or a feeder's picture. Pressable, it gives under the finger (`press`, on the circle) */
+export type RailFaceOf = { kind: 'all'; back: boolean } | { kind: 'feed'; feed: HeaderFeed } | { kind: 'feeder'; feeder: HeaderFeeder };
 
-/* a feed: its initials in the badge. Opening it, the badge travels to the front while the other feeds fold away, and
-   its feeders fan out from behind it (the rail is a ledger in fan mode: components/motion/Ledger) */
-const FeedBadge = memo(function FeedBadge({ feed, marked, selected, armed, leaving, reduce, ariaLabel, stack, onPick }: { feed: HeaderFeed; marked: boolean; selected: boolean; armed: boolean; leaving: boolean; reduce: boolean; ariaLabel: string; stack: number; onPick: (id: string) => void }) {
-  const lit = (selected && !leaving) || armed;
-  const ref = useRef<HTMLButtonElement | null>(null);
-  useHeldPick(ref, lit);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      data-ledger={`rail:feed:${feed.id}`}
-      data-rail-badge={feed.id}
-      onClick={() => onPick(feed.id)}
-      {...press}
-      className={ITEM_CLASS}
-      style={{ zIndex: stack }}
-      aria-pressed={selected}
-      aria-label={ariaLabel}
-    >
-      <Plate lit={lit} marked={marked} armed={armed} reduce={reduce}>
-        <StoryRing on={selected && !leaving} reduce={reduce} />
-        {armed ? <ArmTrack reduce={reduce} /> : null}
-        <span
-          className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white text-[12px] font-black leading-none dark:border-[var(--fm-ink)]', FACE_PRESS, FACE_FOCUS)}
-          style={{
-            color: 'rgb(11 11 15 / 0.78)',
-            background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)',
-          }}
-        >
-          {feedInitials(feed.title)}
-        </span>
-      </Plate>
-      <RailLabel text={titleCase(feed.title)} lit={lit} reduce={reduce} className="uppercase" />
-    </button>
-  );
-});
-
-/* a feeder: fans out from behind the circle before it when its feed opens (the first from behind the feed's badge),
-   one after another, and folds back behind it as the feed closes */
-const FeederCircle = memo(function FeederCircle({ feeder, marked, selected, armed, leaving, reduce, ariaLabel, stack, onPick }: { feeder: HeaderFeeder; marked: boolean; selected: boolean; armed: boolean; leaving: boolean; reduce: boolean; ariaLabel: string; stack: number; onPick: (handle: string) => void }) {
-  const lit = (selected && !leaving) || armed;
-  const ref = useRef<HTMLButtonElement | null>(null);
-  useHeldPick(ref, lit);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      data-ledger={`rail:feeder:${feeder.handle}`}
-      data-rail-feeder={feeder.handle}
-      onClick={() => onPick(feeder.handle)}
-      {...press}
-      className={ITEM_CLASS}
-      style={{ zIndex: stack }}
-      aria-pressed={selected}
-      aria-label={ariaLabel}
-    >
-      <Plate lit={lit} marked={marked} armed={armed} reduce={reduce}>
-        <StoryRing on={selected && !leaving} reduce={reduce} />
-        {armed ? <ArmTrack reduce={reduce} /> : null}
-        <span className={cn('relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#f4f4f6,#e4e5ea)] text-fg/70 dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)]', FACE_PRESS, FACE_FOCUS)}>
-          {/* decoded ahead (TabHeader), and asked for at once: a face never arrives after its circle */}
-          <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} loading="eager" />
-        </span>
-      </Plate>
-      <RailLabel text={feeder.handle} litText={`@${feeder.handle}`} lit={lit} reduce={reduce} className="lowercase" />
-    </button>
-  );
-});
-
-/* a line of the title row: the new one rises in as the old one goes; while a page leaves, the old one lets go a
-   beat into the leave and the new one waits for the page. The two share one cell while they cross (no stylesheet
-   popped in and out of the page mid-switch, as popLayout does). An exiting line keeps the props of its last render,
-   so whether the page is leaving reaches it through AnimatePresence's custom */
-type SlotCustom = { leaving: boolean; travel: number; reduce: boolean };
-const TITLE_SLOT = {
-  exit: ({ leaving, travel, reduce }: SlotCustom) => (reduce
-    ? { opacity: 0, transition: { duration: 0.12 } }
-    : { opacity: 0, transform: `translateY(${-travel * 0.8}px)`, transition: { duration: BEAT_LEAVE_S, delay: leaving ? sec(0.18) : 0, ease: BEAT_LEAVE_EASE } }),
-};
-
-export function TitleSlot({ text, leaving, reduce, className, travel = 10 }: { text: string | null; leaving: boolean; reduce: boolean; className: string; travel?: number }) {
-  const custom: SlotCustom = { leaving, travel, reduce };
-  return (
-    <div className="grid min-w-0">
-      <AnimatePresence initial={false} custom={custom}>
-        {text ? (
-          <motion.div
-            key={text}
-            custom={custom}
-            variants={TITLE_SLOT}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, transform: `translateY(${travel}px)` }}
-            animate={{ opacity: 1, transform: 'translateY(0px)' }}
-            exit="exit"
-            transition={reduce ? { duration: 0.14 } : beatArrive(0)}
-            className={cn('[grid-area:1/1]', className)}
-          >
-            {text}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* who you're on, as a token beside the title: a feeder's face, or the solid ink disc of a feed (its initials) or of
-   All feeds (the wedge), in the pick's thin ink ring with a gap (a pick is ink). The same in the open header and the
-   folded one, so the face never leaves the screen. A new pick rolls it over with the name, on the title row's beat */
-
-// a feed's face, as the rail draws it: ink initials (or the wedge) on a light disc, in both themes
-const TOKEN_PLATE = 'grid h-full w-full place-items-center bg-[linear-gradient(135deg,#f7f7f8,#cfd3dc)] text-[#0b0b0f]';
-
-// pending: a feed picked whose feeds haven't loaded yet (its plate, empty, until they have: never the wedge first)
-export function WhoToken({ feed, feeder, pending = false }: { feed: HeaderFeed | null; feeder: HeaderFeeder | null; pending?: boolean }) {
-  return (
-    <span className="relative block h-9 w-9">
-      {/* (a plain ring: a border, no mask, over the glass) */}
-      <span aria-hidden="true" className="absolute inset-0 rounded-full border-2 border-fg" />
-      <span className="absolute inset-[4px] grid place-items-center overflow-hidden rounded-full">
-        {feeder ? (
-          <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} loading="eager" className="text-[10px]" />
-        ) : feed ? (
-          <span className={cn(TOKEN_PLATE, 'text-[10px] font-black leading-none')}>{feedInitials(feed.title)}</span>
-        ) : pending ? (
-          <span className={TOKEN_PLATE} />
-        ) : (
-          <span className={TOKEN_PLATE}>
-            <svg aria-hidden viewBox="0 0 42 42" className="block h-[18px] w-[18px]">
-              <path d={WEDGE_PATH} fill="none" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-        )}
+export function RailFace({ face, reduce, pressable = true }: { face: RailFaceOf; reduce: boolean; pressable?: boolean }) {
+  const give = pressable ? FACE_PRESS : undefined;
+  if (face.kind === 'all') {
+    return (
+      <span className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white dark:border-[var(--fm-ink)]', give, FACE_FOCUS)} style={{ background: 'var(--lead-wedge-surface)' }}>
+        {/* it turns to point back as a feed opens, on the rail's clock */}
+        <WedgeMark active={face.back} reduce={reduce} stroke="var(--lead-wedge-mark)" />
       </span>
+    );
+  }
+  if (face.kind === 'feed') {
+    return (
+      <span
+        className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white text-[12px] font-black leading-none dark:border-[var(--fm-ink)]', give, FACE_FOCUS)}
+        style={{
+          color: 'rgb(11 11 15 / 0.78)',
+          background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)',
+        }}
+      >
+        {feedInitials(face.feed.title)}
+      </span>
+    );
+  }
+  return (
+    <span className={cn('relative z-20 flex h-full w-full items-center justify-center overflow-hidden rounded-full border-[2px] border-white bg-[linear-gradient(135deg,#f4f4f6,#e4e5ea)] text-fg/70 dark:border-[var(--fm-ink)] dark:bg-[linear-gradient(135deg,#1c1917,#18181b)]', give, FACE_FOCUS)}>
+      {/* decoded ahead (TabHeader), and asked for at once: a face never arrives after its circle */}
+      <FeederStoryAvatar feeder={{ handle: face.feeder.handle, profilePicUrl: face.feeder.profilePicUrl }} loading="eager" />
     </span>
   );
 }
 
-// the token's cell: the new one rises in as the old one goes, like the name beside it (TitleSlot)
-export function WhoSlot({ slotKey, leaving, reduce, children }: { slotKey: string | null; leaving: boolean; reduce: boolean; children: ReactNode }) {
-  const custom: SlotCustom = { leaving, travel: 10, reduce };
-  return (
-    <div className="grid shrink-0">
-      <AnimatePresence initial={false} custom={custom}>
-        {slotKey ? (
-          <motion.div
-            key={slotKey}
-            custom={custom}
-            variants={TITLE_SLOT}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
-            animate={{ opacity: 1, transform: 'translateY(0px)' }}
-            exit="exit"
-            transition={reduce ? { duration: 0.14 } : beatArrive(0)}
-            className="[grid-area:1/1]"
-          >
-            {children}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* From a laptop up the header gives way to the side rail and the page's own heading (SideRail): the same config,
+/* From a laptop up the dock gives way to the side rail and the page's own heading (SideRail): the same config,
    drawn down the left and at the top of the page instead */
 const WIDE_QUERY = '(min-width: 1024px)';
 
@@ -566,12 +391,24 @@ function subscribeWide(onChange: () => void) {
 }
 const wideNow = () => (wideQuery ?? window.matchMedia(WIDE_QUERY)).matches;
 
-// a laptop up: the side rail's width, where the phone's header and bottom bar give way
+// a laptop up: the side rail's width, where the phone's dock gives way
 export function useWideChrome() {
   return useSyncExternalStore(subscribeWide, wideNow, () => false);
 }
 
-const decodedFaces = new Set<string>();
+/* the tab's one short choice, as values (Feed's zoom, Lead's range, Read's part): what its control steps through, for
+   whatever draws it other than the control itself (the phone's dock spreads it out as chips) */
+export type HeaderChoice = {
+  name: string;
+  value: string | number;
+  options: readonly (string | number)[];
+  label: (value: string | number) => string;
+  onChange: (value: string | number) => void;
+};
+
+export function headerChoice<T extends string | number>(choice: { name: string; value: T; options: readonly T[]; label: (value: T) => string; onChange: (value: T) => void }): HeaderChoice {
+  return choice as unknown as HeaderChoice;
+}
 
 export type TabHeaderConfig = {
   title: string;
@@ -581,6 +418,8 @@ export type TabHeaderConfig = {
   label: string;
   // the 44px control on the right
   control?: ReactNode;
+  // the same choice as values (the dock's chips)
+  choice?: HeaderChoice | null;
   // a laptop up, the control the side rail docks at its foot (by default the same one; null: none there), and its name
   railControl?: ReactNode | null;
   controlLabel?: string;
@@ -624,260 +463,14 @@ export function whoOf(feeds: HeaderFeed[] | null, feedId: string | null | undefi
   return { activeFeed, pickedFeeder, pickKey };
 }
 
-function TabHeader({
-  tab,
-  title,
-  label,
-  control,
-  compressed,
-  className,
-  feeds,
-  pendingFeeders = [],
-  feedId,
-  handle,
-  marked,
-  feederLabel,
-  leaving = false,
-  armed = null,
-  onAll,
-  onFeed,
-  onFeeder,
-  onIntent,
-  rowRef,
-  rowId,
-  rowClassName,
-  baseClassName,
-  rowOverlay,
-  railId,
-  onOpenRail,
-}: TabHeaderConfig & { tab: string; onOpenRail?: () => void }) {
-  const reduce = Boolean(useReducedMotion());
-  // who you're on, for the token: a feeder (with its face), the open feed, or all of them
-  const { activeFeed, pickedFeeder, pickKey } = whoOf(feeds, feedId, handle);
-  // the feed the rail last opened, kept once it closes: closing is the gesture back into it (the rail's hub)
-  const [hubFeed, setHubFeed] = useState<string | null>(activeFeed?.id ?? null);
-  if (activeFeed && activeFeed.id !== hubFeed) setHubFeed(activeFeed.id);
-  const railRef = useRef<HTMLDivElement | null>(null);
-  /* A tap on who you're on: folded, it opens the rail over the page (the page stays put); open, it brings the circle
-     you're on into view if the rail has scrolled it away */
-  const onWho = () => {
-    if (compressed && onOpenRail) {
-      onOpenRail();
-      return;
-    }
-    const scroller = railRef.current?.querySelector<HTMLElement>('.hide-scrollbar');
-    if (!scroller) return;
-    const item = scroller.querySelector<HTMLElement>('[aria-pressed="true"]');
-    const left = item ? scroller.scrollLeft + item.getBoundingClientRect().left - scroller.getBoundingClientRect().left - 8 : 0;
-    scroller.scrollTo({ left: Math.max(0, left), behavior: reduce ? 'auto' : 'smooth' });
-  };
-  // the red story ring: a feeder with a post in the last 24 hours (every tab's rail alike; a tab can say otherwise)
-  const fresh = useFreshHandles();
-  const isMarked = (feederHandle: string) => (marked ? marked(feederHandle) : fresh.has(feederHandle));
-  const nameFeeder = (feederHandle: string) => (feederLabel ? feederLabel(feederHandle) : `@${feederHandle}`);
+/* ── what each tab says ─────────────────────────────────────────────────────
+   A tab says what its chrome shows (useTabHeader, every render); the dock (a phone) or the side rail (a laptop up)
+   draws it for the tab on screen. Kept in an external store so a tab publishing re-renders only what draws it, never
+   the shell or the other tabs.
 
-  // a tap on the header just after a scroll is the header's (press: glideTaps)
-  useEffect(watchPageGlide, []);
-
-  // every face on the rail is fetched and decoded ahead, so a feeder flying out of its badge never waits on (or
-  // decodes mid-flight) its picture
-  useEffect(() => {
-    feeds?.forEach((feed) => feed.feeders.forEach((feeder) => {
-      const src = feeder.profilePicUrl;
-      if (!src || decodedFaces.has(src)) return;
-      decodedFaces.add(src);
-      const image = new Image();
-      image.decoding = 'async';
-      image.src = src;
-      image.decode?.().catch(() => undefined);
-    }));
-  }, [feeds]);
-
-  // a pick about to be made: the rail item the pointer comes onto (once per visit), or that is pressed or focused
-  const intentAt = useRef<Element | null>(null);
-  const intent = (event: SyntheticEvent) => {
-    if (!onIntent) return;
-    const item = (event.target as Element | null)?.closest?.('button');
-    if (!item) return;
-    if (event.type === 'pointerover' && item === intentAt.current) return;
-    intentAt.current = item;
-    const button = item as HTMLElement;
-    if (button.dataset.railBadge) onIntent({ feedId: button.dataset.railBadge, handle: null });
-    else if (button.dataset.railFeeder) onIntent({ feedId: activeFeed?.id ?? null, handle: button.dataset.railFeeder });
-    else if (button.dataset.railAll != null) onIntent({ feedId: null, handle: null });
-  };
-
-  // what the rail holds: the feeds, or the open feed's badge and its feeders (while the feeds load, the feeders it had)
-  const railFeeds = !feeds ? [] : activeFeed ? [activeFeed] : feeds;
-  const railFeeders = !feeds ? pendingFeeders : activeFeed ? activeFeed.feeders : [];
-  // (their own kind of ids: a page's lists use feed:… too, and a lookup on the page must never land in the header)
-  const railIds = [...railFeeds.map((feed) => `rail:feed:${feed.id}`), ...railFeeders.map((feeder) => `rail:feeder:${feeder.handle}`)];
-  // opening or closing a feed re-deals it (a feeder picked inside a feed only moves the rings)
-  const railDeal = !feeds ? 'loading' : activeFeed ? `feed:${activeFeed.id}` : 'all';
-
-  // the tab's handlers, read when a circle is tapped: the circles keep one stable callback each, so a page publishing
-  // its header again (every render of the page) doesn't re-render a circle that hasn't changed
-  const handlers = useRef({ onAll, onFeed, onFeeder });
-  useIsomorphicLayoutEffect(() => {
-    handlers.current = { onAll, onFeed, onFeeder };
-  });
-  const pickAll = useCallback(() => handlers.current.onAll(), []);
-  const pickFeed = useCallback((id: string) => handlers.current.onFeed(id), []);
-  const pickFeeder = useCallback((feederHandle: string) => handlers.current.onFeeder(feederHandle), []);
-
-  const wedge = (
-    <WedgeButton
-      active={Boolean(activeFeed)}
-      current={Boolean(feeds) && !activeFeed && !handle}
-      armed={armed === 'all'}
-      leaving={leaving}
-      reduce={reduce}
-      onBack={pickAll}
-    />
-  );
-
-  // first over last: a circle coming out of the one before it comes out from behind it; the feed the rail opens out of
-  // and closes back into stacks over every circle, the ones before it too (the wedge stays over it)
-  const stackOf = (index: number) => 30 - Math.min(index, 29);
-  const HUB_STACK = 31;
-  const circle = (feeder: HeaderFeeder, index: number) => (
-    <FeederCircle
-      key={`feeder:${feeder.handle}`}
-      feeder={feeder}
-      marked={isMarked(feeder.handle)}
-      selected={handle === feeder.handle}
-      armed={armed === `feeder:${feeder.handle}`}
-      leaving={leaving}
-      reduce={reduce}
-      ariaLabel={nameFeeder(feeder.handle)}
-      stack={stackOf(railFeeds.length + index)}
-      onPick={pickFeeder}
-    />
-  );
-
-  return (
-    // (a touch that lands while the page still glides is spent by iOS on stopping it: the header takes it as its tap)
-    <header className={cn('h-full px-3 py-2 sm:px-4', className)} aria-label={titleCase(title)} {...glideTaps}>
-        {/* the title row over the story rail, which folds away under it */}
-        <div className="relative z-10 flex h-full flex-col gap-1.5 pt-1">
-          {/* the title row. A tab that writes into it from outside React (Read toggles a class on it) gets a class
-              list that never changes while it is on screen, so a re-render never overwrites what it wrote */}
-          <div ref={rowRef} id={rowId} className={cn('relative h-11 min-h-11', rowClassName)}>
-            <div className={cn('absolute inset-0 flex items-center justify-between gap-2', baseClassName)}>
-              <div className="flex min-w-0 items-center gap-2.5">
-                {/* the tab's name: switching tabs rolls only the letters that differ (LEAD → READ moves one) */}
-                <h1 className="fm-depth-title shrink-0 text-[22px] font-black leading-[0.88] tracking-[0.12em] text-fg">
-                  <SlotText value={title} align="left" />
-                </h1>
-                {/* who you're on: the token and the name, bold, the same open or folded. Folded, a tap opens the rail */}
-                <button
-                  type="button"
-                  onClick={onWho}
-                  aria-label={compressed ? `Showing ${label}. Open the feeds` : `Showing ${label}`}
-                  className="flex min-w-0 items-center gap-2 rounded-[12px] text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
-                >
-                  {/* (it rolls only when the pick changes: a page leaving keeps it, only the name goes) */}
-                  <WhoSlot slotKey={pickKey} leaving={leaving} reduce={reduce}>
-                    <WhoToken feed={activeFeed} feeder={pickedFeeder} pending={!feeds && Boolean(feedId)} />
-                  </WhoSlot>
-                  <span className="flex min-w-0 flex-col justify-center">
-                    <TitleSlot
-                      text={leaving ? null : label}
-                      leaving={leaving}
-                      reduce={reduce}
-                      className="truncate text-[15px] font-black leading-none tracking-[-0.025em] text-fg sm:text-[16px]"
-                    />
-                  </span>
-                </button>
-              </div>
-              {/* each tab's own control; switching tabs crosses one over to the other */}
-              <div className="flex shrink-0 items-center">
-                <AnimatePresence initial={false} mode="popLayout">
-                  {control ? (
-                    <motion.div
-                      key={tab}
-                      className="flex shrink-0 items-center"
-                      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(8px)' }}
-                      animate={{ opacity: 1, transform: 'translateY(0px)', transition: reduce ? REDUCED : beatArrive(0) }}
-                      exit={reduce ? { opacity: 0, transition: REDUCED } : { opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }}
-                    >
-                      {control}
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </div>
-            </div>
-            {rowOverlay}
-          </div>
-
-          {/* The story rail. As the header folds, the circles roll up under the title row: the edge they slide under
-              stays still and only they move (a transform, on the glass's own clock, so they stay inside it); nothing
-              reshapes on the way. The rail itself is a ledger (components/motion/Ledger): opening a feed, its badge
-              travels to the front while the other feeds hand their places to its feeders, one after another, out of
-              the badge, on the beat the page's rows deal on. */}
-          <div
-            ref={railRef}
-            id={railId}
-            className="min-w-0 overflow-hidden"
-            style={{ pointerEvents: compressed ? 'none' : 'auto' }}
-          >
-            <div
-              className="flex min-w-0 items-start gap-3"
-              style={{
-                transform: compressed ? 'translate3d(0, calc(-100% - 10px), 0)' : 'translate3d(0, 0, 0)',
-                transition: reduce ? undefined : 'transform 340ms cubic-bezier(0.32, 0.72, 0, 1)',
-              }}
-              onPointerOver={intent}
-              onPointerDown={intent}
-              onFocus={intent}
-              onPointerLeave={() => { intentAt.current = null; }}
-            >
-              <div className="hidden sm:block">{wedge}</div>
-              <Ledger
-                ids={railIds}
-                deal={railDeal}
-                axis="x"
-                fan
-                hub={hubFeed ? `rail:feed:${hubFeed}` : undefined}
-                moveMs={RAIL_MOVE_MS}
-                startOnDeal
-                dealOnMount={false}
-                role="group"
-                label={activeFeed ? `Feeders in ${titleCase(activeFeed.title)}` : 'Feeds'}
-                className="hide-scrollbar flex min-w-0 flex-1 items-start gap-2 overflow-x-auto pb-0.5 pr-3"
-              >
-                <div className="sm:hidden">{wedge}</div>
-                {railFeeds.map((feed, index) => (
-                  <FeedBadge
-                    key={`feed:${feed.id}`}
-                    stack={feed.id === hubFeed ? HUB_STACK : stackOf(index)}
-                    feed={feed}
-                    marked={feed.feeders.some((feeder) => isMarked(feeder.handle))}
-                    selected={feed.id === activeFeed?.id && !handle}
-                    armed={armed === `feed:${feed.id}`}
-                    leaving={leaving}
-                    reduce={reduce}
-                    ariaLabel={feed.id !== activeFeed?.id ? `Open ${titleCase(feed.title)}` : handle ? `Show every feeder in ${titleCase(feed.title)}` : `${titleCase(feed.title)}, every feeder`}
-                    onPick={pickFeed}
-                  />
-                ))}
-                {railFeeders.map(circle)}
-              </Ledger>
-            </div>
-          </div>
-        </div>
-    </header>
-  );
-}
-
-/* ── one header for every tab ──────────────────────────────────────────────
-   A tab says what its header shows (useTabHeader, every render); the shell draws the one header (TabHeaderHost)
-   for the tab on screen. Kept in an external store so a tab publishing re-renders only the header, never the shell
-   or the other tabs.
-
-   A hidden tab's last word is stale (the pick may have moved since), so on a switch the header keeps showing what it
-   was until the arriving tab speaks again, which it does before the first paint. The header never passes through a
-   stale state, so the only things that move are the things that really differ between the tabs. */
+   A hidden tab's last word is stale (the pick may have moved since), so on a switch the chrome keeps showing what it
+   was until the arriving tab speaks again, which it does before the first paint. It never passes through a stale
+   state, so the only things that move are the things that really differ between the tabs. */
 
 let headerRevision = 0;
 // each tab's last word, and the shared pick it was said under (a hidden tab says nothing as the pick moves elsewhere)
@@ -934,55 +527,6 @@ export function useShownHeader(tab: string | null) {
   return picked && !picked.config.feeds && knownFeeds.current
     ? { tab: picked.tab, config: { ...picked.config, feeds: knownFeeds.current } }
     : picked;
-}
-
-export function TabHeaderHost({ tab, onCompressed }: { tab: string | null; onCompressed: (compressed: boolean) => void }) {
-  const reduce = Boolean(useReducedMotion());
-  const shown = useShownHeader(tab);
-  /* Folded by the tab's scroll, the header can be opened by a tap on who you're on (peek): the rail unrolls over the
-     page and the page stays where it is. The next scroll down folds it again; a scroll up unfolds it anyway (the
-     tab's own fold lets go), and so does another tab */
-  const [peek, setPeek] = useState(false);
-  const wide = useWideChrome();
-  const tabCompressed = Boolean(shown?.config.compressed);
-  // a laptop up there is no header to fold (SideRail)
-  const compressed = tabCompressed && !peek && !wide;
-  if (peek && (!tabCompressed || !shown)) setPeek(false);
-  const peekTab = useRef(tab);
-  if (peekTab.current !== tab) {
-    peekTab.current = tab;
-    if (peek) setPeek(false);
-  }
-  useEffect(() => {
-    if (!peek) return undefined;
-    const from = window.scrollY;
-    const onScroll = () => {
-      if (window.scrollY - from > 24) setPeek(false);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [peek]);
-  const openRail = useCallback(() => setPeek(true), []);
-
-  // in the same commit as the rail (a layout effect: the shell's update lands before the frame), so the glass edge
-  // and the circles folding under the title start together
-  useIsomorphicLayoutEffect(() => {
-    if (shown) onCompressed(compressed);
-  }, [Boolean(shown), compressed, onCompressed]);
-
-  // (a laptop up, the side rail and the page's heading draw it instead)
-  if (!shown || wide) return null;
-  // arriving from a tab with its own header, it comes in as headers always have; between tabs that share it, it stays
-  return (
-    <motion.div
-      className="absolute inset-0"
-      initial={reduce ? false : HEADER_ROUTE_MORPH.initial}
-      animate={reduce ? { opacity: 1 } : HEADER_ROUTE_MORPH.animate}
-      style={{ transformOrigin: '50% 0%' }}
-    >
-      <TabHeader tab={shown.tab} {...shown.config} compressed={compressed} onOpenRail={openRail} />
-    </motion.div>
-  );
 }
 
 /* ── the time range: a button that grows into its menu on a phone, a segmented track from sm up ── */

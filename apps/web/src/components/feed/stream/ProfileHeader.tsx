@@ -6,7 +6,8 @@
    posts and checkpoints the feed shows.
 
    A feeder: their big face (an accent story ring when they posted in
-   the last day) with a time badge. A feed: its feeders' faces,
+   the last day, or when their read has a story they haven't watched:
+   a tap plays it out of the face, FeederStory) with a time badge. A feed: its feeders' faces,
    stacked. All feeds: the feed badges, stacked, and what happened
    today. Beside or under it: posts, followers and the typical
    post, each with its move. Then the name, highlights as little
@@ -32,6 +33,7 @@
 import { memo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChevronRight, ChevronUp, Clock, Ellipsis, Target, Trophy, type LucideIcon } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
+import { FeederStoryLayer, useFeederStory } from '@/components/feed/stream/FeederStory';
 import { useProfileDoors, type ReadDoor } from '@/components/feed/stream/profileDoors';
 import PostCover from '@/components/feed/stream/PostCover';
 import { press } from '@/components/feed/stream/press';
@@ -169,17 +171,21 @@ function FaceBlock({ kind, size, scope, feeder, feeds, faces, fresh, lastPostAt 
   lastPostAt: string | null;
 }) {
   const box = FACE_PX[size] + RING * 2;
+  // a feeder whose read has a story: it plays out of this face, Instagram's way (FeederStory)
+  const handle = kind === 'feeder' ? feeder?.handle ?? scope.handle : null;
+  const story = useFeederStory(handle);
+  const [faceEl, setFaceEl] = useState<HTMLSpanElement | null>(null);
   let body: ReactNode;
   if (kind === 'feeder') {
     const face = feeder ?? { handle: scope.handle ?? '', profilePicUrl: null };
     body = (
       <>
-        {fresh ? (
+        {story.ring || fresh ? (
           <span aria-hidden="true" className="st-story-ring absolute inset-0 rounded-full" />
         ) : (
           <span aria-hidden="true" className="absolute inset-[1.5px] rounded-full shadow-[inset_0_0_0_1.5px_rgb(var(--fm-fg-rgb)/0.2)]" />
         )}
-        <span className="absolute block overflow-hidden rounded-full" style={{ inset: RING }}>
+        <span ref={setFaceEl} className="absolute block overflow-hidden rounded-full" style={{ inset: RING }}>
           <FeederStoryAvatar feeder={face} className={size === 'page' ? 'text-[28px]' : 'text-[34px]'} />
         </span>
       </>
@@ -191,19 +197,38 @@ function FaceBlock({ kind, size, scope, feeder, feeds, faces, fresh, lastPostAt 
     const list = feeds.length ? feeds : [{ id: 'all', title: '', feederCount: 0 }];
     body = <Stack box={box} items={list.slice(0, 3).map((feed) => ({ key: feed.id, draw: (px, front) => <FeedDisc title={feed.title} px={px} front={front} /> }))} />;
   }
+  const badge = lastPostAt ? (
+    <span
+      className={cn(
+        'absolute left-1/2 top-full z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-2 py-[3px] text-[10px] font-black leading-none shadow-[0_0_0_3px_var(--st-cut)]',
+        fresh ? 'bg-[var(--fm-accent)] text-white' : 'bg-[var(--st-surface-2)] text-[var(--st-text-2)]',
+      )}
+    >
+      {relativeTime(lastPostAt)}
+    </span>
+  ) : null;
+  if (story.acct) {
+    return (
+      <>
+        <button
+          type="button"
+          {...press}
+          onClick={story.start}
+          aria-label={handle ? `Watch @${handle}’s story` : 'Watch the story'}
+          className="group relative block shrink-0 rounded-full outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+          style={{ width: box, height: box }}
+        >
+          <span className="absolute inset-0 block transition-transform duration-200 ease-out group-data-[pressed]:scale-[0.95]">{body}</span>
+          {badge}
+        </button>
+        {story.open ? <FeederStoryLayer acct={story.acct} handle={handle} face={faceEl} onClosed={story.closed} /> : null}
+      </>
+    );
+  }
   return (
     <span className="relative block shrink-0" style={{ width: box, height: box }}>
       {body}
-      {lastPostAt ? (
-        <span
-          className={cn(
-            'absolute left-1/2 top-full z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-2 py-[3px] text-[10px] font-black leading-none shadow-[0_0_0_3px_var(--st-cut)]',
-            fresh ? 'bg-[var(--fm-accent)] text-white' : 'bg-[var(--st-surface-2)] text-[var(--st-text-2)]',
-          )}
-        >
-          {relativeTime(lastPostAt)}
-        </span>
-      ) : null}
+      {badge}
     </span>
   );
 }

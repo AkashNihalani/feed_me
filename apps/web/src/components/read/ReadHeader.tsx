@@ -13,9 +13,9 @@
      while a read is open and only on a phone, where the lens
      isn't stuck under the header. It carries data-drop="lens",
      which the engine's click router handles. A read in three
-     parts (Read17) puts its part switch there instead (Story ·
-     Strategy · Split, Lead's timeframe control), docked at the
-     side rail's foot too;
+     parts (Read17) puts its part switch there instead (Strategy ·
+     Split, Lead's timeframe control), docked at the side rail's
+     foot too;
    - the engine owns the moment a post is picked: it fills the
      readout (#rd-hread) and toggles `reading` on the title row
      (#rd-hdr), and the two trade places (readTab.css). It also
@@ -25,7 +25,7 @@
 import { useState, type Ref } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, TimeframeControl, useTabHeader } from '@/components/shell/TabHeader';
+import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, TimeframeControl, headerChoice, useTabHeader } from '@/components/shell/TabHeader';
 import { cn } from '@/lib/utils';
 import { readOf, type RailFeed, type RailFeeder } from '@/components/read/readFeeds';
 import { CHAPTERS, chapterName, chapterOf, type Chapter, type Part } from '@/components/read/read17/Read17';
@@ -121,8 +121,8 @@ export default function ReadHeader({
     </AnimatePresence>
   );
 
-  // the part switch: the read's three parts by name, Story · Strategy · Split (a picker in the phone's header, a track
-  // where there's room, and the same track docked on the side rail)
+  // the part switch: the read's parts by name, Strategy · Split (a picker in the phone's header, a track where there's
+  // room, and the same track docked on the side rail); the read's front is the page's start, and its story is on Feed
   const partSwitch = chapter ? (
     <TimeframeControl id="read" value={chapterOf(chapter.value)} options={CHAPTERS} label={chapterName} name="Part of the read" onChange={chapter.onChange} />
   ) : null;
@@ -135,6 +135,8 @@ export default function ReadHeader({
     eyebrow,
     label,
     control: partSwitch ?? viewSwitch,
+    // the read's three parts as values (the dock's chips)
+    choice: chapter ? headerChoice({ name: 'Part of the read', value: chapterOf(chapter.value), options: CHAPTERS, label: chapterName, onChange: chapter.onChange }) : null,
     // (a laptop up the view switch is the page's own lens, stuck under the window's top: the side rail carries none; the
     // part switch docks at its foot)
     railControl: partTrack,

@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { Activity, memo, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { SWITCH_CLOCK_CSS_EASE, SWITCH_CLOCK_MS } from '@/lib/motion';
 import { arrivePieces } from '@/lib/pageArrival';
+import { playPush, takePush } from '@/lib/tabPush';
 import { noteTab, riseIn, settleTab, wideTabMotion } from '@/lib/tabSheet';
 
 const tabLoaders = {
@@ -145,6 +146,7 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
   useIsomorphicLayoutEffect(() => {
     settleTab(activeTab);
     if (prevTabRef.current === activeTab) return;
+    const left = prevTabRef.current;
     prevTabRef.current = activeTab;
 
     const el = tabElsRef.current[activeTab];
@@ -155,6 +157,22 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
     if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     // a laptop up: the page's blocks rise into place, row by row (lib/tabSheet: transform alone)
     if (wideTabMotion()) return riseIn(el) ?? undefined;
+
+    /* A switch from the phone's dock (lib/tabPush): the page you left is a card (a copy of it) already lifting over
+       this one; once this one has been drawn the card slides away, uncovering it, and its own pieces come in a beat
+       behind from the side it lies on (Lead's marked rows, or any page's blocks, row by row) */
+    const push = takePush(left);
+    if (push) {
+      const from = { x: push.dir * 32 };
+      let landPieces: (() => void) | null = null;
+      const stopPush = playPush(el, push, () => {
+        landPieces = arrivePieces(el, from) > 0 ? null : riseIn(el, from);
+      });
+      return () => {
+        stopPush();
+        landPieces?.();
+      };
+    }
 
     /* A phone: never the tab as one block where it can be helped. A tab that plays its own arrival (Read) is left to
        it, and a tab whose pieces are marked [data-arrive] (Lead) has them rise one after another on the page beat,
@@ -189,7 +207,8 @@ export default function AppTabHost({ pathname }: { pathname: string }) {
   }, [activeTab]);
 
   return (
-    <div data-active-tab={activeTab} className="min-h-[100dvh] w-full">
+    // (clipped across: a page gliding in from the side never widens the page)
+    <div data-active-tab={activeTab} className="min-h-[100dvh] w-full [overflow-x:clip]">
       {TAB_RENDER_ORDER.map((key) => {
         if (!renderedTabs.has(key)) return null;
         const isActive = key === activeTab;
