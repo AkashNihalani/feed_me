@@ -231,26 +231,6 @@ html.light .fm-stream {
   mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
 }
 
-/* the profile card (the today zoom's first card) sizes to its box. Its settings button always shows (the only way to
-   feeds, feeders, the plan and the appearance from here) and so does Lead's door; with them its rows need 658px, and a
-   short card lets go of its least needed rows instead: all feeds' "Today" line first, then Read's door, then the
-   highlights */
-.st-profile-card {
-  container-type: size;
-}
-
-@container (max-height: 681px) {
-  .st-profile-card .st-pc-today { display: none; }
-}
-
-@container (max-height: 657px) {
-  .st-profile-card .st-pc-strip { display: none; }
-}
-
-@container (max-height: 595px) {
-  .st-profile-card .st-pc-highlights { display: none; }
-}
-
 /* a block standing in for a post while its day loads: the surface with a faint, still sheen (no shimmer) */
 .st-placeholder {
   background:

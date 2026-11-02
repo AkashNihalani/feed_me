@@ -320,10 +320,7 @@ export type FeedStreamProps = {
   // keys (G, M, Esc, - +, ↑/↓/J/K) answer only while nothing is open over the stream
   keyboard: boolean;
   onModeChange: (mode: FeedMode) => void;
-  onOrderChange: (order: FeedOrder) => void;
   onManage: () => void;
-  onLead: () => void;
-  onRead: () => void;
 };
 
 // left: where the stream's column starts in the window (past the side rail from a laptop up; 0 on a phone)
@@ -412,9 +409,6 @@ type PieceActions = {
   // a MONTH group's "+N": WEEK, at that month's newest week
   openWeek: (day: string, element: HTMLElement) => void;
   manage: () => void;
-  lead: () => void;
-  read: () => void;
-  orderChange: (order: FeedOrder) => void;
   openHighlight: (key: string) => void;
 };
 
@@ -782,10 +776,7 @@ function FeedStream({
   blank,
   keyboard,
   onModeChange,
-  onOrderChange,
   onManage,
-  onLead,
-  onRead,
 }: FeedStreamProps) {
   const gen = scopeKey(scope);
   // the scope without its order: the profile stays through a change of order
@@ -863,7 +854,7 @@ function FeedStream({
   // the scroll's speed (px a ms, read once a frame) and the pictures last asked for ahead of it
   const speedRef = useRef({ y: 0, t: 0, v: 0 });
   const aheadRef = useRef<{ layout: StreamLayout; from: number; to: number; land: number } | null>(null);
-  const callbacksRef = useRef({ onModeChange, onManage, onLead, onRead, onOrderChange, play });
+  const callbacksRef = useRef({ onModeChange, onManage, play });
   const savedYRef = useRef(0);
   const visibleRef = useRef(false);
   const touchingRef = useRef(false);
@@ -2591,9 +2582,6 @@ function FeedStream({
       zoomTo('week', { focal: { zid: slotId(day, 0) }, point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } });
     },
     manage: () => callbacksRef.current.onManage(),
-    lead: () => callbacksRef.current.onLead(),
-    read: () => callbacksRef.current.onRead(),
-    orderChange: (next) => callbacksRef.current.onOrderChange(next),
     openHighlight,
   }), [openHighlight, pageY, scrollPage, zoomTo]);
 
@@ -2667,7 +2655,7 @@ function FeedStream({
     genRef.current = gen;
     inputsRef.current = { index, posts, scope };
     compressedRef.current = headerCompressed;
-    callbacksRef.current = { onModeChange, onManage, onLead, onRead, onOrderChange, play };
+    callbacksRef.current = { onModeChange, onManage, play };
     if (!moveRef.current) renderedRef.current = layout && mountView ? { layout, gen, from: mountFrom, to: mountTo, win: mountView === win ? win : null } : null;
   });
 
@@ -3312,7 +3300,6 @@ function FeedStream({
         style={{ width: column.contentWidth, height: profileHeight, ...profileSnap }}
       >
         <ProfileHeader
-          variant="page"
           scope={scope}
           title={profile.title}
           subtitle={profile.subtitle}
@@ -3321,11 +3308,7 @@ function FeedStream({
           faces={profile.faces}
           profile={index?.profile ?? null}
           fresh={profile.fresh}
-          order={order}
-          onOrderChange={actions.orderChange}
           width={column.contentWidth}
-          onLead={actions.lead}
-          onRead={actions.read}
           onManage={actions.manage}
           onOpenPost={actions.openHighlight}
         />
