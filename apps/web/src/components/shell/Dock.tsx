@@ -160,6 +160,15 @@ export default function Dock({ tab }: { tab: DockTab }) {
   const gesture = useRef<Gesture | null>(null);
   const hot = useRef<{ key: string | null; since: number; at: [number, number] | null }>({ key: null, since: 0, at: null });
   const openAt = useRef(0);
+  // where and when the tap that opened the layers let go: iOS sends that tap's click a beat later, to whatever is under
+  // the finger by then (folded, the chips still gathered in the middle, under the handle), and it is no pick
+  const openTap = useRef<{ x: number; y: number; t: number } | null>(null);
+  const isOpenTap = (event: ReactMouseEvent<HTMLElement>) => {
+    const tap = openTap.current;
+    if (!tap) return false;
+    openTap.current = null;
+    return event.timeStamp - tap.t < 600 && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < 24;
+  };
   /* the swipe: how far round the ring is drawn (eased toward the thumb's `target`), which way, from which tab to which
      (none past the ends: the thumb then only `nudge`s the mark), whether the thumb is still on it, and where the tab
      names sit over the dock (their middles, measured as a swipe starts) */
@@ -823,8 +832,9 @@ export default function Dock({ tab }: { tab: DockTab }) {
       return;
     }
     // a tap
-    if (open) closeLayers();
-    else openLayers();
+    if (open) return closeLayers();
+    openTap.current = { x: event.clientX, y: event.clientY, t: event.timeStamp };
+    openLayers();
   };
 
   /* ── open, the row scrolls under a sideways swipe on it (a tap still picks) ── */
@@ -869,7 +879,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
   };
 
   const onLayerClick = (event: ReactMouseEvent<HTMLElement>) => {
-    if (swallow.current) return;
+    if (swallow.current || isOpenTap(event)) return;
     const el = (event.target as HTMLElement).closest<HTMLElement>('[data-pick]');
     if (el?.dataset.pick) choose(el.dataset.pick);
   };
@@ -886,7 +896,9 @@ export default function Dock({ tab }: { tab: DockTab }) {
   return (
     <>
       {/* the page frosted under the layers: a tap on it, outside them, shuts them */}
-      <div ref={frostRef} aria-hidden="true" className="fm-dock-frost" data-open={open ? '' : undefined} onClick={() => closeLayers()} />
+      <div ref={frostRef} aria-hidden="true" className="fm-dock-frost" data-open={open ? '' : undefined} onClick={(event) => {
+        if (!isOpenTap(event)) closeLayers();
+      }} />
       <div ref={rootRef} className="fm-dock" data-open={open ? '' : undefined} style={{ '--fm-dock-step': `${STEP}px` } as CSSProperties}>
         <div className="fm-dock-layers" role="dialog" aria-label="Tabs, feeders and choices" aria-hidden={!open} onClick={onLayerClick}>
           {/* the tabs, rising over the row: the one you're on first, the others a beat behind */}
