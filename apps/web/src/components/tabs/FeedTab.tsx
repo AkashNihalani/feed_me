@@ -2,23 +2,22 @@
 
 /* ─────────────────────────────────────────────────────────────
    FEED — the tab: every post your feeders made in the rolling 90
-   days, newest first (or by the day their latest result landed),
-   at three zooms: DAY (one post at a time), WEEK, MONTH.
+   days, newest first, as Instagram's grid starts, at three zooms:
+   DAY (one post at a time), WEEK, MONTH.
 
    Who: the shared header's story rail (lib/tabScope: the same
    pick as Lead and Read). How close: a pinch, or the header's
-   zoom control. The order: the profile's tabs (Newest posts ·
-   Latest results).
+   zoom control.
 
    The page scrolls itself (the document, as on Lead and Read), so
-   content runs under Safari's translucent bars. A pick or a new
-   order is made ready while the screen holds still (its posts
+   content runs under Safari's translucent bars. A pick is made
+   ready while the screen holds still (its posts
    near the day you're on), then the page moves to it at the same
    zoom and day: the posts both hold carry to their new places,
    the rest are replaced in place. The stream
    (components/feed/stream/FeedStream) owns the
-   page, the layout and the zoom; this owns the header, the pick,
-   the order and the manage sheet (a post's details open on its
+   page, the layout and the zoom; this owns the header, the pick
+   and the manage sheet (a post's details open on its
    card, PostCell).
    ───────────────────────────────────────────────────────────── */
 
@@ -34,8 +33,7 @@ import { normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { feederLookup, useFeeds, type AppFeed } from '@/lib/feedsStore';
 import { ZOOM_LABEL, ZOOM_ORDER, relativeTime, scopeKey, type FeedMode, type FeedOrder, type StreamFeeder, type StreamScope } from '@/lib/feedStream/contract';
 import { useStreamIndex } from '@/lib/feedStream/store';
-import { initialMode, readStoredOrder, writeStoredOrder } from '@/lib/feedStream/zoom';
-import { useAppHaptics } from '@/lib/haptics';
+import { initialMode } from '@/lib/feedStream/zoom';
 import { acquireRootPageScroll } from '@/lib/rootScrollMode';
 import { getTabScope, setTabScope, useTabScope, useTabScopeTransition, type TabScope } from '@/lib/tabScope';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
@@ -181,9 +179,8 @@ function StreamError({ onRetry }: { onRetry: () => void }) {
 /* What the one tab header shows on Feed: FEED · where you are, the zoom control, and the rail. It alone reads the
    pick as it changes (a tap re-renders this, not the tab, so the rail answers in a light frame); the stream follows
    once the rail is moving (lib/tabScope). */
-const FeedHeader = memo(function FeedHeader({ feeds, order, mode, compressed, freshHandles, onModeChange, onModeIntent, onIntent }: {
+const FeedHeader = memo(function FeedHeader({ feeds, mode, compressed, freshHandles, onModeChange, onModeIntent, onIntent }: {
   feeds: AppFeed[] | null;
-  order: FeedOrder;
   mode: FeedMode;
   compressed: boolean;
   freshHandles: string[] | undefined;
@@ -214,7 +211,7 @@ const FeedHeader = memo(function FeedHeader({ feeds, order, mode, compressed, fr
 
   useTabHeader('feed', {
     title: 'FEED',
-    eyebrow: order === 'results' ? 'Feed · latest results' : 'Feed · newest posts',
+    eyebrow: 'Feed · newest posts',
     label,
     control: <FeedControl mode={mode} onModeChange={onModeChange} onModeIntent={onModeIntent} />,
     choice: headerChoice({ name: 'Zoom', value: mode, options: ZOOM_ORDER, label: (zoom) => ZOOM_LABEL[zoom], onChange: onModeChange }),
@@ -239,13 +236,13 @@ function FeedTabContent() {
   const { feeds } = useFeeds();
   const lookup = feederLookup(feeds);
   const streamRef = useRef<FeedStreamHandle | null>(null);
-  const { play } = useAppHaptics();
   const { appShellStyle, isStandaloneMode, useBrowserPageScroll } = useMobileImmersiveViewport();
   // the header folds on the page's own scroll (as on Lead and Read)
   const noScroller = useRef<HTMLElement | null>(null);
   const compressed = useCompressedOnScroll(noScroller, true, { collapseDistance: 150, expandDistance: 64, topGuard: 30 });
 
-  const [order, setOrder] = useState<FeedOrder>(() => readStoredOrder() ?? 'posted');
+  // newest first, always (the results order is the API's still, for nothing here)
+  const order: FeedOrder = 'posted';
   // the zoom the stream opens on, known before it has measured: the header's control starts on it (not on DAY, sliding
   // over once the stream says). Only the header reads it, never the server's markup
   const [mode, setMode] = useState<FeedMode | null>(() => (typeof window === 'undefined' ? null : initialMode(document.documentElement.clientWidth)));
@@ -287,13 +284,11 @@ function FeedTabContent() {
   const orderRef = useRef(order);
   const shownRef = useRef(shownScope);
   const refreshRef = useRef(shown.refresh);
-  const playRef = useRef(play);
   useIsoLayoutEffect(() => {
     feedsRef.current = feeds;
     orderRef.current = order;
     shownRef.current = shownScope;
     refreshRef.current = shown.refresh;
-    playRef.current = play;
   });
 
   // the pick as it is right now (not the page's copy, which may still be catching up)
@@ -367,29 +362,12 @@ function FeedTabContent() {
     streamRef.current?.warm({ scope });
   }, []);
 
-  /* ── the order, the manage sheet, the other tabs ── */
+  /* ── the manage sheet ── */
 
-  const changeOrder = useCallback((next: FeedOrder) => {
-    if (next === orderRef.current) return;
-    orderRef.current = next;
-    writeStoredOrder(next);
-    setOrder(next);
-  }, []);
   const openManage = useCallback(() => setManage({ open: true, intent: null }), []);
   const createFeed = useCallback(() => setManage({ open: true, intent: 'create-feed' }), []);
   const closeManage = useCallback(() => setManage((current) => ({ ...current, open: false })), []);
   const retry = useCallback(() => refreshRef.current(), []);
-  // Lead and Read, the way the nav moves between kept-alive tabs: the address changes in place (the pick is shared)
-  const goTab = useCallback((href: '/lead' | '/read') => {
-    playRef.current('navSwitch');
-    try {
-      sessionStorage.setItem('feedme:intent', href);
-      sessionStorage.setItem('feedme:intent-ts', String(Date.now()));
-    } catch {}
-    window.history.pushState(null, '', href);
-  }, []);
-  const openLead = useCallback(() => goTab('/lead'), [goTab]);
-  const openRead = useCallback(() => goTab('/read'), [goTab]);
 
   /* ── the stream ── */
 
@@ -414,7 +392,6 @@ function FeedTabContent() {
     <div data-feed-tab="" className="relative w-full">
       <FeedHeader
         feeds={feeds}
-        order={order}
         mode={mode ?? 'today'}
         compressed={compressed}
         freshHandles={everyFeed.index?.freshHandles}
@@ -435,10 +412,7 @@ function FeedTabContent() {
         blank={blank}
         keyboard={!manage.open}
         onModeChange={setMode}
-        onOrderChange={changeOrder}
         onManage={openManage}
-        onLead={openLead}
-        onRead={openRead}
       />
       <FeedManageSheet open={manage.open} scope={pickScope} intent={manage.intent} onClose={closeManage} />
     </div>

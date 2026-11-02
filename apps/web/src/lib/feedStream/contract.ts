@@ -436,7 +436,6 @@ export type SectionHeaderProps = {
 
 // the profile at the top of the feed (above the grids) and the first card at the today zoom
 export type ProfileHeaderProps = {
-  variant: 'page' | 'card';
   scope: StreamScope;
   title: string; // @northside.coffee · Eat · All feeds
   subtitle: string; // Cafés · anchor · last post 3h ago
@@ -445,21 +444,14 @@ export type ProfileHeaderProps = {
   faces: Array<{ handle: string; profilePicUrl: string | null }>; // a feed: its feeders' faces, stacked
   profile: StreamProfile | null; // null while the index loads (draw the frame, no numbers)
   fresh: boolean; // posted in the last 24h: the big face wears the rose story ring
-  // the order, as Instagram's tab row under a bio: two tabs, "Newest posts" · "Latest results", the current one
-  // underlined rose (page); a compact two-way pill on the card
-  order: FeedOrder;
-  onOrderChange: (order: FeedOrder) => void;
   width: number;
-  onLead: () => void; // "Numbers in Lead": the Lead tab, same pick
-  onRead: () => void; // "Story in Read": the Read tab, same pick
   onManage: () => void; // the ⋯ button
   onOpenPost: (key: string) => void; // a highlight: today zoom at that post
 };
 
 // the header's control (TabHeader's 44px slot): the zoom, and nothing else — the SAME control as Lead's 30D
 // (TabHeader's TimeframeControl, generalised to labels): on a phone a rolling dropdown that lists only the OTHER
-// zooms; from sm up a segmented track DAY · WEEK · MONTH. Never repeat a choice in two places: the order
-// lives on the profile's tab row (ProfileHeaderProps.order), not here
+// zooms; from sm up a segmented track DAY · WEEK · MONTH
 export type FeedControlProps = {
   mode: FeedMode;
   onModeChange: (mode: FeedMode) => void;

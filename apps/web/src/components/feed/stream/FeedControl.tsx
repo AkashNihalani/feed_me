@@ -5,8 +5,7 @@
    the zoom, and nothing else. It is the very control Lead's 30D
    is (TabHeader's TimeframeControl, with the zoom's labels): on a
    phone a chip that rolls to DAY · WEEK · MONTH and drops a menu
-   of the other zooms; from sm up a segmented track. The order
-   is chosen once, on the profile's tab row, never here as well.
+   of the other zooms; from sm up a segmented track.
    The pointer on a zoom (or a press) tells the feed it is coming,
    so its pictures are ready before it moves; the phone's chip
    opening its menu tells it the other zooms are (once the menu's
