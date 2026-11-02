@@ -30,7 +30,7 @@
   top: calc(-12px - var(--pwa-top-fix, 0px));
   bottom: -12px;
   left: -12px;
-  width: 600px;
+  width: 540px;
   pointer-events: none;
   -webkit-backdrop-filter: blur(12px) saturate(130%);
   backdrop-filter: blur(12px) saturate(130%);
@@ -92,13 +92,13 @@
 .fm-rail-chip {
   flex: none;
   width: var(--fm-rail-chip);
-  height: 36px;
+  height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 18px;
+  border-radius: 16px;
   background: none;
   color: color-mix(in srgb, var(--foreground) 62%, transparent);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1;
@@ -129,12 +129,12 @@
 /* (it takes the pointer even shut: the first chip, unseen, is under it) */
 .fm-rail-capsule {
   position: absolute;
-  top: 4px;
+  top: 6px;
   left: 0;
   width: var(--fm-rail-chip);
-  height: 36px;
+  height: 32px;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--foreground);
   box-shadow: 0 10px 22px -12px rgb(var(--fm-shadow-rgb) / 0.6);
   transform: translateX(0);
@@ -162,7 +162,7 @@
   width: var(--fm-rail-chip);
   height: 100%;
   color: var(--fm-page);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1;
@@ -173,7 +173,7 @@
 /* (a longer word, Read's STRATEGY, sets the row a size down: every chip the same) */
 .fm-rail-chips.is-small .fm-rail-chip,
 .fm-rail-chips.is-small .fm-rail-capsule-words > span {
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 @media (prefers-reduced-motion: reduce) {
