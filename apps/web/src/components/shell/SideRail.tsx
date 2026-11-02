@@ -98,15 +98,15 @@ const TABS: ReadonlyArray<{ key: string; label: string; href: string; icon: Luci
 ];
 // where a tab stands in the rail, top to bottom
 const tabOrder = (key: string | null) => TABS.findIndex((item) => item.key === key);
-// a tab's row (48px) and the gap under it: what the ink tile glides by, row to row
-const TAB_PITCH = 52;
+// a tab's row (44px) and the gap under it: what the ink tile glides by, row to row
+const TAB_PITCH = 48;
 const TAB_TILE_MS = ms(400);
 const tileGlide = (reduce: boolean) => (reduce ? undefined : `transform ${TAB_TILE_MS}ms ${PICK_EASE}`);
 // an icon in a big circle's box: icons and circles share the rail's one centre line
 const ICON_BOX = 'grid h-full w-14 shrink-0 place-items-center';
-const TAB_ROW_CLASS = 'flex h-12 items-center gap-6 rounded-[18px] pl-2';
+const TAB_ROW_CLASS = 'flex h-11 items-center gap-4 rounded-[16px] pl-2';
 // (the phone's tab words: big, the one you're on in ink and the others a step back)
-const TAB_NAME = 'min-w-0 truncate text-[22px] font-bold leading-none tracking-[-0.035em]';
+const TAB_NAME = 'min-w-0 truncate text-[17px] font-bold leading-none tracking-[-0.02em]';
 
 /* Between the tabs (all kept alive) the address changes in place, as the bottom bar does it; Feed again goes back to
    its newest post */
@@ -183,13 +183,13 @@ function RailTabs({ tab, reduce }: { tab: string | null; reduce: boolean }) {
         <span
           aria-hidden="true"
           data-rail-tile=""
-          className="pointer-events-none absolute left-6 top-3 z-[15] h-12 w-12 overflow-hidden rounded-[15px] bg-fg shadow-[0_10px_22px_-10px_rgb(var(--fm-shadow-rgb)/0.55)] dark:shadow-[0_10px_24px_-8px_rgba(0,0,0,0.8)]"
+          className="pointer-events-none absolute left-[26px] top-3 z-[15] h-11 w-11 overflow-hidden rounded-[14px] bg-fg shadow-[0_10px_22px_-10px_rgb(var(--fm-shadow-rgb)/0.55)] dark:shadow-[0_10px_24px_-8px_rgba(0,0,0,0.8)]"
           style={{ transform: `translateY(${y}px)`, transition: tileGlide(reduce) }}
         >
           <span className="absolute inset-x-0 top-0 grid gap-1 text-(--fm-page)" style={{ transform: `translateY(${-y}px)`, transition: tileGlide(reduce) }}>
             {TABS.map((item) => (
-              <span key={item.key} className="grid h-12 w-12 place-items-center">
-                <item.icon aria-hidden="true" size={23} strokeWidth={2.3} />
+              <span key={item.key} className="grid h-11 w-11 place-items-center">
+                <item.icon aria-hidden="true" size={20} strokeWidth={2.2} />
               </span>
             ))}
           </span>
@@ -209,7 +209,7 @@ function RailTabs({ tab, reduce }: { tab: string | null; reduce: boolean }) {
           className={cn('group/row relative z-10 outline-none transition-colors duration-200 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]', at === index ? 'text-fg' : 'text-fg/62', TAB_ROW_CLASS)}
         >
           <span data-rail-mag={at === index ? 'tab' : ''} className={cn(ICON_BOX, 'relative')}>
-            <item.icon aria-hidden="true" size={23} strokeWidth={2.3} />
+            <item.icon aria-hidden="true" size={20} strokeWidth={2.2} />
           </span>
           <SideName className={TAB_NAME}>
             {item.label}
@@ -284,15 +284,15 @@ const AllRow = memo(function AllRow({ count, back, current, armed, leaving, redu
   useHeldPick(ref, lit);
   const turn = reduce ? undefined : `transform ${FAN_MS}ms ${PICK_EASE}`;
   return (
-    <button ref={ref} type="button" data-ledger="rail:all" data-rail-all="" onClick={onPick} aria-pressed={current} aria-label={back ? 'Back to all feeds' : 'All feeds'} className={cn(ROW, 'h-16 gap-6 pl-2')} style={{ zIndex: stack }}>
-      <RowCircle ring={current && !leaving} lit={lit} marked={false} armed={armed} reduce={reduce} className="h-14 w-14">
+    <button ref={ref} type="button" data-ledger="rail:all" data-rail-all="" onClick={onPick} aria-pressed={current} aria-label={back ? 'Back to all feeds' : 'All feeds'} className={cn(ROW, 'h-[62px] gap-[18px] pl-[11px]')} style={{ zIndex: stack }}>
+      <RowCircle ring={current && !leaving} lit={lit} marked={false} armed={armed} reduce={reduce} className="h-[50px] w-[50px]">
         <span className="relative grid h-full w-full place-items-center" style={{ background: 'var(--lead-wedge-surface)' }}>
-          <svg aria-hidden="true" viewBox="0 0 42 42" className="block h-[26px] w-[26px]" style={{ transform: back ? 'rotate(180deg)' : 'rotate(0deg)', transition: turn }}>
+          <svg aria-hidden="true" viewBox="0 0 42 42" className="block h-[24px] w-[24px]" style={{ transform: back ? 'rotate(180deg)' : 'rotate(0deg)', transition: turn }}>
             <path d={WEDGE_PATH} fill="none" stroke="var(--lead-wedge-mark)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </span>
       </RowCircle>
-      <RowName text="All feeds" sub={back ? 'Back' : count == null ? undefined : plural(count, 'feed')} className="text-[16px] tracking-[-0.015em]" />
+      <RowName text="All feeds" sub={back ? 'Back' : count == null ? undefined : plural(count, 'feed')} className="text-[15px] tracking-[-0.015em]" />
     </button>
   );
 });
@@ -312,15 +312,15 @@ const FeedRow = memo(function FeedRow({ feed, expanded, current, marked, armed, 
       aria-pressed={current}
       aria-expanded={expanded}
       aria-label={!expanded ? `Open ${name}` : current ? `${name}, every feeder. Back to all feeds` : `Show every feeder in ${name}`}
-      className={cn(ROW, 'h-16 gap-6 pl-2')}
+      className={cn(ROW, 'h-[62px] gap-[18px] pl-[11px]')}
       style={{ zIndex: stack }}
     >
-      <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-14 w-14">
-        <span className="grid h-full w-full place-items-center text-[16px] font-black leading-none tracking-[-0.02em]" style={{ color: 'rgb(11 11 15 / 0.82)', background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)' }}>
+      <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-[50px] w-[50px]">
+        <span className="grid h-full w-full place-items-center text-[15px] font-black leading-none tracking-[-0.02em]" style={{ color: 'rgb(11 11 15 / 0.82)', background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)' }}>
           {feedInitials(feed.title)}
         </span>
       </RowCircle>
-      <RowName text={name} sub={plural(feed.feeders.length, 'feeder')} className="text-[16px] tracking-[-0.015em]" />
+      <RowName text={name} sub={plural(feed.feeders.length, 'feeder')} className="text-[15px] tracking-[-0.015em]" />
     </button>
   );
 });
@@ -341,14 +341,14 @@ const FeederRow = memo(function FeederRow({ feeder, rowId, current, marked, arme
       onClick={() => onPick(feeder.handle)}
       aria-pressed={current}
       aria-label={label}
-      className={cn(ROW, 'h-[60px] gap-[26px] pl-[10px]')}
+      className={cn(ROW, 'h-[58px] gap-[20px] pl-[13px]')}
       style={{ zIndex: stack }}
     >
-      <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-[52px] w-[52px]">
+      <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-[46px] w-[46px]">
         {/* decoded ahead by the phone's header, and asked for at once: a face never arrives after its row */}
         <FeederStoryAvatar feeder={{ handle: feeder.handle, profilePicUrl: feeder.profilePicUrl }} loading="eager" className="text-[13px]" />
       </RowCircle>
-      <RowName text={feeder.handle} className="text-[15px] tracking-[-0.01em]" />
+      <RowName text={feeder.handle} className="text-[14px] tracking-[-0.01em]" />
     </button>
   );
 });
@@ -573,11 +573,11 @@ function RailDock({ owner, dir, control, reduce, trackRef }: { owner: string | n
 /* ── magnify ──────────────────────────────────────────────────────────────── */
 
 /* What's near the pointer swells, the way the Dock's icons do, in place: nothing moves along the column (the rail never
-   jumps), and at 1.2× a circle still clears the next one. Each eases toward the pointer once a frame, a breath behind
+   jumps), and at 1.06× it is a lift under the pointer, never a zoom: a circle keeps its air. Each eases toward the pointer once a frame, a breath behind
    it, on its own `scale` (the pick's lift is its transform), and the ink tile swells with the icon it sits on. A mouse
    only, while it is over the rail */
-const MAG_PEAK = 1.2;
-const MAG_REACH = 100;
+const MAG_PEAK = 1.06;
+const MAG_REACH = 80;
 const MAG_LAG = 70;
 
 function useMagnify(panelRef: RefObject<HTMLDivElement | null>, reduce: boolean) {
@@ -763,9 +763,9 @@ function SideRailBody({ tab }: { tab: string | null }) {
               className="group/row relative flex h-11 items-center gap-6 rounded-[16px] pl-2 text-fg/62 outline-none transition-colors duration-200 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]"
             >
               <span data-rail-mag="" className={cn(ICON_BOX, 'relative')}>
-                <SlidersHorizontal aria-hidden="true" size={20} strokeWidth={2.4} />
+                <SlidersHorizontal aria-hidden="true" size={18} strokeWidth={2.4} />
               </span>
-              <SideName className="text-[16px] font-bold leading-none">
+              <SideName className="text-[14px] font-bold leading-none">
                 Manage feeds
               </SideName>
             </button>
