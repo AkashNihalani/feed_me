@@ -26,16 +26,16 @@ export { read17Of };
 
 // the read's parts in the header (the front is the page's start, not a part), and the parts Strategy is cut into (the
 // reader's six where the read has them, else the eight of its three acts): the header names whichever is on screen
-export type Chapter = 'story' | 'strategy' | 'split';
-export type Part = 'story' | 'score' | 'slices' | 'views' | 'likes' | 'comments' | 'follows' | 'streaks' | 'shifts' | 'frequency' | 'formats' | 'followers' | 'split';
-export const CHAPTERS: readonly Chapter[] = ['strategy', 'split'];
-export const PARTS: readonly Part[] = ['story', 'score', 'slices', 'views', 'likes', 'comments', 'follows', 'streaks', 'shifts', 'frequency', 'formats', 'followers', 'split'];
-const NAME: Record<Chapter | Part, string> = { story: 'Story', strategy: 'Strategy', split: 'Split', score: 'Score', slices: 'Slices', views: 'Views', likes: 'Likes', comments: 'Comments', follows: 'Follows', streaks: 'Streaks', shifts: 'Shifts', frequency: 'Frequency', formats: 'Formats', followers: 'Followers' };
+export type Chapter = 'story' | 'strategy' | 'split' | 'recent' | 'ranks';
+export type Part = 'story' | 'now' | 'score' | 'slices' | 'views' | 'likes' | 'comments' | 'follows' | 'streaks' | 'shifts' | 'frequency' | 'formats' | 'followers' | 'next' | 'split' | 'recent' | 'ranks';
+export const CHAPTERS: readonly Chapter[] = ['strategy', 'recent', 'ranks'];
+export const PARTS: readonly Part[] = ['story', 'now', 'score', 'slices', 'views', 'likes', 'comments', 'follows', 'streaks', 'shifts', 'frequency', 'formats', 'followers', 'next', 'split', 'recent', 'ranks'];
+const NAME: Record<Chapter | Part, string> = { story: 'Story', strategy: 'Report', split: 'Wall', recent: 'Recent', ranks: 'Ranks', now: 'Now', score: 'Score', slices: 'Slices', views: 'Views', likes: 'Likes', comments: 'Comments', follows: 'Follows', streaks: 'Streaks', shifts: 'Shifts', frequency: 'Frequency', formats: 'Splits', followers: 'Followers', next: 'Next' };
 export const chapterName = (chapter: Chapter) => NAME[chapter];
 export const partName = (part: Part) => NAME[part];
 // (the story isn't on the page any more: it plays on Feed, so nothing reports it; were it asked for, it is Strategy's)
-export const chapterOf = (part: Part): Chapter => (part === 'split' ? 'split' : 'strategy');
-// the part's number, as the page heads it (01 Strategy · 02 Split)
+export const chapterOf = (part: Part): Chapter => (part === 'ranks' ? 'ranks' : part === 'split' || part === 'recent' ? 'recent' : 'strategy');
+// the part's number, as the page heads it (01 Report · 02 Recent · 03 Ranks: the wall, laid out either way)
 export const partNumber = (part: Part) => `0${CHAPTERS.indexOf(chapterOf(part)) + 1}`;
 
 type Mounted = { jump: (target: string) => void; unmount: () => void };
