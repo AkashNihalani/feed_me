@@ -1050,3 +1050,706 @@ html.dark .r17 { --pg-bg: rgb(22 22 26 / .64); --pg-rim: rgb(255 255 255 / .09);
 .r17 .sgm .sgw { flex: none; display: grid; gap: 5px; align-content: start; padding: 14px 18px 16px }
 .r17 .sgm .sgw .num { font-size: 44px } .r17 .sgm .sgw .num.wd { font-size: 36px }
 .r17 .sgm > .hint { padding-top: 0 }
+
+/* ---------- READ 18: Now, Next, a picture for each part, clean frames, linked posts, the rewind ---------- */
+/* a post a line names: the words themselves, underlined, a tap opens the post */
+.r17 .plk { display: inline; font: inherit; color: inherit; letter-spacing: inherit; text-align: inherit; text-decoration: underline; text-decoration-thickness: 1.5px; text-decoration-color: rgb(var(--ink-rgb) / .34); text-underline-offset: .2em; transition: text-decoration-color .25s var(--soft) }
+@media (hover: hover) { .r17 .plk:hover { text-decoration-color: currentColor } }
+/* the frame's words: its head is the headline now; the part's sentence above it, the spine's phrase on the spines only */
+.r17 .r18 .sghl { display: none }
+.r17 .sgd.r18 .sgsb { font-size: 14px; color: rgb(255 255 255 / .6) }
+.r17 .hd18 { margin: 0; color: #fff; text-wrap: balance }
+.r17 .sgd.r18 .hd18 { font: 700 30px/1.06 var(--font); letter-spacing: -.035em }
+.r17 .sgm.r18 .hd18 { font: 700 20px/1.12 var(--font); letter-spacing: -.025em }
+.r17 .sgd.r18 .dft .num { font-size: 60px } .r17 .sgd.r18 .dft .num.wd { font-size: 46px }
+.r17 .sgm.r18 .sgw .num { font-size: 36px } .r17 .sgm.r18 .sgw .num.wd { font-size: 30px }
+.r17 .r18 .fig { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap }
+.r17 .r18 .fig .unit { flex: 1 1 140px; min-width: 0 }
+.r17 .r18 .unit.lone { color: rgb(255 255 255 / .62) }
+.r17 .sgm.r18 .w18 { margin: 0; font: 500 14px/1.4 var(--font); color: rgb(255 255 255 / .74); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.r17 .r18 .w18 .plk, .r17 .r18 .hd18 .plk { text-decoration-color: rgb(255 255 255 / .38) }
+.r17 .sgm.r18 .sgw { gap: 6px }
+/* a clean frame: the post, nothing on it; a run, its posts side by side, the one that ended it dimmed */
+.r17 .pic18 { position: absolute; inset: 0; background-position: center; background-size: cover; background-repeat: no-repeat }
+.r17 .rs18 { position: absolute; inset: 0; display: flex; gap: 2px }
+.r17 .rs18 i { flex: 1 1 0; min-width: 0; background-position: center; background-size: cover; background-repeat: no-repeat }
+.r17 .rs18 i.bk { flex-grow: .7; opacity: .34; filter: grayscale(1) }
+
+/* a part's own picture, dark in both themes. Laid out against its own box, so it holds on a tall laptop card and a
+   short wide phone one */
+.r17 .c18 { position: absolute; inset: 0; container-type: size; color: #fff; background: radial-gradient(120% 90% at 20% 0%, rgb(255 255 255 / .06), transparent 60%), #0c0c10; font-family: var(--font) }
+.r17 .c18 > * { position: relative }
+.r17 .c18 .cw { font-weight: 700; letter-spacing: -.03em }
+.r17 .c18 .c-up { --c: var(--accent) } .r17 .c18 .c-mid { --c: rgb(255 255 255 / .82) } .r17 .c18 .c-dn { --c: rgb(255 255 255 / .26) } .r17 .c18 .c-few { --c: rgb(255 255 255 / .12) }
+.r17 .c18 .cw.c-up { color: var(--accent) } .r17 .c18 .cw.c-mid { color: #fff } .r17 .c18 .cw.c-dn { color: rgb(255 255 255 / .5) } .r17 .c18 .cw.c-few { color: rgb(255 255 255 / .4) }
+.r17 .c18 .cl { display: flex; justify-content: space-between; gap: 10px; font: 600 10.5px/1.2 var(--font); color: rgb(255 255 255 / .42); letter-spacing: .02em }
+.r17 .c18 .cl span:nth-child(2) { text-align: center; flex: 1 }
+/* Score: the form */
+.r17 .cfm { display: flex; flex-direction: column; gap: 10px; padding: 22px 20px 18px }
+.r17 .cfm .ch { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap }
+.r17 .cfm .ch .cw { font-size: clamp(26px, 9cqw, 44px); line-height: 1 }
+.r17 .cfm .ch span { font: 600 12.5px/1.2 var(--font); color: rgb(255 255 255 / .55) }
+.r17 .fbs { flex: 1 1 auto; min-height: 90px; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 2px; position: relative }
+.r17 .fbs .mid { position: absolute; left: 0; right: 0; top: 60%; height: 1px; background: rgb(255 255 255 / .34); pointer-events: none }
+.r17 .fbs .l10 { position: absolute; top: -4px; bottom: -4px; right: -3px; left: calc(var(--a) / var(--n) * 100% - 2px); border-radius: 8px; background: rgb(255 255 255 / .05); pointer-events: none }
+.r17 .fb { position: relative; height: 100% }
+.r17 .fb i { position: absolute; left: 12%; right: 12%; border-radius: 3px; background: rgb(255 255 255 / .26) }
+.r17 .fb.o i { bottom: 40%; height: calc(var(--h) * 60%); background: rgb(255 255 255 / .62) }
+.r17 .fb.u i { top: 60%; height: calc(var(--h) * 40%) }
+.r17 .fb.o.r i { background: var(--accent) } .r17 .fb.u.r i { background: rgb(255 255 255 / .5) }
+@media (hover: hover) { .r17 .fb:hover i { background: #fff } }
+.r17 .frn { position: relative; height: 18px; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)) }
+.r17 .frn span { grid-column: calc(var(--a) + 1) / span var(--w); border-top: 1.5px solid; padding-top: 3px; text-align: center; font: 700 10.5px/1 var(--font); white-space: nowrap }
+.r17 .frn .o { color: var(--accent) } .r17 .frn .u { color: rgb(255 255 255 / .6) }
+/* Slices: the wheel */
+.r17 .cwh { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px 18px }
+.r17 .cwh svg { flex: 0 1 auto; width: min(100%, 58cqh); max-height: 52%; overflow: visible }
+.r17 .cwh path { fill: var(--c); transition: opacity .25s }
+.r17 .cwh text { fill: rgb(255 255 255 / .5); font: 600 11px var(--font); text-anchor: middle }
+.r17 .cwh text.n { fill: #fff; font: 700 30px var(--font); letter-spacing: -.03em }
+.r17 .cwh .lg { width: 100%; display: grid; gap: 2px; align-content: start; overflow: hidden }
+.r17 .cwh .lr { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 64px; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 8px; font: 600 13px/1.2 var(--font) }
+.r17 .cwh .lr > i { width: 10px; height: 10px; border-radius: 3px; background: var(--c) }
+.r17 .cwh .lr b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.r17 .cwh .lr em { font-style: normal; color: rgb(255 255 255 / .55); font-variant-numeric: tabular-nums }
+.r17 .cwh .lr .cw { font-size: 12px; letter-spacing: 0; text-align: right }
+@media (hover: hover) { .r17 .cwh .lr:hover { background: rgb(255 255 255 / .07) } }
+@container (min-aspect-ratio: 1 / 1) {
+  .r17 .cwh { flex-direction: row; padding: 14px 16px }
+  .r17 .cwh svg { width: auto; height: min(100%, 52cqw); max-height: none }
+  .r17 .cwh .lg { flex: 1 1 0; min-width: 0 }
+  .r17 .cwh .lr { grid-template-columns: 9px minmax(0, 1fr) auto; padding: 3px 4px; font-size: 12px }
+  .r17 .cwh .lr .cw { display: none }
+}
+/* Splits: the formats */
+.r17 .csp { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 22px 20px }
+.r17 .csp .sb { display: flex; gap: 3px; height: 14px; margin-bottom: 10px }
+.r17 .csp .sb i { border-radius: 4px; background: var(--c) }
+.r17 .csp .sr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 14px; align-items: baseline; padding: 10px 6px; border-top: 1px solid rgb(255 255 255 / .1); border-radius: 0 }
+.r17 .csp .sr b { font: 700 17px/1.1 var(--font); letter-spacing: -.02em }
+.r17 .csp .sr .sh, .r17 .csp .sr .sx { font: 700 20px/1 var(--font); letter-spacing: -.02em; text-align: right; font-variant-numeric: tabular-nums }
+.r17 .csp .sr small { display: block; margin-top: 3px; font: 600 10px/1 var(--font); letter-spacing: .02em; color: rgb(255 255 255 / .45) }
+.r17 .csp .sr .so { grid-column: 1 / -1; display: flex; gap: 8px; align-items: baseline; font: 500 12.5px/1.2 var(--font); color: rgb(255 255 255 / .6) }
+.r17 .csp .sr .so .cw { font-size: 12.5px; letter-spacing: 0; margin-left: auto }
+@container (max-height: 300px) { .r17 .csp { padding: 12px 16px; gap: 0 } .r17 .csp .sr { padding: 6px 4px } .r17 .csp .sr .so { display: none } .r17 .csp .sb { margin-bottom: 4px } }
+/* Frequency: the weeks */
+.r17 .cwk { display: flex; flex-direction: column; gap: 10px; padding: 22px 18px 16px }
+.r17 .wkd { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); align-items: end; gap: 2px; position: relative }
+.r17 .wkd .wku { position: absolute; left: 0; right: 0; bottom: calc(var(--u) * (var(--d) + var(--g))); border-top: 1.5px dashed rgb(255 255 255 / .4); pointer-events: none }
+.r17 .wkc { display: flex; flex-direction: column-reverse; align-items: center; gap: var(--g) }
+.r17 .wkc i { width: var(--d); height: var(--d); border-radius: 50%; background: rgb(255 255 255 / .22); flex: none }
+.r17 .wkc i.o { background: rgb(255 255 255 / .8) } .r17 .wkc i.h { background: var(--accent) } .r17 .wkc i.n { background: none; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .3) }
+/* Followers: the days, and the biggest moves */
+.r17 .cfl { display: flex; flex-direction: column; gap: 10px; padding: 20px 18px 16px }
+.r17 .fd { flex: 1 1 auto; min-height: 60px; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 1px }
+.r17 .fd span { position: relative }
+.r17 .fd i { position: absolute; left: 0; right: 0; border-radius: 1.5px }
+.r17 .fd .p i { bottom: 50%; height: calc(var(--h) * 50%); background: var(--accent) }
+.r17 .fd .m i { top: 50%; height: calc(var(--h) * 50%); background: rgb(255 255 255 / .34) }
+.r17 .ft { display: grid; grid-template-columns: auto 1fr 1fr; gap: 0 12px; font-family: var(--font) }
+.r17 .ft > span { padding: 5px 0; border-top: 1px solid rgb(255 255 255 / .09) }
+.r17 .ft .fh { border-top: 0; font: 700 10px/1 var(--font); letter-spacing: .12em; text-transform: uppercase; color: rgb(255 255 255 / .42) }
+.r17 .ft .fn { font: 600 12.5px/1.2 var(--font); color: rgb(255 255 255 / .6) }
+.r17 .ft b { display: block; font: 700 15px/1.1 var(--font); letter-spacing: -.01em; font-variant-numeric: tabular-nums }
+.r17 .ft .p b { color: var(--accent) } .r17 .ft .m b { color: rgb(255 255 255 / .62) }
+.r17 .ft .no em { color: rgb(255 255 255 / .3) }
+.r17 .ft em { display: block; font: 500 10.5px/1.25 var(--font); font-style: normal; color: rgb(255 255 255 / .45) }
+@container (max-height: 320px) { .r17 .cfl { flex-direction: row; align-items: stretch; padding: 14px } .r17 .cfl .fd { flex: 1 1 48% } .r17 .cfl .cl { display: none } .r17 .cfl .ft { flex: 1 1 52% } .r17 .ft > span { padding: 3px 0 } .r17 .ft b { font-size: 13.5px } }
+/* Next: the three rules */
+.r17 .cnx { display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 20px 16px }
+.r17 .nx { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 16px 16px 16px 18px; border-radius: 18px; background: rgb(255 255 255 / .06); box-shadow: inset 0 1px 0 rgb(255 255 255 / .1) }
+.r17 .nx em { grid-column: 1; font: 800 10.5px/1 var(--font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .5) }
+.r17 .nx:first-child em { color: var(--accent) }
+.r17 .nx b { grid-column: 1; font: 700 clamp(16px, 5.4cqw, 22px)/1.15 var(--font); letter-spacing: -.02em }
+.r17 .nx svg { grid-column: 2; grid-row: 1 / 3; width: 16px; height: 16px; fill: none; stroke: rgb(255 255 255 / .5); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+@container (max-height: 300px) { .r17 .nx { padding: 10px 14px } }
+/* Now: the take */
+.r17 .cnw { display: flex; flex-direction: column; justify-content: space-between; gap: 16px; padding: 24px 22px 20px }
+.r17 .cnw .nq { font: 600 clamp(14.5px, 5.2cqw, 23px)/1.4 var(--font); letter-spacing: -.015em; text-wrap: pretty; overflow: hidden }
+.r17 .cnw .nq .plk { text-decoration-color: rgb(255 255 255 / .4) }
+.r17 .cnw .nf { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
+.r17 .cnw .nd { display: flex; gap: 4px }
+.r17 .cnw .nd button { width: 10px; height: 10px; border-radius: 50%; background: rgb(255 255 255 / .22) }
+.r17 .cnw .nd button.o { background: #fff }
+.r17 .r18 .dsc.cmp .sgsb { display: none }
+.r17 .cnw .nf .cw { font-size: 17px; letter-spacing: -.01em }
+.r17 .cnw .nf em { font: 500 12px/1.2 var(--font); font-style: normal; color: rgb(255 255 255 / .5) }
+@container (max-height: 300px) { .r17 .cnw { padding: 16px 16px 14px; gap: 10px } }
+
+/* the panel: the head, its number, what happened, why, so; the rewind */
+.r17 .ph18 { font: 700 26px/1.1 var(--font); letter-spacing: -.03em; text-wrap: balance }
+.r17 .pf18 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap }
+.r17 .pf18 b { font: 700 40px/1 var(--font); letter-spacing: -.04em }
+.r17 .pf18 span { flex: 1 1 160px; font: 500 13.5px/1.35 var(--font); color: var(--ink-2) }
+.r17 .pwt { color: var(--ink) }
+.r17 .pso { display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border-radius: 14px; background: rgb(218 46 70 / .08); font: 650 15.5px/1.4 var(--font); letter-spacing: -.01em }
+.r17 .pso b { flex: none; font: 800 10.5px/1 var(--font); letter-spacing: .15em; text-transform: uppercase; color: var(--accent) }
+.r17 .prw { display: grid; gap: 12px; padding-top: 18px; margin-top: 4px; border-top: 1px solid var(--hair) }
+.r17 .prw h5 { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font: 800 11px/1.2 var(--font); letter-spacing: .15em; text-transform: uppercase }
+.r17 .prw h5 em { font: 500 12.5px/1.3 var(--font); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--ink-3) }
+.r17 .rwp { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: var(--well) }
+.r17 .rwh { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; text-align: left }
+.r17 .rwh b { font: 650 14.5px/1.3 var(--font); letter-spacing: -.01em }
+.r17 .rwh em { flex: none; font: 700 15px/1 var(--font); font-style: normal; font-variant-numeric: tabular-nums } .r17 .rwh em.o { color: var(--accent) } .r17 .rwh em.u { color: var(--ink-3) }
+.r17 .rwf { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0 -2px; padding: 2px }
+.r17 .rwf::-webkit-scrollbar { display: none }
+.r17 .rwf span { flex: 0 0 62px; position: relative; aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; background: var(--media); opacity: .55; transition: opacity .3s }
+.r17 .rwf span.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent) }
+.r17 .rwf img { width: 100%; height: 100%; object-fit: cover; display: block }
+.r17 .rwf i { position: absolute; left: 4px; bottom: 4px; padding: 2px 5px; border-radius: 6px; background: rgb(0 0 0 / .62); color: #fff; font: 700 9.5px/1 var(--font); font-style: normal }
+.r17 .rwn { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px }
+.r17 .rwn li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; font: 500 13.5px/1.4 var(--font); color: var(--ink-2) }
+.r17 .rwn b { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums }
+
+/* ---------- READ 18, the three calls everywhere: Feeding crimson, Floating silver, Fading a cool dark. On the bars, the
+   phone's tiles (with the call in words), the laptop's spines, the frame's dot, and a breath of light from the foot of
+   the open card, the call of the frame on it ---------- */
+.r17 .dcb .t-mid i, .r17 .sgcb .t-mid i { background: rgb(214 220 232 / .56) }
+.r17 .r18 .dcb .t-dn i, .r17 .r18 .sgcb .t-dn i { background: rgb(150 160 176 / .2) }
+.r17 .dcb button.t-mid.on i, .r17 .sgcb button.t-mid.on i { background: #eef1f6; box-shadow: 0 0 10px rgb(214 220 232 / .75) }
+.r17 .dcb button.t-dn.on i, .r17 .sgcb button.t-dn.on i { background: rgb(166 176 192 / .78); box-shadow: 0 0 9px rgb(110 126 152 / .6) }
+.r17 .msb.t-mid .msi::after { background: linear-gradient(180deg, rgb(8 8 12 / .5) 0%, rgb(8 8 12 / .58) 34%, rgb(66 72 84 / .74) 72%, rgb(168 176 190 / .82) 100%) }
+.r17 .mcw { margin-left: auto; flex: none; padding: 4px 7px 3px; border-radius: 999px; font: 800 9px/1 var(--font); font-style: normal; letter-spacing: .12em; text-transform: uppercase }
+.r17 .mcw.t-up { background: var(--accent); color: #fff; box-shadow: 0 4px 12px -4px rgb(218 46 70 / .9) }
+.r17 .mcw.t-mid { background: rgb(232 236 242 / .92); color: #121318 }
+.r17 .mcw.t-dn { background: rgb(12 14 19 / .55); color: rgb(255 255 255 / .74); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .3) }
+.r17 .dsc.t-mid .dsp::before { background: linear-gradient(180deg, rgb(5 5 8 / .38) 0%, rgb(5 5 8 / .52) 34%, rgb(60 66 78 / .72) 70%, rgb(168 176 190 / .84) 100%) }
+.r17 .dsc.t-mid .dsp:hover::before { background: linear-gradient(180deg, rgb(5 5 8 / .2) 0%, rgb(5 5 8 / .32) 38%, rgb(70 76 90 / .74) 76%, rgb(178 186 200 / .86) 100%) }
+.r17 .mk.t-mid { width: 26px; height: 26px; color: #121318; background: rgb(232 236 242 / .92) }
+.r17 .dsp .mk.t-mid { width: 24px; height: 24px; color: #fff; background: rgb(255 255 255 / .16); box-shadow: inset 0 1px 0 rgb(255 255 255 / .45), inset 0 0 0 1px rgb(255 255 255 / .26) }
+.r17 .kick.t-mid .dot { background: rgb(232 236 242 / .9) }
+.r17 .sgm.r18 .sgc::before { content: ""; position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; height: 72%; border-radius: 0 0 26px 26px; pointer-events: none }
+.r17 .sgm.r18 .sgc.g-up::before { background: radial-gradient(120% 80% at 50% 106%, rgb(218 46 70 / .44), rgb(218 46 70 / 0) 70%) }
+.r17 .sgm.r18 .sgc.g-mid::before { background: radial-gradient(120% 80% at 50% 106%, rgb(204 212 226 / .26), rgb(204 212 226 / 0) 70%) }
+.r17 .sgm.r18 .sgc.g-dn::before { background: radial-gradient(120% 80% at 50% 106%, rgb(92 110 140 / .34), rgb(92 110 140 / 0) 70%) }
+.r17 .sgd.r18 .dsc .dsi::after { content: ""; position: absolute; z-index: 0; right: 0; bottom: 0; width: var(--tw); height: 76%; pointer-events: none; background: none }
+.r17 .sgd.r18 .dsc.g-up .dsi::after { background: radial-gradient(110% 80% at 100% 100%, rgb(218 46 70 / .32), rgb(218 46 70 / 0) 70%) }
+.r17 .sgd.r18 .dsc.g-mid .dsi::after { background: radial-gradient(110% 80% at 100% 100%, rgb(204 212 226 / .2), rgb(204 212 226 / 0) 70%) }
+.r17 .sgd.r18 .dsc.g-dn .dsi::after { background: radial-gradient(110% 80% at 100% 100%, rgb(92 110 140 / .28), rgb(92 110 140 / 0) 70%) }
+
+/* ---------- READ 18, the stage as one screen. Clean titles: a tile or a spine is its part's name, its figure and its
+   call, nothing to read sideways. On a phone the tiles, the part's name and the card fit one screen together, so a part
+   changes without a scroll; a frame's picture fills its card, its bars over the top and its words over the foot (a
+   chart keeps its words under it). On a laptop the stage is as tall as the screen ---------- */
+.r17 .sgd.r18 .dsp span { font-size: 0 }
+.r17 .sgd.r18 .dsp .fg { margin-inline-end: 12px; font-size: 25px }
+.r17 .sgd.r18 .dsp .fg small { font-size: 13px }
+.r17 .sgd.r18 .dsp .spn { font: 800 11.5px/1 var(--font); font-style: normal; letter-spacing: .18em; text-transform: uppercase; color: rgb(255 255 255 / .74) }
+.r17 .sgm.r18 { --sgch: clamp(440px, calc(100svh - 196px), 700px); gap: 10px }
+.r17 .sgm.r18 > .hint { display: none }
+.r17 .sgm.r18 .msp { grid-auto-columns: 120px; gap: 6px; padding-block: 4px }
+.r17 .sgm.r18 .msb { height: 74px; gap: 0; justify-content: space-between; padding: 10px 11px 11px 12px; border-radius: 17px }
+.r17 .sgm.r18 .msl { display: none }
+.r17 .sgm.r18 .msk { gap: 5px; font-size: 9.5px; letter-spacing: .12em }
+.r17 .sgm.r18 .mcw { padding: 3px 5px 2px; font-size: 7.5px; letter-spacing: .1em }
+.r17 .sgm.r18 .msf { font-size: 23px; letter-spacing: -.04em }
+.r17 .sgm.r18 .msf small { margin-left: 4px; font-size: 11px }
+.r17 .sgm.r18 .sgk .rw { min-height: 22px }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgpic { position: absolute; inset: 0; margin: 0; border-radius: 0 }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgct { position: absolute; z-index: 3; top: 0; left: 0; right: 0; padding: 12px 14px 34px; background: linear-gradient(180deg, rgb(4 4 6 / .5), rgb(4 4 6 / 0)); pointer-events: none }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgct .sgcb { pointer-events: auto }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgw { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; padding: 84px 18px 18px; background: linear-gradient(180deg, rgb(6 6 9 / 0), rgb(6 6 9 / .66) 36%, rgb(6 6 9 / .9)) }
+.r17 .sgm.r18 .sgc:not(.cht)::before { z-index: 2 }
+.r17 .sgm.r18 .sgc.cht > .sgpic { margin: 0; border-radius: 0 }
+.r17 .sgm.r18 .sgc.cht > .sgct { padding-bottom: 8px }
+.r17 .sgm.r18 .sgw .hd18 { font-size: 21px }
+.r17 .sgm.r18 .w18 { -webkit-line-clamp: 3; color: rgb(255 255 255 / .8) }
+
+/* ---------- READ 18, Nov 4: light-mode text, the calls as symbols, a full-screen phone stage, charts that fill their
+   slide, the four-fact Now ---------- */
+/* (the record list in a post's sheet is a "why" list: the story cards' white .why text isn't its colour) */
+.r17 .lvs.why { font: inherit; color: var(--ink) }
+/* the calls, once, beside the page's head: the symbols the tiles and spines carry */
+.r17 .op:has(.clg) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px }
+.r17 .clg { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 600 12px/1 var(--font); color: var(--ink-2) }
+.r17 .clg > span { display: inline-flex; align-items: center; gap: 6px }
+.r17 .clg .mk, .r17 .r18 .msk .mk { width: 18px; height: 18px; margin: 0; flex: none; display: grid; place-items: center; border-radius: 50% }
+.r17 .clg .mk svg, .r17 .r18 .msk .mk svg { width: 11px; height: 11px }
+.r17 .clg .mk.t-up, .r17 .r18 .msk .mk.t-up { background: var(--accent); color: #fff; box-shadow: none }
+.r17 .clg .mk.t-mid, .r17 .r18 .msk .mk.t-mid { background: #e6e9ef; color: #121318; box-shadow: inset 0 0 0 1px rgb(18 19 24 / .12) }
+.r17 .clg .mk.t-dn { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px rgb(var(--ink-rgb) / .55) }
+.r17 .r18 .msk .mk.t-dn { background: rgb(12 14 19 / .5); color: #fff; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .6) }
+.r17 .r18 .msk .mk:not(.t-up):not(.t-mid):not(.t-dn) { width: 6px; height: 6px }
+/* a phone's stage is the whole screen, edge to edge: the tiles and the part's name on the dark at its top, the card
+   filling the rest, its words clear of the dock */
+.r17 .sgm.r18 { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .74); --ink-3: rgb(255 255 255 / .5);
+  position: relative; width: 100vw; margin-left: calc(50% - 50vw); height: 100svh; min-height: 0 !important; display: flex; flex-direction: column; gap: 8px; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); background: #0b0b0e; color: #fff }
+.r17 .sgm.r18 .msp { flex: none; margin-inline: 0; padding-inline: 12px; scroll-padding-inline: 12px }
+.r17 .sgm.r18 .sgslot { flex: none; padding-inline: 16px }
+.r17 .sgm.r18 .sgv { flex: 1 1 auto; height: auto; min-height: 0; border-radius: 0 }
+.r17 .sgm.r18 .sgc, .r17 .sgm.r18 .sgc .sdim { border-radius: 0 }
+.r17 .sgm.r18 .sgc::after { display: none }
+.r17 .sgm.r18 .sgc::before { border-radius: 0 }
+.r17 .sgm.r18 .msb.on { box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 0 0 2px #0b0b0e, 0 0 0 3.5px #fff }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgw { padding-bottom: calc(24px + 58px + env(safe-area-inset-bottom, 0px)) }
+.r17 .sgm.r18 .sgc.cht > .sgw { padding-bottom: calc(16px + 58px + env(safe-area-inset-bottom, 0px)) }
+/* the push between frames: the last picture, held under the new one while it drifts back */
+.r17 .sgpic > .pgo { position: absolute; inset: 0; z-index: 0; pointer-events: none }
+.r17 .sgpic > .pgo > * { position: absolute; inset: 0 }
+.r17 .sgpic > :not(.pgo) { z-index: 1 }
+/* charts that take the room they're given */
+.r17 .cwk .wkd { --dd: max(var(--d0), min(calc((100cqh - 120px) / var(--mx) - var(--g)), calc(100cqw / var(--n) * .5), 24px)) }
+.r17 .cwk .wkc i { width: var(--dd); height: var(--dd) }
+.r17 .cwk .wkd .wku { bottom: calc(var(--u) * (var(--dd) + var(--g))) }
+.r17 .csp { gap: clamp(6px, 1.4cqh, 14px) }
+.r17 .csp .sb { height: clamp(14px, 3cqh, 26px) }
+.r17 .csp .sr { padding-block: clamp(10px, 2.6cqh, 24px) }
+.r17 .csp .sr b { font-size: clamp(17px, 4.2cqh, 30px) }
+.r17 .csp .sr .sh, .r17 .csp .sr .sx { font-size: clamp(20px, 5.4cqh, 44px) }
+.r17 .csp .sr small { font-size: clamp(10px, 1.6cqh, 12.5px) }
+.r17 .csp .sr .so { font-size: clamp(12.5px, 2.2cqh, 16px) }
+.r17 .ft .fn { font-size: clamp(12.5px, 2.2cqh, 16px) }
+.r17 .ft b { font-size: clamp(15px, 3.2cqh, 26px) }
+.r17 .ft em { font-size: clamp(10.5px, 1.6cqh, 13px) }
+.r17 .ft > span { padding-block: clamp(5px, 1.2cqh, 12px) }
+.r17 .nx { padding: clamp(14px, 3cqh, 28px) 18px }
+.r17 .nx b { font-size: clamp(16px, min(5.6cqw, 4.2cqh), 30px) }
+.r17 .nx em { font-size: clamp(10.5px, 1.6cqh, 13px) }
+.r17 .cwh .lr { font-size: clamp(12px, 2cqh, 16px); padding-block: clamp(3px, .8cqh, 8px) }
+.r17 .cfm .ch .cw { font-size: clamp(26px, min(9cqw, 7cqh), 56px) }
+/* Now: four facts, each a label, its number, what it counts and what it means */
+.r17 .cnw2 { display: flex; flex-direction: column; gap: 14px; padding: 18px 18px 16px }
+.r17 .cnw2 .nfs { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr; grid-auto-rows: minmax(0, 1fr); gap: 1px; border-radius: 16px; overflow: hidden; background: rgb(255 255 255 / .08) }
+.r17 .nfr { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 12px; align-content: center; padding: clamp(10px, 2cqh, 20px) 14px; background: #0f0f13 }
+.r17 .nfr em { grid-column: 1 / -1; font: 800 10px/1 var(--font); font-style: normal; letter-spacing: .16em; text-transform: uppercase; color: rgb(255 255 255 / .5); margin-bottom: 6px }
+.r17 .nfr.n0 em { color: var(--accent) }
+.r17 .nfr b { grid-row: 2 / 4; align-self: start; font: 700 clamp(24px, min(8cqw, 5.4cqh), 46px)/1 var(--font); letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap }
+.r17 .nfr.n0 b { color: var(--accent) }
+.r17 .nfr span { font: 600 12px/1.3 var(--font); color: rgb(255 255 255 / .58); align-self: end }
+.r17 .nfr p { font: 500 clamp(12.5px, 2cqh, 15px)/1.38 var(--font); color: rgb(255 255 255 / .86); text-wrap: pretty }
+.r17 .nfr p .plk { text-decoration-color: rgb(255 255 255 / .4) }
+.r17 .cnw2 .nf { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
+.r17 .cnw2 .nd { display: flex; gap: 4px }
+.r17 .cnw2 .nd button { width: 10px; height: 10px; border-radius: 50%; background: rgb(255 255 255 / .22) }
+.r17 .cnw2 .nd button.o { background: #fff }
+.r17 .cnw2 .nf em { font: 500 12px/1.2 var(--font); font-style: normal; color: rgb(255 255 255 / .5) }
+@container (min-aspect-ratio: 4 / 5) { .r17 .cnw2 .nfs { grid-template-columns: 1fr 1fr } .r17 .nfr { grid-template-columns: 1fr; grid-template-rows: auto auto auto 1fr } .r17 .nfr b { grid-row: auto } .r17 .nfr span { align-self: start; margin-top: 4px } .r17 .nfr p { margin-top: 6px } }
+
+/* ---------- READ 18, Nov 4 (2): corner tags, an immersive phone stage, groups shown whole, a front that reads across ----------
+   The call is a tag in a tile's or spine's corner: an arrow up (Feeding, crimson), sideways (Floating, silver), down
+   (Fading, dark). The phone's stage is the frame itself, the whole screen: the parts float over its top as quiet
+   translucent tiles (no pictures in them, no rings, no glow), the frame's bars under them, its words over its foot */
+.r17 .ctg { position: absolute; z-index: 2; top: 0; right: 0; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 0 var(--ctr, 16px) 0 9px; pointer-events: none }
+.r17 .ctg svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round }
+.r17 .ctg.t-up { background: var(--accent); color: #fff }
+.r17 .ctg.t-mid { background: #e4e8ef; color: #121318 }
+.r17 .ctg.t-dn { background: #2a2d35; color: rgb(255 255 255 / .86) }
+.r17 .clg .ctg { position: static; width: 18px; height: 18px; border-radius: 5px }
+.r17 .clg .ctg svg { width: 11px; height: 11px }
+.r17 .clg .ctg.t-dn { background: rgb(var(--ink-rgb) / .14); color: var(--ink) }
+.r17 .sgd.r18 .dsp { --ctr: 26px } .r17 .sgd.r18 .dsp .ctg { width: 26px; height: 26px; border-radius: 0 26px 0 10px }
+.r17 .sgd.r18 .dsp .ctg svg { width: 13px; height: 13px }
+.r17 .sgd.r18 .dsp > b { padding-right: 6px }
+/* the phone's stage */
+.r17 .sgm.r18 { display: block; gap: 0; padding: 0 }
+.r17 .sgm.r18 .sgv { position: absolute; inset: 0; height: auto }
+.r17 .sgm.r18 .sgslot { display: none }
+.r17 .sgm.r18 .msp { position: absolute; z-index: 6; top: 0; left: 0; right: 0; grid-auto-columns: 112px; gap: 6px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px 18px; background: linear-gradient(180deg, rgb(4 4 6 / .62), rgb(4 4 6 / .3) 62%, rgb(4 4 6 / 0)) }
+.r17 .sgm.r18 .msb { --ctr: 14px; height: 56px; padding: 9px 10px 9px 11px; border-radius: 14px; justify-content: space-between; background: rgb(16 16 22 / .46); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); transition: background .4s var(--soft) }
+.r17 .sgm.r18 .msb.on { background: rgb(255 255 255 / .2); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16) }
+.r17 .sgm.r18 .msi { display: none }
+.r17 .sgm.r18 .msk { padding-right: 18px; color: rgb(255 255 255 / .7) }
+.r17 .sgm.r18 .msb.on .msk { color: #fff }
+.r17 .sgm.r18 .msf { font-size: 19px }
+.r17 .sgm.r18 .msb .ctg { width: 20px; height: 20px }
+.r17 .sgm.r18 .msb .ctg svg { width: 11px; height: 11px }
+.r17 .sgm.r18 .sgc::before { display: none }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgct { top: calc(env(safe-area-inset-top, 0px) + 84px); padding: 0 14px; background: none }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgpic::after { content: ""; position: absolute; z-index: 2; inset: 0 0 auto; height: 190px; background: linear-gradient(180deg, rgb(4 4 6 / .5), rgb(4 4 6 / 0)); pointer-events: none }
+.r17 .sgm.r18 .sgc.cht { padding-top: calc(env(safe-area-inset-top, 0px) + 84px) }
+.r17 .sgm.r18 .sgc.cht > .sgct { padding: 0 14px 10px }
+.r17 .sgm.r18 .sgc.cht > .sgpic { margin: 0 }
+.r17 .sgm.r18 .sgcb button.on i, .r17 .sgm.r18 .sgcb button.t-up.on i, .r17 .sgm.r18 .sgcb button.t-mid.on i, .r17 .sgm.r18 .sgcb button.t-dn.on i { box-shadow: none }
+.r17 .sgm.r18 .sgcb button.on i { background: #fff } .r17 .sgm.r18 .sgcb button.t-up.on i { background: #ff4a62 }
+/* the laptop's glow, a breath only */
+.r17 .sgd.r18 .dsc.g-up .dsi::after { background: radial-gradient(110% 70% at 100% 100%, rgb(218 46 70 / .16), rgb(218 46 70 / 0) 70%) }
+.r17 .sgd.r18 .dsc.g-mid .dsi::after { background: radial-gradient(110% 70% at 100% 100%, rgb(204 212 226 / .1), rgb(204 212 226 / 0) 70%) }
+.r17 .sgd.r18 .dsc.g-dn .dsi::after { background: radial-gradient(110% 70% at 100% 100%, rgb(92 110 140 / .14), rgb(92 110 140 / 0) 70%) }
+/* a group: every post whole enough to tell, in a grid, its multiple in a small tag; the one that ended a run dimmed */
+.r17 .grp18 { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--c), minmax(0, 1fr)); grid-template-rows: repeat(var(--r), minmax(0, 1fr)); gap: 3px; padding: 3px; background: #0b0b0e }
+.r17 .gc { position: relative; min-height: 0; border-radius: 10px; overflow: hidden; background-position: center 30%; background-size: cover; background-repeat: no-repeat }
+.r17 .gc em { position: absolute; left: 6px; bottom: 6px; padding: 3px 7px; border-radius: 999px; font: 700 12px/1 var(--font); font-style: normal; color: #fff; background: rgb(8 8 12 / .62); font-variant-numeric: tabular-nums }
+.r17 .gc em.o { background: var(--accent) }
+.r17 .gc.bk { filter: grayscale(1) brightness(.62) }
+.r17 .gc i { position: absolute; right: 6px; top: 6px; padding: 3px 7px; border-radius: 999px; font: 700 10.5px/1 var(--font); font-style: normal; color: #fff; background: rgb(8 8 12 / .7) }
+/* the front: a headline that reads across, the sentence after it under it, the three figures as rows with room */
+.r17 .cvx { gap: 26px }
+.r17 .cvh { gap: 12px }
+.r17 .cvl, .r17 .cvl.long { font-size: clamp(32px, 8.6vw, 42px); line-height: 1.04; max-width: 22ch }
+.r17 .cvs { margin: 0; max-width: 46ch; font: 500 clamp(16px, 4.4vw, 19px)/1.42 var(--font); letter-spacing: -.012em; color: var(--ink-2); text-wrap: pretty }
+.r17 .cvf { grid-template-columns: minmax(0, 1fr); border-top: 0 }
+.r17 .cvi { grid-template-columns: minmax(3.4ch, auto) minmax(0, 1fr); align-items: center; column-gap: 16px; row-gap: 3px; padding: 14px 0; border-top: 1px solid var(--hair) }
+.r17 .cvi + .cvi { padding-left: 0; border-left: 0 }
+.r17 .cvn { grid-row: span 2; font-size: clamp(28px, 8vw, 34px) }
+.r17 .cvk { margin-top: 0 }
+@media (min-width: 1024px) {
+  .r17 .cvx { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 64px; padding-block: 8px 12px }
+  .r17 .cvl, .r17 .cvl.long { font-size: clamp(52px, 4.8vw, 74px); line-height: 1; max-width: 20ch }
+  .r17 .cvs { font-size: 21px; max-width: 40ch }
+  .r17 .cvn { font-size: 44px }
+}
+/* (a group's last row stretches to the edge: no empty cell; the front's figures line up on one column) */
+.r17 .grp18 { display: flex; flex-wrap: wrap; align-content: stretch }
+.r17 .grp18 .gc { flex: 1 1 calc((100% - (var(--c) - 1) * 3px) / var(--c)); height: calc((100% - (var(--r) - 1) * 3px) / var(--r)) }
+.r17 .cvi { grid-template-columns: 108px minmax(0, 1fr) }
+@media (min-width: 1024px) { .r17 .cvi { grid-template-columns: 150px minmax(0, 1fr) } }
+/* (a spine is the whole card wide with its words padded into the sliver: its tag sits at the sliver's corner) */
+.r17 .sgd.r18 .dsp .ctg { right: auto; left: calc(var(--sw) - 26px) }
+.r17 .sgd.r18 .dsp > b { justify-self: start; padding: 2px 0 0 11px }
+/* (Nov 4, 3) the calls as one family: the same quiet glass tag, an arrow rising to the corner (Feeding), level
+   (Floating) or falling (Fading), only its stroke in the call's colour. A laptop's spines say it in their wash, and its
+   key is a swatch of that wash */
+.r17 .ctg, .r17 .ctg.t-up, .r17 .ctg.t-mid, .r17 .ctg.t-dn { background: rgb(255 255 255 / .13); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08) }
+.r17 .ctg svg { stroke-width: 2.4 }
+.r17 .ctg.t-up { color: #ff6b7f } .r17 .ctg.t-mid { color: #e8ebf1 } .r17 .ctg.t-dn { color: rgb(166 178 198) }
+.r17 .clg .ctg, .r17 .clg .ctg.t-up, .r17 .clg .ctg.t-mid, .r17 .clg .ctg.t-dn { background: rgb(var(--ink-rgb) / .07); box-shadow: inset 0 0 0 1px rgb(var(--ink-rgb) / .08) }
+.r17 .clg .ctg.t-up { color: var(--accent) } .r17 .clg .ctg.t-mid { color: rgb(var(--ink-rgb) / .62) } .r17 .clg .ctg.t-dn { color: rgb(var(--ink-rgb) / .45) }
+.r17 .clg .csw { display: none; width: 18px; height: 10px; border-radius: 3px }
+.r17 .clg .csw.t-up { background: linear-gradient(90deg, rgb(122 16 34), rgb(218 46 70)) }
+.r17 .clg .csw.t-mid { background: linear-gradient(90deg, rgb(60 66 78), rgb(168 176 190)) }
+.r17 .clg .csw.t-dn { background: linear-gradient(90deg, rgb(10 12 17), rgb(40 44 54)) }
+@media (min-width: 1024px) { .r17 .clg .ctg { display: none } .r17 .clg .csw { display: block } }
+
+/* ---------- READ 18, Nov 4 (4): a phone's stage that belongs to the page. The page melts into it: Report's head and the
+   key sit on a dark band that rises out of the page's colour, the stage follows edge to edge, and it melts back out into
+   the wall. Over it the dock turns dark (no page-coloured halo round the handle), the tiles lose their borders, and the
+   tags keep their own room in the corner ---------- */
+@media (max-width: 1023px) {
+  .r17 #strategy:has(.sgm.r18) { padding-top: 20px }
+  .r17 #strategy:has(.sgm.r18) > .op { --ink: #fff; --ink-rgb: 255 255 255; --ink-2: rgb(255 255 255 / .72); --ink-3: rgb(255 255 255 / .46);
+    width: 100vw; margin-left: calc(50% - 50vw); padding: 84px max(16px, env(safe-area-inset-left, 0px)) 6px; background: linear-gradient(180deg, rgb(11 11 14 / 0) 0, rgb(11 11 14 / .7) 34px, #0b0b0e 76px); color: #fff }
+}
+.r17 .sgm.r18 { animation: none !important }
+.r17 .sgm.r18::after { content: ""; position: absolute; z-index: 1; top: 100%; left: 0; right: 0; height: 64px; background: linear-gradient(180deg, #0b0b0e, rgb(11 11 14 / 0)); pointer-events: none }
+.r17 .sgm.r18 .msp { grid-auto-columns: minmax(116px, max-content) }
+.r17 .sgm.r18 .msb, .r17 .sgm.r18 .msb.on { box-shadow: none }
+.r17 .sgm.r18 .msb { background: rgb(20 20 26 / .5) }
+.r17 .sgm.r18 .msb.on { background: rgb(255 255 255 / .19) }
+.r17 .sgm.r18 .msk { padding-right: 30px; overflow: visible }
+.r17 .sgm.r18 .msb .ctg { top: 8px; right: 8px; width: 18px; height: 18px; border-radius: 6px; box-shadow: none; background: rgb(255 255 255 / .1) }
+.r17 .sgm.r18 .msb.on .ctg { background: rgb(255 255 255 / .16) }
+.r17 .sgm.r18 .msb .ctg svg { width: 10px; height: 10px }
+.r17 .sgm.r18 .sgrd { background: rgb(255 255 255 / .15); box-shadow: none }
+/* ---------- READ 18, Nov 4 (5): native light mode for a phone's stage. It takes the page's own colour, so the page runs
+   on into it with no seam; the parts are frosted paper, the charts sit on white, the words are ink. The three calls keep
+   apart by how far each stands off the ground: Feeding crimson, Floating plain ink at half strength, Fading faint, so it
+   looks faded. A photo stays a photo: a short paper fade at its top under the parts, a dark fade at its foot under white
+   words. Dark mode keeps the dark stage, which is its page's colour already ---------- */
+html:not(.dark) .r17 #strategy:has(.sgm.r18) { padding-top: 56px }
+html:not(.dark) .r17 #strategy:has(.sgm.r18) > .op { --ink: var(--fm-fg); --ink-rgb: var(--fm-fg-rgb); --ink-2: rgb(var(--fm-fg-rgb) / .66); --ink-3: rgb(var(--fm-fg-rgb) / .44);
+  width: auto; margin-left: 0; padding: 0 0 14px; background: none; color: var(--ink) }
+html:not(.dark) .r17 .sgm.r18 { --ink: #101014; --ink-rgb: 16 16 20; --ink-2: rgb(16 16 20 / .7); --ink-3: rgb(16 16 20 / .48); background: var(--fm-page); color: #101014 }
+html:not(.dark) .r17 .sgm.r18::after { display: none }
+html:not(.dark) .r17 .sgm.r18 .sgv { background: var(--fm-page) }
+html:not(.dark) .r17 .sgm.r18 .sgc { --ink: #101014; --ink-rgb: 16 16 20; --ink-2: rgb(16 16 20 / .72); --ink-3: rgb(16 16 20 / .5); --hair: rgb(16 16 20 / .08); background: var(--fm-page); color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .sgc > .amb { display: none }
+html:not(.dark) .r17 .sgm.r18 .msp { background: linear-gradient(180deg, rgb(244 247 249 / .9), rgb(244 247 249 / .62) 62%, rgb(244 247 249 / 0)) }
+html:not(.dark) .r17 .sgm.r18 .msb { background: rgb(255 255 255 / .58); color: #101014; box-shadow: none }
+html:not(.dark) .r17 .sgm.r18 .msb.on { background: #fff; box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 8px 20px -10px rgb(15 23 42 / .22) }
+html:not(.dark) .r17 .sgm.r18 .msk { color: rgb(16 16 20 / .55) }
+html:not(.dark) .r17 .sgm.r18 .msb.on .msk { color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .msk b { color: rgb(16 16 20 / .38) }
+html:not(.dark) .r17 .sgm.r18 .msf { color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .msf small { color: rgb(16 16 20 / .6) }
+html:not(.dark) .r17 .sgm.r18 .msb .ctg, html:not(.dark) .r17 .sgm.r18 .msb.on .ctg { background: rgb(16 16 20 / .06) }
+html:not(.dark) .r17 .ctg.t-up { color: var(--accent) }
+html:not(.dark) .r17 .ctg.t-mid { color: rgb(16 16 20 / .62) }
+html:not(.dark) .r17 .ctg.t-dn { color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgm.r18 .sgcb i { background: rgb(16 16 20 / .2) }
+html:not(.dark) .r17 .sgm.r18 .sgcb .t-up i { background: rgb(218 46 70 / .55) }
+html:not(.dark) .r17 .sgm.r18 .sgcb .t-mid i { background: rgb(16 16 20 / .38) }
+html:not(.dark) .r17 .sgm.r18 .sgcb .t-dn i { background: rgb(16 16 20 / .12) }
+html:not(.dark) .r17 .sgm.r18 .sgcb button.on i { background: #101014 }
+html:not(.dark) .r17 .sgm.r18 .sgcb button.t-up.on i { background: var(--accent) }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) > .sgpic::after { background: linear-gradient(180deg, rgb(244 247 249 / .78), rgb(244 247 249 / 0)); height: 170px }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) > .sgw { background: linear-gradient(180deg, rgb(244 247 249 / 0), rgb(244 247 249 / .82) 34%, rgb(244 247 249 / .97)) }
+html:not(.dark) .r17 .sgm.r18 .sgw .hd18, html:not(.dark) .r17 .sgm.r18 .sgw .num { color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .sgw.t-up .num { color: var(--accent) }
+html:not(.dark) .r17 .sgm.r18 .sgw.t-dn .num { color: rgb(16 16 20 / .42) }
+html:not(.dark) .r17 .sgm.r18 .sgw .unit { color: rgb(16 16 20 / .55) }
+html:not(.dark) .r17 .sgm.r18 .w18 { color: rgb(16 16 20 / .78) }
+html:not(.dark) .r17 .sgm.r18 .kick { color: rgb(16 16 20 / .6) }
+html:not(.dark) .r17 .sgm.r18 .kick .dot { background: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .w18 .plk, html:not(.dark) .r17 .sgm.r18 .hd18 .plk { text-decoration-color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgm.r18 .sgrd { background: #101014; color: #fff }
+html:not(.dark) .r17 .sgm.r18 .c18 { background: #fff; color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .c18 .c-up { --c: var(--accent) }
+html:not(.dark) .r17 .sgm.r18 .c18 .c-mid { --c: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .c18 .c-dn { --c: rgb(16 16 20 / .14) }
+html:not(.dark) .r17 .sgm.r18 .c18 .c-few { --c: rgb(16 16 20 / .06) }
+html:not(.dark) .r17 .sgm.r18 .c18 .cw.c-mid { color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .c18 .cw.c-dn { color: rgb(16 16 20 / .4) }
+html:not(.dark) .r17 .sgm.r18 .c18 .cw.c-few { color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgm.r18 .c18 .cl, html:not(.dark) .r17 .sgm.r18 .cfm .ch span, html:not(.dark) .r17 .sgm.r18 .cwh .lr em, html:not(.dark) .r17 .sgm.r18 .cwh text { color: rgb(16 16 20 / .45); fill: rgb(16 16 20 / .45) }
+html:not(.dark) .r17 .sgm.r18 .cwh text.n { fill: #101014 }
+html:not(.dark) .r17 .sgm.r18 .fb i { background: rgb(16 16 20 / .16) }
+html:not(.dark) .r17 .sgm.r18 .fb.o i { background: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .fb.o.r i { background: var(--accent) }
+html:not(.dark) .r17 .sgm.r18 .fb.u.r i { background: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgm.r18 .fbs .mid { background: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgm.r18 .fbs .l10 { background: rgb(16 16 20 / .04) }
+html:not(.dark) .r17 .sgm.r18 .frn .u { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .csp .sr { border-top-color: rgb(16 16 20 / .08) }
+html:not(.dark) .r17 .sgm.r18 .csp .sr small, html:not(.dark) .r17 .sgm.r18 .csp .sr .so { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .wkc i { background: rgb(16 16 20 / .14) }
+html:not(.dark) .r17 .sgm.r18 .wkc i.o { background: rgb(16 16 20 / .62) }
+html:not(.dark) .r17 .sgm.r18 .wkd .wku { border-top-color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgm.r18 .fd .m i { background: rgb(16 16 20 / .22) }
+html:not(.dark) .r17 .sgm.r18 .ft > span { border-top-color: rgb(16 16 20 / .08) }
+html:not(.dark) .r17 .sgm.r18 .ft .fh, html:not(.dark) .r17 .sgm.r18 .ft em, html:not(.dark) .r17 .sgm.r18 .ft .fn { color: rgb(16 16 20 / .48) }
+html:not(.dark) .r17 .sgm.r18 .ft .m b { color: rgb(16 16 20 / .6) }
+html:not(.dark) .r17 .sgm.r18 .nx { background: rgb(16 16 20 / .045); box-shadow: none }
+html:not(.dark) .r17 .sgm.r18 .nx em { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .nx svg { stroke: rgb(16 16 20 / .4) }
+html:not(.dark) .r17 .sgm.r18 .cnw2 .nfs { background: rgb(16 16 20 / .07) }
+html:not(.dark) .r17 .sgm.r18 .nfr { background: #fff }
+html:not(.dark) .r17 .sgm.r18 .nfr em, html:not(.dark) .r17 .sgm.r18 .nfr span { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgm.r18 .nfr p { color: rgb(16 16 20 / .82) }
+html:not(.dark) .r17 .sgm.r18 .cnw2 .nd button { background: rgb(16 16 20 / .14) }
+html:not(.dark) .r17 .sgm.r18 .cnw2 .nd button.o { background: #101014 }
+html:not(.dark) .r17 .sgm.r18 .cnw2 .nf em { color: rgb(16 16 20 / .45) }
+html:not(.dark) .r17 .sgm.r18 .gc em { background: rgb(255 255 255 / .9); color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .gc em.o { background: var(--accent); color: #fff }
+html:not(.dark) .r17 .sgm.r18 .grp18 { background: var(--fm-page) }
+html:not(.dark) .r17 .sgm.r18 .sgc.cht > .sgpic { background: #fff }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) > .sgpic::after { background: linear-gradient(180deg, rgb(244 247 249 / .7), rgb(244 247 249 / 0)); height: 120px }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) > .sgw { background: linear-gradient(180deg, rgb(6 6 9 / 0), rgb(6 6 9 / .62) 36%, rgb(6 6 9 / .88)) }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .sgw .hd18, html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .sgw .num { color: #fff }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .sgw.t-up .num { color: #ff5a70 }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .sgw .unit { color: rgb(255 255 255 / .62) }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .w18 { color: rgb(255 255 255 / .82) }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .kick { color: rgb(255 255 255 / .7) }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .kick .dot { background: #fff }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .sgrd { background: #fff; color: #101014 }
+html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .w18 .plk, html:not(.dark) .r17 .sgm.r18 .sgc:not(.cht) .hd18 .plk { text-decoration-color: rgb(255 255 255 / .4) }
+/* Read why, the one door to a frame's why: a full pill you can't miss, sized for a thumb, off the frame's sides so the
+   sides stay free to step (dark stage: white on the dark; paper: ink; on a photo: white) */
+.r17 .sgm.r18 .sgrd { height: 46px; padding: 0 18px 0 22px; gap: 6px; margin-top: 10px; border-radius: 999px; font: 700 15px/1 var(--font); letter-spacing: -.005em; background: #fff; color: #101014; box-shadow: 0 8px 22px -10px rgb(0 0 0 / .6) }
+.r17 .sgm.r18 .sgrd svg { width: 15px; height: 15px; stroke-width: 2.8 }
+html:not(.dark) .r17 .sgm.r18 .sgc.cht .sgrd { background: #101014; color: #fff; box-shadow: 0 8px 22px -12px rgb(15 23 42 / .5) }
+html:not(.dark) .r17 .sgm.r18 .c18 .plk { text-decoration-color: rgb(16 16 20 / .3) }
+
+/* ---------- READ 18, Nov 4 (6): tiles tinted by their call; the dock's handle kept quiet over the stage; the laptop's stage
+   in light mode ---------- */
+/* a phone's tiles take a breath of their call: crimson for Feeding, a lift of light for Floating, a sink toward the
+   ground for Fading (the open one a step stronger) */
+.r17 .sgm.r18 .msb.t-up { background: rgb(218 46 70 / .24) } .r17 .sgm.r18 .msb.t-up.on { background: rgb(218 46 70 / .4) }
+.r17 .sgm.r18 .msb.t-mid { background: rgb(214 220 232 / .14) } .r17 .sgm.r18 .msb.t-mid.on { background: rgb(214 220 232 / .26) }
+.r17 .sgm.r18 .msb.t-dn { background: rgb(8 9 12 / .62) } .r17 .sgm.r18 .msb.t-dn.on { background: rgb(255 255 255 / .14) }
+.r17 .sgm.r18 .msb.t-dn .msf { color: rgb(255 255 255 / .74) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up { background: rgb(253 232 236 / .86) } html:not(.dark) .r17 .sgm.r18 .msb.t-up.on { background: #fde3e8 }
+html:not(.dark) .r17 .sgm.r18 .msb.t-mid { background: rgb(255 255 255 / .66) } html:not(.dark) .r17 .sgm.r18 .msb.t-mid.on { background: #fff }
+html:not(.dark) .r17 .sgm.r18 .msb.t-dn { background: rgb(226 229 235 / .72) } html:not(.dark) .r17 .sgm.r18 .msb.t-dn.on { background: #eceef2 }
+html:not(.dark) .r17 .sgm.r18 .msb.t-dn .msf { color: rgb(16 16 20 / .6) }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgw { padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px)) }
+.r17 .sgm.r18 .sgc.cht > .sgw { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) }
+/* the laptop's stage on paper: white cards, ink words, the spines washed with their call, the charts as on a phone */
+html:not(.dark) .r17 .sgd.r18 .dsc { --ink: #101014; --ink-rgb: 16 16 20; --ink-2: rgb(16 16 20 / .72); --ink-3: rgb(16 16 20 / .5); --hair: rgb(16 16 20 / .08); --card: #fff; --raised: #fff; color: #101014 }
+html:not(.dark) .r17 .sgd.r18 .dsc.on { filter: drop-shadow(0 18px 30px rgb(15 23 42 / .12)) }
+html:not(.dark) .r17 .sgd.r18 .dsi { background: #fff }
+html:not(.dark) .r17 .sgd.r18 .dz { background: #f1f3f6 }
+html:not(.dark) .r17 .sgd.r18 .dgl { background: #fff } html:not(.dark) .r17 .sgd.r18 .dgl .amb { display: none }
+html:not(.dark) .r17 .sgd.r18 .dgl::after { background: none; box-shadow: inset 1px 0 0 rgb(16 16 20 / .06) }
+html:not(.dark) .r17 .sgd.r18 .dhd b i { color: rgb(16 16 20 / .42) }
+html:not(.dark) .r17 .sgd.r18 .dnv { background: rgb(16 16 20 / .05); box-shadow: none }
+html:not(.dark) .r17 .sgd.r18 .dnb svg { stroke: #101014 } html:not(.dark) .r17 .sgd.r18 .dnv .dno { color: rgb(16 16 20 / .68) }
+@media (hover: hover) { html:not(.dark) .r17 .sgd.r18 .dnb:hover { background: rgb(16 16 20 / .06) } }
+html:not(.dark) .r17 .sgd.r18 .sgsb { color: rgb(16 16 20 / .55) }
+html:not(.dark) .r17 .sgd.r18 .hd18 { color: #101014 }
+html:not(.dark) .r17 .sgd.r18 .kick { color: rgb(16 16 20 / .55) } html:not(.dark) .r17 .sgd.r18 .kick .dot { background: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .kick.t-up .dot { background: var(--accent) } html:not(.dark) .r17 .sgd.r18 .kick.t-dn .dot { background: transparent; box-shadow: inset 0 0 0 1.5px rgb(16 16 20 / .45) }
+html:not(.dark) .r17 .sgd.r18 .sgw .num { color: #101014 } html:not(.dark) .r17 .sgd.r18 .sgw.t-up .num { color: var(--accent) } html:not(.dark) .r17 .sgd.r18 .sgw.t-dn .num { color: rgb(16 16 20 / .42) }
+html:not(.dark) .r17 .sgd.r18 .unit { color: rgb(16 16 20 / .55) }
+html:not(.dark) .r17 .sgd.r18 .dft .line { color: rgb(16 16 20 / .78) }
+html:not(.dark) .r17 .sgd.r18 .plk { text-decoration-color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgd.r18 .sgrd { background: #101014; color: #fff; box-shadow: none }
+html:not(.dark) .r17 .sgd.r18 .dcb i { background: rgb(16 16 20 / .18) }
+html:not(.dark) .r17 .sgd.r18 .dcb .t-up i { background: rgb(218 46 70 / .55) } html:not(.dark) .r17 .sgd.r18 .dcb .t-mid i { background: rgb(16 16 20 / .38) } html:not(.dark) .r17 .sgd.r18 .dcb .t-dn i { background: rgb(16 16 20 / .12) }
+html:not(.dark) .r17 .sgd.r18 .dcb button.on i { background: #101014; box-shadow: none } html:not(.dark) .r17 .sgd.r18 .dcb button.t-up.on i { background: var(--accent); box-shadow: none }
+html:not(.dark) .r17 .sgd.r18 .dsc.g-up .dsi::after { background: radial-gradient(110% 70% at 100% 100%, rgb(218 46 70 / .08), rgb(218 46 70 / 0) 70%) }
+html:not(.dark) .r17 .sgd.r18 .dsc.g-mid .dsi::after, html:not(.dark) .r17 .sgd.r18 .dsc.g-dn .dsi::after { background: none }
+html:not(.dark) .r17 .sgd.r18 .dsp, html:not(.dark) .r17 .sgd.r18 .dsc.pic .dsp { background: #fff; color: #101014 }
+html:not(.dark) .r17 .sgd.r18 .dsp::before { background: linear-gradient(180deg, rgb(255 255 255 / 0), rgb(16 16 20 / .03)) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-up .dsp::before { background: linear-gradient(180deg, rgb(255 255 255 / 0) 25%, rgb(218 46 70 / .1) 62%, rgb(218 46 70 / .22)) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-mid .dsp::before { background: linear-gradient(180deg, rgb(255 255 255 / 0) 25%, rgb(16 16 20 / .05) 62%, rgb(16 16 20 / .1)) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-dn .dsp::before { background: rgb(16 16 20 / .045) }
+html:not(.dark) .r17 .sgd.r18 .dsp:hover::before { filter: brightness(.98) }
+html:not(.dark) .r17 .sgd.r18 .dsp::after { box-shadow: 0 1px 2px rgb(15 23 42 / .05), 0 10px 24px -16px rgb(15 23 42 / .28) }
+html:not(.dark) .r17 .sgd.r18 .dsp b { color: rgb(16 16 20 / .42) }
+html:not(.dark) .r17 .sgd.r18 .dsp span { color: #101014; text-shadow: none }
+html:not(.dark) .r17 .sgd.r18 .dsp .fg small, html:not(.dark) .r17 .sgd.r18 .dsp .spn { color: rgb(16 16 20 / .55) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-dn .dsp span, html:not(.dark) .r17 .sgd.r18 .dsc.t-dn .dsp .fg { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-up .dsp .fg { color: var(--accent) }
+html:not(.dark) .r17 .sgd.r18 .c18 .plk { text-decoration-color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgd.r18 .c18 { background: #fff; color: #101014 }
+html:not(.dark) .r17 .sgd.r18 .c18 .c-up { --c: var(--accent) }
+html:not(.dark) .r17 .sgd.r18 .c18 .c-mid { --c: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .c18 .c-dn { --c: rgb(16 16 20 / .14) }
+html:not(.dark) .r17 .sgd.r18 .c18 .c-few { --c: rgb(16 16 20 / .06) }
+html:not(.dark) .r17 .sgd.r18 .c18 .cw.c-mid { color: #101014 }
+html:not(.dark) .r17 .sgd.r18 .c18 .cw.c-dn { color: rgb(16 16 20 / .4) }
+html:not(.dark) .r17 .sgd.r18 .c18 .cw.c-few { color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgd.r18 .c18 .cl, html:not(.dark) .r17 .sgd.r18 .cfm .ch span, html:not(.dark) .r17 .sgd.r18 .cwh .lr em, html:not(.dark) .r17 .sgd.r18 .cwh text { color: rgb(16 16 20 / .45); fill: rgb(16 16 20 / .45) }
+html:not(.dark) .r17 .sgd.r18 .cwh text.n { fill: #101014 }
+html:not(.dark) .r17 .sgd.r18 .fb i { background: rgb(16 16 20 / .16) }
+html:not(.dark) .r17 .sgd.r18 .fb.o i { background: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .fb.o.r i { background: var(--accent) }
+html:not(.dark) .r17 .sgd.r18 .fb.u.r i { background: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgd.r18 .fbs .mid { background: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgd.r18 .fbs .l10 { background: rgb(16 16 20 / .04) }
+html:not(.dark) .r17 .sgd.r18 .frn .u { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .csp .sr { border-top-color: rgb(16 16 20 / .08) }
+html:not(.dark) .r17 .sgd.r18 .csp .sr small, html:not(.dark) .r17 .sgd.r18 .csp .sr .so { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .wkc i { background: rgb(16 16 20 / .14) }
+html:not(.dark) .r17 .sgd.r18 .wkc i.o { background: rgb(16 16 20 / .62) }
+html:not(.dark) .r17 .sgd.r18 .wkd .wku { border-top-color: rgb(16 16 20 / .3) }
+html:not(.dark) .r17 .sgd.r18 .fd .m i { background: rgb(16 16 20 / .22) }
+html:not(.dark) .r17 .sgd.r18 .ft > span { border-top-color: rgb(16 16 20 / .08) }
+html:not(.dark) .r17 .sgd.r18 .ft .fh, html:not(.dark) .r17 .sgd.r18 .ft em, html:not(.dark) .r17 .sgd.r18 .ft .fn { color: rgb(16 16 20 / .48) }
+html:not(.dark) .r17 .sgd.r18 .ft .m b { color: rgb(16 16 20 / .6) }
+html:not(.dark) .r17 .sgd.r18 .nx { background: rgb(16 16 20 / .045); box-shadow: none }
+html:not(.dark) .r17 .sgd.r18 .nx em { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .nx svg { stroke: rgb(16 16 20 / .4) }
+html:not(.dark) .r17 .sgd.r18 .cnw2 .nfs { background: rgb(16 16 20 / .07) }
+html:not(.dark) .r17 .sgd.r18 .nfr { background: #fff }
+html:not(.dark) .r17 .sgd.r18 .nfr em, html:not(.dark) .r17 .sgd.r18 .nfr span { color: rgb(16 16 20 / .5) }
+html:not(.dark) .r17 .sgd.r18 .nfr p { color: rgb(16 16 20 / .82) }
+html:not(.dark) .r17 .sgd.r18 .cnw2 .nd button { background: rgb(16 16 20 / .14) }
+html:not(.dark) .r17 .sgd.r18 .cnw2 .nd button.o { background: #101014 }
+html:not(.dark) .r17 .sgd.r18 .cnw2 .nf em { color: rgb(16 16 20 / .45) }
+html:not(.dark) .r17 .sgd.r18 .gc em { background: rgb(255 255 255 / .9); color: #101014 }
+html:not(.dark) .r17 .sgd.r18 .gc em.o { background: var(--accent); color: #fff }
+html:not(.dark) .r17 .sgd.r18 .grp18 { background: var(--fm-page) }
+html:not(.dark) .r17 .sgd.r18 .c18 .plk { text-decoration-color: rgb(16 16 20 / .3) }
+
+/* ---------- READ 18, Nov 4 (7): the laptop's paper stage with edges you can see; the phone's tiles tinted like glass ----------
+   Laptop, light: each spine is a sheet off the page (a soft grey ground, a hairline, a lifted shadow), its call washed
+   up from its foot; the open card wears the same hairline */
+html:not(.dark) .r17 .sgd.r18 .dsp, html:not(.dark) .r17 .sgd.r18 .dsc.pic .dsp { background: linear-gradient(180deg, #ffffff, #f7f8fa) }
+html:not(.dark) .r17 .sgd.r18 .dsp::after { box-shadow: inset 0 0 0 1px rgb(16 16 20 / .11), 0 1px 2px rgb(15 23 42 / .06), 0 14px 28px -18px rgb(15 23 42 / .38) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-up .dsp::before { background: linear-gradient(180deg, rgb(218 46 70 / 0) 18%, rgb(218 46 70 / .14) 58%, rgb(218 46 70 / .3)) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-mid .dsp::before { background: linear-gradient(180deg, rgb(16 16 20 / 0) 18%, rgb(16 16 20 / .07) 58%, rgb(16 16 20 / .15)) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-dn .dsp::before { background: linear-gradient(180deg, rgb(16 16 20 / .06), rgb(16 16 20 / .09)) }
+html:not(.dark) .r17 .sgd.r18 .dsc.on::before { content: ""; position: absolute; z-index: 3; inset: 0; border-radius: 26px; pointer-events: none; box-shadow: inset 0 0 0 1px rgb(16 16 20 / .1) }
+html:not(.dark) .r17 .sgd.r18 .dsc.on { filter: drop-shadow(0 20px 34px rgb(15 23 42 / .16)) }
+/* the phone's tiles: glass tinted with their call, lit from the top-left, deepening to the call at the bottom-right, a
+   soft light along the top edge instead of a border, and a shadow in the call's own colour; the open one lifts */
+.r17 .sgm.r18 .msb { -webkit-backdrop-filter: blur(14px) saturate(1.5); backdrop-filter: blur(14px) saturate(1.5); box-shadow: inset 0 1px 0 rgb(255 255 255 / .1); transition: background .45s var(--soft), box-shadow .45s var(--soft), transform .35s var(--glide) }
+.r17 .sgm.r18 .msb.t-up { background: linear-gradient(135deg, rgb(236 72 96 / .34), rgb(150 20 42 / .3) 70%, rgb(110 12 30 / .34)) }
+.r17 .sgm.r18 .msb.t-up.on { background: linear-gradient(135deg, rgb(240 82 106 / .58), rgb(170 24 48 / .5) 70%, rgb(120 14 32 / .52)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .18), 0 10px 26px -12px rgb(218 46 70 / .75) }
+.r17 .sgm.r18 .msb.t-mid { background: linear-gradient(135deg, rgb(240 243 248 / .2), rgb(150 158 172 / .12) 70%, rgb(110 116 130 / .14)) }
+.r17 .sgm.r18 .msb.t-mid.on { background: linear-gradient(135deg, rgb(244 246 250 / .36), rgb(170 178 192 / .24) 70%, rgb(120 128 142 / .26)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .22), 0 10px 26px -14px rgb(0 0 0 / .6) }
+.r17 .sgm.r18 .msb.t-dn { background: linear-gradient(135deg, rgb(52 56 68 / .5), rgb(18 19 24 / .62) 70%, rgb(8 9 12 / .7)) }
+.r17 .sgm.r18 .msb.t-dn.on { background: linear-gradient(135deg, rgb(78 84 100 / .58), rgb(34 36 46 / .66) 70%, rgb(18 19 24 / .72)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 10px 26px -14px rgb(0 0 0 / .7) }
+.r17 .sgm.r18 .msb.on { transform: translateY(-1px) }
+.r17 .sgm.r18 .msb.t-up .msk b { color: rgb(255 214 220 / .7) }
+html:not(.dark) .r17 .sgm.r18 .msb { box-shadow: inset 0 1px 0 rgb(255 255 255 / .9), 0 1px 2px rgb(15 23 42 / .05) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up { background: linear-gradient(135deg, rgb(255 246 248 / .9), rgb(252 222 229 / .86) 70%, rgb(248 205 214 / .88)) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up.on { background: linear-gradient(135deg, #fff5f7, #fcdbe2 70%, #f8c9d3); box-shadow: inset 0 1px 0 #fff, 0 12px 26px -14px rgb(218 46 70 / .55) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-mid { background: linear-gradient(135deg, rgb(255 255 255 / .9), rgb(240 243 247 / .84) 70%, rgb(228 232 238 / .86)) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-mid.on { background: linear-gradient(135deg, #ffffff, #f1f4f8 70%, #e4e8ee); box-shadow: inset 0 1px 0 #fff, 0 12px 26px -14px rgb(15 23 42 / .35) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-dn { background: linear-gradient(135deg, rgb(238 240 244 / .88), rgb(222 226 232 / .84) 70%, rgb(210 214 222 / .86)) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-dn.on { background: linear-gradient(135deg, #f2f4f7, #e0e4ea 70%, #d2d7df); box-shadow: inset 0 1px 0 rgb(255 255 255 / .9), 0 12px 26px -14px rgb(15 23 42 / .3) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up .msk { color: rgb(150 20 42 / .72) } html:not(.dark) .r17 .sgm.r18 .msb.t-up.on .msk { color: #a3162f }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up .msk b { color: rgb(150 20 42 / .45) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up .ctg { background: rgb(218 46 70 / .12) }
+@media (prefers-reduced-motion: reduce) { .r17 .sgm.r18 .msb.on { transform: none } }
+/* (the week still under way, drawn as it stands but lighter) */
+.r17 .wkc.pt { opacity: .55 }
+/* (paper keeps the weeks' strong posts crimson and an uncounted one a ring) */
+html:not(.dark) .r17 .r18 .wkc i.h { background: var(--accent) }
+html:not(.dark) .r17 .r18 .wkc i.n { background: none; box-shadow: inset 0 0 0 1px rgb(16 16 20 / .25) }
+
+/* ---------- READ 18, Nov 4 (8): a part's cover is one short number and a picture of the part the size of a word ---------- */
+.r17 .gly { display: block; width: 44px; height: 18px; overflow: visible; flex: none }
+.r17 .gly .o { fill: currentColor } .r17 .gly .u { fill: currentColor; opacity: .32 } .r17 .gly .h { fill: var(--accent) }
+.r17 .gly circle.u { fill: none; stroke: currentColor; stroke-width: 1; opacity: .5 }
+.r17 .gly .sg { fill: none; stroke-width: 3.4 }
+.r17 .gly .sg.c-up { stroke: var(--accent) } .r17 .gly .sg.c-mid { stroke: currentColor; opacity: .78 } .r17 .gly .sg.c-dn { stroke: currentColor; opacity: .3 } .r17 .gly .sg.c-few { stroke: currentColor; opacity: .14 }
+.r17 .gly rect.c-up { fill: var(--accent) } .r17 .gly rect.c-mid { fill: currentColor; opacity: .78 } .r17 .gly rect.c-dn { fill: currentColor; opacity: .3 } .r17 .gly rect.c-few { fill: currentColor; opacity: .14 }
+.r17 .gly .ln { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: .72 } .r17 .gly .ln.o { stroke: var(--accent); opacity: 1 }
+/* a phone's tile: its name and its tag on top; its number and its picture side by side under them */
+.r17 .sgm.r18 .msp { grid-auto-columns: minmax(124px, max-content) }
+.r17 .sgm.r18 .msb { height: 66px }
+.r17 .sgm.r18 .mcv { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: auto; min-width: 0 }
+.r17 .sgm.r18 .mcv .msf { font: 800 22px/1 var(--font); letter-spacing: -.045em; white-space: nowrap }
+.r17 .sgm.r18 .mcv .gly { opacity: .92; margin-bottom: 2px }
+.r17 .sgm.r18 .msb.t-up .gly .h, .r17 .sgm.r18 .msb.t-up .gly .c-up { fill: #fff; stroke: #fff }
+/* a laptop's spine: its number, its picture under it, then up the spine its figure and its name, bigger and alone */
+.r17 .sgd.r18 .dsp { grid-template-rows: auto auto 1fr }
+.r17 .sgd.r18 .dsp .dgl8 { display: block; justify-self: center; margin-top: 14px; font-style: normal }
+.r17 .sgd.r18 .dsp .dgl8 .gly { width: 38px; height: 16px }
+.r17 .sgd.r18 .dsp .fg { margin-inline-end: 12px; font-size: 30px; letter-spacing: -.045em }
+.r17 .sgd.r18 .dsp .spn { font-size: 11px; letter-spacing: .2em }
+
+/* ---------- READ 18, Nov 4 (9): a tile or a row is its number, bold, and its name. Its call is in its tint (and on a phone
+   its corner tag), and Feeding's number takes the crimson: that's the punch ---------- */
+.r17 .sgm.r18 .msb { height: 62px; padding: 10px 12px 10px 13px }
+.r17 .sgm.r18 .msk { font-size: 10px; letter-spacing: .14em; padding-right: 30px }
+.r17 .sgm.r18 .mcv .msf { font: 800 24px/1 var(--font); letter-spacing: -.045em }
+.r17 .sgm.r18 .msb.t-up .msf { color: #ff8396 } .r17 .sgm.r18 .msb.t-dn .msf { color: rgb(255 255 255 / .62) }
+html:not(.dark) .r17 .sgm.r18 .msb.t-up .msf { color: #c81d3a } html:not(.dark) .r17 .sgm.r18 .msb.t-dn .msf { color: rgb(16 16 20 / .5) } html:not(.dark) .r17 .sgm.r18 .msb.t-mid .msf { color: #101014 }
+.r17 .sgd.r18 .dsp { grid-template-rows: 1fr; padding-top: 20px }
+.r17 .sgd.r18 .dsp .fg { font-size: 32px }
+.r17 .sgd.r18 .dsc.t-up .dsp .fg { color: #ff8396 } .r17 .sgd.r18 .dsc.t-dn .dsp .fg { color: rgb(255 255 255 / .6) }
+html:not(.dark) .r17 .sgd.r18 .dsc.t-up .dsp .fg { color: #c81d3a } html:not(.dark) .r17 .sgd.r18 .dsc.t-dn .dsp .fg { color: rgb(16 16 20 / .48) }
+
+/* ---------- READ 18, Nov 5: where you are, at a glance. The bars keep their calls' colours, but every bar you're not on
+   sinks to a thin, dim line and the one you're on stands up twice as thick, solid in its call's colour; on a phone the
+   tile you're on stays whole and lifted, with its call's colour along its foot, while the others step back ---------- */
+.r17 .r18 .sgcb button, .r17 .r18 .dcb button { height: 18px }
+.r17 .r18 .sgcb i, .r17 .r18 .dcb i { height: 2.5px; opacity: .45; box-shadow: none; transition: height .38s var(--glide), opacity .38s var(--glide), background .38s var(--glide) }
+.r17 .r18 .sgcb button.on i, .r17 .r18 .dcb button.on i { height: 6px; border-radius: 3px; opacity: 1 }
+.r17 .r18 .sgcb button.on i, .r17 .r18 .dcb button.on i { background: #fff; box-shadow: 0 0 12px rgb(255 255 255 / .45) }
+.r17 .r18 .sgcb button.t-up.on i, .r17 .r18 .dcb button.t-up.on i { background: #ff4a62; box-shadow: 0 0 14px rgb(218 46 70 / .7) }
+.r17 .r18 .sgcb button.t-dn.on i, .r17 .r18 .dcb button.t-dn.on i { background: rgb(150 162 182); box-shadow: 0 0 10px rgb(120 134 156 / .45) }
+html:not(.dark) .r17 .r18 .sgcb button.on i, html:not(.dark) .r17 .r18 .dcb button.on i { background: #101014; box-shadow: none }
+html:not(.dark) .r17 .r18 .sgcb button.t-up.on i, html:not(.dark) .r17 .r18 .dcb button.t-up.on i { background: var(--accent); box-shadow: 0 0 12px rgb(218 46 70 / .35) }
+html:not(.dark) .r17 .r18 .sgcb button.t-dn.on i, html:not(.dark) .r17 .r18 .dcb button.t-dn.on i { background: rgb(120 130 148); box-shadow: none }
+/* a photo frame's bars sit on the picture: the one you're on in white or crimson whatever the theme, so it reads on any photo */
+/* the tiles: the one you're on whole and lifted, the call's colour along its foot; the rest a step back */
+.r17 .sgm.r18 .msb { transition: background .45s var(--soft), box-shadow .45s var(--soft), opacity .45s var(--glide), transform .45s var(--glide) }
+.r17 .sgm.r18 .msb:not(.on) { opacity: .56; transform: scale(.93) }
+.r17 .sgm.r18 .msb.on { opacity: 1; transform: none }
+.r17 .sgm.r18 .msb.on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 3.5px; border-radius: 3px 3px 0 0; background: #fff }
+.r17 .sgm.r18 .msb.on.t-up::after { background: #ff4a62 } .r17 .sgm.r18 .msb.on.t-dn::after { background: rgb(150 162 182) }
+html:not(.dark) .r17 .sgm.r18 .msb.on::after { background: #101014 }
+html:not(.dark) .r17 .sgm.r18 .msb.on.t-up::after { background: var(--accent) } html:not(.dark) .r17 .sgm.r18 .msb.on.t-dn::after { background: rgb(120 130 148) }
+@media (prefers-reduced-motion: reduce) { .r17 .sgm.r18 .msb:not(.on) { transform: none } }
+
+/* ---------- READ 18, Nov 5 (2): the strip up under the status bar, the frame whole below it. The parts sit on the stage's
+   own ground, tight under the status bar; the frame's bars under them; the picture starts below both, rounded at its
+   top, and runs to the screen's foot (on a phone that leaves about a reel's 9:16, so nothing of it is covered). With the
+   dock away, the words get room: more air between the lines and a clear gap above Read why ---------- */
+.r17 .sgm.r18 { --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px) }
+.r17 .sgm.r18 .msp { padding: calc(var(--sat) + 8px) 12px 6px; background: none }
+.r17 .sgm.r18 .msb { height: 54px; padding: 8px 11px 9px 12px }
+.r17 .sgm.r18 .mcv .msf { font-size: 21px }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgct { top: calc(var(--sat) + 70px); padding: 0 14px; background: none }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgpic { top: calc(var(--sat) + 94px); right: 0; bottom: 0; left: 0; border-radius: 22px 22px 0 0 }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgpic::after { display: none }
+.r17 .sgm.r18 .sgc.cht { padding-top: calc(var(--sat) + 70px) }
+.r17 .sgm.r18 .sgc.cht > .sgct { padding: 0 14px 6px }
+.r17 .sgm.r18 .sgc.cht > .sgpic { border-radius: 22px 22px 0 0 }
+.r17 .sgm.r18 .sgw { gap: 12px }
+.r17 .sgm.r18 .sgw .hd18 { font-size: 23px; line-height: 1.14 }
+.r17 .sgm.r18 .sgw .fig { margin-top: 2px }
+.r17 .sgm.r18 .w18 { font-size: 15px; line-height: 1.45; -webkit-line-clamp: 4 }
+.r17 .sgm.r18 .sgrd { margin-top: 12px }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgw { padding: 120px 20px calc(36px + var(--sab)); background: linear-gradient(180deg, rgb(6 6 9 / 0), rgb(6 6 9 / .62) 30%, rgb(6 6 9 / .9)) }
+.r17 .sgm.r18 .sgc.cht > .sgw { padding: 20px 20px calc(34px + var(--sab)) }
+
+/* ---------- READ 18, Nov 5 (3): the app's navbar stays over the stage, as it does on every page. The frame's words and
+   its Read why end above it (its handle's 64px plus its 12px off the foot, and air), never under it ---------- */
+.r17 .sgm.r18 .sgc:not(.cht) > .sgw { padding-bottom: calc(96px + var(--sab)) }
+.r17 .sgm.r18 .sgc.cht > .sgw { padding-bottom: calc(92px + var(--sab)) }
+
+/* ---------- READ 18, Nov 5 (4): over a phone's stage the navbar's folded circle steps aside, and only the circle: it
+   sinks a little, draws in and goes clear, then comes back the same way when the stage gives the screen back. It never
+   travels to the screen's foot (iOS fills that strip solid with whatever sits there), and the open bar, scrolled up to,
+   is the same transparent bar as everywhere. The frame's words take the room at the foot ---------- */
+.fm-dock { transition: opacity .42s cubic-bezier(.32, .72, 0, 1), scale .55s cubic-bezier(.32, .72, 0, 1), translate .55s cubic-bezier(.32, .72, 0, 1), visibility 0s }
+html[data-r17-stage] .fm-dock[data-folded]:not([data-open]) { opacity: 0; scale: .72; translate: 0 14px; transform-origin: 50% 100%; visibility: hidden;
+  transition: opacity .42s cubic-bezier(.32, .72, 0, 1), scale .55s cubic-bezier(.32, .72, 0, 1), translate .55s cubic-bezier(.32, .72, 0, 1), visibility 0s linear .42s }
+.r17 .sgm.r18 .sgc:not(.cht) > .sgw { padding-bottom: calc(40px + var(--sab)) }
+.r17 .sgm.r18 .sgc.cht > .sgw { padding-bottom: calc(36px + var(--sab)) }

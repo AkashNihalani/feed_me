@@ -7,7 +7,8 @@
      each the things that move it; Streaks, Shifts and Frequency, the 100 over time. Every part heads with its own
      course, week by week, and every card is marked New, Shifted or Held against the last read. A read file that carries
      the reader's own read (voice.read) shows that instead: its six parts, Score, Slices, Streaks, Frequency, Formats and
-     Followers, each a question, the reader's answer and the posts it stands on; and its Story is the reader's picks.
+     Followers, each a question, the reader's answer and the posts it stands on; and its Story is the reader's picks. A
+     read 18 file (voice.read.v 18) opens on Now and closes on Next, with Score holding the runs (see READ 18 below).
    - Split: the wall, newest first or in rank groups, under a live lane of the posts under a week old and their day-3
      calls; a pick lights the run of posts it beat.
    Depth opens in one panel (a sheet on a phone, a panel at the side on a laptop): a fact's posts, or a post's mortem
@@ -162,7 +163,7 @@ function storyHTML() {
 }
 // a slide's verdict, said on the outside: its short phrase (what's inside, good or bad) behind an arrow that leans the
 // way it went, or a plain dot for a slide that only states something
-const ARW = { up: '<svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>', dn: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/></svg>' };
+const ARW = { up: '<svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>', dn: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/></svg>', mid: '<svg viewBox="0 0 24 24"><path d="M3.5 13c2.8-3.6 5.7-3.6 8.5 0s5.7 3.6 8.5 0"/></svg>' };
 const mark = (s) => `<i class="mk${s._t ? ` t-${s._t}` : ''}">${ARW[s._t] || ''}</i>`;
 const spineOf = (s) => s.spine || KICK[s.ch] || s.ch;
 const verdictHTML = (s) => `${mark(s)}<span>${esc(spineOf(s))}</span>`;
@@ -982,7 +983,7 @@ function liveHTML() {
 /* =====================================================================
    SPLIT: the wall, newest first or in rank groups; a pick lights its trail
    ===================================================================== */
-let WV = localGet('wall') === 'ranks' ? 'ranks' : 'recent', WPICK = null, TRT = [];
+let WV = 'recent', WPICK = null, TRT = [];
 const RANKG = [
   { l: 'Top 10%', f: (v) => v != null && v <= 10, c: 'hot' }, { l: 'Top 25%', f: (v) => v != null && v > 10 && v <= 25, c: 'hot' }, { l: 'Top half', f: (v) => v != null && v > 25 && v <= 50, c: '' },
   { l: 'Below the middle', f: (v) => v != null && v > 50 && v <= 75, c: '' }, { l: 'Bottom 25%', f: (v) => v != null && v > 75, c: '' }, { l: 'Too new to rank', f: (v) => v == null, c: 'new' },
@@ -990,9 +991,16 @@ const RANKG = [
 function splitHTML() {
   const L = A.lead.split, V = (A.voice && A.voice.split) || {}, rk = A.wall.filter((i) => A.posts[i].top != null), nrank = rk.length, up = rk.filter((i) => xPost(i, 'lk') >= 1).length;
   const f = { num: `${up} of ${nrank}`, unit: `beat ${A.his} usual likes by day 7`, line: V.line || `The best was ${lab(L.best)}, at ${fx(xPost(L.best, 'lk'))} ${A.his} usual likes; the lowest, ${lab(L.worst)}, at ${fx(xPost(L.worst, 'lk'))}.`, aside: V.aside != null ? V.aside : A.wall.length > nrank ? `${A.wall.length - nrank} are too new to count.` : '', tone: up / Math.max(1, nrank) >= .5 ? 'beating' : 'plain' };
-  return `<header class="op"><span class="ok"><b>02</b>Split · the last ${A.wall.length} posts</span></header><div class="cap capx"><div class="w1"><div class="c">${headHTML(f)}</div></div><div class="w2"><div class="c">${bodyHTML(f)}</div></div></div>
+  return `<header class="op"><span class="ok" id="wok">${wallHead()}</span></header><div class="cap capx"><div class="w1"><div class="c">${headHTML(f)}</div></div><div class="w2"><div class="c">${bodyHTML(f)}</div></div></div>
     ${liveHTML()}<div class="wbar">${segHTML('wv', [['recent', 'Recent'], ['ranks', 'Ranks']], WV)}<span class="wh" id="wh">${WV === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'}</span></div>
     <div class="wall" id="wall"><svg class="tlx" id="tlx"></svg><span class="thd" id="thd"></span><div id="wg"></div></div>`;
+}
+// the wall's head says which way it's laid out: 02 Recent (newest first) or 03 Ranks (by where each landed), the page's
+// last two parts in the header's switch
+const wallHead = () => `<b>${WV === 'ranks' ? '03' : '02'}</b>${WV === 'ranks' ? 'Ranks' : 'Recent'} · the last ${A.wall.length} posts`;
+function setWall(v) {
+  const seg = q1('.seg[data-seg="wv"]'); if (!seg || WV === v) return;
+  const b = seg.querySelector(`[data-sv="${v}"]`); if (b) b.click();
 }
 function wallTile(id) {
   const p = A.posts[id], v = p.top, pl = v == null ? 'var(--s0)' : v <= 10 ? 'var(--s5)' : v <= 25 ? 'var(--s4)' : v <= 50 ? 'var(--s3)' : 'var(--s1)', lv = LVS.has(id);
@@ -1158,7 +1166,7 @@ function showPanel() {
 }
 function closePanel() { PN.open = false; PN.back = null; const pn = $('pn'); pn.classList.remove('on'); pn.style.transform = ''; $('pns').classList.remove('on'); markRow(); pickSoon(); }
 // the row the panel is on (or came from) stays marked on the page
-const LNAME = { ...Object.fromEntries(LENS.map((l) => [l[0], l[1]])), score: 'Score', formats: 'Formats', followers: 'Followers' };
+const LNAME = { ...Object.fromEntries(LENS.map((l) => [l[0], l[1]])), now: 'Now', score: 'Score', formats: 'Splits', followers: 'Followers', next: 'Next' };
 function markRow() {
   qa('[data-lens].on').forEach((b) => b.classList.remove('on'));
   const v = !PN.open ? null : PN.view && PN.view.kind === 'row' ? PN.view : PN.back;
@@ -1241,7 +1249,7 @@ function rowView1(lens, i) {
   const whyHTML = r.r5 && r.why ? `${r.pair ? `<section class="pps pr"><h5>The pair<em>the closest two that went opposite ways</em></h5><div class="ppl">${r.pair.map((p) => postRowHTML(p.id, xk, p.lab)).join('')}</div></section>` : ''}
     <section class="pwx">${(r.not || []).length ? `<section class="pwh pno"><h5>Ruled out</h5><ul>${r.not.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></section>` : ''}
       ${r.open ? `<p class="pw2"><b>Can’t tell yet</b>${esc(r.open)}</p>` : ''}
-      ${r.means ? `<section class="pwh"><h5>What it means</h5><p class="pw1">${esc(r.means)}</p></section>` : ''}</section>` : '';
+      ${r.means && !r.h ? `<section class="pwh"><h5>What it means</h5><p class="pw1">${esc(r.means)}</p></section>` : ''}</section>` : '';
   if (pairIds.size && !r.run) ids.splice(0, ids.length, ...ids.filter((x) => !pairIds.has(x)));
   const kn = f48 ? 'followers' : KEYN[k], [la, lb] = r.lw || ['With it', 'Without it'], lists = r.wo
     ? postListHTML(la, `${r.ids.length}, most ${kn} first`, f48 ? byF(r.ids) : most(r.ids), xk) + postListHTML(lb, `${r.wo.length}, most ${kn} first`, f48 ? byF(r.wo) : most(r.wo), xk)
@@ -1256,6 +1264,7 @@ function rowView1(lens, i) {
     : lens === 'streaks' ? pcs('How it ran', `every post, ${S.span}, on ${A.his} usual ${KEYN[r.k || 'lk']}`, ecgHTML(r, false))
     : lens === 'shifts' ? (r.kind === 'days' ? pcs('Day by day', `every day of the 100, since ${day(r.d1)} in red`, daysHTML(r.d0, r.d1)) : pcs('Week by week', `${r.kind === 'slice' ? `every ${low(r.title)} post` : 'every post'} in the 100, the newer half from ${day(r.d1)}`, courseHTML([...r.ids, ...r.wo], wkOf(r.d1), k, true)))
     : r.wiAll ? pcs('Week by week', `every post ${r.kind === 'side' ? 'with it' : r.kind === 'format' ? `of the ${r.title.toLowerCase()}` : `${low(r.title)}`} in the 100, on ${A.his} usual ${KEYN[r.k] || 'follows'}`, courseHTML(r.wiAll, null, f48 ? 'f48' : r.k, true)) : '';
+  if (r.h) return `${head18HTML(r)}${rewindHTML(r)}${whyHTML}${course}${lists}`;
   return `<div class="pv-t">${capHTML(h)}
     ${stats.length ? `<div class="pst">${stats.map(([b, e]) => `<span><b>${b}</b><em>${e}</em></span>`).join('')}</div>` : ''}
     ${r.r5 && r.why ? `<section class="pwh"><h5>Why</h5><p class="pw1">${esc(r.why)}</p></section>` : ''}
@@ -1485,6 +1494,7 @@ function profilePart() {
 // the parts: Profile, then the reader's six, each its call and its frames (the tiles r5Build made, in the same order, so a
 // frame's read is its row's)
 function stageBuild() {
+  if (R18()) { stageBuild18(); return; }
   const R = A.voice.read;
   const parts = R.parts.filter((pt) => S.L[pt.k] && S.L[pt.k].rows.length).map((pt) => {
     const L = S.L[pt.k], [, sub] = firstOf(pt.line);
@@ -1526,6 +1536,7 @@ const figHTML = (fg) => `${esc(cmp(fg.num))}${fg.u ? `<small>${esc(fg.u)}</small
 // a long count, short: +18,536 is +18.5K where room is tight (a folded tile, the front)
 const cmp = (n) => { const m = String(n).match(/^([+−-]?)([\d,]+)$/); if (!m) return n; const v = +m[2].replace(/,/g, ''); return v >= 10000 ? `${m[1]}${(Math.round(v / 100) / 10).toFixed(1).replace(/\.0$/, '')}K` : n; };
 function sgWordsHTML(fr, desk, p) {
+  if (R18()) return sgWords18(fr, desk);
   const read = fr.ids ? (fr.ids.length > 1 ? 'Open the posts' : 'Open the post') : 'Read why';
   const same = p && String(fr.kick).toLowerCase() === String(p.spine).toLowerCase();
   return `<span class="kick${frameT(fr)}"><span class="dot"></span>${same ? esc(fr.count || '') : `${esc(fr.kick)}${fr.count ? `<em>${esc(fr.count)}</em>` : ''}`}</span>
@@ -1535,12 +1546,12 @@ function sgWordsHTML(fr, desk, p) {
 const sgBarsHTML = (p, f) => p.frames.map((fr, i) => `<button data-f="${i}" class="${fr.t ? `t-${fr.t}` : 't-lv'}${i === f ? ' on' : ''}" aria-label="${esc(fr.kick)}"><i></i></button>`).join('');
 // a laptop's stage: the story's row of cards, a card a part
 function stageDeskHTML() {
-  return `<div class="ds sgd" id="ds"><div class="dsr" id="dsr">${ST.parts.map((p, j) => { const f = ST.f[j], fr = p.frames[f]; return `<article class="dsc${p.tone ? ` t-${p.tone}` : ''}${j === ST.at ? ' on' : ''}" data-p="${j}" style="z-index:${j + 1}">${j ? '<i class="dgut"></i>' : ''}<div class="dsi">
+  return `<div class="ds sgd${R18() ? ' r18' : ''}" id="ds"><div class="dsr" id="dsr">${ST.parts.map((p, j) => { const f = ST.f[j], fr = p.frames[f]; return `<article class="dsc${p.tone ? ` t-${p.tone}` : ''}${j === ST.at ? ' on' : ''}${fr.comp ? ' cmp' : ''}${R18() && fr.t ? ` g-${fr.t}` : ''}" data-p="${j}" style="z-index:${j + 1}">${j ? '<i class="dgut"></i>' : ''}<div class="dsi">
       <div class="dz"><div class="sgpic">${fr.media}</div></div><div class="dgl">${ambHTML(fr)}</div>
-      <div class="dtx"><div class="dcb">${sgBarsHTML(p, f)}</div><div class="dhd"><b><i>${no2(j)}</i>${esc(p.name)}</b>${stepNav(f, p.frames.length)}</div>
+      <div class="dtx"><div class="dcb">${sgBarsHTML(p, f)}</div><div class="dhd"><b>${R18() ? '' : `<i>${no2(j)}</i>`}${esc(p.name)}</b>${stepNav(f, p.frames.length)}</div>
         <div class="sgh"><p class="sghl">${esc(p.spine)}</p>${p.hl ? `<p class="sgsb">${p.hl}</p>` : ''}</div>
         <div class="dft sgw${frameT(fr)}">${sgWordsHTML(fr, true, p)}</div></div>
-      <button class="dsp" data-p="${j}" aria-label="${esc(p.name)}: ${esc(p.spine)}${p.fig ? `, ${esc(p.fig.num)}${p.fig.u ? ` ${esc(p.fig.u)}` : ''}` : ''}"><b>${no2(j)}</b><span>${p.fig ? `<em class="fg">${figHTML(p.fig)}</em>` : ''}${esc(p.spine)}</span>${markT(p.tone)}</button></div></article>`; }).join('')}</div></div>`;
+      <button class="dsp" data-p="${j}" aria-label="${esc(p.name)}: ${esc(p.spine)}${p.fig ? `, ${esc(p.fig.num)}${p.fig.u ? ` ${esc(p.fig.u)}` : ''}` : ''}">${R18() ? `<span>${p.short ? `<em class="fg">${esc(p.short)}</em>` : ''}${p.nameOnly ? '' : `<i class="spn">${esc(p.name)}</i>`}</span>` : `<b>${no2(j)}</b><span>${p.fig ? `<em class="fg">${figHTML(p.fig)}</em>` : ''}${esc(p.spine)}</span>`}${R18() ? '' : markT(p.tone)}</button></div></article>`; }).join('')}</div></div>`;
 }
 // a phone's stage: the small spines, the open part's name, call and headline, then its card
 function sgCardHTML(j) {
@@ -1548,19 +1559,19 @@ function sgCardHTML(j) {
   return `${ambHTML(fr)}<i class="sdim"></i><div class="sgct"><div class="sgcb">${sgBarsHTML(p, f)}</div></div><div class="sgpic">${fr.media}</div><div class="sgw${frameT(fr)}">${sgWordsHTML(fr, false, p)}</div>`;
 }
 function stagePhoneHTML() {
-  return `<div class="sgm" id="sgm"><div class="msp" id="msp">${ST.parts.map((p, j) => `<button class="msb${p.tone ? ` t-${p.tone}` : ''}${j === ST.at ? ' on' : ''}" data-p="${j}" aria-label="${esc(p.name)}: ${esc(p.spine)}"><i class="msi"${p.pic ? ` style="background-image:url('${esc(p.pic)}')"` : ''}></i><span class="msk"><b>${no2(j)}</b>${esc(p.name)}${markT(p.tone)}</span>${p.fig ? `<span class="msf">${figHTML(p.fig)}</span>` : ''}<span class="msl">${esc(p.spine)}</span></button>`).join('')}</div>
+  return `<div class="sgm${R18() ? ' r18' : ''}" id="sgm"><div class="msp" id="msp">${ST.parts.map((p, j) => `<button class="msb${p.tone ? ` t-${p.tone}` : ''}${j === ST.at ? ' on' : ''}" data-p="${j}" aria-label="${esc(p.name)}: ${esc(p.spine)}"><i class="msi"${p.pic ? ` style="background-image:url('${esc(p.pic)}')"` : ''}></i><span class="msk">${R18() ? '' : `<b>${no2(j)}</b>`}${p.nameOnly ? '&nbsp;' : esc(p.name)}${R18() ? '' : markT(p.tone)}</span>${R18() ? cornerT(p.tone) : ''}${R18() ? (p.short ? `<span class="mcv"><b class="msf">${esc(p.short)}</b></span>` : '') : p.fig ? `<span class="msf">${figHTML(p.fig)}</span>` : ''}<span class="msl">${esc(p.spine)}</span></button>`).join('')}</div>
     <div class="sgslot" id="sgslot">${ST.parts.map((p, j) => `<div class="sgsl${j === ST.at ? ' on' : ''}" data-p="${j}"><span class="sgk"><span class="rw"><b>${esc(p.name)}</b><em>${p.frames.length} ${p.frames.length === 1 ? 'frame' : 'frames'}</em></span></span><p class="sghl"><span class="rw">${p.hl}</span></p></div>`).join('')}</div>
-    <div class="sgv" id="sgv"><article class="sgc on" id="sgc0" data-p="${ST.at}" data-f="${ST.f[ST.at]}">${sgCardHTML(ST.at)}</article><article class="sgc" id="sgc1"></article></div>
+    <div class="sgv" id="sgv"><article class="sgc on${R18() && ST.parts[ST.at].frames[ST.f[ST.at]].t ? ` g-${ST.parts[ST.at].frames[ST.f[ST.at]].t}` : ''}${R18() && isChart(ST.parts[ST.at].frames[ST.f[ST.at]]) ? ' cht' : ''}" id="sgc0" data-p="${ST.at}" data-f="${ST.f[ST.at]}">${sgCardHTML(ST.at)}</article><article class="sgc" id="sgc1"></article></div>
     <p class="hint">Tap the sides to step · swipe for the next part</p></div>`;
 }
 // the open card takes what the spines leave; below 620px of it the words lie over the picture instead
 function deskSize() {
   const ds = $('ds'); if (!ds) return;
-  const W = ds.clientWidth, n = ST ? ST.parts.length : 1, gap = 8, sw = Math.max(44, Math.min(66, Math.round((W - 680) / Math.max(1, n - 1) - gap)));
+  const W = ds.clientWidth, n = ST ? ST.parts.length : 1, gap = 8, sw = Math.max(44, Math.min(R18() ? 54 : 66, Math.round((W - 680) / Math.max(1, n - 1) - gap)));
   const dw = W - (n - 1) * (sw + gap); DSZ = { sw, dw, gap };
   ds.style.setProperty('--sw', sw + 'px'); ds.style.setProperty('--dw', dw + 'px');
   // (tall enough for a frame and its words, short enough that the stage and its bars sit in the first screen under the face)
-  ds.style.setProperty('--dh', Math.round(Math.max(500, Math.min(680, innerHeight - 320))) + 'px');
+  ds.style.setProperty('--dh', Math.round(R18() ? Math.max(540, Math.min(940, innerHeight - 96)) : Math.max(500, Math.min(680, innerHeight - 320))) + 'px');
   ds.style.setProperty('--tw', Math.round(Math.max(340, Math.min(420, dw * .52))) + 'px');
   ds.classList.toggle('ov', dw < 620);
 }
@@ -1638,6 +1649,13 @@ function deskPlace(k, dir) {
 }
 // a part opened: on a laptop its card opens out of its spine as the last one folds (the row's own move); on a phone the
 // card slides in over the last one and the headline above rolls to it. f, when given, is the frame it opens on
+// (a read-18 stage, touched while partly off screen, glides so all of it is in view: tiles, card and words)
+function stageFit() {
+  if (!R18()) return; const s_ = $('ds') || $('sgm'); if (!s_) return;
+  const r = s_.getBoundingClientRect(), top = DS ? 72 : 0, over = r.bottom - (innerHeight - (DS ? 16 : 0));
+  const dy = r.top < top - 4 ? r.top - top : over > 4 ? Math.min(over, r.top - top) : 0;
+  if (Math.abs(dy) > 4) scrollBy({ top: dy, behavior: RM ? 'auto' : 'smooth' });
+}
 function sgOpen(j, f, p0 = 0) {
   j = Math.max(0, Math.min(ST.parts.length - 1, j));
   if (f != null) ST.f[j] = Math.max(0, Math.min(ST.parts[j].frames.length - 1, f));
@@ -1653,7 +1671,7 @@ function sgOpen(j, f, p0 = 0) {
 function sgShowFrame(f) {
   const j = ST.at, p = ST.parts[j]; f = Math.max(0, Math.min(p.frames.length - 1, f));
   if (f === ST.f[j]) return;
-  ST.f[j] = f; sgFill(DS ? q1(`.dsc[data-p="${j}"]`) : $('sgc' + ST.cur), j, true); sgBars(); sgCut();
+  const was = ST.f[j]; ST.f[j] = f; sgFill(DS ? q1(`.dsc[data-p="${j}"]`) : $('sgc' + ST.cur), j, true, f > was ? 1 : -1); sgBars(); sgCut();
 }
 // a step: the next frame, or past a part's last, the next part's first (back: the last part's last)
 function sgStep(d) {
@@ -1662,21 +1680,34 @@ function sgStep(d) {
   const j = ST.at + d; if (j < 0 || j >= ST.parts.length) return;
   sgOpen(j, d > 0 ? 0 : ST.parts[j].frames.length - 1);
 }
-function sgFill(card, j, anim) {
+function sgFill(card, j, anim, dir = 1) {
   if (!card) return;
   const p = ST.parts[j], f = ST.f[j], fr = p.frames[f], pic = card.querySelector('.sgpic'), w = card.querySelector('.sgw'), no = card.querySelector('.dno'), bars = card.querySelector('.sgcb');
-  card.dataset.f = f;
-  pic.innerHTML = fr.media; w.className = `${DS ? 'dft ' : ''}sgw${frameT(fr)}`; w.innerHTML = sgWordsHTML(fr, DS, p);
+  card.dataset.f = f; card.classList.toggle('cmp', !!fr.comp); glowOf(card, fr);
+  // (a read-18 frame tapped in pushes the last one aside: the new picture slides in over it from the side it came from,
+  // the old drifts back the other way and dims, on one curve; transforms and opacity only)
+  let hold = null;
+  if (anim && !RM && R18() && pic.firstChild) { pic.querySelectorAll(':scope > .pgo').forEach((x) => x.remove()); hold = document.createElement('div'); hold.className = 'pgo'; while (pic.firstChild) hold.appendChild(pic.firstChild); }
+  pic.innerHTML = fr.media;
+  if (hold) {
+    pic.prepend(hold);
+    const E = 'cubic-bezier(.22, 1, .36, 1)', D = 720;
+    [...pic.children].filter((x) => x !== hold).forEach((x) => x.animate([{ transform: `translate3d(${dir * 100}%,0,0) scale(1.06)` }, { transform: 'none' }], { duration: D, easing: E }));
+    hold.animate([{ transform: 'none', opacity: 1 }, { transform: `translate3d(${-dir * 32}%,0,0) scale(.92)`, opacity: .25 }], { duration: D, easing: E, fill: 'forwards' }).onfinish = () => hold.remove();
+  } w.className = `${DS ? 'dft ' : ''}sgw${frameT(fr)}`; w.innerHTML = sgWordsHTML(fr, DS, p);
   if (no) no.textContent = `${f + 1} / ${p.frames.length}`;
   if (bars) bars.innerHTML = sgBarsHTML(p, f);
   const db = card.querySelector('.dcb'); if (db) db.innerHTML = sgBarsHTML(p, f);
   setAmb(card.querySelector('.dgl') || card, fr.amb, anim);
   card.querySelectorAll('.dnb').forEach((b) => { b.disabled = +b.dataset.step < 0 ? j === 0 && f === 0 : j === ST.parts.length - 1 && f === p.frames.length - 1; });
   paintCovers(); sgFit(card);
-  if (anim && !RM) sgArrive(card);
+  if (anim && !RM) sgArrive(card, dir);
 }
 // the open card's words fit its panel: on a short screen the part's second sentence steps out first, then the frame's line,
 // so nothing is ever cut off mid-way
+// a read-18 card's light: the call of the frame on it, a breath of crimson, silver or cold from its foot
+const isChart = (fr) => /class="(c18|grp18)/.test((fr && fr.media) || '');
+function glowOf(card, fr) { if (!card || !R18()) return; card.classList.remove('g-up', 'g-mid', 'g-dn'); if (fr && fr.t) card.classList.add('g-' + fr.t); card.classList.toggle('cht', isChart(fr)); }
 function sgFit(card) {
   if (!DS || !card) return; const tx = card.querySelector('.dtx'); if (!tx) return;
   card.classList.remove('nosub', 'noline', 'tight');
@@ -1684,11 +1715,14 @@ function sgFit(card) {
 }
 // a frame landing: its picture eases back from a breath of zoom; its words come up in four calm beats (the kick, the
 // number out of its mask, what it counts, the rest), never word by word
-function sgArrive(card) {
+function sgArrive(card, dir = 1) {
   const E = 'cubic-bezier(.22, 1, .36, 1)', o = (delay, dur = 760) => ({ duration: dur, delay, easing: E, fill: 'backwards' });
-  const pic = card.querySelector('.sgpic > *'), w = card.querySelector('.sgw'), kick = w.querySelector('.kick'), num = w.querySelector('.num > span'), unit = w.querySelector('.unit'), rest = [...w.querySelectorAll('.line, .sgrd')];
+  const pic = R18() ? null : card.querySelector('.sgpic > *'), w = card.querySelector('.sgw'), kick = w.querySelector('.kick'), num = w.querySelector('.num > span'), unit = w.querySelector('.unit'), rest = [...w.querySelectorAll('.line, .sgrd')];
+  // (a read-18 frame's words come in from the side its picture did, a beat behind it)
+  const sx = R18() ? dir * 26 : 0;
+  w.querySelectorAll('.hd18').forEach((e_) => e_.animate([{ opacity: 0, transform: `translate3d(${sx}px,10px,0)` }, { opacity: 1, transform: 'none' }], { duration: 820, delay: 70, easing: E, fill: 'backwards' }));
   if (pic) pic.animate([{ transform: 'scale(1.045)' }, { transform: 'none' }], { duration: 1100, easing: E });
-  if (kick) kick.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], o(40));
+  if (kick) kick.animate([{ opacity: 0, transform: `translate3d(${sx}px,8px,0)` }, { opacity: 1, transform: 'none' }], o(40));
   if (num) num.animate([{ transform: 'translate3d(0,110%,0)' }, { transform: 'none' }], o(110, 860));
   if (unit) unit.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], o(190));
   rest.forEach((e_) => e_.animate([{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], o(260)));
@@ -1711,13 +1745,15 @@ let SGCUT = null;
 function sgCut() { SGCUT = (DS ? q1('.dsc.on .sgpic .cut') : ($('sgc' + ST.cur) || root).querySelector('.sgpic .cut')) || null; pickSoon(); }
 const stageOn = () => { const s_ = $('ds') || $('sgm'); if (!s_) return false; const r = s_.getBoundingClientRect(); return r.bottom > 90 && r.top < innerHeight - 90; };
 // a frame's words: its tile's read in the panel; Profile's frames open their posts
-function sgRead() { const p = ST.parts[ST.at], f = ST.f[ST.at], fr = p.frames[f]; if (fr.ids) openPost(fr.ids[0], fr.ids); else openRow(p.k, f); }
+function sgRead() { const p = ST.parts[ST.at], f = ST.f[ST.at], fr = p.frames[f]; if (fr.comp) { sgStep(1); return; } if (fr.ids) openPost(fr.ids[0], fr.ids); else openRow(p.k, fr.row != null ? fr.row : f); }
 function hookStageDesk() {
   const ds = $('ds');
   // a part whose frame is a picture folds to a sliver of it; one that's a chart folds to a plain spine
   qa('.dsc').forEach((c, j) => { c.classList.toggle('pic', !!c.querySelector('.dz img, .dz [style*="background-image"]')); c.dataset.f = ST.f[j]; });
   ds.addEventListener('click', (e) => {
-    const sp = e.target.closest('.dsp'); if (sp) { e.stopPropagation(); sgOpen(+sp.dataset.p); return; }
+    if (e.target.closest('.dsc.on [data-post], .dsc.on [data-set]')) return;
+    const go = e.target.closest('.dsc.on [data-go]'); if (go) { sgShowFrame(+go.dataset.go); return; }
+    const sp = e.target.closest('.dsp'); if (sp) { e.stopPropagation(); sgOpen(+sp.dataset.p); stageFit(); return; }
     const bar = e.target.closest('.dsc.on .dcb button'); if (bar) { sgShowFrame(+bar.dataset.f); return; }
     const st = e.target.closest('.dsc.on [data-step]'); if (st) { sgStep(+st.dataset.step); return; }
     if (e.target.closest('[data-read]')) { sgRead(); return; }
@@ -1733,7 +1769,7 @@ function hookStageDesk() {
    as the story does. The small spines above jump straight to a part ---- */
 function sgPrep(j) {
   const b = $('sgc' + (1 - ST.cur));
-  if (+b.dataset.p !== j || +b.dataset.f !== ST.f[j]) { b.innerHTML = sgCardHTML(j); b.dataset.p = j; b.dataset.f = ST.f[j]; paintCovers(); }
+  if (+b.dataset.p !== j || +b.dataset.f !== ST.f[j]) { b.innerHTML = sgCardHTML(j); b.dataset.p = j; b.dataset.f = ST.f[j]; glowOf(b, ST.parts[j].frames[ST.f[j]]); paintCovers(); }
   return b;
 }
 function sgRestCard(c, on) { if (!c) return; c.getAnimations().forEach((x) => x.cancel()); c.style.transform = ''; c.style.transformOrigin = ''; c.classList.remove('mv'); c.classList.toggle('on', on); const d = c.querySelector('.sdim'); if (d) { d.getAnimations().forEach((x) => x.cancel()); d.style.opacity = ''; } }
@@ -1785,6 +1821,7 @@ function sgSlotFit() {
   ls.forEach((x) => { if (x === on) return; on.classList.remove('on'); x.classList.add('on'); mx = Math.max(mx, slot.offsetHeight); x.classList.remove('on'); on.classList.add('on'); });
   m.style.minHeight = `${m.offsetHeight + mx - cur}px`;
 }
+let TAPSTEP = false;
 function hookStagePhone() {
   const v = $('sgv'); let d = null;
   v.addEventListener('pointerdown', (e) => { if (e.button > 0 || e.target.closest('.sgrd, .sgcb')) return; d = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, mode: null, id: e.pointerId, target: e.target, nb: null }; });
@@ -1813,17 +1850,29 @@ function hookStagePhone() {
       sgOpen(j, null, p0); return;
     }
     if (g.mode) return;
+    // a read-18 frame: its sides always step (a third each way, over a chart's buttons and a line's links as well), its
+    // middle opens what's tapped there (a post, a set, a rule) or steps on; only its Read why opens its why
+    if (R18()) {
+      const r = v.getBoundingClientRect(), at = (g.x - r.left) / r.width, act = g.target.closest('[data-post], [data-set], [data-go]');
+      if (act && at > .3 && at < .7) return;
+      if (act) TAPSTEP = true;
+      sgStep(at < .3 ? -1 : 1); stageFit(); return;
+    }
+    if (g.target.closest('[data-post], [data-set], [data-go]')) return;
     // a tap: on the words, the tile's read; elsewhere the left third steps back and the rest steps on
     if (g.target.closest('.sgw')) { sgRead(); return; }
-    const r = v.getBoundingClientRect(); sgStep(g.x - r.left < r.width / 3 ? -1 : 1);
+    const r = v.getBoundingClientRect(); sgStep(g.x - r.left < r.width / 3 ? -1 : 1); stageFit();
   };
   v.addEventListener('pointerup', end);
   v.addEventListener('pointercancel', () => { if (d && d.mode === 'x') sgSettle(Math.min(1, Math.abs(d.dx) / v.clientWidth), d.dx); d = null; });
+  // (a side tap that landed on a button or a link stepped instead: its click goes no further)
+  v.addEventListener('click', (e) => { if (TAPSTEP) { TAPSTEP = false; e.stopPropagation(); e.preventDefault(); } }, true);
   v.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-go]'); if (go) { e.stopPropagation(); sgShowFrame(+go.dataset.go); return; }
     if (e.target.closest('[data-read]')) { e.stopPropagation(); sgRead(); return; }
     const b = e.target.closest('.sgcb button'); if (b) { e.stopPropagation(); sgShowFrame(+b.dataset.f); }
   });
-  $('msp').addEventListener('click', (e) => { const b = e.target.closest('.msb'); if (b) sgOpen(+b.dataset.p); });
+  $('msp').addEventListener('click', (e) => { const b = e.target.closest('.msb'); if (b) { sgOpen(+b.dataset.p); stageFit(); } });
 }
 
 /* =====================================================================
@@ -1835,7 +1884,7 @@ function coverPicks() {
   if (!ST) return [];
   const at = (k, i, line) => {
     const j = ST.parts.findIndex((p) => p.k === k); if (j < 0) return null;
-    const p = ST.parts[j], f = Math.max(0, Math.min(p.frames.length - 1, i || 0)), fr = p.frames[f];
+    const p = ST.parts[j], fi = p.frames.findIndex((x) => x.row === (i || 0)), f = R18() && fi >= 0 ? fi : Math.max(0, Math.min(p.frames.length - 1, i || 0)), fr = p.frames[f];
     return fr && fr.num ? { j, f, num: cmp(fr.num), unit: line || fr.unit, t: fr.t || '', name: p.name } : null;
   };
   const picks = ((A.voice || {}).cover || []).map((x) => at(x.k, x.i, x.line)).filter(Boolean);
@@ -1843,7 +1892,7 @@ function coverPicks() {
 }
 function coverHTML() {
   const R = A.voice && A.voice.read, say = (A.voice && A.voice.say) || SAY[acct] || '', picks = coverPicks();
-  return `<header class="cvh"><span class="ok">${R ? `Read ${R.n} · ${day(R.d)} · after ${R.after} posts` : 'The read'}</span><h1 class="cvl${say.length > 34 ? ' long' : ''}">${esc(say)}</h1></header>
+  return `<header class="cvh"><span class="ok">${R ? `Read ${R.n} · ${day(R.d)} · after ${R.after} posts` : 'The read'}</span>${(() => { const [a, b] = firstOf(say); return `<h1 class="cvl${a.length > 34 ? ' long' : ''}">${esc(a)}</h1>${b ? `<p class="cvs">${esc(b)}</p>` : ''}`; })()}</header>
     ${picks.length ? `<div class="cvf">${picks.map((x) => `<button class="cvi${x.t ? ` t-${x.t}` : ''}" data-cov="${x.j}:${x.f}"><b class="cvn">${esc(x.num)}</b><span class="cvu">${esc(x.unit)}</span><span class="cvk">${esc(x.name)}${ICR}</span></button>`).join('')}</div>` : ''}`;
 }
 // a figure on the front: the stage comes into view and opens on its frame
@@ -1916,6 +1965,245 @@ function closeStory() {
 function quadHTML(items) { return `<div class="md quad">${items.map((x) => `<div class="qd">${x.img ? `<img src="${x.img}" alt="" draggable="false" loading="lazy">` : `<span class="qc" style="${coverStyle(x.id)}"></span>`}${x.lab || ''}</div>`).join('')}</div>`; }
 
 /* =====================================================================
+   READ 18 (voice.read.v 18): the read opens on Now, the reader's take on the account as it stands, and closes on Next
+   (keep, stop, try); Score holds the runs, and Formats is Splits. Every part opens on its own picture of the part (the
+   form, the wheel, the formats, the weeks, the follower days, the three rules), then its frames: a clean picture with
+   the frame's head, its number and what happened. The why, what it means and the rewind (how two posts played out,
+   second by second or slide by slide) open in the panel. A post a line names is a link to it
+   ===================================================================== */
+const R18 = () => !!(A.voice && A.voice.read && A.voice.read.v === 18);
+// a line's post names, [the words](id), as links that open the post
+const linkHTML = (s) => String(s ?? '').split(/(\[[^\]]+\]\([\w-]+\))/).map((t) => { const m = t.match(/^\[([^\]]+)\]\(([\w-]+)\)$/); return m && A.posts[m[2]] ? `<button class="plk" data-post="${m[2]}">${esc(m[1])}</button>` : esc(t); }).join('');
+const unlink = (s) => String(s ?? '').replace(/\[([^\]]+)\]\([\w-]+\)/g, '$1');
+// the call on a set of posts, by how many of them beat the usual: 7 in 10 or better is Feeding, 3 in 10 or worse is
+// Fading, between is Floating; under five posts is too few to call
+const CALL = { up: 'Feeding', mid: 'Floating', dn: 'Fading', few: 'Too few' };
+function callSet(ids, k = 'lk') {
+  const xs = ids.map((i) => xPost(i, k)).filter((x) => x != null), n = xs.length, o = xs.filter((x) => x >= 1).length;
+  const c = n < 5 ? 'few' : o / n >= .7 ? 'up' : o / n <= .3 ? 'dn' : 'mid';
+  return { c, n, o, word: CALL[c] };
+}
+// the last n posts that have had their week (a younger post's count is still growing)
+const settled = (n) => S.win.filter((i) => A.posts[i].top != null).slice(-n);
+const callWord = (c) => `<b class="cw c-${c.c}">${c.word}</b>`;
+// a post, clean: its picture and nothing on it
+// (from its big cover where there's one on file, 720 wide, over the small ones while it loads)
+const hiOf = () => A._hi || (A._hi = new Set(A.hi || []));
+const hiStyle = (id) => { const st = coverStyle(id); return hiOf().has(id) ? st.replace('background-image:', `background-image:url(${BASE}hi/${id}.jpg),`) : st; };
+const pic18 = (id) => `<span class="pic18" data-cv="${id}" style="${hiStyle(id)}"></span>`;
+// a run, clean: its posts side by side in order, the one that ended it dimmed at the end
+const run18 = (r) => group18([...r.run.slice(-(r.brk ? 8 : 9)), ...(r.brk ? [r.brk] : [])], r.xo || {}, r.brk);
+function group18(ids, xo, brk) {
+  const n = Math.min(9, ids.length), c = n <= 2 ? n : n <= 4 ? 2 : 3, L = ids.slice(-n);
+  return `<span class="grp18" style="--c:${c};--r:${Math.ceil(n / c)}">${L.map((id) => { const x = xo[id] != null ? xo[id] : xPost(id, 'lk'); return `<span class="gc${id === brk ? ' bk' : ''}" data-cv="${id}" style="${hiStyle(id)}">${x != null ? `<em class="${x >= 1 ? 'o' : 'u'}">${fx(x)}</em>` : ''}${id === brk ? '<i>Ended it</i>' : ''}</span>`; }).join('')}</span>`;
+}
+
+// Score: the last 30 posts that have had their week, each a bar over or under the usual post; three in a row on one
+// side light up as a run, four or more get named; the last ten are the call
+function formHTML(k = 'lk') {
+  const ids = settled(30), xs = ids.map((i) => xPost(i, k)), call = callSet(ids.slice(-10), k), N = ids.length;
+  const side = xs.map((x) => (x == null ? 0 : x >= 1 ? 1 : -1)), runs = [];
+  for (let i = 0; i < N;) { let j = i; while (side[i] && j + 1 < N && side[j + 1] === side[i]) j++; if (side[i] && j - i >= 2) runs.push({ a: i, b: j, s: side[i] }); i = j + 1; }
+  const bars = xs.map((x, i) => {
+    const L = x == null ? 0 : Math.max(-2, Math.min(3, Math.log2(Math.max(x, .01)))), r = runs.find((q) => i >= q.a && i <= q.b);
+    return `<button class="fb ${L >= 0 ? 'o' : 'u'}${r ? ' r' : ''}" data-post="${ids[i]}" aria-label="${esc(fx(x))}" style="--h:${Math.max(.05, Math.abs(L) / (L >= 0 ? 3 : 2)).toFixed(3)}"><i></i></button>`;
+  }).join('');
+  const named = runs.filter((q) => q.b - q.a >= 3).map((q) => `<span class="${q.s > 0 ? 'o' : 'u'}" style="--a:${q.a};--w:${q.b - q.a + 1}">${q.b - q.a + 1} ${q.s > 0 ? 'over' : 'under'}</span>`).join('');
+  return { num: call.word, unit: `${call.o} of ${A.his} last 10 beat ${A.his} usual ${KEYN[k]}`, t: call.c === 'up' ? 'up' : call.c === 'dn' ? 'dn' : '',
+    html: `<div class="c18 cfm" style="--n:${N}"><div class="ch">${callWord(call)}<span>on ${KEYN[k]}, the last 10</span></div>
+      <div class="fbs"><span class="l10" style="--a:${Math.max(0, N - 10)}"></span>${bars}<i class="mid"></i></div><div class="frn">${named}</div>
+      <div class="cl"><span>${day(A.posts[ids[0]].d)}</span><span>${esc(cap1(A.his))} usual post is the line · a run of 3 lights up</span><span>${day(A.posts[ids[N - 1]].d)}</span></div></div>` };
+}
+// Slices: every post of the 100 in one wedge, its kind; a wedge's size is how often, its shade how it lands
+function wheelHTML() {
+  const P = A.posts, W = S.win.filter((i) => P[i].top != null), by = {};
+  W.forEach((i) => { (by[P[i].pat] = by[P[i].pat] || []).push(i); });
+  const ks = Object.entries(by).sort((a, b) => b[1].length - a[1].length), N = W.length, R = 100, r = 64, g = .02;
+  const pt = (rad, a) => `${(rad * Math.cos(a)).toFixed(2)} ${(rad * Math.sin(a)).toFixed(2)}`;
+  let a0 = -Math.PI / 2;
+  const ws = ks.map(([name, ids]) => { const c = callSet(ids), a1 = a0 + (ids.length / N) * Math.PI * 2, a = a0 + g / 2, b = a1 - g / 2, lg = b - a > Math.PI ? 1 : 0; a0 = a1; return { name, ids, c, d: `M${pt(R, a)}A${R} ${R} 0 ${lg} 1 ${pt(R, b)}L${pt(r, b)}A${r} ${r} 0 ${lg} 0 ${pt(r, a)}Z` }; });
+  const up = ws.filter((w) => w.c.c === 'up').length;
+  return { num: `${ks.length}`, unit: `kinds of post in ${A.his} last ${N}${up ? ` · ${up} feeding` : ''}`, t: '',
+    html: `<div class="c18 cwh"><svg viewBox="-104 -104 208 208" aria-hidden="true">${ws.map((w) => `<path class="c-${w.c.c}" d="${w.d}"/>`).join('')}<text y="-4" class="n">${N}</text><text y="16">posts</text></svg>
+      <div class="lg">${ws.map((w) => `<button class="lr" data-set="${w.ids.join(',')}"><i class="c-${w.c.c}"></i><b>${esc(w.name)}</b><em>${w.c.o} of ${w.ids.length}</em>${callWord(w.c)}</button>`).join('')}</div></div>` };
+}
+// Splits: the share of each format in the 100, and how each lands
+function splitsHTML() {
+  const P = A.posts, W = S.win.filter((i) => P[i].top != null), by = {};
+  W.forEach((i) => { (by[P[i].fmt] = by[P[i].fmt] || []).push(i); });
+  const fs = Object.entries(by).sort((a, b) => b[1].length - a[1].length), N = W.length;
+  return { num: `${fs.length}`, unit: `formats in ${A.his} last ${N}`, t: '',
+    html: `<div class="c18 csp"><div class="sb">${fs.map(([f, ids]) => `<i class="c-${callSet(ids).c}" style="flex:${ids.length}"></i>`).join('')}</div>
+      ${fs.map(([f, ids]) => { const c = callSet(ids); return `<button class="sr" data-set="${ids.join(',')}"><b>${esc(f)}</b><span class="sh">${Math.round((ids.length / N) * 100)}<small>% of posts</small></span><span class="sx">${fx(xSet(ids, 'lk'))}<small>typical likes</small></span><span class="so">${c.o} of ${ids.length} beat it ${callWord(c)}</span></button>`; }).join('')}</div>` };
+}
+// Frequency: every week a column, every post in it a dot (crimson at 3× the usual or more, bright over it, faint under
+// it); the dashed line is the usual week
+function weeksHTML() {
+  // (the last 13 weeks on the calendar, every post in them: a burst of posting would otherwise fill the whole 100 and
+  // leave a handful of weeks, with nothing usual to set it against)
+  const P = A.posts, ws = A.weeks.slice(-13), cols = ws.map((w) => w.ids.filter((i) => P[i]).sort((a, b) => (xPost(b, 'lk') ?? -1) - (xPost(a, 'lk') ?? -1)));
+  const full = cols.filter((c, j) => !ws[j].part && !ws[j].gap), mx = Math.max(1, ...cols.map((c) => c.length)), med = medOf(full.map((c) => c.length)) || 0, d = mx <= 12 ? 10 : mx <= 20 ? 7 : mx <= 34 ? 5 : 3.5, gp = mx <= 20 ? 2 : 1;
+  const big = cols.reduce((b, c, j) => (c.length > cols[b].length ? j : b), 0);
+  return { num: `${Math.round(med)}`, unit: `posts in ${A.his} usual week, the last 13 · ${cols[big].length} in the busiest, ${ws[big].s}`, t: '',
+    html: `<div class="c18 cwk" style="--n:${ws.length};--mx:${mx};--d0:${d}px;--g:${gp}px"><div class="wkd"><i class="wku" style="--u:${med}"></i>${cols.map((c, j) => `<span class="wkc${j === big ? ' bg' : ''}${ws[j].part ? ' pt' : ''}">${c.map((i) => { const m = xPost(i, 'lk'); return `<i class="${m == null ? 'n' : m >= 3 ? 'h' : m >= 1 ? 'o' : 'u'}"></i>`; }).join('')}</span>`).join('')}</div>
+      <div class="cl"><span>${esc(ws[0].s)}</span><span>a dot a post · the line is the usual week</span><span>${esc(ws[ws.length - 1].s)}</span></div></div>` };
+}
+// Followers: the last 60 days, a bar a day; under it the biggest gain and the biggest loss over a day, a week, two weeks
+// and a month, from the last 90
+function folHTML() {
+  const D = A.daily.filter((x) => x[1] != null), L = D.slice(-90), g = L.map((x) => x[1]), last = D.slice(-60), mx = Math.max(1, ...last.map((x) => Math.abs(x[1])));
+  const best = (w, s) => { let b = null; for (let i = 0; i + w <= L.length; i++) { let t = 0; for (let j = i; j < i + w; j++) t += g[j]; if (!b || s * t > s * b.t) b = { t, a: L[i][0], z: L[i + w - 1][0] }; } return b; };
+  const rows = [['Day', 1], ['Week', 7], ['2 weeks', 14], ['Month', 30]].map(([n, w]) => ({ n, up: best(w, 1), dn: best(w, -1) }));
+  // (a window size with no losing stretch, or no gaining one, says so instead of showing the smallest gain as a loss)
+  const cell = (b, s) => (b && s * b.t > 0 ? `<span class="${b.t >= 0 ? 'p' : 'm'}"><b>${sg(Math.round(b.t))}</b><em>${esc(dr(b.a, b.z))}</em></span>` : `<span class="no"><em>${s > 0 ? 'No gain' : 'No loss'}</em></span>`);
+  const wk = L.slice(-7).reduce((s, x) => s + x[1], 0);
+  return { num: sg(Math.round(wk)), unit: 'followers in the last 7 days', t: wk >= 0 ? 'up' : 'dn',
+    html: `<div class="c18 cfl"><div class="fd" style="--n:${last.length}">${last.map(([dd, v]) => `<span class="${v >= 0 ? 'p' : 'm'}"><i style="--h:${Math.max(.03, Math.abs(v) / mx).toFixed(3)}"></i></span>`).join('')}</div>
+      <div class="cl"><span>${esc(day(last[0][0]))}</span><span>a bar a day</span><span>${esc(day(last[last.length - 1][0]))}</span></div>
+      <div class="ft"><span class="fh"></span><span class="fh">Biggest gain</span><span class="fh">Biggest loss</span>${rows.map((r) => `<span class="fn">${r.n}</span>${cell(r.up, 1)}${cell(r.dn, -1)}`).join('')}</div></div>` };
+}
+// Next: the three rules, each a door to its frame
+function nextHTML(L) {
+  return { num: '', unit: '', t: '',
+    html: `<div class="c18 cnx">${L.rows.map((r, i) => `<button class="nx" data-go="${i + 1}"><em>${esc(r.card.kick)}</em><b>${esc(unlink(r.h ? r.h.head : r.card.kick))}</b>${ICR}</button>`).join('')}</div>` };
+}
+// Now: where the account stands, in four counted facts (what it rides on, what costs it, its followers, what's gone
+// missing), over its last ten posts against the usual; the take is in the frame's words and its panel
+function nowHTML(r) {
+  const ids = settled(10), call = callSet(ids);
+  const dots = ids.map((i) => { const m = xPost(i, 'lk'); return `<button class="${m == null ? 'n' : m >= 1 ? 'o' : 'u'}" data-post="${i}" aria-label="${esc(fx(m))}"></button>`; }).join('');
+  if (r.facts && r.facts.length) return `<div class="c18 cnw2"><div class="nfs">${r.facts.map((f, j) => `<div class="nfr n${j}"><em>${esc(f.label)}</em><b>${esc(f.num)}</b><span>${esc(f.unit)}</span><p>${linkHTML(f.line)}</p></div>`).join('')}</div><div class="nf"><span class="nd">${dots}</span><em>the last 10, over and under ${esc(A.his)} usual likes</em></div></div>`;
+  return `<div class="c18 cnw"><p class="nq">${linkHTML(r.h.why)}</p><div class="nf"><span class="nd">${ids.map((i) => { const m = xPost(i, 'lk'); return `<button class="${m == null ? 'n' : m >= 1 ? 'o' : 'u'}" data-post="${i}" aria-label="${esc(fx(m))}"></button>`; }).join('')}</span><em>the last 10, over and under ${esc(A.his)} usual likes</em></div></div>`;
+}
+const COMP = { score: () => formHTML('lk'), slices: wheelHTML, formats: splitsHTML, frequency: weeksHTML, followers: folHTML, next: nextHTML };
+// the rewind: two posts of a slice, frame by frame as they play (or slide by slide), the moments the read turns on lit
+function rewindHTML(r) {
+  const w = r.rw; if (!w || !(w.posts || []).length) return '';
+  const strip = (p) => {
+    const P = A.posts[p.id]; if (!P || !(P.rp || []).length) return '';
+    const mk = new Set(p.marks.map((m) => m.at)), x = r.xo && r.xo[p.id] != null ? r.xo[p.id] : xPost(p.id, r.k || 'lk');
+    return `<div class="rwp"><button class="rwh" data-post="${p.id}"><b>${esc(cap1(lab(p.id)))}</b>${x != null ? `<em class="${x >= 1 ? 'o' : 'u'}">${fx(x)}</em>` : ''}</button>
+      <div class="rwf">${P.rp.map((f) => `<span class="${mk.has(f.at) ? 'on' : ''}"><img src="${BASE}${f.f}" alt="" loading="lazy" draggable="false"><i>${esc(f.at)}</i></span>`).join('')}</div>
+      <ol class="rwn">${p.marks.map((m) => `<li><b>${esc(m.at)}</b><span>${esc(m.note)}</span></li>`).join('')}</ol></div>`;
+  };
+  return `<section class="prw"><h5>Rewind${w.test ? `<em>${esc(w.test)}</em>` : '<em>second by second, or slide by slide</em>'}</h5><p class="pw1">${linkHTML(w.line)}</p>${w.posts.map(strip).join('')}</section>`;
+}
+// a read-18 row's panel head: its head, its number, what happened, why, and what it means
+function head18HTML(r) {
+  const h = r.h;
+  return `<div class="pv-t"><p class="ph18">${linkHTML(h.head)}</p>${r.head.num ? `<div class="pf18"><b>${esc(r.head.num)}</b><span>${esc(r.card.unit)}</span></div>` : ''}
+    ${h.what ? `<p class="pw1 pwt">${linkHTML(h.what)}</p>` : ''}
+    ${h.why ? `<section class="pwh"><h5>${r.key.startsWith('now:') ? 'The take' : 'Why'}</h5><p class="pw1">${linkHTML(h.why)}</p></section>` : ''}
+    ${h.so ? `<p class="pso"><b>So</b>${linkHTML(h.so)}</p>` : ''}</div>`;
+}
+
+// followers called on weeks: the last four full weeks against the usual week (the middle of the twelve before them),
+// 3 or 4 over it Feeding, 0 or 1 Fading
+function folCall() {
+  const ws = A.weeks.filter((w) => !w.part && w.g != null), last = ws.slice(-4), usual = medOf(ws.slice(-16, -4).map((w) => w.g));
+  if (last.length < 4 || usual == null) return { c: 'few', word: CALL.few, o: 0 };
+  const o = last.filter((w) => w.g > usual).length, c = o >= 3 ? 'up' : o <= 1 ? 'dn' : 'mid';
+  return { c, o, word: CALL[c], usual };
+}
+const toneOf = (c) => (c.c === 'up' ? 'up' : c.c === 'dn' ? 'dn' : c.c === 'mid' ? 'mid' : '');
+const CALLW = { up: 'Feeding', mid: 'Floating', dn: 'Fading' };
+const ARR = { up: 'M7 17L17 7M9.5 7H17v7.5', mid: 'M5.5 12h13M13 6.5l5.5 5.5-5.5 5.5', dn: 'M7 7l10 10M17 9.5V17H9.5' };
+const cornerT = (t) => (ARR[t] ? `<i class="ctg t-${t}" aria-hidden="true">${SV(ARR[t])}</i>` : '');
+// a frame's call: a slice or a format by how many of its posts beat the usual (the read's own multiples), anything
+// else by the way its finding went (over, under, or level, which floats)
+function rowCall(k, r) {
+  if (k === 'slices' || k === 'formats') { const xs = r.ids.map((i) => r.xo && r.xo[i]).filter((x) => x != null); if (xs.length >= 5) { const o = xs.filter((x) => x >= 1).length / xs.length; return o >= .7 ? 'up' : o <= .3 ? 'dn' : 'mid'; } }
+  return r.card.t === 'up' ? 'up' : r.card.t === 'dn' ? 'dn' : 'mid';
+}
+// a part's call from its frames' (Feeding a whole one, Floating a half): 7 in 10 Feeding, 3 in 10 Fading
+const partCall = (fs) => { const v = fs.filter((f) => f.t && f.row != null).map((f) => (f.t === 'up' ? 1 : f.t === 'mid' ? .5 : 0)); if (!v.length) return ''; const m = v.reduce((a, b) => a + b, 0) / v.length; return m >= .7 ? 'up' : m <= .3 ? 'dn' : 'mid'; };
+// a read-18 stage: Now (the take, then the usual post and the regulars), then each part opening on its own picture
+function stageBuild18() {
+  const R = A.voice.read, form = callSet(settled(10)), fol = folCall();
+  const parts = R.parts.filter((pt) => S.L[pt.k] && S.L[pt.k].rows.length).map((pt) => {
+    const L = S.L[pt.k];
+    const frames = L.rows.map((r, i) => ({ row: i, kick: r.card.kick, count: r.card.count, num: r.card.num, unit: r.card.unit, head: r.h ? r.h.head : r.card.kick, what: r.h ? r.h.what : r.head.line, media: r.card.media, t: pt.k === 'next' ? (r.card.t || 'mid') : rowCall(pt.k, r), rw: !!r.rw, amb: ambOf(r.card.media) || (r.pair && r.pair[0].id) || r.ids[0] || (r.run && r.run[0]) || null }));
+    let fg = pt.fig ? { ...pt.fig } : null, tone = '';
+    if (pt.k === 'now') {
+      Object.assign(frames[0], { media: nowHTML(L.rows[0]), num: form.word, unit: `on likes · ${form.o} of ${A.his} last 10 over ${A.his} usual`, t: toneOf(form), amb: null, count: '' });
+      const pf = profilePart(); if (pf) frames.push(...pf.frames.map((x) => ({ ...x, row: null, t: '', head: x.kick, what: x.line, count: x.count })));
+      // (the tile says the call in words; its figure is the count behind it)
+      fg = { num: `${form.o} of 10`, u: 'over', t: toneOf(form) }; tone = toneOf(form);
+    } else if (COMP[pt.k]) {
+      const c = COMP[pt.k](L);
+      // (Now's figure is the call; Score's is its first frame's number, so two glimpses never say the same thing)
+      tone = pt.k === 'score' ? toneOf(form) : pt.k === 'followers' ? toneOf(fol) : pt.k === 'next' ? '' : partCall(frames);
+      frames.unshift({ row: null, comp: true, kick: R5[pt.k], count: '', head: pt.line, num: c.num, unit: c.unit, what: '', media: c.html, t: tone, amb: null, n: L.rows.length });
+      if (pt.k === 'score') fg = { i: 1 };
+      else if (pt.k === 'followers') fg = { num: c.num, u: 'last 7 days', t: c.t };
+      else if (fg && fg.i != null) fg.i += 1;
+      else if (!fg || !fg.num) fg = { i: 1 };
+    }
+    return { k: pt.k, name: R5[pt.k], q: pt.q, hl: L.hl, sub: '', tone, spine: pt.spine || R5[pt.k], frames, fg };
+  });
+  parts.forEach((p) => { p.fig = figOf(p); });
+  const used = new Set(); parts.forEach((p) => { p.pic = p.frames.flatMap((fr) => urlsOf(fr.media)).find((u) => !used.has(u)) || null; if (p.pic) used.add(p.pic); });
+  parts.forEach((p) => coverOf(p, form, false));
+  ST = { parts, at: 0, f: parts.map(() => 0), cur: 0 };
+}
+/* ---- a part's cover, on its tile (phone) and its spine (laptop): one short number and a picture of the part the size of
+   a word, so it says something at a glance with nothing to read. Now, its last ten as dots; Score, those ten as bars over
+   and under the usual; Slices, its kinds as a ring; Splits, its formats as a bar; Frequency, thirteen weeks as columns;
+   Followers, thirty days as bars; Next, its three rules ---- */
+const GLY = (inner) => `<svg class="gly" viewBox="0 0 44 18" aria-hidden="true">${inner}</svg>`;
+const shortOf = (n) => String(n || '').replace(/^(\d+) of (\d+)$/, '$1/$2').replace(/^([+−-]?)([\d,]+)$/, (m, sn, d) => { const v = +d.replace(/,/g, ''); return v >= 1000 ? `${sn}${(Math.round(v / 100) / 10).toFixed(1).replace(/\.0$/, '')}K` : m; });
+function glyphOf(k) {
+  const P = A.posts;
+  if (k === 'now') return GLY(settled(10).map((i, j) => { const m = xPost(i, 'lk'); return `<circle cx="${2.4 + j * 4.35}" cy="9" r="1.9" class="${m != null && m >= 1 ? 'o' : 'u'}"/>`; }).join(''));
+  if (k === 'score') return GLY(settled(10).map((i, j) => { const m = xPost(i, 'lk'), L = m == null ? 0 : Math.max(-2, Math.min(3, Math.log2(Math.max(m, .01)))), h = Math.max(1.6, Math.min(8.6, Math.abs(L) * 3.6)), up = L >= 0; return `<rect x="${j * 4.4 + .6}" y="${up ? 9 - h : 9.6}" width="3.2" height="${h.toFixed(2)}" rx=".8" class="${up ? 'o' : 'u'}"/>`; }).join('') + '<rect x="0" y="9" width="44" height=".6" class="u"/>');
+  if (k === 'slices') {
+    const W = S.win.filter((i) => P[i].top != null), by = {}; W.forEach((i) => { (by[P[i].pat] = by[P[i].pat] || []).push(i); });
+    const ks = Object.entries(by).sort((a, b) => b[1].length - a[1].length), C = 2 * Math.PI * 6.6; let at = 0;
+    return GLY(ks.map(([, ids]) => { const len = (ids.length / W.length) * C, c = callSet(ids).c, seg = `<circle cx="22" cy="9" r="6.6" class="sg c-${c}" stroke-dasharray="${Math.max(.1, len - .9).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}" transform="rotate(-90 22 9)"/>`; at += len; return seg; }).join(''));
+  }
+  if (k === 'formats') {
+    const W = S.win.filter((i) => P[i].top != null), by = {}; W.forEach((i) => { (by[P[i].fmt] = by[P[i].fmt] || []).push(i); });
+    let x = 0; return GLY(Object.entries(by).sort((a, b) => b[1].length - a[1].length).map(([, ids]) => { const w = (ids.length / W.length) * 44, r = `<rect x="${(x + .6).toFixed(2)}" y="5.5" width="${Math.max(1, w - 1.2).toFixed(2)}" height="7" rx="2" class="c-${callSet(ids).c}"/>`; x += w; return r; }).join(''));
+  }
+  if (k === 'frequency') {
+    const ws = A.weeks.slice(-13), n = ws.map((w) => w.ids.length), mx = Math.max(1, ...n), med = medOf(n.slice(0, -1)) || 0;
+    return GLY(n.map((c, j) => { const h = Math.max(1.2, (c / mx) * 16); return `<rect x="${j * 3.38 + .3}" y="${(17 - h).toFixed(2)}" width="2.5" height="${h.toFixed(2)}" rx=".7" class="${c > med * 1.5 ? 'h' : c >= med ? 'o' : 'u'}"/>`; }).join(''));
+  }
+  if (k === 'followers') {
+    const D = A.daily.filter((x) => x[1] != null).slice(-30), mx = Math.max(1, ...D.map((x) => Math.abs(x[1])));
+    return GLY(D.map(([, g], j) => { const h = Math.max(1, Math.sqrt(Math.abs(g) / mx) * 8.4); return `<rect x="${(j * 1.466).toFixed(2)}" y="${g >= 0 ? (9 - h).toFixed(2) : 9.4}" width="1.05" height="${h.toFixed(2)}" class="${g >= 0 ? 'o' : 'u'}"/>`; }).join(''));
+  }
+  if (k === 'next') return GLY(['M3 14L9 8', 'M17 11h7', 'M33 8l6 6'].map((d, j) => `<path d="${d}" class="ln${j === 0 ? ' o' : ''}"/>`).join('') + '<path d="M6.5 8H9v2.5M21.5 8.5L24 11l-2.5 2.5M39 11.5V14h-2.5" class="ln"/>');
+  return '';
+}
+function coverOf(p, form, glyph = true) {
+  const row1 = p.frames.find((f) => f.row === 0);
+  p.glyph = glyph ? glyphOf(p.k) : '';
+  if (p.k === 'now') p.short = `${form.o}/10`;
+  else if (p.k === 'frequency') { const n = A.weeks.slice(-13).filter((w) => !w.part).map((w) => w.ids.length); p.short = `${Math.round(medOf(n) || 0)}/wk`; }
+  else if (p.k === 'followers') p.short = shortOf(p.fig ? p.fig.num : '');
+  // (Next has no number: its name takes the number's place)
+  else if (p.k === 'next') { p.short = R5.next; p.nameOnly = true; }
+  else p.short = shortOf(row1 ? row1.num : p.fig ? p.fig.num : '');
+}
+// a read-18 frame's words: its head, its number and what it counts, what happened, and the door to its why (a part's
+// own picture opens on to its frames)
+function sgWords18(fr, desk) {
+  const read = fr.comp ? `${fr.n} ${fr.n === 1 ? 'frame' : 'frames'}` : fr.ids ? (fr.ids.length > 1 ? 'Open the posts' : 'Open the post') : 'Read why';
+  if (fr.comp) return `<p class="hd18">${linkHTML(fr.head)}</p>${desk ? '' : `<span class="unit lone">${esc(fr.unit)}</span>`}<button class="sgrd" data-read>${read}${ICR}</button>`;
+  return `${fr.count ? `<span class="kick${frameT(fr)}"><span class="dot"></span>${esc(fr.count)}</span>` : ''}<p class="hd18">${linkHTML(fr.head)}</p>
+    ${fr.num ? `<div class="fig"><b class="num${wideNum(fr.num) ? ' wd' : ''}"><span>${esc(fr.num)}</span></b><span class="unit">${esc(fr.unit)}</span></div>` : fr.unit ? `<span class="unit lone">${esc(fr.unit)}</span>` : ''}
+    ${fr.what ? `<p class="line w18">${linkHTML(fr.what)}</p>` : ''}<button class="sgrd" data-read>${read}${ICR}</button>`;
+}
+// a read-18 row's picture: its post (the one of its pair it's about), or its run, clean
+function media18(x, r, ids) {
+  if (x.media === 'now') return '';
+  if (r.run) return run18(r);
+  const main = r.pair ? (r.pair.find((p) => ids.includes(p.id)) || r.pair[0]).id : ids[0];
+  return main ? pic18(main) : '';
+}
+
+/* =====================================================================
    STRATEGY, the reader's way (voice.read): the same reels of read cards, cut into the reader's six parts, the same
    every read (Score, Slices, Streaks, Frequency, Formats, Followers). A part heads with its question and the reader's
    line on it; its cards are the rows that line stands on: the reader's picks with the reader's lines, and the counted
@@ -1923,7 +2211,7 @@ function quadHTML(items) { return `<div class="md quad">${items.map((x) => `<div
    day 3 against the usual post at day 3, so the tiles never say a different number from the words; the panel lists a
    card's posts the same way
    ===================================================================== */
-const R5 = { score: 'Score', slices: 'Slices', streaks: 'Streaks', frequency: 'Frequency', formats: 'Formats', followers: 'Followers' };
+const R5 = { now: 'Now', score: 'Score', slices: 'Slices', streaks: 'Streaks', frequency: 'Frequency', formats: 'Splits', followers: 'Followers', next: 'Next' };
 // a line's first sentence, and the rest ("I.V." and "Mon 19 Oct." don't end one: the next word has to start a sentence)
 const firstOf = (s) => { const m = String(s || '').match(/^(.+?[.!?])\s+(?=[A-Z0-9“‘"+−-])/); return m ? [m[1], s.slice(m[0].length)] : [String(s || ''), '']; };
 // the reader's multiples, while a card of theirs draws (or its panel): `XOV.k` the count, `XOV.m` post → multiple
@@ -1948,8 +2236,8 @@ function r5Build() {
       if (r.run) r.tag = r.brk ? { [r.brk]: 'Ended it' } : null;
       // its why, for the panel: the evidence, the pair, what it rules out, what can't be told yet, what it means
       const pair = (x.pair || []).filter((p) => P[p.id]);
-      Object.assign(r, { why: x.why, pair: pair.length === 2 ? pair : null, not: x.not, open: x.open, means: x.means });
-      const media = withX(r, () => {
+      Object.assign(r, { why: x.why, pair: pair.length === 2 ? pair : null, not: x.not, open: x.open, means: x.means, h: x.h || null, rw: x.rw || null, facts: x.facts || null });
+      const media = R18() && x.media !== 'days' ? media18(x, r, ids) : withX(r, () => {
         if (x.media === 'pair' && r.pair) { r.pair.forEach((p) => used.add(p.id)); return pairHTML(r.pair, 'x' + k); }
         if (x.media === 'run' && r.run) return runHTML(r, used);
         if (x.media === 'days' && x.d0) return r5DaysHTML(x.d0, x.d1 || x.d0);
@@ -1974,7 +2262,7 @@ function r5Section(k) {
 function strategy5HTML() {
   r5Build(); stageBuild();
   const R = A.voice.read;
-  return `<header class="op"><span class="ok"><b>01</b>Strategy · the last 100</span><p class="osb">Six questions, asked the same way every read${R.why ? ', each answered with its why: the pair of posts that proves it, and what it rules out' : ''}. Every × here is a post’s count against ${esc(A.his)} usual post at the same age${R.why ? `, at the latest check it had reached by ${esc(day(R.d))}` : ' (day 3)'}, the middle of ${esc(A.his)} last 100.</p></header>
+  return `<header class="op"><span class="ok"><b>01</b>${R18() ? 'Report' : 'Strategy'} · the last 100</span>${R18() ? `<span class="clg">${['up', 'mid', 'dn'].map((t) => `<span>${cornerT(t)}<i class="csw t-${t}"></i>${CALLW[t]}</span>`).join('')}</span>` : ''}<p class="osb">Six questions, asked the same way every read${R.why ? ', each answered with its why: the pair of posts that proves it, and what it rules out' : ''}. Every × here is a post’s count against ${esc(A.his)} usual post at the same age${R.why ? `, at the latest check it had reached by ${esc(day(R.d))}` : ' (day 3)'}, the middle of ${esc(A.his)} last 100.</p></header>
     ${DS ? stageDeskHTML() : stagePhoneHTML()}`;
 }
 
@@ -1996,6 +2284,7 @@ function drawAll() { qa('.seg').forEach(placeSeg); storyPlace(); }
    PAGE
    ===================================================================== */
 function jumpTo(target) {
+  if (target === 'recent' || target === 'ranks') { setWall(target); target = 'split'; }
   const e_ = $(target); if (e_) e_.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'start' });
 }
 function render() {
@@ -2022,10 +2311,16 @@ function render() {
   // Strategy's stage, on the page (the story plays on Feed)
   SVEL.innerHTML = ''; SVO = false; $('sv').classList.remove('on');
   if (ST) { if (DS) { deskSize(); hookStageDesk(); deskPlace(ST.at, 0); sgBars(); qa('.dsc').forEach(sgFit); } else { hookStagePhone(); sgSlotFit(); sgSpines(true); } }
+  // (while a phone's read-18 stage has the screen, the navbar's folded circle steps aside there: readParts.css. The open
+  // bar is untouched, and nothing goes near the screen's foot, where iOS would fill its strip solid. On past 60% of the
+  // screen, off under 45%, so a stage resting near the line doesn't flicker)
+  document.documentElement.removeAttribute('data-r17-stage');
+  const sgm = !DS && R18() && $('sgm');
+  if (sgm) { const so = new IntersectionObserver((es) => es.forEach((x) => { const h = x.isIntersecting ? x.intersectionRect.height / innerHeight : 0, onNow = document.documentElement.hasAttribute('data-r17-stage'); if (!onNow && h > .6) document.documentElement.setAttribute('data-r17-stage', ''); else if (onNow && h < .45) document.documentElement.removeAttribute('data-r17-stage'); }), { threshold: [0, .1, .2, .3, .4, .45, .5, .55, .6, .65, .7, .8, .9, 1] }); so.observe(sgm); ios.push(so); }
   WPICK = null; $('ro').classList.remove('on'); closePanel();
   drawWall(); drawAll(); hookCuts();
   // the part you're in, for the header's switch
-  const ch = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting && onChapter) onChapter(e.target.id === 'strategy' ? (A.voice && A.voice.read ? 'score' : 'slices') : e.target.id); }), { rootMargin: '-35% 0px -60% 0px' });
+  const ch = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting && onChapter) onChapter(e.target.id === 'strategy' ? (A.voice && A.voice.read ? 'score' : 'slices') : e.target.id === 'split' ? WV : e.target.id); }), { rootMargin: '-35% 0px -60% 0px' });
   [...PARTS, 'strategy'].forEach((id) => { const e_ = $(id); if (e_) ch.observe(e_); }); ios.push(ch);
   paintCovers(); loadCovers();
   requestAnimationFrame(() => { if (dead) return; drawAll(); if (ST) { if (DS) { deskSize(); deskPlace(ST.at, 0); qa('.dsc').forEach(sgFit); } else sgSlotFit(); sgCut(); } });
@@ -2043,12 +2338,13 @@ on(root, 'click', (e) => {
   if (e.target.closest('[data-how]')) { openHow(); return; }
   const cov = e.target.closest('[data-cov]'); if (cov) { const [j, f] = cov.dataset.cov.split(':').map(Number); coverGo(j, f); return; }
   const sv_ = e.target.closest('.seg [data-sv]');
-  if (sv_) { const seg = sv_.closest('.seg'), v = sv_.dataset.sv; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === sv_))); placeSeg(seg); if (seg.dataset.seg === 'wv') { WV = v; localSet('wall', v); const wh = $('wh'); wh.textContent = v === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'; if (!RM) wh.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: BEASE }); morphWall(); } return; }
+  if (sv_) { const seg = sv_.closest('.seg'), v = sv_.dataset.sv; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === sv_))); placeSeg(seg); if (seg.dataset.seg === 'wv') { WV = v; const wk = $('wok'); if (wk) wk.innerHTML = wallHead(); if (onChapter) { const r = $('split').getBoundingClientRect(); if (r.top < innerHeight * .6 && r.bottom > 0) onChapter(v); } const wh = $('wh'); wh.textContent = v === 'recent' ? 'Newest first. Pick a post to see what it beat.' : 'Grouped by where each landed.'; if (!RM) wh.animate([{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: BEASE }); morphWall(); } return; }
+  const st = e.target.closest('[data-set]'); if (st) { const ids = st.dataset.set.split(','); openPost(ids[0], ids); return; }
   const t = e.target.closest('[data-post]'); if (!t) return;
   if (t.dataset.wall) { wallPick(t.dataset.post); return; }
   if (t.dataset.live) { openPost(t.dataset.post, liveIds()); return; }
   if (t.closest('.wf')) { openPost(t.dataset.post, S.win); return; }
-  const box = t.closest('.pgrid, .r5g'); openPost(t.dataset.post, box ? [...box.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [t.dataset.post]);
+  const box = t.closest('.pgrid, .r5g, .fbs'); openPost(t.dataset.post, box ? [...box.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [t.dataset.post]);
 });
 on(document, 'click', (e) => {
   if (!WPICK || e.target.closest('.r17 .ro')) return;
@@ -2083,7 +2379,7 @@ return {
   unmount() {
     dead = true; cancelAnimationFrame(raf); clearTimeout(rt); clearTimeout(cutT); clearTimeout(cutPick); TRT.forEach(clearTimeout);
     ios.forEach((o) => o.disconnect()); offs.forEach((off) => off());
-    root.innerHTML = ''; layer.innerHTML = '';
+    root.innerHTML = ''; layer.innerHTML = ''; document.documentElement.removeAttribute('data-r17-stage');
   },
 };
 }
