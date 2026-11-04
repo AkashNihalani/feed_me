@@ -385,6 +385,166 @@ export function growthModel(scope: Scope, shots: Shot[], lanes: Lane[]): GrowthM
   };
 }
 
+/* ── Followers: every feeder's growth, in percent of its own size ─────────
+   Each feeder's line starts at 0% on the day before the window and runs to its last real reading (gaps between
+   readings are drawn straight across, nothing past the last). The average feeder is the mean of the lines that day
+   (when at least half of them have one), so a 56M account counts as much as a 40K one. Each feeder's best day in the
+   window is its biggest measured gain against its usual day (the median of its measured gains); 2× or more is an
+   event, with that feeder's own strongest post from that day or the day before. */
+
+// one of a feeder's biggest single days in the window (a gain or a loss, on two real readings), with its own strongest
+// post from that day or the day before
+export type FollowerSpike = { index: number; delta: number; multiple: number | null; after: Shot | null; sameDay: boolean };
+export type FollowerLine = { handle: string; feedId: string; feedName: string; pic: string | null; growth: Array<number | null>; base: number; end: number; pct: number; delta: number; usual: number | null; spikes: FollowerSpike[] };
+export type FollowerEvent = { handle: string; index: number; delta: number; usual: number; multiple: number; after: Shot | null; sameDay: boolean };
+export type FollowersModel = {
+  // the day before the window, then each of its days
+  keys: string[];
+  lines: FollowerLine[];
+  average: Array<number | null>;
+  lastIndex: number;
+  pct: number | null;
+  net: number;
+  grew: number;
+  shrank: number;
+  events: FollowerEvent[];
+};
+
+export const followersFor = (scope: Scope) => remember(scope.feeds, scope.activity, `followers|${pickKey(scope)}`, () => followersModel(scope, shotsFor(scope)));
+
+export function followersModel(scope: Scope, shots: Shot[]): FollowersModel {
+  const activity = scope.activity;
+  const { start, end } = windowDays(scope.days, activity?.to);
+  const keys: string[] = [addDays(start, -1)];
+  for (let key = start; key <= end; key = addDays(key, 1)) keys.push(key);
+  const empty: FollowersModel = { keys, lines: [], average: keys.map(() => null), lastIndex: keys.length - 1, pct: null, net: 0, grew: 0, shrank: 0, events: [] };
+  if (!activity) return empty;
+  const span = Math.round((istDayStart(activity.to) - istDayStart(activity.from)) / DAY) + 1;
+  const first = Math.round((istDayStart(keys[0]) - istDayStart(activity.from)) / DAY);
+  const feedNames = new Map(scope.feeds.map((feed) => [feed.id, titleCase(feed.title)]));
+  const pics = new Map(scope.feeds.flatMap((feed) => feed.feeders.map((feeder) => [`${feed.id}:${normalizeHandle(feeder.handle)}`, feeder.profilePicUrl || null] as const)));
+  // each feeder's posts by day, best first
+  const posted = new Map<string, Shot[]>();
+  for (const shot of shots) {
+    const key = `${shot.feedId}:${shot.handle}|${shot.day}`;
+    const list = posted.get(key);
+    if (list) list.push(shot);
+    else posted.set(key, [shot]);
+  }
+  for (const list of posted.values()) list.sort(shotOrder);
+  const afterOf = (feedId: string, handle: string, day: string) => {
+    const own = posted.get(`${feedId}:${handle}|${day}`)?.[0] ?? null;
+    const before = posted.get(`${feedId}:${handle}|${addDays(day, -1)}`)?.[0] ?? null;
+    const after = own && before ? (shotOrder(own, before) <= 0 ? own : before) : own || before;
+    return { after, sameDay: Boolean(after && after === own) };
+  };
+
+  const lines: FollowerLine[] = [];
+  const events: FollowerEvent[] = [];
+  for (const feed of activity.feeds) {
+    if (scope.feedId !== 'all' && feed.id !== scope.feedId) continue;
+    for (const feeder of feed.feeders) {
+      if (scope.feeder && feeder.handle !== scope.feeder) continue;
+      const { values, stale } = feederSeries(feeder.followers, span);
+      const lastReal = stale.lastIndexOf(false);
+      if (lastReal < 0) continue;
+      const at = (offset: number) => (offset >= 0 && offset <= lastReal ? values[offset] : null);
+      const base = at(first) ?? values.slice(Math.max(0, first), lastReal + 1).find((value) => value != null) ?? null;
+      if (!base) continue;
+      const growth = keys.map((_, index) => {
+        const value = at(first + index);
+        return value == null ? null : (value / base - 1) * 100;
+      });
+      const endValue = at(Math.min(lastReal, first + keys.length - 1)) ?? base;
+      const gains: Array<{ index: number; delta: number }> = [];
+      for (let index = 1; index < keys.length; index += 1) {
+        const offset = first + index;
+        if (offset < 1 || offset > lastReal || stale[offset] || stale[offset - 1]) continue;
+        gains.push({ index, delta: values[offset]! - values[offset - 1]! });
+      }
+      const usual = median(gains.map((gain) => gain.delta));
+      const peak = gains.reduce<{ index: number; delta: number } | null>((best, gain) => (!best || gain.delta > best.delta ? gain : best), null);
+      if (peak && usual != null && usual > 0 && peak.delta >= usual * 2) {
+        events.push({ handle: feeder.handle, index: peak.index, delta: peak.delta, usual, multiple: peak.delta / usual, ...afterOf(feed.id, feeder.handle, keys[peak.index]) });
+      }
+      // its five biggest days either way, biggest first
+      const spikes = [...gains]
+        .filter((gain) => gain.delta !== 0)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 5)
+        .map((gain) => ({ index: gain.index, delta: gain.delta, multiple: usual != null && usual > 0 && gain.delta > 0 ? gain.delta / usual : null, ...afterOf(feed.id, feeder.handle, keys[gain.index]) }));
+      lines.push({
+        handle: feeder.handle,
+        feedId: feed.id,
+        feedName: feedNames.get(feed.id) ?? '',
+        pic: pics.get(`${feed.id}:${feeder.handle}`) ?? null,
+        growth,
+        base,
+        end: endValue,
+        pct: (endValue / base - 1) * 100,
+        delta: endValue - base,
+        usual,
+        spikes,
+      });
+    }
+  }
+  if (!lines.length) return empty;
+  lines.sort((a, b) => b.pct - a.pct);
+  const average = keys.map((_, index) => {
+    const values = lines.map((line) => line.growth[index]).filter((value): value is number => value != null);
+    return values.length && values.length >= lines.length / 2 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  });
+  let lastIndex = average.length - 1;
+  while (lastIndex > 0 && average[lastIndex] == null) lastIndex -= 1;
+  return {
+    keys,
+    lines,
+    average,
+    lastIndex,
+    pct: average[lastIndex] ?? null,
+    net: lines.reduce((sum, line) => sum + line.delta, 0),
+    grew: lines.filter((line) => line.delta > 0).length,
+    shrank: lines.filter((line) => line.delta < 0).length,
+    events: events.sort((a, b) => b.multiple - a.multiple).slice(0, 3),
+  };
+}
+
+/* ── Cadence: every post in the window, a column a day ──────────────────── */
+
+export type SkyDay = { key: string; weekday: number; today: boolean; shots: Shot[] };
+export type SkylineModel = { days: SkyDay[]; most: number; perDay: number; priorPerDay: number | null; activeDays: number; hits: number; count: number; busiest: SkyDay | null };
+
+export const skylineFor = (scope: Scope) => remember(scope.feeds, scope.activity, `skyline|${pickKey(scope)}`, () => skylineModel(scope, shotsFor(scope)));
+
+export function skylineModel(scope: Scope, shots: Shot[]): SkylineModel {
+  const { start, end } = windowDays(scope.days, scope.activity?.to);
+  const today = istDayKey(Date.now());
+  const byDay = new Map<string, Shot[]>();
+  for (const shot of shots) {
+    if (shot.day < start || shot.day > end) continue;
+    const list = byDay.get(shot.day);
+    if (list) list.push(shot);
+    else byDay.set(shot.day, [shot]);
+  }
+  const days: SkyDay[] = [];
+  for (let key = start; key <= end; key = addDays(key, 1)) {
+    days.push({ key, weekday: istWeekday(istDayStart(key) + 3_600_000), today: key === today, shots: (byDay.get(key) || []).sort(shotOrder) });
+  }
+  const count = days.reduce((sum, day) => sum + day.shots.length, 0);
+  const rhythm = rhythmModel(scope, shots, []);
+  const busiest = days.reduce<SkyDay | null>((best, day) => (day.shots.length && (!best || day.shots.length >= best.shots.length) ? day : best), null);
+  return {
+    days,
+    most: Math.max(1, ...days.map((day) => day.shots.length)),
+    perDay: count / scope.days,
+    priorPerDay: rhythm.compared ? rhythm.priorPerDay : null,
+    activeDays: days.filter((day) => day.shots.length).length,
+    hits: days.reduce((sum, day) => sum + day.shots.filter((shot) => (percentileOf(shot) ?? 101) <= 10).length, 0),
+    count,
+    busiest,
+  };
+}
+
 /* ── Rhythm ────────────────────────────────────────────────────────────── */
 
 export type CalendarDay = { key: string; count: number; today: boolean; inWindow: boolean; shots: Shot[] };

@@ -488,3 +488,72 @@ export function useCarry(listRef: RefObject<HTMLElement | null>, version: unknow
     };
   }, [listRef, version]);
 }
+
+/* ── a strip of posts that scrolls sideways ────────────────────────────── */
+
+/* A finger or a trackpad scrolls it as before; a mouse with no sideways wheel gets a pair of arrows on hover, each only
+   when there is more that way. An arrow moves it most of a width at a time (smoothly, unless motion is reduced); a new
+   set of posts (resetKey) starts from its first. */
+export function ScrollStrip({ className, outer, resetKey, children }: { className: string; outer?: string; resetKey?: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [ends, setEnds] = useState({ start: true, end: true });
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.scrollLeft <= 2;
+    const end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+    setEnds((current) => (current.start === start && current.end === end ? current : { start, end }));
+  }, []);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    el.addEventListener('scroll', measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      el.removeEventListener('scroll', measure);
+    };
+  }, [measure]);
+  useEffect(() => {
+    ref.current?.scrollTo({ left: 0 });
+    measure();
+  }, [resetKey, measure]);
+  // its posts change without its own size changing: read the ends again after each render
+  useEffect(() => {
+    measure();
+  });
+  const go = (direction: number) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: reducedMotion() ? 'auto' : 'smooth' });
+  };
+  const arrow = (direction: number, away: boolean) => (
+    <button
+      type="button"
+      tabIndex={away ? -1 : 0}
+      aria-label={direction < 0 ? 'Earlier posts' : 'More posts'}
+      onClick={(event) => {
+        event.stopPropagation();
+        go(direction);
+      }}
+      className={cn(
+        'absolute top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-fg/[0.12] bg-(--ld-panel) text-fg shadow-(--ld-shadow-thumb) transition-[opacity,transform] duration-[calc(220ms*var(--fm-tempo))] [@media(hover:hover)]:grid',
+        direction < 0 ? 'left-2' : 'right-2',
+        away ? 'pointer-events-none opacity-0' : 'opacity-0 hover:scale-105 focus-visible:opacity-100 group-hover/strip:opacity-100',
+      )}
+    >
+      <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3.5 w-3.5">
+        <path d={direction < 0 ? 'M7.5 2.5 4 6l3.5 3.5' : 'M4.5 2.5 8 6 4.5 9.5'} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+  return (
+    <div className={cn('group/strip relative min-w-0', outer)}>
+      <div ref={ref} className={className}>{children}</div>
+      {arrow(-1, ends.start)}
+      {arrow(1, ends.end)}
+    </div>
+  );
+}
+
