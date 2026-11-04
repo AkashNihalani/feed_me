@@ -1,7 +1,7 @@
 'use client';
 
 // Lead — who's winning, in numbers.
-// Spine: Top of the feed (the leaders strip) → the Feederboard (media-first rows
+// Spine: the tape (the event stream) → Top of the feed (the leaders strip) → the Feederboard (media-first rows
 // ranked on the TYPICAL post percentile, throne row for rank 1) → Hall of Feed
 // (the standout posts: wins, likes, comments, engagement) → Follow-through (the
 // follower curve and its spikes) → Feeding habits (cadence, prime time, the menu).
@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import { CSSProperties, Ref, memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Eye, Gauge, Heart, MessageCircle, Target, TrendingUp, Trophy, Users, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { usePageReady } from '@/components/shell/AppShell';
@@ -19,15 +19,15 @@ import { MENU_APPLY_AFTER_CLOSE_MS, TimeframeControl, headerChoice, useTabHeader
 import SlotText from '@/components/SlotText';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
-import { normalizeHandle, titleCase } from '@/lib/feedLabels';
+import { feedInitials, normalizeHandle, titleCase } from '@/lib/feedLabels';
 import { BEAT_ARRIVE_S, BEAT_CONTAINER, BEAT_HIDDEN, BEAT_ITEM, BEAT_LEAVE_EASE, BEAT_SHOWN, beatArrive, beatLeave } from '@/lib/motion';
 import { getTabScope, setTabScope, useTabScope, useTabScopeTransition, type TabScope } from '@/lib/tabScope';
 import { cn } from '@/lib/utils';
 import { postMoment } from '@/lib/postMoment';
 import { ms, sec } from '@/lib/tempo';
 import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
-import { buildFeederboardFacts } from '@/lib/feederboardFacts';
-import { LEAD_AT_KEY, NOT_A_WIN, WIN_LABEL, hallBasis, leadScope } from '@/components/lead/leadHall';
+import { CARRY_EASE_CSS, reducedMotion } from '@/lib/feedStream/motion';
+import { LEAD_AT_KEY, leadScope } from '@/components/lead/leadHall';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
 import LeadGrowth from '@/components/lead/LeadGrowth';
 import LeadRhythm from '@/components/lead/LeadRhythm';
@@ -36,12 +36,14 @@ import LeadFormats from '@/components/lead/LeadFormats';
 import { CrossfadeImage, DIM, MARK, NOTE, SOFT, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
 import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
-import { ascentFromActivity, formatsFor, growthFor, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
+import { ascentFromActivity, formatsFor, growthFor, readsBefore, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
+import { viewsLabel, viewsNote, viewsOf } from '@/components/lead/leadPlays';
+import { RAMP, shade } from '@/components/read/readShade';
 import { announceFirstScreen } from '@/lib/launch';
 import { keptLead, leadOnHand, loadLead, type LeadLoad } from '@/components/lead/leadData';
 import './lead.css';
 
-const TIMEFRAMES = [7, 30, 60, 90] as const;
+const TIMEFRAMES = [7, 30, 90] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
 const SOFT_EASE = [0.16, 0.9, 0.2, 1] as const;
 // an open row unfolds its three parts one after another (its rows below make room on the ledger's beat)
@@ -98,15 +100,6 @@ type TrackedPost = {
   engagementRateMultiple: number | null;
 };
 
-type FeederboardFact = {
-  kind: string;
-  headline: string;
-  detail: string;
-  thumbnailUrl: string | null;
-  postUrl: string | null;
-  evidencePostKeys: string[];
-};
-
 type AscentPoint = {
   snapshot_date_ist: string;
   follower_count: number;
@@ -127,15 +120,12 @@ type BoardRow = {
   caption: string;
   feedName: string;
   profilePicUrl: string | null;
-  anchorThumb: string | null;
   typical: number | null;
   best: number | null;
   bestPost: TrackedPost | null;
-  floor: number | null;
   lastPostedAt: number | null;
-  peak: number | null;
-  verdict: string;
-  hot: boolean;
+  // its posts in the window that landed in the top 10%
+  hits: number;
   likes: number;
   comments: number;
   engagementRate: number | null;
@@ -192,10 +182,10 @@ function percentLabel(value: number | null) {
   return value == null ? '—' : String(Math.max(1, Math.round(value)));
 }
 
-function lastPostedLabel(time: number | null) {
+function lastPostedWords(time: number | null) {
   if (!time) return '—';
   const days = Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
-  return days === 0 ? 'TODAY' : `${days}D`;
+  return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} days ago`;
 }
 
 /* the pick every tab shares, as Lead reads it: a feed Lead doesn't have (or none yet) is all feeds (components/lead/leadHall,
@@ -259,8 +249,11 @@ function postsInWindow(posts: TrackedPost[], days: number) {
 }
 
 /* The window immediately before the selected one, same length. Every level on
-   the page is read against this — that's where the direction comes from. */
+   the page is read against this — that's where the direction comes from. 90D has
+   none (only 90 days are kept, see readsBefore), so nothing there shows a move. */
+const NO_PRIOR_POSTS: TrackedPost[] = [];
 function postsInPriorWindow(posts: TrackedPost[], days: number) {
+  if (!readsBefore(days)) return NO_PRIOR_POSTS;
   return remember(posts, null, `prior|${days}`, () => {
     const spanMs = days * 24 * 60 * 60 * 1000;
     const end = Date.now() - spanMs;
@@ -316,22 +309,6 @@ function valueAt(points: AscentPoint[], target: number) {
   return prior?.value ?? sorted.find((point) => point.time >= target)?.value ?? null;
 }
 
-/* Verdict words are threshold math on the typical percentile — never prose.
-   carrying ≤10 · working ≤25 · steady ≤45 · quiet above that. */
-function verdictFor(typical: number | null, postCount: number) {
-  if (postCount === 0 || typical == null) return 'no reads';
-  if (typical <= 10) return 'carrying';
-  if (typical <= 25) return 'working';
-  if (typical <= 45) return 'steady';
-  return 'quiet';
-}
-
-function proofMetric(post: TrackedPost) {
-  if (post.rankingMetric === 'comments') return `${compactNumber(numeric(post.comments))} comments`;
-  if (post.rankingMetric === 'engagement_rate') return `${formatEngagementRate(post.engagementRate)} eng. rate`;
-  return `${compactNumber(numeric(post.likes))} likes`;
-}
-
 function createBoardRow({
   id,
   name,
@@ -354,25 +331,15 @@ function createBoardRow({
   prevPosts: TrackedPost[];
 }): BoardRow {
   const sortedPosts = [...posts].sort(bestFirst);
-  const proofPosts = sortedPosts.filter((post) => post.thumbnailUrl).slice(0, 4);
+  // the row's three best posts with a picture: its receipts, best first (RowExpansion)
+  const proofPosts = sortedPosts.filter((post) => post.thumbnailUrl).slice(0, 3);
   const bestPost = sortedPosts[0] || null;
   const typical = median(posts.map((post) => post.latestPercentile));
   const best = bestPost?.latestPercentile ?? null;
-  const floor = posts.reduce<number | null>((max, post) => {
-    if (post.latestPercentile == null) return max;
-    return max == null || post.latestPercentile > max ? post.latestPercentile : max;
-  }, null);
   const lastPostedAt = posts.reduce<number | null>((max, post) => {
     const time = postTime(post);
     return time > 0 && (max == null || time > max) ? time : max;
   }, null);
-  const peak = bestPost?.rankingMultiple
-    ?? posts.reduce<number | null>((max, post) => {
-      const value = post.rankingMultiple;
-      if (value == null || !Number.isFinite(value)) return max;
-      return max == null || value > max ? value : max;
-    }, null);
-  const verdict = verdictFor(typical, posts.length);
   const prevTypical = median(prevPosts.map((post) => post.latestPercentile));
   const typicalShift = typical != null && prevTypical != null
     ? Math.round(prevTypical - typical)
@@ -388,15 +355,11 @@ function createBoardRow({
     caption,
     feedName,
     profilePicUrl,
-    anchorThumb: proofPosts[0]?.thumbnailUrl || null,
     typical,
     best,
     bestPost,
-    floor,
     lastPostedAt,
-    peak,
-    verdict,
-    hot: verdict === 'carrying' || verdict === 'working',
+    hits: posts.filter((post) => post.latestPercentile != null && post.latestPercentile <= 10).length,
     likes: posts.reduce((sum, post) => sum + numeric(post.likes), 0),
     comments: posts.reduce((sum, post) => sum + numeric(post.comments), 0),
     engagementRate: median(posts.map((post) => post.engagementRate)),
@@ -462,8 +425,8 @@ function buildRows(feeds: RuntimeFeed[], activeFeedId: string, days: number) {
         });
       });
     const current = build((posts) => postsInWindow(posts, days), (posts) => postsInPriorWindow(posts, days), [now - spanMs, now]);
-    const prior = build((posts) => postsInPriorWindow(posts, days), () => [], [now - spanMs * 2, now - spanMs]);
-    return rankRows(current, prior);
+    const prior = readsBefore(days) ? build((posts) => postsInPriorWindow(posts, days), () => [], [now - spanMs * 2, now - spanMs]) : [];
+    return withoutBefore(rankRows(current, prior), days);
   }
 
   const feed = feeds.find((candidate) => candidate.id === activeFeedId);
@@ -486,8 +449,13 @@ function buildRows(feeds: RuntimeFeed[], activeFeedId: string, days: number) {
       });
     });
   const current = buildFeeders((posts) => postsInWindow(posts, days), (posts) => postsInPriorWindow(posts, days));
-  const prior = buildFeeders((posts) => postsInPriorWindow(posts, days), () => []);
-  return rankRows(current, prior);
+  const prior = readsBefore(days) ? buildFeeders((posts) => postsInPriorWindow(posts, days), () => []) : [];
+  return withoutBefore(rankRows(current, prior), days);
+}
+
+/* at 90D there is no window before (see readsBefore): no "prev N" posts either */
+function withoutBefore(rows: BoardRow[], days: number) {
+  return readsBefore(days) ? rows : rows.map((row) => ({ ...row, rankMove: null, typicalShift: null, prevPostCount: null }));
 }
 
 /* What each part of the page shows for one scope and window, built once (see remember) and shared: the leaders and
@@ -500,8 +468,9 @@ function tapeFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: strin
   return remember(feeds, null, `tape|${activeFeedId}|${feederHandle}|${days}`, () => buildTapeEvents(feeds, activeFeedId, feederHandle, days));
 }
 
-function leadersFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number) {
-  return remember(feeds, null, `leaders|${activeFeedId}|${feederHandle}|${days}`, () => buildLeaderCards(rowsFor(feeds, activeFeedId, days), feeds, activeFeedId, days, feederHandle));
+/* the scope's own typical post in the window: the par line between the board's rows */
+function parFor(feeds: RuntimeFeed[], activeFeedId: string, days: number) {
+  return remember(feeds, null, `par|${activeFeedId}|${days}`, () => median(scopedPostsFor(feeds, activeFeedId, days).map((post) => post.latestPercentile)));
 }
 
 function postsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): ScopedPost[] {
@@ -509,18 +478,6 @@ function postsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: stri
     const scoped = scopedPostsFor(feeds, activeFeedId, days);
     return feederHandle ? scoped.filter((post) => normalizeHandle(post.handle) === feederHandle) : scoped;
   });
-}
-
-/* What the facts and the post mortem read: the scope's posts dated in the window by their stored date, 500 at most
-   (as their API routes read them). The rule lives in components/lead/leadHall, so Feed's profile shows the same win */
-function factBasis(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): ScopedPost[] {
-  return remember(feeds, null, `basis|${activeFeedId}|${feederHandle}|${days}`, () => hallBasis(feeds, activeFeedId, feederHandle, days, postTime));
-}
-
-/* the facts for one scope and window: the deterministic builder (lib/feederboardFacts) run on what the page already
-   holds, so a switch waits on no request */
-function factsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): FeederboardFact[] {
-  return remember(feeds, null, `facts|${activeFeedId}|${feederHandle}|${days}`, () => buildFeederboardFacts(factBasis(feeds, activeFeedId, feederHandle, days), days) as FeederboardFact[]);
 }
 
 /* Everything a switch could ask for next, built ahead while the page is idle: the scope in view in every range
@@ -544,10 +501,11 @@ function warmJobs(feeds: RuntimeFeed[], activity: LeadActivity | null, feedId: s
     const scope = { feeds, activity, feedId: id, feeder: handle, days: range };
     jobs.push(
       () => rowsFor(feeds, id, range),
-      () => leadersFor(feeds, id, handle, range),
+      () => pointersFor(feeds, id, handle, range),
       () => tapeFor(feeds, id, handle, range),
+      () => parFor(feeds, id, range),
       () => postsFor(feeds, id, handle, range),
-      () => factsFor(feeds, id, handle, range),
+      () => TOP_SORTS.forEach((sort) => topPostsFor(feeds, id, handle, range, sort.id)),
       () => growthFor(scope),
       () => rhythmFor(scope),
       () => timingFor(scope),
@@ -617,46 +575,72 @@ function LeadHeader({
 
 type TapeEvent = { id: string; text: string; value: string; dir: 'up' | 'down' | 'flat' };
 
-/* Deterministic market events from data already on hand: checkpoint climbs
-   and cools, fresh reads, and each feed's latest follower day-move. Band
-   crossings come later from the rank ledger. */
+/* Deterministic market events from data already on hand: checkpoint climbs and cools, fresh reads, each feeder's
+   current run of posts above or under its usual (3 or more in a row, newest first), and each feed's latest follower
+   day-move. The kinds take turns (the biggest of each first), so the tape never runs one kind fourteen times over. */
 function buildTapeEvents(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): TapeEvent[] {
   const scoped = activeFeedId === 'all' ? feeds : feeds.filter((feed) => feed.id === activeFeedId);
   const inScope = (post: TrackedPost) => !feederHandle || normalizeHandle(post.handle) === feederHandle;
-  const climbs: TapeEvent[] = [];
-  const reads: TapeEvent[] = [];
-  const seen = new Set<string>();
+  type Sized = TapeEvent & { size: number };
+  const climbs: Sized[] = [];
+  const cools: Sized[] = [];
+  const reads: Sized[] = [];
+  const runs: Sized[] = [];
   const freshCutoff = Date.now() - 2 * 24 * 60 * 60 * 1000;
 
   for (const feed of scoped) {
-    for (const post of postsInWindow(feed.posts, days).filter(inScope)) {
+    const windowed = postsInWindow(feed.posts, days).filter(inScope);
+    for (const post of windowed) {
       const handle = normalizeHandle(post.handle) || titleCase(feed.title).toLowerCase();
       const media = post.mediaType !== 'unknown' ? post.mediaType : 'post';
       const trajectory = climbOf(post);
       if (trajectory != null && Math.abs(trajectory) >= 5 && post.firstPercentile != null && post.latestPercentile != null) {
         const intoTopTen = trajectory > 0 && post.latestPercentile <= 10 && post.firstPercentile > 10;
-        climbs.push({
+        (trajectory > 0 ? climbs : cools).push({
           id: `climb:${post.postKey}`,
           text: `@${handle} ${media} ${trajectory > 0 ? (intoTopTen ? 'into the top 10%' : 'climbing') : 'cooling'}`,
           value: `${percentLabel(post.firstPercentile)}% → ${percentLabel(post.latestPercentile)}%`,
           dir: trajectory > 0 ? 'up' : 'down',
+          size: Math.abs(trajectory) + (intoTopTen ? 100 : 0),
         });
-        seen.add(post.postKey);
         continue;
       }
       const readTime = Date.parse(post.latestBusinessDayIst || '');
-      if (Number.isFinite(readTime) && readTime >= freshCutoff && post.latestPercentile != null && !seen.has(post.postKey)) {
+      if (Number.isFinite(readTime) && readTime >= freshCutoff && post.latestPercentile != null) {
         reads.push({
           id: `read:${post.postKey}`,
           text: `@${handle} ${(post.latestCheckpoint || 'd3').toUpperCase()} read`,
           value: `TOP ${percentLabel(post.latestPercentile)}%`,
           dir: post.latestPercentile <= 20 ? 'up' : 'flat',
+          size: 100 - post.latestPercentile,
         });
       }
     }
+    // each feeder's run at its newest end: above its usual (1.1× or more) or under it (0.9× or less)
+    const byHandle = new Map<string, TrackedPost[]>();
+    for (const post of windowed) {
+      const handle = normalizeHandle(post.handle);
+      if (!handle || post.rankingMultiple == null || !postTime(post)) continue;
+      const list = byHandle.get(handle);
+      if (list) list.push(post);
+      else byHandle.set(handle, [post]);
+    }
+    for (const [handle, list] of byHandle) {
+      list.sort((a, b) => postTime(b) - postTime(a));
+      let run = 0;
+      let dir = 0;
+      for (const post of list) {
+        const multiple = post.rankingMultiple as number;
+        const step = multiple >= 1.1 ? 1 : multiple > 0 && multiple <= 0.9 ? -1 : 0;
+        if (!step || (dir && step !== dir)) break;
+        dir = step;
+        run += 1;
+      }
+      if (run >= 3) runs.push({ id: `run:${handle}`, text: `@${handle} ${run} posts ${dir > 0 ? 'above' : 'under'} its usual`, value: `${run} in a row`, dir: dir > 0 ? 'up' : 'down', size: run });
+    }
   }
 
-  const followerMoves: TapeEvent[] = scoped.flatMap((feed) => {
+  const followerMoves: Sized[] = scoped.flatMap((feed) => {
     const sorted = [...feed.ascent]
       .map((point) => ({ time: Date.parse(point.snapshot_date_ist), value: numeric(point.follower_count) }))
       .filter((point) => Number.isFinite(point.time))
@@ -669,10 +653,20 @@ function buildTapeEvents(feeds: RuntimeFeed[], activeFeedId: string, feederHandl
       text: `${titleCase(feed.title)} audience`,
       value: `${signedNumber(delta)} today`,
       dir: delta > 0 ? 'up' as const : 'down' as const,
+      size: 0,
     }];
   });
 
-  return [...climbs, ...followerMoves, ...reads].slice(0, 14);
+  const biggest = (a: Sized, b: Sized) => b.size - a.size;
+  const lists = [climbs.sort(biggest).slice(0, 5), runs.sort(biggest).slice(0, 4), followerMoves, reads.sort(biggest).slice(0, 3), cools.sort(biggest).slice(0, 3)];
+  const events: TapeEvent[] = [];
+  for (let turn = 0; events.length < 14 && lists.some((list) => list.length > turn); turn += 1) {
+    for (const list of lists) {
+      const event = list[turn];
+      if (event && events.length < 14) events.push({ id: event.id, text: event.text, value: event.value, dir: event.dir });
+    }
+  }
+  return events;
 }
 
 const TAPE_CSS = `
@@ -745,237 +739,289 @@ function LeadTape({ events, dealId }: { events: TapeEvent[]; dealId: string }) {
   );
 }
 
-/* ── The wire — one server-read line that captions the run ──────────────── */
-/* Deterministic composer for the preview; run-signals `run_bites` plugs into
-   this same slot. Direction and shape only — no numbers repeated, no "why". */
+/* ── Leaders strip — three cards, three different questions ─────────────── */
 
-function composeWireLine(rows: BoardRow[]): string | null {
-  if (!rows.length) return null;
-  const carrier = rows[0];
-  const movers = rows.filter((row) => (row.typicalShift ?? 0) > 0).sort((a, b) => (b.typicalShift ?? 0) - (a.typicalShift ?? 0));
-  const faders = rows.filter((row) => (row.typicalShift ?? 0) < 0).sort((a, b) => (a.typicalShift ?? 0) - (b.typicalShift ?? 0));
-  const parts: string[] = [];
-  if (movers[0]?.id === carrier.id) {
-    parts.push(`${carrier.name} pulling away at the top`);
-  } else {
-    parts.push(`${carrier.name} holds the board`);
-    if (movers[0]) parts.push(`${movers[0].name} closing in`);
+/* ── The pointers: the list the board opens on ──────────────────────────────
+   Six glanceable reads of the scope's window, each a number first and then who or what it is about: the best post,
+   the typical post (on the Top % ramp, against the window before at 7D and 30D), the follower gains, the post that
+   climbed furthest since its first read, the post talked about most and the post liked most, each against its own
+   account's usual. A pointer is a door: it opens the ranking it heads (Top posts), the par line or Followers. */
+
+type PointerGo = 'rank' | 'likes' | 'comments' | 'climb' | 'views' | 'par' | 'gains';
+type PointerFoot =
+  | { kind: 'who'; handle: string; pic: string | null }
+  | { kind: 'ruler'; now: number | null; was: number | null }
+  | { kind: 'spark'; values: number[] }
+  | { kind: 'share'; share: number };
+type Pointer = {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  go: PointerGo;
+  value: string;
+  win: boolean;
+  // what the number counts, in one short line (two on a narrow tile)
+  unit: string;
+  shift: { up: boolean } | null;
+  foot: PointerFoot | null;
+};
+
+/* every feeder's face by handle, for a pointer or a card that names one */
+function facesOf(feeds: RuntimeFeed[]) {
+  return remember(feeds, null, 'faces', () => new Map(feeds.flatMap((feed) => feed.feeders.map((feeder) => [normalizeHandle(feeder.handle), feeder.profilePicUrl || null] as const))));
+}
+
+/* the scope's followers day by day across the window: each feed's own readings, summed on the days every feed was read */
+function followerSpark(scoped: RuntimeFeed[], days: number) {
+  const from = Date.now() - days * 86_400_000;
+  const byDay = new Map<number, { sum: number; feeds: number }>();
+  for (const feed of scoped) {
+    for (const point of ascentSeries(feed.ascent)) {
+      if (point.time < from) continue;
+      const day = byDay.get(point.time) ?? { sum: 0, feeds: 0 };
+      day.sum += point.value;
+      day.feeds += 1;
+      byDay.set(point.time, day);
+    }
   }
-  const fader = faders.find((row) => row.id !== carrier.id);
-  if (fader) parts.push(`${fader.name} cooling off`);
-  const entrant = rows.find((row) => row.rankMove == null && row.postCount > 0 && row.id !== carrier.id);
-  if (parts.length < 3 && entrant) parts.push(`${entrant.name} enters the window`);
-  return `${parts.slice(0, 3).join(' · ')}.`;
+  const values = [...byDay.entries()].filter(([, day]) => day.feeds === scoped.length).sort((a, b) => a[0] - b[0]).map(([, day]) => day.sum);
+  return values.length >= 2 ? values : null;
 }
 
-function composeFeederWireLine(posts: TrackedPost[]): string | null {
-  if (!posts.length) return null;
-  const climbing = posts.filter((post) => (climbOf(post) ?? 0) >= 5).length;
-  const cooling = posts.filter((post) => (climbOf(post) ?? 0) <= -5).length;
-  const latest = [...posts].sort((a, b) => postTime(b) - postTime(a))[0];
-  const parts: string[] = [];
-  if (climbing) parts.push(`${climbing} ${climbing === 1 ? 'post' : 'posts'} still climbing`);
-  if (cooling) parts.push(`${cooling} cooling`);
-  if (latest && latest.latestPercentile != null) parts.push(`latest drop sits top ${percentLabel(latest.latestPercentile)}%`);
-  return parts.length ? `${parts.slice(0, 3).join(' · ')}.` : null;
+const mediaWord = (post: TrackedPost) => (post.mediaType === 'unknown' ? 'post' : post.mediaType);
+
+function buildPointers(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number): Pointer[] {
+  const scoped = activeFeedId === 'all' ? feeds : feeds.filter((feed) => feed.id === activeFeedId);
+  const inScope = (post: TrackedPost) => !feederHandle || normalizeHandle(post.handle) === feederHandle;
+  const posts = postsFor(feeds, activeFeedId, feederHandle, days);
+  const prior = scoped.flatMap((feed) => postsInPriorWindow(feed.posts, days).filter(inScope));
+  const faces = facesOf(feeds);
+  const who = (post: TrackedPost | null | undefined): PointerFoot | null => {
+    const handle = normalizeHandle(post?.handle);
+    return handle ? { kind: 'who', handle, pic: faces.get(handle) ?? null } : null;
+  };
+  const compared = readsBefore(days);
+  const top = (value: number | null) => (value == null ? '—' : `Top ${percentLabel(value)}%`);
+
+  const best = [...posts].filter((post) => post.latestPercentile != null).sort(bestFirst)[0] ?? null;
+
+  const ranked = posts.filter((post) => post.latestPercentile != null);
+  const typical = median(ranked.map((post) => post.latestPercentile));
+  const priorTypical = compared ? median(prior.map((post) => post.latestPercentile)) : null;
+  const typicalShift = typical != null && priorTypical != null ? Math.round(priorTypical - typical) : null;
+  // every account's posts are ranked against its own: one in ten lands in its top 10% on an ordinary run
+  const hits = ranked.filter((post) => (post.latestPercentile ?? 101) <= 10).length;
+  const hitShare = ranked.length ? hits / ranked.length : 0;
+
+  const now = Date.now();
+  const spanMs = days * 86_400_000;
+  const nets = scoped.map((feed) => windowDelta(feed.ascent, now - spanMs, now)).filter((value): value is number => value != null);
+  const priors = compared ? scoped.map((feed) => windowDelta(feed.ascent, now - spanMs * 2, now - spanMs)).filter((value): value is number => value != null) : [];
+  const net = nets.length ? nets.reduce((sum, value) => sum + value, 0) : null;
+  const priorNet = priors.length ? priors.reduce((sum, value) => sum + value, 0) : null;
+  const spark = followerSpark(scoped, days);
+
+  const climber = posts.map((post) => ({ post, climb: climbOf(post) ?? 0 })).filter((entry) => entry.climb > 0).sort((a, b) => b.climb - a.climb)[0] ?? null;
+  const talked = posts.filter((post) => (post.commentsMultiple ?? 0) > 0).sort((a, b) => (b.commentsMultiple ?? 0) - (a.commentsMultiple ?? 0))[0] ?? null;
+  const liked = posts.filter((post) => (post.likesMultiple ?? 0) > 0).sort((a, b) => (b.likesMultiple ?? 0) - (a.likesMultiple ?? 0))[0] ?? null;
+  // views only where they were counted (data/apifyPlays.json until the worker stores them): the tile says when there are none
+  const viewed = posts.filter((post) => viewsOf(post) != null).sort((a, b) => (viewsOf(b) ?? 0) - (viewsOf(a) ?? 0));
+  const mostViewed = viewed[0] ?? null;
+
+  // the first four say how the scope is doing; the last four are the posts that stood out
+  return [
+    {
+      key: 'best', label: 'Best post', icon: Trophy, go: 'rank', value: top(best?.latestPercentile ?? null), win: best?.latestPercentile != null && best.latestPercentile <= 10,
+      unit: best ? `${formatMultiple(best.rankingMultiple)} its usual · ${mediaWord(best)}` : 'No reads yet', shift: null, foot: who(best),
+    },
+    {
+      key: 'typical', label: 'Typical post', icon: Gauge, go: 'par', value: top(typical), win: false,
+      unit: !compared || typicalShift == null
+        ? `${ranked.length.toLocaleString('en-US')} ranked ${ranked.length === 1 ? 'post' : 'posts'} in ${days}D`
+        : typicalShift === 0 ? `level with the ${days}D before` : `${Math.abs(typicalShift)} ${Math.abs(typicalShift) === 1 ? 'pt' : 'pts'} on the ${days}D before`,
+      shift: typicalShift ? { up: typicalShift > 0 } : null,
+      foot: { kind: 'ruler', now: typical, was: priorTypical },
+    },
+    {
+      key: 'hits', label: 'Top 10%', icon: Target, go: 'rank', value: String(hits), win: ranked.length > 0 && hitShare > 0.1,
+      unit: ranked.length ? `of ${ranked.length.toLocaleString('en-US')} landed in their top 10%` : 'No reads yet', shift: null,
+      foot: ranked.length ? { kind: 'share', share: hitShare } : null,
+    },
+    {
+      key: 'gains', label: 'Gains', icon: Users, go: 'gains', value: net == null ? '—' : signedNumber(net), win: false,
+      unit: net == null ? 'No follower readings yet' : priorNet == null ? `net followers in ${days}D` : `from ${signedNumber(priorNet)} the ${days}D before`,
+      shift: net != null && priorNet != null && Math.round(net) !== Math.round(priorNet) ? { up: net > priorNet } : null,
+      foot: spark ? { kind: 'spark', values: spark } : null,
+    },
+    {
+      key: 'climber', label: 'Climber', icon: TrendingUp, go: 'climb', value: climber ? `+${Math.round(climber.climb)}` : '—', win: false,
+      unit: climber ? `places · ${percentLabel(climber.post.firstPercentile ?? null)}% → ${percentLabel(climber.post.latestPercentile)}% since ${climber.post.firstCheckpoint || 'D1'}` : 'Nothing climbed yet',
+      shift: null, foot: who(climber?.post),
+    },
+    {
+      key: 'talked', label: 'Talked about', icon: MessageCircle, go: 'comments', value: talked ? formatMultiple(talked.commentsMultiple) : '—', win: false,
+      unit: talked ? `its usual comments · ${compactNumber(numeric(talked.comments))}` : 'No comments read yet', shift: null, foot: who(talked),
+    },
+    {
+      key: 'liked', label: 'Most liked', icon: Heart, go: 'likes', value: liked ? formatMultiple(liked.likesMultiple) : '—', win: false,
+      unit: liked ? `its usual likes · ${compactNumber(numeric(liked.likes))}` : 'No likes read yet', shift: null, foot: who(liked),
+    },
+    {
+      key: 'viewed', label: 'Most viewed', icon: Eye, go: 'views', value: mostViewed ? compactNumber(viewsOf(mostViewed) ?? 0) : '—', win: false,
+      unit: mostViewed ? `views · the most of ${viewed.length} counted` : 'No views counted in this window', shift: null, foot: who(mostViewed),
+    },
+  ];
 }
 
-function WireLine({ line, dealId }: { line: string | null; dealId: string }) {
-  if (!line) return null;
+function pointersFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number) {
+  return remember(feeds, null, `pointers|${activeFeedId}|${feederHandle}|${days}`, () => buildPointers(feeds, activeFeedId, feederHandle, days));
+}
+
+/* a feeder's face as a small circle, its initials when the picture won't come (isolated: the avatar's own layers stay in it) */
+function FaceDot({ handle, pic, size }: { handle: string; pic: string | null; size: string }) {
   return (
-    <div data-testid="lead-v3-wire" className="flex items-center gap-3 border-b border-fg/[0.08] bg-(--ld-deep) px-4 py-3 sm:px-5">
-      <span className={cn('shrink-0 rounded-full bg-fg px-2 py-0.5 text-(--fm-page)', MARK)}>Wire</span>
-      {/* the old line and the new share one cell (no stylesheet popped in and out mid-switch); two lines' room
-          whatever the line says, so a shorter one doesn't pull the board up */}
-      <div className="grid min-w-0 flex-1">
-        <AnimatePresence initial={false}>
-          <motion.p key={`${dealId}:${line}`} initial={{ opacity: 0, transform: 'translateY(6px)' }} animate={{ opacity: 1, transform: 'translateY(0px)', transition: beatArrive(0) }} exit={{ opacity: 0, transform: 'translateY(-6px)', transition: beatLeave(0) }} className="[grid-area:1/1] min-h-[2lh] min-w-0 text-[12px] font-bold leading-snug text-fg/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{line}</motion.p>
-        </AnimatePresence>
-      </div>
-    </div>
+    <span className={cn('relative isolate block shrink-0', size)}>
+      <FeederStoryAvatar feeder={{ handle, profilePicUrl: pic }} className="text-[8px]" />
+    </span>
   );
 }
 
-/* ── Leaders strip — three cards, three different questions ─────────────── */
-
-type LeaderCard = {
-  key: string;
-  eyebrow: string;
-  value: string;
-  valuePrefix?: string;
-  valueSuffix?: string;
-  hint: string;
-  name: string;
-  detail: string;
-  thumb: string | null;
-  collage?: Array<string>;
-  shift?: { up: boolean; text: string } | null;
-};
-
-function buildLeaderCards(rows: BoardRow[], feeds: RuntimeFeed[], activeFeedId: string, days: number, feederHandle: string): LeaderCard[] {
-  const scoped = activeFeedId === 'all' ? feeds : feeds.filter((feed) => feed.id === activeFeedId);
-  const inScope = (post: TrackedPost) => !feederHandle || normalizeHandle(post.handle) === feederHandle;
-  const scopedPosts = scoped
-    .flatMap((feed) => postsInWindow(feed.posts, days).filter(inScope).map((post) => ({ post, feedName: titleCase(feed.title) })))
-    .sort((a, b) => bestFirst(a.post, b.post));
-  const priorPosts = scoped
-    .flatMap((feed) => postsInPriorWindow(feed.posts, days).filter(inScope))
-    .sort(bestFirst);
-
-  const cards: LeaderCard[] = [];
-
-  const position = scopedPosts[0] || null;
-  if (position) {
-    const priorBest = priorPosts[0]?.latestPercentile ?? null;
-    const currentBest = position.post.latestPercentile;
-    cards.push({
-      key: 'position',
-      eyebrow: 'Best post',
-      value: percentLabel(currentBest),
-      valuePrefix: 'TOP',
-      valueSuffix: '%',
-      hint: 'in the stream',
-      name: position.post.handle ? `@${normalizeHandle(position.post.handle)}` : position.feedName,
-      detail: `${(position.post.latestCheckpoint || 'd3').toUpperCase()} · ${proofMetric(position.post)}`,
-      thumb: position.post.thumbnailUrl,
-      shift: priorBest == null || currentBest == null
-        ? null
-        : { up: currentBest < priorBest, text: `prior best ${percentLabel(priorBest)}%` },
-    });
-  }
-
-  const typical = median(scopedPosts.map(({ post }) => post.latestPercentile));
-  const priorTypical = median(priorPosts.map((post) => post.latestPercentile));
-  const typicalDelta = typical != null && priorTypical != null ? Math.round(priorTypical - typical) : null;
-  cards.push({
-    key: 'typical',
-    eyebrow: 'Typical post',
-    value: percentLabel(typical),
-    valuePrefix: 'TOP',
-    valueSuffix: '%',
-    hint: 'the median',
-    name: feederHandle ? 'its running level' : rows[0] ? `${rows[0].name} leads` : '—',
-    detail: `${scopedPosts.length} posts · ${days}D`,
-    thumb: null,
-    collage: scopedPosts.map(({ post }) => post.thumbnailUrl).filter((url): url is string => Boolean(url)).slice(0, 4),
-    shift: typicalDelta == null || typicalDelta === 0
-      ? null
-      : { up: typicalDelta > 0, text: `from ${percentLabel(priorTypical)}%` },
-  });
-
-  const now = Date.now();
-  const spanMs = days * 24 * 60 * 60 * 1000;
-  const currentDeltas = scoped.map((feed) => windowDelta(feed.ascent, now - spanMs, now)).filter((value): value is number => value != null);
-  const priorDeltas = scoped.map((feed) => windowDelta(feed.ascent, now - spanMs * 2, now - spanMs)).filter((value): value is number => value != null);
-  const netDelta = currentDeltas.length ? currentDeltas.reduce((sum, value) => sum + value, 0) : null;
-  const priorNet = priorDeltas.length ? priorDeltas.reduce((sum, value) => sum + value, 0) : null;
-  const strongestWindowPost = scopedPosts.find(({ post }) => post.thumbnailUrl) || null;
-  cards.push({
-    key: 'payoff',
-    eyebrow: 'Gains',
-    value: netDelta == null
-      ? compactNumber(rows.reduce((sum, row) => sum + row.followers, 0))
-      : signedNumber(netDelta),
-    hint: netDelta == null ? 'followers' : 'net followers',
-    name: netDelta == null ? 'across the board' : (rows.find((row) => (row.followerDelta ?? 0) > 0)?.name || 'across the board'),
-    detail: `${days}D window`,
-    thumb: strongestWindowPost?.post.thumbnailUrl || null,
-    shift: netDelta == null || priorNet == null
-      ? null
-      : { up: netDelta >= priorNet, text: `from ${signedNumber(priorNet)}` },
-  });
-
-  // the post that climbed furthest between its first read and its latest
-  const climber = scopedPosts
-    .map(({ post }) => ({ post, climb: climbOf(post) ?? 0 }))
-    .filter((entry) => entry.climb > 0)
-    .sort((a, b) => b.climb - a.climb)[0] || null;
-  cards.push({
-    key: 'climber',
-    eyebrow: 'Climber',
-    value: climber ? String(Math.round(climber.climb)) : '—',
-    valuePrefix: climber ? '▲' : undefined,
-    hint: 'places since D1',
-    name: climber?.post.handle ? `@${normalizeHandle(climber.post.handle)}` : 'nothing climbed',
-    detail: climber ? `${percentLabel(climber.post.firstPercentile ?? null)}% → ${percentLabel(climber.post.latestPercentile)}%` : `${days}D window`,
-    thumb: climber?.post.thumbnailUrl || null,
-    shift: null,
-  });
-
-  // the post people talked about most, against its own usual
-  const talked = scopedPosts
-    .filter(({ post }) => post.commentsMultiple != null && post.commentsMultiple > 0)
-    .sort((a, b) => (b.post.commentsMultiple ?? 0) - (a.post.commentsMultiple ?? 0))[0] || null;
-  cards.push({
-    key: 'talked',
-    eyebrow: 'Talked about',
-    value: talked ? formatMultiple(talked.post.commentsMultiple) : '—',
-    hint: 'comments vs usual',
-    name: talked?.post.handle ? `@${normalizeHandle(talked.post.handle)}` : 'no comments read',
-    detail: talked ? `${compactNumber(numeric(talked.post.comments))} comments` : `${days}D window`,
-    thumb: talked?.post.thumbnailUrl || null,
-    shift: null,
-  });
-
-  return cards;
+/* where the typical post sits on the Top % ramp (1% at the left), and where it sat the window before (a hollow ring).
+   Each marker is a full-width layer moved along by a transform, so a switch glides it on the compositor */
+function PointerRuler({ now, was }: { now: number | null; was: number | null }) {
+  const at = (value: number) => `${(((Math.min(100, Math.max(1, value)) - 1) / 99) * 100).toFixed(1)}%`;
+  return (
+    <span className="relative block h-[22px] w-full">
+      <span className={cn('absolute inset-x-0 -top-0.5 flex justify-between text-[9px] font-black tracking-[0.06em]', DIM)}><span>1%</span><span>100%</span></span>
+      <i aria-hidden="true" className="absolute inset-x-0 top-[11px] block h-1 rounded-full" style={{ background: RAMP }} />
+      {was != null ? (
+        <span aria-hidden="true" className="lead-glide absolute inset-x-0 top-[7px] block h-3" style={{ transform: `translateX(${at(was)})` }}>
+          <i className="absolute -ml-1.5 block h-3 w-3 rounded-full bg-(--ld-panel) shadow-[inset_0_0_0_2px_rgb(var(--fm-fg-rgb)/0.35)]" />
+        </span>
+      ) : null}
+      {now != null ? (
+        <span aria-hidden="true" className="lead-glide absolute inset-x-0 top-[7px] block h-3" style={{ transform: `translateX(${at(now)})` }}>
+          <i className="absolute -ml-1.5 block h-3 w-3 rounded-full bg-fg shadow-[0_0_0_2px_var(--ld-panel)]" />
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
-function LeadersStrip({ cards }: { cards: LeaderCard[] }) {
-  const reduce = Boolean(useReducedMotion());
-  if (!cards.length) return null;
+/* the scope's followers across the window as a small line over its start (dashed), its last reading in rose; a new
+   window's line rises in like a changed line */
+function PointerSpark({ values }: { values: number[] }) {
+  const width = 100;
+  const height = 22;
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const x = (index: number) => (index / (values.length - 1)) * width;
+  const y = (value: number) => 2 + ((hi - value) / (hi - lo || 1)) * (height - 4);
+  const line = values.map((value, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)} ${y(value).toFixed(1)}`).join('');
+  const key = `${values.length}|${values[0]}|${values[values.length - 1]}`;
+  return (
+    <span key={key} ref={holdArrival} className="lead-swap-in block w-full">
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true" className="block h-[22px] w-full overflow-visible">
+        <path d={`M0 ${y(values[0]).toFixed(1)}H${width}`} stroke="rgb(var(--fm-fg-rgb) / 0.2)" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" fill="none" />
+        <path d={`${line}L${width} ${height}L0 ${height}Z`} fill="rgb(var(--fm-fg-rgb) / 0.07)" />
+        <path d={line} fill="none" stroke="var(--fm-fg)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        <circle cx={x(values.length - 1)} cy={y(values[values.length - 1])} r="2.4" fill="var(--fm-accent)" />
+      </svg>
+    </span>
+  );
+}
 
+/* the share of the window's ranked posts that landed in their account's top 10%, against the one in ten an ordinary
+   run lands (the tick): the bar glides to a new length on the compositor */
+function PointerShare({ share }: { share: number }) {
+  const scale = 0.25;
+  const fill = Math.min(1, share / scale);
+  return (
+    <span className="flex w-full items-center gap-2.5">
+      <span className="relative block h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-fg/[0.08]">
+        <span aria-hidden="true" className={cn('lead-glide absolute inset-0 origin-left rounded-full', share > 0.1 ? 'bg-[var(--fm-accent)]' : 'bg-fg/70')} style={{ transform: `scaleX(${fill.toFixed(3)})` }} />
+        <i aria-hidden="true" className="absolute inset-y-[-2px] block w-[2px] rounded-full bg-(--ld-panel)" style={{ left: `${(0.1 / scale) * 100}%` }} />
+      </span>
+      <span className={cn('shrink-0 text-[12px] font-black tabular-nums', share > 0.1 ? 'text-[var(--fm-accent-text)]' : 'text-fg/70')}>
+        <SlotText value={`${Math.round(share * 100)}%`} />
+      </span>
+    </span>
+  );
+}
+
+/* The pointers: eight tiles in two rows of four (two across on a phone). Each is the same shape: what it is, its
+   number (rolling on its beat when the window or scope changes), one line on what the number counts, and a foot
+   under a hairline: who it is about, or the picture of it (the ramp, the follower line, the share of hits). The
+   tiles arrive with the page on its beat; a tap opens what the tile points at. */
+function PointersBand({ pointers, onGo }: { pointers: Pointer[]; onGo: (go: PointerGo) => void }) {
+  const reduce = Boolean(useReducedMotion());
   return (
     <motion.div
       variants={BEAT_CONTAINER}
       initial={reduce ? false : 'hidden'}
       animate="visible"
-      data-reveal="dealt"
-      className="-mx-3 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+      className="grid grid-cols-2 gap-2 border-b border-fg/[0.08] px-3 py-3 sm:grid-cols-4 sm:gap-2.5 sm:px-4 sm:py-4 lg:gap-3 xl:px-5"
     >
-      {cards.map((card) => (
-        <motion.article
-          key={card.key}
-          variants={BEAT_ITEM}
-          data-testid={`lead-v3-leader-${card.key}`}
-          className="relative aspect-[4/5] w-[64vw] min-w-[64vw] max-w-[300px] snap-center overflow-hidden rounded-[22px] border border-white/10 bg-[#0a0a0a] sm:w-[260px] sm:min-w-[260px] lg:w-auto lg:min-w-0 lg:max-w-none"
-        >
-          {card.thumb ? (
-            <CrossfadeImage src={card.thumb} eager settle />
-          ) : card.collage?.length ? (
-            // a 4:5 card holds four 4:5 pictures exactly
-            <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px">
-              {[0, 1, 2, 3].map((index) => (
-                <span key={`${card.key}:${index}`} className="relative block h-full w-full overflow-hidden bg-white/[0.04] opacity-55">
-                  <CrossfadeImage src={card.collage?.[index] || null} />
+      {pointers.map((pointer, index) => {
+        const Icon = pointer.icon;
+        const foot = pointer.foot;
+        return (
+          <motion.button
+            key={pointer.key}
+            variants={BEAT_ITEM}
+            type="button"
+            onClick={() => onGo(pointer.go)}
+            data-testid={`lead-v3-pointer-${pointer.key}`}
+            aria-label={`${pointer.label}: ${pointer.value}${foot?.kind === 'who' ? `, @${foot.handle}` : ''}. ${pointer.unit}`}
+            className="group relative flex min-w-0 flex-col rounded-[18px] border border-fg/[0.07] bg-(--ld-raised) px-3.5 pb-2.5 pt-2.5 text-left shadow-[inset_0_1px_0_rgb(255_255_255/0.6)] transition-[border-color,transform,box-shadow] duration-[calc(260ms*var(--fm-tempo))] ease-[cubic-bezier(.3,.3,.2,1)] hover:-translate-y-px hover:border-fg/[0.14] hover:shadow-(--ld-shadow-thumb) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] active:translate-y-0 dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.04)] sm:px-4 sm:pb-3 sm:pt-3.5"
+          >
+            <span className="flex items-center gap-1.5">
+              <Icon aria-hidden="true" strokeWidth={2.2} className={cn('h-3.5 w-3.5 shrink-0', pointer.win ? 'text-[var(--fm-accent)]' : 'text-fg/45')} />
+              <span className={cn('min-w-0 flex-1 truncate', MARK, DIM)}>{pointer.label}</span>
+              <svg aria-hidden="true" viewBox="0 0 12 12" className="h-3 w-3 shrink-0 text-fg/30 transition-[color,transform] duration-[calc(240ms*var(--fm-tempo))] group-hover:translate-x-0.5 group-hover:text-fg">
+                <path d="M3 6h6M6.5 3.5 9 6 6.5 8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className={cn('fm-depth-title mt-2 block truncate text-[26px] font-black tabular-nums leading-none tracking-[-0.045em] sm:mt-3 sm:text-[28px] lg:text-[32px] laptop:text-[28px]', pointer.win ? 'text-[var(--fm-accent-text)]' : 'text-fg')}>
+              <SlotText value={pointer.value} delay={index * ms(40)} />
+            </span>
+            <span className={cn('mt-1 flex h-8 min-w-0 items-start gap-1 overflow-hidden sm:mt-1.5 lg:h-4', NOTE, SOFT)}>
+              {pointer.shift ? <i className={cn('shrink-0 pt-[3px] not-italic text-[8px] leading-none', pointer.shift.up ? 'text-[var(--fm-accent)]' : 'text-fg/45')}>{pointer.shift.up ? '▲' : '▼'}</i> : null}
+              <Swap value={pointer.unit} className="line-clamp-2! lg:line-clamp-1!" />
+            </span>
+            <span className="mt-2 flex h-[30px] min-w-0 items-center border-t border-fg/[0.07] pt-2 sm:mt-3 sm:h-[34px] sm:pt-2.5">
+              {foot?.kind === 'who' ? (
+                <span className="flex min-w-0 items-center gap-2">
+                  <FaceDot handle={foot.handle} pic={foot.pic} size="h-[22px] w-[22px]" />
+                  <b className="min-w-0 truncate text-[12px] font-black text-fg"><Swap value={`@${foot.handle}`} /></b>
                 </span>
-              ))}
-            </div>
-          ) : null}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,4,4,.7)_0%,rgba(4,4,4,.28)_38%,rgba(4,4,4,.9)_82%)]" />
-
-          <div className="relative z-10 flex h-full flex-col justify-between p-3.5 sm:p-4">
-            <div className="min-w-0">
-              <div className={cn('truncate text-white/80', MARK, 'tracking-[0.18em]')}>{card.eyebrow}</div>
-              <div className={cn('mt-0.5 truncate text-white/78', NOTE)}>{card.hint}</div>
-            </div>
-            <div className="min-w-0">
-              <div className="fm-depth-title ld-on-media flex items-end font-black leading-[0.78] tracking-[-0.05em] text-white">
-                {card.valuePrefix ? <span className="mr-1.5 pb-1 text-[12px] tracking-normal text-white/78">{card.valuePrefix}</span> : null}
-                <SlotText value={card.value} className="text-[48px] tabular-nums lg:text-[46px] xl:text-[54px] laptop:text-[40px]" />
-                {card.valueSuffix ? <span className="ml-0.5 pb-1 text-[22px] text-[var(--fm-accent-bright)]">{card.valueSuffix}</span> : null}
-              </div>
-              <div className={cn('mt-2 h-4 truncate', NOTE, card.shift?.up ? 'text-white/90' : 'text-white/72')}>
-                {card.shift ? <><span className={cn('mr-1 text-[8px] leading-none', card.shift.up && 'text-[var(--fm-accent)]')}>{card.shift.up ? '▲' : '▼'}</span><Swap value={card.shift.text} className="align-top" /></> : null}
-              </div>
-              <div className="mt-2.5 border-t border-white/[0.1] pt-2.5">
-                <div className="truncate text-[12px] font-black text-white"><Swap value={card.name} /></div>
-                <div className={cn('mt-0.5 truncate text-white/72', NOTE)}><Swap value={card.detail} /></div>
-              </div>
-            </div>
-          </div>
-        </motion.article>
-      ))}
+              ) : foot?.kind === 'ruler' ? <PointerRuler now={foot.now} was={foot.was} />
+                : foot?.kind === 'spark' ? <PointerSpark values={foot.values} />
+                  : foot?.kind === 'share' ? <PointerShare share={foot.share} />
+                    : <span className={cn(NOTE, DIM)}>—</span>}
+            </span>
+          </motion.button>
+        );
+      })}
     </motion.div>
+  );
+}
+
+/* bring a part of the page to the top of the reader's view (under the header) and ring it once, so a pointer's tap
+   lands somewhere you can see */
+function jumpTo(el: HTMLElement | null, ring?: HTMLElement | null) {
+  if (!el) return;
+  const page = el.closest<HTMLElement>('[data-testid="lead-v3-page"]');
+  const top = (page ? parseFloat(getComputedStyle(page).scrollPaddingTop) : NaN) || 12;
+  const delta = el.getBoundingClientRect().top - top - 8;
+  const behavior: ScrollBehavior = reducedMotion() ? 'auto' : 'smooth';
+  if (page && page.scrollHeight > page.clientHeight + 10) page.scrollBy({ top: delta, behavior });
+  else window.scrollBy({ top: delta, behavior });
+  const lit = ring ?? el;
+  if (reducedMotion()) return;
+  lit.animate(
+    [{ boxShadow: '0 0 0 2px rgb(var(--fm-fg-rgb) / 0.8)' }, { boxShadow: '0 0 0 2px rgb(var(--fm-fg-rgb) / 0)' }],
+    { duration: ms(1600), delay: ms(420), easing: CARRY_EASE_CSS, fill: 'backwards' },
   );
 }
 
@@ -996,52 +1042,59 @@ function revealBelowHeader(el: HTMLElement) {
   else window.scrollBy({ top: delta, behavior: 'smooth' });
 }
 
-function RowThumb({ row }: { row: BoardRow }) {
-  return (
-    <span className={cn(
-      'relative block shrink-0 overflow-hidden rounded-[14px] border border-fg/12 bg-(--ld-thumb) shadow-(--ld-shadow-thumb)',
-      'h-[56px] w-[45px]',
-    )}>
-      {!row.anchorThumb && (
-        <span className="absolute inset-0 grid place-items-center p-1.5">
-          <FeederStoryAvatar feeder={{ handle: row.name, profilePicUrl: row.profilePicUrl }} className="text-[11px]" />
-        </span>
-      )}
-      <CrossfadeImage src={row.anchorThumb} />
-    </span>
-  );
-}
-
-/* the verdict word, in a box as wide as the longest one: the caption beside it keeps its width as the word rolls.
-   On a phone it heads the numbers' column instead (`end`), over the typical post it judges */
-function RowVerdict({ row, delay = 0, end = false }: { row: BoardRow; delay?: number; end?: boolean }) {
-  return (
-    <span className={cn('block w-[60px] shrink-0 overflow-hidden whitespace-nowrap', MARK, 'leading-none', end && 'ml-auto text-right', row.hot ? 'text-fg' : DIM)}>
-      <SlotText value={row.verdict} align={end ? 'right' : 'left'} delay={delay} />
-    </span>
-  );
-}
-
-/* Rank movement vs the prior equal window. Accent up, dim down, NEW for
-   entrants — the market grammar, never green/red. It sits in a box of its own width whatever it says, so the name
-   beside it never re-truncates as it changes. */
-function MoveChip({ move, className }: { move: number | null; className?: string }) {
-  if (move == null) {
-    return <span className={cn('inline-flex w-[40px] shrink-0 items-center', className)}><span className={cn('rounded-[7px] bg-fg/[0.07] px-1.5 py-0.5 tracking-[0.08em]', MARK, DIM)}>new</span></span>;
+/* who the row is, drawn as the rail draws it: a feed as its initials on the rail's grey, a feeder as its story circle
+   (its face, or its initials when the picture won't come). A face is a circle: its posts are the 4:5 pictures */
+function RowFace({ row }: { row: BoardRow }) {
+  if (row.id.startsWith('feed:')) {
+    return (
+      <span
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-full border-[2px] border-white text-[12px] font-black leading-none shadow-(--ld-shadow-thumb) dark:border-[var(--fm-ink)]"
+        style={{ color: 'rgb(11 11 15 / 0.78)', background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)' }}
+      >
+        {feedInitials(row.name)}
+      </span>
+    );
   }
-  const up = move > 0;
-  const down = move < 0;
   return (
-    <span
-      className={cn(
-        'inline-flex w-[40px] shrink-0 items-center gap-0.5 text-[12px] font-black tabular-nums leading-none',
-        up ? 'text-fg' : DIM,
-        className,
-      )}
-    >
-      {/* a rise: the ▲ carries the accent, the number stays ink (small type is ink) */}
-      <span className={cn('text-[8px]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : down ? '▼' : '–'}</span>
-      {move === 0 ? '' : Math.abs(move)}
+    <span className="relative isolate block h-11 w-11 shrink-0 rounded-full shadow-(--ld-shadow-thumb)">
+      <FeederStoryAvatar feeder={{ handle: row.name.replace(/^@/, ''), profilePicUrl: row.profilePicUrl }} className="text-[13px]" />
+    </span>
+  );
+}
+
+/* what a row says under its name: a feed's feeders and its posts on All feeds, a feeder's posts in a feed */
+function rowCaption(row: BoardRow) {
+  const posts = `${row.postCount} ${row.postCount === 1 ? 'post' : 'posts'}`;
+  return row.id.startsWith('feed:') ? `${row.caption} · ${posts}` : posts;
+}
+
+/* the typical post, the number the board ranks on: "TOP 53%", rolling on the row's beat */
+function TypicalFigure({ row, delay, className }: { row: BoardRow; delay: number; className: string }) {
+  return (
+    <span className={cn('fm-depth-title flex items-baseline font-black tabular-nums leading-none tracking-[-0.04em] text-fg', className)}>
+      <span className={cn('mr-1 self-start pt-[0.12em] text-[10px] tracking-[0.12em]', DIM)}>TOP</span>
+      <NumberBox value={percentLabel(row.typical)} delay={delay} />
+      {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
+    </span>
+  );
+}
+
+/* the typical post against the same window before it, in points ("▲ 7 pts"): a rise carries the accent on its ▲, the
+   number stays ink; "level" when it held, "new" when the row had no posts before. 90D has no window before (nothing) */
+function shiftWords(row: BoardRow) {
+  if (row.typicalShift == null) return 'new';
+  if (row.typicalShift === 0) return 'level';
+  return Math.abs(row.typicalShift) === 1 ? 'pt' : 'pts';
+}
+
+function ShiftLine({ row, delay, className }: { row: BoardRow; delay: number; className?: string }) {
+  const shift = row.typicalShift;
+  const up = shift != null && shift > 0;
+  return (
+    <span className={cn('inline-flex items-baseline gap-1 font-black tabular-nums leading-none', up ? 'text-fg' : DIM, className)}>
+      {shift != null && shift !== 0 ? <i className={cn('not-italic text-[0.62em]', up && 'text-[var(--fm-accent)]')}>{up ? '▲' : '▼'}</i> : null}
+      {shift != null && shift !== 0 ? <SlotText value={String(Math.abs(shift))} delay={delay} /> : null}
+      <Swap value={shiftWords(row)} />
     </span>
   );
 }
@@ -1057,32 +1110,75 @@ function NumberBox({ value, delay = 0, min = '2ch', className }: { value: string
   );
 }
 
-function MetricLedger({ row }: { row: BoardRow }) {
-  const metrics = [
-    { label: 'Comments', value: compactNumber(row.comments), multiple: row.commentsMultiple },
-    { label: 'Likes', value: compactNumber(row.likes), multiple: row.likesMultiple },
-    { label: 'Eng. rate', value: formatEngagementRate(row.engagementRate), multiple: row.engagementRateMultiple },
-    { label: row.followerDelta == null ? 'Followers' : 'Follower move', value: row.followerDelta == null ? compactNumber(row.followers) : signedNumber(row.followerDelta), multiple: null },
-  ];
+/* One of a row's three best posts. The first leads (a large card, its number big); the second and third follow smaller
+   beside it, their feet on one line. The picture is the post's own, its place over it and its Top % in the ramp's
+   shade; under it the post's multiple of its account's usual and, when the app has them, its views. */
+function ReceiptPost({ post, place, showHandle }: { post: TrackedPost; place: number; showHandle: boolean }) {
+  const lead = place === 1;
+  const tone = post.latestPercentile != null ? shade(post.latestPercentile) : null;
+  const views = viewsLabel(post);
+  const who = showHandle && post.handle ? `@${normalizeHandle(post.handle)}` : `${post.mediaType === 'unknown' ? 'post' : post.mediaType} · ${postDateLabel(post)}`;
   return (
-    <motion.dl variants={OPEN_ITEM} className="order-3 -mx-4 flex min-w-0 overflow-x-auto border-y border-fg/[0.08] px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:order-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-7 lg:overflow-visible lg:border-y-0 lg:border-l lg:border-fg/[0.08] lg:px-0 lg:pl-7 [&::-webkit-scrollbar]:hidden">
-      {metrics.map((metric) => (
-        <div key={metric.label} className="min-w-[118px] border-r border-fg/[0.08] py-4 pr-4 last:border-r-0 lg:min-w-0 lg:border-r-0 lg:py-0 lg:pr-0">
-          <dt className={cn('truncate', MARK, DIM)}>{metric.label}</dt>
-          <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
-          <div className={cn('mt-2 tabular-nums', NOTE, SOFT)}>
-            {metric.multiple == null ? 'raw movement' : `${formatMultiple(metric.multiple)} usual`}
-          </div>
-        </div>
-      ))}
-    </motion.dl>
+    <motion.a
+      variants={OPEN_ITEM}
+      href={post.postUrl || '#'}
+      target={post.postUrl ? '_blank' : undefined}
+      rel={post.postUrl ? 'noreferrer' : undefined}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (!post.postUrl) event.preventDefault();
+      }}
+      data-testid={`lead-v3-receipt-${place}`}
+      aria-label={`${rankLabel(place)}: ${post.latestPercentile == null ? 'not ranked yet' : `top ${percentLabel(post.latestPercentile)}%`}${views ? `, ${views}` : ''}${post.postUrl ? '. Opens on Instagram' : ''}`}
+      className="group block min-w-0 rounded-[20px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+    >
+      <span className={cn(
+        'relative block aspect-[4/5] overflow-hidden border border-white/12 bg-(--fm-media)',
+        lead ? 'rounded-[20px] shadow-(--ld-shadow-proof-lg)' : 'rounded-[14px] shadow-(--ld-shadow-proof)',
+      )}>
+        <CrossfadeImage src={post.thumbnailUrl} className="transition-transform duration-[calc(700ms*var(--fm-tempo))] group-hover:scale-[1.035]" />
+        <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[44%] bg-[linear-gradient(180deg,rgba(0,0,0,.44),transparent)]" />
+        {lead ? null : <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[36%] bg-[linear-gradient(0deg,rgba(0,0,0,.4),transparent)]" />}
+        <span aria-hidden="true" className={cn('absolute left-2.5 top-2 font-black tabular-nums leading-none tracking-[-0.06em] text-white [text-shadow:0_1px_8px_rgba(0,0,0,.35)]', lead ? 'text-[24px]' : 'text-[19px]')}>{rankLabel(place)}</span>
+        {/* the lead has room for its Top % beside its place; a smaller card carries it at its foot */}
+        <span
+          className={cn('absolute rounded-[7px] px-1.5 py-0.5 font-black tabular-nums shadow-[0_2px_8px_rgba(0,0,0,.2)]', lead ? 'right-2 top-2 text-[11px]' : 'bottom-2 left-2 text-[10px]')}
+          style={{ background: tone ? tone.c : 'rgba(0,0,0,.55)', color: tone ? tone.tx : '#ffffff' }}
+        >
+          {post.latestPercentile == null ? 'new' : `Top ${percentLabel(post.latestPercentile)}%`}
+        </span>
+      </span>
+      <span className="mt-2.5 block min-w-0 px-0.5">
+        <span className={cn('fm-depth-title block whitespace-nowrap font-black tabular-nums leading-none tracking-[-0.045em] text-fg', lead ? 'text-[26px] sm:text-[30px]' : 'text-[19px] sm:text-[21px]')}>
+          {formatMultiple(post.rankingMultiple)}
+        </span>
+        <span className={cn('mt-1.5 block truncate', NOTE, SOFT)}>{lead ? `its usual${views ? ` · ${views}` : ''}` : views ?? 'its usual'}</span>
+        <span className={cn('mt-0.5 block truncate', NOTE, DIM)}>{who}</span>
+      </span>
+    </motion.a>
   );
 }
 
-/* An open row's receipts. The ref (AnimatePresence's, in popLayout) is its element's: closing, it leaves the flow at
-   once and fades where it was while the rows under it travel up over it (components/lead/ledgerMotion). */
+/* An open row's receipts: its three best posts in the window, best first and leading, then how much it posted, how
+   many of those landed in the top 10% and when it last posted. The ref (AnimatePresence's, in popLayout) is its
+   element's: closing, it leaves the flow at once and fades where it was while the rows under it travel up over it
+   (components/lead/ledgerMotion); opening, its parts come in one after another (OPEN_GRID) as the rows make room. */
 function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: number; onCollapse: () => void; ref?: Ref<HTMLDivElement> }) {
   const reduce = Boolean(useReducedMotion());
+  const showHandle = row.id.startsWith('feed:');
+  const facts = [
+    {
+      label: 'Posts',
+      value: String(row.postCount),
+      note: row.prevPostCount == null ? `in ${days}D` : row.prevPostCount === row.postCount ? `as many as the ${days}D before` : `${row.prevPostCount} the ${days}D before`,
+    },
+    { label: 'In the top 10%', value: String(row.hits), note: `of ${row.postCount} ${row.postCount === 1 ? 'post' : 'posts'}` },
+    {
+      label: 'Last posted',
+      value: lastPostedWords(row.lastPostedAt),
+      note: row.lastPostedAt ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }).format(row.lastPostedAt) : 'nothing in this window',
+    },
+  ];
 
   return (
     <motion.div
@@ -1099,116 +1195,25 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
         initial={reduce ? false : 'hidden'}
         animate="visible"
         onClick={onCollapse}
-        className="relative isolate cursor-pointer overflow-hidden border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6 lg:min-h-[360px]"
+        className="relative isolate cursor-pointer border-t border-fg/[0.08] bg-(--ld-raised) px-4 pb-5 pt-4 sm:px-6 sm:pb-6 lg:pl-[80px] lg:pr-6 xl:pl-[100px]"
       >
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-fg" />
-        <div className="pointer-events-none absolute -bottom-14 left-3 select-none text-[164px] font-black leading-none tracking-[-0.1em] text-fg/[0.025] sm:text-[210px]">{rankLabel(row.rank)}</div>
-
-        <motion.div variants={OPEN_GRID} className="relative grid gap-6 lg:grid-cols-[210px_minmax(240px,.78fr)_minmax(400px,1.3fr)] lg:items-center lg:gap-8">
-          <motion.div variants={OPEN_ITEM} className="order-1 min-w-0">
-            <div className={cn('flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1', NOTE, DIM)}>
-              <span>
-                {row.postCount} posts · {days}D
-                {row.prevPostCount != null ? (
-                  <i className={cn('ml-1.5 not-italic', row.postCount > row.prevPostCount ? 'text-fg' : DIM)}>
-                    {row.postCount === row.prevPostCount ? 'same pace' : row.postCount > row.prevPostCount ? `up from ${row.prevPostCount}` : `down from ${row.prevPostCount}`}
-                  </i>
-                ) : null}
-              </span>
-              <i className="not-italic">tap outside media to close</i>
+        <motion.div variants={OPEN_GRID} className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-end lg:gap-10">
+          {row.proofPosts.length ? (
+            <div className="grid w-full min-w-0 grid-cols-[1.3fr_1fr_1fr] items-end gap-2.5 sm:max-w-[540px] sm:gap-4 lg:w-[540px]">
+              {row.proofPosts.map((post, index) => <ReceiptPost key={post.postKey} post={post} place={index + 1} showHandle={showHandle} />)}
             </div>
-
-            <div className="mt-5 flex items-end gap-4 lg:mt-7 lg:block">
-              <div className="min-w-0">
-                <div className={cn(MARK, DIM)}>Range · best post</div>
-                <div className="fm-depth-title mt-2 flex items-end font-black leading-[0.68] tracking-[-0.08em] text-fg">
-                  <span className={cn('mr-2 pb-2 text-[12px] tracking-normal', DIM)}>TOP</span>
-                  <SlotText value={percentLabel(row.best)} className="text-[74px] tabular-nums sm:text-[96px] lg:text-[108px]" />
-                  {row.best != null ? <span className="ml-1 pb-1 text-[30px] tracking-normal text-[var(--fm-accent-text)] lg:text-[40px]">%</span> : null}
-                </div>
+          ) : (
+            <motion.div variants={OPEN_ITEM} className={cn('flex h-[120px] items-center justify-center border-y border-fg/[0.07]', MARK, DIM)}>No ranked posts with a picture in {days}D</motion.div>
+          )}
+          <motion.dl variants={OPEN_ITEM} className="grid grid-cols-3 border-t border-fg/[0.08] lg:max-w-[260px] lg:grid-cols-1 lg:gap-5 lg:border-l lg:border-t-0 lg:pl-8">
+            {facts.map((fact) => (
+              <div key={fact.label} className="min-w-0 border-r border-fg/[0.08] pr-2.5 pt-3 last:border-r-0 [&:not(:first-child)]:pl-2.5 lg:border-r-0 lg:pt-0 lg:[&:not(:first-child)]:pl-0">
+                <dt className={cn('truncate', MARK, DIM)}>{fact.label}</dt>
+                <dd className="fm-depth-title mt-1.5 truncate text-[18px] font-black tabular-nums leading-none tracking-[-0.03em] text-fg sm:text-[20px]">{fact.value}</dd>
+                <div className={cn('mt-1 line-clamp-2 lg:truncate', NOTE, DIM)}>{fact.note}</div>
               </div>
-              <div className="shrink-0 border-l border-fg/10 pl-4 lg:mt-4 lg:border-l-0 lg:border-t lg:border-fg/10 lg:pl-0 lg:pt-4">
-                <div className="fm-depth-title flex items-baseline text-[30px] font-black leading-none tracking-[-0.05em] text-fg/56">
-                  <SlotText value={percentLabel(row.floor)} className="tabular-nums" />
-                  {row.floor != null ? <i className={cn('ml-0.5 not-italic text-[15px]', DIM)}>%</i> : null}
-                </div>
-                <div className={cn('mt-1.5', MARK, DIM)}>floor · weakest post</div>
-              </div>
-            </div>
-          </motion.div>
-
-          <MetricLedger row={row} />
-
-          <motion.div variants={OPEN_ITEM} className="order-2 min-w-0 lg:order-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <span className={cn(MARK, DIM)}>Posts behind the number</span>
-              <span className={cn(MARK, DIM)}>Best first</span>
-            </div>
-            {row.proofPosts.length ? (
-              <>
-                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [scrollbar-width:none] sm:hidden [&::-webkit-scrollbar]:hidden">
-                  {row.proofPosts.slice(0, 3).map((post, index) => (
-                    <a
-                      key={post.postKey}
-                      href={post.postUrl || '#'}
-                      target={post.postUrl ? '_blank' : undefined}
-                      rel={post.postUrl ? 'noreferrer' : undefined}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!post.postUrl) event.preventDefault();
-                      }}
-                      data-testid={'lead-v3-proof-mobile-' + index}
-                      aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
-                      className="relative aspect-[4/5] w-[58%] min-w-[58%] snap-center overflow-hidden rounded-[22px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-proof) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
-                    >
-                      {post.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-                        <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
-                      ) : null}
-                      <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_30%,rgba(0,0,0,.9))]" />
-                      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4">
-                        <span className="text-[13px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
-                        <span className="text-[12px] font-semibold leading-4 text-white/80">{proofMetric(post)}</span>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-
-                <div className="hidden items-start gap-4 pb-3 sm:flex">
-                  {row.proofPosts.slice(0, 3).map((post, index) => (
-                    <motion.a
-                      key={post.postKey}
-                      href={post.postUrl || '#'}
-                      target={post.postUrl ? '_blank' : undefined}
-                      rel={post.postUrl ? 'noreferrer' : undefined}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!post.postUrl) event.preventDefault();
-                      }}
-                      data-testid={'lead-v3-proof-desktop-' + index}
-                      aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
-                      initial={reduce ? false : { opacity: 0, transform: `translateY(${index * 10 + 14}px)` }}
-                      animate={{ opacity: 1, transform: `translateY(${index * 10}px)` }}
-                      transition={reduce ? { duration: 0 } : beatArrive(index + 1)}
-                      className="group relative aspect-[4/5] w-full max-w-[200px] flex-1 overflow-hidden rounded-[22px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-proof-lg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
-                    >
-                      {post.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-                        <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.035]" loading="lazy" decoding="async" />
-                      ) : null}
-                      <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_28%,rgba(0,0,0,.9))]" />
-                      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4">
-                        <span className="text-[13px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
-                        <span className="text-[12px] font-semibold leading-4 text-white/80">{proofMetric(post)}</span>
-                      </div>
-                    </motion.a>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className={cn('flex h-[180px] items-center justify-center border-y border-fg/[0.07]', MARK, DIM)}>No tracked media in this window</div>
-            )}
-          </motion.div>
+            ))}
+          </motion.dl>
         </motion.div>
       </motion.div>
     </motion.div>
@@ -1228,43 +1233,63 @@ function rankLabel(rank: number) {
   return String(rank).padStart(2, '0');
 }
 
-/* the place's numeral, rolling to the row's new rank on its beat; on first place a rose "01" over it fades in on the same
-   beat (opacity on the compositor: the ink itself never changes colour) */
+/* The first three places are a podium: the rose steps down from first to third (its numeral, its ground's wash, the
+   first-place light), quieter each place, so the top three read as winners without three equal loud rows */
+const PODIUM = [1, 0.6, 0.36];
+const podiumOf = (place: number) => (place >= 1 && place <= PODIUM.length ? PODIUM[place - 1] : 0);
+
+/* the place's numeral, rolling to the row's new rank on its beat; on places 1–3 a rose numeral over it fades in on the
+   same beat, as strong as its place (opacity on the compositor: the ink itself never changes colour) */
 function RankNumeral({ rank, delay, size }: { rank: number; delay: number; size: string }) {
   const at = 'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]';
   return (
     <span className="relative h-full">
-      <span className={cn(at, size, 'text-fg/[0.055]')}>
+      <span className={cn(at, size, 'text-fg/[0.14]')}>
         <SlotText value={rankLabel(rank)} delay={delay} />
       </span>
-      <span aria-hidden="true" className={cn('ld-throne', at, size, 'text-[var(--fm-accent)]/[0.2]')} style={{ opacity: rank === 1 ? 1 : 0 }}>
-        {rankLabel(1)}
-      </span>
+      {PODIUM.map((strength, index) => (
+        <span key={index} aria-hidden="true" className={cn('ld-throne', at, size, 'text-[var(--fm-accent)]')} style={{ opacity: rank === index + 1 ? strength : 0 }}>
+          {rankLabel(index + 1)}
+        </span>
+      ))}
     </span>
   );
 }
 
-/* The first place's light and the bar of a row's strength sit behind the row. The light is always there and lit on
-   the row holding first place, so when first place changes hands it passes on the rows' beat instead of jumping. The
-   bar is nearly invisible at rest; it glows as it sweeps to a new length (the ledger plays that). */
-function RowGround({ throne, strength }: { throne: boolean; strength: number }) {
+/* The first place's light and the row's ground sit behind the row. The light is always there and lit on the row
+   holding first place, so when first place changes hands it passes on the rows' beat instead of jumping. The ground
+   is a soft wash that runs as far as the row's typical post is strong (rose on first place), so it changes with the
+   window; it brightens as it sweeps to a new length and settles back (the ledger plays that). */
+function RowGround({ place, strength }: { place: number; strength: number }) {
+  const podium = podiumOf(place);
   return (
     <>
-      <span aria-hidden="true" className="ld-throne pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%),linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.035),rgb(var(--fm-fg-rgb)/.01))]" style={{ opacity: throne ? 1 : 0 }} />
-      <span
-        aria-hidden="true"
-        data-ledger-sweep=""
-        className={cn('pointer-events-none absolute inset-y-0 left-0 z-0 w-full origin-left', throne ? 'bg-[var(--fm-accent)]/[0.06]' : 'bg-fg/[0.03]')}
-        style={{ transform: `scaleX(${strength.toFixed(3)})`, opacity: throne ? 0.07 : 0.04 }}
-      />
-      <span aria-hidden="true" className="ld-throne pointer-events-none absolute inset-y-0 left-0 z-20 w-1 bg-[var(--fm-accent)] shadow-(--ld-glow-throne)" style={{ opacity: throne ? 0.6 : 0 }} />
+      <span aria-hidden="true" className="ld-throne pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_0_0,rgb(var(--fm-accent-rgb)/var(--ld-throne-glow)),transparent_44%)]" style={{ opacity: podium * podium }} />
+      {/* the wash: ink for everyone, rose laid over it on the podium (both inside the one layer the ledger sweeps) */}
+      <span aria-hidden="true" data-ledger-sweep="" className="pointer-events-none absolute inset-y-0 left-0 z-0 w-full origin-left" style={{ transform: `scaleX(${strength.toFixed(3)})`, opacity: 0.5 }}>
+        <span className="ld-throne absolute inset-0 bg-[linear-gradient(90deg,rgb(var(--fm-fg-rgb)/.1),rgb(var(--fm-fg-rgb)/.016))]" style={{ opacity: 1 - podium * 0.85 }} />
+        <span className="ld-throne absolute inset-0 bg-[linear-gradient(90deg,rgb(var(--fm-accent-rgb)/.22),rgb(var(--fm-accent-rgb)/.03))]" style={{ opacity: podium }} />
+      </span>
     </>
   );
 }
 
+/* the board's laptop columns, shared by the header and every row: rank, who, the typical post, its change on the
+   window before, the best post. 90D has no window before it (see readsBefore), so its change column goes and the name
+   takes the room */
+const BOARD_COLS = 'grid-cols-[52px_minmax(200px,1.4fr)_136px_170px_180px_28px] xl:grid-cols-[64px_minmax(240px,1.4fr)_150px_200px_200px_30px]';
+const BOARD_COLS_NO_SHIFT = 'grid-cols-[52px_minmax(200px,1.4fr)_136px_180px_28px] xl:grid-cols-[64px_minmax(240px,1.4fr)_150px_200px_30px]';
+
+/* A row is its rank, its face, its name and its typical post, with that post's change on the window before beside it;
+   everything else opens under it (RowExpansion). It moves as the ledger deals it: it travels to its new place on its
+   beat, its numbers roll on the same beat, and its ground sweeps to its new strength just after. */
 function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: BoardRow; order: number; selected: boolean; wide: boolean; days: number; onSelect: (id: string) => void }) {
   const beat = ledgerDelay(order);
-  const strength = row.typical == null ? 0.06 : Math.max(0.06, Math.min(1, (101 - row.typical) / 100));
+  const compared = readsBefore(days);
+  const strength = row.typical == null ? 0.04 : Math.max(0.04, Math.min(1, (101 - row.typical) / 100));
+  const best = row.bestPost;
+  const bestViews = best ? viewsLabel(best) : null;
+  const bestLine = best?.rankingMultiple == null ? '' : `${formatMultiple(best.rankingMultiple)} its usual${bestViews ? ` · ${bestViews}` : best.mediaType !== 'unknown' ? ` · ${best.mediaType}` : ''}`;
   return (
     <div data-ledger={row.id} data-row-id={row.id} className="relative border-b border-fg/[0.07] last:border-b-0">
       <button
@@ -1278,84 +1303,43 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
         )}
         style={{ '--ld-beat': `${beat}ms` } as CSSProperties}
       >
-        <RowGround throne={row.rank === 1} strength={strength} />
+        <RowGround place={row.rank} strength={strength} />
 
-        {/* phone / tablet: the numbers' column has one width on every row and in every window; the verdict heads it,
-            over the typical post it judges (the subtitle says what the number is) */}
-        {!wide ? <div className="relative z-10 grid min-h-[76px] grid-cols-[34px_45px_minmax(0,1fr)_124px] items-center gap-2 px-3 py-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_124px] sm:gap-3 sm:px-4">
-          <RankNumeral rank={row.rank} delay={beat} size="text-[44px]" />
-          <RowThumb row={row} />
+        {/* phone / tablet: rank, face, name, and the typical post with its change under it */}
+        {!wide ? <div className="relative z-10 grid min-h-[76px] grid-cols-[30px_44px_minmax(0,1fr)_auto_14px] items-center gap-3 px-4 py-3 sm:grid-cols-[40px_44px_minmax(0,1fr)_auto_14px] sm:px-5">
+          <RankNumeral rank={row.rank} delay={beat} size="text-[30px] sm:text-[38px]" />
+          <RowFace row={row} />
           <span className="min-w-0">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-[15px] font-black leading-none tracking-[-0.02em] text-fg">{row.name}</span>
-              <MoveChip move={row.rankMove} />
-            </span>
-            <span className={cn('mt-1.5 block truncate', NOTE, SOFT)}>{row.caption}</span>
+            <span className="block truncate text-[15px] font-black leading-[1.15] tracking-[-0.02em] text-fg">{row.name}</span>
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}><Swap value={rowCaption(row)} /></span>
           </span>
-          <span className="flex min-w-0 items-center justify-end gap-2 text-right">
-            <span className="min-w-0">
-              <RowVerdict row={row} delay={beat} end />
-              <span className="fm-depth-title mt-1 flex items-baseline justify-end text-[24px] font-black tabular-nums leading-none text-fg">
-                <NumberBox value={percentLabel(row.typical)} delay={beat} />
-                {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
-              </span>
-              <span className="mt-1 flex items-baseline justify-end gap-1.5 text-[12px] font-black tabular-nums leading-none">
-                {row.typicalShift != null && row.typicalShift !== 0 ? (
-                  <span className={cn('flex items-baseline gap-0.5', row.typicalShift > 0 ? 'text-fg' : DIM)}>
-                    <i className={cn('not-italic text-[8px]', row.typicalShift > 0 && 'text-[var(--fm-accent)]')}>{row.typicalShift > 0 ? '▲' : '▼'}</i>
-                    <SlotText value={String(Math.abs(row.typicalShift))} delay={beat} />
-                  </span>
-                ) : null}
-                <span className={SOFT}><NumberBox value={formatMultiple(row.peak)} delay={beat} min="3ch" /> <i className={cn('not-italic', MARK, 'tracking-[0.08em]', DIM)}>peak</i></span>
-              </span>
-            </span>
-            <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/48 light:text-fg/58 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg light:text-fg')} />
+          <span className="flex flex-col items-end text-right">
+            <TypicalFigure row={row} delay={beat} className="text-[26px]" />
+            <span className="mt-1.5 flex h-[15px] items-center">{compared ? <ShiftLine row={row} delay={beat} className="text-[12px]" /> : null}</span>
           </span>
+          <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg/48 light:text-fg/58 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg light:text-fg')} />
         </div> : null}
 
         {/* desktop */}
-        {wide ? <div className="relative z-10 grid min-h-[80px] grid-cols-[52px_minmax(150px,1fr)_136px_120px_104px_104px_28px] items-center gap-3 px-4 py-3 laptop:min-h-[70px] xl:grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] xl:gap-4 xl:px-5">
-          <RankNumeral rank={row.rank} delay={beat} size="text-[50px] laptop:text-[42px]" />
+        {wide ? <div className={cn('relative z-10 grid min-h-[84px] items-center gap-3 px-4 py-3 laptop:min-h-[74px] xl:gap-4 xl:px-5', compared ? BOARD_COLS : BOARD_COLS_NO_SHIFT)}>
+          <RankNumeral rank={row.rank} delay={beat} size="text-[42px] xl:text-[48px] laptop:text-[40px]" />
           <span className="flex min-w-0 items-center gap-3.5">
-            <RowThumb row={row} />
+            <RowFace row={row} />
             <span className="min-w-0">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-[16px] font-black leading-none tracking-[-0.02em] text-fg laptop:text-[15px]">{row.name}</span>
-                <MoveChip move={row.rankMove} />
-              </span>
-              <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                <span className={cn('truncate', NOTE, SOFT)}>{row.caption}</span>
-                <span className="text-fg/16">·</span>
-                <RowVerdict row={row} delay={beat} />
-              </span>
+              <span className="block truncate text-[16px] font-black leading-[1.15] tracking-[-0.02em] text-fg laptop:text-[15px]">{row.name}</span>
+              <span className={cn('mt-1.5 block truncate', NOTE, DIM)}><Swap value={rowCaption(row)} /></span>
             </span>
           </span>
+          <TypicalFigure row={row} delay={beat} className="text-[28px] laptop:text-[24px]" />
+          {compared ? <span className="min-w-0">
+            <ShiftLine row={row} delay={beat} className="text-[20px] laptop:text-[18px]" />
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}><Swap value={row.typicalShift == null ? `no posts the ${days}D before` : `on the ${days}D before`} /></span>
+          </span> : null}
           <span className="min-w-0">
-            <span className="fm-depth-title flex items-baseline text-[28px] font-black tabular-nums leading-none text-fg laptop:text-[24px]">
-              <NumberBox value={percentLabel(row.typical)} delay={beat} />
-              {row.typical == null ? null : <i className="ml-0.5 not-italic text-[0.5em]">%</i>}
+            <span className={cn('block text-[19px] font-black tabular-nums leading-none tracking-[-0.03em] laptop:text-[17px]', row.best != null && row.best <= 10 ? 'text-[var(--fm-accent-text)]' : 'text-fg')}>
+              <SlotText value={row.best == null ? '—' : `Top ${percentLabel(row.best)}%`} delay={beat} />
             </span>
-            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>{row.postCount} posts{row.prevPostCount != null && row.prevPostCount !== row.postCount ? ` · prev ${row.prevPostCount}` : ''}</span>
-          </span>
-          <span className="min-w-0">
-            <span className={cn(
-              'fm-depth-title flex items-baseline gap-1 text-[24px] font-black tabular-nums leading-none laptop:text-[21px]',
-              row.typicalShift == null ? 'text-fg/30' : row.typicalShift > 0 ? 'text-[var(--fm-accent-text)]' : row.typicalShift < 0 ? 'text-fg/44' : 'text-fg/60',
-            )}>
-              {row.typicalShift != null && row.typicalShift !== 0 ? <i className="not-italic text-[0.45em]">{row.typicalShift > 0 ? '▲' : '▼'}</i> : null}
-              <SlotText value={row.typicalShift == null ? '—' : String(Math.abs(row.typicalShift))} delay={beat} />
-            </span>
-            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>
-              {row.typicalShift == null ? 'no prior window' : row.typicalShift === 0 ? 'level' : `places ${row.typicalShift > 0 ? 'stronger' : 'softer'}`}
-            </span>
-          </span>
-          <span className="min-w-0">
-            <span className="block text-[21px] font-black tabular-nums leading-none text-[var(--fm-accent-text)] laptop:text-[18px]"><SlotText value={formatMultiple(row.peak)} delay={beat} /></span>
-            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>vs its usual</span>
-          </span>
-          <span className="min-w-0">
-            <span className="block text-[15px] font-black tabular-nums leading-none text-fg/60"><SlotText value={lastPostedLabel(row.lastPostedAt)} delay={beat} /></span>
-            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}>{row.lastPostedAt == null ? 'no posts' : lastPostedLabel(row.lastPostedAt) === 'TODAY' ? 'posted' : 'ago · last post'}</span>
+            <span className={cn('mt-1.5 block truncate', NOTE, DIM)}><Swap value={bestLine} /></span>
           </span>
           <span className="grid h-7 w-7 place-items-center rounded-full border border-fg/10 bg-(--ld-chip-well)">
             <ChevronDown className={cn('h-4 w-4 text-fg/48 light:text-fg/58 transition-transform duration-[calc(300ms*var(--fm-tempo))]', selected && 'rotate-180 text-fg light:text-fg')} />
@@ -1369,8 +1353,25 @@ function BoardRowItem({ row, order, selected, wide, days, onSelect }: { row: Boa
   );
 }
 
+/* the scope's own typical post, as a line between the rows that beat it and the rows that don't. It is a place on the
+   ledger like a row: a switch carries it to its new place on its beat, its number rolling */
+function ParLine({ par, who, order }: { par: number | null; who: string; order: number }) {
+  const beat = ledgerDelay(order);
+  const whose = `${who}${who.endsWith('s') ? '’' : '’s'}`;
+  return (
+    <div data-ledger="par" aria-label={`${whose} typical post: top ${percentLabel(par)}%`} className="relative flex h-[30px] items-center gap-2.5 border-b border-fg/[0.07] bg-(--ld-raised) pl-[58px] pr-4 sm:pl-[72px] sm:pr-5 lg:pl-[80px] xl:pl-[100px]">
+      <span className={cn('flex items-baseline gap-1 whitespace-nowrap', NOTE, DIM)}>
+        <Swap value={`${whose} typical post ·`} />
+        <b className="flex items-baseline font-black text-fg">Top&nbsp;<SlotText value={percentLabel(par)} delay={beat} />%</b>
+      </span>
+      <span aria-hidden="true" className="h-px flex-1 border-t border-dashed border-fg/[0.16]" />
+    </div>
+  );
+}
+
 function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedPost; rank: number; order: number; selected: boolean; onSelect: (key: string) => void }) {
   const beat = ledgerDelay(order);
+  const views = viewsLabel(post);
   const strength = post.latestPercentile == null ? 0.06 : Math.max(0.06, Math.min(1, (101 - post.latestPercentile) / 100));
   return (
     <div data-ledger={`post:${post.postKey}`} className="relative border-b border-fg/[0.07] last:border-b-0">
@@ -1385,7 +1386,7 @@ function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedP
         )}
         style={{ '--ld-beat': `${beat}ms` } as CSSProperties}
       >
-        <RowGround throne={rank === 1} strength={strength} />
+        <RowGround place={rank} strength={strength} />
         {/* one height for every place on the ladder, filled or empty (EmptyPlace) */}
         <div className="relative z-10 grid h-[84px] grid-cols-[34px_45px_minmax(0,1fr)_112px] items-center gap-2.5 px-3 sm:grid-cols-[42px_45px_minmax(0,1fr)_112px] sm:gap-3 sm:px-4">
           <RankNumeral rank={rank} delay={beat} size="text-[44px]" />
@@ -1395,7 +1396,7 @@ function PostRowItem({ post, rank, order, selected, onSelect }: { post: TrackedP
           <span className="min-w-0">
             <span className="block truncate text-[15px] font-black capitalize leading-none tracking-[-0.02em] text-fg">{post.mediaType} · {postDateLabel(post)}</span>
             <span className="mt-1.5 flex min-w-0 items-center gap-1.5">
-              <span className={cn('truncate', NOTE, SOFT)}>{(post.latestCheckpoint || '').toUpperCase()} read</span>
+              <span className={cn('truncate', NOTE, SOFT)}>{(post.latestCheckpoint || '').toUpperCase()} read{views ? ` · ${views}` : ''}</span>
               <span className="text-fg/16">·</span>
               <ClimbChip post={post} />
             </span>
@@ -1438,9 +1439,13 @@ function EmptyPlace({ id, rank, note }: { id: string; rank: number; note?: strin
   );
 }
 
-function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, selectedPostKey, onSelectPost }: {
+function Feederboard({ rows, posts, feeder, deal, days, par, parWho, pointers, onPointer, selectedId, onSelect, selectedPostKey, onSelectPost }: {
   rows: BoardRow[];
   posts: TrackedPost[];
+  par: number | null;
+  parWho: string;
+  pointers: Pointer[];
+  onPointer: (go: PointerGo) => void;
   feeder: string;
   deal: string;
   days: number;
@@ -1453,12 +1458,18 @@ function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, se
   const wide = useWide();
   const ladder = useMemo(() => (feeder ? [...posts].sort(bestFirst).slice(0, LADDER_PLACES) : []), [feeder, posts]);
   const shown = feeder ? NO_ROWS : rows;
-  const ids = useMemo(
-    () => (feeder
-      ? [...ladder.map((post) => `post:${post.postKey}`), ...Array.from({ length: LADDER_PLACES - ladder.length }, (_, index) => `empty:${ladder.length + index}`)]
-      : shown.map((row) => row.id)),
-    [feeder, ladder, shown],
-  );
+  // the par line sits after the last row whose typical post beats the scope's own
+  const parAt = useMemo(() => {
+    if (feeder || par == null || !shown.length) return -1;
+    const at = shown.findIndex((row) => row.typical == null || row.typical > par);
+    return at < 0 ? shown.length : at;
+  }, [feeder, par, shown]);
+  const ids = useMemo(() => {
+    if (feeder) return [...ladder.map((post) => `post:${post.postKey}`), ...Array.from({ length: LADDER_PLACES - ladder.length }, (_, index) => `empty:${ladder.length + index}`)];
+    const list = shown.map((row) => row.id);
+    if (parAt >= 0) list.splice(parAt, 0, 'par');
+    return list;
+  }, [feeder, ladder, parAt, shown]);
   const openId = feeder ? (selectedPostKey ? `post:${selectedPostKey}` : '') : selectedId;
 
   /* When a switch re-ranks the ladder, follow the row that is open once it has landed in its new place, so it never
@@ -1498,14 +1509,16 @@ function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, se
         </div>
       </div>
 
+      <PointersBand pointers={pointers} onGo={onPointer} />
+
       {wide ? (
         feeder ? (
           <div key="posts" ref={holdArrival} className={cn('lead-swap-in grid grid-cols-[42px_45px_minmax(0,1fr)_112px] items-end gap-3 border-b border-fg/[0.07] px-4 py-3', MARK, DIM)}>
             <span>Rank</span><span>Post</span><span /><span className="pr-6 text-right">Placed</span>
           </div>
         ) : (
-          <div key="rows" ref={holdArrival} className={cn('lead-swap-in grid grid-cols-[52px_minmax(150px,1fr)_136px_120px_104px_104px_28px] items-end gap-3 border-b border-fg/[0.07] px-4 py-3 xl:grid-cols-[64px_minmax(230px,1.2fr)_150px_130px_120px_110px_30px] xl:gap-4 xl:px-5', MARK, 'tracking-[0.1em]', DIM)}>
-            <span>Rank</span><span>Feed / feeder</span><span>Typical post</span><span>Shift · prev {days}D</span><span>Peak vs usual</span><span>Last posted</span><span />
+          <div key="rows" ref={holdArrival} className={cn('lead-swap-in grid items-end gap-3 border-b border-fg/[0.07] px-4 py-3 xl:gap-4 xl:px-5', readsBefore(days) ? BOARD_COLS : BOARD_COLS_NO_SHIFT, MARK, 'tracking-[0.1em]', DIM)}>
+            <span>Rank</span><span>{shown[0]?.id.startsWith('feed:') ? 'Feed' : 'Feeder'}</span><span>Typical post</span>{readsBefore(days) ? <span>On the {days}D before</span> : null}<span>Best post</span><span />
           </div>
         )
       ) : null}
@@ -1518,9 +1531,11 @@ function Feederboard({ rows, posts, feeder, deal, days, selectedId, onSelect, se
               )),
               ...ids.slice(ladder.length).map((id, index) => <EmptyPlace key={id} id={id} rank={ladder.length + index + 1} note={index === 0 ? `No other posts in ${days}D` : undefined} />),
             ]
-          : shown.map((row, order) => (
-              <BoardRowItem key={row.id} row={row} order={order} selected={row.id === selectedId} wide={wide} days={days} onSelect={onSelect} />
-            ))}
+          : ids.map((id, order) => {
+              if (id === 'par') return <ParLine key="par" par={par} who={parWho} order={order} />;
+              const row = shown.find((one) => one.id === id) as BoardRow;
+              return <BoardRowItem key={row.id} row={row} order={order} selected={row.id === selectedId} wide={wide} days={days} onSelect={onSelect} />;
+            })}
       </Ledger>
       {!feeder && !shown.length ? (
         <div className={cn('flex h-[140px] items-center justify-center', MARK, DIM)}>No feeds to rank yet</div>
@@ -1541,66 +1556,128 @@ function scopedPostsFor(feeds: RuntimeFeed[], activeFeedId: string, days: number
   });
 }
 
-const FEEDERBOARD_VIEWS = [
-  { id: 'feats', label: 'Wins', ariaLabel: 'Wins' },
-  { id: 'likes', label: 'Likes', ariaLabel: 'Most liked' },
-  { id: 'comments', label: 'Comments', ariaLabel: 'Most talked about' },
-  { id: 'er', label: 'Eng.', ariaLabel: 'Most engaged' },
+/* ── Top posts: four rankings of the scope's posts, each led by its own number ──
+   The best-placed posts (Top %), the most liked and the most talked about against each account's own usual, and the
+   ones that climbed furthest between their first read and their latest. The first leads, large; six follow smaller
+   beside it, their feet on one line (as in a row's receipts). A switch of ranking, scope or window re-deals the cards
+   on the ledger's beat, a card at a time; the pill carries itself to the picked ranking. */
+
+const TOP_SORTS = [
+  { id: 'rank', label: 'Rank', sub: 'The best-placed posts, by Top %' },
+  { id: 'likes', label: 'Likes', sub: 'Most likes against each account’s usual' },
+  { id: 'comments', label: 'Comments', sub: 'Most comments against each account’s usual' },
+  { id: 'climb', label: 'Climb', sub: 'Climbed furthest since their first read' },
+  { id: 'views', label: 'Views', sub: 'Most views, where they were counted' },
 ] as const;
+type TopSort = (typeof TOP_SORTS)[number]['id'];
+const NO_TOP: ScopedPost[] = [];
 
-/* a win's handle (WIN_LABEL) and what isn't a win (NOT_A_WIN) live in components/lead/leadHall, shared with Feed's
-   profile; the facts themselves are lib/feederboardFacts */
-
-type FeederboardViewId = (typeof FEEDERBOARD_VIEWS)[number]['id'];
-type FeederboardRankedViewId = Exclude<FeederboardViewId, 'feats'>;
-
-function recordSortValue(post: ScopedPost, metric: FeederboardRankedViewId) {
-  if (metric === 'comments') return numeric(post.comments);
-  if (metric === 'likes') return numeric(post.likes);
-  return post.engagementRate ?? -1;
+function topPostsFor(feeds: RuntimeFeed[], activeFeedId: string, feederHandle: string, days: number, sort: TopSort): ScopedPost[] {
+  return remember(feeds, null, `top|${sort}|${activeFeedId}|${feederHandle}|${days}`, () => {
+    const shown = postsFor(feeds, activeFeedId, feederHandle, days).filter((post) => post.thumbnailUrl && post.latestPercentile != null);
+    if (sort === 'likes') return shown.filter((post) => post.likesMultiple != null).sort((a, b) => (b.likesMultiple ?? 0) - (a.likesMultiple ?? 0)).slice(0, 7);
+    if (sort === 'comments') return shown.filter((post) => post.commentsMultiple != null).sort((a, b) => (b.commentsMultiple ?? 0) - (a.commentsMultiple ?? 0)).slice(0, 7);
+    if (sort === 'climb') return shown.filter((post) => (climbOf(post) ?? 0) >= 1).sort((a, b) => (climbOf(b) ?? 0) - (climbOf(a) ?? 0)).slice(0, 7);
+    if (sort === 'views') return shown.filter((post) => viewsOf(post) != null).sort((a, b) => (viewsOf(b) ?? 0) - (viewsOf(a) ?? 0)).slice(0, 7);
+    return [...shown].sort(bestFirst).slice(0, 7);
+  });
 }
 
-function recordDisplay(post: ScopedPost, metric: FeederboardRankedViewId) {
-  if (metric === 'comments') return { value: compactNumber(numeric(post.comments)), label: 'comments' };
-  if (metric === 'likes') return { value: compactNumber(numeric(post.likes)), label: 'likes' };
-  return { value: formatEngagementRate(post.engagementRate), label: 'engagement rate' };
+/* the number a card leads with in its ranking, and what it counts */
+function topLead(post: TrackedPost, sort: TopSort, hero: boolean) {
+  if (sort === 'views') return { fig: compactNumber(viewsOf(post) ?? 0), unit: hero ? `views · ${viewsNote(post) ?? ''} · ${formatMultiple(post.likesMultiple)} its usual likes` : 'views', win: false };
+  if (sort === 'likes') return { fig: formatMultiple(post.likesMultiple), unit: hero ? `its usual likes · ${compactNumber(numeric(post.likes))} likes` : 'its usual likes', win: (post.likesMultiple ?? 0) >= 1.1 };
+  if (sort === 'comments') return { fig: formatMultiple(post.commentsMultiple), unit: hero ? `its usual comments · ${compactNumber(numeric(post.comments))} comments` : 'its usual comments', win: (post.commentsMultiple ?? 0) >= 1.1 };
+  if (sort === 'climb') {
+    const climb = Math.round(climbOf(post) ?? 0);
+    return {
+      fig: `+${climb}`,
+      unit: hero ? `places · Top ${percentLabel(post.firstPercentile ?? null)}% at ${post.firstCheckpoint || 'D1'} → Top ${percentLabel(post.latestPercentile)}% at ${(post.latestCheckpoint || '').toUpperCase()}` : `places since ${post.firstCheckpoint || 'D1'}`,
+      win: true,
+    };
+  }
+  return { fig: `Top ${percentLabel(post.latestPercentile)}%`, unit: `${formatMultiple(post.rankingMultiple)} its usual`, win: (post.latestPercentile ?? 101) <= 10 };
 }
 
-const FeederboardCards = memo(function FeederboardCards(props: {
+function TopPostCard({ id, post, place, sort, showFeed, face }: { id: string; post: ScopedPost; place: number; sort: TopSort; showFeed: boolean; face: string | null }) {
+  const hero = place === 1;
+  const lead = topLead(post, sort, hero);
+  const tone = post.latestPercentile != null ? shade(post.latestPercentile) : null;
+  const views = sort === 'views' ? null : viewsLabel(post);
+  const handle = normalizeHandle(post.handle) || post.feedName.toLowerCase();
+  return (
+    <a
+      data-ledger={id}
+      data-top-hero={hero ? '' : undefined}
+      href={post.postUrl || '#'}
+      target={post.postUrl ? '_blank' : undefined}
+      rel={post.postUrl ? 'noreferrer' : undefined}
+      onClick={(event) => { if (!post.postUrl) event.preventDefault(); }}
+      data-testid={`lead-v3-top-${place}`}
+      aria-label={`${rankLabel(place)}: @${handle}, ${lead.fig} ${lead.unit}${views ? `, ${views}` : ''}${post.postUrl ? '. Opens on Instagram' : ''}`}
+      className={cn(
+        'group min-w-0 rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]',
+        hero ? 'col-span-3 grid grid-cols-[42%_minmax(0,1fr)] items-end gap-4 sm:gap-6 lg:col-span-1 lg:block' : 'block',
+      )}
+    >
+      <span className={cn(
+        'relative block aspect-[4/5] overflow-hidden border border-white/12 bg-(--fm-media)',
+        hero ? 'rounded-[20px] shadow-(--ld-shadow-proof-lg)' : 'rounded-[14px] shadow-(--ld-shadow-proof)',
+      )}>
+        <CrossfadeImage src={post.thumbnailUrl} className="transition-transform duration-[calc(700ms*var(--fm-tempo))] group-hover:scale-[1.035]" />
+        <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[44%] bg-[linear-gradient(180deg,rgba(0,0,0,.44),transparent)]" />
+        {!hero && sort !== 'rank' ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[36%] bg-[linear-gradient(0deg,rgba(0,0,0,.4),transparent)]" /> : null}
+        <span aria-hidden="true" className={cn('absolute left-2.5 top-2 font-black tabular-nums leading-none tracking-[-0.06em] text-white [text-shadow:0_1px_8px_rgba(0,0,0,.35)]', hero ? 'text-[26px]' : 'text-[19px]')}>{rankLabel(place)}</span>
+        {sort !== 'rank' ? (
+          <span
+            className={cn('absolute rounded-[7px] px-1.5 py-0.5 font-black tabular-nums shadow-[0_2px_8px_rgba(0,0,0,.2)]', hero ? 'right-2 top-2 text-[11px]' : 'bottom-2 left-2 text-[10px]')}
+            style={{ background: tone ? tone.c : 'rgba(0,0,0,.55)', color: tone ? tone.tx : '#ffffff' }}
+          >
+            Top {percentLabel(post.latestPercentile)}%
+          </span>
+        ) : null}
+      </span>
+      <span className={cn('block min-w-0', hero ? 'pb-1 lg:mt-3 lg:pb-0' : 'mt-2.5 px-0.5')}>
+        <span className={cn(
+          'fm-depth-title block whitespace-nowrap font-black tabular-nums leading-none tracking-[-0.045em]',
+          hero ? 'text-[30px] sm:text-[38px] lg:text-[30px] xl:text-[34px]' : 'text-[18px] sm:text-[21px] lg:text-[19px]',
+          hero && lead.win ? 'text-[var(--fm-accent-text)]' : 'text-fg',
+        )}>
+          {lead.fig}
+        </span>
+        <span className={cn('mt-1.5 block truncate', NOTE, SOFT)}>{lead.unit}</span>
+        {/* a small card keeps the views line whether or not it has views, so the covers in a row stay level */}
+        {views || !hero ? <span className={cn('mt-0.5 block truncate', NOTE, SOFT)}>{views ?? '\u00a0'}</span> : null}
+        <span className={cn('flex min-w-0 items-center gap-1.5', hero ? 'mt-2.5' : 'mt-1', NOTE, DIM)}>
+          {hero ? <FaceDot handle={handle} pic={face} size="h-[18px] w-[18px]" /> : null}
+          <b className="min-w-0 truncate font-black text-fg">@{handle}</b>
+        </span>
+        {hero ? <span className={cn('mt-0.5 block truncate', NOTE, DIM)}>{mediaWord(post)} · {postDateLabel(post)}{showFeed ? ` · ${post.feedName}` : ''}</span> : null}
+      </span>
+    </a>
+  );
+}
+
+const TopPosts = memo(function TopPosts(props: {
   feeds: RuntimeFeed[];
   activeFeedId: string;
   activeFeeder: string;
   days: number;
+  sort: TopSort;
+  onSort: (sort: TopSort) => void;
 }) {
   // on screen it takes a switch with the rest of the page; off screen, once the switch has played (see useHeldNear)
   const live = useMemo(
-    () => ({ feeds: props.feeds, activeFeedId: props.activeFeedId, activeFeeder: props.activeFeeder, days: props.days }),
-    [props.feeds, props.activeFeedId, props.activeFeeder, props.days],
+    () => ({ feeds: props.feeds, activeFeedId: props.activeFeedId, activeFeeder: props.activeFeeder, days: props.days, sort: props.sort }),
+    [props.feeds, props.activeFeedId, props.activeFeeder, props.days, props.sort],
   );
-  const [nearRef, { feeds, activeFeedId, activeFeeder, days }] = useHeldNear(live);
-  const facts = useMemo(() => factsFor(feeds, activeFeedId, activeFeeder, days).filter((fact) => !NOT_A_WIN.has(fact.kind)), [feeds, activeFeedId, activeFeeder, days]);
-  const [view, setView] = useState<FeederboardViewId>('feats');
-  const posts = postsFor(feeds, activeFeedId, activeFeeder, days);
-  // the posts a win stands on, by key: the card shows its pictured post's Top % and how far over its usual it went
-  const postByKey = useMemo(() => new Map(posts.map((post) => [post.postKey, post])), [posts]);
-  const records = useMemo(() => {
-    if (view === 'feats') return [];
-    return [...posts]
-      .filter((post) => post.thumbnailUrl)
-      .sort((a, b) => recordSortValue(b, view) - recordSortValue(a, view) || a.postKey.localeCompare(b.postKey))
-      .slice(0, 10);
-  }, [posts, view]);
-
-  const cards = view === 'feats' ? facts : records;
-  // a card is the post it shows: the same post read the same way in the next deal stays (and travels), anything else
-  // hands its place over
-  const ids = useMemo(
-    () => (view === 'feats'
-      ? facts.map((fact) => `fact:${fact.kind}:${fact.evidencePostKeys[0] ?? fact.headline}`)
-      : records.map((post) => `${view}:${post.postKey}`)),
-    [facts, records, view],
-  );
-  const viewIndex = FEEDERBOARD_VIEWS.findIndex((option) => option.id === view);
+  const [nearRef, { feeds, activeFeedId, activeFeeder, days, sort }] = useHeldNear(live);
+  const posts = feeds.length ? topPostsFor(feeds, activeFeedId, activeFeeder, days, sort) : NO_TOP;
+  const faces = facesOf(feeds);
+  // a card is the post read in its ranking: the same post read the same way in the next deal stays (and travels),
+  // anything else hands its place over
+  const ids = useMemo(() => posts.map((post) => `${sort}:${post.postKey}`), [posts, sort]);
+  const sortIndex = TOP_SORTS.findIndex((option) => option.id === sort);
   // on WebKit the pill's glide waits for the frame that draws the new cards, so it plays whole with their deal
   const pillRef = useRef<HTMLSpanElement | null>(null);
   useLayoutEffect(() => {
@@ -1612,9 +1689,9 @@ const FeederboardCards = memo(function FeederboardCards(props: {
       glide.currentTime = 0;
     });
     return afterDrawn(() => glides.forEach((glide) => glide.play()));
-  }, [viewIndex]);
+  }, [sortIndex]);
 
-  // the band keeps its place on the page when it grows or shrinks by a row of cards: what is under it travels
+  // the band keeps its place on the page when it grows or shrinks: what is under it travels
   const bandRef = useRef<HTMLElement | null>(null);
   useEffect(() => (bandRef.current ? keepBelow(bandRef.current) : undefined), []);
   const ref = useCallback((el: HTMLElement | null) => {
@@ -1623,31 +1700,30 @@ const FeederboardCards = memo(function FeederboardCards(props: {
   }, [nearRef]);
 
   return (
-    <section ref={ref} aria-labelledby="lead-v3-hall-title" className="lead-band relative isolate overflow-hidden border-t border-fg/[0.08] bg-(--ld-panel) px-4 pb-5 pt-4 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
+    <section ref={ref} id="lead-top-posts" aria-labelledby="lead-v3-top-title" className="lead-band relative isolate overflow-hidden border-t border-fg/[0.08] bg-(--ld-panel) px-4 pb-5 pt-4 sm:px-5 sm:pb-6 lg:px-7 lg:pb-7">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h2 id="lead-v3-hall-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Hall of Feed</h2>
-          <p className={cn('mt-1', NOTE, SOFT)}>The posts that carried the feed · {days}D</p>
+          <h2 id="lead-v3-top-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Top posts</h2>
+          <p className={cn('mt-1 overflow-hidden whitespace-nowrap', NOTE, SOFT)}><Swap value={`${TOP_SORTS[sortIndex].sub} · ${days}D`} className="truncate align-top" /></p>
         </div>
-        <div className="relative grid h-11 min-w-[224px] grid-cols-4 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[272px]">
-          {/* one pill, carried to the picked view (a transform on the compositor) */}
+        <div className="relative grid h-11 min-w-[300px] grid-cols-5 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[360px]">
+          {/* one pill, carried to the picked ranking (a transform on the compositor) */}
           <span
             ref={pillRef}
             aria-hidden="true"
             className="ld-pill pointer-events-none absolute bottom-[3px] left-[3px] top-[3px] rounded-[8px] bg-fg shadow-[inset_0_1px_0_rgb(255_255_255_/_0.16)]"
-            style={{ width: 'calc(25% - 6px)', transform: `translateX(calc(${viewIndex} * (100% + 6px)))` }}
+            style={{ width: 'calc(20% - 6px)', transform: `translateX(calc(${sortIndex} * (100% + 6px)))` }}
           />
-          {FEEDERBOARD_VIEWS.map((option) => (
+          {TOP_SORTS.map((option) => (
             <button
               key={option.id}
               type="button"
-              onClick={() => setView(option.id)}
-              aria-label={option.ariaLabel}
-              aria-pressed={view === option.id}
-              data-testid={`lead-v3-feederboard-view-${option.id}`}
+              onClick={() => props.onSort(option.id)}
+              aria-pressed={sort === option.id}
+              data-testid={`lead-v3-top-sort-${option.id}`}
               className={cn(
                 'relative grid h-full place-items-center rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors duration-[calc(300ms*var(--fm-tempo))] sm:text-[11px]',
-                view === option.id ? 'text-(--fm-page)' : 'text-fg/60 hover:text-fg/80',
+                sort === option.id ? 'text-(--fm-page)' : 'text-fg/60 hover:text-fg/80',
               )}
             >
               <span className="relative z-10">{option.label}</span>
@@ -1656,73 +1732,18 @@ const FeederboardCards = memo(function FeederboardCards(props: {
         </div>
       </div>
 
-      <div className="relative mt-5 min-h-[300px] xl:min-h-[360px]">
-        {/* the cards turn over left to right, a beat a card (components/lead/ledgerMotion) */}
+      <div className="relative mt-5 min-h-[240px]">
+        {/* the cards turn over a beat a card, first place first (components/lead/ledgerMotion) */}
         <Ledger
           ids={ids}
-          deal={`${view}|${activeFeedId}|${activeFeeder}|${days}`}
-          axis="x"
-          startOnDeal
-          className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0 xl:grid xl:grid-cols-5 xl:overflow-visible xl:pb-0 [&::-webkit-scrollbar]:hidden"
+          deal={`${sort}|${activeFeedId}|${activeFeeder}|${days}`}
+          className="grid grid-cols-3 gap-x-2.5 gap-y-5 sm:gap-x-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(6,minmax(0,1fr))] lg:items-end lg:gap-x-4"
         >
-          {view === 'feats' ? facts.map((fact, order) => {
-            // the post the card shows (its picture is the run's strongest post), else the strongest of the evidence
-            const evidence = fact.evidencePostKeys.map((key) => postByKey.get(key)).filter((post): post is ScopedPost => Boolean(post));
-            const hero = evidence.find((post) => post.thumbnailUrl && post.thumbnailUrl === fact.thumbnailUrl)
-              ?? [...evidence].sort(bestFirst)[0]
-              ?? null;
-            return (
-            <article
-              key={ids[order]}
-              data-ledger={ids[order]}
-              data-testid={`lead-v3-feederboard-fact-${fact.kind}`}
-              className="group relative aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) sm:w-[236px] sm:min-w-[236px] xl:w-auto xl:min-w-0"
-            >
-              <CrossfadeImage src={fact.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_36%,rgba(0,0,0,.7)_58%,rgba(0,0,0,.94)_100%)]" />
-              <span className={cn('absolute left-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-white', MARK, 'tracking-[0.1em]')}>{WIN_LABEL[fact.kind] ?? fact.kind.replace(/-/g, ' ')}</span>
-              {fact.postUrl ? <a href={fact.postUrl} target="_blank" rel="noreferrer" aria-label="Open the post on Instagram" className={cn('absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2.5 py-1.5 text-white/85', MARK, 'tracking-[0.1em]')}>Instagram</a> : null}
-              <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
-                {/* the post it stands on, in numbers (what the old post mortem showed) */}
-                {hero && hero.latestPercentile != null ? (
-                  <div className="mb-1.5 flex items-baseline gap-2 text-white">
-                    <span className="fm-depth-title ld-on-media text-[13px] font-black tabular-nums">TOP {percentLabel(hero.latestPercentile)}<i className="not-italic">%</i></span>
-                    {hero.rankingMultiple != null ? <span className="text-[12px] font-semibold text-white/78">{formatMultiple(hero.rankingMultiple)} usual</span> : null}
-                  </div>
-                ) : null}
-                <div className="pb-[2px] text-[20px] font-black leading-[1.05] tracking-[-0.035em] text-white [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden sm:text-[22px]">{fact.headline}</div>
-                <div className="mt-2 text-[12px] font-semibold leading-4 text-white/78 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{fact.detail}</div>
-              </div>
-            </article>
-            );
-          }) : records.map((post, index) => {
-            const display = recordDisplay(post, view);
-            return (
-              <a
-                key={ids[index]}
-                data-ledger={ids[index]}
-                href={post.postUrl || '#'}
-                target={post.postUrl ? '_blank' : undefined}
-                rel={post.postUrl ? 'noreferrer' : undefined}
-                onClick={(event) => { if (!post.postUrl) event.preventDefault(); }}
-                data-testid={`lead-v3-feederboard-record-${index + 1}`}
-                aria-label={post.postUrl ? `Open tracked post ranked ${index + 1} by ${display.label}` : `Tracked post ranked ${index + 1} by ${display.label}`}
-                className="group relative block aspect-[4/5] w-[220px] min-w-[220px] snap-start overflow-hidden rounded-[18px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-tile) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)] sm:w-[236px] sm:min-w-[236px] xl:w-auto xl:min-w-0"
-              >
-                <CrossfadeImage src={post.thumbnailUrl} className="transition-transform duration-500 group-hover:scale-[1.02]" />
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.06)_0%,transparent_54%,rgba(0,0,0,.65)_72%,rgba(0,0,0,.94)_100%)]" />
-                <span className="absolute left-2.5 top-2.5 grid h-7 min-w-7 place-items-center rounded-md bg-black/62 px-1.5 text-[11px] font-black tabular-nums text-white/88">{index + 1}</span>
-                <span className={cn('absolute right-2.5 top-2.5 rounded-md bg-black/62 px-2 py-1 text-white/85', MARK, 'tracking-[0.1em]')}>{activeFeedId === 'all' ? post.feedName : (post.latestCheckpoint || 'latest').toUpperCase()}</span>
-                <div className="absolute inset-x-0 bottom-0 flex min-h-[112px] flex-col justify-end p-3.5">
-                  <div className="fm-depth-title ld-on-media text-[28px] font-black tabular-nums leading-[0.9] tracking-[-0.04em] text-white sm:text-[30px]">{display.value}</div>
-                  <div className="mt-2 truncate text-[12px] font-black text-white/90">@{normalizeHandle(post.handle) || post.feedName.toLowerCase()}</div>
-                  <div className="mt-1 text-[12px] font-semibold leading-4 text-white/72 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{display.label} · {(post.latestCheckpoint || 'latest').toUpperCase()} read</div>
-                </div>
-              </a>
-            );
-          })}
+          {posts.map((post, index) => (
+            <TopPostCard key={ids[index]} id={ids[index]} post={post} place={index + 1} sort={sort} showFeed={activeFeedId === 'all'} face={faces.get(normalizeHandle(post.handle)) ?? null} />
+          ))}
         </Ledger>
-        {!cards.length ? <div ref={holdArrival} className={cn('ld-late-in absolute inset-0 flex items-center justify-center text-center', MARK, DIM)}>{view === 'feats' ? 'No wins in this window yet' : 'No tracked posts in this window'}</div> : null}
+        {!posts.length ? <div ref={holdArrival} className={cn('ld-late-in absolute inset-0 flex items-center justify-center text-center', MARK, DIM)}>{sort === 'climb' ? 'Nothing climbed in this window yet' : sort === 'views' ? 'No views counted for these posts yet' : 'No ranked posts with a picture in this window'}</div> : null}
       </div>
     </section>
   );
@@ -1750,10 +1771,12 @@ function ClimbChip({ post }: { post: TrackedPost }) {
 
 function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onCollapse: () => void; ref?: Ref<HTMLDivElement> }) {
   const reduce = Boolean(useReducedMotion());
+  const views = viewsLabel(post);
   const metrics = [
-    { label: 'Likes', value: compactNumber(numeric(post.likes)), multiple: post.likesMultiple },
-    { label: 'Comments', value: compactNumber(numeric(post.comments)), multiple: post.commentsMultiple },
-    { label: 'Eng. rate', value: formatEngagementRate(post.engagementRate), multiple: post.engagementRateMultiple },
+    ...(views ? [{ label: 'Views', value: views.replace(' views', ''), multiple: null, note: viewsNote(post) }] : []),
+    { label: 'Likes', value: compactNumber(numeric(post.likes)), multiple: post.likesMultiple, note: null },
+    { label: 'Comments', value: compactNumber(numeric(post.comments)), multiple: post.commentsMultiple, note: null },
+    { label: 'Eng. rate', value: formatEngagementRate(post.engagementRate), multiple: post.engagementRateMultiple, note: null },
   ];
   return (
     <motion.div
@@ -1797,12 +1820,12 @@ function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onColl
                 <span>{(post.latestCheckpoint || '').toUpperCase()} read</span>
               )}
             </div>
-            <dl className="mt-4 grid grid-cols-3 gap-4">
+            <dl className={cn('mt-4 grid gap-4', metrics.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
               {metrics.map((metric) => (
                 <div key={metric.label} className="min-w-0">
                   <dt className={cn('truncate', MARK, DIM)}>{metric.label}</dt>
                   <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
-                  <div className={cn('mt-2 tabular-nums', NOTE, SOFT)}>{metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`}</div>
+                  <div className={cn('mt-2 tabular-nums', NOTE, SOFT)}>{metric.note ?? (metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`)}</div>
                 </div>
               ))}
             </dl>
@@ -1825,20 +1848,8 @@ const TapeSection = memo(function TapeSection({ feeds, feedId, feeder, days }: S
   return <LeadTape events={events} dealId={`${feedId}|${feeder}|${days}`} />;
 });
 
-const LeadersSection = memo(function LeadersSection({ feeds, feedId, feeder, days }: ScopeProps) {
-  const cards = leadersFor(feeds, feedId, feeder, days);
-  return (
-    <section aria-labelledby="lead-v3-leaders-title" className="min-w-0 max-w-full">
-      <div className="mb-3 px-1">
-        <h2 id="lead-v3-leaders-title" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-fg/76"><span className="h-1.5 w-1.5 rounded-full bg-[var(--fm-accent)] shadow-(--ld-glow-dot)" />Top of the feed</h2>
-        <p className={cn('mt-1', NOTE, SOFT)}>Best post, typical post and gains · {days}D</p>
-      </div>
-      <LeadersStrip cards={cards} />
-    </section>
-  );
-});
-
-const BoardSection = memo(function BoardSection({ feeds, feedId, feeder, days, selectedId, onSelect, selectedPostKey, onSelectPost }: ScopeProps & {
+const BoardSection = memo(function BoardSection({ feeds, feedId, feeder, days, onPointer, selectedId, onSelect, selectedPostKey, onSelectPost }: ScopeProps & {
+  onPointer: (go: PointerGo) => void;
   selectedId: string;
   onSelect: (id: string) => void;
   selectedPostKey: string;
@@ -1846,7 +1857,9 @@ const BoardSection = memo(function BoardSection({ feeds, feedId, feeder, days, s
 }) {
   const rows = rowsFor(feeds, feedId, days);
   const feederPosts = feeder ? postsFor(feeds, feedId, feeder, days) : NO_POSTS;
-  const wireLine = useMemo(() => (feeder ? composeFeederWireLine(feederPosts) : composeWireLine(rows)), [feeder, feederPosts, rows]);
+  const par = parFor(feeds, feedId, days);
+  const pointers = pointersFor(feeds, feedId, feeder, days);
+  const parWho = feedId === 'all' ? 'All feeds' : titleCase(feeds.find((feed) => feed.id === feedId)?.title || 'This feed');
   // a row that left the board can't stay open
   const open = rows.some((row) => row.id === selectedId) ? selectedId : '';
   // the page under the board doesn't jump when the board grows or shrinks (a new scope, a row opening): it travels
@@ -1854,13 +1867,16 @@ const BoardSection = memo(function BoardSection({ feeds, feedId, feeder, days, s
   useEffect(() => (boardRef.current ? keepBelow(boardRef.current) : undefined), []);
   return (
     <div ref={boardRef} className="min-w-0 max-w-full">
-      <WireLine line={wireLine ?? 'Nothing posted in this window yet.'} dealId={`${feedId}|${feeder}|${days}`} />
       <Feederboard
         rows={rows}
         posts={feederPosts}
         feeder={feeder}
         deal={`${feedId}|${feeder}|${days}`}
         days={days}
+        par={par}
+        parWho={parWho}
+        pointers={pointers}
+        onPointer={onPointer}
         selectedId={open}
         onSelect={onSelect}
         selectedPostKey={selectedPostKey}
@@ -1904,7 +1920,7 @@ export default function LeadBoardPage() {
   }, [loading]);
   // a range switch re-reads what is on hand in a transition: the header answers the tap first
   const [timeframePending, startTimeframe] = useTransition();
-  // ← and → (or < and >) step the time range (7D · 30D · 60D · 90D), as they step Feed's zoom: ← back, a longer window,
+  // ← and → (or < and >) step the time range (7D · 30D · 90D), as they step Feed's zoom: ← back, a longer window,
   // → a shorter one, stopping at the ends. Only while Lead is on screen (a hidden tab's effects are off), never while
   // typing or under a dialog
   const daysRef = useRef(days);
@@ -2026,6 +2042,25 @@ export default function LeadBoardPage() {
   // the tape and the leaders change in the same commit as the board (see useHeldNear): one commit, then the motion
   const scopeNow = useMemo(() => ({ feeds, feedId: activeFeedId, feeder: activeFeeder, days }), [activeFeedId, activeFeeder, days, feeds]);
 
+  /* a pointer is a door: the typical post goes to the par line, gains to Followers, the rest to the ranking it heads
+     in Top posts (picked first, then brought into view once its cards are dealt) */
+  const [topSort, setTopSort] = useState<TopSort>('rank');
+  const openPointer = useCallback((go: PointerGo) => {
+    if (go === 'par') {
+      jumpTo(document.querySelector<HTMLElement>('[data-ledger="par"]'));
+      return;
+    }
+    if (go === 'gains') {
+      jumpTo(document.querySelector<HTMLElement>('[aria-labelledby="lead-growth-title"]'));
+      return;
+    }
+    setTopSort(go);
+    requestAnimationFrame(() => {
+      const band = document.getElementById('lead-top-posts');
+      jumpTo(band, band?.querySelector<HTMLElement>('[data-top-hero] > span') ?? null);
+    });
+  }, []);
+
   // picks compare against the live pick (the page's copy may still be catching up)
   const handleFeedChange = (id: string) => {
     if (id === resolveScope(feeds, getTabScope()).activeFeedId) return;
@@ -2080,7 +2115,6 @@ export default function LeadBoardPage() {
         ) : feeds.length ? (
           <motion.div initial={reduce ? false : { opacity: 0, transform: 'translateY(12px)' }} animate={{ opacity: 1, transform: 'translateY(0px)' }} transition={{ duration: sec(0.42), ease: SOFT_EASE }} className="min-w-0 max-w-full">
             <TapeSection {...scopeNow} />
-            <LeadersSection {...scopeNow} />
 
             {/* the board: edge to edge on a phone (its bands keep a 16px gutter for text), a framed card from sm up */}
             <div className="relative -mx-3 mt-4 min-w-0 overflow-hidden border-y border-fg/[0.09] bg-(--ld-ground) sm:mx-0 sm:max-w-full sm:rounded-[28px] sm:border sm:shadow-(--ld-shadow-board)">
@@ -2089,17 +2123,18 @@ export default function LeadBoardPage() {
                 feedId={activeFeedId}
                 feeder={activeFeeder}
                 days={days}
+                onPointer={openPointer}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 selectedPostKey={selectedPostKey}
                 onSelectPost={setSelectedPostKey}
               />
-              <FeederboardCards feeds={feeds} activeFeedId={activeFeedId} activeFeeder={activeFeeder} days={days} />
+              <TopPosts feeds={feeds} activeFeedId={activeFeedId} activeFeeder={activeFeeder} days={days} sort={topSort} onSort={setTopSort} />
               <LeadGrowth feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
               <section aria-label="Feeding habits" className="bg-(--ld-panel)">
                 <div className="border-t border-fg/[0.09] px-4 pb-0 pt-5 sm:px-6 lg:px-7">
                   <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Feeding habits</h2>
-                  <p className={cn('mt-1', NOTE, SOFT)}>How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'} · vs the {days}D before</p>
+                  <p className={cn('mt-1', NOTE, SOFT)}>How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'}{readsBefore(days) ? ` · vs the ${days}D before` : ''}</p>
                 </div>
                 <LeadRhythm feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
                 <LeadTiming feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
