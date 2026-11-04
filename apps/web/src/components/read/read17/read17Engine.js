@@ -1264,6 +1264,11 @@ function rowView1(lens, i) {
     : lens === 'streaks' ? pcs('How it ran', `every post, ${S.span}, on ${A.his} usual ${KEYN[r.k || 'lk']}`, ecgHTML(r, false))
     : lens === 'shifts' ? (r.kind === 'days' ? pcs('Day by day', `every day of the 100, since ${day(r.d1)} in red`, daysHTML(r.d0, r.d1)) : pcs('Week by week', `${r.kind === 'slice' ? `every ${low(r.title)} post` : 'every post'} in the 100, the newer half from ${day(r.d1)}`, courseHTML([...r.ids, ...r.wo], wkOf(r.d1), k, true)))
     : r.wiAll ? pcs('Week by week', `every post ${r.kind === 'side' ? 'with it' : r.kind === 'format' ? `of the ${r.title.toLowerCase()}` : `${low(r.title)}`} in the 100, on ${A.his} usual ${KEYN[r.k] || 'follows'}`, courseHTML(r.wiAll, null, f48 ? 'f48' : r.k, true)) : '';
+  if (r.h && r.h.beats) return `${now19HTML(r)}${lists}`;
+  if (r.h && r.h.check) return `${next19HTML(r)}${lists}`;
+  if (r.h && r.h.proof) return `${sharp19HTML(r, lens)}${sideHTML(r)}${notHTML(r)}${course}`;
+  if (r.h && r.h.going) return `${deep19HTML(r, lens)}${sideHTML(r)}${notHTML(r)}${course}`;
+  if (r.h && r.h.read) return `${deep19HTML(r, lens)}${sideHTML(r)}${notHTML(r)}${course}${lists}`;
   if (r.h) return `${head18HTML(r)}${rewindHTML(r)}${whyHTML}${course}${lists}`;
   return `<div class="pv-t">${capHTML(h)}
     ${stats.length ? `<div class="pst">${stats.map(([b, e]) => `<span><b>${b}</b><em>${e}</em></span>`).join('')}</div>` : ''}
@@ -1367,7 +1372,7 @@ function hookPanel() {
     const b = e.target.closest('button, a'); if (!b) return;
     if (b.id === 'pnx') { closePanel(); return; } if (b.id === 'pnp') { stepPanel(-1); return; } if (b.id === 'pnn') { stepPanel(1); return; }
     if (b.id === 'pnbk') { PN.view = PN.back; PN.back = null; renderPanel(-1); markRow(); return; }
-    if (b.dataset.post) { const g = b.closest('.pgrid, .ppl'); openPost(b.dataset.post, g ? [...g.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [b.dataset.post]); }
+    if (b.dataset.post) { const g = b.closest('.pgrid, .ppl, .p19g'); openPost(b.dataset.post, g ? [...g.querySelectorAll('[data-post]')].map((x) => x.dataset.post) : [b.dataset.post]); }
   });
   $('pns').addEventListener('click', closePanel);
 }
@@ -2096,6 +2101,92 @@ function head18HTML(r) {
     ${h.why ? `<section class="pwh"><h5>${r.key.startsWith('now:') ? 'The take' : 'Why'}</h5><p class="pw1">${linkHTML(h.why)}</p></section>` : ''}
     ${h.so ? `<p class="pso"><b>So</b>${linkHTML(h.so)}</p>` : ''}</div>`;
 }
+/* ---- a written-through row's panel: one page set on one edge. The count is the only hero, in the call's colour; the
+   head is the sentence under it; then the read, posts named inline by their covers; then the two posts side by side,
+   frame against frame; what it rules out; how it went week by week; every post ---- */
+// a post named in a read: its cover, small, then the words (no underline: the cover says it opens)
+// (an inline link, so a long name wraps like the words around it; the cover keeps to its first word)
+const chipHTML = (s) => String(s ?? '').split(/(\[[^\]]+\]\([\w-]+\))/).map((t) => {
+  const m = t.match(/^\[([^\]]+)\]\(([\w-]+)\)$/); if (!m || !A.posts[m[2]]) return esc(t);
+  const [w0, ...ws] = m[1].split(' ');
+  return `<a class="pch" role="button" tabindex="0" data-post="${m[2]}"><span class="pcn"><i data-cv="${m[2]}" style="${coverStyle(m[2])}"></i>${esc(w0)}</span>${ws.length ? ` ${esc(ws.join(' '))}` : ''}</a>`;
+}).join('');
+function deep19HTML(r, lens) {
+  // (his usual as this row's own multiples count it: the read's frozen base, read back off its posts)
+  const k = r.k || 'lk', bs = Object.entries(r.xo || {}).filter(([i, x]) => x > 0 && A.posts[i] && A.posts[i][k] != null).map(([i, x]) => A.posts[i][k] / x);
+  const h = r.h, t = rowCall(lens, r), b0 = bs.length ? medOf(bs) : B[k], us = b0 ? `${Math.round(b0).toLocaleString('en-US')} ${KEYN[k]}` : null;
+  return `<div class="pv-t p19h">
+    <p class="p19k t-${t}">${cornerT(t)}<b>${CALLW[t]}</b><span>${esc(r.title)}</span></p>
+    ${r.head.num ? `<div class="p19n t-${t}"><b>${esc(r.head.num)}</b><span>${esc(r.card.unit)}</span></div>` : ''}
+    ${us ? `<p class="p19u">${esc(cap1(A.his))} usual is ${us}, the middle of ${esc(A.his)} last 100 posts.</p>` : ''}
+    <h3 class="p19t">${esc(unlink(h.head))}</h3>
+    ${h.going ? `<p class="p19r p19g0">${chipHTML(h.going)}</p>${setHTML(r)}
+    <h5 class="p19l">Why</h5><p class="p19r">${chipHTML(h.why)}</p>
+    ${h.tested ? `<p class="p19ck"><b>Checked on ${esc(A.his)} last 100</b>${chipHTML(h.tested)}</p>` : ''}` : `<p class="p19r">${chipHTML(h.read)}</p>${h.so ? `<p class="p19s">${chipHTML(h.so)}</p>` : ''}`}</div>
+    ${h.money ? `<section class="p19m"><h5>The money</h5><p>${chipHTML(h.money)}</p></section>` : ''}`;
+}
+/* ---- READ 19, round three: sharp to find, easy to understand. A row opens on its takeaway, then the counts that prove
+   it, its posts, the why, and a side by side only where two posts make a clean pair ---- */
+const usual19 = (r) => {
+  const k = r.k || 'lk', bs = Object.entries(r.xo || {}).filter(([i, x]) => x > 0 && A.posts[i] && A.posts[i][k] != null).map(([i, x]) => A.posts[i][k] / x);
+  const b0 = bs.length ? medOf(bs) : B[k]; return b0 ? `${Math.round(b0).toLocaleString('en-US')} ${KEYN[k]}` : null;
+};
+// (a proof line leads with its count, set bold)
+const proofHTML = (s) => chipHTML(s).replace(/^([+−-]?[\d.,]+(?:×|%)?(?: of [\d,]+)?)/, '<b>$1</b>');
+function sharp19HTML(r, lens) {
+  const h = r.h, t = rowCall(lens, r), us = usual19(r);
+  return `<div class="pv-t p19h">
+    <p class="p19k t-${t}">${cornerT(t)}<b>${CALLW[t]}</b><span>${esc(r.title)}</span></p>
+    ${r.head.num ? `<div class="p19n t-${t}"><b>${esc(r.head.num)}</b><span>${esc(r.card.unit)}</span></div>` : ''}
+    ${us ? `<p class="p19u">${esc(cap1(A.his))} usual is ${us}, the middle of ${esc(A.his)} last 100 posts.</p>` : ''}
+    <h3 class="p19t p19tk">${chipHTML(h.head)}</h3>
+    ${(h.proof || []).length ? `<ul class="p19p">${h.proof.map((x) => `<li>${proofHTML(x)}</li>`).join('')}</ul>` : ''}
+    ${setHTML(r)}
+    ${h.why ? `<h5 class="p19l">Why</h5><p class="p19r">${chipHTML(h.why)}</p>` : ''}</div>`;
+}
+// Now: the account as someone who has followed it for months would put it, in three beats
+function now19HTML(r) {
+  const h = r.h, b = h.beats || {};
+  return `<div class="pv-t p19h"><p class="p19k t-mid"><b>Now</b><span>${esc(A.name || A.acct || '')}</span></p>
+    <h3 class="p19t p19tk">${chipHTML(h.head)}</h3>${h.what ? `<p class="p19r p19g0">${chipHTML(h.what)}</p>` : ''}
+    ${[['What it posts', b.posts], ['Right now', b.now], ['How it’s going', b.going]].map(([l, x]) => (x ? `<h5 class="p19l">${l}</h5><p class="p19r">${chipHTML(x)}</p>` : '')).join('')}</div>`;
+}
+// Next: a keep, a stop or a try, the proof across stretches, why, and what the next read will look at
+function next19HTML(r) {
+  const h = r.h, t = /^keep/i.test(r.title) ? 'up' : /^stop/i.test(r.title) ? 'dn' : 'mid';
+  return `<div class="pv-t p19h"><p class="p19k t-${t}">${cornerT(t)}<b>${esc(r.title)}</b></p>
+    <h3 class="p19t p19tk">${chipHTML(h.head)}</h3>${h.what ? `<p class="p19r p19g0">${chipHTML(h.what)}</p>` : ''}
+    ${h.why ? `<h5 class="p19l">Why</h5><p class="p19r">${chipHTML(h.why)}</p>` : ''}
+    ${h.check ? `<p class="p19ck"><b>Next read checks</b>${chipHTML(h.check)}</p>` : ''}</div>`;
+}
+// every post of the row as a cover big enough to tell apart, best first, swiped sideways: the pictures say what the posts
+// are, so the words don't have to
+function setHTML(r) {
+  const k = r.k || 'lk', xo = r.xo || {}, xOf = (id) => (xo[id] != null ? xo[id] : xPost(id, k));
+  const ids = [...r.ids].sort((a, b) => (xOf(b) ?? -1) - (xOf(a) ?? -1));
+  return `<div class="p19g">${ids.map((id) => { const x = xOf(id); return `<button class="p19c" data-post="${id}" data-cv="${id}" style="${hiStyle(id)}" aria-label="${esc(fx(x))}">${x != null ? `<em class="${x >= 1 ? 'o' : 'u'}">${fx(x)}</em>` : ''}</button>`; }).join('')}</div>`;
+}
+// the side by side: what separates the two, then the one that did better beside the other, each its count, what it is,
+// and its moments as frames big enough to read, row against row
+function sideHTML(r) {
+  const s = r.sd; if (!s) return '';
+  // (when one of the two can't be shown moment by moment, both show as their covers, so the columns stay even)
+  const even = s.posts.every((p) => (p.marks || []).length), n = 3 + (even ? Math.max(...s.posts.map((p) => p.marks.length)) : 1);
+  const col = (p0) => {
+    const p = even ? p0 : { ...p0, marks: [] };
+    const P = A.posts[p.id], x = r.xo && r.xo[p.id] != null ? r.xo[p.id] : xPost(p.id, r.k || 'lk'), fr = Object.fromEntries((P.rp || []).map((f) => [f.at, f.f])), sq = P.fmt === 'Reels' ? '' : ' sq';
+    const frames = (p.marks || []).length ? p.marks.map((m) => `<figure class="sbf${sq}"><button class="sbi" data-post="${p.id}"${fr[m.at] ? '' : ` style="${hiStyle(p.id)}"`}>${fr[m.at] ? `<img src="${BASE}${fr[m.at]}" alt="" loading="lazy" draggable="false">` : ''}<i>${esc(m.at)}</i></button><figcaption>${esc(m.note)}</figcaption></figure>`).join('')
+      : `<figure class="sbf${sq}"><button class="sbi" data-post="${p.id}" style="${hiStyle(p.id)}"></button></figure>`;
+    return `<div class="sbc"><p class="sbx">${x != null ? `<b class="${x >= 1 ? 'o' : 'u'}">${fx(x)}</b><span>${KEYN[r.k || 'lk']}</span>` : ''}<span class="sbw">${esc(day(P.d))} · ${esc(cap1(FMT1[P.fmt] || 'post'))}</span></p>
+      <p class="sbd">${esc(p.says)}</p>${frames}</div>`;
+  };
+  const top = s.same ? `<dl class="sbh"><dt>Both</dt><dd>${chipHTML(s.same)}</dd><dt>One difference</dt><dd>${chipHTML(s.diff)}</dd><dt>Result</dt><dd>${chipHTML(s.result)}</dd></dl>` : `<p class="sbl">${chipHTML(s.line)}</p>${s.test ? `<p class="sbt">${esc(s.test)}</p>` : ''}`;
+  return `<section class="p19x"><h5>Side by side</h5>${top}
+    <div class="sbs" style="--n:${n}">${s.posts.map(col).join('')}</div></section>`;
+}
+function notHTML(r) {
+  return (r.not || []).length ? `<section class="p19x p19no"><h5>Ruled out</h5><ul>${r.not.map((x) => `<li>${chipHTML(x)}</li>`).join('')}</ul></section>` : '';
+}
 
 // followers called on weeks: the last four full weeks against the usual week (the middle of the twelve before them),
 // 3 or 4 over it Feeding, 0 or 1 Fading
@@ -2196,11 +2287,17 @@ function sgWords18(fr, desk) {
     ${fr.what ? `<p class="line w18">${linkHTML(fr.what)}</p>` : ''}<button class="sgrd" data-read>${read}${ICR}</button>`;
 }
 // a read-18 row's picture: its post (the one of its pair it's about), or its run, clean
+// (the stage is one summary of the account, so a post is pictured once across all its parts: each frame takes the
+// most telling of its posts that no frame before it has shown, and a frame whose posts are all shown shows its set)
 function media18(x, r, ids) {
   if (x.media === 'now') return '';
   if (r.run) return run18(r);
+  const U = S.used18 || (S.used18 = new Set()), k = r.k || 'lk', xOf = (id) => (r.xo && r.xo[id] != null ? r.xo[id] : xPost(id, k));
   const main = r.pair ? (r.pair.find((p) => ids.includes(p.id)) || r.pair[0]).id : ids[0];
-  return main ? pic18(main) : '';
+  const tell = [...ids].filter((id) => xOf(id) != null).sort((a, b) => Math.abs(Math.log(xOf(b))) - Math.abs(Math.log(xOf(a))));
+  const pick = [main, ...(r.pair || []).map((p) => p.id), ...tell].find((id) => id && A.posts[id] && !U.has(id));
+  if (pick) { U.add(pick); return pic18(pick); }
+  return ids.length >= 2 ? group18(ids.slice(0, 9), r.xo || {}, null) : main ? pic18(main) : '';
 }
 
 /* =====================================================================
@@ -2226,7 +2323,7 @@ function r5DaysHTML(d0, d1) {
 }
 function r5Build() {
   const R = A.voice.read, P = A.posts, used = new Set();
-  S.win = A.order.slice(-100); S.inW = new Set(S.win); S.wk = new Set(); S.L = {};
+  S.win = A.order.slice(-100); S.inW = new Set(S.win); S.wk = new Set(); S.L = {}; S.used18 = new Set();
   S.span = `${day(P[S.win[0]].d)} – ${day(P[S.win[S.win.length - 1]].d)}`;
   R.parts.forEach((pt) => {
     const [hl, sub] = firstOf(pt.line);
@@ -2237,6 +2334,9 @@ function r5Build() {
       // its why, for the panel: the evidence, the pair, what it rules out, what can't be told yet, what it means
       const pair = (x.pair || []).filter((p) => P[p.id]);
       Object.assign(r, { why: x.why, pair: pair.length === 2 ? pair : null, not: x.not, open: x.open, means: x.means, h: x.h || null, rw: x.rw || null, facts: x.facts || null });
+      // (a written-through row's side by side is its pair: the stage shows the one that landed, the panel both)
+      const sd = x.sd && (x.sd.posts || []).filter((p) => P[p.id]).length === 2 ? x.sd : null;
+      if (sd) Object.assign(r, { sd, pair: sd.posts.map((p) => ({ id: p.id, lab: '' })), rw: null });
       const media = R18() && x.media !== 'days' ? media18(x, r, ids) : withX(r, () => {
         if (x.media === 'pair' && r.pair) { r.pair.forEach((p) => used.add(p.id)); return pairHTML(r.pair, 'x' + k); }
         if (x.media === 'run' && r.run) return runHTML(r, used);

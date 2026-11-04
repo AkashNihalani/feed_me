@@ -1753,3 +1753,107 @@ html[data-r17-stage] .fm-dock[data-folded]:not([data-open]) { opacity: 0; scale:
   transition: opacity .42s cubic-bezier(.32, .72, 0, 1), scale .55s cubic-bezier(.32, .72, 0, 1), translate .55s cubic-bezier(.32, .72, 0, 1), visibility 0s linear .42s }
 .r17 .sgm.r18 .sgc:not(.cht) > .sgw { padding-bottom: calc(40px + var(--sab)) }
 .r17 .sgm.r18 .sgc.cht > .sgw { padding-bottom: calc(36px + var(--sab)) }
+
+/* ======================================================================================================================
+   READ 19: a written-through row's panel. One page on one edge: the count is the only hero (in its call's colour), the
+   head is the sentence under it, then the read with its posts named inline by their covers, then the two posts side by
+   side, frame against frame. Every section below opens the same way: a hairline, a quiet label, the same air
+   ====================================================================================================================== */
+.r17 .pnv:has(> .p19h) { gap: 0 }
+.r17 .p19h { display: block; padding-top: 4px }
+.r17 .p19k { display: flex; align-items: center; gap: 9px; font: 600 13.5px/1.2 var(--font); letter-spacing: -.005em; color: var(--ink-3) }
+.r17 .p19k .ctg { position: static; flex: none; width: 22px; height: 22px; border-radius: 7px }
+.r17 .p19k .ctg.t-mid { background: rgb(var(--ink-rgb) / .1); color: var(--ink) }
+.r17 .p19k .ctg.t-dn { background: rgb(var(--ink-rgb) / .06); color: var(--ink-3) }
+.r17 .p19k b { font-weight: 700; color: var(--ink) }
+.r17 .p19k.t-up b { color: var(--accent) }
+.r17 .p19k span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.r17 .p19k span::before { content: ''; display: inline-block; width: 3px; height: 3px; margin: 0 9px 0 0; border-radius: 50%; background: currentColor; vertical-align: .3em; opacity: .7 }
+.r17 .p19n { margin-top: 20px; display: grid; gap: 8px }
+.r17 .p19n b { font: 700 58px/.9 var(--font); letter-spacing: -.055em; font-variant-numeric: tabular-nums; color: var(--ink) }
+.r17 .p19n.t-up b { color: var(--accent) }
+.r17 .p19n.t-dn b { color: rgb(var(--ink-rgb) / .42) }
+.r17 .p19n span { font: 500 15px/1.4 var(--font); letter-spacing: -.005em; color: var(--ink-2); max-width: 36ch }
+.r17 .p19u { margin-top: 4px; font: 500 12.5px/1.45 var(--font); color: var(--ink-3) }
+.r17 .p19t { margin-top: 28px; font: 700 25px/1.16 var(--font); letter-spacing: -.03em; color: var(--ink); text-wrap: balance }
+.r17 .p19r { margin-top: 12px; font: 400 17px/1.62 var(--font); letter-spacing: -.006em; color: rgb(var(--ink-rgb) / .82); text-wrap: pretty }
+.r17 .p19s { margin-top: 16px; font: 650 17px/1.5 var(--font); letter-spacing: -.012em; color: var(--ink); text-wrap: pretty }
+/* a post named in the words: its cover, small and upright, then its name in the ink of a heading */
+.r17 .pch { font-weight: 400; color: var(--ink); cursor: pointer; text-decoration: none; -webkit-tap-highlight-color: transparent }
+.r17 .pcn { white-space: nowrap }
+.r17 .pch i { display: inline-block; width: .82em; height: 1.1em; margin: 0 .32em 0 .04em; vertical-align: -.2em; border-radius: 4px; background: var(--media) center / cover no-repeat; box-shadow: 0 0 0 .5px rgb(var(--ink-rgb) / .14) }
+@media (hover: hover) { .r17 .pch:hover { color: var(--accent) } }
+/* the sections under it: one opening, the same air */
+.r17 .pnv:has(> .p19h) > section { margin-top: 36px; padding-top: 22px; border-top: 1px solid var(--hair); gap: 14px }
+.r17 .pnv:has(> .p19h) > section h5 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font: 700 11.5px/1.3 var(--font); letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .pnv:has(> .p19h) > section h5 em { margin: 0; font: 500 13px/1.3 var(--font); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--ink-3); opacity: .85 }
+.r17 .p19x { display: grid; min-width: 0 }
+/* the side by side: the one that landed beside the one that didn't, row against row (cover, count, what it is, then
+   each moment) so the same step sits at the same height in both */
+.r17 .sbl { font: 500 17px/1.52 var(--font); letter-spacing: -.008em; color: var(--ink); text-wrap: pretty }
+.r17 .sbt { margin-top: -6px; font: 500 13px/1.45 var(--font); color: var(--ink-3); font-variant-numeric: tabular-nums; text-wrap: pretty }
+.r17 .sbs { margin-top: 6px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: repeat(var(--n), auto); grid-auto-flow: column; column-gap: 14px }
+.r17 .sbc { display: grid; grid-row: span var(--n); grid-template-rows: subgrid; align-content: start; min-width: 0 }
+.r17 .sbm { display: block; width: 100%; aspect-ratio: 4 / 5; padding: 0; border: 0; border-radius: 16px; background: var(--media) center / cover no-repeat; cursor: pointer }
+.r17 .sbx { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font: 500 12.5px/1.25 var(--font); color: var(--ink-3) }
+.r17 .sbx b { font: 700 19px/1 var(--font); letter-spacing: -.035em; font-variant-numeric: tabular-nums; color: rgb(var(--ink-rgb) / .5) }
+.r17 .sbx b.o { color: var(--accent) }
+.r17 .sbd { margin-top: 6px; font: 500 14px/1.42 var(--font); letter-spacing: -.005em; color: var(--ink); text-wrap: pretty }
+.r17 .sbk { margin-top: 14px; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start }
+.r17 .sbk img, .r17 .sbk > i { display: block; width: 34px; aspect-ratio: 9 / 16; border-radius: 6px; object-fit: cover; background: var(--media) }
+.r17 .sbk.sq img, .r17 .sbk.sq > i { aspect-ratio: 4 / 5 }
+.r17 .sbk span { font: 400 13.5px/1.4 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .sbk b { display: block; margin-bottom: 3px; font: 700 11.5px/1.2 var(--font); letter-spacing: .02em; color: var(--ink-3); font-variant-numeric: tabular-nums }
+/* what it rules out: a quiet list on hairlines */
+.r17 .p19no ul { margin: 0; padding: 0; list-style: none; display: grid }
+.r17 .p19no li { padding: 12px 0; border-top: 1px solid var(--hair); font: 400 15px/1.5 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .p19no li:first-child { padding-top: 0; border-top: 0 }
+@media (min-width: 1024px) {
+  .r17 .p19n b { font-size: 64px }
+  .r17 .sbs { column-gap: 18px }
+}
+.r17 .sbx .sbw { flex-basis: 100%; margin-top: 3px }
+/* every post, under a written-through row: lines on hairlines, no boxes */
+.r17 .pnv:has(> .p19h) .ppl { gap: 0 }
+.r17 .pnv:has(> .p19h) .ppr { grid-template-columns: 56px minmax(0, 1fr); padding: 14px 0; border-radius: 0; background: none; box-shadow: none; border-top: 1px solid var(--hair) }
+.r17 .pnv:has(> .p19h) .ppl > .ppr:first-child { padding-top: 2px; border-top: 0 }
+.r17 .pnv:has(> .p19h) .ppc { border-radius: 10px }
+.r17 .pnv:has(> .p19h) .ppg { margin: 4px 0; padding: 12px 0; border-top: 1px solid var(--hair); font: 500 13px/1.3 var(--font); color: var(--ink-3) }
+@media (min-width: 1024px) { .r17 .p19k .ctg { display: none } }
+/* READ 19, round two: the row's posts as covers you can tell apart, the why with its check, the money as the close,
+   and the side by side as frames at half the screen each */
+.r17 .p19g0 { margin-top: 12px }
+.r17 .p19g { display: flex; gap: 8px; margin: 20px -18px 0; padding: 0 18px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding: 0 18px; scrollbar-width: none }
+.r17 .p19g::-webkit-scrollbar { display: none }
+.r17 .p19c { position: relative; flex: 0 0 40%; aspect-ratio: 3 / 4; padding: 0; border: 0; border-radius: 16px; background: var(--media) center / cover no-repeat; scroll-snap-align: start; cursor: pointer }
+.r17 .p19c em { position: absolute; left: 8px; bottom: 8px; padding: 5px 8px; border-radius: 9px; background: rgb(10 10 14 / .6); color: #fff; font: 700 13px/1 var(--font); font-style: normal; letter-spacing: -.01em; font-variant-numeric: tabular-nums; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px) }
+.r17 .p19c em.o { background: var(--accent) }
+.r17 .p19l { margin: 26px 0 0; font: 700 11.5px/1.3 var(--font); letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .p19l + .p19r { margin-top: 8px }
+.r17 .p19ck { margin-top: 14px; padding-left: 14px; border-left: 2px solid rgb(var(--ink-rgb) / .14); font: 500 14.5px/1.5 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .p19ck b { display: block; margin-bottom: 3px; font: 700 11px/1.3 var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .pnv:has(> .p19h) > .p19m { gap: 10px }
+.r17 .p19m p { font: 650 21px/1.36 var(--font); letter-spacing: -.022em; color: var(--ink); text-wrap: pretty }
+.r17 .sbf { margin: 14px 0 0; display: grid; gap: 8px; align-content: start }
+.r17 .sbi { position: relative; display: block; width: 100%; aspect-ratio: 9 / 16; padding: 0; border: 0; border-radius: 14px; overflow: hidden; background: var(--media) center / cover no-repeat; cursor: pointer }
+.r17 .sbf.sq .sbi { aspect-ratio: 4 / 5 }
+.r17 .sbi img { display: block; width: 100%; height: 100%; object-fit: cover }
+.r17 .sbi i { position: absolute; left: 8px; top: 8px; padding: 5px 7px; border-radius: 8px; background: rgb(10 10 14 / .6); color: #fff; font: 700 12px/1 var(--font); font-style: normal; font-variant-numeric: tabular-nums; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px) }
+.r17 .sbf figcaption { font: 400 14px/1.42 var(--font); color: var(--ink-2); text-wrap: pretty }
+@media (min-width: 1024px) {
+  .r17 .p19g { margin: 20px -26px 0; padding: 0 26px; scroll-padding: 0 26px }
+  .r17 .p19c { flex-basis: 31% }
+  .r17 .p19m p { font-size: 22px }
+}
+/* READ 19, round three: the takeaway as the headline, its proof as counts on hairlines, the side by side headed by what
+   the two share and the one thing that differs */
+.r17 .p19tk { font-size: 26px; line-height: 1.16 }
+.r17 .p19tk .pch { font-weight: inherit }
+.r17 .p19p { margin: 16px 0 0; padding: 0; list-style: none; display: grid }
+.r17 .p19p li { padding: 11px 0; border-top: 1px solid var(--hair); font: 400 16px/1.45 var(--font); color: var(--ink-2); text-wrap: pretty }
+.r17 .p19p li:first-child { border-top: 0; padding-top: 2px }
+.r17 .p19p li b { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums }
+.r17 .sbh { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: baseline }
+.r17 .sbh dt { font: 700 11px/1.3 var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3) }
+.r17 .sbh dd { margin: 0; font: 500 15.5px/1.42 var(--font); color: var(--ink); text-wrap: pretty }
+.r17 .sbh dd:last-of-type { font-weight: 650 }
