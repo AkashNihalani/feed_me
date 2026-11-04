@@ -58,6 +58,13 @@ const proxyThumb = (postKey: string) => `/api/media?${new URLSearchParams({ post
 export type Lane = { id: string; name: string; avatar: string | null; feedId: string; handle: string; format: Format | null };
 
 const DAY = 86_400_000;
+
+/* Lead keeps a rolling 90 days. A range is read against the same range before it only when both fit inside those
+   90 days (7D, 30D); 90D is the whole of it, so it has nothing before it and shows no arrows or "before" lines. */
+export const KEPT_DAYS = 90;
+export function readsBefore(days: number) {
+  return days * 2 <= KEPT_DAYS;
+}
 const IST_OFFSET_MS = 330 * 60_000;
 
 /* ── Remembered ────────────────────────────────────────────────────────── */
@@ -336,7 +343,7 @@ export function growthModel(scope: Scope, shots: Shot[], lanes: Lane[]): GrowthM
   // the window before only counts if something was read before this one began (before the first reading the curve
   // is held flat at it, which would read as 'up from 0')
   const firstRead = Math.min(...feeders.map((feeder) => feeder.stale.indexOf(false)).filter((offset) => offset >= 0));
-  const priorRead = firstRead < startOffset - 1;
+  const priorRead = readsBefore(scope.days) && firstRead < startOffset - 1;
   const priorFirst = priorRead ? at(offsetOf(priorStart) - 1) : null;
   const priorLast = priorRead ? at(startOffset - 1) : null;
 
@@ -401,6 +408,8 @@ export type RhythmModel = {
   prior: number;
   perDay: number;
   priorPerDay: number;
+  // false at 90D: nothing before the window is kept, so prior counts are 0 and the band says nothing about before
+  compared: boolean;
   activeDays: number;
   days: number;
   // the usual gap between two posts and the longest quiet stretch, in hours
@@ -413,7 +422,8 @@ export type RhythmModel = {
 export function rhythmModel(scope: Scope, shots: Shot[], lanes: Lane[]): RhythmModel {
   const { start, end } = windowDays(scope.days, scope.activity?.to);
   const startMs = istDayStart(start);
-  const priorMs = startMs - scope.days * DAY;
+  const compared = readsBefore(scope.days);
+  const priorMs = compared ? startMs - scope.days * DAY : startMs;
   const endMs = istDayStart(end) + DAY;
   const now = Math.min(Date.now(), endMs);
 
@@ -485,6 +495,7 @@ export function rhythmModel(scope: Scope, shots: Shot[], lanes: Lane[]): RhythmM
     prior,
     perDay: count / scope.days,
     priorPerDay: prior / scope.days,
+    compared,
     activeDays: active.size,
     days: scope.days,
     gapHours: median(gaps),
@@ -614,7 +625,8 @@ export type FormatsModel = {
 export function formatsModel(scope: Scope, shots: Shot[]): FormatsModel {
   const { start } = windowDays(scope.days, scope.activity?.to);
   const startMs = istDayStart(start);
-  const priorMs = startMs - scope.days * DAY;
+  // with nothing before the window (90D, see readsBefore) every prior is empty, so no format shows a move
+  const priorMs = readsBefore(scope.days) ? startMs - scope.days * DAY : startMs;
   const now: Record<Format, Shot[]> = { reel: [], carousel: [], image: [] };
   const before: Record<Format, Shot[]> = { reel: [], carousel: [], image: [] };
   for (const shot of shots) {

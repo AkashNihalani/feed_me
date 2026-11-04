@@ -62,7 +62,8 @@ function LeadRhythm(props: Props) {
               <div className="min-w-0 pb-0.5">
                 <div className="whitespace-nowrap text-[15px] font-black leading-none tracking-[-0.02em] text-fg"><Swap value={now.unit} /></div>
                 <div className="mt-2 h-4 overflow-x-clip whitespace-nowrap">
-                  {change == null ? (
+                  {/* 90D has nothing before it (see readsBefore): the line stays, empty, so nothing shifts */}
+                  {!model.compared ? null : change == null ? (
                     <Delta up={null}>none the {scope.days}D before</Delta>
                   ) : (
                     <Delta up={Math.abs(change) < 0.05 ? null : change > 0}>
@@ -89,11 +90,11 @@ function LeadRhythm(props: Props) {
 
             <div className="mt-4 flex h-[14px] items-center justify-between gap-3 overflow-x-clip whitespace-nowrap">
               <span className={cn(MARK, 'tracking-[0.18em]', DIM)}>Pace setters</span>
-              <span className={cn(MARK, DIM)}>share · vs before</span>
+              <span className={cn(MARK, DIM)}>{model.compared ? 'share · vs before' : 'share'}</span>
             </div>
             <ul className="mt-1 flex flex-1 flex-col justify-start">
               {lanes.map((lane) => (
-                <LaneRow key={lane.id} lane={lane} top={laneTop} perDayScope={model.perDay >= 1} />
+                <LaneRow key={lane.id} lane={lane} top={laneTop} perDayScope={model.perDay >= 1} compared={model.compared} />
               ))}
               {active.length > lanes.length ? <li className={cn('pt-2', NOTE, DIM)}>+{active.length - lanes.length} more posting less</li> : null}
             </ul>
@@ -339,7 +340,7 @@ function LaneIcon({ lane }: { lane: LaneRhythm }) {
   );
 }
 
-function LaneRow({ lane, top, perDayScope }: { lane: LaneRhythm; top: number; perDayScope: boolean }) {
+function LaneRow({ lane, top, perDayScope, compared }: { lane: LaneRhythm; top: number; perDayScope: boolean; compared: boolean }) {
   const change = lane.change;
   const rate = perDayScope ? `${lane.perDay.toFixed(lane.perDay >= 10 ? 0 : 1).replace(/\.0$/, '')}/day` : `${(lane.perDay * 7).toFixed(1).replace(/\.0$/, '')}/wk`;
   return (
@@ -355,9 +356,9 @@ function LaneRow({ lane, top, perDayScope }: { lane: LaneRhythm; top: number; pe
             <span className="lead-glide absolute inset-y-0 left-0 w-full origin-left rounded-full bg-fg/75" style={{ transform: `scaleX(${lane.share / top})` }} />
           </span>
           <span className={cn('w-[84px] shrink-0 text-right text-[12px] font-black tabular-nums leading-4', SOFT)}>{Math.round(lane.share * 100)}% · {rate}</span>
-          <span className="w-[52px] shrink-0 text-right">
+          {compared ? <span className="w-[52px] shrink-0 text-right">
             {change == null ? <Delta up={true}>new</Delta> : Math.abs(change) < 0.1 ? <Delta up={null}>steady</Delta> : <Delta up={change > 0}>{Math.round(Math.abs(change) * 100)}%</Delta>}
-          </span>
+          </span> : null}
         </div>
       </div>
     </li>
