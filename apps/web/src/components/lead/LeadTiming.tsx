@@ -14,7 +14,7 @@ import { RAMP } from '@/components/read/readShade';
 import { cn } from '@/lib/utils';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
 import { ink, labelFont, labelInk, lerp, mixColor, rampColor, useCanvasScene, type Frame } from './leadCanvas';
-import { DIM, Eyebrow, MARK, NOTE, PostTile, SOFT, Swap, blockLabel, momentLabel, topLabel, useHeldNear, usePick, useReveal } from './leadKit';
+import { blockLabel, DIM, Eyebrow, MARK, momentLabel, NOTE, PostTile, ScrollStrip, SOFT, Swap, topLabel, useHeldNear, usePick, useReveal } from './leadKit';
 import { BLOCKS, WEEKDAYS, WEEKDAYS_LONG, timingFor, type LeadFeed, type Slot, type TimingModel } from './leadModels';
 
 type Props = { feeds: LeadFeed[]; activity: LeadActivity | null; feedId: string; feeder: string; days: number };
@@ -123,12 +123,12 @@ function LeadTiming(props: Props) {
                 <Swap value={picked ? [`${picked.count} ${picked.count === 1 ? 'post' : 'posts'}`, picked.typical != null ? `top ${topLabel(picked.typical)}%` : null].filter(Boolean).join(' · ') : ''} />
               </div>
             </div>
-            <div className="-mx-4 mt-2.5 flex h-[128px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:h-[136px] sm:px-0 [&::-webkit-scrollbar]:hidden">
+            <ScrollStrip resetKey={picked ? slotName(picked) : ''} outer="-mx-4 mt-2.5 sm:mx-0" className="flex h-[128px] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:h-[136px] sm:px-0 [&::-webkit-scrollbar]:hidden">
               {(picked?.shots || []).slice(0, 12).map((shot) => (
                 <PostTile key={shot.key} shot={shot} when={momentLabel(shot.ms).replace(/^\w+ /, '').replace(/\s?[AP]M$/, '')} className="h-full flex-none" />
               ))}
               {picked && !picked.shots.length ? <span className={cn('grid h-full flex-1 place-items-center rounded-[14px] border border-dashed border-fg/[0.12]', MARK, DIM)}>No posts in this slot</span> : null}
-            </div>
+            </ScrollStrip>
           </div>
         </div>
       </div>

@@ -20,7 +20,7 @@ import SlotText from '@/components/SlotText';
 import { useCompressedOnScroll } from '@/lib/useCompressedOnScroll';
 import { useMobileImmersiveViewport } from '@/lib/useMobileImmersiveViewport';
 import { feedInitials, normalizeHandle, titleCase } from '@/lib/feedLabels';
-import { BEAT_ARRIVE_S, BEAT_CONTAINER, BEAT_HIDDEN, BEAT_ITEM, BEAT_LEAVE_EASE, BEAT_SHOWN, beatArrive, beatLeave } from '@/lib/motion';
+import { BEAT_CONTAINER, BEAT_ITEM, BEAT_LEAVE_EASE, beatArrive, beatLeave } from '@/lib/motion';
 import { getTabScope, setTabScope, useTabScope, useTabScopeTransition, type TabScope } from '@/lib/tabScope';
 import { cn } from '@/lib/utils';
 import { postMoment } from '@/lib/postMoment';
@@ -29,14 +29,14 @@ import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
 import { CARRY_EASE_CSS, reducedMotion } from '@/lib/feedStream/motion';
 import { LEAD_AT_KEY, leadScope } from '@/components/lead/leadHall';
 import type { LeadActivity } from '@/app/api/lead/activity/route';
-import LeadGrowth from '@/components/lead/LeadGrowth';
-import LeadRhythm from '@/components/lead/LeadRhythm';
+import LeadFollowers from '@/components/lead/LeadFollowers';
+import LeadCadence from '@/components/lead/LeadCadence';
 import LeadTiming from '@/components/lead/LeadTiming';
 import LeadFormats from '@/components/lead/LeadFormats';
 import { CrossfadeImage, DIM, MARK, NOTE, SOFT, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
 import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
-import { ascentFromActivity, formatsFor, growthFor, readsBefore, remember, rhythmFor, timingFor } from '@/components/lead/leadModels';
+import { ascentFromActivity, followersFor, formatsFor, readsBefore, remember, skylineFor, timingFor } from '@/components/lead/leadModels';
 import { viewsLabel, viewsNote, viewsOf } from '@/components/lead/leadPlays';
 import { RAMP, shade } from '@/components/read/readShade';
 import { announceFirstScreen } from '@/lib/launch';
@@ -506,8 +506,8 @@ function warmJobs(feeds: RuntimeFeed[], activity: LeadActivity | null, feedId: s
       () => parFor(feeds, id, range),
       () => postsFor(feeds, id, handle, range),
       () => TOP_SORTS.forEach((sort) => topPostsFor(feeds, id, handle, range, sort.id)),
-      () => growthFor(scope),
-      () => rhythmFor(scope),
+      () => followersFor(scope),
+      () => skylineFor(scope),
       () => timingFor(scope),
       () => formatsFor(scope),
     );
@@ -1178,6 +1178,14 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
       value: lastPostedWords(row.lastPostedAt),
       note: row.lastPostedAt ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }).format(row.lastPostedAt) : 'nothing in this window',
     },
+    // how its typical post did against its own usual, and the audience it posts to
+    { label: 'Likes', value: row.likesMultiple == null ? '—' : formatMultiple(row.likesMultiple), note: `typical post · ${compactNumber(row.likes)} in all` },
+    { label: 'Comments', value: row.commentsMultiple == null ? '—' : formatMultiple(row.commentsMultiple), note: `typical post · ${compactNumber(row.comments)} in all` },
+    {
+      label: 'Followers',
+      value: compactNumber(row.followers),
+      note: row.followerDelta == null ? 'latest reading' : `${signedNumber(row.followerDelta)} in ${days}D`,
+    },
   ];
 
   return (
@@ -1205,11 +1213,12 @@ function RowExpansion({ row, days, onCollapse, ref }: { row: BoardRow; days: num
           ) : (
             <motion.div variants={OPEN_ITEM} className={cn('flex h-[120px] items-center justify-center border-y border-fg/[0.07]', MARK, DIM)}>No ranked posts with a picture in {days}D</motion.div>
           )}
-          <motion.dl variants={OPEN_ITEM} className="grid grid-cols-3 border-t border-fg/[0.08] lg:max-w-[260px] lg:grid-cols-1 lg:gap-5 lg:border-l lg:border-t-0 lg:pl-8">
+          {/* six facts, three across, filling the room beside the posts (under them on a phone) */}
+          <motion.dl variants={OPEN_ITEM} className="grid min-w-0 grid-cols-3 gap-px self-stretch overflow-hidden rounded-[18px] border border-fg/[0.07] bg-fg/[0.07] lg:self-end">
             {facts.map((fact) => (
-              <div key={fact.label} className="min-w-0 border-r border-fg/[0.08] pr-2.5 pt-3 last:border-r-0 [&:not(:first-child)]:pl-2.5 lg:border-r-0 lg:pt-0 lg:[&:not(:first-child)]:pl-0">
+              <div key={fact.label} className="min-w-0 bg-(--ld-panel) px-3 py-3 sm:px-4 lg:px-5 lg:py-4">
                 <dt className={cn('truncate', MARK, DIM)}>{fact.label}</dt>
-                <dd className="fm-depth-title mt-1.5 truncate text-[18px] font-black tabular-nums leading-none tracking-[-0.03em] text-fg sm:text-[20px]">{fact.value}</dd>
+                <dd className="fm-depth-title mt-2 truncate text-[18px] font-black tabular-nums leading-none tracking-[-0.03em] text-fg sm:text-[22px] lg:text-[26px]">{fact.value}</dd>
                 <div className={cn('mt-1 line-clamp-2 lg:truncate', NOTE, DIM)}>{fact.note}</div>
               </div>
             ))}
@@ -1244,7 +1253,9 @@ function RankNumeral({ rank, delay, size }: { rank: number; delay: number; size:
   const at = 'pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 select-none font-black tabular-nums leading-none tracking-[-0.08em]';
   return (
     <span className="relative h-full">
-      <span className={cn(at, size, 'text-fg/[0.14]')}>
+      {/* on the podium the rose numeral stands alone: the ink one under it fades out (an ink edge peeking out around
+          the rose reads as an outline, light on the dark theme) */}
+      <span className={cn('ld-throne', at, size, 'text-fg/[0.14]')} style={{ opacity: podiumOf(rank) ? 0 : 1 }}>
         <SlotText value={rankLabel(rank)} delay={delay} />
       </span>
       {PODIUM.map((strength, index) => (
@@ -1769,69 +1780,110 @@ function ClimbChip({ post }: { post: TrackedPost }) {
   );
 }
 
+/* An open post on a feeder's ladder, drawn as an open row is: its picture leads on the left; beside it the place it
+   holds (big), how far over its account's usual it went, the road it took between its reads (a chip a read) and when
+   it went out; under them, six facts on one grid (likes, comments and engagement against its usual, its views, the
+   number it was ranked on, its last read). It unfolds on the open row's beat (OPEN_GRID) as the ladder makes room. */
+const RANKED_ON: Record<string, string> = { likes: 'likes', comments: 'comments', engagement_rate: 'eng. rate', views: 'views' };
+
 function PostRowExpansion({ post, onCollapse, ref }: { post: TrackedPost; onCollapse: () => void; ref?: Ref<HTMLDivElement> }) {
   const reduce = Boolean(useReducedMotion());
+  const tone = post.latestPercentile != null ? shade(post.latestPercentile) : null;
   const views = viewsLabel(post);
-  const metrics = [
-    ...(views ? [{ label: 'Views', value: views.replace(' views', ''), multiple: null, note: viewsNote(post) }] : []),
-    { label: 'Likes', value: compactNumber(numeric(post.likes)), multiple: post.likesMultiple, note: null },
-    { label: 'Comments', value: compactNumber(numeric(post.comments)), multiple: post.commentsMultiple, note: null },
-    { label: 'Eng. rate', value: formatEngagementRate(post.engagementRate), multiple: post.engagementRateMultiple, note: null },
+  const time = postTime(post);
+  const when = time ? new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }).format(time) : 'undated';
+  const climb = climbOf(post);
+  const travelled = post.firstCheckpoint && post.firstPercentile != null && post.firstCheckpoint.toUpperCase() !== (post.latestCheckpoint || '').toUpperCase();
+  const win = (post.latestPercentile ?? 101) <= 10;
+  const facts = [
+    { label: 'Likes', value: compactNumber(numeric(post.likes)), note: post.likesMultiple == null ? 'no usual yet' : `${formatMultiple(post.likesMultiple)} its usual` },
+    { label: 'Comments', value: compactNumber(numeric(post.comments)), note: post.commentsMultiple == null ? 'no usual yet' : `${formatMultiple(post.commentsMultiple)} its usual` },
+    { label: 'Eng. rate', value: formatEngagementRate(post.engagementRate), note: post.engagementRateMultiple == null ? 'no usual yet' : `${formatMultiple(post.engagementRateMultiple)} its usual` },
+    { label: 'Views', value: views ? views.replace(' views', '') : '—', note: views ? viewsNote(post) ?? '' : 'not counted for this post' },
+    { label: 'Ranked on', value: RANKED_ON[post.rankingMetric ?? ''] ?? 'likes', note: 'its strongest number' },
+    { label: 'Last read', value: (post.latestCheckpoint || '—').toUpperCase(), note: post.latestBusinessDayIst ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }).format(Date.parse(post.latestBusinessDayIst)) : '' },
   ];
+
   return (
     <motion.div
       ref={ref}
       data-testid="lead-v3-post-expansion"
-      initial={reduce ? false : BEAT_HIDDEN}
-      animate={BEAT_SHOWN}
+      initial={reduce ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
       exit={{ opacity: 0, transition: { duration: sec(0.16), ease: BEAT_LEAVE_EASE } }}
-      transition={reduce ? { duration: 0 } : { duration: BEAT_ARRIVE_S, ease: SOFT_EASE }}
+      transition={{ duration: reduce ? 0 : sec(0.2), ease: SOFT_EASE }}
       className="overflow-hidden"
     >
-      <div onClick={onCollapse} className="relative cursor-pointer border-t border-fg/[0.1] bg-(--ld-raised) p-4 sm:p-6">
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-fg" />
-        <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-7">
-          <a
-            href={post.postUrl || '#'}
-            target={post.postUrl ? '_blank' : undefined}
-            rel={post.postUrl ? 'noreferrer' : undefined}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (!post.postUrl) event.preventDefault();
-            }}
-            aria-label={post.postUrl ? 'Open tracked post' : 'Tracked post'}
-            className="relative mx-auto block aspect-[4/5] w-[62%] max-w-[200px] overflow-hidden rounded-[20px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-poster) sm:mx-0 sm:w-full"
-          >
-            {post.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- authenticated media proxy URL
-              <img src={post.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
-            ) : null}
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_40%,rgba(0,0,0,.85))]" />
-            <span className="absolute bottom-3 left-3 text-[12px] font-black text-white">{post.latestPercentile == null ? '—' : `TOP ${percentLabel(post.latestPercentile)}%`}</span>
-          </a>
-          <div className="min-w-0">
-            <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', NOTE, DIM)}>
-              <span>{post.mediaType} · {postDateLabel(post)}</span>
-              {post.firstCheckpoint && post.firstPercentile != null ? (
-                <span className={SOFT}>
-                  {post.firstCheckpoint} top {percentLabel(post.firstPercentile)}% → {(post.latestCheckpoint || '').toUpperCase()} top {percentLabel(post.latestPercentile)}%
+      <motion.div
+        variants={OPEN_CONTAINER}
+        initial={reduce ? false : 'hidden'}
+        animate="visible"
+        onClick={onCollapse}
+        className="relative isolate cursor-pointer border-t border-fg/[0.08] bg-(--ld-raised) px-4 pb-5 pt-4 sm:px-6 sm:pb-6 lg:pl-[100px] lg:pr-6"
+      >
+        <motion.div variants={OPEN_GRID} className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-stretch lg:gap-8">
+          <div className="grid grid-cols-[42%_minmax(0,1fr)] items-end gap-4 sm:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[200px_240px]">
+            <motion.a
+              variants={OPEN_ITEM}
+              href={post.postUrl || '#'}
+              target={post.postUrl ? '_blank' : undefined}
+              rel={post.postUrl ? 'noreferrer' : undefined}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!post.postUrl) event.preventDefault();
+              }}
+              aria-label={post.postUrl ? 'Open the post on Instagram' : 'The post'}
+              className="group relative block aspect-[4/5] overflow-hidden rounded-[20px] border border-white/12 bg-(--fm-media) shadow-(--ld-shadow-proof-lg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fm-accent-bright)]"
+            >
+              <CrossfadeImage src={post.thumbnailUrl} className="transition-transform duration-[calc(700ms*var(--fm-tempo))] group-hover:scale-[1.035]" />
+              <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[40%] bg-[linear-gradient(180deg,rgba(0,0,0,.4),transparent)]" />
+              <span className="absolute right-2 top-2 rounded-[7px] px-1.5 py-0.5 text-[11px] font-black tabular-nums shadow-[0_2px_8px_rgba(0,0,0,.2)]" style={{ background: tone ? tone.c : 'rgba(0,0,0,.55)', color: tone ? tone.tx : '#ffffff' }}>
+                {post.latestPercentile == null ? 'new' : `Top ${percentLabel(post.latestPercentile)}%`}
+              </span>
+            </motion.a>
+
+            <motion.div variants={OPEN_ITEM} className="flex min-w-0 flex-col pb-1">
+              <span className={cn(MARK, DIM)}>Placed</span>
+              <span className={cn('fm-depth-title mt-1.5 block whitespace-nowrap text-[38px] font-black tabular-nums leading-none tracking-[-0.05em] sm:text-[46px]', win ? 'text-[var(--fm-accent-text)]' : 'text-fg')}>
+                {post.latestPercentile == null ? '—' : `Top ${percentLabel(post.latestPercentile)}%`}
+              </span>
+              <span className={cn('mt-1.5 block', NOTE, SOFT)}>{post.rankingMultiple == null ? 'no usual yet' : `${formatMultiple(post.rankingMultiple)} its account’s usual`}</span>
+              {/* the road between its reads: a chip a read, the arrow in rose when it climbed */}
+              {travelled ? (
+                <span className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className={cn('rounded-[7px] border border-fg/[0.1] px-1.5 py-0.5 tabular-nums', NOTE, SOFT)}>{post.firstCheckpoint?.toUpperCase()} Top {percentLabel(post.firstPercentile ?? null)}%</span>
+                  <span className={cn('text-[12px] font-black', (climb ?? 0) > 0 ? 'text-[var(--fm-accent)]' : DIM)}>{(climb ?? 0) > 0 ? '↗' : (climb ?? 0) < 0 ? '↘' : '→'}</span>
+                  <span className={cn('rounded-[7px] px-1.5 py-0.5 tabular-nums', NOTE, 'font-black text-fg', 'bg-fg/[0.06]')}>{(post.latestCheckpoint || '').toUpperCase()} Top {percentLabel(post.latestPercentile)}%</span>
                 </span>
               ) : (
-                <span>{(post.latestCheckpoint || '').toUpperCase()} read</span>
+                <span className={cn('mt-3 block', NOTE, DIM)}>{(post.latestCheckpoint || '').toUpperCase()} read so far</span>
               )}
-            </div>
-            <dl className={cn('mt-4 grid gap-4', metrics.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
-              {metrics.map((metric) => (
-                <div key={metric.label} className="min-w-0">
-                  <dt className={cn('truncate', MARK, DIM)}>{metric.label}</dt>
-                  <dd className="fm-depth-title mt-2 truncate text-[22px] font-black tabular-nums leading-none text-fg sm:text-[26px]"><SlotText value={metric.value} /></dd>
-                  <div className={cn('mt-2 tabular-nums', NOTE, SOFT)}>{metric.note ?? (metric.multiple == null ? '—' : `${formatMultiple(metric.multiple)} usual`)}</div>
-                </div>
-              ))}
-            </dl>
+              <span className={cn('mt-3 block truncate', NOTE, DIM)}>{post.mediaType === 'unknown' ? 'Post' : `${post.mediaType[0].toUpperCase()}${post.mediaType.slice(1)}`} · {when}</span>
+              {post.postUrl ? (
+                <a
+                  href={post.postUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  className={cn('mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-fg/[0.12] bg-(--ld-panel) px-3 py-1.5 text-fg transition-colors hover:border-fg/[0.24]', MARK, 'tracking-[0.1em]')}
+                >
+                  Open on Instagram <span aria-hidden="true">↗</span>
+                </a>
+              ) : null}
+            </motion.div>
           </div>
-        </div>
-      </div>
+
+          <motion.dl variants={OPEN_ITEM} className="grid min-w-0 grid-cols-3 gap-px self-stretch overflow-hidden rounded-[18px] border border-fg/[0.07] bg-fg/[0.07] lg:self-end">
+            {facts.map((fact) => (
+              <div key={fact.label} className="min-w-0 bg-(--ld-panel) px-3 py-3 sm:px-4 lg:px-5 lg:py-4">
+                <dt className={cn('truncate', MARK, DIM)}>{fact.label}</dt>
+                <dd className="fm-depth-title mt-2 truncate text-[18px] font-black tabular-nums leading-none tracking-[-0.03em] text-fg sm:text-[22px] lg:text-[24px]">{fact.value}</dd>
+                <div className={cn('mt-1 line-clamp-2 lg:truncate', NOTE, DIM)}>{fact.note}</div>
+              </div>
+            ))}
+          </motion.dl>
+        </motion.div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -2130,13 +2182,13 @@ export default function LeadBoardPage() {
                 onSelectPost={setSelectedPostKey}
               />
               <TopPosts feeds={feeds} activeFeedId={activeFeedId} activeFeeder={activeFeeder} days={days} sort={topSort} onSort={setTopSort} />
-              <LeadGrowth feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
+              <LeadFollowers feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
               <section aria-label="Feeding habits" className="bg-(--ld-panel)">
                 <div className="border-t border-fg/[0.09] px-4 pb-0 pt-5 sm:px-6 lg:px-7">
                   <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Feeding habits</h2>
                   <p className={cn('mt-1', NOTE, SOFT)}>How often, when and what {activeFeeder ? `@${activeFeeder} posts` : activeFeedId === 'all' ? 'your feeds post' : 'this feed posts'}{readsBefore(days) ? ` · vs the ${days}D before` : ''}</p>
                 </div>
-                <LeadRhythm feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
+                <LeadCadence feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
                 <LeadTiming feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
                 <LeadFormats feeds={feeds} activity={activity} feedId={activeFeedId} feeder={activeFeeder} days={days} />
               </section>
