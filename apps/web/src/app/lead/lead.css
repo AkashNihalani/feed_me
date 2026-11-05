@@ -110,6 +110,24 @@ html.dark .fm-lead {
   .fm-lead .lead-swap-in { animation: none !important; }
 }
 
+/* a value changing in its slit (leadKit SlitText): the old rises out as the new rises in, transform only */
+.fm-lead .lead-slit-in {
+  animation: lead-slit-in calc(620ms * var(--fm-tempo)) cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+.fm-lead .lead-slit-out {
+  animation: lead-slit-out calc(620ms * var(--fm-tempo)) cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+@keyframes lead-slit-in {
+  from { transform: translateY(110%); }
+}
+@keyframes lead-slit-out {
+  to { transform: translateY(-110%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-lead .lead-slit-in, .fm-lead .lead-slit-out { animation: none !important; }
+  .fm-lead .lead-slit-out { visibility: hidden; }
+}
+
 /* the Feederboard views' pill, carried to the picked view */
 .fm-lead .ld-pill {
   transition: transform calc(380ms * var(--fm-tempo)) cubic-bezier(0.22, 1, 0.36, 1);

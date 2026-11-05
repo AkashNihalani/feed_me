@@ -33,7 +33,7 @@ import LeadFollowers from '@/components/lead/LeadFollowers';
 import LeadCadence from '@/components/lead/LeadCadence';
 import LeadTiming from '@/components/lead/LeadTiming';
 import LeadFormats from '@/components/lead/LeadFormats';
-import { CrossfadeImage, DIM, MARK, NOTE, SOFT, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
+import { CrossfadeImage, DIM, MARK, NOTE, SOFT, SlitText, Swap, holdArrival, useHeldNear, useWide, whenIdle } from '@/components/lead/leadKit';
 import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { LEDGER_DEAL_MS, LEDGER_MOVE_MS, Ledger, keepBelow, ledgerDelay } from '@/components/lead/ledgerMotion';
 import { ascentFromActivity, followersFor, formatsFor, readsBefore, remember, skylineFor, timingFor } from '@/components/lead/leadModels';
@@ -942,9 +942,7 @@ function PointerShare({ share }: { share: number }) {
         <span aria-hidden="true" className={cn('lead-glide absolute inset-0 origin-left rounded-full', share > 0.1 ? 'bg-[var(--fm-accent)]' : 'bg-fg/70')} style={{ transform: `scaleX(${fill.toFixed(3)})` }} />
         <i aria-hidden="true" className="absolute inset-y-[-2px] block w-[2px] rounded-full bg-(--ld-panel)" style={{ left: `${(0.1 / scale) * 100}%` }} />
       </span>
-      <span className={cn('shrink-0 text-[12px] font-black tabular-nums', share > 0.1 ? 'text-[var(--fm-accent-text)]' : 'text-fg/70')}>
-        <SlotText value={`${Math.round(share * 100)}%`} />
-      </span>
+      <SlitText value={`${Math.round(share * 100)}%`} className={cn('w-9 shrink-0 text-right text-[12px] font-black tabular-nums', share > 0.1 ? 'text-[var(--fm-accent-text)]' : 'text-fg/70')} />
     </span>
   );
 }
@@ -982,9 +980,12 @@ function PointersBand({ pointers, onGo }: { pointers: Pointer[]; onGo: (go: Poin
                 <path d="M3 6h6M6.5 3.5 9 6 6.5 8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            <span className={cn('fm-depth-title mt-2 block truncate text-[26px] font-black tabular-nums leading-none tracking-[-0.045em] sm:mt-3 sm:text-[28px] lg:text-[32px] laptop:text-[28px]', pointer.win ? 'text-[var(--fm-accent-text)]' : 'text-fg')}>
-              <SlotText value={pointer.value} delay={index * ms(40)} />
-            </span>
+            {/* the number changes in its own slit (no glyph-by-glyph roll that settles its width after): the tile never shifts */}
+            <SlitText
+              value={pointer.value}
+              delay={index * 40}
+              className={cn('fm-depth-title mt-2 text-[26px] font-black tabular-nums leading-none tracking-[-0.045em] sm:mt-3 sm:text-[28px] lg:text-[32px] laptop:text-[28px]', pointer.win ? 'text-[var(--fm-accent-text)]' : 'text-fg')}
+            />
             <span className={cn('mt-1 flex h-8 min-w-0 items-start gap-1 overflow-hidden sm:mt-1.5 lg:h-4', NOTE, SOFT)}>
               {pointer.shift ? <i className={cn('shrink-0 pt-[3px] not-italic text-[8px] leading-none', pointer.shift.up ? 'text-[var(--fm-accent)]' : 'text-fg/45')}>{pointer.shift.up ? '▲' : '▼'}</i> : null}
               <Swap value={pointer.unit} className="line-clamp-2! lg:line-clamp-1!" />
@@ -1717,7 +1718,7 @@ const TopPosts = memo(function TopPosts(props: {
           <h2 id="lead-v3-top-title" className="text-[10px] font-black uppercase tracking-[0.2em] text-fg/60">Top posts</h2>
           <p className={cn('mt-1 overflow-hidden whitespace-nowrap', NOTE, SOFT)}><Swap value={`${TOP_SORTS[sortIndex].sub} · ${days}D`} className="truncate align-top" /></p>
         </div>
-        <div className="relative grid h-11 min-w-[300px] grid-cols-5 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:min-w-[360px]">
+        <div className="relative grid h-11 min-w-[300px] shrink-0 grid-cols-5 rounded-[14px] border border-fg/[0.07] bg-(--fm-well) shadow-(--fm-well-shade) sm:w-[480px]">
           {/* one pill, carried to the picked ranking (a transform on the compositor) */}
           <span
             ref={pillRef}
@@ -1733,7 +1734,7 @@ const TopPosts = memo(function TopPosts(props: {
               aria-pressed={sort === option.id}
               data-testid={`lead-v3-top-sort-${option.id}`}
               className={cn(
-                'relative grid h-full place-items-center rounded-[10px] text-[10px] font-black uppercase tracking-[0.08em] transition-colors duration-[calc(300ms*var(--fm-tempo))] sm:text-[11px]',
+                'relative grid h-full place-items-center rounded-[10px] px-1.5 text-[10px] font-black uppercase tracking-[0.01em] transition-colors duration-[calc(300ms*var(--fm-tempo))] sm:text-[11px] sm:tracking-[0.1em]',
                 sort === option.id ? 'text-(--fm-page)' : 'text-fg/60 hover:text-fg/80',
               )}
             >
@@ -1972,8 +1973,8 @@ export default function LeadBoardPage() {
   }, [loading]);
   // a range switch re-reads what is on hand in a transition: the header answers the tap first
   const [timeframePending, startTimeframe] = useTransition();
-  // ← and → (or < and >) step the time range (7D · 30D · 90D), as they step Feed's zoom: ← back, a longer window,
-  // → a shorter one, stopping at the ends. Only while Lead is on screen (a hidden tab's effects are off), never while
+  // ← and → (or < and >) step the time range in the rail's order (7D · 30D · 90D), as they step Feed's zoom: ← a
+  // shorter window, → a longer one, stopping at the ends. Only while Lead is on screen (a hidden tab's effects are off), never while
   // typing or under a dialog
   const daysRef = useRef(days);
   useLayoutEffect(() => {
@@ -1981,8 +1982,8 @@ export default function LeadBoardPage() {
   }, [days]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const longer = event.key === 'ArrowLeft' || event.key === '<';
-      if (!longer && event.key !== 'ArrowRight' && event.key !== '>') return;
+      const longer = event.key === 'ArrowRight' || event.key === '>';
+      if (!longer && event.key !== 'ArrowLeft' && event.key !== '<') return;
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
       if (typingIn(event.target) || aModalIsOpen()) return;
       const next = TIMEFRAMES[TIMEFRAMES.indexOf(daysRef.current) + (longer ? 1 : -1)];
