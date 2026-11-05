@@ -3139,8 +3139,8 @@ function FeedStream({
     return () => window.cancelAnimationFrame(frame);
   }, [gen, layout, metrics, narrowWindow, move, pageY]);
 
-  // the keys: G the Day view ⇄ the week, M the month, Esc the week, ← and → (or < and >, - and +) a zoom back out or
-  // in (← always back: Day to Week to Month), as they step Lead's time range, ↑ ↓ J K a post at a time
+  // the keys: G the Day view ⇄ the week, M the month, Esc the week, ← and → (or < and >) step the zoom in the rail's
+  // order (← shorter: Month to Week to Day, → longer), as they step Lead's time range; - out and + in; ↑ ↓ J K a post at a time
   useEffect(() => {
     if (!keyboard) return undefined;
     const onKey = (event: KeyboardEvent) => {
@@ -3164,14 +3164,15 @@ function FeedStream({
         case 'M':
           go(current === 'month' ? null : 'month');
           break;
-        case 'ArrowLeft':
-        case '<':
+        // ← → follow the rail's order, shorter on the left: ← in toward the Day, → out toward the Month
+        case 'ArrowRight':
+        case '>':
         case '-':
         case '_':
           go(stepMode(current, 1));
           break;
-        case 'ArrowRight':
-        case '>':
+        case 'ArrowLeft':
+        case '<':
         case '=':
         case '+':
           go(stepMode(current, -1));

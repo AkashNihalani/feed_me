@@ -193,6 +193,27 @@ export function holdArrival(el: HTMLElement | null) {
   });
 }
 
+/* A value that changes in a fixed slit: the old one slides up and out while the new one slides up in, both laid out
+   whole, so nothing beside or under it moves while it changes (SlotText rolls glyph by glyph and its width settles
+   after; a tile's number must not). The slit is the box's own line; the first value arrives without a move. */
+export function SlitText({ value, delay = 0, className }: { value: string; delay?: number; className?: string }) {
+  const [slit, setSlit] = useState<{ value: string; previous: string | null; turn: number }>({ value, previous: null, turn: 0 });
+  if (slit.value !== value) setSlit({ value, previous: slit.value, turn: slit.turn + 1 });
+  const timing = { animationDelay: `calc(${delay}ms * var(--fm-tempo))` } as CSSProperties;
+  return (
+    <span className={cn('relative block overflow-hidden py-[0.08em]', className)}>
+      <span key={`now:${slit.turn}`} ref={slit.previous != null ? holdArrival : undefined} className={cn('block overflow-hidden text-ellipsis whitespace-nowrap', slit.previous != null && 'lead-slit-in')} style={timing}>
+        {slit.value}
+      </span>
+      {slit.previous != null ? (
+        <span key={`was:${slit.turn}`} ref={holdArrival} aria-hidden="true" className="lead-slit-out pointer-events-none absolute inset-x-0 top-0 block overflow-hidden text-ellipsis whitespace-nowrap py-[0.08em]" style={timing}>
+          {slit.previous}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /* A band's first view: its pieces ([class*=lead-rise], ordered by --rise) rise into place the first time it comes
    on screen, in CSS. From then on the band is "dealt": its swaps animate. */
 export function useReveal<T extends Element>(amount = 0.15) {
