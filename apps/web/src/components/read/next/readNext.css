@@ -1,0 +1,935 @@
+/* ─────────────────────────────────────────────────────────────
+   READ — a drop, its files, and the Feed. Theme tokens only (light
+   is light, dark is dark); sizes on the app's scales (radius 6 10
+   14 18 22 28 34; type 10 12 14 16 18 22 28 34). One crimson, for
+   meaning: a file landing, a post caught, the streak. Selection is
+   ink. Nothing here animates a layout or paint property: motion is
+   transform and opacity (the Feed's flights are WAAPI, in Feed.tsx).
+   ───────────────────────────────────────────────────────────── */
+
+.rn {
+  --rn-hair: rgb(var(--fm-fg-rgb) / 0.1);
+  --rn-dim: rgb(var(--fm-fg-rgb) / 0.6);
+  --rn-soft: rgb(var(--fm-fg-rgb) / 0.8);
+  --rn-quiet: rgb(var(--fm-fg-rgb) / 0.05);
+  --rn-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --rn-arrive: cubic-bezier(0.16, 1, 0.3, 1);
+  --rn-lift: 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.05), 0 12px 32px -18px rgb(var(--fm-shadow-rgb) / 0.28);
+  position: relative;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: calc(var(--fm-desk-top) + 8px) 32px 96px var(--fm-rail-x);
+  background: var(--fm-page);
+  color: var(--fm-fg);
+  font-family: var(--fm-font), 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overflow-anchor: none;
+  caret-color: var(--fm-accent);
+}
+html.dark .rn { --rn-lift: 0 0 0 1px rgb(255 255 255 / 0.05), 0 16px 36px -20px rgb(0 0 0 / 0.9) }
+.rn--wait { display: block; background: transparent }
+html.rn-route [data-fm-bottom-nav] { display: none !important }
+:where(.rn, .rn-pill, .rn-view, .rn-panel) button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; letter-spacing: inherit }
+:where(.rn, .rn-pill, .rn-view, .rn-panel) :where(h1, h2, h3, p, ul, ol, li, dl, dt, dd) { margin: 0; padding: 0; list-style: none; font: inherit }
+.rn :focus-visible, .rn-pill :focus-visible, .rn-view :focus-visible, .rn-panel :focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 3px; border-radius: 10px }
+.rn ::selection { background: rgb(var(--fm-accent-rgb) / 0.18); color: var(--fm-fg) }
+.rn.is-phone {
+  gap: 20px;
+  min-height: 0;
+  background: transparent;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(112px + env(safe-area-inset-bottom));
+}
+
+/* ═════ the top: the search leads, the ready searches under it, then the drop's note ═════ */
+/* (no z-index here: the box and the veil it stands over share the page's stacking with the file row and the stage) */
+.rn-top { position: relative; display: flex; flex-direction: column; gap: 16px }
+.rn.is-phone .rn-top { gap: 12px }
+@keyframes rn-rise { from { opacity: 0; transform: translate3d(0, 16px, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+.rn {
+  --rn-even: cubic-bezier(0.3, 0.3, 0.2, 1);
+  --rn-forward: calc(520ms * var(--fm-tempo));
+  /* the lift: the box's rise and growth, its shadows and the veil, all on this one clock and curve, both ways */
+  --rn-lift-t: calc(480ms * var(--fm-tempo));
+  --rn-lift-e: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* the veil: while the box is forward the page recedes behind one layer of its own colour (opacity only). It stands
+   over the file row (30) and the stage, under the box (50); a press on it closes the search */
+.rn-hush { position: absolute; z-index: 45; inset: 0; background: var(--fm-page); opacity: 0; visibility: hidden; transition: opacity var(--rn-lift-t) var(--rn-lift-e), visibility 0s linear var(--rn-lift-t) }
+.rn-hush.is-on { opacity: 0.8; visibility: visible; transition: opacity var(--rn-lift-t) var(--rn-lift-e), visibility 0s }
+html.dark .rn-hush.is-on { opacity: 0.84 }
+
+/* ready searches: one row of small raised tokens that swipes, bleeding to the screen's edges like the file row. Each
+   carries its file's newest post, the phrase and how many posts it holds. The row pads round its tokens so their
+   shadows are not clipped, and gives the room back with negative margins */
+.rn-ready { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding: 0 32px; scrollbar-width: none; margin: -6px -32px -14px; padding: 6px 32px 14px }
+.rn-ready::-webkit-scrollbar { display: none }
+.rn.is-phone .rn-ready { gap: 8px; margin: -6px -16px -14px; padding: 6px 16px 14px; scroll-padding: 0 16px; max-height: 120px; transform-origin: 50% 0; transition: max-height var(--rn-lift-t) var(--rn-lift-e), padding var(--rn-lift-t) var(--rn-lift-e), margin var(--rn-lift-t) var(--rn-lift-e), transform var(--rn-lift-t) var(--rn-lift-e) }
+/* (a phone, while a search runs or answers: the recent searches tuck up under the box, the wall takes the room) */
+.rn.is-phone.is-off .rn-ready { max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: -8px; transform: translate3d(0, -28px, 0) scale(0.94); pointer-events: none }
+.rn-ready__c { position: relative; isolation: isolate; flex: none; scroll-snap-align: start; display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 20px 0 8px; border-radius: 18px; background: var(--fm-raised); color: var(--fm-fg); box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.06), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.06), 0 10px 22px -14px rgb(var(--fm-shadow-rgb) / 0.32); transition: transform calc(420ms * var(--fm-tempo)) var(--rn-even) }
+/* (its raised shadow on hover is a layer of its own, shown by opacity) */
+.rn-ready__c::before { content: ''; position: absolute; z-index: -1; inset: 0; border-radius: inherit; box-shadow: 0 16px 30px -16px rgb(var(--fm-shadow-rgb) / 0.4); opacity: 0; transition: opacity calc(420ms * var(--fm-tempo)) var(--rn-even); pointer-events: none }
+html.dark .rn-ready__c { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 24px -14px rgb(0 0 0 / 0.9) }
+@media (hover: hover) {
+  .rn-ready__c:hover { transform: translate3d(0, -2px, 0) }
+  .rn-ready__c:hover::before { opacity: 1 }
+}
+.rn-ready__c:active { transform: translate3d(0, 1px, 0); transition-duration: calc(160ms * var(--fm-tempo)) }
+.rn-ready__c[aria-disabled='true'] { cursor: default; transform: none }
+.rn-ready__c:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 2px }
+.rn-ready__pic { flex: none; width: 40px; height: 40px; border-radius: 10px; overflow: hidden; background: var(--rn-quiet) }
+.rn-ready__pic img { display: block; width: 100%; height: 100%; object-fit: cover }
+.rn-ready__t { display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.rn-ready__p { font-size: 16px; font-weight: 600; line-height: 20px; letter-spacing: -0.015em; white-space: nowrap }
+.rn-ready__t small { font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rn-dim); font-variant-numeric: tabular-nums; white-space: nowrap }
+
+/* the drop's note: the reader's line for this drop, set as the page's lead sentence. Space, not a rule, parts it
+   from the tokens */
+.rn-drop { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 16px }
+.rn-drop__k { display: flex; align-items: baseline; gap: 8px; font-size: 14px; line-height: 18px; white-space: nowrap }
+.rn-drop__k b { font-weight: 700; color: var(--fm-fg) }
+.rn-drop__k span { font-weight: 500; color: var(--rn-dim); font-variant-numeric: tabular-nums }
+.rn-drop__t { font-size: 22px; font-weight: 500; line-height: 30px; letter-spacing: -0.02em; color: var(--fm-fg); max-width: 34em; text-wrap: pretty; animation: rn-rise calc(420ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-drop__t.is-held { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden }
+/* a marked phrase: a lead. Same ink and weight as the sentence, a fine crimson underline, a soft tint while pressed;
+   its hit area reaches above and below the line without moving it */
+.rn-cue { position: relative; cursor: pointer; text-decoration: underline; text-decoration-color: rgb(var(--fm-accent-rgb) / 0.75); text-decoration-thickness: 2px; text-underline-offset: 5px; text-decoration-skip-ink: auto; border-radius: 6px; padding: 8px 0; -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background-color calc(200ms * var(--fm-tempo)) var(--rn-even) }
+.rn-cue:active { background: rgb(var(--fm-accent-rgb) / 0.1) }
+@media (hover: hover) { .rn-cue:hover { background: rgb(var(--fm-accent-rgb) / 0.07) } }
+.rn-cue:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 2px }
+/* More / Less: a plain ink word ending the block, its hit area a thumb's, its type no taller than the line it ends */
+.rn-drop__more { display: inline-flex; align-items: center; min-height: 44px; margin: -10px 0 -12px -12px; padding: 0 12px; font-size: 16px; font-weight: 700; line-height: 20px; color: var(--fm-fg); border-radius: 10px }
+.rn-drop__more:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: -4px }
+.rn.is-phone .rn-drop { margin-top: 16px; gap: 6px }
+.rn.is-phone .rn-drop__t { align-self: stretch; font-size: 18px; line-height: 26px; letter-spacing: -0.015em; text-wrap: wrap }
+
+/* the review control, at the very foot of the page: which drop the page shows (review only, not product) */
+.rn-foot { display: flex; justify-content: center; padding-top: 48px }
+.rn-review { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--rn-dim) }
+.rn-review__k { padding-right: 4px; font-weight: 500 }
+.rn-review button { min-height: 32px; padding: 0 8px; border-radius: 10px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--rn-dim) }
+.rn-review button[aria-pressed='true'] { color: var(--fm-fg); background: var(--rn-quiet) }
+.rn-review button:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 0 }
+
+/* ── the Ask box: a raised slab standing in a wrap of its resting height (so nothing under it moves when it changes
+   size). Its depth is layers, each its own element, so only opacity and transform move: a tight contact shadow, a wide
+   soft ambient one, a faint crimson beneath, and a fine light edge on its face. Typing brings it forward (it rises a
+   few pixels, a deeper shadow and a stronger crimson come up) and folds it to a compact bar with what matches under
+   it, sized to what is visible above the keyboard ── */
+.rn-askwrap { position: relative; z-index: 50; height: 160px }
+.rn-askwrap.is-phone { height: 200px }
+.rn-ask {
+  --r: 34px;
+  --rn-face-in: 4px;
+  --rn-field: 72px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 160px;
+  border-radius: var(--r);
+  cursor: text;
+  isolation: isolate;
+  contain: layout style;
+  transform: translate3d(0, 0, 0);
+  transition: height var(--rn-lift-t) var(--rn-lift-e), transform var(--rn-lift-t) var(--rn-lift-e);
+}
+.rn-ask.is-typing { transform: translate3d(0, -4px, 0) }
+/* the shadow layers sit under the face (the streak's band runs outside it) */
+.rn-ask__sh { position: absolute; z-index: -1; inset: var(--rn-face-in); border-radius: calc(var(--r) - var(--rn-face-in)); pointer-events: none }
+.rn-ask__sh.is-contact { box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.05), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08), 0 3px 8px -2px rgb(var(--fm-shadow-rgb) / 0.08) }
+.rn-ask__sh.is-amb { box-shadow: 0 24px 48px -24px rgb(var(--fm-shadow-rgb) / 0.26), 0 56px 112px -48px rgb(var(--fm-shadow-rgb) / 0.22) }
+.rn-ask__sh.is-glow { box-shadow: 0 30px 60px -30px rgb(var(--fm-accent-rgb) / 0.2) }
+.rn-ask__sh.is-deep { box-shadow: 0 44px 96px -32px rgb(var(--fm-shadow-rgb) / 0.4), 0 16px 32px -16px rgb(var(--fm-shadow-rgb) / 0.16); opacity: 0; transition: opacity var(--rn-lift-t) var(--rn-lift-e) }
+.rn-ask__sh.is-heat { box-shadow: 0 36px 80px -28px rgb(var(--fm-accent-rgb) / 0.26); opacity: 0; transition: opacity var(--rn-lift-t) var(--rn-lift-e) }
+.rn-ask.is-typing .rn-ask__sh.is-deep { opacity: 1 }
+.rn-ask.is-typing .rn-ask__sh.is-heat, .rn-ask.is-busy .rn-ask__sh.is-heat { opacity: 1 }
+html.dark .rn-ask__sh.is-contact { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 2px 6px rgb(0 0 0 / 0.6) }
+html.dark .rn-ask__sh.is-amb { box-shadow: 0 28px 56px -24px rgb(0 0 0 / 0.9), 0 56px 112px -40px rgb(0 0 0 / 0.8) }
+html.dark .rn-ask__sh.is-glow { box-shadow: 0 30px 64px -30px rgb(var(--fm-accent-rgb) / 0.3) }
+html.dark .rn-ask__sh.is-heat { box-shadow: 0 36px 88px -26px rgb(var(--fm-accent-rgb) / 0.44) }
+/* the fine light edge along the face's top: light catching a raised rim */
+.rn-ask__edge { position: absolute; z-index: 0; inset: var(--rn-face-in); border-radius: calc(var(--r) - var(--rn-face-in)); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -1px 0 rgb(var(--fm-fg-rgb) / 0.03); pointer-events: none }
+html.dark .rn-ask__edge { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 0 1px rgb(255 255 255 / 0.03) }
+
+/* at rest (and scanning, answered): the lead in the big type, what a tap does under it, the disc at the right. Typing,
+   it gives way to the field row (opacity only) */
+.rn-ask__head { position: absolute; z-index: 1; left: 0; right: 0; top: 0; height: 160px; display: flex; align-items: center; gap: 24px; padding: 0 28px 0 40px; box-sizing: border-box; transition: opacity calc(420ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ask.is-typing .rn-ask__head { opacity: 0; pointer-events: none; transition-duration: calc(240ms * var(--fm-tempo)) }
+.rn-ask__in { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px }
+.rn-ask__k { display: flex; align-items: baseline; gap: 12px; font-size: 16px; font-weight: 600; line-height: 20px; color: var(--rn-dim); white-space: nowrap }
+.rn-ask__live { font-variant-numeric: tabular-nums; color: var(--fm-fg) }
+.rn-ask__line { position: relative; height: 40px }
+.rn-ask__q, .rn-ask__ri { font-size: 34px; font-weight: 700; line-height: 40px; letter-spacing: -0.03em }
+.rn-ask__q { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
+/* a slim crimson caret standing at the start of the line: the box is a field. It stands still at rest and keeps a
+   slow beat in the field while it is live and empty (the field's own caret takes over at the first letter) */
+.rn-ask__caret { position: absolute; z-index: 1; left: 0; top: 5px; width: 3px; height: 30px; border-radius: 6px; background: var(--fm-accent); pointer-events: none }
+@keyframes rn-caret { from { opacity: 1 } to { opacity: 0.18 } }
+/* the lead rolls: in from below as the last one leaves upward */
+.rn-ask__roll { position: absolute; inset: 0 0 0 14px; overflow: hidden; pointer-events: none }
+.rn-ask__ri { position: absolute; left: 0; right: 0; top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fm-fg) }
+.rn-ask__ri.is-in { animation: rn-roll-in calc(520ms * var(--fm-tempo)) var(--rn-even) both }
+.rn-ask__ri.is-out { animation: rn-roll-out calc(520ms * var(--fm-tempo)) var(--rn-even) both }
+@keyframes rn-roll-in { from { opacity: 0; transform: translate3d(0, 28px, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+@keyframes rn-roll-out { from { opacity: 1; transform: translate3d(0, 0, 0) } to { opacity: 0; transform: translate3d(0, -28px, 0) } }
+/* what a tap on the lead does (ink) and the facts behind it (dim): the line that tells opening free from spending */
+.rn-ask__note { display: flex; min-width: 0; height: 36px; padding-left: 14px; font-size: 14px; line-height: 18px }
+.rn-ask__note span { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-weight: 500; color: var(--rn-dim); font-variant-numeric: tabular-nums; text-wrap: pretty }
+.rn-ask__note.is-in { animation: rn-note-in calc(520ms * var(--fm-tempo)) var(--rn-even) both }
+@keyframes rn-note-in { from { opacity: 0; transform: translate3d(0, 8px, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+.rn-ask__side { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0 }
+/* the send disc: the box's one solid object, a filled ink disc with its own small shadow */
+.rn-ask__disc { position: relative; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--fm-fg); color: var(--fm-page); box-shadow: 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.22), 0 10px 20px -10px rgb(var(--fm-shadow-rgb) / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.16); transition: transform calc(420ms * var(--fm-tempo)) var(--rn-even) }
+html.dark .rn-ask__disc { box-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 22px -10px rgb(0 0 0 / 0.9), inset 0 -1px 0 rgb(0 0 0 / 0.12) }
+.rn-ask__disc svg { width: 26px; height: 26px }
+.rn-ask__disc.is-idle { opacity: 0.22; box-shadow: none; cursor: default; pointer-events: none }
+.rn-ask__ri.is-invite { color: var(--rn-dim) }
+.rn-ask__disc.is-stop i { width: 16px; height: 16px; border-radius: 6px; background: currentColor }
+@media (hover: hover) { .rn-ask__disc:hover { transform: translate3d(0, -1px, 0) } }
+.rn-ask__disc:active { transform: scale(0.94); transition-duration: calc(160ms * var(--fm-tempo)) }
+.rn-ask__disc:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 3px }
+/* what the lead costs: a small token under the disc ("Free" or the bites) */
+.rn-ask__cost { display: inline-flex; align-items: baseline; gap: 4px; height: 22px; padding: 3px 8px 0; box-sizing: border-box; border-radius: 10px; background: var(--rn-quiet); box-shadow: inset 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.06); font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rn-dim); white-space: nowrap; transition: opacity calc(420ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ask__cost b { font-weight: 700; color: var(--fm-fg); font-variant-numeric: tabular-nums }
+.rn-ask__cost.is-off { opacity: 0 }
+/* the scan's progress: the posts it has caught, each a small slot the wall's picture flies into (its picture shows
+   when the flight lands: a visibility, nothing fades), beside the counter above */
+.rn-ask__got { position: absolute; z-index: 2; left: 40px; right: 40px; bottom: 14px; height: 26px; display: flex; align-items: center; gap: 4px; overflow: hidden; pointer-events: none }
+.rn-ask__slot { flex: none; position: relative; height: 26px; aspect-ratio: 4 / 5; box-sizing: border-box; border-radius: 5px; overflow: hidden; background: rgb(var(--fm-fg-rgb) / 0.08); box-shadow: inset 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.1) }
+.rn-ask__slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; visibility: hidden }
+.rn-ask__slot[data-in] img { visibility: visible }
+/* (a slot is not drawn at all until its picture lands in it: no outline waiting ahead of the flight) */
+.rn-ask__slot:not([data-in]) { visibility: hidden }
+.rn-ask__slot[data-in] { box-shadow: inset 0 0 0 2px var(--fm-accent) }
+/* typing: the compact field row at the slab's top, a hairline under it */
+.rn-ask__field { position: absolute; z-index: 2; left: 0; right: 0; top: 0; height: var(--rn-field); opacity: 0; pointer-events: none; transition: opacity calc(240ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ask.is-typing .rn-ask__field { opacity: 1; pointer-events: auto; transition-duration: calc(420ms * var(--fm-tempo)); transition-delay: calc(80ms * var(--fm-tempo)) }
+.rn-ask__field::after { content: ''; position: absolute; left: 20px; right: 20px; bottom: 0; height: 1px; background: var(--rn-hair) }
+.rn-ask__field .rn-ask__caret { left: 32px; top: calc(50% - 14px); height: 28px }
+.rn-ask.is-typing .rn-ask__field .rn-ask__caret { animation: rn-caret calc(1100ms * var(--fm-tempo)) var(--rn-even) infinite alternate }
+.rn-ask__input, .rn-ask__ph { position: absolute; left: 32px; right: 68px; top: calc(50% - 17px); height: 34px; box-sizing: border-box; padding: 0 0 0 14px; font-size: 28px; font-weight: 700; line-height: 34px; letter-spacing: -0.025em }
+.rn-ask__input { width: auto; margin: 0; border: 0; outline: none; background: transparent; color: var(--fm-fg); font-family: inherit; caret-color: var(--fm-accent) }
+.rn-ask__input.is-empty { caret-color: transparent }
+.rn-ask__input:focus-visible { outline: none }
+.rn-ask__ph { font-weight: 600; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none }
+.rn-ask__wipe { position: absolute; right: 20px; top: calc(50% - 18px); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--rn-quiet); color: var(--rn-soft) }
+.rn-ask__wipe svg { width: 16px; height: 16px }
+
+/* under the field: one quiet line before anything is typed; then the matches (each opens free) and, last, the search */
+.rn-askl { position: absolute; z-index: 2; left: 8px; right: 8px; top: var(--rn-field); bottom: var(--rn-face-in); padding-top: 4px; overflow: hidden; border-radius: 0 0 calc(var(--r) - 12px) calc(var(--r) - 12px); opacity: 0; pointer-events: none; transition: opacity calc(240ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ask.is-typing .rn-askl { opacity: 1; pointer-events: auto; transition-duration: calc(420ms * var(--fm-tempo)); transition-delay: calc(120ms * var(--fm-tempo)) }
+.rn-ask.is-typing .rn-askl > * { animation: rn-row-in calc(420ms * var(--fm-tempo)) var(--rn-arrive) both; animation-delay: calc(var(--i, 0) * 30ms * var(--fm-tempo)) }
+@keyframes rn-row-in { from { opacity: 0; transform: translate3d(0, 8px, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+.rn-askl__hint { display: flex; align-items: center; height: 44px; padding: 0 16px 0 38px; font-size: 16px; font-weight: 500; line-height: 20px; color: var(--rn-dim); cursor: default }
+.rn-askl__m { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; height: 56px; padding: 0 16px 0 12px; box-sizing: border-box; border-radius: 18px; text-align: left; cursor: pointer }
+.rn-askl__m::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--rn-quiet); opacity: 0; transition: opacity calc(200ms * var(--fm-tempo)) var(--rn-even); pointer-events: none }
+.rn-askl__m.is-active::before, .rn-askl__m:active::before { opacity: 1 }
+@media (hover: hover) { .rn-askl__m:hover::before { opacity: 1 } }
+.rn-askl__pic { position: relative; flex: none; width: 40px; height: 40px; border-radius: 10px; overflow: hidden; background: var(--rn-quiet) }
+.rn-askl__pic img { display: block; width: 100%; height: 100%; object-fit: cover }
+.rn-askl__t { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px }
+.rn-askl__t b { font-size: 16px; font-weight: 700; line-height: 20px; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-askl__t small { font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums }
+.rn-askl__free { position: relative; flex: none; font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-dim) }
+/* the search: the primary row, a filled ink slab of its own (or, turned away, a quiet one that spends nothing) */
+.rn-askl__go { position: relative; display: flex; align-items: center; gap: 12px; width: calc(100% - 8px); height: 56px; margin: 4px 4px 0; padding: 0 12px 0 20px; box-sizing: border-box; border-radius: 18px; background: var(--fm-fg); color: var(--fm-page); text-align: left; cursor: pointer; box-shadow: 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.2), 0 10px 20px -12px rgb(var(--fm-shadow-rgb) / 0.5) }
+.rn-askl__go .rn-askl__t small { color: inherit; opacity: 0.72 }
+.rn-askl__go:active { transform: translate3d(0, 1px, 0) }
+.rn-askl__go.is-active { outline: 2px solid var(--fm-accent); outline-offset: 2px }
+.rn-askl__cost { flex: none; display: inline-flex; align-items: baseline; gap: 4px; height: 24px; padding: 4px 10px 0; box-sizing: border-box; border-radius: 10px; background: color-mix(in srgb, var(--fm-page) 16%, transparent); font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap }
+.rn-askl__cost b { font-weight: 700; font-variant-numeric: tabular-nums }
+.rn-askl__go.is-no { height: 76px; background: var(--rn-quiet); color: var(--fm-fg); box-shadow: none; cursor: default }
+.rn-askl__go.is-no .rn-askl__t small { color: var(--rn-dim); opacity: 1; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2 }
+
+/* a phone: radius 28, the lead at 28px over up to two lines (the words hold the top left, what a tap does and the disc
+   the foot), the field row 68 tall at 22px */
+.rn-askwrap.is-phone .rn-ask { --r: 28px; --rn-field: 68px; height: 200px }
+.rn-askwrap.is-phone .rn-ask__head { height: 200px }
+/* (the reader's reason for a question is read whole on a phone: three lines) */
+.rn-askwrap.is-phone .rn-ask__note span { -webkit-line-clamp: 3 }
+.rn-askwrap.is-phone .rn-ask__note { height: 54px }
+.rn-askwrap.is-phone .rn-ask__head { gap: 12px; align-items: stretch; padding: 22px 18px 18px 22px }
+.rn-askwrap.is-phone .rn-ask__in { gap: 8px; justify-content: flex-start }
+.rn-askwrap.is-phone .rn-ask__side { justify-content: flex-end; gap: 8px }
+.rn-askwrap.is-phone .rn-ask__q, .rn-askwrap.is-phone .rn-ask__ri { font-size: 28px; line-height: 34px; letter-spacing: -0.03em }
+.rn-askwrap.is-phone .rn-ask__line { height: 68px }
+.rn-askwrap.is-phone .rn-ask__roll { left: 12px }
+.rn-askwrap.is-phone .rn-ask__note { padding-left: 12px }
+.rn-askwrap.is-phone .rn-ask__caret { top: 4px; height: 26px; width: 2.5px }
+.rn-askwrap.is-phone .rn-ask__ri { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-wrap: balance }
+.rn-askwrap.is-phone .rn-ask__q { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2 }
+.rn-askwrap.is-phone .rn-ask__k { font-size: 14px; line-height: 18px }
+.rn-askwrap.is-phone .rn-ask__disc { width: 52px; height: 52px }
+.rn-askwrap.is-phone .rn-ask__disc svg { width: 22px; height: 22px }
+.rn-askwrap.is-phone .rn-ask__got { left: 22px; right: 22px; bottom: 10px }
+.rn-askwrap.is-phone .rn-ask__field::after { left: 16px; right: 16px }
+.rn-askwrap.is-phone .rn-ask__field .rn-ask__caret { left: 22px; top: calc(50% - 12px); height: 24px }
+.rn-askwrap.is-phone .rn-ask__input, .rn-askwrap.is-phone .rn-ask__ph { left: 22px; right: 60px; top: calc(50% - 14px); height: 28px; padding-left: 12px; font-size: 22px; line-height: 28px; letter-spacing: -0.02em }
+.rn-askwrap.is-phone .rn-ask__wipe { right: 14px }
+.rn-askwrap.is-phone .rn-askl__hint { padding-left: 26px }
+
+/* the streak: a line of the crimson travelling the box's outline (Streak.tsx draws and paces it). The box's face
+   (::after) covers everything inside the edge, so only the edge shows it */
+.rn-sweep { --edge: 4px; --rn-streak-tip: rgb(251 161 162); position: absolute; z-index: 0; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none }
+html.dark .rn-sweep { --rn-streak-tip: rgb(255 196 197) }
+.rn-sweep__svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; will-change: transform }
+.rn-sweep::after { content: ''; position: absolute; inset: var(--edge); border-radius: calc(var(--r) - var(--edge)); background: var(--fm-raised) }
+
+@media (prefers-reduced-motion: reduce) {
+  .rn-hush, .rn-ask, .rn-ask__sh, .rn-ask__head, .rn-ask__field, .rn-askl, .rn-ready__c, .rn-ready__c::before { transition-duration: 0s !important }
+  .rn-ask.is-typing .rn-ask__caret, .rn-ask__note.is-in, .rn-ask.is-typing .rn-askl > * { animation: none }
+}
+
+/* a search turned away: one plain block under the box */
+.rn-notice { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border-radius: 22px; background: var(--rn-quiet); animation: rn-rise calc(320ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-notice__k { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-dim) }
+.rn-notice__t { font-size: 18px; font-weight: 700; line-height: 24px }
+.rn-notice__x { font-size: 16px; line-height: 24px; color: var(--rn-soft); max-width: 40em }
+
+/* ═════ the rail: one row of cards under three tabs, docking under the top of the screen while a file is open ═════ */
+.rn-dockmark { display: block; height: 0; margin-bottom: -24px }
+.rn.is-phone .rn-dockmark { margin-bottom: -20px }
+.rn-rail { position: relative; z-index: 30; min-width: 0; margin: 0 -32px 0 -16px; padding: 8px 32px 4px 16px; background: color-mix(in srgb, var(--fm-page) 94%, transparent); box-shadow: 0 1px 0 var(--rn-hair) }
+/* (it holds under the top of the screen only while a file is open, its cards in their short form; at rest it scrolls
+   away with the page) */
+.rn.is-open .rn-rail { position: sticky; top: var(--fm-desk-top, 0px) }
+/* (a laptop: the row of files scrolls away with the page even while a file is open; only a phone docks it) */
+.rn:not(.is-phone).is-open .rn-rail { position: relative; top: auto }
+.rn.is-phone .rn-rail { margin: 0 -16px; padding: 8px 16px 2px }
+.rn.is-phone.is-open .rn-rail { top: env(safe-area-inset-top) }
+.rn.is-off .rn-rail { position: absolute; top: var(--rn-sh-top); left: var(--rn-sh-left); width: var(--rn-sh-w); margin: 0; pointer-events: none; animation: rn-step-aside calc(260ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 1, 1) both }
+@keyframes rn-step-aside { from { opacity: 1; transform: translate3d(0, 0, 0) } to { opacity: 0; transform: translate3d(0, -12px, 0); visibility: hidden } }
+/* the three tabs: type on the page, nothing else. The names large and bold, the chosen one full ink and the others at a
+   third of it, each count a small raised figure; one short ink rule under the chosen name glides to the next. What the
+   chosen tab holds sits quiet at the row's right (under the names on a phone) */
+.rn-tabhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; min-width: 0 }
+.rn-tabs { position: relative; flex: none; display: flex; gap: 28px; padding-bottom: 6px }
+.rn-tab { position: relative; flex: none; display: inline-flex; align-items: flex-start; gap: 4px; padding: 6px 0; font-size: 28px; font-weight: 700; line-height: 34px; letter-spacing: -0.03em; white-space: nowrap; color: rgb(var(--fm-fg-rgb) / 0.34); transition: color calc(420ms * var(--fm-tempo)) var(--rn-even) }
+.rn-tab[aria-selected='true'] { color: var(--fm-fg) }
+@media (hover: hover) { .rn-tab:not([aria-selected='true']):hover { color: rgb(var(--fm-fg-rgb) / 0.6) } }
+.rn-tab:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 4px; border-radius: 6px }
+.rn-tab sup { position: relative; top: 2px; font-size: 14px; font-weight: 700; line-height: 18px; letter-spacing: 0; font-variant-numeric: tabular-nums; vertical-align: baseline }
+.rn-tabs__rule { position: absolute; left: 0; bottom: 6px; width: 100px; height: 3px; border-radius: 2px; background: var(--fm-fg); transform-origin: 0 50%; transform: scaleX(0); pointer-events: none; transition: transform calc(420ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1) }
+.rn-tabs__say { min-width: 0; padding-bottom: 14px; font-size: 14px; font-weight: 500; line-height: 18px; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: rn-roll calc(320ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn.is-phone .rn-tabhead { flex-direction: column; align-items: stretch; gap: 2px }
+.rn.is-phone .rn-tabs { gap: 20px; padding-bottom: 4px }
+/* (a phone: the hit area is a thumb's though the type is all that shows) */
+.rn.is-phone .rn-tab { padding: 10px 0; font-size: 22px; line-height: 28px; letter-spacing: -0.025em }
+.rn.is-phone .rn-tab::before { content: ''; position: absolute; inset: -4px -10px }
+.rn.is-phone .rn-tab sup { top: 1px; font-size: 12px; line-height: 16px }
+.rn.is-phone .rn-tabs__rule { bottom: 4px }
+.rn.is-phone .rn-tabs__say { padding: 0; font-size: 14px; line-height: 18px }
+@media (prefers-reduced-motion: reduce) { .rn-tabs__rule, .rn-tab { transition: none } .rn-tabs__say { animation: none } }
+.rn-rail__box { position: relative; margin: 0 -32px 0 -16px }
+.rn.is-phone .rn-rail__box { margin: 0 -16px }
+.rn-rail__row { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding: 12px 32px 14px 16px }
+.rn.is-phone .rn-rail__row { gap: 10px; padding: 10px 16px 12px }
+.rn-rail__row::-webkit-scrollbar { display: none }
+.rn-rail__i { flex: 0 0 auto; display: flex; animation: rn-rise calc(360ms * var(--fm-tempo)) var(--rn-arrive) both; animation-delay: calc(var(--i, 0) * 28ms) }
+.rn-page { position: absolute; top: 50%; z-index: 2; display: grid; place-items: center; width: 40px; height: 40px; margin-top: -20px; border-radius: 50%; background: var(--fm-raised); box-shadow: var(--rn-lift); color: var(--fm-fg); transition: opacity 200ms ease }
+.rn-page svg { width: 20px; height: 20px }
+.rn-page.is-l { left: 4px }
+.rn-page.is-r { right: 12px }
+.rn-rail__box.is-start .rn-page.is-l, .rn-rail__box.is-end .rn-page.is-r { opacity: 0; pointer-events: none }
+@media (hover: none) { .rn-page { display: none } }
+
+/* ── a card: the big figure beside the state arrow, the title under it, then this drop's line ── */
+/* (its face is a layer of its own, ::before, so the fold can glide it between heights while the layout has already changed) */
+.rn-card { --face: var(--fm-raised); --face-lift: var(--rn-lift); position: relative; isolation: isolate; box-sizing: border-box; width: 296px; height: var(--rn-card-h); display: flex; flex-direction: column; gap: 6px; padding: 14px 18px 16px; border-radius: 22px; text-align: left; transition: transform 160ms var(--rn-arrive) }
+.rn-card::before { content: ''; position: absolute; z-index: -1; inset: 0; border-radius: 22px; background: var(--face); box-shadow: var(--face-lift); pointer-events: none }
+.rn-card::after { content: ''; position: absolute; inset: -3px; border-radius: 25px; box-shadow: 0 0 0 2px var(--fm-fg); opacity: 0; transition: opacity 180ms ease; pointer-events: none }
+.rn-card.is-sel::after { opacity: 1 }
+.rn-card:active { transform: scale(0.98) }
+.rn-card__fig { display: flex; align-items: center; gap: 10px; min-height: 44px }
+.rn-card__fig b { font-size: 34px; font-weight: 800; line-height: 40px; letter-spacing: -0.04em; font-variant-numeric: tabular-nums }
+.rn-card__fig b.is-hot { color: var(--fm-accent-text) }
+.rn-card__new { margin-left: auto; align-self: flex-start; margin-top: 4px; padding: 3px 9px; border-radius: 10px; background: var(--fm-accent); color: #fff; font-size: 12px; font-weight: 700; line-height: 16px }
+.rn-card__t { font-size: 18px; font-weight: 700; line-height: 22px; letter-spacing: -0.01em; text-wrap: balance; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden }
+.rn-card__l { font-size: 14px; font-weight: 500; line-height: 19px; color: var(--rn-dim); text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden }
+.rn-card__foot { margin-top: auto; padding-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; overflow: hidden }
+.rn-card__fade { font-size: 12px; font-weight: 700; line-height: 16px; color: var(--rn-dim) }
+.rn-card__q { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 10px 3px 8px; border-radius: 10px; background: var(--rn-quiet); font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-soft) }
+.rn-card__q svg { width: 12px; height: 12px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round }
+.rn-card.is-fading { --face: color-mix(in srgb, var(--fm-raised) 55%, var(--fm-page)); --face-lift: 0 0 0 1px var(--rn-hair) }
+.rn-card.is-fading > :not(.rn-card__foot) { opacity: 0.62; filter: saturate(0.4) }
+.rn-card.is-every { width: 184px; gap: 2px }
+.rn-card__k { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-dim); margin-top: 4px }
+.rn.is-phone .rn-card { width: 252px; padding: 12px 14px 14px }
+.rn.is-phone .rn-card.is-every { width: 156px }
+.rn.is-phone .rn-card__fig b { font-size: 28px; line-height: 34px }
+/* while a file is open the docked rail is the switcher: each card its figure and title (the line is in the file) */
+.rn.is-open .rn-card__l, .rn.is-open .rn-card__foot { display: none }
+.rn.is-open .rn-card { padding-bottom: 14px }
+/* one card height per state for all three tabs, so a change of tab moves nothing under the row: at rest the tallest
+   file card (a two-line name, a two-line line, the foot), open the tallest short card (a row of Everything, its kind
+   over its name). Shorter cards hold their words at the top and any foot at the bottom */
+.rn-rail { --rn-card-h: 200px }
+.rn.is-open .rn-rail { --rn-card-h: 142px }
+/* a laptop with a file open: the cards fold to the figure and the name, in the same layout and type as at rest (only
+   their height moves, so the fold glides with the wall instead of jumping) */
+.rn:not(.is-phone).is-open .rn-rail { --rn-card-h: 124px }
+.rn.is-phone .rn-rail { --rn-card-h: 196px }
+.rn.is-phone.is-open .rn-rail { --rn-card-h: 138px }
+
+/* the mark */
+.rn-mark { display: inline-grid; flex-shrink: 0; width: 28px; height: 28px }
+.rn-mark.is-s { width: 18px; height: 18px }
+.rn-mark.is-l { width: 40px; height: 40px }
+.rn-mark svg { width: 100%; height: 100%; overflow: visible }
+
+/* ═════ the stage: what is open, and the Feed ═════ */
+.rn-stage { position: relative; min-width: 0 }
+.rn-pane { min-width: 0 }
+.rn:not(.is-phone).is-open .rn-stage, .rn:not(.is-phone).is-answer .rn-stage { display: grid; grid-template-columns: minmax(0, 1fr) var(--rn-tablew); column-gap: 56px; align-items: start }
+/* a laptop: the shorter of the two columns stays on screen while the other scrolls (ReadNext sets --rn-pin for each).
+   Pinning needs the page itself to be what scrolls: in the app's shell the body is a scroll box of its own, which
+   stops anything inside it from sticking, so on this page at this width it is not (the shell sets that inline, hence
+   the weight) */
+@media (min-width: 1024px) { html.rn-route body { overflow: visible !important } }
+.rn:not(.is-phone).is-open .rn-stage > .rn-pane, .rn:not(.is-phone).is-open .rn-stage > .rn-feed, .rn:not(.is-phone).is-answer .rn-stage > .rn-pane, .rn:not(.is-phone).is-answer .rn-stage > .rn-feed { position: sticky; top: var(--rn-pin, 0px) }
+.rn.is-phone .rn-pane.is-head { margin-bottom: 16px }
+.rn.is-phone .rn-pane.is-body { margin-top: 32px }
+.rn.is-phone .rn-open { gap: 12px; padding-top: 0 }
+.rn.is-phone .rn-pane.is-body .rn-open > * { animation-delay: calc(260ms * var(--fm-tempo)) }
+
+/* ── what is open: SHIFT (figures), SUMMARY (words), STORY (a dated note per drop) ── */
+.rn-open { display: flex; flex-direction: column; gap: 12px; max-width: 600px; padding-top: 4px }
+.rn-open > * { animation: rn-rise calc(520ms * var(--fm-tempo)) var(--rn-arrive) both; animation-delay: calc(80ms * var(--fm-tempo)) }
+.rn-open > :nth-child(2) { animation-delay: calc(140ms * var(--fm-tempo)) }
+.rn-open > :nth-child(3) { animation-delay: calc(200ms * var(--fm-tempo)) }
+.rn-open > :nth-child(4) { animation-delay: calc(270ms * var(--fm-tempo)) }
+.rn-open > :nth-child(5) { animation-delay: calc(340ms * var(--fm-tempo)) }
+.rn-open > :nth-child(n + 6) { animation-delay: calc(410ms * var(--fm-tempo)) }
+.rn-open__k { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; line-height: 18px; color: var(--rn-soft) }
+.rn-open__t { font-size: 34px; font-weight: 700; line-height: 40px; letter-spacing: -0.035em; text-wrap: balance }
+.rn-name { display: flex; flex-direction: column; gap: 6px }
+.rn-name__in { display: block; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; outline: none; resize: none; overflow: hidden; background: transparent; color: var(--fm-fg); font-family: inherit; box-shadow: 0 2px 0 var(--fm-fg) }
+.rn-name__row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--rn-dim) }
+.rn-name__row button { font-weight: 600; color: var(--rn-soft); text-decoration: underline; text-decoration-color: rgb(var(--fm-fg-rgb) / 0.28); text-underline-offset: 3px }
+.rn-name__row button:hover { color: var(--fm-fg) }
+.rn-open__find { font-size: 18px; font-weight: 600; line-height: 24px; letter-spacing: -0.01em; text-wrap: balance }
+.rn-open__q { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--rn-dim) }
+.rn-open__from { font-size: 14px; line-height: 20px; color: var(--rn-dim) }
+.rn-sec__k { font-size: 14px; font-weight: 600; line-height: 18px; color: var(--rn-dim); margin-bottom: 10px }
+/* SHIFT, set like a spec sheet: one large figure with the state beside it, a thin strip per number, four facts on a rule */
+.rn-shift { margin-top: 12px; padding-top: 20px; border-top: 1px solid var(--rn-hair) }
+.rn-shift__top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; height: 56px }
+.rn-shift__n { display: flex; align-items: baseline; font-variant-numeric: tabular-nums; animation: rn-roll calc(360ms * var(--fm-tempo)) var(--rn-arrive) both }
+@keyframes rn-roll { from { opacity: 0; transform: translate3d(0, 18px, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+.rn-shift__n b { font-size: 56px; font-weight: 700; line-height: 56px; letter-spacing: -0.04em }
+.rn-shift__n b.is-hot { color: var(--fm-accent-text) }
+.rn-shift__n span { margin-left: 2px; font-size: 28px; font-weight: 600; line-height: 34px; letter-spacing: -0.04em; color: rgb(var(--fm-fg-rgb) / 0.42) }
+.rn-shift__n em { align-self: flex-end; margin: 0 0 7px 12px; max-width: 11em; font-style: normal; font-size: 14px; font-weight: 600; line-height: 18px; color: var(--rn-dim) }
+.rn-shift__state { display: inline-flex; align-items: center; gap: 8px; padding-bottom: 9px; font-size: 14px; font-weight: 700; line-height: 18px; white-space: nowrap }
+/* the strips: every post of the file as one fine mark on a hairline (his usual), one strip per number */
+/* who the figures are about: a typical post of the file, or the one post picked (its date, where it ranks here) */
+.rn-shift__who { display: flex; align-items: center; gap: 12px; height: 40px; margin-top: 16px; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--rn-dim) }
+.rn-shift__who p { flex: 1; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; animation: rn-rise calc(280ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-shift__who p b { font-weight: 700; color: var(--fm-fg) }
+.rn-shift.is-post .rn-shift__who p { color: var(--rn-soft) }
+.rn-shift__who button { flex: none; height: 32px; padding: 0 14px; border-radius: 16px; background: var(--rn-quiet); font-size: 14px; font-weight: 600; line-height: 18px; color: var(--fm-fg); white-space: nowrap; transition: transform 160ms var(--rn-arrive) }
+.rn-shift__who button:active { transform: scale(0.96) }
+.rn-shift__thumb { display: none; flex: none; width: 32px; height: 40px; border-radius: 6px; object-fit: cover }
+.rn.is-phone .rn-shift__thumb { display: block }
+/* the numbers we track: three big figures, one chosen (it colours the dots) */
+.rn-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px -14px 0 }
+.rn-num { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 12px 14px 10px; border-radius: 18px; text-align: left; transition: background-color calc(260ms * var(--fm-tempo)) ease }
+.rn-num { background: var(--rn-quiet) }
+.rn-num[aria-pressed='true'] { background: var(--fm-fg); color: var(--fm-page) }
+.rn-num[aria-pressed='true'] .rn-num__v, .rn-num[aria-pressed='true'] .rn-num__v.is-hot { color: var(--fm-page) }
+.rn-num[aria-pressed='true'] .rn-num__s { color: color-mix(in srgb, var(--fm-page) 70%, transparent) }
+.rn-num__k { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; line-height: 18px; color: var(--rn-dim); white-space: nowrap; transition: color 240ms ease }
+.rn-num[aria-pressed='true'] .rn-num__k { color: var(--fm-page) }
+.rn-num__k::before { content: ''; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.24); transition: background-color 240ms ease, box-shadow 240ms ease }
+.rn-num[aria-pressed='true'] .rn-num__k::before { background: var(--fm-accent); box-shadow: inset 0 0 0 2px var(--fm-accent) }
+/* a tile under the pointer is being previewed: its dot lights as a chosen one's does */
+.rn-num.is-peek .rn-num__k::before { background: var(--fm-accent); box-shadow: inset 0 0 0 2px var(--fm-accent) }
+.rn-num__v { transition: color 240ms ease; margin-top: 6px; font-size: 34px; font-weight: 700; line-height: 40px; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; animation: rn-rise calc(300ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-num__v.is-hot { color: var(--fm-accent-text) }
+.rn-num:nth-child(2) .rn-num__v { animation-delay: 40ms }
+.rn-num:nth-child(3) .rn-num__v { animation-delay: 80ms }
+.rn-num__s { font-size: 14px; font-weight: 500; line-height: 18px; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100% }
+/* every post of the file, one dot each, oldest first */
+.rn-dots { margin-top: 16px }
+.rn-dots__k { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-dots__k i { display: inline-block; width: 10px; height: 10px; margin: 0 2px 0 4px; border-radius: 50%; background: var(--fm-accent) }
+.rn-dots__row { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(18px, min(28px, calc(100% / var(--n, 20)))), 1fr)); margin: 6px -2px 0 }
+.rn-dot { position: relative; min-width: 0; height: 32px; clip-path: inset(0 -10px); display: grid; place-items: center; padding: 0; animation: rn-dot calc(360ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-dot i { width: 14px; height: 14px; border-radius: 50%; background: rgb(var(--fm-fg-rgb) / 0.3); transition: transform calc(300ms * var(--fm-tempo)) var(--rn-arrive), background-color calc(240ms * var(--fm-tempo)) ease, box-shadow 200ms ease }
+.rn-dot.is-up i { background: var(--fm-accent) }
+.rn-dot.is-big i { transform: scale(1.3) }
+.rn-dot.is-none i { background: transparent; box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.24) }
+.rn-dot.is-new::after { content: ''; position: absolute; left: 50%; bottom: 3px; width: 10px; height: 2px; margin-left: -5px; border-radius: 1px; background: var(--fm-fg) }
+.rn-dot:hover i { transform: scale(1.25) }
+.rn-dot.is-big:hover i { transform: scale(1.5) }
+.rn-dot.is-sel i { transform: scale(1.25); box-shadow: 0 0 0 2px var(--fm-page), 0 0 0 4px var(--fm-fg) }
+.rn-dot.is-big.is-sel i { transform: scale(1.5); box-shadow: 0 0 0 1.5px var(--fm-page), 0 0 0 3px var(--fm-fg) }
+.rn-dot.is-sel.is-none i { box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.24), 0 0 0 2px var(--fm-page), 0 0 0 4px var(--fm-fg) }
+@keyframes rn-dot { from { opacity: 0; transform: translate3d(0, 10px, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+.rn-dots__ax { display: flex; justify-content: space-between; gap: 12px; margin-top: 2px; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rn-dim); font-variant-numeric: tabular-nums }
+@media (prefers-reduced-motion: reduce) { .rn-dot, .rn-num__v, .rn-shift__who p { animation: none } }
+/* the facts on one rule. The ones that are a post (the biggest, the last) can be tapped to show it */
+.rn-shift__facts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 20px 0 0; padding: 16px 0; border-top: 1px solid var(--rn-hair); border-bottom: 1px solid var(--rn-hair) }
+.rn-fact { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 0 12px 0 16px; border-left: 1px solid var(--rn-hair); text-align: left }
+.rn-fact:first-child { padding-left: 0; border-left: 0 }
+.rn-fact__k { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 18px; color: var(--rn-dim); white-space: nowrap }
+.rn-fact.is-tap .rn-fact__k::after { content: ''; width: 6px; height: 6px; border-top: 2px solid currentColor; border-right: 2px solid currentColor; border-radius: 1px; transform: rotate(45deg) }
+.rn-fact__v { animation: rn-rise calc(280ms * var(--fm-tempo)) var(--rn-arrive) both; font-size: 22px; font-weight: 700; line-height: 28px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap }
+.rn-fact__v.is-hot { color: var(--fm-accent-text) }
+.rn-fact small { font-size: 14px; font-weight: 500; line-height: 18px; color: var(--rn-dim); text-wrap: balance }
+.rn-fact.is-sel .rn-fact__k { color: var(--fm-fg) }
+.rn-fact.is-tap:active .rn-fact__v { transform: scale(0.96) }
+.rn.is-phone .rn-nums { gap: 4px; margin: 8px -10px 0 }
+.rn.is-phone .rn-num { padding: 10px 10px 8px; border-radius: 14px }
+.rn.is-phone .rn-num__v { font-size: 28px; line-height: 34px }
+.rn.is-phone .rn-num__s { font-size: 12px; line-height: 16px }
+.rn.is-phone .rn-shift__facts { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 16px }
+.rn.is-phone .rn-fact { padding: 0 8px 0 16px }
+.rn.is-phone .rn-fact:nth-child(odd) { padding-left: 0; border-left: 0 }
+.rn-sum { margin-top: 12px }
+.rn-sum__t { font-size: 22px; font-weight: 700; line-height: 28px; letter-spacing: -0.02em; margin-bottom: 8px }
+.rn-open__sum { font-size: 18px; font-weight: 500; line-height: 29px; color: var(--fm-fg); max-width: 34em; text-wrap: pretty }
+.rn-story { margin-top: 16px }
+.rn-story ol { position: relative; display: flex; flex-direction: column; gap: 14px; padding-left: 20px }
+.rn-story ol::before { content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--rn-hair) }
+.rn-story li { position: relative; display: flex; flex-direction: column; gap: 2px }
+.rn-story li > i { position: absolute; left: -20px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--fm-page); box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.3) }
+.rn-story li.is-now > i { background: var(--fm-fg); box-shadow: none }
+.rn-story__d { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; line-height: 20px; color: var(--rn-dim); font-variant-numeric: tabular-nums }
+.rn-story li.is-now .rn-story__d { color: var(--fm-fg) }
+.rn-story__d em { padding: 1px 8px; border-radius: 6px; background: var(--rn-quiet); font-style: normal; font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-soft) }
+.rn-story__l { font-size: 14px; font-weight: 500; line-height: 21px; color: var(--rn-soft) }
+.rn-story li.is-now .rn-story__l { color: var(--fm-fg) }
+.rn-note { margin-top: 8px; padding: 14px 16px; border-radius: 14px; background: var(--rn-quiet) }
+.rn-note__k { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-dim); margin-bottom: 4px }
+.rn-note p:last-child { font-size: 14px; line-height: 20px; color: var(--rn-soft) }
+.rn-follow { align-self: flex-start; display: inline-flex; align-items: baseline; gap: 10px; margin-top: 12px; padding: 12px 20px; border-radius: 22px; background: var(--fm-fg); color: var(--fm-page); font-size: 16px; font-weight: 700; line-height: 20px; transition: transform 160ms var(--rn-arrive) }
+.rn-follow span { font-size: 12px; font-weight: 600; opacity: 0.66 }
+.rn-follow:active { transform: scale(0.96) }
+.rn-follow.is-on { background: transparent; color: var(--fm-fg); box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.2) }
+.rn.is-phone .rn-open__t { font-size: 28px; line-height: 34px }
+.rn.is-phone .rn-shift__n b { font-size: 48px; line-height: 48px }
+.rn.is-phone .rn-shift__n em { margin-left: 10px }
+.rn.is-phone .rn-open__sum { font-size: 17px; line-height: 27px }
+
+/* ── the Feed ── */
+.rn-feed { position: relative; min-width: 0 }
+.rn-feed__line { display: flex; align-items: center; gap: 16px; height: 44px; margin-bottom: 12px }
+.rn-feed__what { font-size: 16px; line-height: 20px; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-feed__what b { font-weight: 700; color: var(--fm-fg) }
+.rn-feed__all { margin-left: auto; margin-right: 8px; padding: 8px 14px; border-radius: 18px; font-size: 14px; font-weight: 700; line-height: 18px; box-shadow: inset 0 0 0 2px rgb(var(--fm-fg-rgb) / 0.16) }
+.rn-feed__all:active { transform: scale(0.96) }
+.rn-feed__box { position: relative }
+/* while a scan reads the Feed, the box is a window onto it; the wall travels inside */
+.rn-feed__box.is-window { overflow: clip; border-radius: 14px }
+/* the window gives its height back on the glide's clock: it keeps its top edge (posts come out through it) and lets go of the rest */
+.rn-feed__box.is-release { clip-path: inset(0 -100vmax -100vmax -100vmax) }
+.rn-feed__in { position: relative; contain: layout style }
+
+/* a tile: same size everywhere; placed by its transform alone */
+.rn-t { position: absolute; left: 0; top: 0; box-sizing: border-box; width: var(--rn-tile); height: var(--rn-tile-h); border-radius: 10px; overflow: hidden; visibility: hidden; background: rgb(var(--fm-fg-rgb) / 0.08); will-change: transform; contain: layout style paint; cursor: pointer }
+.rn.is-phone .rn-t { border-radius: 6px }
+.rn-t__f { position: absolute; inset: 0; display: block }
+.rn-t__c { position: absolute; inset: 0; z-index: 2; display: block; pointer-events: none }
+.rn-t__c::after { transform-origin: 0 100% }
+.rn-t__c::before { transform-origin: 0 0 }
+.rn-t img { position: absolute; display: block; max-width: none; pointer-events: none; user-select: none; -webkit-user-drag: none }
+/* its multiple (bottom left) and, when it is new this drop, a New chip (top left): its own pseudo-elements */
+.rn-t__c::after { content: attr(data-bd); position: absolute; z-index: 2; left: 6px; bottom: 6px; padding: 2px 6px; border-radius: 6px; background: rgb(0 0 0 / 0.5); color: #fff; font-size: 12px; font-weight: 700; line-height: 16px; font-variant-numeric: tabular-nums; letter-spacing: 0 }
+.rn-t__c[data-bd='']::after { display: none }
+.rn-t[data-l] .rn-t__c::after { background: var(--fm-accent) }
+.rn-t.is-new .rn-t__c::before { content: 'New'; position: absolute; z-index: 2; left: 6px; top: 6px; padding: 2px 6px; border-radius: 6px; background: #fff; color: #09090b; font-size: 10px; font-weight: 700; line-height: 14px; letter-spacing: 0.06em; text-transform: uppercase }
+.rn.is-phone .rn-t__c::after { left: 4px; bottom: 4px; padding: 1px 4px; font-size: 10px; line-height: 14px }
+.rn.is-phone .rn-t.is-new .rn-t__c::before { left: 4px; top: 4px; padding: 1px 4px; font-size: 8px; line-height: 12px }
+/* every outline on a tile is this one ring, its child: it rides the tile and shows by opacity */
+.rn-t__ring { position: absolute; z-index: 3; inset: 0; border-radius: inherit; font-style: normal; box-shadow: inset 0 0 0 3px var(--fm-fg); opacity: 0; transition: opacity 180ms ease; pointer-events: none }
+.rn-t.is-sel .rn-t__ring { opacity: 1 }
+.rn-t.is-hit .rn-t__ring { opacity: 1; box-shadow: inset 0 0 0 3px var(--fm-accent) }
+.rn-t.is-hit { z-index: 3 }
+/* a catch plucked forward: the lift under it rides in with the scale (the engine sets the scale; the tile's own transform is the engine's) */
+.rn-t.is-hit { box-shadow: 0 0 0 rgb(var(--fm-shadow-rgb) / 0); transition: translate var(--rn-move) var(--rn-even), scale var(--rn-move) var(--rn-even), box-shadow calc(260ms * var(--fm-tempo)) cubic-bezier(0.16, 1, 0.3, 1) }
+.rn-t.is-plucked { z-index: 4; box-shadow: 0 18px 30px -14px rgb(var(--fm-shadow-rgb) / 0.32), 0 4px 10px -6px rgb(var(--fm-shadow-rgb) / 0.2) }
+/* the trail, as one sentence. The picked post comes forward first and hardest (a firm rise, a touch larger, a deep wide
+   shadow, a heavy ink ring held off the picture by a line of the page); the rest of the wall recedes while the trail
+   holds; then a wave runs back in time through the posts it beat: on each, its lift, its crimson ring, its number and a
+   wash of crimson over its picture start as one move (ink when they did better); the end point lands last in ink with
+   a tag. Lift is the separate translate and scale (a tile's place is its transform). Every part of a post's move shares
+   one duration and the even curve, both ways */
+.rn-feed__in { --rn-move: calc(320ms * var(--fm-tempo)); --rn-pick: calc(400ms * var(--fm-tempo)) }
+.rn-t { transition: translate var(--rn-move) var(--rn-even), scale var(--rn-move) var(--rn-even) }
+.rn-feed__in.is-trail .rn-t { cursor: default }
+.rn-feed__in.is-trail .rn-t.is-sel { cursor: pointer }
+.rn-t.is-sel { z-index: 6; translate: 0 -8px; scale: 1.06; transition: translate var(--rn-pick) var(--rn-even), scale var(--rn-pick) var(--rn-even) }
+.rn-t.is-beat, .rn-t.is-above, .rn-t.is-stop { z-index: 5; translate: 0 -3px; scale: 1.02 }
+.rn-t.is-sel .rn-t__ring, .rn-t.is-beat .rn-t__ring, .rn-t.is-above .rn-t__ring, .rn-t.is-stop .rn-t__ring { opacity: 1; transition: opacity var(--rn-move) var(--rn-even) }
+.rn-t.is-sel .rn-t__ring { box-shadow: inset 0 0 0 4px var(--fm-fg), inset 0 0 0 6px var(--fm-page); transition: opacity var(--rn-pick) var(--rn-even) }
+.rn-t.is-beat .rn-t__ring { box-shadow: inset 0 0 0 3px var(--fm-accent) }
+.rn-t.is-above .rn-t__ring, .rn-t.is-stop .rn-t__ring { box-shadow: inset 0 0 0 3px var(--fm-fg) }
+/* its number (top right) and, on the end point, what it is (top left): part of the same move */
+.rn-t.is-beat .rn-t__ring::after, .rn-t.is-above .rn-t__ring::after { content: attr(data-n); position: absolute; right: 6px; top: 6px; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: var(--fm-accent); color: #fff; font-size: 12px; font-weight: 700; line-height: 22px; text-align: center; font-variant-numeric: tabular-nums; animation: rn-mark var(--rn-move) var(--rn-even) both }
+.rn-t.is-above .rn-t__ring::after { background: var(--fm-fg); color: var(--fm-page) }
+.rn-t.is-end .rn-t__ring::before { content: attr(data-tag); position: absolute; left: 6px; top: 6px; height: 22px; padding: 0 8px; box-sizing: border-box; border-radius: 10px; background: var(--fm-fg); color: var(--fm-page); font-size: 12px; font-weight: 700; line-height: 22px; white-space: nowrap; animation: rn-mark var(--rn-move) var(--rn-even) both }
+@keyframes rn-mark { from { opacity: 0; translate: 0 6px } to { opacity: 1; translate: 0 0 } }
+/* the hit: crimson over the picture, on at once and settling away as the ring lands (Feed runs it, then removes it) */
+.rn-wash { position: absolute; z-index: 1; inset: 0; background: rgb(var(--fm-accent-rgb) / 0.42); opacity: 0; pointer-events: none }
+.rn-wash.is-ink { background: rgb(var(--fm-fg-rgb) / 0.3) }
+.rn.is-phone .rn-t.is-beat .rn-t__ring::after, .rn.is-phone .rn-t.is-above .rn-t__ring::after { right: 4px; top: 4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 6px; font-size: 10px; line-height: 18px }
+.rn.is-phone .rn-t.is-end .rn-t__ring::before { left: 4px; top: 4px; height: 18px; padding: 0 6px; border-radius: 6px; font-size: 10px; line-height: 18px }
+.rn.is-phone .rn-t.is-sel { translate: 0 -6px; scale: 1.06 }
+.rn.is-phone .rn-t.is-beat, .rn.is-phone .rn-t.is-above, .rn.is-phone .rn-t.is-stop { translate: 0 -2px; scale: 1.015 }
+.rn.is-phone .rn-t.is-sel .rn-t__ring { box-shadow: inset 0 0 0 3.5px var(--fm-fg), inset 0 0 0 5px var(--fm-page) }
+.rn.is-phone .rn-t.is-beat .rn-t__ring { box-shadow: inset 0 0 0 2.5px var(--fm-accent) }
+.rn.is-phone .rn-t.is-above .rn-t__ring, .rn.is-phone .rn-t.is-stop .rn-t__ring { box-shadow: inset 0 0 0 2.5px var(--fm-fg) }
+/* the shadow under a post brought forward: a plate in the wall under its tile, riding the same lift on the same move */
+.rn-lift { position: absolute; z-index: 4; border-radius: 10px; opacity: 0; pointer-events: none; transition: opacity var(--rn-move) var(--rn-even), translate var(--rn-move) var(--rn-even), scale var(--rn-move) var(--rn-even); box-shadow: 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.14), 0 14px 24px -12px rgb(var(--fm-shadow-rgb) / 0.5) }
+.rn-lift.is-sel { z-index: 5; box-shadow: 0 2px 6px rgb(var(--fm-shadow-rgb) / 0.2), 0 32px 56px -16px rgb(var(--fm-shadow-rgb) / 0.7); transition: opacity var(--rn-pick) var(--rn-even), translate var(--rn-pick) var(--rn-even), scale var(--rn-pick) var(--rn-even) }
+.rn-lift.is-on { opacity: 1; translate: 0 -3px; scale: 1.02 }
+.rn-lift.is-sel.is-on { translate: 0 -8px; scale: 1.06 }
+.rn.is-phone .rn-lift { border-radius: 6px }
+.rn.is-phone .rn-lift.is-on { translate: 0 -2px; scale: 1.015 }
+.rn.is-phone .rn-lift.is-sel.is-on { translate: 0 -6px; scale: 1.06 }
+html.dark .rn-lift { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 14px 24px -10px rgb(0 0 0 / 0.9) }
+html.dark .rn-lift.is-sel { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16), 0 32px 56px -14px rgb(0 0 0 / 0.95) }
+@media (prefers-reduced-motion: reduce) { .rn-t, .rn-t.is-sel, .rn-lift, .rn-lift.is-sel, .rn-lift.is-on { transition: none } .rn-t .rn-t__ring::after, .rn-t .rn-t__ring::before { animation: none } }
+/* a group's label over its tiles (Ranks) */
+.rn-gl { position: absolute; left: 0; top: 0; margin: 0; height: 36px; display: flex; align-items: center; font-size: 14px; font-weight: 700; line-height: 18px; color: var(--rn-soft); white-space: nowrap; overflow: hidden; will-change: transform }
+.rn-gl > span { display: block }
+/* Recent or Ranks */
+.rn-sw { display: inline-flex; padding: 3px; border-radius: 14px; background: var(--rn-quiet) }
+.rn-sw button { padding: 6px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; line-height: 18px; color: var(--rn-dim); transition: background-color 180ms ease, color 180ms ease }
+.rn-sw button[aria-pressed='true'] { background: var(--fm-raised); color: var(--fm-fg); box-shadow: 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.12) }
+.rn-feed__all + .rn-sw { margin-left: 0 }
+.rn-feed__line > .rn-sw { margin-left: auto }
+.rn.is-phone .rn-feed__what span { display: none }
+.rn.is-phone .rn-feed__line { gap: 8px }
+/* the scan's lens */
+.rn-lens { position: absolute; z-index: 10; left: 0; top: 0; visibility: hidden; border-radius: 14px; box-shadow: 0 0 0 3px var(--fm-fg), 0 18px 36px -12px rgb(var(--fm-shadow-rgb) / 0.5); pointer-events: none; will-change: transform }
+.rn-lens::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; box-shadow: 0 0 0 4px var(--fm-accent), 0 18px 40px -10px rgb(var(--fm-accent-rgb) / 0.55); opacity: 0 }
+.rn-lens.is-hit::after { opacity: 1 }
+/* (a catch: only the crimson ring, no dark frame round the post as it comes forward) */
+.rn-lens.is-hit { box-shadow: none }
+.rn.is-phone .rn-lens { border-radius: 10px }
+
+@media (prefers-reduced-motion: reduce) {
+  .rn-drop__t, .rn-open > *, .rn-notice, .rn-ask__ri.is-in, .rn-ask__ri.is-out { animation: none }
+}
+
+
+/* ═════ the picked post, off the wall: the glance (the dock's own pill), then the post itself ═════ */
+/* (a laptop keeps room under the wall for the pill; a phone already keeps the dock's) */
+.rn:not(.is-phone)[data-tray] { padding-bottom: 112px }
+/* (mounted on the body, outside .rn, so it carries the few page tokens it uses) */
+.rn-pill, .rn-view, .rn-panel { --rn-hair: rgb(var(--fm-fg-rgb) / 0.1); --rn-dim: rgb(var(--fm-fg-rgb) / 0.6); --rn-soft: rgb(var(--fm-fg-rgb) / 0.8); --rn-quiet: rgb(var(--fm-fg-rgb) / 0.05); --rn-arrive: cubic-bezier(0.16, 1, 0.3, 1); --rn-even: cubic-bezier(0.3, 0.3, 0.2, 1); color: var(--fm-fg); font-family: var(--fm-font), 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent }
+
+/* ── 1. the glance: the dock's pill (its place, size, radius and glass), carrying the post. While it is up it IS the
+   chrome, so it is the one thing here on the dock's frost ── */
+.rn-pill {
+  --pill-tint: rgb(255 255 255 / 0.74);
+  --pill-rim: rgb(var(--fm-shadow-rgb) / 0.1);
+  --pill-rim-top: rgb(255 255 255 / 0.9);
+  --pill-drop: rgb(var(--fm-shadow-rgb) / 0.2);
+  --pill-glow: color-mix(in srgb, var(--fm-page) 58%, transparent);
+  --pill-ink-2: color-mix(in srgb, var(--fm-fg) 62%, transparent);
+  position: fixed; z-index: 190; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); width: min(312px, calc(100vw - 48px)); height: 64px; isolation: isolate; translate: -50% 0; pointer-events: none; visibility: hidden;
+  transition: visibility 0s linear calc(320ms * var(--fm-tempo));
+}
+html.dark .rn-pill { --pill-tint: rgb(28 28 32 / 0.74); --pill-rim: rgb(255 255 255 / 0.1); --pill-rim-top: rgb(255 255 255 / 0.14); --pill-drop: rgb(0 0 0 / 0.55) }
+.rn-pill.is-phone { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+.rn-pill.is-desk { bottom: 24px; width: 360px }
+.rn-pill.is-on { visibility: visible; transition: visibility 0s }
+.rn-pill.is-on:not(.is-under) { pointer-events: auto }
+/* its glass, and the still plate of its shadow behind (as the dock's). Over the dock's open bar the two are the same
+   glass, so it is simply there (data-cut); over the folded dock it settles in */
+.rn-pill__glass { position: absolute; inset: 0; z-index: -1; border-radius: 32px; opacity: 0; scale: 0.96; pointer-events: none; transition: opacity calc(240ms * var(--fm-tempo)) var(--rn-even), scale calc(240ms * var(--fm-tempo)) var(--rn-even) }
+.rn-pill__glass::before, .rn-pill__glass::after { content: ''; position: absolute; inset: 0; border-radius: inherit }
+.rn-pill__glass::before { background: var(--pill-tint); box-shadow: inset 0 1px 0 var(--pill-rim-top); -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%) }
+.rn-pill__glass::after { z-index: -1; box-shadow: 0 0 0 0.5px var(--pill-rim), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08), 0 12px 28px -10px var(--pill-drop), 0 -2px 22px 6px var(--pill-glow) }
+.rn-pill.is-on .rn-pill__glass { opacity: 1; scale: 1; transition: opacity calc(440ms * var(--fm-tempo)) var(--rn-even), scale calc(520ms * var(--fm-tempo)) var(--rn-arrive) }
+.rn-pill[data-cut] .rn-pill__glass { transition: none }
+/* what it carries: the post in the circle's place, the verdict over the trail's count in the line's, Open in the disc's.
+   It comes in as the dock's goes (one control turning into another), and leaves first */
+.rn-pill__go { display: flex; align-items: center; gap: 12px; width: 100%; height: 100%; box-sizing: border-box; padding: 0 12px 0 4px; border-radius: 32px; text-align: left }
+.rn-pill__go > * { opacity: 0; translate: 0 6px; transition: opacity calc(140ms * var(--fm-tempo)) var(--rn-even), translate calc(140ms * var(--fm-tempo)) var(--rn-even) }
+.rn-pill.is-on:not(.is-under) .rn-pill__go > * { opacity: 1; translate: 0 0; transition: opacity calc(320ms * var(--fm-tempo)) var(--rn-even) calc(var(--d, 0ms) * var(--fm-tempo)), translate calc(440ms * var(--fm-tempo)) var(--rn-arrive) calc(var(--d, 0ms) * var(--fm-tempo)) }
+.rn-pill__pic { --d: 80ms; flex: none; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: var(--rn-quiet); box-shadow: inset 0 0 0 0.5px rgb(var(--fm-fg-rgb) / 0.12) }
+.rn-pill__pic img { display: block; width: 100%; height: 100%; object-fit: cover }
+.rn-pill__w { --d: 120ms; flex: 1; min-width: 0; display: grid; gap: 2px }
+.rn-pill__v { font-size: 16px; font-weight: 700; line-height: 20px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-pill__v b.is-l, .rn-pp__v b.is-l, .rn-dp__v b.is-l { color: var(--fm-accent-text) }
+.rn-pill__c { font-size: 14px; font-weight: 600; line-height: 20px; color: var(--pill-ink-2) }
+/* (while the run rolls, its count is the loudest type in the pill) */
+.rn-pill__c.is-live { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: var(--fm-fg) }
+.rn-pill__c.is-live b { font-size: 18px; letter-spacing: -0.02em }
+.rn-pill__open { --d: 160ms; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--fm-fg); color: var(--fm-page) }
+.rn-pill__open svg { width: 20px; height: 20px }
+.rn-pill__go:active .rn-pill__open { scale: 0.94 }
+@media (hover: hover) and (pointer: fine) { .rn-pill__go:hover .rn-pill__open { scale: 1.04 } .rn-pill__open { transition: opacity calc(320ms * var(--fm-tempo)) var(--rn-even), translate calc(440ms * var(--fm-tempo)) var(--rn-arrive), scale 160ms var(--rn-even) } }
+
+/* the trail's count: its number rolls up as each post on the wall comes forward, then the whole line lands (the slot
+   roll the page's figures use: no bounce, no pop). The number is crimson when the post beat them, ink when they did
+   better */
+.rn-count { display: block; overflow: hidden; white-space: nowrap }
+.rn-count__l { display: block; overflow: hidden; text-overflow: ellipsis }
+.rn-count__l.is-land { animation: rn-roll calc(420ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-count b { font-weight: 700; color: var(--fm-accent-text); font-variant-numeric: tabular-nums }
+.rn-count.is-ink b { color: var(--fm-fg) }
+.rn-count__slot { display: inline-flex; overflow: hidden; vertical-align: top }
+/* (each tick no longer than the beat it counts, so a fast run's number still reads) */
+.rn-count__slot b { display: inline-block; animation: rn-tick var(--tick, 200ms) var(--rn-even) both }
+@keyframes rn-tick { from { opacity: 0; translate: 0 100% } to { opacity: 1; translate: 0 0 } }
+
+/* the dock steps out of the way under the pill (this page's own rule: the shell is not touched). What it carries leaves
+   as the pill's comes; its glass goes at once when the pill's is the same glass in the same place (cut). Let go, it
+   comes back the same way, a beat behind the pill leaving */
+html.rn-glance .fm-dock .fm-dock-bar { visibility: hidden; pointer-events: none; transition: visibility 0s linear calc(240ms * var(--fm-tempo)) }
+html.rn-glance .fm-dock .fm-dock-bar > * { opacity: 0; pointer-events: none; transition: opacity calc(200ms * var(--fm-tempo)) var(--rn-even) }
+html.rn-glance-cut .fm-dock .fm-dock-bar > .fm-dock-glass { transition: none }
+html.rn-dock-back .fm-dock .fm-dock-bar > * { transition: opacity calc(360ms * var(--fm-tempo)) var(--rn-even) calc(140ms * var(--fm-tempo)) }
+html.rn-dock-back-cut .fm-dock .fm-dock-bar > .fm-dock-glass { transition: none }
+
+/* a still's words */
+/* every still's words in one cell, only the one shown seen, whole and with no ellipsis. The block is the stage's height,
+   so a step never changes it; a still with unusually long words scrolls inside it */
+.rn-say { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden }
+.rn-say__f { grid-area: 1 / 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; visibility: hidden; opacity: 0 }
+.rn-say__f::-webkit-scrollbar { display: none }
+/* (more below than the block holds: its foot fades, until it is scrolled to the end) */
+.rn-say__f[data-more] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent) }
+.rn-say__f.is-at { visibility: visible; opacity: 1; animation: rn-rise calc(280ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-say__t { font-size: 12px; font-weight: 700; line-height: 16px; color: var(--rn-dim); font-variant-numeric: tabular-nums }
+.rn-say__shows { font-size: 14px; font-weight: 500; line-height: 19px; color: var(--rn-soft); text-wrap: pretty }
+.rn-say__said { font-size: 14px; font-weight: 600; line-height: 19px; text-wrap: pretty }
+.rn-say__none { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--rn-dim) }
+
+/* its figures: each multiple of his usual in bold type (crimson over his usual), what it counts and the count in small
+   print. A phone stacks them beside the still; a laptop sets them in a row between hairlines */
+.rn-fig { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'v k' 's s'; column-gap: 6px; align-items: baseline; min-width: 0 }
+.rn-fig__v { display: contents }
+.rn-fig__v b { grid-area: v; font-size: 22px; font-weight: 700; line-height: 26px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap }
+.rn-fig__v b.is-hot { color: var(--fm-accent-text) }
+.rn-fig__k { grid-area: k; min-width: 0; font-size: 12px; font-weight: 600; line-height: 16px; color: var(--rn-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-fig__v span { grid-area: s; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rn-dim); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-figs { display: flex; flex-direction: column; gap: 10px }
+
+/* the still: bars over it, one picture in the shape of its first still, the same size at every step */
+.rn-still { flex: none; display: flex; flex-direction: column; gap: 8px; width: calc(var(--fh) * var(--wr)); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+.rn-still__bars { display: flex; gap: 3px; height: 3px }
+.rn-still__bars i { flex: 1; min-width: 0; border-radius: 2px; background: rgb(var(--fm-fg-rgb) / 0.14); transition: background-color calc(220ms * var(--fm-tempo)) var(--rn-even) }
+.rn-still__bars i.is-past, .rn-still__bars i.is-at { background: var(--fm-fg) }
+.rn-still__frame { position: relative; height: var(--fh); margin: 0; border-radius: 18px; overflow: hidden; background: var(--rn-quiet); box-shadow: inset 0 0 0 0.5px rgb(var(--fm-fg-rgb) / 0.08); touch-action: pan-y }
+.rn-still__frame img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none }
+.rn-still__frame.is-slide img { object-fit: contain }
+.rn-still__frame img.is-on { animation: rn-step-on calc(300ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-still__frame img.is-back { animation: rn-step-back calc(300ms * var(--fm-tempo)) var(--rn-arrive) both }
+@keyframes rn-step-on { from { opacity: 0.5; transform: translate3d(12px, 0, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+@keyframes rn-step-back { from { opacity: 0.5; transform: translate3d(-12px, 0, 0) } to { opacity: 1; transform: translate3d(0, 0, 0) } }
+/* its two halves: back and on (a mouse sees which one it is on) */
+.rn-still__half { position: absolute; top: 0; bottom: 0; width: 50%; cursor: pointer }
+.rn-still__half.is-l { left: 0 }
+.rn-still__half.is-r { right: 0 }
+.rn-still__half:disabled { cursor: default }
+.rn-still__half::before { content: ''; position: absolute; top: 50%; width: 32px; height: 32px; margin-top: -16px; border-radius: 50%; background: rgb(0 0 0 / 0.5); opacity: 0; transition: opacity 160ms var(--rn-even) }
+.rn-still__half::after { content: ''; position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -5px; border-top: 2px solid #fff; border-right: 2px solid #fff; opacity: 0; transition: opacity 160ms var(--rn-even) }
+.rn-still__half.is-l::before { left: 10px }
+.rn-still__half.is-r::before { right: 10px }
+.rn-still__half.is-l::after { left: 24px; transform: rotate(-135deg) }
+.rn-still__half.is-r::after { right: 24px; transform: rotate(45deg) }
+@media (hover: hover) and (pointer: fine) { .rn-still__half:not(:disabled):hover::before, .rn-still__half:not(:disabled):hover::after { opacity: 1 } }
+.rn-still__half:focus-visible { outline-offset: -3px }
+
+/* the way back to the glance */
+.rn-x { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--rn-quiet); color: var(--fm-fg); transition: background-color 160ms var(--rn-even) }
+.rn-x svg { width: 18px; height: 18px }
+@media (hover: hover) { .rn-x:hover { background: rgb(var(--fm-fg-rgb) / 0.1) } }
+
+/* ── 2a. a phone: one surface rising out of the pill. Its face is three pieces (a top cap, a middle, a bottom cap, the
+   pill's radius at each end): closed they are the pill exactly, open the top cap has risen and the middle has grown
+   under it. Transforms alone, one even curve both ways; what it says comes in once it is mostly up and leaves first ── */
+.rn-view { --rise: 420px; --sx: 0.84; --grow: calc(520ms * var(--fm-tempo)); position: fixed; z-index: 220; left: 8px; right: 8px; bottom: calc(12px + env(safe-area-inset-bottom)); max-height: 70dvh; box-sizing: border-box; isolation: isolate; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; visibility: hidden; pointer-events: none; transition: visibility 0s linear calc(var(--grow) + 120ms * var(--fm-tempo)) }
+.rn-view.is-on { visibility: visible; pointer-events: auto; transition: visibility 0s }
+.rn-view__sh { position: absolute; inset: 0; z-index: -2; border-radius: 32px; box-shadow: 0 -1px 4px rgb(var(--fm-shadow-rgb) / 0.06), 0 28px 64px -20px rgb(var(--fm-shadow-rgb) / 0.5); opacity: 0; transition: opacity calc(160ms * var(--fm-tempo)) var(--rn-even) }
+html.dark .rn-view__sh { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.09), 0 28px 64px -16px rgb(0 0 0 / 0.9) }
+.rn-view.is-on .rn-view__sh { opacity: 1; transition: opacity calc(320ms * var(--fm-tempo)) var(--rn-even) calc(300ms * var(--fm-tempo)) }
+.rn-view__face { position: absolute; inset: 0; z-index: -1; opacity: 0; transition: opacity calc(160ms * var(--fm-tempo)) var(--rn-even) var(--grow) }
+.rn-view.is-on .rn-view__face { opacity: 1; transition: opacity calc(160ms * var(--fm-tempo)) var(--rn-even) }
+.rn-view__face i { position: absolute; left: 0; right: 0; background: var(--fm-raised); transition: translate var(--grow) var(--rn-even) calc(100ms * var(--fm-tempo)), scale var(--grow) var(--rn-even) calc(100ms * var(--fm-tempo)) }
+.rn-view__face .is-t { top: 0; height: 32px; border-radius: 32px 32px 0 0; translate: 0 var(--rise); scale: var(--sx) 1 }
+.rn-view__face .is-m { top: 31px; bottom: 31px; transform-origin: 50% 100%; scale: var(--sx) 0.0001 }
+.rn-view__face .is-b { bottom: 0; height: 32px; border-radius: 0 0 32px 32px; scale: var(--sx) 1 }
+.rn-view.is-on .rn-view__face i { translate: 0 0; scale: 1 1; transition: translate var(--grow) var(--rn-even), scale var(--grow) var(--rn-even) }
+.rn-view__in { position: relative; box-sizing: border-box; max-height: 70dvh; overflow: hidden; padding: 16px 14px 18px; opacity: 0; translate: 0 10px; transition: opacity calc(120ms * var(--fm-tempo)) var(--rn-even), translate calc(120ms * var(--fm-tempo)) var(--rn-even) }
+.rn-view.is-on .rn-view__in { opacity: 1; translate: 0 0; transition: opacity calc(300ms * var(--fm-tempo)) var(--rn-even) calc(220ms * var(--fm-tempo)), translate calc(420ms * var(--fm-tempo)) var(--rn-arrive) calc(220ms * var(--fm-tempo)) }
+
+/* its inside: the verdict and the way out; one sentence about the post, in ink; the still (the largest thing) with its
+   figures and its words beside it. Every block is a fixed height for the post: a step changes what is in them only */
+.rn-pp { --h: clamp(180px, calc(70dvh - 268px), 340px); container-type: inline-size; display: flex; flex-direction: column; gap: 14px }
+.rn-pp__head { display: flex; align-items: flex-start; gap: 12px }
+.rn-pp__id { flex: 1; min-width: 0 }
+.rn-pp__v { font-size: 22px; font-weight: 700; line-height: 28px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums }
+.rn-pp__m { margin-top: 2px; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--rn-dim); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rn-pp__line { font-size: 16px; font-weight: 500; line-height: 22px; letter-spacing: -0.01em; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden }
+/* its figures: one row of type between the sentence and the still */
+.rn-pp .rn-figs { flex-direction: row; gap: 12px }
+.rn-pp .rn-fig { flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'v' 'k' 's' }
+/* (the stage is the same height for every post: the still as tall as its share of the width lets it, its words beside it
+   on the full height) */
+.rn-pp__stage { --fh: min(var(--h), 48cqw / var(--wr, 0.5625)); display: flex; gap: 14px; height: calc(var(--h) + 11px) }
+.rn-pp__side { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 11px }
+.rn-pp__side .rn-say { flex: 1 }
+
+/* ── 2b. a laptop: a panel in the middle of the window over a veil of the page's colour (one layer, opacity only).
+   The still large on the left; how it did on the right ── */
+.rn-veil2 { position: fixed; inset: 0; z-index: 225; background: var(--fm-page); opacity: 0; visibility: hidden; transition: opacity calc(320ms * var(--fm-tempo)) var(--rn-even), visibility 0s linear calc(320ms * var(--fm-tempo)) }
+.rn-veil2.is-on { opacity: 0.88; visibility: visible; transition: opacity calc(480ms * var(--fm-tempo)) var(--rn-even), visibility 0s }
+html.dark .rn-veil2.is-on { opacity: 0.9 }
+.rn-panel { --sh: min(600px, calc(100dvh - 160px)); position: fixed; z-index: 230; left: 50%; top: 50%; box-sizing: border-box; padding: 20px; border-radius: 28px; background: var(--fm-raised); box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.06), 0 2px 6px rgb(var(--fm-shadow-rgb) / 0.05), 0 48px 96px -36px rgb(var(--fm-shadow-rgb) / 0.42); opacity: 0; translate: -50% calc(-50% + 24px); scale: 0.96; visibility: hidden; transition: opacity calc(240ms * var(--fm-tempo)) var(--rn-even), translate calc(320ms * var(--fm-tempo)) var(--rn-even), scale calc(320ms * var(--fm-tempo)) var(--rn-even), visibility 0s linear calc(320ms * var(--fm-tempo)) }
+html.dark .rn-panel { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 48px 96px -32px rgb(0 0 0 / 0.95) }
+.rn-panel.is-on { opacity: 1; translate: -50% -50%; scale: 1; visibility: visible; transition: opacity calc(360ms * var(--fm-tempo)) var(--rn-even), translate calc(560ms * var(--fm-tempo)) var(--rn-arrive), scale calc(560ms * var(--fm-tempo)) var(--rn-arrive), visibility 0s }
+.rn-dp { --fh: min(var(--sh), 520px / var(--wr, 0.5625)); display: flex; gap: 28px; height: calc(var(--sh) + 11px) }
+.rn-dp .rn-still { align-self: center; min-width: 240px }
+.rn-dp .rn-still__frame { border-radius: 22px }
+.rn-dp__side { width: 360px; min-width: 0; display: flex; flex-direction: column; padding-top: 4px }
+.rn-dp__head { display: flex; align-items: flex-start; gap: 16px }
+.rn-dp__v { flex: 1; min-width: 0; font-size: 34px; font-weight: 700; line-height: 40px; letter-spacing: -0.04em; font-variant-numeric: tabular-nums }
+.rn-dp__m { margin-top: 6px; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--rn-dim); font-variant-numeric: tabular-nums }
+.rn-dp__c { font-size: 16px; font-weight: 600; line-height: 22px; color: var(--rn-soft) }
+.rn-dp .rn-figs { flex-direction: row; gap: 0; margin-top: 20px; padding: 16px 0; border-top: 1px solid var(--rn-hair); border-bottom: 1px solid var(--rn-hair) }
+.rn-dp .rn-fig { flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'v' 'k' 's'; row-gap: 2px; padding: 0 12px 0 16px; border-left: 1px solid var(--rn-hair) }
+.rn-dp .rn-fig:first-child { padding-left: 0; border-left: 0 }
+.rn-dp .rn-fig__v b { font-size: 28px; line-height: 34px; letter-spacing: -0.04em; margin-bottom: 2px }
+.rn-dp .rn-fig__k, .rn-dp .rn-fig__v span { font-size: 14px; line-height: 18px }
+.rn-dp__line { margin-top: 20px; font-size: 18px; font-weight: 500; line-height: 26px; letter-spacing: -0.01em; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden }
+.rn-dp .rn-say { flex: 1; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rn-hair) }
+.rn-dp .rn-say__f { gap: 8px }
+.rn-dp .rn-say__t { font-size: 14px; line-height: 18px }
+.rn-dp .rn-say__shows { font-size: 16px; line-height: 22px }
+.rn-dp .rn-say__said { font-size: 16px; line-height: 22px }
+.rn-dp__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px }
+.rn-dp__ig { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 22px; background: var(--fm-fg); color: var(--fm-page); font-size: 14px; font-weight: 700; line-height: 18px; text-decoration: none; transition: opacity 160ms var(--rn-even) }
+.rn-dp__ig svg { width: 16px; height: 16px }
+@media (hover: hover) { .rn-dp__ig:hover { opacity: 0.86 } }
+.rn-dp__keys { font-size: 14px; font-weight: 600; line-height: 18px; color: var(--rn-dim); font-variant-numeric: tabular-nums }
+
+@media (prefers-reduced-motion: reduce) {
+  .rn-pill, .rn-pill__glass, .rn-pill.is-on .rn-pill__glass, .rn-pill__go > *, .rn-pill.is-on:not(.is-under) .rn-pill__go > *, .rn-view, .rn-view *, .rn-veil2, .rn-panel, .rn-panel.is-on { transition: none }
+  .rn-still__frame img, .rn-say__f.is-at, .rn-count__l.is-land, .rn-count__slot b { animation: none }
+  html.rn-glance .fm-dock .fm-dock-bar > *, html.rn-dock-back .fm-dock .fm-dock-bar > * { transition: none }
+}
+
+/* ── files simulation (?src=sim): the week's bulletin under the drop note, and a file's evidence and Feed · back ── */
+.rn-bul { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; max-width: 40em; animation: rn-rise calc(420ms * var(--fm-tempo)) var(--rn-arrive) both }
+.rn-bul li { display: grid; grid-template-columns: 92px 1fr; column-gap: 14px; row-gap: 6px; padding-top: 14px; border-top: 1px solid var(--rn-hair) }
+.rn-bul__k { grid-row: span 2; font-size: 13px; font-weight: 700; line-height: 22px; color: var(--rn-dim) }
+.rn-bul__l { font-size: 16px; font-weight: 500; line-height: 22px; letter-spacing: -0.01em; color: var(--fm-fg); text-wrap: pretty }
+.rn-bul__tags { display: flex; flex-wrap: wrap; gap: 6px }
+.rn-tag { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 16px; color: var(--fm-fg); background: var(--fm-raised); box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.08); transition: transform calc(200ms * var(--fm-tempo)) var(--rn-even) }
+.rn-tag.is-lens { box-shadow: 0 0 0 1px rgb(var(--fm-accent-rgb) / 0.45) }
+.rn-tag:active { transform: translate3d(0, 1px, 0) }
+.rn-tag:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 2px }
+.rn.is-phone .rn-bul li { grid-template-columns: 1fr }
+.rn.is-phone .rn-bul__k { grid-row: auto; line-height: 16px }
+/* an open file's reading, in steps a person can take in: the finding big, the summary as a lead, then sections each
+   under its own rule, evidence as cards, Feed · back and the next test set apart */
+.rn-open.is-file .rn-open__find { font-size: 22px; font-weight: 600; line-height: 30px; letter-spacing: -0.018em; color: var(--fm-fg); max-width: 28em; text-wrap: pretty }
+.rn-open.is-file .rn-sum, .rn-open.is-file .rn-ev, .rn-open.is-file .rn-story, .rn-open.is-file .rn-fb { margin-top: 44px; padding-top: 28px; border-top: 1px solid var(--rn-hair) }
+/* (a section's head outranks its body: the heads are the second step down from the file's name) */
+.rn-open.is-file .rn-sec__k { font-size: 22px; font-weight: 700; line-height: 28px; letter-spacing: -0.02em; color: var(--fm-fg); margin-bottom: 16px }
+.rn-open.is-file .rn-open__sum { font-size: 18px; font-weight: 400; line-height: 29px; color: var(--rn-soft); max-width: 34em }
+.rn-ev { display: flex; flex-direction: column; gap: 12px }
+.rn-ev .rn-sec__k { margin-bottom: 2px !important }
+.rn-ev__b { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 20px; border-radius: 18px; background: var(--rn-quiet) }
+.rn-ev__t { font-size: 18px; font-weight: 700; line-height: 24px; letter-spacing: -0.012em; color: var(--fm-fg) }
+.rn-ev__chip { font-size: 16px; font-weight: 700; line-height: 22px; color: var(--fm-fg); font-variant-numeric: tabular-nums; text-align: left; padding: 6px 12px; border-radius: 10px; background: var(--fm-raised); box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.06) }
+.rn-ev__x { font-size: 16px; line-height: 25px; color: var(--rn-soft); max-width: 34em; text-wrap: pretty }
+.rn-open.is-file .rn-story__d { font-size: 15px }
+.rn-open.is-file .rn-story__l { font-size: 16px; line-height: 25px; max-width: 34em }
+.rn-open.is-file .rn-story ol { gap: 18px }
+.rn-fb dl { display: flex; flex-direction: column; gap: 20px }
+.rn-fb dt { font-size: 13px; font-weight: 600; line-height: 16px; letter-spacing: 0.01em; color: var(--rn-dim); margin-bottom: 6px }
+.rn-fb dd { font-size: 17px; font-weight: 500; line-height: 26px; color: var(--fm-fg); max-width: 34em; text-wrap: pretty }
+.rn-open.is-file .rn-note { margin-top: 44px; padding: 28px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--rn-hair) }
+.rn-open.is-file .rn-note__k { font-size: 22px; font-weight: 700; line-height: 28px; letter-spacing: -0.02em; color: var(--fm-fg); margin-bottom: 12px }
+.rn-open.is-file .rn-note p:last-child { font-size: 17px; line-height: 26px; color: var(--fm-fg); max-width: 34em }
+.rn-open.is-file > .rn-open__from:last-of-type { margin-top: 8px; font-size: 15px; line-height: 22px }
+.rn.is-phone .rn-open.is-file .rn-open__find { font-size: 20px; line-height: 27px }
+.rn.is-phone .rn-open.is-file .rn-sec__k, .rn.is-phone .rn-open.is-file .rn-note__k { font-size: 20px; line-height: 26px }
+.rn.is-phone .rn-open.is-file .rn-open__sum { font-size: 17px; line-height: 27px }
+.rn.is-phone .rn-ev__b { padding: 16px }
+.rn.is-phone .rn-fb dd { font-size: 17px; line-height: 26px }
+.rn-ev__posts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px }
+.rn-ev__post { width: 52px; height: 65px; border-radius: 10px; overflow: hidden; background: var(--rn-quiet); box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.08); transition: transform calc(200ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ev__post img { display: block; width: 100%; height: 100%; object-fit: cover }
+@media (hover: hover) { .rn-ev__post:hover { transform: translate3d(0, -2px, 0) } }
+.rn-ev__post:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 2px }
+/* a post named in the reading: the words are the link (a quiet underline that firms up; no colour change, no box) */
+.rn-ln { color: var(--fm-fg); cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone; text-decoration: underline; text-decoration-color: rgb(var(--fm-fg-rgb) / 0.28); text-decoration-thickness: 1.5px; text-underline-offset: 4px; text-decoration-skip-ink: auto; transition: text-decoration-color calc(180ms * var(--fm-tempo)) var(--rn-even) }
+@media (hover: hover) { .rn-ln:hover { text-decoration-color: rgb(var(--fm-accent-rgb) / 0.9) } }
+.rn-ln:focus-visible { outline: 2px solid var(--fm-fg); outline-offset: 2px; border-radius: 3px }
+/* a search's answer coming out of the search box: the wall lifts over the box and lets nothing clip while they fly */
+.rn-feed.is-tray { z-index: 60 }
+.rn-feed__box.is-tray { overflow: visible !important; clip-path: none !important }
+.rn.is-phone .rn-feed.is-tray { position: relative }
+/* (while a catch lifts off its post, the lens is out of sight: the lifted picture's ring is the only red border) */
+.rn-lens.is-pluck { box-shadow: none }
+.rn-lens.is-pluck::after { opacity: 0 }
+/* the leads type in (Ask's typewriter): no bar at the line's start, a plain text caret after the last letter that
+   blinks only once the line is whole; the line itself a touch larger and heavier than before */
+.rn-ask__roll { left: 0 }
+.rn-ask__ri.is-typed { font-size: 36px; font-weight: 750; line-height: 42px; letter-spacing: -0.034em }
+.rn-ask__tc { display: inline-block; width: 3px; height: 0.86em; margin-left: 3px; vertical-align: -0.08em; border-radius: 2px; background: var(--fm-fg) }
+.rn-ask__tc.is-idle { animation: rn-tc-blink calc(1060ms * var(--fm-tempo)) steps(1, end) infinite }
+@keyframes rn-tc-blink { 50% { opacity: 0 } }
+.rn-askwrap.is-phone .rn-ask__ri.is-typed { font-size: 30px; line-height: 34px }
+@media (prefers-reduced-motion: reduce) { .rn-ask__tc.is-idle { animation: none } }
+/* the box with more presence: a face lit from above (a whisper of falloff to its foot), a crisp rim, and a deeper,
+   layered lift under it. Nothing glows and nothing is tinted */
+.rn-ask__sh.is-contact { box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.08), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.12), 0 4px 10px -3px rgb(var(--fm-shadow-rgb) / 0.12) }
+.rn-ask__sh.is-amb { box-shadow: 0 26px 52px -22px rgb(var(--fm-shadow-rgb) / 0.34), 0 64px 128px -44px rgb(var(--fm-shadow-rgb) / 0.3) }
+/* a phone: a long suggestion takes a smaller size and up to three lines, never cut off */
+.rn-askwrap.is-phone .rn-ask:not(.is-typing) .rn-ask__line { height: 96px; flex: none }
+.rn-askwrap.is-phone .rn-ask__ri.is-typed { -webkit-line-clamp: 2 }
+.rn-askwrap.is-phone .rn-ask__ri.is-typed.is-long { font-size: 22px; line-height: 28px; letter-spacing: -0.024em; -webkit-line-clamp: 3 }
+.rn-askwrap.is-phone .rn-ask__ri.is-typed.is-longer { font-size: 19px; line-height: 24px; letter-spacing: -0.018em; -webkit-line-clamp: 4 }
+
+/* the streak's light under the box: a soft crimson cast that travels with the streak's bright part (Streak sets where,
+   how wide and how strong), strongest as it runs along the foot. No fixed glow under the box any more */
+.rn-ask__cast { position: absolute; z-index: -2; left: 0; right: 0; top: 74%; height: 46%; pointer-events: none }
+.rn-ask__castl { position: absolute; top: 0; left: 0; width: 240px; height: 100%; border-radius: 50%; background: radial-gradient(closest-side, rgb(var(--fm-accent-rgb) / 0.6), rgb(var(--fm-accent-rgb) / 0)); filter: blur(12px); opacity: 0; will-change: transform, opacity }
+html.dark .rn-ask__castl { background: radial-gradient(closest-side, rgb(var(--fm-accent-rgb) / 0.8), rgb(var(--fm-accent-rgb) / 0)) }
+/* the untyped rest of the sentence holds its place in the line, unseen (so words never jump lines as it types) */
+.rn-ask__rest { visibility: hidden }
+/* (the caret takes no width, so the line's layout is the sentence's own) */
+.rn-ask__tc { margin-left: 0; margin-right: -3px; position: relative; left: 1px }
+
+/* ═════ a phone at rest: the search is the page's hero, in the theme's own face: what it searches and the disc along its
+   top, the question set large at its foot. Under it, the person's searches as picture collections; the files and the
+   wall are a swipe up ═════ */
+.rn-askwrap.is-phone.is-hero { height: 236px }
+.rn-askwrap.is-phone.is-hero .rn-ask__head { display: block; height: 236px; padding: 22px 18px 20px 24px }
+.rn-askwrap.is-phone.is-hero .rn-ask__in { position: static; gap: 10px; justify-content: flex-start }
+.rn-askwrap.is-phone.is-hero .rn-ask__k { height: 52px; align-items: center; padding-right: 156px; font-size: 16px; font-weight: 650; line-height: 20px; color: var(--rn-dim) }
+.rn-askwrap.is-phone.is-hero .rn-ask:not(.is-typing) .rn-ask__line { height: 140px }
+.rn-askwrap.is-phone.is-hero .rn-ask__roll { left: 0; right: 6px }
+.rn-askwrap.is-phone.is-hero .rn-ask__ri.is-typed,
+.rn-askwrap.is-phone.is-hero .rn-ask__ri.is-typed.is-long,
+.rn-askwrap.is-phone.is-hero .rn-ask__ri.is-typed.is-longer,
+.rn-askwrap.is-phone.is-hero .rn-ask__ri.is-invite { font-size: 30px; line-height: 35px; letter-spacing: -0.034em; -webkit-line-clamp: 4 }
+.rn-askwrap.is-phone.is-hero .rn-ask__note { display: none }
+.rn-askwrap.is-phone.is-hero .rn-ask__side { position: absolute; top: 22px; right: 18px; flex-direction: row-reverse; align-items: center; gap: 10px }
+.rn-askwrap.is-phone.is-hero .rn-ask__disc { width: 52px; height: 52px }
+.rn-askwrap.is-phone.is-hero .rn-ask__disc svg { width: 22px; height: 22px }
+
+/* (the hero's slot follows the box as it folds to its scan size and back, so what sits under it never jumps) */
+.rn-askwrap.is-phone { transition: height var(--rn-lift-t) var(--rn-lift-e) }
+@media (prefers-reduced-motion: reduce) { .rn-askwrap.is-phone { transition: none } }
+
+.rn-askwrap.is-phone.is-hero .rn-ask__k > span { min-width: 0; overflow: hidden; text-overflow: ellipsis }
+
+/* (nothing on the page may ever make it scroll sideways) */
+.rn { overflow-x: clip }

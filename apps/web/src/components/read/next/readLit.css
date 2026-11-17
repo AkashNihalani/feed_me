@@ -1,0 +1,23 @@
+/* evidence lighting: a ring that draws in on the posts a card points at, and the card's own raise / bar. The tile itself
+   is never touched (the wall engine owns its transform, opacity and size): the ring is its ::before, which fades and
+   settles in from slightly larger (the tile clips it, so it reads as drawn inward). Nothing else is dimmed. */
+.rn-t::before { content: ''; position: absolute; z-index: 4; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transform: scale(1.06);
+  box-shadow: inset 0 0 0 3px rgb(var(--fm-accent-rgb) / 0.95);
+  transition: opacity calc(240ms * var(--fm-tempo)) var(--rn-even), transform calc(360ms * var(--fm-tempo)) var(--rn-arrive) }
+.rn-t.is-lit::before { opacity: 1; transform: none }
+.rn.is-phone .rn-t::before { box-shadow: inset 0 0 0 2.5px rgb(var(--fm-accent-rgb) / 0.95) }
+
+/* the card: raised by form and light, no tint, bar or glow. Selected (a click or a tap) it lifts on a layered shadow,
+   firms its hairline and takes a quiet solid ring in the ink, like the file card's. A resting pointer changes nothing */
+.rn-ev__b { position: relative; isolation: isolate; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.05), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0);
+  transition: transform calc(260ms * var(--fm-tempo)) var(--rn-even), box-shadow calc(260ms * var(--fm-tempo)) var(--rn-even), background-color calc(260ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ev__b::after { content: ''; position: absolute; inset: -3px; z-index: -1; border-radius: 21px; pointer-events: none; opacity: 0; box-shadow: 0 0 0 2px var(--fm-fg);
+  transition: opacity calc(220ms * var(--fm-tempo)) var(--rn-even) }
+.rn-ev__b[data-lit] { transform: translateY(-2px); background: var(--fm-raised);
+  box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.1), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08), 0 6px 14px -6px rgb(var(--fm-shadow-rgb) / 0.16), 0 18px 34px -18px rgb(var(--fm-shadow-rgb) / 0.3) }
+.rn-ev__b[data-lit='sel']::after { opacity: 1 }
+
+@media (prefers-reduced-motion: reduce) { .rn-t::before, .rn-ev__b, .rn-ev__b::after { transition: none } .rn-t::before, .rn-ev__b[data-lit] { transform: none } }
+/* (a search reveals its own catches: no evidence ring is ever drawn while it scans) */
+.rn.is-scan .rn-t::before { opacity: 0 !important; transition: none }
