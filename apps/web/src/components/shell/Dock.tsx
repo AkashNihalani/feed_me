@@ -63,9 +63,11 @@ import { CARRY_EASE_CSS, carryCurve, evenCurve } from '@/lib/feedStream/motion';
 import { useFreshHandles } from '@/lib/feedStream/fresh';
 import { playHaptic } from '@/lib/haptics';
 import { dropPush, holdPush, leavePush, releasePush, scrubPush } from '@/lib/tabPush';
+import { openMe } from '@/lib/meDoor';
 import { leaveTab } from '@/lib/tabSheet';
 import { ms } from '@/lib/tempo';
 import { DockPull, Glide, PRESS, coolRing, pillAt, pillShown, posePill, springBar, type PullDom } from './dockPull';
+import { DockMe } from './MeLine';
 import './dock.css';
 import './dockPull.css';
 
@@ -147,8 +149,10 @@ function clearRing(bar: HTMLElement) {
   RING_KEYS.forEach((key) => delete bar.dataset[key]);
 }
 
-export default function Dock({ tab }: { tab: DockTab }) {
-  const shown = useShownHeader(tab);
+/* `me`: Me is on screen, over `tab` (the one it was opened from, the way back): the dock says so, its disc is the way
+   back, and no tab is the one you're on */
+export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }) {
+  const shown = useShownHeader(me ? 'me' : tab);
   const wide = useWideChrome();
   const reduce = Boolean(useReducedMotion());
   const fresh = useFreshHandles();
@@ -601,7 +605,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
     scrolled.current.y = window.scrollY;
     scrolled.current.travel = 0;
     fold(false);
-  }, [tab, fold]);
+  }, [tab, me, fold]);
 
   /* the page scrolling: down a way, the bar folds; back up a way, or at the page's top or foot, it opens. A passive
      listener and an attribute: nothing renders while the page scrolls */
@@ -747,11 +751,12 @@ export default function Dock({ tab }: { tab: DockTab }) {
   /* ── going to a tab: the page is sent on its way (lib/tabPush; a closed ring has sent it already), then the URL
      changes in place, as the bar's did ── */
   const goTab = (next: DockTab, sent = false) => {
-    if (next === tab) return;
+    if (next === tab && !me) return;
     const dir = TABS.indexOf(next) > here ? 1 : -1;
     // (a move of the page's own lands first, as from the side rail: Feed's)
-    void leaveTab(tab, next, dir);
-    if (!sent && !reducedMotion()) leavePush(tab, dir);
+    void leaveTab(me ? 'me' : tab, next, dir);
+    // (Me goes as it came, over the tab: no card of it slides away)
+    if (!sent && !me && !reducedMotion()) leavePush(tab, dir);
     try {
       sessionStorage.setItem('feedme:intent', HREF[next]);
     } catch {}
@@ -763,7 +768,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
   // way on the compositor) the tab's own work begins
   const switchTo = (next: DockTab) => {
     closeRing(next);
-    const sent = !reducedMotion();
+    const sent = !me && !reducedMotion();
     if (sent) leavePush(tab, TABS.indexOf(next) > here ? 1 : -1, sinkHud);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       goTab(next, sent);
@@ -780,9 +785,16 @@ export default function Dock({ tab }: { tab: DockTab }) {
   };
   const choose = (key: string) => {
     if (!config) return;
+    if (key === 'me') {
+      if (me) return;
+      closeLayers();
+      playHaptic('navSwitch');
+      later(() => void leaveTab(tab, 'me', 1).then(openMe), APPLY_MS);
+      return;
+    }
     if (key.startsWith('tab:')) {
       const next = key.slice(4) as DockTab;
-      if (next === tab) return;
+      if (next === tab && !me) return;
       closeLayers();
       later(() => goTab(next), APPLY_MS);
       return;
@@ -893,7 +905,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
     event.currentTarget.setPointerCapture(event.pointerId);
     gesture.current = { id: event.pointerId, x0: event.clientX, y0: event.clientY, mode: null, wasOpen: open, locked: false, lastX: event.clientX, lastT: event.timeStamp, v: 0, ring: 0, raw: 0 };
     // the page copied now, while the finger is still: a swipe that follows has nothing heavy to do (lib/tabPush)
-    if (!open && !reducedMotion()) holdPush(tab);
+    if (!open && !me && !reducedMotion()) holdPush(tab);
   };
 
   // a swipe begun: the ring dims to a track, and the tabs rise over the dock, the one you're on lit
@@ -1038,8 +1050,11 @@ export default function Dock({ tab }: { tab: DockTab }) {
     }
     // a tap
     if (open) return closeLayers();
+    // (on Me: the disc is the way back to the tab it opened over, and the rest opens the layers)
+    const disc = me && !foldedRef.current ? barRef.current?.querySelector('.fm-dock-tab')?.getBoundingClientRect() : null;
+    if (disc && event.clientX >= disc.left - 8 && event.clientX <= disc.right + 14) return goTab(tab);
     // (inside something: a tap is the way back out of it)
-    if (back) return back.onBack();
+    if (back && !me) return back.onBack();
     openTap.current = { x: event.clientX, y: event.clientY, t: event.timeStamp };
     openLayers();
   };
@@ -1109,6 +1124,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
       }} />
       <div ref={rootRef} className="fm-dock" data-open={open ? '' : undefined} data-away={config.dockAway ? '' : undefined} style={{ '--fm-dock-step': `${STEP}px` } as CSSProperties}>
         <div className="fm-dock-layers" role="dialog" aria-label="Tabs, feeders and choices" aria-hidden={!open} onClick={onLayerClick}>
+          {/* Me, over the tabs and apart from them: the last to rise */}
+          <DockMe on={me} open={open} />
           {/* the tabs, rising over the row: the one you're on first, the others a beat behind */}
           <div className="fm-dock-words">
             {TABS.map((one, index) => (
@@ -1116,7 +1133,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
                 key={one}
                 type="button"
                 data-pick={`tab:${one}`}
-                className={one === tab ? 'is-on' : undefined}
+                className={one === tab && !me ? 'is-on' : undefined}
                 style={{ '--st': (0.3 + 0.08 * Math.abs(index - here)).toFixed(2) } as CSSProperties}
               >
                 {NAME[one]}
@@ -1207,7 +1224,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
           type="button"
           className="fm-dock-bar"
           aria-expanded={open}
-          aria-label={`${back ? `Back to ${line.toLowerCase()}` : heroName}${sub ? `, ${sub}` : ''}, ${NAME[tab]}. Swipe for the next tab; pull up${back ? '' : ' or tap'} for feeders and choices${choice ? `; pull down for ${choice.name.toLowerCase()}` : ''}`}
+          aria-label={`${me ? line : back ? `Back to ${line.toLowerCase()}` : heroName}${sub ? `, ${sub}` : ''}, ${me ? `over ${NAME[tab]}` : NAME[tab]}. Swipe for the next tab; pull up${back && !me ? '' : ' or tap'} for feeders and choices${choice ? `; pull down for ${choice.name.toLowerCase()}` : ''}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={(event) => onUp(event)}
@@ -1218,7 +1235,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
           }}
           onClick={(event) => {
             // a key press (the pointer's own taps are handled on letting go)
-            if (event.detail === 0) (open ? closeLayers : back ? back.onBack : openLayers)();
+            if (event.detail === 0) (open ? closeLayers : back && !me ? back.onBack : openLayers)();
           }}
         >
           {/* its glass and the still plate of its shadow (folded, it draws in behind the handle) */}

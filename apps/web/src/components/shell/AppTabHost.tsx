@@ -11,6 +11,7 @@ const tabLoaders = {
   feed: () => import('@/components/tabs/FeedTab'),
   lead: () => import('@/app/lead/page'),
   read: () => import('@/components/tabs/ReadTab'),
+  me: () => import('@/components/tabs/MeTab'),
   fire: () => import('@/components/tabs/FireTab'),
   fund: () => import('@/components/tabs/FundTab'),
 } as const;
@@ -18,6 +19,7 @@ const tabLoaders = {
 const FeedTab = dynamic(tabLoaders.feed, { loading: () => <TabFallback /> });
 const LeadTab = dynamic(tabLoaders.lead, { loading: () => <TabFallback /> });
 const ReadTab = dynamic(tabLoaders.read, { loading: () => <TabFallback /> });
+const MeTab = dynamic(tabLoaders.me, { loading: () => <TabFallback /> });
 const FireTab = dynamic(tabLoaders.fire, { loading: () => <TabFallback /> });
 const FundTab = dynamic(tabLoaders.fund, { loading: () => <TabFallback /> });
 
@@ -26,11 +28,12 @@ type TabKey = keyof typeof tabLoaders;
 // Read replaced Fund in the bottom nav; Fund stays reachable (Feed's Fund panel links to /profile) but is no
 // longer pre-warmed.
 const PRIMARY_TAB_ORDER: TabKey[] = ['feed', 'lead', 'read'];
-const TAB_RENDER_ORDER: TabKey[] = [...PRIMARY_TAB_ORDER, 'fire', 'fund'];
+const TAB_RENDER_ORDER: TabKey[] = [...PRIMARY_TAB_ORDER, 'me', 'fire', 'fund'];
 const TAB_COMPONENTS: Record<TabKey, ComponentType> = {
   feed: FeedTab,
   lead: LeadTab,
   read: ReadTab,
+  me: MeTab,
   fire: FireTab,
   fund: FundTab,
 };
@@ -41,6 +44,7 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
 function tabKeyForPathname(pathname: string): TabKey {
   if (pathname === '/lead') return 'lead';
   if (pathname === '/read') return 'read';
+  if (pathname === '/me') return 'me';
   if (pathname === '/fire') return 'fire';
   if (pathname === '/profile') return 'fund';
   return 'feed';

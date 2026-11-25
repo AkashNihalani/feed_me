@@ -26,10 +26,10 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
+import FeedBadge from '@/components/shell/FeedBadge';
 import { FAN_MS } from '@/components/motion/Ledger';
 import { CARRY_EASE_CSS, carryCurve } from '@/lib/feedStream/motion';
 import { afterDrawn, holdsFlights } from '@/lib/webkitMotion';
-import { feedInitials } from '@/lib/feedLabels';
 import { BEAT_EASE } from '@/lib/motion';
 import { ms, sec, slowSpring } from '@/lib/tempo';
 import { getTabScope, type TabScope } from '@/lib/tabScope';
@@ -347,15 +347,16 @@ export function RailFace({ face, reduce, pressable = true }: { face: RailFaceOf;
   }
   if (face.kind === 'feed') {
     return (
-      <span
+      <FeedBadge
+        id={face.feed.id}
+        title={face.feed.title}
+        size={25}
         className={cn('relative z-20 grid h-full w-full place-items-center overflow-hidden rounded-full border-[2px] border-white text-[12px] font-black leading-none dark:border-[var(--fm-ink)]', give, FACE_FOCUS)}
         style={{
           color: 'rgb(11 11 15 / 0.78)',
           background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)',
         }}
-      >
-        {feedInitials(face.feed.title)}
-      </span>
+      />
     );
   }
   return (
@@ -501,7 +502,7 @@ export function useTabHeader(tab: string, config: TabHeaderConfig) {
 }
 
 // the tabs that wear this header (the others still bring their own through AppHeader)
-const TAB_HEADER_TABS = new Set(['lead', 'read', 'feed']);
+const TAB_HEADER_TABS = new Set(['lead', 'read', 'feed', 'me']);
 
 /* What a tab on screen has asked its header to show, for whatever draws it (this header, or the side rail and the page
    heading from a laptop up) */

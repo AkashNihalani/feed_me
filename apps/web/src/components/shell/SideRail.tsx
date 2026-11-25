@@ -9,7 +9,7 @@
 
    It floats, as the phone's dock does: no panel. Shut, it is a
    quiet column of big circles standing on the page: the tabs'
-   icons, your feeds (a feed's badge, a feeder's face), Manage and
+   icons, your feeds (a feed's badge, a feeder's face), Me and
    the tab's setting on its ink chip. Point at it (or tab into it,
    or tap its ground) and the page beside it frosts over, the
    phone's frost, every name riding in beside its circle; leave it
@@ -37,19 +37,20 @@
      nothing moves around it, and opening spreads it into chips.
    ───────────────────────────────────────────────────────────── */
 
-import dynamic from 'next/dynamic';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type SyntheticEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { BookOpenText, LayoutGrid, SlidersHorizontal, Trophy, type LucideIcon } from 'lucide-react';
+import { BookOpenText, LayoutGrid, Trophy, type LucideIcon } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { FAN_MS, Ledger } from '@/components/motion/Ledger';
 import { carryCurve } from '@/lib/feedStream/motion';
-import { feedInitials, titleCase } from '@/lib/feedLabels';
+import { titleCase } from '@/lib/feedLabels';
 import { ms, sec } from '@/lib/tempo';
 import { useFreshHandles } from '@/lib/feedStream/fresh';
 import { aModalIsOpen, typingIn } from '@/lib/keys';
 import { leaveTab, stayOnTab } from '@/lib/tabSheet';
 import { cn } from '@/lib/utils';
+import FeedBadge from './FeedBadge';
+import { RailMe } from './MeLine';
 import './sideRail.css';
 import {
   ArmTrack,
@@ -68,9 +69,6 @@ import {
   type HeaderFeeder,
   type TabHeaderConfig,
 } from './TabHeader';
-
-// Feed's own sheet for your feeds (a new one, what's in one, the plan, the theme), fetched the first time it is asked for
-const FeedManageSheet = dynamic(() => import('@/components/feed/stream/FeedManageSheet'), { ssr: false });
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 const REDUCED = { duration: 0.14 } as const;
@@ -316,9 +314,7 @@ const FeedRow = memo(function FeedRow({ feed, expanded, current, marked, armed, 
       style={{ zIndex: stack }}
     >
       <RowCircle ring={current && !leaving} lit={lit} marked={marked} armed={armed} reduce={reduce} className="h-[50px] w-[50px]">
-        <span className="grid h-full w-full place-items-center text-[15px] font-black leading-none tracking-[-0.02em]" style={{ color: 'rgb(11 11 15 / 0.82)', background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)' }}>
-          {feedInitials(feed.title)}
-        </span>
+        <FeedBadge id={feed.id} title={feed.title} size={22} className="grid h-full w-full place-items-center text-[15px] font-black leading-none tracking-[-0.02em]" style={{ color: 'rgb(11 11 15 / 0.82)', background: 'linear-gradient(135deg,#f7f7f8,#cfd3dc)' }} />
       </RowCircle>
       <RowName text={name} sub={plural(feed.feeders.length, 'feeder')} className="text-[15px] tracking-[-0.015em]" />
     </button>
@@ -516,7 +512,7 @@ function RailFeeds({ config, reduce }: { config: TabHeaderConfig | null; reduce:
   );
 }
 
-/* ── the foot: Manage and the tab's setting ───────────────────────────────── */
+/* ── the foot: Me and the tab's setting ───────────────────────────────── */
 
 /* Lead's time range, Feed's zoom, Read's part: the control the tab gives its header, drawn the rail's way
    (ControlPlacement), as the phone's chips: shut, the value alone on its ink capsule in the column; open, the others
@@ -642,8 +638,6 @@ function useMagnify(panelRef: RefObject<HTMLDivElement | null>, reduce: boolean)
 
 /* ── the rail ─────────────────────────────────────────────────────────────── */
 
-type ManageState = { mounted: boolean; open: boolean };
-
 function SideRailBody({ tab }: { tab: string | null }) {
   const reduce = Boolean(useReducedMotion());
   const shown = useShownHeader(tab);
@@ -653,9 +647,8 @@ function SideRailBody({ tab }: { tab: string | null }) {
   const asideRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const manageRef = useRef<HTMLButtonElement | null>(null);
+  const meRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [manage, setManage] = useState<ManageState>({ mounted: false, open: false });
   // which way the rail moved from the last tab to this one (down the rail, 1), kept beside the tab it was worked out for
   const owner = shown?.tab ?? null;
   const [dock, setDock] = useState({ owner, dir: 1 });
@@ -716,18 +709,12 @@ function SideRailBody({ tab }: { tab: string | null }) {
       document.removeEventListener('keydown', keys);
     };
   }, [open]);
-  // shutting with the keys on the setting's chips (shut, they're out of sight): they move to Manage, beside it, not to the page
+  // shutting with the keys on the setting's chips (shut, they're out of sight): they move to Me, beside it, not to the page
   useIsoLayoutEffect(() => {
     if (open) return;
-    if (trackRef.current?.contains(document.activeElement)) manageRef.current?.focus({ preventScroll: true });
+    if (trackRef.current?.contains(document.activeElement)) meRef.current?.querySelector('a')?.focus({ preventScroll: true });
   }, [open]);
 
-  const openManage = () => {
-    window.clearTimeout(timer.current);
-    setOpen(false);
-    setManage({ mounted: true, open: true });
-  };
-  const closeManage = useCallback(() => setManage((current) => ({ ...current, open: false })), []);
   useMagnify(panelRef, reduce);
 
   return (
@@ -755,25 +742,13 @@ function SideRailBody({ tab }: { tab: string | null }) {
           <RailTabs tab={tab} reduce={reduce} />
           <RailFeeds config={config} reduce={reduce} />
           <div className="grid shrink-0 gap-2 p-3">
-            <button
-              ref={manageRef}
-              type="button"
-              onClick={openManage}
-              aria-label="Manage your feeds"
-              className="group/row relative flex h-11 items-center gap-6 rounded-[16px] pl-2 text-fg/62 outline-none transition-colors duration-200 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]"
-            >
-              <span data-rail-mag="" className={cn(ICON_BOX, 'relative')}>
-                <SlidersHorizontal aria-hidden="true" size={18} strokeWidth={2.4} />
-              </span>
-              <SideName className="text-[14px] font-bold leading-none">
-                Manage feeds
-              </SideName>
-            </button>
+            <div ref={meRef}>
+              <RailMe tab={tab} open={open} iconBox={ICON_BOX} />
+            </div>
             <RailDock owner={owner} dir={dock.dir} control={control} reduce={reduce} trackRef={trackRef} />
           </div>
         </div>
       </aside>
-      {manage.mounted ? <FeedManageSheet open={manage.open} scope={{ feedId: null, handle: null }} onClose={closeManage} /> : null}
     </>
   );
 }

@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 
 // the routes AppTabHost keeps alive: between these a switch is just which tab shows
 function isKeptAliveTab(pathname: string | null) {
-  return pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/fire' || pathname === '/profile';
+  return pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/me' || pathname === '/fire' || pathname === '/profile';
 }
 
 function primaryTabHref(pathname: string | null) {
@@ -70,7 +70,7 @@ export default function BottomNav() {
   // the routes that show no bar at all (Feed, Lead and Read steer from the dock on a phone and the side rail from a
   // laptop up: AppShell), and whether the bar holds the tab you're on (only then does it fold: what it folds down to is
   // that tab's icon)
-  const docked = pathname === '/' || pathname === '/lead' || pathname === '/read';
+  const docked = pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/me';
   const hidden = docked || pathname === '/login' || !!pathname?.startsWith('/command') || !!pathname?.startsWith('/drop') || !!pathname?.startsWith('/visit') || !!pathname?.startsWith('/read/') || !!pathname?.startsWith('/living-world');
   const onTab = activeIndex >= 0;
 

@@ -16,9 +16,10 @@ import { motion, useReducedMotion } from 'framer-motion';
 // framer's compositor animations land on their last frame (see lib/motionFinish)
 import '@/lib/motionFinish';
 import { HEADER_ROUTE_MORPH, PAGE_SURFACE_MOTION, ROUTE_CONTENT_SETTLE } from '@/lib/motion';
+import { isMainTab, type MainTab } from '@/lib/meDoor';
 import { cn } from '@/lib/utils';
 import AppTabHost from './AppTabHost';
-import Dock, { type DockTab } from './Dock';
+import Dock from './Dock';
 import LaunchVeil from './LaunchVeil';
 import { DeskRow, SideRail } from './SideRail';
 
@@ -41,13 +42,14 @@ const HeaderLayerContext = createContext<{
   setCompressed: (compressed: boolean) => void;
 } | null>(null);
 function isTabRoute(pathname: string) {
-  return pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/fire' || pathname === '/profile';
+  return pathname === '/' || pathname === '/lead' || pathname === '/read' || pathname === '/me' || pathname === '/fire' || pathname === '/profile';
 }
 
 function headerIdForPathname(pathname: string) {
   if (pathname === '/') return 'feed';
   if (pathname === '/lead') return 'lead';
   if (pathname === '/read') return 'read';
+  if (pathname === '/me') return 'me';
   if (pathname === '/fire') return 'fire';
   if (pathname === '/profile') return 'fund';
   return null;
@@ -155,6 +157,14 @@ function RouteTransitionLayer({
   );
 }
 
+// Me opens over the tab you were on, and the dock on it goes back there (a page opened straight on Me: Feed)
+function useLastTab(pathname: string): MainTab {
+  const headerId = headerIdForPathname(pathname);
+  const [lastTab, setLastTab] = useState<MainTab>('feed');
+  if (isMainTab(headerId) && headerId !== lastTab) setLastTab(headerId);
+  return isMainTab(headerId) ? headerId : lastTab;
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const hasTabChrome = isTabRoute(pathname);
@@ -168,10 +178,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
     ));
   }, [pathname]);
   const headerCompressed = headerCompression.pathname === pathname && headerCompression.compressed;
-  /* the tabs that share their chrome (Feed, Lead, Read) have no top section: on a phone the dock at the foot is all of
+  /* the tabs that share their chrome (Feed, Lead, Read), and Me over them, have no top section: on a phone the dock at the foot is all of
      it (Dock), and from a laptop up the side rail stands at the left (the page's column starts after it; SideRail). Their
      pages start under the status bar: the room they keep for a header is none */
-  const sharedHeader = currentHeaderId === 'lead' || currentHeaderId === 'read' || currentHeaderId === 'feed';
+  const onMe = currentHeaderId === 'me';
+  const sharedHeader = currentHeaderId === 'lead' || currentHeaderId === 'read' || currentHeaderId === 'feed' || onMe;
+  const lastTab = useLastTab(pathname);
   const shellStyle = sharedHeader
     ? {
         '--fm-mobile-header-chrome-height': '0px',
@@ -227,7 +239,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {hasTabChrome ? <LaunchVeil /> : null}
         {sharedHeader ? <DeskRow tab={currentHeaderId} /> : null}
         {sharedHeader ? <SideRail tab={currentHeaderId} /> : null}
-        {sharedHeader ? <Dock tab={currentHeaderId as DockTab} /> : null}
+        {sharedHeader ? <Dock tab={lastTab} me={onMe} /> : null}
       </div>
     </HeaderLayerContext.Provider>
   );

@@ -209,6 +209,12 @@ export function getFeedsSnapshot(): AppFeed[] | null {
   return feeds;
 }
 
+// the bundle for something that isn't a page of feeds (the Bitecoin count): nothing is asked again if it is on hand
+export function ensureFeeds(): Promise<void> {
+  hydrate();
+  return feeds ? Promise.resolve() : load(false);
+}
+
 export function useFeeds(): FeedsState {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   useEffect(() => {

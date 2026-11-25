@@ -501,6 +501,74 @@ html.dark .fm-dock {
 }
 
 /* the tab words rise over the row: the one you're on first, the others a beat behind; the finger's takes the mark */
+.fm-dock-me {
+  bottom: 248px;
+  display: grid;
+  justify-items: center;
+}
+.fm-dock-me button {
+  --q: clamp(0, calc((var(--p) - 0.5) / 0.42), 1.08);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--foreground);
+  white-space: nowrap;
+  text-shadow: var(--fm-dock-halo);
+  opacity: clamp(0, var(--q), 1);
+  transform: translateY(calc((1 - var(--q)) * 26px)) scale(calc(0.88 + 0.12 * min(var(--q), 1)));
+  transition: scale 220ms var(--fm-dock-ease);
+  will-change: transform, opacity;
+}
+.fm-dock-me button::before {
+  content: '';
+  position: absolute;
+  inset: -4px -28px;
+}
+.fm-dock-me b {
+  position: relative;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: -0.03em;
+}
+.fm-dock-me b::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 18px;
+  height: 3px;
+  margin-left: -9px;
+  border-radius: 2px;
+  background: var(--foreground);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.fm-dock-me .is-on b::after,
+.fm-dock-me [data-hot] b::after {
+  opacity: 1;
+}
+.fm-dock-me [data-hot] {
+  scale: 1.06;
+}
+.fm-dock-me span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fm-dock-me small {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fm-dock-ink-tab);
+}
 .fm-dock-words {
   bottom: 190px;
   display: grid;
