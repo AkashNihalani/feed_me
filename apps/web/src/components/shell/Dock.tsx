@@ -14,17 +14,23 @@
    same swipes, pulls and taps as the bar.
 
    Swipe it sideways for the next tab: the hero's ring dims to a
-   track and is drawn round again as the thumb goes, the page, a
-   card now, eases back a touch toward the thumb's side
-   (lib/tabPush; it was copied the moment the finger landed, so
-   the swipe itself has nothing heavy to do), and over the dock,
-   clear of the thumb, the three tabs show with a mark sliding
-   toward the one it heads for: all on the one progress, the
-   ring's. The ring drawn all the way round is the switch: the hero
-   takes it with a press, the icon turns into the next tab's, the
-   card lifts on while the next tab is made under it, then slides
-   away, uncovering it, and the tabs over the dock sink as it goes.
-   Let go short and it all settles back.
+   track and is drawn round again in the accent as the thumb goes,
+   the bar presses in, the page, a card now, eases back a touch
+   toward the thumb's side (lib/tabPush; it was copied the moment
+   the finger landed, so the swipe itself has nothing heavy to do),
+   and over the dock, clear of the thumb, a pill comes up with the
+   three tabs, its one red mark holding to the tab you're on, then
+   going to the one the thumb heads for: all on the one progress,
+   the ring's. Past halfway, or the ring drawn all the way round,
+   is the switch: the hero takes it with a press, the icon turns
+   into the next tab's, the card lifts on while the next tab is
+   made under it, then slides away, uncovering it, the pill goes
+   as it does, and the ring turns back to ink. Let go before, and
+   it all settles back.
+
+   Pull it down for the tab's choice (Lead's range, Feed's zoom,
+   Read's part): the same pill with the choices in it, opened on
+   the one you're on; slide along it and let go (dockPull).
 
    Pull it up, or tap it, and the page frosts over while the
    dock's parts rise out of it as layers (a tap's at the pace they
@@ -59,7 +65,9 @@ import { playHaptic } from '@/lib/haptics';
 import { dropPush, holdPush, leavePush, releasePush, scrubPush } from '@/lib/tabPush';
 import { leaveTab } from '@/lib/tabSheet';
 import { ms } from '@/lib/tempo';
+import { DockPull, Glide, PRESS, coolRing, pillAt, pillShown, posePill, springBar, type PullDom } from './dockPull';
 import './dock.css';
+import './dockPull.css';
 
 export type DockTab = 'lead' | 'feed' | 'read';
 
@@ -118,9 +126,11 @@ function railOf(config: TabHeaderConfig): Face[] {
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+// the tabs' mark holds to its stop, then goes, and is nearly home before the ring is closed (the pull's own feel)
+const magnet = (t: number) => t ** 3 / (t ** 3 + (1 - t) ** 3);
 
 // (`ring`: how far round a sideways swipe has drawn the hero's ring, 0 → 1)
-type Gesture = { id: number; x0: number; y0: number; mode: null | 'pull' | 'swipe'; wasOpen: boolean; locked: boolean; lastX: number; lastT: number; v: number; ring: number };
+type Gesture = { id: number; x0: number; y0: number; mode: null | 'pull' | 'swipe' | 'drop'; wasOpen: boolean; locked: boolean; lastX: number; lastT: number; v: number; ring: number };
 type RingParts = { right: HTMLElement | null; left: HTMLElement | null; lead: HTMLElement | null; start: HTMLElement | null; end: HTMLElement | null };
 
 // the swipe's marks: the dock plain again with none of them
@@ -148,8 +158,10 @@ export default function Dock({ tab }: { tab: DockTab }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const hudRef = useRef<HTMLDivElement | null>(null);
-  const markRef = useRef<HTMLElement | null>(null);
-  const litRefs = useRef<Partial<Record<DockTab, HTMLElement | null>>>({});
+  // the tabs' pill: its mark, the bright words the mark shows, and where each is on its way (dockPull's springs)
+  const tabMarkRef = useRef<HTMLDivElement | null>(null);
+  const tabBrightRef = useRef<HTMLDivElement | null>(null);
+  const tabPill = useRef({ rise: new Glide(0), mark: new Glide(TABS.indexOf(tab)), seg: 64 });
   const ring = useRef<RingParts>({ right: null, left: null, lead: null, start: null, end: null });
 
   // what moves every frame, kept out of React
@@ -170,12 +182,17 @@ export default function Dock({ tab }: { tab: DockTab }) {
     return event.timeStamp - tap.t < 600 && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < 24;
   };
   /* the swipe: how far round the ring is drawn (eased toward the thumb's `target`), which way, from which tab to which
-     (none past the ends: the thumb then only `nudge`s the mark), whether the thumb is still on it, and where the tab
-     names sit over the dock (their middles, measured as a swipe starts) */
-  const swipe = useRef({ shown: 0, target: 0, way: 1 as 1 | -1, from: 'feed' as DockTab, to: null as DockTab | null, nudge: 0, held: false, raf: 0, last: 0, marks: null as Record<DockTab, number> | null });
+     (none past the ends: the thumb then only `nudge`s the mark), and whether the thumb is still on it */
+  const swipe = useRef({ shown: 0, target: 0, way: 1 as 1 | -1, from: 'feed' as DockTab, to: null as DockTab | null, nudge: 0, held: false, raf: 0, last: 0 });
   const laterTimer = useRef(0);
   // the tab you're on, for what settles after a switch has already changed it
   const tabRef = useRef(tab);
+  // the pull down for the tab's choice (dockPull), its parts, and the choice each tab was last on
+  const pull = useRef<DockPull | null>(null);
+  const pillRef = useRef<HTMLDivElement | null>(null);
+  const pillMarkRef = useRef<HTMLDivElement | null>(null);
+  const pillBrightRef = useRef<HTMLDivElement | null>(null);
+  const chosen = useRef<Partial<Record<DockTab, { now: string | number; last: string | number | null }>>>({});
   // folded into the handle (the page scrolled down), and how far the page has gone one way since it last turned
   const foldedRef = useRef(false);
   const scrolled = useRef({ y: 0, travel: 0 });
@@ -185,6 +202,19 @@ export default function Dock({ tab }: { tab: DockTab }) {
   const pickIndex = faces.findIndex((face) => face.key === pickKey);
   const choice = config?.choice ?? null;
   const here = TABS.indexOf(tab);
+  // (a flick goes back to the one before: told as the choice changes, however it was changed; a pull tells it once, as
+  // it ends, not each stop it passed)
+  const choiceNow = useRef(choice);
+  useIsoLayoutEffect(() => {
+    choiceNow.current = choice;
+  });
+  const choiceValue = choice?.value ?? null;
+  useEffect(() => {
+    if (choiceValue == null || pull.current?.active) return;
+    const was = chosen.current[tab];
+    if (!was) chosen.current[tab] = { now: choiceValue, last: null };
+    else if (was.now !== choiceValue) chosen.current[tab] = { now: choiceValue, last: was.now };
+  }, [tab, choiceValue]);
   const isMarked = (handle: string) => (config?.marked ? config.marked(handle) : fresh.has(handle));
 
   /* ── the row of circles: each in its place along the row, the one you're on in the middle. Opening, it flies up out
@@ -292,10 +322,10 @@ export default function Dock({ tab }: { tab: DockTab }) {
   }, []);
 
   /* ── the swipe, as far as it has got: the hero's ring drawn round (the rail's ring, its halves turning into view
-     behind windows: transforms alone), and over the dock the mark on its way from the tab you're on to the one the
-     thumb heads for, their names trading places ── */
+     behind windows: transforms alone), and over the dock the tabs' pill, its mark on its way from the tab you're on to
+     the one the thumb heads for ── */
   const paintRing = useCallback(() => {
-    const { shown, way, from, to, nudge, marks } = swipe.current;
+    const { shown, way, to, nudge } = swipe.current;
     const angle = 360 * shown;
     const { right, left, lead, start, end } = ring.current;
     if (right && left && lead && start && end) {
@@ -309,22 +339,18 @@ export default function Dock({ tab }: { tab: DockTab }) {
     // the page eases back with it (past the ends, only a little, and holds)
     const k = to ? shown : nudge * 0.3;
     scrubPush(k, way);
-    // the tabs over the dock come up with the thumb's first move, and go as the ring unwinds
     const hud = hudRef.current;
-    if (hud) {
-      const seen = clamp((to ? shown : nudge) * 4, 0, 1);
-      hud.style.opacity = seen.toFixed(3);
-      hud.style.transform = `translate3d(0, ${((1 - seen) * 6).toFixed(1)}px, 0)`;
+    const mark = tabMarkRef.current;
+    const bright = tabBrightRef.current;
+    if (!hud || !mark || !bright) return;
+    const pill = tabPill.current;
+    posePill(hud, mark, bright, pill.mark.x * pill.seg, pill.rise.x);
+    // (the bar presses in with it, and eases out as it goes back; closed, it has sprung home: closeRing)
+    const bar = barRef.current;
+    if (bar && !('ringShut' in bar.dataset)) {
+      const press = PRESS * clamp(pill.rise.x, 0, 1);
+      bar.style.transform = press > 0.0004 ? `scale(${(1 - press).toFixed(4)})` : '';
     }
-    const mark = markRef.current;
-    if (mark && marks) {
-      const x = to ? marks[from] + (marks[to] - marks[from]) * shown : marks[from] + way * 9 * nudge;
-      mark.style.transform = `translate3d(${x.toFixed(1)}px, 0, 0)`;
-    }
-    TABS.forEach((one) => {
-      const lit = litRefs.current[one];
-      if (lit) lit.style.opacity = (one === from ? 1 - (to ? shown : 0) : one === to ? shown : 0).toFixed(3);
-    });
   }, []);
 
   // eased toward the thumb once a frame; unwound all the way with the thumb gone, the dock is plain again
@@ -337,8 +363,16 @@ export default function Dock({ tab }: { tab: DockTab }) {
       s.last = now;
       s.shown += (s.target - s.shown) * (1 - Math.exp(-dt / RING_LAG));
       if (Math.abs(s.target - s.shown) < 0.002) s.shown = s.target;
+      // the pill on the pull's own springs: up over the first stretch of the swipe, its mark with the ring
+      const { rise, mark } = tabPill.current;
+      const at = TABS.indexOf(s.from);
+      rise.to = s.held ? clamp((s.to ? s.target : s.nudge) * 2.4, 0, 1) : 0;
+      mark.to = s.held ? (s.to ? at + (TABS.indexOf(s.to) - at) * magnet(s.target) : at + s.way * 0.05 * s.nudge) : at;
+      rise.step(dt, s.held ? 460 : 260);
+      mark.step(dt, 520);
+      const gliding = rise.moving || mark.moving;
       paintRing();
-      if (s.shown !== s.target) {
+      if (s.shown !== s.target || gliding) {
         s.raf = requestAnimationFrame(step);
         return;
       }
@@ -462,19 +496,14 @@ export default function Dock({ tab }: { tab: DockTab }) {
     drawFaces();
   }, [faceKeys, pickIndex, drawFaces]);
 
-  // the tabs' mark on the tab you're on, measured once the dock is drawn, for the next swipe to set off from
+  // the tabs' mark on the tab you're on, for the next swipe to set off from
   const mounted = Boolean(config) && !wide;
   useIsoLayoutEffect(() => {
     tabRef.current = tab;
-    const hud = hudRef.current;
     const s = swipe.current;
-    if (!hud || s.held || s.to) return;
-    const marks = {} as Record<DockTab, number>;
-    hud.querySelectorAll<HTMLElement>('[data-hud]').forEach((el) => {
-      marks[el.dataset.hud as DockTab] = el.offsetLeft + el.offsetWidth / 2;
-    });
-    s.marks = marks;
+    if (!hudRef.current || s.held || s.to) return;
     s.from = tab;
+    tabPill.current.mark.set(TABS.indexOf(tab));
     paintRing();
   }, [tab, mounted, paintRing]);
 
@@ -570,6 +599,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
     cancelAnimationFrame(row.current.raf);
     cancelAnimationFrame(swipe.current.raf);
     window.clearTimeout(laterTimer.current);
+    pull.current?.dispose();
   }, []);
 
   /* ── the swipe let go. Short, it unwinds and the tabs over the dock sink away. Closed (`to`), drawn whole, the ring
@@ -587,15 +617,34 @@ export default function Dock({ tab }: { tab: DockTab }) {
 
   const closeRing = (to: DockTab) => {
     const s = swipe.current;
-    const mark = markRef.current;
-    const was = mark?.style.transform ?? '';
     cancelAnimationFrame(s.raf);
     Object.assign(s, { raf: 0, held: false, shown: 1, target: 1, to, nudge: 0 });
-    paintRing();
-    // (a tab's name tapped: the mark slides there, as the thumb would have taken it)
-    if (mark && was && was !== mark.style.transform && !reducedMotion()) {
-      mark.animate([{ transform: was }, { transform: mark.style.transform }], { duration: ms(340), easing: CARRY_EASE_CSS });
+    // (what is left of the pill's way, and of its mark's, goes on the compositor, since the switch is busy under it; the
+    // bar, pressed in, springs home)
+    const hud = hudRef.current;
+    const mark = tabMarkRef.current;
+    const bright = tabBrightRef.current;
+    if (hud && mark && bright) {
+      const { rise, mark: along, seg } = tabPill.current;
+      const r = rise.x;
+      const x = along.x * seg;
+      const end = TABS.indexOf(to) * seg;
+      rise.set(1);
+      along.set(TABS.indexOf(to));
+      if (barRef.current) {
+        barRef.current.dataset.ringShut = '';
+        springBar(barRef.current, PRESS * clamp(r, 0, 1));
+      }
+      if (!reducedMotion()) {
+        const glide: KeyframeAnimationOptions = { duration: ms(260), easing: CARRY_EASE_CSS };
+        if (r < 0.98) hud.animate([{ transform: pillAt(r), opacity: pillShown(r) }, { transform: pillAt(1), opacity: 1 }], glide);
+        if (Math.abs(x - end) > 0.5) {
+          mark.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${end.toFixed(2)}px, 0, 0)` }], glide);
+          bright.animate([{ transform: `translate3d(${(-x).toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${(-end).toFixed(2)}px, 0, 0)` }], glide);
+        }
+      }
     }
+    paintRing();
     const bar = barRef.current;
     if (!bar) return;
     delete bar.dataset.swiping;
@@ -609,27 +658,35 @@ export default function Dock({ tab }: { tab: DockTab }) {
     }
   };
 
-  // the card under way: the tabs over the dock sink, and the dock is plain again (the ring at rest is the hero's own,
-  // drawn whole under this one: nothing else on screen changes). A swipe begun meanwhile keeps what it has drawn
+  // the card under way: the tabs over the dock sink, and the ring gives its red back to the hero's own (drawn whole under
+  // it: nothing else on screen changes). A swipe begun meanwhile keeps what it has drawn
   const sinkHud = () => {
-    const settle = () => {
+    const plain = () => {
       const s = swipe.current;
       if (s.held) return;
       s.from = tabRef.current;
       s.to = null;
       s.shown = s.target = 0;
+      tabPill.current.rise.set(0);
+      tabPill.current.mark.set(TABS.indexOf(s.from));
       paintRing();
       if (barRef.current) clearRing(barRef.current);
     };
     const hud = hudRef.current;
+    const settle = () => {
+      if (swipe.current.held) return;
+      if (hud) hud.style.visibility = 'hidden';
+      if (barRef.current) coolRing(barRef.current, plain);
+      else plain();
+    };
     if (!hud) return settle();
     const out = hud.animate(
-      [{ opacity: Number(hud.style.opacity || 1), transform: hud.style.transform || 'none' }, { opacity: 0, transform: 'translate3d(0, 6px, 0)' }],
+      [{ opacity: 1, transform: pillAt(1) }, { opacity: 0, transform: pillAt(0) }],
       { duration: HUD_OUT_MS, easing: CARRY_EASE_CSS, fill: 'forwards' },
     );
     const done = () => {
-      out.cancel();
       settle();
+      out.cancel();
     };
     out.finished.then(done, done);
   };
@@ -701,9 +758,85 @@ export default function Dock({ tab }: { tab: DockTab }) {
     }
   };
 
-  /* ── the dock's own gestures: sideways for the next tab, up for the layers, a tap to open them ── */
+  /* ── the pull down: the tab's choice as a row of stops, opened on the one you're on ── */
+  const pullable = choice != null && choice.options.length > 1 && choice.options.length <= 4;
+  const pullWords = choice ? choice.options.map((value) => {
+    const word = choice.label(value);
+    return /^[A-Z]{3,}$/.test(word) ? word[0] + word.slice(1).toLowerCase() : word;
+  }) : [];
+  const startPull = (event: ReactPointerEvent<HTMLElement>) => {
+    const bar = barRef.current;
+    const face = faceRef.current;
+    const pill = pillRef.current;
+    const mark = pillMarkRef.current;
+    const bright = pillBrightRef.current;
+    if (!choice || !bar || !face || !pill || !mark || !bright) return;
+    releasePush();
+    fold(false);
+    // (the swipe's ring, unwound and still: the pull draws it now)
+    cancelAnimationFrame(swipe.current.raf);
+    Object.assign(swipe.current, { raf: 0, shown: 0, target: 0 });
+    const { options } = choice;
+    const at = Math.max(0, options.indexOf(choice.value));
+    const was = chosen.current[tab]?.last;
+    const back = was == null ? -1 : options.indexOf(was);
+    const last = back >= 0 && back !== at ? back : at > 0 ? at - 1 : at + 1;
+    const dom: PullDom = { bar, face, ring: ring.current, pill, mark, bright };
+    pull.current ??= new DockPull();
+    pull.current.begin(dom, {
+      count: options.length,
+      at,
+      last,
+      live: tab === 'lead',
+      onPick: (index, way) => {
+        document.querySelector<HTMLElement>('.fm-lead')?.style.setProperty('--slit-way', String(way));
+        // (the page's own handler as it is now: the page moves under the thumb, and one from before it moved would take
+        // the way back for no change)
+        choiceNow.current?.onChange(options[index]);
+      },
+      onDone: (index) => {
+        if (index !== at) chosen.current[tab] = { now: options[index], last: options[at] };
+      },
+    }, event.clientX, gesture.current?.lastT ?? event.timeStamp);
+  };
+
+  /* A second finger anywhere: it is a pinch on the page, never the dock's (the thumb of one resting here would switch
+     tabs). Told by the touches themselves: the dock's own pointer may have been the first to land */
+  const dropGesture = useRef<() => void>(() => {});
+  useEffect(() => {
+    dropGesture.current = () => {
+      const g = gesture.current;
+      if (!g) return;
+      gesture.current = null;
+      barRef.current?.classList.remove('is-dragging');
+      if (g.mode === 'swipe') return unwindRing();
+      releasePush();
+      if (g.mode === 'drop') pull.current?.end(0, true);
+      else if (g.mode === 'pull' && !g.wasOpen) closeLayers(true);
+      clearHot();
+    };
+  });
+  // (said on the page while a dock is on it: dockPull.css keeps a pinch from Safari)
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.fmDock = '';
+    return () => {
+      delete root.dataset.fmDock;
+    };
+  }, []);
+  useEffect(() => {
+    const onTouches = (event: TouchEvent) => {
+      if (event.touches.length > 1) dropGesture.current();
+    };
+    window.addEventListener('touchstart', onTouches, { passive: true, capture: true });
+    return () => window.removeEventListener('touchstart', onTouches, { capture: true });
+  }, []);
+
+  /* ── the dock's own gestures: sideways for the next tab, up for the layers, down for the choice, a tap to open ── */
   const onDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
+    // (a second finger's: the dock is never part of a pinch)
+    if (!event.isPrimary) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     gesture.current = { id: event.pointerId, x0: event.clientX, y0: event.clientY, mode: null, wasOpen: open, locked: false, lastX: event.clientX, lastT: event.timeStamp, v: 0, ring: 0 };
     // the page copied now, while the finger is still: a swipe that follows has nothing heavy to do (lib/tabPush)
@@ -712,18 +845,20 @@ export default function Dock({ tab }: { tab: DockTab }) {
 
   // a swipe begun: the ring dims to a track, and the tabs rise over the dock, the one you're on lit
   const startSwipe = () => {
-    // (the last switch's tabs, still sinking, give way)
-    hudRef.current?.getAnimations().forEach((animation) => animation.cancel());
     const s = swipe.current;
     s.held = true;
     s.from = tab;
-    const hud = hudRef.current;
-    if (hud) {
-      const marks = {} as Record<DockTab, number>;
-      hud.querySelectorAll<HTMLElement>('[data-hud]').forEach((el) => {
-        marks[el.dataset.hud as DockTab] = el.offsetLeft + el.offsetWidth / 2;
-      });
-      s.marks = marks;
+    const bright = tabBrightRef.current;
+    if (bright) {
+      // (the last switch's tabs, still sinking, and its ring, still cooling, give way)
+      [hudRef.current, tabMarkRef.current, bright, barRef.current?.querySelector('.fm-dock-ring')].forEach((el) => el?.getAnimations().forEach((animation) => animation.cancel()));
+      const pill = tabPill.current;
+      pill.seg = bright.offsetWidth / TABS.length || 64;
+      // (from rest; one caught on its way back, or still standing from the last switch, goes on from there)
+      if (!s.raf) {
+        if (!barRef.current || !('ringShut' in barRef.current.dataset)) pill.rise.set(0);
+        pill.mark.set(TABS.indexOf(tab));
+      }
     }
     const bar = barRef.current;
     if (bar) {
@@ -750,8 +885,15 @@ export default function Dock({ tab }: { tab: DockTab }) {
           motion.current.raf = 0;
           readyLayers();
         }
+      } else if (pullable) {
+        g.mode = 'drop';
+        startPull(event);
       }
       barRef.current?.classList.add('is-dragging');
+    }
+    if (g.mode === 'drop') {
+      pull.current?.move(-dy, event.clientX);
+      return;
     }
     if (g.mode === 'pull') {
       if (!g.wasOpen) {
@@ -793,8 +935,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
       }
       const s = swipe.current;
       Object.assign(s, { target: g.ring, way: dx < 0 ? 1 : -1, to: free ? TABS[next] : null, nudge: free ? 0 : Math.sqrt(Math.min(1, Math.abs(dx) / RING)) });
-      if (free) easeRing();
-      else paintRing();
+      easeRing();
     }
   };
 
@@ -806,10 +947,16 @@ export default function Dock({ tab }: { tab: DockTab }) {
     const dx = event.clientX - g.x0;
     if (row.current.edge || row.current.raf) settleRow(0);
 
+    if (g.mode === 'drop') {
+      pull.current?.end(event.timeStamp, cancelled);
+      return;
+    }
     if (g.mode === 'swipe') {
-      // let go short of closing the ring: a flick on the way closes it anyway, and anything less unwinds it
+      // let go short of closing the ring: past halfway, or a flick on the way, closes it anyway; anything less unwinds it
       const next = here + (dx < 0 ? 1 : -1);
-      if (!cancelled && next >= 0 && next < TABS.length && dx * g.v > 0 && Math.abs(g.v) > FLICK) {
+      // (what is lit is what you get: past halfway the mark is on the next tab)
+      const lit = g.ring >= 0.5;
+      if (!cancelled && next >= 0 && next < TABS.length && (lit || (dx * g.v > 0 && Math.abs(g.v) > FLICK))) {
         switchTo(TABS[next]);
         return;
       }
@@ -977,29 +1124,29 @@ export default function Dock({ tab }: { tab: DockTab }) {
         </div>
 
         {/* the tabs: while a swipe is under way, over the dock and clear of the thumb, the mark heading for the next */}
-        <div ref={hudRef} className="fm-dock-hud" aria-hidden="true">
-          {TABS.map((one) => (
-            <span key={one} data-hud={one}>
-              {NAME[one]}
-              <b
-                ref={(node) => {
-                  litRefs.current[one] = node;
-                }}
-                style={{ opacity: one === tab ? 1 : 0 }}
-              >
-                {NAME[one]}
-              </b>
-            </span>
-          ))}
-          <i ref={markRef} />
+        <div ref={hudRef} className="fm-pull-pill is-tabs" aria-hidden="true" style={{ '--n': TABS.length } as CSSProperties}>
+          <div className="fm-pull-words">{TABS.map((one) => <span key={one}>{NAME[one]}</span>)}</div>
+          <div ref={tabMarkRef} className="fm-pull-mark">
+            <div ref={tabBrightRef} className="fm-pull-words fm-pull-bright">{TABS.map((one) => <span key={one}>{NAME[one]}</span>)}</div>
+          </div>
         </div>
+
+        {/* the pill of stops a pull down brings up over the bar */}
+        {pullable ? (
+          <div ref={pillRef} className="fm-pull-pill" aria-hidden="true" style={{ '--n': pullWords.length } as CSSProperties}>
+            <div className="fm-pull-words">{pullWords.map((word) => <span key={word}>{word}</span>)}</div>
+            <div ref={pillMarkRef} className="fm-pull-mark">
+              <div ref={pillBrightRef} className="fm-pull-words fm-pull-bright">{pullWords.map((word) => <span key={word}>{word}</span>)}</div>
+            </div>
+          </div>
+        ) : null}
 
         <button
           ref={barRef}
           type="button"
           className="fm-dock-bar"
           aria-expanded={open}
-          aria-label={`${heroName}${sub ? `, ${sub}` : ''}, ${NAME[tab]}. Swipe for the next tab; pull up or tap for feeders and choices`}
+          aria-label={`${heroName}${sub ? `, ${sub}` : ''}, ${NAME[tab]}. Swipe for the next tab; pull up or tap for feeders and choices${choice ? `; pull down for ${choice.name.toLowerCase()}` : ''}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={(event) => onUp(event)}
@@ -1015,6 +1162,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
         >
           {/* its glass and the still plate of its shadow (folded, it draws in behind the handle) */}
           <span ref={glassRef} className="fm-dock-glass" aria-hidden="true" />
+          {pullable ? <span className="fm-pull-grip" aria-hidden="true" /> : null}
           {/* the hero: the rail's circle for who you're on, its ring at rest and the one a swipe draws round over it; folded,
               the handle, on a glass of its own */}
           <span ref={faceRef} className="fm-dock-face">

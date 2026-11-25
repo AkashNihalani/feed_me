@@ -1,0 +1,133 @@
+/* ─────────────────────────────────────────────────────────────
+   DOCK PULL (components/shell/dockPull): the pill the phone's dock
+   brings up over the thumb, for the tabs on a sideways swipe and
+   for the tab's choice on a pull down, with one solid mark of the
+   accent on the one you're on. Transform and opacity alone.
+   ───────────────────────────────────────────────────────────── */
+
+/* On a phone a pinch stays the app's: Safari takes one for its tab overview otherwise. Said of everything on the page,
+   since a box that scrolls (Lead's own root is one) starts its contents afresh; it weighs nothing, so what says otherwise
+   (the dock's none, a chart's pan-y) still does */
+@media (max-width: 1023px) {
+  :where(html[data-fm-dock], html[data-fm-dock] body, html[data-fm-dock] body *) {
+    touch-action: pan-x pan-y;
+  }
+
+  html[data-fm-dock],
+  html[data-fm-dock] body {
+    touch-action: pan-x pan-y;
+  }
+}
+
+/* over the bar and clear of the thumb (never out from behind the bar: its red would show through the glass). Its
+   transform is written by script alone (here too, the build would fold it and `translate` into one, and the pill would
+   lose its middle) */
+.fm-pull-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  z-index: 4;
+  height: 44px;
+  padding: 4px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 0 0 0.5px rgb(var(--fm-shadow-rgb) / 0.12), 0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08), 0 14px 28px -12px rgb(var(--fm-shadow-rgb) / 0.3);
+  translate: -50% 0;
+  transform-origin: 50% 100%;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+html.dark .fm-pull-pill {
+  background: rgb(38 38 43);
+  box-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.14), 0 14px 28px -10px rgb(0 0 0 / 0.6);
+}
+
+.fm-pull-words {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: 36px;
+}
+
+.fm-pull-words span {
+  display: grid;
+  place-items: center;
+  min-width: 64px;
+  padding: 0 15px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--fm-dock-ink-tab);
+  font-variant-numeric: tabular-nums;
+}
+
+/* the mark: a window the bright words show through, so a word turns under its edge as it passes */
+.fm-pull-mark {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: calc((100% - 8px) / var(--n, 3));
+  height: 36px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--fm-accent);
+  will-change: transform;
+}
+
+.fm-pull-bright {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100% * var(--n, 3));
+  will-change: transform;
+}
+
+.fm-pull-bright span {
+  color: #fff;
+}
+
+/* the grip: there is something to pull */
+.fm-pull-grip {
+  position: absolute;
+  left: 50%;
+  top: 5px;
+  width: 22px;
+  height: 3px;
+  margin-left: -11px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--foreground) 15%, transparent);
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+
+.fm-dock[data-folded] .fm-pull-grip,
+.fm-dock[data-open] .fm-pull-grip {
+  opacity: 0;
+}
+
+/* (folded, the tabs stand clear of the handle, a size up from the hero) */
+.fm-dock[data-folded] .fm-pull-pill.is-tabs {
+  bottom: 86px;
+}
+
+/* the hero's ring as a swipe or a pull draws it, in the accent, over the resting one dimmed to its track; taken, the
+   resting one is whole again under it as it goes */
+.fm-dock-bar[data-pulling] .fm-dock-story {
+  opacity: 0.22;
+}
+
+.fm-dock-bar[data-pulled] .fm-dock-story {
+  opacity: 1;
+}
+
+.fm-dock-bar:is([data-pulling], [data-swiping], [data-ring-shut]) .fm-dock-ring-arc path {
+  stroke: var(--fm-accent);
+}
+
+.fm-dock-bar:is([data-pulling], [data-swiping], [data-ring-shut]) .fm-dock-ring-cap {
+  background: var(--fm-accent);
+}

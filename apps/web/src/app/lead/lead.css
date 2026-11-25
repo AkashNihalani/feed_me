@@ -110,18 +110,28 @@ html.dark .fm-lead {
   .fm-lead .lead-swap-in { animation: none !important; }
 }
 
-/* a value changing in its slit (leadKit SlitText): the old rises out as the new rises in, transform only */
+/* a value changing in its slit (leadKit SlitText): the old rises out as the new rises in, transform only (--slit-way -1,
+   from the dock's pull to a shorter range: both fall) */
 .fm-lead .lead-slit-in {
   animation: lead-slit-in calc(620ms * var(--fm-tempo)) cubic-bezier(0.65, 0, 0.35, 1) both;
 }
 .fm-lead .lead-slit-out {
   animation: lead-slit-out calc(620ms * var(--fm-tempo)) cubic-bezier(0.65, 0, 0.35, 1) both;
 }
+/* (on a phone the dock's pull moves the range under the thumb: the figures go all together, on the dock's own curve) */
+@media (max-width: 1023px) {
+  .fm-lead .lead-slit-in,
+  .fm-lead .lead-slit-out {
+    animation-duration: calc(460ms * var(--fm-tempo));
+    animation-timing-function: cubic-bezier(0.3, 0.3, 0.2, 1);
+    animation-delay: 0ms !important;
+  }
+}
 @keyframes lead-slit-in {
-  from { transform: translateY(110%); }
+  from { transform: translateY(calc(110% * var(--slit-way, 1))); }
 }
 @keyframes lead-slit-out {
-  to { transform: translateY(-110%); }
+  to { transform: translateY(calc(-110% * var(--slit-way, 1))); }
 }
 @media (prefers-reduced-motion: reduce) {
   .fm-lead .lead-slit-in, .fm-lead .lead-slit-out { animation: none !important; }
