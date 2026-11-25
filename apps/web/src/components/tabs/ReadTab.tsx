@@ -29,6 +29,9 @@
    Anuj and Lakmé for now; its story plays on Feed) takes the page instead: none of the above
    is mounted for it, the header folds on the window's scroll as the
    index's does, and its switch is the part switch.
+
+   A feeder read as one page (ReadOne: the search, the files and the wall, @anuj.mp4 for now) takes it before either:
+   the dock is then the way back out of a file, and its time frames.
    ───────────────────────────────────────────────────────────── */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -43,6 +46,8 @@ import FeederFile, { feederAvatar, hasFeederFile } from '@/components/read/Feede
 import ReadStories, { type ReadOpen } from '@/components/read/ReadStories';
 import ReadSections, { FileDoor, sectionsFor } from '@/components/read/ReadSections';
 import { closeLayer, openLayer, originBox } from '@/components/read/readLayerMotion';
+import ReadOne, { readOneOf, type ReadOneHand } from '@/components/read/one/ReadOne';
+import type { ReadOneChrome } from '@/components/read/one/readOneData';
 import Read17, { read17Of, type Chapter, type Part } from '@/components/read/read17/Read17';
 import {
   READ_POSTS,
@@ -117,7 +122,11 @@ export default function ReadTab() {
   const feedId = scope.feedId !== undefined ? scope.feedId : feeds ? feedOf(feeds, scope.handle) : undefined;
   const activeFeed = feeds && feedId ? feeds.find((feed) => feed.id === feedId) || null : null;
   // a read in three parts takes the page: the engine, the stories, the sections and the Feeder File stand down for it
-  const r17 = read17Of(scope.handle);
+  // (and a read as one page, the search, the files and the wall, stands before either)
+  const r1 = readOneOf(scope.handle);
+  const [oneChrome, setOneChrome] = useState<ReadOneChrome | null>(null);
+  const oneHand = useRef<ReadOneHand | null>(null);
+  const r17 = r1 ? null : read17Of(scope.handle);
   const [part, setPart] = useState<Part>('score');
   const jump17 = useRef<((target: string) => void) | null>(null);
   // a part picked in the header (or one of the three on the side rail): the page goes there
@@ -125,12 +134,12 @@ export default function ReadTab() {
     setPart(next === 'strategy' ? 'score' : next);
     jump17.current?.(next);
   }, []);
-  const readIndex = r17 ? null : readOf(scope.handle);
+  const readIndex = r1 || r17 ? null : readOf(scope.handle);
   const reading = readIndex != null;
   const compressed = reading ? engineCompressed : indexCompressed;
   const readable = useMemo(() => readFeeders(feeds), [feeds]);
   // the read's sections (This week · Phases · Lanes · Drivers), for the feeders they've been counted for
-  const sec = useMemo(() => (r17 ? null : sectionsFor(scope.handle)), [scope.handle, r17]);
+  const sec = useMemo(() => (r1 || r17 ? null : sectionsFor(scope.handle)), [scope.handle, r1, r17]);
   // a read with a Feeder File (preview data: Anuj and Lakmé) opens on its stories, the Feeder File tucked away
   const fileHandle = reading && hasFeederFile(scope.handle) ? scope.handle : null;
   // the read as stories (the reader's preview data carries them as reader.stories)
@@ -259,7 +268,7 @@ export default function ReadTab() {
 
   // a new page (a read opening, or the index moving) starts from the top; one read to another is the
   // engine's own fade, which scrolls itself
-  const page = r17 ? `r17:${r17}` : reading ? `read:${readIndex}` : `index:${feedId ?? 'all'}:${scope.handle ?? ''}`;
+  const page = r1 ? `r1:${r1}` : r17 ? `r17:${r17}` : reading ? `read:${readIndex}` : `index:${feedId ?? 'all'}:${scope.handle ?? ''}`;
   const lastPage = useRef(page);
   useLayoutEffect(() => {
     if (lastPage.current === page) return;
@@ -314,6 +323,8 @@ export default function ReadTab() {
   const leaving = useRef<{ next: Scope } | null>(null);
   const feedIdOf = (next: Scope) => (next.feedId !== undefined ? next.feedId : feeds ? feedOf(feeds, next.handle) : undefined);
   const pageOf = (next: Scope) => {
+    const one = readOneOf(next.handle);
+    if (one) return `r1:${one}`;
     const three = read17Of(next.handle);
     if (three) return `r17:${three}`;
     const read = readOf(next.handle);
@@ -368,7 +379,7 @@ export default function ReadTab() {
   const label = scope.handle ? `@${scope.handle}` : activeFeed ? titleCase(activeFeed.title) : 'All feeds';
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const eyebrow = scope.handle
-    ? r17 ? 'Week of 19–25 Oct' : readIndex != null ? `${engine.f === readIndex && engine.n ? engine.n : READ_POSTS[readIndex]} of 100 posts` : sec ? `${sec.since} posts since April` : 'Not read yet'
+    ? r1 ? 'Week of 21–27 Oct' : r17 ? 'Week of 19–25 Oct' : readIndex != null ? `${engine.f === readIndex && engine.n ? engine.n : READ_POSTS[readIndex]} of 100 posts` : sec ? `${sec.since} posts since April` : 'Not read yet'
     : activeFeed ? plural(activeFeed.feeders.length, 'feeder') : feeds ? plural(feeds.length, 'feed') : 'Feeds';
 
   return (
@@ -383,6 +394,8 @@ export default function ReadTab() {
         view={engine.lens}
         showView={reading}
         chapter={r17 ? { value: part, onChange: toPart } : null}
+        one={r1 && oneChrome?.file ? { name: 'The wall', note: oneChrome.file.name, art: oneChrome.art, win: oneChrome.win, onWin: (days) => oneHand.current?.frame(days), onBack: () => oneHand.current?.back() } : null}
+        dockAway={Boolean(r1 && oneChrome?.away)}
         leaving={leavingTo != null}
         armed={armed}
         compressed={compressed}
@@ -395,10 +408,11 @@ export default function ReadTab() {
       {storyFeeder && !sec ? <ReadStories key={`stories-${fileHandle}`} feeder={storyFeeder} avatar={feederAvatar(fileHandle)} onOpen={onStories} /> : null}
       {/* min-height only: Read scrolls the page at every width, so it never takes the fixed shell height
           that tabs with their own inner scroller use on desktop */}
+      {r1 ? <ReadOne key={r1} handle={r1} minHeight={appShellStyle.minHeight} onChrome={setOneChrome} handRef={oneHand} /> : null}
       {r17 ? <Read17 key={r17} acct={r17} minHeight={appShellStyle.minHeight} onChapter={setPart} jumpRef={jump17} /> : null}
       {/* data-tab-arrival: Read plays its own arrival when the tab comes back (the engine's, the index's), so the
           tab host leaves it be */}
-      {r17 ? null : (
+      {r1 || r17 ? null : (
         <div className={`rd rd-page ${appFont.variable}`} data-tab-arrival="own" style={{ minHeight: appShellStyle.minHeight }}>
           {sec ? <ReadSections key={`sections-${scope.handle}`} data={sec} ownWall={!reading} onFile={fileHandle ? () => openFile(null) : null} /> : null}
           <div className="wrap" id="rd-main" ref={setMain} hidden={!reading} />

@@ -420,6 +420,11 @@ export type TabHeaderConfig = {
   control?: ReactNode;
   // the same choice as values (the dock's chips)
   choice?: HeaderChoice | null;
+  // the page is inside something (a file on Read): the dock is the way back out of it. Its face is `art` (a picture), its
+  // line `label`, and a tap on it goes back (the swipes and the pulls stay as they are)
+  back?: { label: string; note?: string | null; art: string | null; onBack: () => void } | null;
+  // the dock has turned into something of the page's own (a picked post's line, a sheet), and stands down for it
+  dockAway?: boolean;
   // a laptop up, the control the side rail docks at its foot (by default the same one; null: none there), and its name
   railControl?: ReactNode | null;
   controlLabel?: string;

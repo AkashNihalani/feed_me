@@ -629,3 +629,18 @@ html.dark .fm-dock {
     animation: none;
   }
 }
+
+/* ── inside something (a file on Read): the bar is the way back, and its face the picture of where that is; and while the
+   bar has turned into something of the page's own, it stands down (the page draws itself over the very same place) ── */
+.fm-dock-back {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.fm-dock[data-away] {
+  visibility: hidden;
+}

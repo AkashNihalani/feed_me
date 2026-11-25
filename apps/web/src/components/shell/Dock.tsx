@@ -211,6 +211,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
   const { activeFeed, pickedFeeder, pickKey } = whoOf(config?.feeds ?? null, config?.feedId, config?.handle ?? null);
   const pickIndex = faces.findIndex((face) => face.key === pickKey);
   const choice = config?.choice ?? null;
+  const back = config?.back ?? null;
   const here = TABS.indexOf(tab);
   // (a flick goes back to the one before: told as the choice changes, however it was changed; a pull tells it once, as
   // it ends, not each stop it passed)
@@ -1037,6 +1038,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
     }
     // a tap
     if (open) return closeLayers();
+    // (inside something: a tap is the way back out of it)
+    if (back) return back.onBack();
     openTap.current = { x: event.clientX, y: event.clientY, t: event.timeStamp };
     openLayers();
   };
@@ -1095,7 +1098,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
   const where = pickedFeeder
     ? activeFeed ? titleCase(activeFeed.title) : ''
     : activeFeed ? `${activeFeed.feeders.length} feeders` : config.feeds ? `${config.feeds.length} feeds` : '';
-  const sub = [where, choice ? choice.label(choice.value) : null].filter(Boolean).join(' · ');
+  const sub = [back ? back.note : where, choice ? choice.label(choice.value) : null].filter(Boolean).join(' · ');
+  const line = back ? back.label : heroName;
 
   return (
     <>
@@ -1103,7 +1107,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
       <div ref={frostRef} aria-hidden="true" className="fm-dock-frost" data-open={open ? '' : undefined} onClick={(event) => {
         if (!isOpenTap(event)) closeLayers();
       }} />
-      <div ref={rootRef} className="fm-dock" data-open={open ? '' : undefined} style={{ '--fm-dock-step': `${STEP}px` } as CSSProperties}>
+      <div ref={rootRef} className="fm-dock" data-open={open ? '' : undefined} data-away={config.dockAway ? '' : undefined} style={{ '--fm-dock-step': `${STEP}px` } as CSSProperties}>
         <div className="fm-dock-layers" role="dialog" aria-label="Tabs, feeders and choices" aria-hidden={!open} onClick={onLayerClick}>
           {/* the tabs, rising over the row: the one you're on first, the others a beat behind */}
           <div className="fm-dock-words">
@@ -1203,7 +1207,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
           type="button"
           className="fm-dock-bar"
           aria-expanded={open}
-          aria-label={`${heroName}${sub ? `, ${sub}` : ''}, ${NAME[tab]}. Swipe for the next tab; pull up or tap for feeders and choices${choice ? `; pull down for ${choice.name.toLowerCase()}` : ''}`}
+          aria-label={`${back ? `Back to ${line.toLowerCase()}` : heroName}${sub ? `, ${sub}` : ''}, ${NAME[tab]}. Swipe for the next tab; pull up${back ? '' : ' or tap'} for feeders and choices${choice ? `; pull down for ${choice.name.toLowerCase()}` : ''}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={(event) => onUp(event)}
@@ -1214,7 +1218,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
           }}
           onClick={(event) => {
             // a key press (the pointer's own taps are handled on letting go)
-            if (event.detail === 0) (open ? closeLayers : openLayers)();
+            if (event.detail === 0) (open ? closeLayers : back ? back.onBack : openLayers)();
           }}
         >
           {/* its glass and the still plate of its shadow (folded, it draws in behind the handle) */}
@@ -1224,7 +1228,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
               the handle, on a glass of its own */}
           <span ref={faceRef} className="fm-dock-face">
             <span ref={padRef} className="fm-dock-pad" aria-hidden="true" />
-            <span key={pickKey} className="fm-dock-hero">
+            <span key={back ? `back:${pickKey}` : pickKey} className="fm-dock-hero">
               <Plate lit marked={false} armed={false} reduce={reduce}>
                 <span className="fm-dock-story">
                   <StoryRing on reduce={reduce} />
@@ -1274,14 +1278,15 @@ export default function Dock({ tab }: { tab: DockTab }) {
                     />
                   </span>
                 </span>
-                <RailFace face={heroArt} reduce={reduce} pressable={false} />
+                {/* eslint-disable-next-line @next/next/no-img-element -- a picture drawn on this page */}
+                {back?.art ? <img className="fm-dock-back" src={back.art} alt="" draggable={false} /> : <RailFace face={heroArt} reduce={reduce} pressable={false} />}
               </Plate>
             </span>
           </span>
           <span ref={restRef} className="fm-dock-rest">
             {/* the line: who you're on and where (each rolls in afresh as it changes) */}
             <span className="fm-dock-text">
-              <b key={heroName}>{heroName}</b>
+              <b key={line}>{line}</b>
               {sub ? <span key={sub}>{sub}</span> : null}
             </span>
             {/* the tab you're on: every tab's icon in its disc, the one you're on shown (or the one a closed ring turned it

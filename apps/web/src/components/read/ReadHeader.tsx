@@ -27,6 +27,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { HEADER_CONTROL, LEAVE_EASE, SLOT_ROLL, SLOT_SPRING, SOFT_EASE, TimeframeControl, headerChoice, useTabHeader } from '@/components/shell/TabHeader';
 import { cn } from '@/lib/utils';
+import { READ_ONE_FRAMES, readOneOf } from '@/components/read/one/readOneData';
 import { readOf, type RailFeed, type RailFeeder } from '@/components/read/readFeeds';
 import { CHAPTERS, chapterName, chapterOf, type Chapter, type Part } from '@/components/read/read17/Read17';
 
@@ -34,7 +35,7 @@ const VIEW_LABEL: Record<string, string> = { runs: 'Runs', repeats: 'Repeats', r
 const VIEW_ORDER: Record<string, number> = { runs: 0, repeats: 1, ranks: 2 };
 const REDUCED = { duration: 0.14, ease: SOFT_EASE } as const;
 
-const hasRead = (handle: string) => readOf(handle) != null;
+const hasRead = (handle: string) => readOneOf(handle) != null || readOf(handle) != null;
 
 export default function ReadHeader({
   feeds,
@@ -46,6 +47,8 @@ export default function ReadHeader({
   view,
   showView,
   chapter = null,
+  one = null,
+  dockAway = false,
   leaving,
   armed,
   compressed,
@@ -66,6 +69,9 @@ export default function ReadHeader({
   showView: boolean;
   // a read in three parts: the part on screen, and going to one
   chapter?: { value: Part; onChange: (part: Part | Chapter) => void } | null;
+  // a read as one page (ReadOne): the file open, its time frame, and the way back out of it
+  one?: { name: string; note: string; art: string | null; win: number; onWin: (days: number) => void; onBack: () => void } | null;
+  dockAway?: boolean;
   // the page is leaving for somewhere you just tapped: 'all', 'feed:<id>' or 'feeder:<handle>' (armed)
   leaving: boolean;
   armed: string | null;
@@ -136,7 +142,9 @@ export default function ReadHeader({
     label,
     control: partSwitch ?? viewSwitch,
     // the read's three parts as values (the dock's chips)
-    choice: chapter ? headerChoice({ name: 'Part of the read', value: chapterOf(chapter.value), options: CHAPTERS, label: chapterName, onChange: chapter.onChange }) : null,
+    choice: one ? headerChoice({ name: 'Time frame', value: one.win, options: READ_ONE_FRAMES as readonly number[], label: (days: number) => `${days}D`, onChange: one.onWin }) : chapter ? headerChoice({ name: 'Part of the read', value: chapterOf(chapter.value), options: CHAPTERS, label: chapterName, onChange: chapter.onChange }) : null,
+    back: one ? { label: one.name, note: one.note, art: one.art, onBack: one.onBack } : null,
+    dockAway,
     // (a laptop up the view switch is the page's own lens, stuck under the window's top: the side rail carries none; the
     // part switch docks at its foot)
     railControl: partTrack,
