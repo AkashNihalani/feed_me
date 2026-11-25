@@ -15,12 +15,16 @@
    small tile per read, its label over its number (a phone card's
    open reading, where the trail is the thing you came for).
 
-   Still: nothing here moves. A parent that wants the trail to
-   arrive animates its segments ([data-trail-seg]) itself, once
-   (ReelCard does, on the page beat).
+   Told what to do with a pick (onPick), its landed reads are
+   picked: a tap, or a finger slid along them, and the light ring
+   glides to the one picked (`at`) as whoever draws the trail shows
+   the post as it was then. Otherwise it is still. A parent that
+   wants the trail to arrive animates its segments
+   ([data-trail-seg]) itself, once.
    ───────────────────────────────────────────────────────────── */
 
 import { memo, type CSSProperties } from 'react';
+import { useScrub } from '@/components/feed/stream/checkpointPick';
 import { UNRANKED_SHADE, shade } from '@/components/read/readShade';
 import { STREAM_CHECKPOINTS, formatTopPercent, istDay, type StreamCheckpoint, type StreamResult } from '@/lib/feedStream/contract';
 import { cn } from '@/lib/utils';
@@ -31,7 +35,12 @@ export type CheckpointTrailProps = {
   latest: StreamCheckpoint | null;
   size: 'sm' | 'md' | 'lg';
   postedDay?: string | null; // the IST day the post went up (YYYY-MM-DD): says when a read still to come lands
+  // the read picked, and what a pick does
+  at?: StreamCheckpoint | null;
+  onPick?: (checkpoint: StreamCheckpoint) => void;
 };
+
+const NO_PICK = () => {};
 
 // how many days after the post each read is taken
 const CHECKPOINT_DAY: Record<StreamCheckpoint, number> = { D1: 1, D3: 3, D7: 7, D21: 21 };
@@ -41,7 +50,8 @@ function daysBetween(from: string, to: string) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-function CheckpointTrail({ results, latest, size, postedDay = null }: CheckpointTrailProps) {
+function CheckpointTrail({ results, latest, size, postedDay = null, at = latest, onPick }: CheckpointTrailProps) {
+  const scrub = useScrub(results, at, onPick ?? NO_PICK);
   const lg = size === 'lg';
   // labelled (md and lg): each box says which read it is, and when one still to come lands
   const md = size === 'md' || lg;
@@ -53,7 +63,12 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
       : md ? 'h-[30px] items-center gap-1 rounded-[10px] px-2' : 'h-[18px] items-center rounded-[6px] px-1',
   );
   return (
-    <span role="list" aria-label="Checkpoints" className={cn('flex w-full min-w-0', lg ? 'gap-2' : md ? 'gap-1.5' : 'gap-1')}>
+    <span
+      role={onPick ? 'radiogroup' : 'list'}
+      aria-label="Checkpoints"
+      {...(onPick ? scrub.box : null)}
+      className={cn('flex w-full min-w-0', lg ? 'gap-2' : md ? 'gap-1.5' : 'gap-1', onPick && 'relative touch-pan-y select-none')}
+    >
       {STREAM_CHECKPOINTS.map((checkpoint) => {
         const result = results.find((entry) => entry.checkpoint === checkpoint);
 
@@ -67,7 +82,7 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
           return (
             <span
               key={checkpoint}
-              role="listitem"
+              role={onPick ? undefined : 'listitem'}
               data-trail-seg=""
               aria-label={label}
               className={cn(
@@ -85,27 +100,20 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
         const top = result.topPercent;
         const ranked = top != null && Number.isFinite(top);
         const tone = ranked ? shade(top) : UNRANKED_SHADE;
-        const now = checkpoint === latest;
+        const now = checkpoint === at;
         const style: CSSProperties = {
           background: tone.c,
           color: tone.tx,
           boxShadow: [
-            now ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null,
+            now && !onPick ? 'inset 0 0 0 1.5px rgb(var(--fm-fg-rgb) / 0.62)' : null,
             `inset 0 1px 0 rgba(255, 255, 255, ${tone.gi})`,
             md && tone.gc !== 'transparent' ? `0 0 ${lg ? 22 : 18}px ${tone.gc}` : null,
           ].filter(Boolean).join(', '),
         };
         const value = ranked ? formatTopPercent(top).slice(0, -1) : '—';
 
-        return (
-          <span
-            key={checkpoint}
-            role="listitem"
-            data-trail-seg=""
-            aria-label={ranked ? `${checkpoint}, top ${value}%` : `${checkpoint}, unranked`}
-            className={cn(box, md ? 'justify-between' : 'justify-center')}
-            style={style}
-          >
+        const face = (
+          <>
             {md ? (
               <span className={cn('font-black uppercase tracking-[0.14em]', lg ? 'text-[11px]' : 'text-[10px]', now ? 'opacity-90' : 'opacity-60')}>{checkpoint}</span>
             ) : null}
@@ -113,9 +121,45 @@ function CheckpointTrail({ results, latest, size, postedDay = null }: Checkpoint
               {value}
               {ranked ? <span className={cn('ml-px tracking-normal opacity-75', lg ? 'text-[0.6em]' : md ? 'text-[10px]' : 'text-[8px]')}>%</span> : null}
             </span>
+          </>
+        );
+        const told = ranked ? `${checkpoint}, top ${value}%` : `${checkpoint}, unranked`;
+        if (onPick && ranked) {
+          return (
+            <button
+              key={checkpoint}
+              type="button"
+              role="radio"
+              aria-checked={now}
+              data-trail-seg=""
+              aria-label={told}
+              onClick={() => scrub.pick(checkpoint)}
+              className={cn(box, 'st-tile cursor-pointer text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-white/80', md ? 'justify-between' : 'justify-center')}
+              style={style}
+            >
+              {face}
+            </button>
+          );
+        }
+        return (
+          <span key={checkpoint} role={onPick ? undefined : 'listitem'} data-trail-seg="" aria-label={told} className={cn(box, md ? 'justify-between' : 'justify-center')} style={style}>
+            {face}
           </span>
         );
       })}
+      {/* the pick's light ring: it glides from read to read */}
+      {onPick && at ? (
+        <span
+          aria-hidden="true"
+          className="st-glide pointer-events-none absolute inset-y-0 left-0 block"
+          style={{
+            width: `calc((100% - ${3 * (lg ? 8 : 6)}px) / 4)`,
+            transform: `translate3d(calc(${STREAM_CHECKPOINTS.indexOf(at)} * (100% + ${lg ? 8 : 6}px)), 0px, 0px)`,
+          }}
+        >
+          <span data-trail-seg="" className={cn('absolute inset-0 block shadow-[inset_0_0_0_2px_rgb(var(--fm-fg-rgb)/0.9)]', lg ? 'rounded-[14px]' : 'rounded-[10px]')} />
+        </span>
+      ) : null}
     </span>
   );
 }

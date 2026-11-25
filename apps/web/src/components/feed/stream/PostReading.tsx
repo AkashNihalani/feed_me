@@ -4,7 +4,9 @@
    POST READING — one post, read: who posted it and when, the
    number (the lead, set big), where it landed and against what,
    its four reads as the trail, the counts, the caption's opening
-   and the way out to Instagram.
+   and the way out to Instagram. A read picked on the trail shows
+   the post as it was then: its number and counts roll to it. In a
+   feed that is one feeder's (solo) it doesn't say who again.
 
    The Day view's reading on a wide screen (beside the media) and
    the post sheet's right side both draw this, so a post reads the
@@ -19,10 +21,13 @@
    arrives (ReelCard). Nothing here moves by itself.
    ───────────────────────────────────────────────────────────── */
 
-import { memo, type CSSProperties } from 'react';
+import { memo, useState, type CSSProperties } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
+import { LineSwap } from '@/components/feed/stream/CheckpointStrip';
 import CheckpointTrail from '@/components/feed/stream/CheckpointTrail';
+import { gainOf, moveOf, readAt } from '@/components/feed/stream/checkpointPick';
+import RollText from '@/components/feed/stream/RollText';
 import {
   dayLabel,
   formatCount,
@@ -32,6 +37,7 @@ import {
   istDay,
   shiftDay,
   withinDay,
+  type StreamCheckpoint,
   type StreamFeeder,
   type StreamMediaType,
   type StreamPost,
@@ -55,6 +61,8 @@ const IST_TIME = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', ho
 export type PostReadingProps = {
   post: StreamPost;
   feeder: StreamFeeder | null;
+  // the whole feed is one feeder's: what and when alone
+  solo?: boolean;
   size: 'stage' | 'sheet' | 'compact' | 'tight';
   // the sheet draws its own header (with the close button); the Day view's reading carries who and when itself
   withHeader?: boolean;
@@ -90,8 +98,15 @@ function landedNote(post: StreamPost, today: string) {
   return null;
 }
 
-export function PostWho({ post, feeder, size, titleId }: { post: StreamPost; feeder: StreamFeeder | null; size: PostReadingProps['size']; titleId?: string }) {
+export function PostWho({ post, feeder, solo = false, size, titleId }: { post: StreamPost; feeder: StreamFeeder | null; solo?: boolean; size: PostReadingProps['size']; titleId?: string }) {
   const stage = size === 'stage';
+  if (solo) {
+    return (
+      <h2 id={titleId} className={cn('truncate font-semibold leading-tight text-[var(--st-text-2)]', stage ? 'text-[18px]' : 'text-[16px]')}>
+        {[KIND[post.mediaType], postedLabel(post.postedAt)].filter(Boolean).join(' · ')}
+      </h2>
+    );
+  }
   const meta = postMeta(post, feeder);
   return (
     <div className="flex min-w-0 items-center gap-3">
@@ -106,33 +121,37 @@ export function PostWho({ post, feeder, size, titleId }: { post: StreamPost; fee
   );
 }
 
-function PostReading({ post, feeder, size, withHeader = true, titleId }: PostReadingProps) {
+function PostReading({ post, feeder, solo = false, size, withHeader = true, titleId }: PostReadingProps) {
   const look = SIZE[size];
-  const top = post.topPercent;
+  // the read it shows (its latest until one is picked on the trail), and the one before it
+  const [pick, setPick] = useState<StreamCheckpoint | null>(null);
+  const read = readAt(post, pick);
+  const move = moveOf(read);
+  const top = read.topPercent;
   const measured = top != null && Number.isFinite(top);
   const winner = isWinner(top);
   const landed = landedNote(post, istDay());
   const value = measured ? formatTopPercent(top).slice(0, -1) : null;
   // only the counts a read has measured (a post still measuring has none yet, and shows no row of dashes)
   const figures = [
-    post.likes != null ? { key: 'likes', value: formatCount(post.likes), label: post.likes === 1 ? 'like' : 'likes' } : null,
-    post.comments != null ? { key: 'comments', value: formatCount(post.comments), label: post.comments === 1 ? 'comment' : 'comments' } : null,
-    post.engagementRate != null ? { key: 'er', value: formatRate(post.engagementRate), label: 'engagement' } : null,
-    post.multiple != null ? { key: 'usual', value: formatMultiple(post.multiple), label: 'their usual' } : null,
-  ].filter((figure): figure is { key: string; value: string; label: string } => figure != null);
+    post.likes != null ? { key: 'likes', value: formatCount(read.likes), label: read.likes === 1 ? 'like' : 'likes', gain: gainOf(read.likes, read.before?.likes) } : null,
+    post.comments != null ? { key: 'comments', value: formatCount(read.comments), label: read.comments === 1 ? 'comment' : 'comments', gain: gainOf(read.comments, read.before?.comments) } : null,
+    post.engagementRate != null ? { key: 'er', value: formatRate(read.engagementRate), label: 'engagement', gain: null } : null,
+    post.multiple != null ? { key: 'usual', value: formatMultiple(read.multiple), label: 'their usual', gain: null } : null,
+  ].filter((figure): figure is { key: string; value: string; label: string; gain: string | null } => figure != null);
 
   return (
     <div className={cn('flex min-w-0 flex-col', look.gap)}>
       {withHeader ? (
         <div className="st-settle" data-settle="0" style={{ '--i': 0 } as CSSProperties}>
-          <PostWho post={post} feeder={feeder} size={size} titleId={titleId} />
+          <PostWho post={post} feeder={feeder} solo={solo} size={size} titleId={titleId} />
         </div>
       ) : null}
 
       {/* the number: the reading's one lead */}
       <div className="st-settle min-w-0" data-settle="1" style={{ '--i': 1 } as CSSProperties}>
         <p className="flex items-center gap-2 text-[12px] font-black uppercase leading-none tracking-[0.14em] text-[var(--st-text-3)]">
-          {measured ? <>Top{post.latestCheckpoint ? <span className="text-[var(--st-text-2)]">at {post.latestCheckpoint}</span> : null}</> : 'Still measuring'}
+          {measured ? <>Top{read.checkpoint ? <span className="text-[var(--st-text-2)]">at {read.checkpoint}</span> : null}</> : 'Still measuring'}
         </p>
         {value ? (
           <p
@@ -142,33 +161,47 @@ function PostReading({ post, feeder, size, withHeader = true, titleId }: PostRea
               winner ? 'text-[var(--fm-accent-text)]' : 'text-[var(--st-text)]',
             )}
           >
-            {value}
-            <span className={cn('ml-[0.04em] mt-[0.06em] tracking-[-0.02em]', look.sign)}>%</span>
+            <RollText value={value} at={read.order} after={<span className={cn('ml-[0.04em] mt-[0.06em] inline-block tracking-[-0.02em]', look.sign)}>%</span>} />
           </p>
         ) : (
           <p className={cn('mt-3 font-black leading-[0.9] tracking-[-0.04em] text-[var(--st-text-2)]', look.measuring)}>Measuring</p>
         )}
         <p className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 font-medium leading-snug text-[var(--st-text-2)]', look.note)}>
-          {landed ? (
+          {landed && read.latest ? (
             <span className={cn('inline-flex items-center text-[var(--st-text)]', landed.fresh && 'rounded-full bg-[var(--fm-accent)] px-2 py-[3px] text-[0.85em] font-bold leading-none text-white')}>
               {landed.text}
             </span>
           ) : null}
-          {landed ? <span aria-hidden="true" className="text-[var(--st-text-3)]">·</span> : null}
-          <span>{measured ? `ranked against @${post.handle}'s own posts` : 'its first rank lands at D1'}</span>
+          {landed && read.latest ? <span aria-hidden="true" className="text-[var(--st-text-3)]">·</span> : null}
+          {measured ? (
+            // (the first read has nothing before it to move from: what it is ranked against)
+            <LineSwap id={`${read.checkpoint}:${move?.text ?? ''}`}>
+              {move && move.way !== 'first' ? (
+                <>
+                  {move.way === 'up' || move.way === 'down' ? <span className={cn('mr-1 align-[1px] text-[0.7em]', move.way === 'up' ? 'text-[var(--fm-accent-text)]' : 'text-[var(--st-text-3)]')}>{move.way === 'up' ? '▲' : '▼'}</span> : null}
+                  <span className="text-[var(--st-text)]">{move.text}</span>
+                  {read.day ? <span>{` · ${read.day}`}</span> : null}
+                </>
+              ) : `ranked against @${post.handle}'s own posts`}
+            </LineSwap>
+          ) : <span>its first rank lands at D1</span>}
         </p>
       </div>
 
       <div className="st-settle min-w-0" data-settle="2" style={{ '--i': 2 } as CSSProperties}>
-        <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="md" />
+        <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="md" at={read.checkpoint} onPick={setPick} />
       </div>
 
       {figures.length ? (
         <dl className={cn('st-settle grid min-w-0 grid-cols-2 gap-x-6 sm:grid-cols-4 lg:gap-x-4', look.figures)} data-settle="3" style={{ '--i': 3 } as CSSProperties}>
           {figures.map((figure) => (
             <div key={figure.key} className="flex min-w-0 flex-col-reverse">
+              {/* (the box reads up: the number, what it counts, what it gained since the read before) */}
+              <dd className="mt-1 h-4 text-[12px] font-bold leading-4 tabular-nums text-[var(--st-text)]">
+                <LineSwap id={`${read.checkpoint}:${figure.gain ?? ''}`}>{figure.gain ?? ' '}</LineSwap>
+              </dd>
               <dt className={cn('mt-1.5 truncate font-medium leading-none text-[var(--st-text-2)]', look.label)}>{figure.label}</dt>
-              <dd className={cn('truncate font-black leading-none tracking-[-0.04em] tabular-nums text-[var(--st-text)]', look.figure)}>{figure.value}</dd>
+              <dd className={cn('truncate font-black leading-none tracking-[-0.04em] tabular-nums text-[var(--st-text)]', look.figure)}><RollText value={figure.value} at={read.order} /></dd>
             </div>
           ))}
         </dl>

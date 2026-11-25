@@ -366,6 +366,8 @@ type Spec =
       standout: boolean;
       date: string | null;
       feederHandle: string | null;
+      // the feed is one feeder's
+      solo: boolean;
     }
   | { kind: 'placeholder'; key: string; mode: FeedMode; shape: CellShape; x: number; y: number }
   | { kind: 'section'; key: string; x: number; y: number; w: number; h: number; heading: Heading; count: number; best: number | null; order: FeedOrder }
@@ -3372,6 +3374,7 @@ function FeedStream({
         // landed: its tab says when the post is from)
         date: inDay && drawn.mediaWidth == null ? post.day || null : null,
         feederHandle: inDay || (!scope.handle && item.cols === 2 && item.rows === 2) ? post.handle : null,
+        solo: Boolean(scope.handle),
       });
     }
   }
@@ -3449,6 +3452,7 @@ function FeedStream({
         date={spec.date}
         eager={spec.eager}
         feeder={spec.feederHandle ? feeders.get(spec.feederHandle) ?? null : null}
+        solo={spec.solo}
         gone={going}
         depth={!going && inDay && Boolean(drawn?.deck) && !move}
         order={spec.index}

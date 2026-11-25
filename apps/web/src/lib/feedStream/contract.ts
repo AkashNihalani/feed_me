@@ -41,6 +41,11 @@ export type StreamResult = {
   topPercent: number | null;
   // the IST day the result landed (YYYY-MM-DD)
   day: string | null;
+  // what it had then (absent in a page kept on the device from before these were sent)
+  likes?: number | null;
+  comments?: number | null;
+  engagementRate?: number | null; // percent
+  multiple?: number | null;
 };
 
 // one stored carousel slide: the media proxy's role for it (carousel_01 …) and whether it is a video

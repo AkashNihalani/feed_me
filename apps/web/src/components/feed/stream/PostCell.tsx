@@ -42,11 +42,14 @@
    stream.css, st-yield).
    ───────────────────────────────────────────────────────────── */
 
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, type TouchEvent as ReactTouchEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, type TouchEvent as ReactTouchEvent } from 'react';
 import { ArrowUpRight, ChevronUp, Pause, Play } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
+import CheckpointStrip, { LineSwap } from '@/components/feed/stream/CheckpointStrip';
 import CheckpointTrail from '@/components/feed/stream/CheckpointTrail';
+import { gainOf, moveOf, readAt, readLine, type PostRead } from '@/components/feed/stream/checkpointPick';
 import { PostPicture, Tone, Wash } from '@/components/feed/stream/PostMedia';
+import RollText from '@/components/feed/stream/RollText';
 import PostReading, { formatRate, postedLabel } from '@/components/feed/stream/PostReading';
 import { pageGliding, press } from '@/components/feed/stream/press';
 import {
@@ -59,6 +62,7 @@ import {
   relativeTime,
   shiftDay,
   type FeedMode,
+  type StreamCheckpoint,
   type StreamFeeder,
   type StreamMediaType,
   type StreamPost,
@@ -209,19 +213,45 @@ function footOf(width: number, height: number, clear: number) {
   return { over, roomy: room >= FOOT_ROOMY, melt, reach: over ? Math.min(1, (MELT_LEAD + MELT_WHOLE) / Math.max(1, melt)) : 1 };
 }
 
-/* The card's lead: where the post ranks, as one line of type. Which read it is sits after it in a chip, in the accent on a
-   winner (the top 10%): the one colour on the card */
-function CardNumber({ post, size }: { post: StreamPost; size: number }) {
-  const top = post.topPercent;
-  if (top == null || !Number.isFinite(top)) return null;
+/* The card's lead: where the post ranks, as one line of type, rolling to another of its reads as it is picked. Its size
+   leaves the strip its room at the row's end, the same for every read of a post (its longest) */
+const STRIP_ROOM = 170;
+function numberSize(post: StreamPost, width: number, wanted: number) {
+  const digits = Math.max(1, ...post.results.map((result) => (result.topPercent == null ? 0 : formatTopPercent(result.topPercent).length - 1)));
+  const ems = digits >= 3 ? 3.1 : digits === 2 ? 2.5 : 1.95;
+  return Math.round(Math.min(wanted, (Math.min(width, 460) - 32 - STRIP_ROOM) / ems));
+}
+
+function CardNumber({ topPercent, at, size }: { topPercent: number | null; at: number; size: number }) {
+  const value = topPercent != null && Number.isFinite(topPercent) ? formatTopPercent(topPercent).slice(0, -1) : '—';
   return (
-    <span className={cn('flex items-baseline whitespace-nowrap font-black leading-[0.78] text-white', ON_PICTURE)}>
-      <span className="mr-[0.22em] tracking-[-0.03em] text-white/70" style={{ fontSize: Math.round(size * 0.5) }}>Top</span>
-      <span className="tracking-[-0.05em] tabular-nums" style={{ fontSize: size }}>{formatTopPercent(top).slice(0, -1)}</span>
-      <span className="ml-[0.04em]" style={{ fontSize: Math.round(size * 0.5) }}>%</span>
-      {post.latestCheckpoint ? (
-        <span className={cn('ml-3 rounded-full px-2.5 py-[6px] text-[13px] font-bold leading-none tracking-normal text-white [text-shadow:none]', isWinner(top) ? 'bg-[var(--fm-accent)]' : 'bg-white/[0.14]')}>{post.latestCheckpoint}</span>
-      ) : null}
+    <span aria-live="polite" className={cn('flex items-baseline whitespace-nowrap font-black leading-none text-white', ON_PICTURE)}>
+      <span className="mr-[0.2em] tracking-[-0.03em] text-white/70" style={{ fontSize: Math.round(size * 0.5) }}>Top</span>
+      <RollText
+        value={value}
+        at={at}
+        className="-mb-[0.12em] -mt-[0.1em] leading-none tracking-[-0.05em] tabular-nums"
+        style={{ fontSize: size }}
+        after={<span className="ml-[0.04em]" style={{ fontSize: Math.round(size * 0.5) }}>%</span>}
+      />
+    </span>
+  );
+}
+
+/* How its rank moved since the read before, and when this one landed: at the row's end in the open reading, where the
+   strip is on the closed card */
+function CardMove({ read }: { read: PostRead }) {
+  const move = moveOf(read);
+  if (!move) return null;
+  return (
+    <span className={cn('flex flex-col items-end text-right', ON_PICTURE)}>
+      <LineSwap id={`${read.checkpoint}:${move.way}:${move.text}`} className="justify-items-end text-[15px] font-bold leading-tight text-white">
+        {move.way === 'up' || move.way === 'down' ? <span className={cn('mr-1 align-[1px] text-[10px]', move.way === 'up' ? 'text-[var(--fm-accent-bright)]' : 'text-white/55')}>{move.way === 'up' ? '▲' : '▼'}</span> : null}
+        {move.text}
+      </LineSwap>
+      <LineSwap id={`${read.checkpoint}:${read.day ?? ''}`} className="mt-0.5 justify-items-end text-[12px] font-medium leading-tight text-white/60">
+        {[read.checkpoint, read.day].filter(Boolean).join(' · ')}
+      </LineSwap>
     </span>
   );
 }
@@ -234,18 +264,23 @@ type ReadParts = {
   shade: RefObject<HTMLSpanElement | null>;
   toggle: RefObject<HTMLButtonElement | null>;
   ring: RefObject<SVGCircleElement | null>;
+  strip: RefObject<HTMLSpanElement | null>;
 };
+
+const NO_PICK = () => {};
 
 // the play button's ring (r 20.5): its length, run round as the clip plays
 const RING = 2 * Math.PI * 20.5;
 
 /* A card's chrome: its reading between the picture and the dock (over the picture's foot on a screen too short for
-   that). Who, what and when; then one lead, where the post ranks, or, not measured yet, what it says. Live (the card on
-   the page, not the copy a move out of the Day view lets go): the rest of its reading waits under its foot for a tap, a
-   ▶ sits on a reel that has a clip, and the reading clears its foot of the dock (clear) */
-function CardChrome({ post, feeder, width, height, standout, date, live = false, clear = 0, parts, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
+   that). Who (unless the whole feed is one feeder's: solo), what and when; then one lead, where the post ranks, or, not
+   measured yet, what it says. The lead is of the read picked (pick, its latest by default), on the strip beside it. Live
+   (the card on the page, not the copy a move out of the Day view lets go): the rest of its reading waits under its foot
+   for a tap, a ▶ sits on a reel that has a clip, and the reading clears its foot of the dock (clear) */
+function CardChrome({ post, feeder, solo = false, width, height, standout, date, live = false, clear = 0, parts, pick = null, onPick = NO_PICK, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
   post: StreamPost;
   feeder: StreamFeeder | null;
+  solo?: boolean;
   width: number;
   height: number;
   standout: boolean;
@@ -253,6 +288,8 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
   live?: boolean;
   clear?: number;
   parts?: ReadParts;
+  pick?: StreamCheckpoint | null;
+  onPick?: (checkpoint: StreamCheckpoint) => void;
   playable?: boolean;
   // a carousel's ▶: under its count, and away while its slide is a picture
   playSlides?: boolean;
@@ -270,13 +307,28 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
   const day = date ? (date.kicker === 'Today' || date.kicker === 'Yesterday' ? date.kicker : date.title) : null;
   // posted in the last 24 hours: its age is marked red (something new)
   const fresh = withinDay(post.postedAt);
-  // its numbers, as figures: each a number over what it counts
+  // the read it shows, and its numbers there as figures: each a number over what it counts, and what it gained since the
+  // read before (a figure stays put whichever read is picked)
+  const read = readAt(post, pick);
+  const before = read.before;
   const figures = [
-    post.likes != null ? { key: 'likes', value: formatCount(post.likes), label: post.likes === 1 ? 'like' : 'likes' } : null,
-    post.comments != null ? { key: 'comments', value: formatCount(post.comments), label: post.comments === 1 ? 'comment' : 'comments' } : null,
-    post.engagementRate != null ? { key: 'er', value: formatRate(post.engagementRate), label: 'engagement' } : null,
-    post.multiple != null ? { key: 'usual', value: formatMultiple(post.multiple), label: 'vs usual' } : null,
-  ].filter((figure): figure is { key: string; value: string; label: string } => figure != null);
+    post.likes != null ? { key: 'likes', value: formatCount(read.likes), label: read.likes === 1 ? 'like' : 'likes', gain: gainOf(read.likes, before?.likes) } : null,
+    post.comments != null ? { key: 'comments', value: formatCount(read.comments), label: read.comments === 1 ? 'comment' : 'comments', gain: gainOf(read.comments, before?.comments) } : null,
+    post.engagementRate != null ? { key: 'er', value: formatRate(read.engagementRate), label: 'engagement', gain: null } : null,
+    post.multiple != null ? { key: 'usual', value: formatMultiple(read.multiple), label: 'vs usual', gain: null } : null,
+  ].filter((figure): figure is { key: string; value: string; label: string; gain: string | null } => figure != null);
+  // what and when; and, an earlier read picked, what it had then in its place (the open reading has that as its figures)
+  const told = [KIND[post.mediaType], day, measured ? null : 'Measuring'].filter(Boolean).join(' · ');
+  const then = read.latest ? null : [read.day, readLine(read)].filter(Boolean).join(' · ');
+  const line = (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="st-line grid min-w-0" data-then={then ? '' : undefined}>
+        <span className="st-told col-start-1 row-start-1 truncate">{told}</span>
+        {measured ? <LineSwap id={then ?? ''} className="st-then col-start-1 row-start-1">{then ?? ' '}</LineSwap> : null}
+      </span>
+      {fresh ? <span className={cn('shrink-0', FRESH_PILL)}>{relativeTime(post.postedAt)}</span> : null}
+    </span>
+  );
   const when = postedLabel(post.postedAt);
   // a tap on these is theirs, not the card's
   const own = (action?: () => void) => (event: ReactMouseEvent) => {
@@ -327,16 +379,20 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
               </span>
             ) : null}
             <span data-st="" className={cn('flex min-w-0 items-center gap-3', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
-              <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
-                <FeederStoryAvatar feeder={face} className="text-[14px]" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[17px] font-bold leading-tight tracking-[-0.01em] text-white">@{post.handle}</span>
-                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] font-medium leading-tight text-white/65">
-                  <span className="truncate">{[KIND[post.mediaType], day, measured ? null : 'Measuring'].filter(Boolean).join(' · ')}</span>
-                  {fresh ? <span className={cn('shrink-0', FRESH_PILL)}>{relativeTime(post.postedAt)}</span> : null}
-                </span>
-              </span>
+              {solo ? (
+                // (the dock says whose feed it is)
+                <span className="min-w-0 flex-1 text-[16px] font-semibold leading-tight text-white/80">{line}</span>
+              ) : (
+                <>
+                  <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
+                    <FeederStoryAvatar feeder={face} className="text-[14px]" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[17px] font-bold leading-tight tracking-[-0.01em] text-white">@{post.handle}</span>
+                    <span className="mt-0.5 block min-w-0 text-[13px] font-medium leading-tight text-white/65">{line}</span>
+                  </span>
+                </>
+              )}
               {live ? (
                 <button
                   ref={parts?.toggle}
@@ -344,22 +400,31 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
                   onClick={own(onToggle)}
                   aria-expanded="false"
                   aria-label="Show the details"
-                  className="st-read-toggle pointer-events-auto -mr-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.12] text-white outline-none [-webkit-tap-highlight-color:transparent] [text-shadow:none] active:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/80"
+                  className={cn(
+                    'st-read-toggle pointer-events-auto -mr-1 grid shrink-0 place-items-center rounded-full bg-white/[0.12] text-white outline-none [-webkit-tap-highlight-color:transparent] [text-shadow:none] active:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/80',
+                    solo ? 'h-9 w-9' : 'h-10 w-10',
+                  )}
                 >
                   <ChevronUp aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2.4} />
                 </button>
               ) : null}
             </span>
             {measured ? (
-              <span data-st="" className="flex min-w-0 items-end pb-1" style={{ '--i': 1 } as CSSProperties}>
-                <CardNumber post={post} size={roomy ? 76 : 60} />
+              <span data-st="" className="flex min-w-0 items-end justify-between gap-3" style={{ '--i': 1 } as CSSProperties}>
+                <CardNumber topPercent={read.topPercent} at={read.order} size={numberSize(post, width, roomy ? 76 : solo ? 72 : 60)} />
+                <span className="grid shrink-0 items-end justify-items-end">
+                  <span ref={parts?.strip} inert={!live} className="st-strip-place col-start-1 row-start-1 block">
+                    <CheckpointStrip post={post} at={read.checkpoint} topPercent={read.topPercent} onPick={onPick} onOpen={onToggle ?? NO_PICK} />
+                  </span>
+                  {live ? <span className="st-move col-start-1 row-start-1 block"><CardMove read={read} /></span> : null}
+                </span>
               </span>
             ) : null}
             {/* what it says, in its own words: the lead while it has no number yet, a line under the number where there
                 is room. The open reading has it whole, and takes its place (st-says) */}
             {says && (!measured || roomy) ? (
               <span data-st="" className={cn('st-says block', ON_PICTURE)} style={{ '--i': measured ? 2 : 1 } as CSSProperties}>
-                <span className={cn('line-clamp-2 break-words', measured ? 'text-[15px] font-medium leading-[1.4] text-white/75' : cn('font-semibold tracking-[-0.01em] text-white', roomy ? 'text-[20px] leading-[1.3]' : 'text-[17px] leading-[1.32]'))}>{says}</span>
+                <span className={cn('break-words', solo && !measured ? 'line-clamp-3' : 'line-clamp-2', measured ? 'text-[15px] font-medium leading-[1.4] text-white/75' : cn('font-semibold tracking-[-0.01em] text-white', roomy ? 'text-[20px] leading-[1.3]' : 'text-[17px] leading-[1.32]'))}>{says}</span>
               </span>
             ) : null}
             {!says && !measured ? (
@@ -372,20 +437,18 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
             <span ref={parts?.more} className="st-read-more flex flex-col gap-3.5">
               {height >= TRAIL_MIN ? (
                 <span className="block">
-                  <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="lg" />
+                  <CheckpointTrail results={post.results} latest={post.latestCheckpoint} postedDay={post.day} size="lg" at={read.checkpoint} onPick={onPick} />
                 </span>
               ) : null}
               {figures.length ? (
-                // (each as wide as it needs, spread across the card, a hairline centred between each two)
-                <span className="flex min-w-0 items-stretch justify-between gap-2">
+                // (as wide as each other, so none shifts as they roll; a hairline before each but the first)
+                <span className="grid min-w-0" style={{ gridTemplateColumns: `repeat(${figures.length}, minmax(0, 1fr))` }}>
                   {figures.map((figure, index) => (
-                    <Fragment key={figure.key}>
-                      {index ? <span aria-hidden="true" className="w-px shrink-0 bg-white/[0.16]" /> : null}
-                      <span data-figure="" className={cn('flex min-w-0 flex-col', ON_PICTURE)}>
-                        <span className="whitespace-nowrap text-[19px] font-black leading-[0.9] tracking-[-0.04em] tabular-nums text-white">{figure.value}</span>
-                        <span className="mt-1.5 whitespace-nowrap text-[11px] font-medium leading-none text-white/60">{figure.label}</span>
-                      </span>
-                    </Fragment>
+                    <span key={figure.key} data-figure="" className={cn('flex min-w-0 flex-col', index && 'border-l border-white/[0.16] pl-3', ON_PICTURE)}>
+                      <RollText value={figure.value} at={read.order} className="w-fit text-[19px] font-black leading-none tracking-[-0.04em] tabular-nums text-white" />
+                      <span className="mt-[3px] truncate text-[11px] font-medium leading-[14px] text-white/60">{figure.label}</span>
+                      <LineSwap id={`${read.checkpoint}:${figure.gain ?? ''}`} className="mt-0.5 h-[14px] text-[11px] font-bold leading-[14px] tabular-nums text-white/85">{figure.gain ?? ' '}</LineSwap>
+                    </span>
                   ))}
                 </span>
               ) : null}
@@ -426,7 +489,7 @@ function readingStart(room: number): ReadingSize {
   return 'compact';
 }
 
-function RowReading({ post, feeder, height }: { post: StreamPost; feeder: StreamFeeder | null; height: number }) {
+function RowReading({ post, feeder, solo, height }: { post: StreamPost; feeder: StreamFeeder | null; solo: boolean; height: number }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [reading, setReading] = useState<{ height: number; size: ReadingSize }>(() => ({ height, size: readingStart(height) }));
   if (reading.height !== height) setReading({ height, size: readingStart(height) });
@@ -440,7 +503,7 @@ function RowReading({ post, feeder, height }: { post: StreamPost; feeder: Stream
   return (
     <div ref={boxRef} className="flex h-full min-w-0 items-center overflow-hidden py-1">
       <div className="w-full min-w-0 max-w-[520px]">
-        <PostReading post={post} feeder={feeder} size={reading.size} />
+        <PostReading post={post} feeder={feeder} solo={solo} size={reading.size} />
       </div>
     </div>
   );
@@ -484,6 +547,8 @@ export type PostCellProps = {
   date: string | null;
   eager: boolean;
   feeder: StreamFeeder | null;
+  // the whole feed is one feeder's: a post never says whose it is
+  solo?: boolean;
   // the old view's leftover during a move (hidden unless the move lets it go from where it was)
   gone?: boolean;
   // a phone's Day view, not mid-move: the cards stack as they scroll, each over the one before (stream.css, st-yield), in
@@ -554,6 +619,7 @@ function PostCell({
   date,
   eager,
   feeder,
+  solo = false,
   gone = false,
   depth = false,
   order = 0,
@@ -592,6 +658,7 @@ function PostCell({
   const shadeRef = useRef<HTMLSpanElement | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const ringRef = useRef<SVGCircleElement | null>(null);
+  const stripRef = useRef<HTMLSpanElement | null>(null);
   const openRef = useRef(false);
   const setRead = useCallback((open: boolean, animate = true) => {
     const cell = cellRef.current;
@@ -620,6 +687,8 @@ function PostCell({
       more.current.scrollTop = 0;
     }
     if (more.current) more.current.inert = !open;
+    // (the open reading's own reads take its strip's place)
+    if (stripRef.current) stripRef.current.inert = open;
     toggle.current?.setAttribute('aria-expanded', String(open));
     toggle.current?.setAttribute('aria-label', open ? 'Hide the details' : 'Show the details');
     if (open && more.current) more.current.toggleAttribute('data-scrolls', more.current.scrollHeight > more.current.clientHeight + 1);
@@ -669,6 +738,8 @@ function PostCell({
 
   /* ── cleared: a clip playing (its ▶), or a carousel's slides past the first ── */
   const [clean, setClean] = useState<Clean>(null);
+  // the read picked (its latest until one is)
+  const [pick, setPick] = useState<StreamCheckpoint | null>(null);
   // the slide a card's carousel shows: one with video slides has its ▶ on those
   const [slideAt, setSlideAt] = useState(0);
   const slideClips = card && post.slides.length > 1 && post.slides.some((slide) => slide.video);
@@ -720,6 +791,7 @@ function PostCell({
     if (!active) {
       setClean(null);
       setSlideAt(0);
+      setPick(null);
     }
   }
   useEffect(() => {
@@ -881,13 +953,16 @@ function PostCell({
           <CardChrome
             post={post}
             feeder={feeder}
+            solo={solo}
             width={shape.w}
             height={shape.h}
             standout={standout}
             date={dateParts}
             live
             clear={clear}
-            parts={{ read: readRef, inner: innerRef, more: moreRef, shade: shadeRef, toggle: toggleRef, ring: ringRef }}
+            parts={{ read: readRef, inner: innerRef, more: moreRef, shade: shadeRef, toggle: toggleRef, ring: ringRef, strip: stripRef }}
+            pick={pick}
+            onPick={setPick}
             playable={playable}
             playSlides={slideClips}
             playOff={playOff}
@@ -908,7 +983,7 @@ function PostCell({
 
       {row ? (
         <div data-layer="reading" data-reading="" style={{ left: shape.mediaWidth + READING_GAP, top: 0, width: Math.max(0, shape.w - shape.mediaWidth - READING_GAP), height: shape.h }}>
-          <RowReading post={post} feeder={feeder} height={shape.h} />
+          <RowReading post={post} feeder={feeder} solo={solo} height={shape.h} />
         </div>
       ) : null}
 
@@ -920,7 +995,7 @@ function PostCell({
       ) : null}
       {cardOut && leavingShape ? (
         <div data-layer="chrome-out" className="pointer-events-none" style={{ left: 0, top: 0, width: leavingShape.w, height: leavingShape.h }}>
-          <CardChrome post={post} feeder={leavingFeeder ?? feeder} width={leavingShape.w} height={leavingShape.h} standout={standout} date={leavingDate ? groupParts(leavingDate, 'day', istDay()) : dateParts} clear={leavingShape.clear} />
+          <CardChrome post={post} feeder={leavingFeeder ?? feeder} solo={solo} width={leavingShape.w} height={leavingShape.h} standout={standout} date={leavingDate ? groupParts(leavingDate, 'day', istDay()) : dateParts} clear={leavingShape.clear} />
         </div>
       ) : null}
       {rowOut && leavingShape ? (
@@ -929,7 +1004,7 @@ function PostCell({
           className="pointer-events-none"
           style={{ left: 0, top: 0, width: Math.max(0, leavingShape.w - leavingShape.mediaWidth - READING_GAP), height: leavingShape.h }}
         >
-          <RowReading post={post} feeder={feeder} height={leavingShape.h} />
+          <RowReading post={post} feeder={feeder} solo={solo} height={leavingShape.h} />
         </div>
       ) : null}
     </div>

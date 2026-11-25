@@ -612,6 +612,118 @@ html.light .st-bone {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
 
+/* ── a post's reads, picked (CheckpointStrip, CheckpointTrail): the glide travels to the one picked as the number and
+   its figures roll to it. Transform and opacity only ── */
+
+.st-glide {
+  transition: transform calc(340ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1);
+}
+
+.st-glide-win {
+  transition: opacity calc(260ms * var(--fm-tempo)) ease;
+}
+
+.st-seg {
+  transition:
+    color calc(220ms * var(--fm-tempo)) ease,
+    scale 150ms ease-out;
+}
+
+.st-seg:active,
+.st-tile:active {
+  scale: 0.94;
+}
+
+.st-tile {
+  transition: scale 150ms ease-out;
+}
+
+/* a number rolling to another read's (RollText): what changed turns in its place, the old glyph and the new one column
+   on one clock, clipped to the line (never at its sides: a glyph that has no place in the new number leaves from where
+   it was) */
+.st-roll {
+  overflow-y: clip;
+  overflow-x: visible;
+}
+
+.st-roll-in {
+  animation: st-roll-in calc(440ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1) var(--st-roll-at, 0ms) both;
+}
+
+.st-roll-out {
+  animation: st-roll-out calc(440ms * var(--fm-tempo)) cubic-bezier(0.3, 0.3, 0.2, 1) var(--st-roll-at, 0ms) both;
+}
+
+@keyframes st-roll-in {
+  from { transform: translate3d(0, var(--st-roll-from, 100%), 0); }
+}
+
+@keyframes st-roll-out {
+  to { transform: translate3d(0, var(--st-roll-to, -100%), 0); }
+}
+
+.st-roll[data-way='down'] {
+  --st-roll-from: -100%;
+  --st-roll-to: 100%;
+}
+
+/* a card's own line (what, when), and what it had at an earlier read in its place while one is picked */
+.st-told,
+.st-then {
+  transition:
+    opacity calc(240ms * var(--fm-tempo)) ease,
+    transform calc(340ms * var(--fm-tempo)) var(--st-ease, ease-out);
+}
+
+.st-line:not([data-then]) .st-then {
+  opacity: 0;
+  transform: translate3d(0, 0.6em, 0);
+}
+
+.st-line[data-then] .st-told {
+  opacity: 0;
+  transform: translate3d(0, -0.6em, 0);
+}
+
+/* the open reading has those as its figures: its line is its own again; and its reads are its trail: the strip gives
+   its place to how the rank moved */
+.st-cell[data-read] .st-line .st-told {
+  opacity: 1;
+  transform: none;
+}
+
+.st-cell[data-read] .st-line .st-then {
+  opacity: 0;
+  transform: translate3d(0, 0.6em, 0);
+}
+
+.st-strip-place,
+.st-move {
+  transition:
+    opacity calc(260ms * var(--fm-tempo)) ease,
+    transform calc(420ms * var(--fm-tempo)) cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.st-move {
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  pointer-events: none;
+}
+
+.st-cell[data-read] .st-strip-place {
+  opacity: 0;
+  transform: translate3d(0, -10px, 0);
+}
+
+.st-cell[data-read] .st-strip {
+  pointer-events: none;
+}
+
+.st-cell[data-read] .st-move {
+  opacity: 1;
+  transform: none;
+}
+
 /* what a post says, on its closed card: the open reading has it whole, in its place */
 .st-says {
   transition: opacity calc(200ms * var(--fm-tempo)) ease;
@@ -739,6 +851,14 @@ html.light .st-bone {
   .st-card-dots,
   .st-card-scrim,
   .st-says,
+  .st-glide,
+  .st-glide-win,
+  .st-seg,
+  .st-tile,
+  .st-told,
+  .st-then,
+  .st-strip-place,
+  .st-move,
   .st-tone-own,
   .st-tone-still,
   .st-play,
@@ -772,7 +892,10 @@ html.light .st-bone {
 
 @media (prefers-reduced-motion: reduce) {
   .st-swap-in,
-  .st-swap-out {
+  .st-swap-out,
+  .st-roll-in,
+  .st-roll-out {
     animation-duration: 1ms;
+    animation-delay: 0ms;
   }
 }
