@@ -96,6 +96,14 @@ const RING_LAG = 0.05;
 const HUD_OUT_MS = ms(300);
 // the layers rising or sinking on their own (a tap, a pick, a scroll): the same time up as down
 const LAYERS_MS = ms(440);
+/* a pull: the layers follow the finger a breath behind (`PULL_K`, a critically damped spring's), never faster than
+   `PULL_V` (the whole way per s) and gathering that pace at `PULL_A`: a slow pull holds them, a flick sends them up at
+   about the pace a tap does, never in a frame */
+const PULL_K = 620;
+const PULL_V = 1.95;
+const PULL_A = 14;
+// let go past this much of the pull, they open
+const PULL_TAKES = 0.32;
 // scrolled down this far one way (pt), the bar folds into its handle; back up as far, or at the page's top or foot, it
 // opens again (Safari's toolbar does the same, so the two move together)
 const FOLD_TRAVEL = 36;
@@ -129,8 +137,8 @@ const clamp = (value: number, low: number, high: number) => Math.min(high, Math.
 // the tabs' mark holds to its stop, then goes, and is nearly home before the ring is closed (the pull's own feel)
 const magnet = (t: number) => t ** 3 / (t ** 3 + (1 - t) ** 3);
 
-// (`ring`: how far round a sideways swipe has drawn the hero's ring, 0 → 1)
-type Gesture = { id: number; x0: number; y0: number; mode: null | 'pull' | 'swipe' | 'drop'; wasOpen: boolean; locked: boolean; lastX: number; lastT: number; v: number; ring: number };
+// (`ring`: how far round a sideways swipe has drawn the hero's ring, 0 → 1; `raw`: how much of a pull up the finger has made)
+type Gesture = { id: number; x0: number; y0: number; mode: null | 'pull' | 'swipe' | 'drop'; wasOpen: boolean; locked: boolean; lastX: number; lastT: number; v: number; ring: number; raw: number };
 type RingParts = { right: HTMLElement | null; left: HTMLElement | null; lead: HTMLElement | null; start: HTMLElement | null; end: HTMLElement | null };
 
 // the swipe's marks: the dock plain again with none of them
@@ -166,6 +174,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
 
   // what moves every frame, kept out of React
   const motion = useRef({ p: 0, raf: 0 });
+  // the layers on their way to the finger (a pull): where it has them, and the pace they go at
+  const follow = useRef({ to: 0, v: 0, raf: 0, last: 0, at: null as [number, number, number] | null });
   const row = useRef({ th: 0, tv: 0, target: null as number | null, raf: 0, last: 0, edge: 0, fly: -1, flyX: 0, flyY: 0 });
   // where each circle stood last drawn (by key): what stays when the rail is dealt again glides on from there
   const lastX = useRef(new Map<string, number>());
@@ -273,6 +283,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
     const m = motion.current;
     cancelAnimationFrame(m.raf);
     m.raf = 0;
+    cancelAnimationFrame(follow.current.raf);
+    follow.current.raf = 0;
     const from = m.p;
     if (reducedMotion() || Math.abs(target - from) < 0.001) {
       writeP(target);
@@ -320,6 +332,43 @@ export default function Dock({ tab }: { tab: DockTab }) {
     // (a tick for each one the finger lands on, as a picker's)
     if (key) playHaptic('snapLock');
   }, []);
+
+  /* ── the layers pulled up: after the finger, at a limited pace (PULL_K, PULL_V, PULL_A). Steps are a frame's at most,
+     so a frame the page was busy in never makes them jump ── */
+  const followTo = useCallback((to: number) => {
+    const f = follow.current;
+    f.to = to;
+    if (reducedMotion()) {
+      writeP(to);
+      return;
+    }
+    if (f.raf) return;
+    f.last = performance.now();
+    const damp = 2 * Math.sqrt(PULL_K);
+    const step = (now: number) => {
+      let left = clamp((now - f.last) / 1000, 0.004, 0.02);
+      f.last = now;
+      let { p } = motion.current;
+      const was = p;
+      for (; left > 0; left -= 0.004) {
+        const h = Math.min(0.004, left);
+        const pull = PULL_K * (f.to - p) - damp * f.v;
+        // (gathering pace is eased; slowing down is the spring's own)
+        const speedingUp = pull * f.v >= 0;
+        f.v = clamp(f.v + (speedingUp ? clamp(pull, -PULL_A, PULL_A) : pull) * h, -PULL_V, PULL_V);
+        p += f.v * h;
+      }
+      if (Math.abs(f.to - p) < 0.002 && Math.abs(f.v) < 0.02) {
+        p = f.to;
+        f.v = 0;
+      }
+      writeP(p);
+      // (the finger waiting on a circle as they arrive under it)
+      if (was <= 0.6 && p > 0.6 && f.at) markHot(f.at[0], f.at[1], f.at[2]);
+      f.raf = p === f.to ? 0 : requestAnimationFrame(step);
+    };
+    f.raf = requestAnimationFrame(step);
+  }, [markHot, writeP]);
 
   /* ── the swipe, as far as it has got: the hero's ring drawn round (the rail's ring, its halves turning into view
      behind windows: transforms alone), and over the dock the tabs' pill, its mark on its way from the tab you're on to
@@ -444,7 +493,9 @@ export default function Dock({ tab }: { tab: DockTab }) {
 
   const openLayers = (fromFinger = false) => {
     readyLayers();
-    glideTo(1, fromFinger);
+    // (let go of, they go on at the pace they had)
+    if (fromFinger) followTo(1);
+    else glideTo(1);
   };
 
   const closeLayers = useCallback((fromFinger = false) => {
@@ -596,6 +647,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
 
   useEffect(() => () => {
     cancelAnimationFrame(motion.current.raf);
+    cancelAnimationFrame(follow.current.raf);
     cancelAnimationFrame(row.current.raf);
     cancelAnimationFrame(swipe.current.raf);
     window.clearTimeout(laterTimer.current);
@@ -838,7 +890,7 @@ export default function Dock({ tab }: { tab: DockTab }) {
     // (a second finger's: the dock is never part of a pinch)
     if (!event.isPrimary) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    gesture.current = { id: event.pointerId, x0: event.clientX, y0: event.clientY, mode: null, wasOpen: open, locked: false, lastX: event.clientX, lastT: event.timeStamp, v: 0, ring: 0 };
+    gesture.current = { id: event.pointerId, x0: event.clientX, y0: event.clientY, mode: null, wasOpen: open, locked: false, lastX: event.clientX, lastT: event.timeStamp, v: 0, ring: 0, raw: 0 };
     // the page copied now, while the finger is still: a swipe that follows has nothing heavy to do (lib/tabPush)
     if (!open && !reducedMotion()) holdPush(tab);
   };
@@ -883,6 +935,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
           // the finger takes the layers from wherever the spring had them
           cancelAnimationFrame(motion.current.raf);
           motion.current.raf = 0;
+          follow.current.v = 0;
+          follow.current.at = null;
           readyLayers();
         }
       } else if (pullable) {
@@ -902,7 +956,9 @@ export default function Dock({ tab }: { tab: DockTab }) {
           g.locked = true;
           playHaptic('snapLock');
         }
-        writeP(g.locked ? Math.max(1, 1 + (raw - 1) * 0.12) : raw);
+        g.raw = raw;
+        follow.current.at = [event.clientX, event.clientY, event.timeStamp];
+        followTo(g.locked ? Math.max(1, 1 + (raw - 1) * 0.12) : raw);
       }
       if (motion.current.p > 0.6 || g.wasOpen) markHot(event.clientX, event.clientY, event.timeStamp);
       // resting at either end of the row turns it on toward that side
@@ -974,7 +1030,8 @@ export default function Dock({ tab }: { tab: DockTab }) {
       clearHot();
       if (key && rested) return choose(key);
       if (g.wasOpen) return;
-      if (motion.current.p > 0.32) openLayers(true);
+      // (by where the finger took them, not how far they have come)
+      if (g.locked || g.raw > PULL_TAKES) openLayers(true);
       else closeLayers(true);
       return;
     }
