@@ -88,6 +88,7 @@ import {
   mountWindow,
   nearestPost,
   READING_FROM,
+  THEATRE_FROM,
   skeletonLayout,
   slotId,
   topForAnchor,
@@ -184,6 +185,8 @@ const PART = 0.4;
 const LONG_CARRY_MS = ms(760);
 // how long a zoom's focal is held where it landed while its days come in (focalHoldRef)
 const FOCAL_HOLD_MS = 1200;
+// out of a phone's Day view, a card's ground (its colour under its picture) is gone this soon
+const GROUND_OUT_MS = ms(140);
 // out of the Day view, the focal's tile lands at least this far clear of the header and the nav
 const TILE_CLEAR_PX = 24;
 // a live pinch past the last zoom only gives this much (a rubber band)
@@ -201,6 +204,8 @@ const PINCH_SPAN_MS = 1000;
 // other way only once it is this far past 1 (each turn draws the page afresh)
 const PINCH_BAND = 0.05;
 const NO_DAYS: string[] = [];
+// a phone's Day card snaps by its head: this much of it
+const MARK_HEAD = 120;
 const SNAP_CLASS = 'fm-feed-root-scroll';
 /* WebKit (every iOS browser, Safari on a Mac) draws the stretch of page a scroll the page makes itself lands on only
    once its UI process has scrolled there: a jump further than it has drawn around the screen shows the page's black
@@ -367,8 +372,8 @@ type Spec =
   | { kind: 'more'; key: string; x: number; y: number; w: number; h: number; day: string; more: number };
 
 // where a cell and its layers were on screen
-// (a phone card sitting back in the Day view's depth: how dimmed its picture and how faded its chrome, as the move began)
-type Shot = Partial<Record<'cell' | 'frame' | 'bg' | 'chips' | 'chrome' | 'reading', Rect>> & { dim?: number; fade?: number };
+// (a phone card going under the next one in the Day view: how dimmed it was as the move began)
+type Shot = Partial<Record<'cell' | 'frame' | 'bg' | 'chips' | 'chrome' | 'reading', Rect>> & { dim?: number };
 
 // a move between views in progress: what the screen was, and where the page goes
 type Move = {
@@ -431,7 +436,22 @@ function pageTop(el: HTMLElement): number {
 }
 
 function sameInsets(a: StreamInsets, b: StreamInsets) {
-  return Math.abs(a.top - b.top) < 0.5 && Math.abs(a.topCompressed - b.topCompressed) < 0.5 && Math.abs(a.bottom - b.bottom) < 0.5 && Math.abs((a.dock ?? 0) - (b.dock ?? 0)) < 0.5 && Math.abs((a.screen ?? 0) - (b.screen ?? 0)) < 0.5;
+  return Math.abs(a.top - b.top) < 0.5 && Math.abs(a.topCompressed - b.topCompressed) < 0.5 && Math.abs(a.bottom - b.bottom) < 0.5 && Math.abs((a.dock ?? 0) - (b.dock ?? 0)) < 0.5 && Math.abs((a.screen ?? 0) - (b.screen ?? 0)) < 0.5 && Math.abs((a.over ?? 0) - (b.over ?? 0)) < 0.5 && Math.abs((a.under ?? 0) - (b.under ?? 0)) < 0.5;
+}
+
+/* How much of the page an iPhone's browser shows past the viewport it reports: over it, under the status bar, and under
+   it, round the toolbar (iOS draws the page behind both, and reports neither: every safe area is 0 there). The tallest
+   status bar there is, and the rest of the screen past the large viewport and the shortest one: what is a little more
+   than shows only ever falls off the screen. Installed, the page is the whole screen: none */
+const BAR_OVER = 62;
+const BAR_OVER_LEAST = 47;
+function pageBeyond(screen: number): { over: number; under: number } {
+  const ios = typeof navigator !== 'undefined' && /iP(hone|od)/.test(navigator.userAgent);
+  if (!ios || inStandalone()) return { over: 0, under: 0 };
+  return { over: BAR_OVER, under: Math.max(0, Math.round(window.screen.height - screen - BAR_OVER_LEAST)) };
+}
+function inStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -673,12 +693,20 @@ function snapshot(layer: HTMLElement): Map<string, Shot> {
       const name = part.dataset.layer ?? '';
       if (name === 'frame' || name === 'bg' || name === 'chips' || name === 'chrome' || name === 'reading') shot[name] = rectOf(part);
     });
-    // a phone card sitting back in the Day view's depth (its boxes above are measured as it stands): how dim and faded
+    // a phone card going under the next one in the Day view (its boxes above are measured as it stands): how dimmed. One
+    // wholly under it, unseen, is where the scroll alone would have it: over the top of the screen
     if (el.dataset.depth !== undefined) {
-      const dim = el.querySelector<HTMLElement>('[data-depth-dim]');
-      const chrome = el.querySelector<HTMLElement>(':scope > [data-layer="chrome"]');
+      const style = getComputedStyle(el);
+      const dim = el.querySelector<HTMLElement>(':scope > [data-depth-dim]');
       shot.dim = dim ? Number(getComputedStyle(dim).opacity) || 0 : 0;
-      shot.fade = chrome ? Number(getComputedStyle(chrome).opacity) : 1;
+      const by = style.transform === 'none' ? 0 : new DOMMatrixReadOnly(style.transform).m42;
+      if (by && Number(style.opacity) < 0.05) {
+        (['cell', 'frame', 'bg', 'chrome'] as const).forEach((name) => {
+          const rect = shot[name];
+          if (rect) shot[name] = { ...rect, top: rect.top - by };
+        });
+        shot.dim = 0;
+      }
     }
     shots.set(el.dataset.cell ?? '', shot);
   });
@@ -723,43 +751,20 @@ function letGo(flight: Flight, el: HTMLElement, was: Rect | undefined, now: Rect
   leave(flight, el, now, was, null, { quick: true, opacity });
 }
 
-/* ── the Day view's depth (a phone's: stream.css, st-depth) ──
-   A card stands forward on its rest line and sits back the further it is from it, up to a stride either way: smaller
-   (held by the edge nearest the card in view), its picture dimmed, its chrome faded. The scroll draws it (a view
-   timeline); a move turns it off while it flies, so here are the same numbers, for the move to let it go from and to
-   ease it back in as it lands */
-const DEPTH_SCALE = 0.92;
-const DEPTH_IN_MS = ms(320);
-let depthDrawn: boolean | null = null;
-function drawsDepth(): boolean {
-  if (depthDrawn == null) depthDrawn = typeof CSS !== 'undefined' && CSS.supports('animation-timeline: view()');
-  return depthDrawn;
-}
+/* ── the Day view's stack (a phone's: stream.css, st-yield) ──
+   The next card comes up over the one in view; the one in view gives way under it and darkens a touch. The scroll draws
+   it (a view timeline); a move turns it off while it flies, letting a card's dimming go from where it was */
 
-// offset: how far the card's top is from its rest line, in strides (+ below it, - above)
-function depthAt(offset: number, edge: number) {
-  const t = clamp(offset, -1, 1);
-  const u = Math.abs(t);
-  return {
-    away: u,
-    k: 1 - (1 - DEPTH_SCALE) * u,
-    ty: t > 0 ? -edge * u : edge * u,
-    dim: (t > 0 ? 0.4 : 0.5) * u,
-    fade: 1 - (t > 0 ? 0.45 : 0.55) * u,
-  };
-}
-
-/* A card that sat back as a move began (its shot's dim and fade): its picture's dim and its chrome's fade are let go
-   as it flies; one leaving keeps them as it goes */
+/* A card that was going under the next one as a move began (its shot's dim): the dimming is let go as it flies; one
+   leaving keeps it as it goes */
 function easeDepthOut(flight: Flight, el: HTMLElement, shot: Shot | undefined, leaving: boolean) {
-  if (!shot || shot.dim == null) return;
-  const dim = el.querySelector<HTMLElement>('[data-depth-dim]');
-  const chrome = el.querySelector<HTMLElement>(':scope > [data-layer="chrome"]');
+  if (!shot || !shot.dim || shot.dim < 0.01) return;
+  const dim = el.querySelector<HTMLElement>(':scope > [data-depth-dim]');
+  if (!dim) return;
   const timing: KeyframeAnimationOptions = leaving
     ? { duration: LEAVE_MS, easing: 'linear', fill: 'both' }
     : { duration: CARRY_MS, easing: CARRY_EASE_CSS, fill: 'backwards' };
-  if (dim && shot.dim > 0.01) run(flight, dim, [{ opacity: shot.dim }, { opacity: leaving ? shot.dim : 0 }], timing);
-  if (chrome && shot.fade != null && shot.fade < 0.99) run(flight, chrome, [{ opacity: shot.fade }, { opacity: leaving ? shot.fade : 1 }], timing);
+  run(flight, dim, [{ opacity: shot.dim }, { opacity: leaving ? shot.dim : 0 }], timing);
 }
 
 /* ── the stream ────────────────────────────────────────────── */
@@ -2076,6 +2081,7 @@ function FeedStream({
     // every piece measured where it now is before any is set moving (a measure after an animation is added has WebKit
     // work its styles out again, once for every piece)
     const steps: Array<() => void> = [];
+    const phone = (metricsRef.current?.width ?? vw) < THEATRE_FROM;
     if (!move.slide) layer.querySelectorAll<HTMLElement>(':scope > [data-cell]').forEach((el) => {
       const shot = move.shots.get(el.dataset.cell ?? '');
       // the old view's leftovers: held where they were, and let go
@@ -2099,12 +2105,19 @@ function FeedStream({
           const bgWas = shot.bg ?? frameWas;
           const bgNow = rectOf(bg);
           steps.push(() => carryLayer(flight, bg, bgWas, vw, vh, null, bgNow));
+          // a phone card's ground is most of a screen of its colour: only the post the move is about brings it, growing
+          // out from under its picture; going to a grid, it is let go before the picture is far on its way
+          if (phone) {
+            const own = el.dataset.focal !== undefined || (move.to === 'today' && move.kind === 'pick' && rectOf(el).top > -TILE_CLEAR_PX);
+            if (move.to !== 'today') steps.push(() => run(flight, bg, [{ opacity: own ? 1 : 0 }, { opacity: 0 }], { duration: GROUND_OUT_MS, easing: 'linear', fill: 'both' }));
+            else if (!own) steps.push(() => run(flight, bg, [{ opacity: 0 }, { opacity: 0 }], { duration: CARRY_MS, fill: 'both' }));
+          }
         }
         ([['chips-out', shot.chips], ['chrome-out', shot.chrome], ['reading-out', shot.reading]] as const).forEach(([name, was]) => {
           const out = el.querySelector<HTMLElement>(`:scope > [data-layer="${name}"]`);
           if (!out || !was) return;
           const now = rectOf(out);
-          steps.push(() => letGo(flight, out, was, now, name === 'chrome-out' ? shot.fade : undefined));
+          steps.push(() => letGo(flight, out, was, now));
         });
         steps.push(() => easeDepthOut(flight, el, shot, false));
         return;
@@ -2117,6 +2130,11 @@ function FeedStream({
         return;
       }
       const now = rectOf(el);
+      // (a phone card over the one in view is under the status bar only, and unseen from the landing on: never seen)
+      if (phone && move.to === 'today' && now.top < -TILE_CLEAR_PX) {
+        steps.push(() => run(flight, el, [{ opacity: 0 }, { opacity: 0 }], { duration: CARRY_MS, fill: 'both' }));
+        return;
+      }
       if (onScreen(now, vw, vh)) steps.push(() => enter(flight, el, now, landing));
     });
     const profileNode = profileRef.current;
@@ -2671,12 +2689,14 @@ function FeedStream({
     const height = read(probeViewRef.current, window.innerHeight);
     if (!width || !height) return;
     const desktop = width + left >= 1024;
+    const screen = read(probeScreenRef.current, height);
     const insets: StreamInsets = {
       top: read(probeTopRef.current, desktop ? 188 : 162),
       topCompressed: read(probeFoldRef.current, desktop ? 88 : 78),
       bottom: read(probeNavRef.current, desktop ? 90 : 86),
       dock: read(probeDockRef.current, 20),
-      screen: read(probeScreenRef.current, height),
+      screen,
+      ...pageBeyond(screen),
     };
     setMetrics((current) => (
       current && Math.abs(current.width - width) < 0.5 && Math.abs(current.height - height) < 0.5 && sameInsets(current.insets, insets) && current.left === left
@@ -2755,20 +2775,20 @@ function FeedStream({
   const markCount = phoneDay && layout ? layout.items.length : 0;
   const markTop = markCount && layout ? layout.items[0].y : 0;
   const markStride = layout?.stride ?? 0;
-  const markHeight = layout?.cardHeight ?? 0;
-  // a stack's cards rest at their top (just under the folded header); a theatre's in the band's middle
+  // a stack's cards rest at their top (just under the status bar); a theatre's in the band's middle. A stack's mark is
+  // only its card's head: one as tall as its card is taller than the snap's room (the browser's bars in), and the page
+  // may then rest anywhere along it
   const markAlign: 'start' | 'center' = layout?.deck ? 'start' : 'center';
-  // (a stack's first card rests lower, the profile's order tabs over it: its mark snaps that much sooner)
-  const markLead = layout?.lead ?? 0;
-  const [marks, setMarks] = useState<{ count: number; top: number; stride: number; height: number; align: 'start' | 'center'; lead: number } | null>(null);
+  const markHeight = layout?.deck ? MARK_HEAD : layout?.cardHeight ?? 0;
+  const [marks, setMarks] = useState<{ count: number; top: number; stride: number; height: number; align: 'start' | 'center' } | null>(null);
   useIsoLayoutEffect(() => {
     if (move) return;
     setMarks((current) => {
       if (!markCount) return null;
-      if (current && current.count === markCount && current.top === markTop && current.stride === markStride && current.height === markHeight && current.align === markAlign && current.lead === markLead) return current;
-      return { count: markCount, top: markTop, stride: markStride, height: markHeight, align: markAlign, lead: markLead };
+      if (current && current.count === markCount && current.top === markTop && current.stride === markStride && current.height === markHeight && current.align === markAlign) return current;
+      return { count: markCount, top: markTop, stride: markStride, height: markHeight, align: markAlign };
     });
-  }, [move, markCount, markTop, markStride, markHeight, markAlign, markLead]);
+  }, [move, markCount, markTop, markStride, markHeight, markAlign]);
   const snapMarks = useMemo(() => {
     if (!marks) return null;
     return Array.from({ length: marks.count }, (_, at) => (
@@ -2778,12 +2798,22 @@ function FeedStream({
         data-still-skip=""
         className="pointer-events-none absolute left-0 w-px"
         // (one swipe, one post: a flick never carries past the next card)
-        style={{ top: marks.top + at * marks.stride, height: marks.height, scrollSnapAlign: marks.align, scrollSnapStop: 'always', scrollMarginTop: at === 0 && marks.lead ? marks.lead : undefined }}
+        style={{ top: marks.top + at * marks.stride, height: marks.height, scrollSnapAlign: marks.align, scrollSnapStop: 'always' }}
       />
     ));
   }, [marks]);
+  // (the dock sits on a card there, never on the page: no light round it. dock.css)
+  useIsoLayoutEffect(() => {
+    if (!layout?.deck) return undefined;
+    const html = document.documentElement;
+    html.dataset.feedDeck = '';
+    return () => {
+      delete html.dataset.feedDeck;
+    };
+  }, [layout?.deck]);
   const insets = metrics?.insets ?? null;
-  // what the Day view's cards snap to: a phone's rest line (its cards rest at their top, mid-screen: layout.restTop); a
+  // what the Day view's cards snap to: a phone's rest line (its cards rest at their top, under the status bar:
+  // layout.restTop); a
   // theatre's band (under the folded header, down to the nav), its cards centred in it
   const deckOn = Boolean(layout?.deck);
   const snapTop = insets ? (deckOn && layout ? layout.restTop : insets.topCompressed) : undefined;
@@ -2804,35 +2834,6 @@ function FeedStream({
       html.style.removeProperty('--fm-feed-snap-bottom');
     };
   }, [phoneDay, move, snapTop, snapBottom, applySnap, holdSnap]);
-
-  /* A move landed in a phone's Day view: the depth it flew without comes back, eased in from flat over the cards that
-     sit back (the scroll draws it from here on; until this runs, the first frame holds them flat) */
-  const movedRef = useRef(false);
-  useIsoLayoutEffect(() => {
-    const moved = movedRef.current;
-    movedRef.current = Boolean(move);
-    const layer = layerRef.current;
-    const current = layoutRef.current;
-    if (move || !moved || !layer || !current?.deck || !visibleRef.current || reducedMotion() || !drawsDepth()) return;
-    const scrollY = pageY();
-    const vh = window.innerHeight;
-    const edge = ((1 - DEPTH_SCALE) * current.cardHeight) / 2;
-    const flight = startFlight(holdsScroll() ? FLIGHT_HOLD_MS : 0);
-    const timing: KeyframeAnimationOptions = { duration: DEPTH_IN_MS, easing: CARRY_EASE_CSS, fill: 'backwards' };
-    layer.querySelectorAll<HTMLElement>(':scope > [data-depth]').forEach((cell) => {
-      const top = originRef.current + (parseFloat(cell.style.top) || 0) - scrollY;
-      if (top > vh || top + current.cardHeight < 0) return;
-      const line = current.restTop + (cell.dataset.depth === 'first' ? current.lead : 0);
-      const depth = depthAt((top - line) / current.stride, edge);
-      if (depth.away < 0.01) return;
-      run(flight, cell, [{ transform: 'translate3d(0px, 0px, 0px) scale(1)' }, { transform: `translate3d(0px, ${depth.ty.toFixed(1)}px, 0px) scale(${depth.k.toFixed(4)})` }], timing);
-      const dim = cell.querySelector<HTMLElement>('[data-depth-dim]');
-      if (dim) run(flight, dim, [{ opacity: 0 }, { opacity: depth.dim }], timing);
-      const chrome = cell.querySelector<HTMLElement>(':scope > [data-layer="chrome"]');
-      if (chrome) run(flight, chrome, [{ opacity: 1 }, { opacity: depth.fade }], timing);
-    });
-    if (flight.hold && flight.animations.length) afterDrawn(() => releaseFlight(flight));
-  }, [move, pageY]);
 
   // the layout changed under the reader (a day loaded with sizes its index didn't have, a rotation): the piece at the
   // reading line holds still
@@ -3286,7 +3287,7 @@ function FeedStream({
   const wideDay = layout?.mode === 'today' && layout.mediaWidth != null;
   const profileTop = metrics ? metrics.insets.top + profilePad(metrics.width) : 0;
   // a phone's Day view snaps to the profile too, at the very top (the snap's line is the cards' rest line, under the
-  // folded header)
+  // status bar)
   const profileSnap: CSSProperties = phoneDay && metrics && column && layout
     ? { scrollSnapAlign: 'start', scrollMarginTop: profileTop - (layout.deck ? layout.focusY - layout.cardHeight / 2 : metrics.insets.topCompressed) }
     : {};
@@ -3331,6 +3332,7 @@ function FeedStream({
       rows: item.rows,
       mediaWidth: drawn.mediaWidth ?? 0,
       wide: drawn.mode === 'today' && drawn.mediaWidth != null,
+      clear: drawn.footClear,
     });
     for (let at = mountFrom; at < mountTo; at += 1) {
       const item = drawn.items[at];
@@ -3434,6 +3436,8 @@ function FeedStream({
         wide={spec.shape.wide}
         leaving={wasPost ? wasPost.mode : null}
         leavingShape={wasPost ? wasPost.shape : null}
+        leavingDate={wasPost ? wasPost.date : null}
+        leavingFeeder={wasPost?.feederHandle ? feeders.get(wasPost.feederHandle) ?? null : null}
         arriving={!going && (crossing || stillArriving?.has(spec.key) === true)}
         focal={!going && move?.focalKey === spec.post.key}
         // the post the Day view rests on plays, and goes on playing while a swipe carries it away (stopping it at the
@@ -3446,8 +3450,8 @@ function FeedStream({
         eager={spec.eager}
         feeder={spec.feederHandle ? feeders.get(spec.feederHandle) ?? null : null}
         gone={going}
-        depth={!going && inDay && drawn?.deck && !move ? (spec.index === 0 ? 'first' : 'on') : null}
-        first={inDay && spec.index === 0}
+        depth={!going && inDay && Boolean(drawn?.deck) && !move}
+        order={spec.index}
         clear={inDay && drawn?.deck ? drawn.footClear : 0}
         onOpenTile={actions.openTile}
         onFocusCard={actions.focusCard}
@@ -3455,17 +3459,9 @@ function FeedStream({
     );
   };
 
-  // a phone's Day view in depth (stream.css, st-depth): the line its cards rest on, the first's lead, a stride, and how
-  // far a card sitting back is held by its edge. And how far the header reaches over a resting card's top while it is
-  // open (it unfolds as you scroll back): the marks there step down by that much (data-head-open)
+  // what a phone's Day view stacks by (stream.css, st-yield): the line its cards rest on, and a stride
   const depthVars = drawn?.deck
-    ? ({
-      '--st-rest': `${drawn.restTop}px`,
-      '--st-lead': `${drawn.lead}px`,
-      '--st-stride': `${drawn.stride}px`,
-      '--st-edge': `${(((1 - DEPTH_SCALE) * drawn.cardHeight) / 2).toFixed(2)}px`,
-      '--st-head-push': `${Math.max(0, Math.round(drawn.insets.top - drawn.restTop))}px`,
-    } as CSSProperties)
+    ? ({ '--st-rest': `${drawn.restTop}px`, '--st-stride': `${drawn.stride}px` } as CSSProperties)
     : null;
 
   let content: ReactNode = null;
@@ -3612,13 +3608,12 @@ function FeedStream({
         {/* the Day view's foot on a phone: the folded nav's circle sits in the corner, the card goes on to the safe area */}
         <div ref={probeDockRef} className="w-px h-[calc(20px+env(safe-area-inset-bottom))]" />
         <div ref={probeViewRef} className="w-px h-[100svh]" />
-        {/* ...and the whole screen, as with the browser's bars away (a phone's Day card rests in its middle) */}
+        {/* ...and the whole screen, as with the browser's bars away (a phone's Day card runs on to its foot) */}
         <div ref={probeScreenRef} className="w-px h-[100lvh]" />
       </div>
       {profileHeader}
       <div
         ref={layerRef}
-        data-head-open={drawn?.deck && !headerCompressed ? '' : undefined}
         className="relative isolate w-full"
         style={{ height: layerHeight, ...depthVars }}
         aria-busy={!index && !blank}

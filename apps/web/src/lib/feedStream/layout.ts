@@ -17,14 +17,15 @@
    through a zoom).
 
    today (DAY): a column of posts, one per post, each resting with
-   its centre on the focus line (focusY). A phone's post is a 4:5
-   card always the screen's width, resting in the middle of the
-   screen (one swipe, one post: the page snaps, deck), the cards
-   either side showing as much of themselves up under the glass
-   header as on under the browser's bar. The column scrolls under
-   the glass header and the status bar, the post in view standing
-   forward and the ones either side sitting back toward it
-   (stream.css, st-depth: the scroll is all that moves them).
+   its centre on the focus line (focusY). A phone's post is a card
+   the whole screen's: its 4:5 picture the screen's width, at its
+   top just under the status bar, and the card running on under it
+   in the picture's own colour to the screen's foot, where the dock
+   sits on it: at rest it is the one card on screen (one swipe, one
+   post: the page snaps, deck). Its reading stands between the
+   picture and the dock (footClear); on a screen too short for that
+   it stands over the picture's foot. Scrolled, the next card comes
+   up over it as it gives way under (stream.css, st-yield).
    Wider, the focus line is the middle of the band between the
    folded header and the nav.
    From READING_FROM wide a post is a row: its media in a 4:5
@@ -63,18 +64,14 @@ export const SECTION_GAP = 20;
 export const GRID_GAP = 2;
 export const GRID_MAX_WIDTH = 1400;
 // a theatre's Day card (a tablet): the band between the folded header and the nav, less this on every side; cards this
-// far apart (a phone's too)
+// far apart
 export const REEL_INSET = 8;
 export const REEL_GAP = 12;
-// a phone's card rests in the middle of the screen (always the screen's width), the card before it and the card after
-// it showing as much as each other; never nearer the folded header's edge than this (a short screen)
-export const DECK_TOP_GAP = 8;
-// the folded nav's circle stands this far up from the dock's line (and a little air over it): a card whose foot reaches
-// it on a short screen has its reading lifted clear of it
-const DOCK_CIRCLE = 56;
-// ...but the first rests lower: the profile's order tabs (profileHeaderSize's PROFILE_ROW.tabs) showing over it, just
-// under the folded header (in a browser they're under the nav at the top: the first swipe brings them in)
-const DECK_TABS = 44;
+// a phone's card rests this much nearer the status bar than the page's own gap under it
+const DECK_LIFT = 4;
+// ...and its first stands this far off the profile over it, past what lies between them, so the profile is just off the
+// screen (under the status bar too: StreamInsets.over) once the card rests
+const DECK_AIR = 4;
 // the stack's page runs on this much of the screen past its last card's rest
 const DECK_END = 0.3;
 // wider than a phone (and narrower than a row), a card is a "theatre": 9:16 in the middle, never wider than this
@@ -102,11 +99,14 @@ const MEDIA_MIN = 240;
 const CELL_ASPECT = 4 / 3; // cells are 3:4 (height over width)
 // month shows each month's highlights in this many rows
 const HIGHLIGHT_ROWS = 3;
-const THEATRE_FROM = 600;
+// (narrower: a phone's stack of cards)
+export const THEATRE_FROM = 600;
 const MIN_CARD_HEIGHT = 240;
 const BOTTOM_PAD = 16;
-// the Day view's first post sits this far under the profile
+// the Day view's first post sits this far under the profile (a phone's, further: DECK_AIR), and what lies between the
+// profile's last line and the layer
 const DAY_TOP = 12;
+const DAY_PROFILE_FOOT = 20;
 
 export type GridMode = Exclude<FeedMode, 'today'>;
 
@@ -114,8 +114,10 @@ export type GridMode = Exclude<FeedMode, 'today'>;
 // dock: the room a phone's Day view leaves at the screen's foot (the nav folds into a circle there while you read, so
 // the card on the focus line takes the screen's middle; without it, the nav's whole bar)
 // screen: the whole screen's height, as with the browser's bars away (the page runs on under them): a phone's Day card
-// rests in its middle (without it, the viewport's)
-export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number; screen?: number };
+// runs on to its foot (without it, the viewport's)
+// over, under: how much of the page shows past the screen's two ends (iOS Safari draws it on under its status bar and its
+// toolbar, outside every viewport it reports)
+export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number; screen?: number; over?: number; under?: number };
 
 export type LayoutKind = 'section' | 'tile' | 'reel' | 'more';
 
@@ -176,12 +178,10 @@ export type StreamLayout = {
   cardHeight: number;
   // a row (wide): the media frame's width at the row's left (the reading fills the rest); null: a phone's card
   mediaWidth: number | null;
-  // a phone's Day view: its cards rest at their top, just under the folded header (the snap's line: FeedStream)
+  // a phone's Day view: its cards rest at their top, just under the status bar (the snap's line: FeedStream)
   deck: boolean;
-  // ...and its first this much lower, the profile's order tabs over it (0 in any other view)
-  lead: number;
-  // the line (viewport px) a phone's card rests its top on, and how far a resting card's reading is lifted to clear the
-  // folded nav's circle (0 where the card's foot ends above it)
+  // the line (viewport px) a phone's card rests its top on, and how far a resting card's reading is lifted to stand
+  // clear of the dock, open or folded, the browser's bars in or out
   restTop: number;
   footClear: number;
   // lookups (built once per layout)
@@ -316,27 +316,23 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
       media = Math.max(MEDIA_MIN, room);
       frame = media / POST_ASPECT;
     }
-    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, lead: 0, restTop: focusY - frame / 2, footClear: 0 };
+    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, restTop: focusY - frame / 2, footClear: 0, dayTop: DAY_TOP };
   }
-  /* A phone's card is the post's 4:5 frame edge to edge (the screen's width: carousels and pictures whole, never a
-     reel's tall crop), its reading over the frame's foot. It rests in the middle of the screen: the card before it
-     (up under the glass header) and the card after it (on under the browser's bar) show as much as each other; on a
-     short screen it rests just under the folded header instead. It is always the screen's width: a short screen
-     shows less of the cards either side, and lifts the reading clear of the folded nav. A theatre (a tablet) keeps
-     the reel's card the band's height, in the band's middle */
+  /* A phone's card is the whole screen's: the picture 4:5 and the screen's width (carousels and pictures whole, never a
+     reel's tall crop), and the card running on under it to the screen's foot, as the browser's bars are away (the page
+     runs on under them). Never shorter than its picture. Its reading stands clear of the dock as it is with the bars in
+     (the smaller viewport), so a bar coming back never covers it. A theatre (a tablet) keeps the reel's card the band's
+     height, in the band's middle */
   if (width < THEATRE_FROM) {
-    const cardHeight = width / POST_ASPECT;
-    const cardWidth = width;
-    const restTop = Math.round(Math.max(bandTop + DECK_TOP_GAP, ((insets.screen ?? height) - cardHeight) / 2));
-    // the first card down by what the profile's order tabs need over it, less the air already there under the header,
-    // never so far that it runs into the dock's line
-    const lead = Math.max(0, Math.min(DECK_TABS + PROFILE_GAP + DAY_TOP - (restTop - bandTop), bandBottom - restTop - cardHeight - REEL_GAP));
-    const footClear = Math.max(0, Math.round(restTop + cardHeight - (bandBottom - DOCK_CIRCLE)));
-    return { focusY: restTop + cardHeight / 2, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead, restTop, footClear };
+    const picture = Math.round(width / POST_ASPECT);
+    const restTop = Math.max(0, Math.round(bandTop - DECK_LIFT));
+    const cardHeight = Math.max(picture, Math.round((insets.screen ?? height) + (insets.under ?? 0) - restTop));
+    const footClear = Math.max(0, Math.round(restTop + cardHeight - (height - insets.bottom)));
+    return { focusY: restTop + cardHeight / 2, cardWidth: width, cardHeight, mediaWidth: null as number | null, stride: cardHeight, restTop, footClear, dayTop: Math.max(DAY_TOP, restTop + (insets.over ?? 0) + DECK_AIR - DAY_PROFILE_FOOT) };
   }
   const cardHeight = band - REEL_INSET * 2;
   const cardWidth = Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);
-  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, lead: 0, restTop: focusY - cardHeight / 2, footClear: 0 };
+  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, restTop: focusY - cardHeight / 2, footClear: 0, dayTop: DAY_TOP };
 }
 
 export function computeLayout({ mode, days, posts, width, height, insets, wide }: LayoutInput): StreamLayout {
@@ -367,7 +363,7 @@ export function computeLayout({ mode, days, posts, width, height, insets, wide }
           cols: 1,
           rows: 1,
           x,
-          y: DAY_TOP + index * day.stride,
+          y: day.dayTop + index * day.stride,
           w: day.cardWidth,
           h: day.cardHeight,
         });
@@ -378,7 +374,7 @@ export function computeLayout({ mode, days, posts, width, height, insets, wide }
     // phone's stack runs on past that (the screen grows as Safari's bars fold away, and a page that ended at the small
     // screen's foot couldn't scroll its last card up to rest: the snap and the page's end fought over it at every swipe)
     const runOn = width < THEATRE_FROM && !(wide ?? width >= READING_FROM) ? height * DECK_END : 0;
-    totalHeight = index ? DAY_TOP + (index - 1) * day.stride + day.cardHeight / 2 + (height - day.focusY) + runOn : height;
+    totalHeight = index ? day.dayTop + (index - 1) * day.stride + day.cardHeight / 2 + (height - day.focusY) + runOn : height;
   } else {
     const unit = ZOOM_GROUP[mode];
     const cell = (column: number) => contentX + column * (cellWidth + GRID_GAP);
@@ -479,7 +475,6 @@ export function computeLayout({ mode, days, posts, width, height, insets, wide }
     cardHeight: day.cardHeight,
     mediaWidth: mode === 'today' ? day.mediaWidth : null,
     deck: mode === 'today' && width < THEATRE_FROM && !wide,
-    lead: mode === 'today' && width < THEATRE_FROM && !wide ? day.lead : 0,
     restTop: day.restTop,
     footClear: mode === 'today' && width < THEATRE_FROM && !wide ? day.footClear : 0,
     bottoms,
@@ -554,17 +549,17 @@ export function daysInRange(layout: StreamLayout, y0: number, y1: number): strin
    Positions here are the layer's: `top` is the page's scroll less the layer's origin. A post rests when its centre is
    on the focus line. */
 
-// where the layer's scroll (top) is when post i rests on the focus line (a phone's first, `lead` above it)
+// where the layer's scroll (top) is when post i rests on the focus line
 export function dayRestTop(layout: StreamLayout, index: number): number {
   const at = clamp(index, 0, Math.max(0, layout.items.length - 1));
   const item = layout.items[at];
-  return item ? item.y + item.h / 2 - layout.focusY - (at === 0 ? layout.lead : 0) : 0;
+  return item ? item.y + item.h / 2 - layout.focusY : 0;
 }
 
 // the post nearest the focus line at a scroll (0 when the profile is in view: see dayAtProfile)
 export function dayIndexAt(layout: StreamLayout, top: number): number {
   if (!layout.items.length || layout.stride <= 0) return 0;
-  return clamp(Math.round((top - dayRestTop(layout, 0) - layout.lead) / layout.stride), 0, layout.items.length - 1);
+  return clamp(Math.round((top - dayRestTop(layout, 0)) / layout.stride), 0, layout.items.length - 1);
 }
 
 // the profile, not a post, is what is in view: the scroll is more than half a post above the first post's rest

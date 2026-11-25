@@ -42,6 +42,11 @@
   pointer-events: none;
 }
 
+/* (over a phone's Day cards, dark in both themes: no light round it) */
+html[data-feed-deck] .fm-dock {
+  --fm-dock-glow: transparent;
+}
+
 html.dark .fm-dock {
   --fm-dock-tint: rgb(28 28 32 / 0.74);
   --fm-dock-rim: rgb(255 255 255 / 0.1);

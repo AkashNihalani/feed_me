@@ -471,58 +471,91 @@ html.light .st-bone {
   opacity: 0;
 }
 
-/* ── a phone's Day view in depth (FeedStream sets [data-depth] and the layer's --st-rest, --st-lead, --st-stride,
-   --st-edge): the post in view stands forward; the one above it and the one below sit back toward it, smaller and
-   darker, each held by the edge nearest it so the gap between them never opens. One animation on each post's own
-   place on screen (a view timeline cut at the line the posts rest on: Safari's bars coming and going never shift it),
-   so the scroll moves it on the compositor, with no script. Off while a move flies (FeedStream eases it back in as
-   the move lands); a browser without view timelines shows the column flat ── */
+/* ── a phone's Day view as it scrolls (FeedStream sets [data-depth], each card's --st-z, and the layer's --st-rest and
+   --st-stride): the next card is a sheet that comes up over the one in view, under the finger all the way; the one in
+   view gives way under it, at a little over half its speed, darkening a touch. Nothing else moves, nothing changes size,
+   and no page shows between two cards: the one going runs on a little past its foot (DECK_TAIL), so the sheet's round
+   corners have it behind them. One timeline a card, its own place on screen (cut at the line the cards rest on: Safari's
+   bars coming and going never shift it), so the scroll moves it with no script. Off while a move flies; a browser
+   without view timelines scrolls the cards as they are ── */
+
+.st-cell[data-depth] {
+  z-index: var(--st-z, 1);
+}
 
 @supports (animation-timeline: view()) {
-  .st-cell[data-depth] {
-    --st-rest-at: var(--st-rest, 0px);
-    animation: st-depth linear both;
-    animation-timeline: view(block var(--st-rest-at) 0px);
-    animation-range: exit-crossing calc(0% - var(--st-stride, 500px)) exit-crossing calc(0% + var(--st-stride, 500px));
+  /* (its own place, never a named timeline shared by the two: WebKit crashes as one of those is taken off) */
+  .st-cell[data-depth],
+  .st-cell[data-depth] > [data-depth-dim] {
+    animation: st-yield linear both, st-covered linear both;
+    animation-timeline: view(block var(--st-rest, 0px) 0px);
+    animation-range: exit-crossing 0% exit-crossing calc(0% + var(--st-stride, 800px));
   }
 
-  /* (the first post rests lower, the profile's order tabs over it) */
-  .st-cell[data-depth="first"] {
-    --st-rest-at: calc(var(--st-rest, 0px) + var(--st-lead, 0px));
-  }
-
-  .st-cell[data-depth] [data-depth-dim],
-  .st-cell[data-depth] > [data-layer="chrome"] {
-    animation: st-depth-dim linear both;
-    animation-timeline: view(block var(--st-rest-at) 0px);
-    animation-range: exit-crossing calc(0% - var(--st-stride, 500px)) exit-crossing calc(0% + var(--st-stride, 500px));
-  }
-
-  .st-cell[data-depth] > [data-layer="chrome"] {
-    animation-name: st-depth-fade;
+  .st-cell[data-depth] > [data-depth-dim] {
+    animation-name: st-sink;
   }
 }
 
-/* below (0%): the top edge held; in view (50%); above (100%): the foot held. FeedStream's depthAt is the same */
-@keyframes st-depth {
-  0% { transform: translate3d(0px, calc(var(--st-edge, 0px) * -1), 0px) scale(0.92); }
-  50% { transform: translate3d(0px, 0px, 0px) scale(1); }
-  100% { transform: translate3d(0px, var(--st-edge, 0px), 0px) scale(0.92); }
+/* from its rest line (0%) to a card further on (100%: wholly under the next). It lies still for the first few px:
+   WebKit's compositor draws a timeline some 20px out while Safari's toolbar is folded (its range was cut for the smaller
+   viewport), and a card at rest would stand that much off its line */
+@keyframes st-yield {
+  0%, 4% { transform: translate3d(0px, 0px, 0px); }
+  9% { transform: translate3d(0px, calc(var(--st-stride, 800px) * 0.0045), 0px); }
+  16% { transform: translate3d(0px, calc(var(--st-stride, 800px) * 0.022), 0px); }
+  26% { transform: translate3d(0px, calc(var(--st-stride, 800px) * 0.07), 0px); }
+  100% { transform: translate3d(0px, calc(var(--st-stride, 800px) * 0.53), 0px); }
 }
 
-@keyframes st-depth-dim {
-  0% { opacity: 0.4; }
-  50% { opacity: 0; }
-  100% { opacity: 0.5; }
+/* (covered but for what shows over the sheet, under the status bar: let go as the sheet comes to rest) */
+@keyframes st-covered {
+  0%, 84% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
-@keyframes st-depth-fade {
-  0% { opacity: 0.55; }
-  50% { opacity: 1; }
-  100% { opacity: 0.45; }
+@keyframes st-sink {
+  0%, 4% { opacity: 0; }
+  100% { opacity: 0.34; }
 }
 
-/* ── a card's reading (PostCell): its foot over the picture's foot (who, the number) and, a tap on, the rest (the
+/* ── a card's tone (PostMedia, Tone): charcoal, and its picture's own over it as soon as that is made (one made ahead is
+   there at once) ── */
+
+.st-tone-own,
+.st-tone-still {
+  transition: opacity calc(320ms * var(--fm-tempo)) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.st-tone-own {
+  opacity: 0;
+}
+
+.st-tone[data-ready] .st-tone-own {
+  opacity: 1;
+}
+
+/* (a melt's charcoal goes as its own comes: one fall over the picture, not two) */
+.st-tone[data-ready] .st-tone-still {
+  opacity: 0;
+}
+
+.st-tone[data-instant] .st-tone-own,
+.st-tone[data-instant] .st-tone-still {
+  transition: none;
+}
+
+/* the picture's melt, let go as its card shrinks into a tile */
+.st-melt-out {
+  animation: st-melt-out calc(220ms * var(--fm-tempo)) linear both;
+}
+
+@keyframes st-melt-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ── a card's reading (PostCell): its foot between the picture and the dock (who, the lead) and, a tap on, the rest (the
    reads, the figures, the caption, when, the way out) come up from under the foot, the whole block risen as one piece
    over a fade that rises with it (PostCell moves both, by transform, from wherever they are: a tap mid-way turns them
    straight round). The rest scrolls inside itself past the room it has (PostCell sets --st-more-max as it opens), the
@@ -543,12 +576,14 @@ html.light .st-bone {
 
 /* closed: the rest waits just under the foot, unseen (where it stands open, so it travels with the block). It is the
    one that scrolls, the same way open and shut */
+/* (it runs out to the card's edges, and a little over its first line: the reads' glow isn't cut where it starts) */
 .st-read-more {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: -16px;
+  right: -16px;
   top: 100%;
-  margin-top: 16px;
+  margin-top: 2px;
+  padding: 14px 16px 0;
   opacity: 0;
   max-height: var(--st-more-max, none);
   overflow-x: hidden;
@@ -564,6 +599,8 @@ html.light .st-bone {
 
 .st-cell[data-read] .st-read-more {
   position: static;
+  margin-left: -16px;
+  margin-right: -16px;
   opacity: 1;
 }
 
@@ -575,9 +612,19 @@ html.light .st-bone {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
 
+/* what a post says, on its closed card: the open reading has it whole, in its place */
+.st-says {
+  transition: opacity calc(200ms * var(--fm-tempo)) ease;
+}
+
+.st-cell[data-read] .st-says {
+  height: 0;
+  margin-bottom: calc(var(--st-gap, 12px) * -1);
+  opacity: 0;
+}
+
 .st-read-shade {
   opacity: 0;
-  background: linear-gradient(to bottom, rgb(0 0 0 / 0) 0, rgb(0 0 0 / 0.42) 70px, rgb(0 0 0 / 0.6) 150px, rgb(0 0 0 / 0.72) 100%);
   transition: opacity calc(300ms * var(--fm-tempo)) ease;
 }
 
@@ -595,22 +642,20 @@ html.light .st-bone {
 
 /* what lies over the top of a card (its day, a standout mark) steps aside while its reading is open */
 .st-card-marks {
-  transition:
-    opacity calc(240ms * var(--fm-tempo)) ease,
-    translate 340ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: opacity calc(240ms * var(--fm-tempo)) ease;
 }
 
 .st-cell[data-read] .st-card-marks {
   opacity: 0;
 }
 
-/* cleared (a reel's preview playing, a carousel being swiped): the reading slides down off the card, its fades and
-   marks with it; a tap brings them back */
+/* cleared (a reel's preview playing, a carousel being swiped): the picture is whole, its melt gone; a tap brings it back.
+   A reading that stands over the picture (a short screen) slides down off the card too */
 .st-card-scrim {
   transition: opacity calc(360ms * var(--fm-tempo)) ease;
 }
 
-.st-cell[data-clean] .st-read {
+.st-cell[data-clean][data-over] .st-read {
   transform: translate3d(0px, calc(100% + 16px), 0px);
   opacity: 0;
   pointer-events: none;
@@ -633,25 +678,12 @@ html.light .st-bone {
   opacity: 1;
 }
 
-/* the header open over the card in view (it unfolds as you scroll back) reaches over its top: the marks there (its
-   tab, its ▶, a carousel's count and dots) step down clear of it, in step with the header's own fold (340ms on the
-   carry's curve, AppShell). The first card rests under the order tabs, clear of it either way */
-.st-slide-count,
-.st-slide-dots {
-  transition: translate 340ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-[data-head-open] .st-cell[data-card]:not([data-first]) :is(.st-card-marks, .st-play, .st-slide-count, .st-slide-dots) {
-  translate: 0px var(--st-head-push, 0px);
-}
-
 /* a clip's play button (a reel's, where its preview exists; a carousel's, on its video slides): its progress runs
    round it while it plays. A carousel's waits away while its slide is a picture */
 .st-play {
   transition:
     scale 150ms ease-out,
-    opacity calc(200ms * var(--fm-tempo)) ease,
-    translate 340ms cubic-bezier(0.32, 0.72, 0, 1);
+    opacity calc(200ms * var(--fm-tempo)) ease;
 }
 
 .st-play[data-off] {
@@ -696,8 +728,7 @@ html.light .st-bone {
 
 @media (prefers-reduced-motion: reduce) {
   .st-cell[data-depth],
-  .st-cell[data-depth] [data-depth-dim],
-  .st-cell[data-depth] > [data-layer="chrome"] {
+  .st-cell[data-depth] > [data-depth-dim] {
     animation: none;
   }
 
@@ -707,8 +738,9 @@ html.light .st-bone {
   .st-card-marks,
   .st-card-dots,
   .st-card-scrim,
-  .st-slide-count,
-  .st-slide-dots,
+  .st-says,
+  .st-tone-own,
+  .st-tone-still,
   .st-play,
   .st-play .st-play-on,
   .st-play .st-play-off,

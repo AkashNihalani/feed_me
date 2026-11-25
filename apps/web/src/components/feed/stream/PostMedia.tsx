@@ -29,10 +29,12 @@
 
    Wash is the picture shrunk to a few dozen pixels (softened and
    saturated there) and stretched over its box: the backdrop of a
-   framed post, blurred for free.
+   framed post, blurred for free. Tone is the colour of the
+   picture's foot, taken deep: what a card runs on in under its
+   picture, and what the picture melts into.
    ───────────────────────────────────────────────────────────── */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type RefObject, type SyntheticEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, type SyntheticEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import PostCover from '@/components/feed/stream/PostCover';
@@ -191,6 +193,119 @@ export const Wash = memo(function Wash({ src, className }: { src: string | null;
     <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 block overflow-hidden bg-[var(--st-media)]', className)}>
       {src ? <canvas ref={canvasRef} width={1} height={1} className="st-ambient absolute inset-0 block h-full w-full object-cover" /> : null}
       <span className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(0_0_0/0.2),rgb(0_0_0/0.55)_60%,rgb(0_0_0/0.75))]" />
+    </span>
+  );
+});
+
+/* ── a card's tone ────────────────────────────────────────────────────────────
+   The colour of a picture's foot, taken deep: a card runs on under its picture in it, the picture melting into it, so
+   the card reads as one piece the screen's height. Worked out by drawing alone (a stored picture comes from another
+   origin: its pixels can be drawn, never read): the foot of what the 4:5 frame shows, shrunk to four colours across,
+   each set to one low luminosity (its hue and its colourfulness kept) and calmed toward charcoal */
+
+const TONE_ACROSS = 4;
+const TONE_KEEP = 240;
+// how light every tone is, whatever its picture (white type over it reads at 12:1 or better), and how far it is calmed
+const TONE_LUM = 'rgb(44, 44, 44)';
+const TONE_CALM = 'rgba(36, 36, 40, 0.34)';
+// the share of the picture's height, from its foot, the tone is taken from
+const TONE_BAND = 0.4;
+const tones = new Map<string, HTMLCanvasElement>();
+
+function blank(width: number, height: number): [HTMLCanvasElement, CanvasRenderingContext2D] | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  return [canvas, context];
+}
+
+function makeTone(src: string, wash: HTMLCanvasElement): HTMLCanvasElement | null {
+  const kept = tones.get(src);
+  if (kept) return kept;
+  // what the frame shows of it (a landscape one stands whole over its wash: all of it)
+  const { width, height } = wash;
+  const ratio = width / height;
+  const shown = ratio >= LANDSCAPE
+    ? { x: 0, w: width, y: 0, h: height }
+    : ratio > 0.8
+      ? { x: (width - height * 0.8) / 2, w: height * 0.8, y: 0, h: height }
+      : { x: 0, w: width, y: (height - width / 0.8) / 2, h: width / 0.8 };
+  const band = shown.h * TONE_BAND;
+  // (halved step by step: each step averages whole pixels, so nothing in the picture is skipped over)
+  const eight = blank(TONE_ACROSS * 2, 4);
+  const four = blank(TONE_ACROSS, 2);
+  const one = blank(TONE_ACROSS, 1);
+  if (!eight || !four || !one) return null;
+  eight[1].drawImage(wash, shown.x, shown.y + shown.h - band, shown.w, band, 0, 0, TONE_ACROSS * 2, 4);
+  four[1].drawImage(eight[0], 0, 0, TONE_ACROSS, 2);
+  one[1].drawImage(four[0], 0, 0, TONE_ACROSS, 1);
+  const tone = one[1];
+  tone.globalCompositeOperation = 'luminosity';
+  tone.fillStyle = TONE_LUM;
+  tone.fillRect(0, 0, TONE_ACROSS, 1);
+  tone.globalCompositeOperation = 'source-over';
+  tone.fillStyle = TONE_CALM;
+  tone.fillRect(0, 0, TONE_ACROSS, 1);
+  if (tones.size >= TONE_KEEP) tones.delete(tones.keys().next().value as string);
+  tones.set(src, one[0]);
+  return one[0];
+}
+
+// the melt's fall-off, top to foot: slow to begin (the picture stays itself), whole well before its edge
+const MELT: ReadonlyArray<readonly [number, number]> = [[0, 0], [0.1, 0.012], [0.2, 0.05], [0.3, 0.12], [0.4, 0.23], [0.5, 0.38], [0.6, 0.55], [0.7, 0.72], [0.8, 0.865], [0.88, 0.955], [0.94, 1], [1, 1]];
+const meltCss = (reach: number) => `linear-gradient(to bottom, ${MELT.map(([at, alpha]) => `rgb(23 23 26 / ${alpha}) ${(at * reach * 100).toFixed(2)}%`).join(', ')})`;
+const GROUND_CSS = 'linear-gradient(to bottom, #17171a, #101013)';
+
+function drawTone(canvas: HTMLCanvasElement, tone: HTMLCanvasElement, melt: boolean, reach: number) {
+  canvas.width = TONE_ACROSS;
+  canvas.height = melt ? 64 : 24;
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  context.drawImage(tone, 0, 0, TONE_ACROSS, canvas.height);
+  const fall = context.createLinearGradient(0, 0, 0, canvas.height);
+  if (melt) {
+    MELT.forEach(([at, alpha]) => fall.addColorStop(at * reach, `rgba(0, 0, 0, ${alpha})`));
+    context.globalCompositeOperation = 'destination-in';
+  } else {
+    fall.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    fall.addColorStop(1, 'rgba(0, 0, 0, 0.36)');
+  }
+  context.fillStyle = fall;
+  context.fillRect(0, 0, TONE_ACROSS, canvas.height);
+}
+
+/* A card's tone: its ground under the picture, or (melt) the fall the picture's foot melts into it by, whole from `reach`
+   of its height down. Charcoal until the picture's is made */
+export const Tone = memo(function Tone({ src, melt = false, reach = 1, className, style }: { src: string | null; melt?: boolean; reach?: number; className?: string; style?: CSSProperties }) {
+  const boxRef = useRef<HTMLSpanElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useIsoLayoutEffect(() => {
+    const box = boxRef.current;
+    const canvas = canvasRef.current;
+    if (!box || !canvas || !src) return undefined;
+    let live = true;
+    const draw = (wash: HTMLCanvasElement | null, instant: boolean) => {
+      const tone = live && wash ? makeTone(src, wash) : null;
+      if (!tone) return;
+      drawTone(canvas, tone, melt, reach);
+      if (instant) box.dataset.instant = '';
+      box.dataset.ready = '';
+    };
+    const kept = washes.get(src);
+    if (kept) draw(kept, true);
+    else void washOf(src).then((wash) => draw(wash, false));
+    return () => {
+      live = false;
+    };
+  }, [src, melt, reach]);
+  return (
+    <span ref={boxRef} aria-hidden="true" className={cn('st-tone pointer-events-none absolute block overflow-hidden', className)} style={style}>
+      <span className="st-tone-still absolute inset-0 block" style={{ background: melt ? meltCss(reach) : GROUND_CSS }} />
+      {src ? <canvas ref={canvasRef} width={1} height={1} className="st-tone-own absolute inset-0 block h-full w-full" /> : null}
     </span>
   );
 });

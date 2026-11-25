@@ -7,18 +7,19 @@
 
    It is a box at its place (FeedStream lays it out; nothing here
    moves it) holding layers the moves can take hold of:
-     frame   — the picture's box: a grid's whole tile, a phone
-               card's whole 4:5 (a tablet's across its top), a
-               row's 4:5 at its left. Under the picture it is the
-               media's dark ground in both themes (never the page's
-               light surface), and in the Day view the picture's
-               wash, which a landscape picture shows whole over;
-     bg      — a tablet card's surface and wash of its picture,
-               below its frame (a phone's card is all frame);
+     frame   — the picture's box: a grid's whole tile, a card's
+               4:5 across its top, a row's 4:5 at its left. Under
+               the picture it is the media's dark ground in both
+               themes (never the page's light surface), and in the
+               Day view the picture's wash, which a landscape
+               picture shows whole over;
+     bg      — a card's ground under its frame: the picture's own
+               colour, taken deep (PostMedia, Tone), which the
+               picture melts into;
      chrome  — what reads it: a tile's number (inside its frame,
                so it scales with it from one grid to the other),
-               a phone card's foot (who, the number, the trail,
-               the counts) and marks, a row's reading beside it.
+               a card's reading (who, its lead, the rest of it on
+               a tap), a row's reading beside it.
    During a move out of a view, that view's chrome is drawn as it
    was, at its old size (the *-out layers), for the move to hold
    where it stood while it goes; the new view's chrome comes in a
@@ -33,22 +34,21 @@
    rest coming up from under it, the picture's top left clear),
    the next tap puts it back, from wherever it is mid-way. A reel
    with a preview clip, and a carousel on a video slide, has a ▶
-   that clears the reading off the card while the clip plays; a
+   that clears the picture of its melt while the clip plays, and a
    carousel clears it as its slides are swiped, until a tap or its
-   first slide again. A phone's card also stands forward or sits
-   back with the scroll (depth: stream.css, st-depth), and the
-   marks over its top step down clear of the header while that is
-   open over it (stream.css, data-head-open).
+   first slide again (the reading stays under the picture; where it
+   stands over it, on a short screen, it goes too). A phone's cards
+   also stack as they scroll, each over the one before (depth:
+   stream.css, st-yield).
    ───────────────────────────────────────────────────────────── */
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, type TouchEvent as ReactTouchEvent } from 'react';
 import { ArrowUpRight, ChevronUp, Pause, Play } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import CheckpointTrail from '@/components/feed/stream/CheckpointTrail';
-import { PostPicture, Wash } from '@/components/feed/stream/PostMedia';
+import { PostPicture, Tone, Wash } from '@/components/feed/stream/PostMedia';
 import PostReading, { formatRate, postedLabel } from '@/components/feed/stream/PostReading';
 import { pageGliding, press } from '@/components/feed/stream/press';
-import TopBadge from '@/components/feed/stream/TopBadge';
 import {
   formatCount,
   formatMultiple,
@@ -64,7 +64,6 @@ import {
   type StreamPost,
   withinDay,
 } from '@/lib/feedStream/contract';
-import { titleCase } from '@/lib/feedLabels';
 import { POST_ASPECT, READING_GAP } from '@/lib/feedStream/layout';
 import { CARRY_EASE_CSS, reducedMotion, releaseFlight, run, startFlight } from '@/lib/feedStream/motion';
 import { ms } from '@/lib/tempo';
@@ -81,13 +80,14 @@ const FRESH_PILL = 'rounded-full bg-[var(--fm-accent)] px-2 py-[3px] text-[11px]
 
 /* ── the box a post has in a view ─────────────────────────── */
 
-export type CellShape = { w: number; h: number; cols: number; rows: number; mediaWidth: number; wide: boolean };
+// (clear: a phone's card, how far its reading is lifted to clear the dock)
+export type CellShape = { w: number; h: number; cols: number; rows: number; mediaWidth: number; wide: boolean; clear?: number };
 
 // the picture's frame inside the cell, and its corners
 function frameOf(mode: FeedMode, shape: CellShape): { width: number; height: number; radius: string } {
   if (mode !== 'today') return { width: shape.w, height: shape.h, radius: '6px' };
   if (shape.wide) return { width: shape.mediaWidth, height: shape.h, radius: '28px' };
-  const height = Math.min(shape.h, shape.w / POST_ASPECT);
+  const height = Math.min(shape.h, Math.round(shape.w / POST_ASPECT));
   return { width: shape.w, height, radius: height >= shape.h - 0.5 ? '28px' : '28px 28px 0 0' };
 }
 
@@ -159,10 +159,26 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
   );
 }
 
-/* ── a phone card's chrome: who and when, the number, the trail, the counts; its date and standout marks ── */
+/* ── a card's chrome: its reading, under its picture ── */
 
-const ROOMY_MIN = 500;
 const TRAIL_MIN = 380;
+// the reading's foot stands this far over the dock
+const FOOT_PAD = 8;
+// the room under the picture (over the dock) a reading needs to stand clear of it, and to carry a line of the caption too
+const FOOT_ROOM = 84;
+const FOOT_ROOMY = 168;
+// the picture melts into the card over this share of its height, at its foot; under a reading that stands on it, from
+// this far over the reading, and wholly by this far down it (so it reads over any picture)
+const MELT_SHARE = 0.3;
+const MELT_LEAD = 88;
+const MELT_WHOLE = 14;
+// the open reading's ground comes up out of the picture over this much, and starts this far above its first line
+const SHADE_MELT = 148;
+const SHADE_LEAD = 132;
+// a stacked card's ground runs on this far past its foot
+const DECK_TAIL = 48;
+// a reading's height, shut (who, and the lead under it)
+const FOOT_HEIGHT = 112;
 
 function standoutText(post: StreamPost, today: string) {
   if (post.day === today || post.resultDay === today) return "Today's standout";
@@ -171,22 +187,40 @@ function standoutText(post: StreamPost, today: string) {
   return 'Standout';
 }
 
-// a phone card's tab: what the post is and the day it went up (every card wears one)
-function Marks({ post, standout, date }: { post: StreamPost; standout: boolean; date: { kicker: string; title: string } | null }) {
-  if (!standout && !date) return null;
+// a row's standout mark
+function Marks({ post }: { post: StreamPost }) {
   return (
     <span className="st-card-marks pointer-events-none absolute left-4 top-4 z-[4] flex flex-col gap-2">
-      {date ? (
-        <span data-st="" className="inline-flex w-fit flex-col rounded-[14px] bg-black/55 px-3 pb-2.5 pt-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]" style={{ '--i': 0 } as CSSProperties}>
-          <span className="text-[10px] font-black uppercase leading-none tracking-[0.22em] text-white/75">{KIND[post.mediaType]} · {date.kicker}</span>
-          <span className="mt-1.5 text-[22px] font-black leading-none tracking-[-0.04em] text-white">{date.title}</span>
-        </span>
-      ) : null}
-      {standout ? (
-        <span data-st="" className="inline-flex w-fit items-center gap-1.5 rounded-[6px] bg-black/55 px-2 py-[5px] text-[10px] font-black uppercase leading-none tracking-[0.14em] text-white" style={{ '--i': 1 } as CSSProperties}>
-          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]" />
-          {standoutText(post, istDay())}
-        </span>
+      <span data-st="" className="inline-flex w-fit items-center gap-1.5 rounded-[6px] bg-black/55 px-2 py-[5px] text-[10px] font-black uppercase leading-none tracking-[0.14em] text-white" style={{ '--i': 1 } as CSSProperties}>
+        <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]" />
+        {standoutText(post, istDay())}
+      </span>
+    </span>
+  );
+}
+
+// where a card's picture ends, how much room its reading has under it, and where the picture starts to melt
+function footOf(width: number, height: number, clear: number) {
+  const picture = Math.min(height, Math.round(width / POST_ASPECT));
+  const room = height - clear - FOOT_PAD - picture;
+  const top = height - clear - FOOT_PAD - FOOT_HEIGHT;
+  const over = room < FOOT_ROOM;
+  const melt = Math.round(Math.min(picture, over ? picture - top + MELT_LEAD : picture * MELT_SHARE));
+  return { over, roomy: room >= FOOT_ROOMY, melt, reach: over ? Math.min(1, (MELT_LEAD + MELT_WHOLE) / Math.max(1, melt)) : 1 };
+}
+
+/* The card's lead: where the post ranks, as one line of type. Which read it is sits after it in a chip, in the accent on a
+   winner (the top 10%): the one colour on the card */
+function CardNumber({ post, size }: { post: StreamPost; size: number }) {
+  const top = post.topPercent;
+  if (top == null || !Number.isFinite(top)) return null;
+  return (
+    <span className={cn('flex items-baseline whitespace-nowrap font-black leading-[0.78] text-white', ON_PICTURE)}>
+      <span className="mr-[0.22em] tracking-[-0.03em] text-white/70" style={{ fontSize: Math.round(size * 0.5) }}>Top</span>
+      <span className="tracking-[-0.05em] tabular-nums" style={{ fontSize: size }}>{formatTopPercent(top).slice(0, -1)}</span>
+      <span className="ml-[0.04em]" style={{ fontSize: Math.round(size * 0.5) }}>%</span>
+      {post.latestCheckpoint ? (
+        <span className={cn('ml-3 rounded-full px-2.5 py-[6px] text-[13px] font-bold leading-none tracking-normal text-white [text-shadow:none]', isWinner(top) ? 'bg-[var(--fm-accent)]' : 'bg-white/[0.14]')}>{post.latestCheckpoint}</span>
       ) : null}
     </span>
   );
@@ -205,9 +239,10 @@ type ReadParts = {
 // the play button's ring (r 20.5): its length, run round as the clip plays
 const RING = 2 * Math.PI * 20.5;
 
-/* A card's chrome. Live (the card on the page, not the copy a move out of the Day view lets go): the rest of its
-   reading waits under its foot for a tap, a ▶ sits on a reel that has a clip, and the reading clears its foot of the
-   folded nav (clear) */
+/* A card's chrome: its reading between the picture and the dock (over the picture's foot on a screen too short for
+   that). Who, what and when; then one lead, where the post ranks, or, not measured yet, what it says. Live (the card on
+   the page, not the copy a move out of the Day view lets go): the rest of its reading waits under its foot for a tap, a
+   ▶ sits on a reel that has a clip, and the reading clears its foot of the dock (clear) */
 function CardChrome({ post, feeder, width, height, standout, date, live = false, clear = 0, parts, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
   post: StreamPost;
   feeder: StreamFeeder | null;
@@ -227,9 +262,12 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
   onToggle?: () => void;
   onPlay?: () => void;
 }) {
-  const roomy = height >= ROOMY_MIN;
+  const { roomy } = footOf(width, height, clear);
   const face = feeder ?? { handle: post.handle, profilePicUrl: null };
-  const feedName = feeder?.feedTitle ? titleCase(feeder.feedTitle) : null;
+  const measured = post.topPercent != null && Number.isFinite(post.topPercent);
+  const says = post.caption ? post.caption.replace(/\s+/g, ' ').trim() : '';
+  // when it went up: today, yesterday, or its date
+  const day = date ? (date.kicker === 'Today' || date.kicker === 'Yesterday' ? date.kicker : date.title) : null;
   // posted in the last 24 hours: its age is marked red (something new)
   const fresh = withinDay(post.postedAt);
   // its numbers, as figures: each a number over what it counts
@@ -239,7 +277,7 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
     post.engagementRate != null ? { key: 'er', value: formatRate(post.engagementRate), label: 'engagement' } : null,
     post.multiple != null ? { key: 'usual', value: formatMultiple(post.multiple), label: 'vs usual' } : null,
   ].filter((figure): figure is { key: string; value: string; label: string } => figure != null);
-  const when = [KIND[post.mediaType], postedLabel(post.postedAt)].filter(Boolean).join(' · ');
+  const when = postedLabel(post.postedAt);
   // a tap on these is theirs, not the card's
   const own = (action?: () => void) => (event: ReactMouseEvent) => {
     event.stopPropagation();
@@ -247,11 +285,14 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
   };
   return (
     <>
-      {/* the scrim only covers the foot (who, and the number): the rest of the picture stays bright */}
-      <span data-st-fade="" aria-hidden="true" className="st-scrim st-card-scrim pointer-events-none absolute inset-x-0 bottom-0 h-[40%] rounded-b-[28px]" />
-      {/* the open reading's fade, risen with it (its top set as it opens) */}
-      {live ? <span ref={parts?.shade} aria-hidden="true" className="st-read-shade pointer-events-none absolute inset-0" /> : null}
-      <Marks post={post} standout={standout} date={date} />
+      {/* the open reading's ground: the card's own colour, risen over the picture with it (its place set as it opens), the
+          picture melting into it as it does into the card's foot */}
+      {live ? (
+        <span ref={parts?.shade} aria-hidden="true" className="st-read-shade pointer-events-none absolute inset-0 block">
+          <Tone src={post.thumbnailUrl} melt className="inset-x-0 top-0" style={{ height: SHADE_MELT + 1 }} />
+          <Tone src={post.thumbnailUrl} className="inset-x-0 bottom-0" style={{ top: SHADE_MELT }} />
+        </span>
+      ) : null}
       {live && playable ? (
         <button
           type="button"
@@ -274,21 +315,26 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
       ) : null}
       <span
         ref={parts?.read}
-        className="st-read st-on-media absolute inset-x-0 bottom-0 block px-4 pt-4 pb-[calc(16px+var(--st-clear,0px))] sm:px-5 sm:pt-5 sm:pb-[calc(20px+var(--st-clear,0px))]"
-        style={{ '--st-clear': `${clear}px` } as CSSProperties}
+        className="st-read st-on-media absolute inset-x-0 bottom-0 block px-4 pt-4 sm:px-5"
+        style={{ paddingBottom: FOOT_PAD + clear }}
       >
         <span ref={parts?.inner} className="st-read-in relative block" style={{ maxWidth: Math.min(width, 460) }}>
-          <span className={cn('flex min-w-0 flex-col', roomy ? 'gap-3' : 'gap-2.5')}>
-            <span data-st="" className={cn('flex min-w-0 items-center gap-2.5', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
-              <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
-                <FeederStoryAvatar feeder={face} className="text-[12px]" />
+          <span className="flex min-w-0 flex-col gap-(--st-gap)" style={{ '--st-gap': roomy ? '16px' : '12px' } as CSSProperties}>
+            {standout ? (
+              <span data-st="" className={cn('flex items-center gap-1.5 text-[12px] font-bold leading-none text-white', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
+                <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]" />
+                {standoutText(post, istDay())}
+              </span>
+            ) : null}
+            <span data-st="" className={cn('flex min-w-0 items-center gap-3', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
+              <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
+                <FeederStoryAvatar feeder={face} className="text-[14px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14px] font-bold leading-tight text-white">@{post.handle}</span>
-                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-tight text-white/65">
-                  {feedName ? <span className="truncate">{feedName}</span> : null}
-                  {feedName ? <span aria-hidden="true">·</span> : null}
-                  <span className={cn('shrink-0', fresh && FRESH_PILL)}>{relativeTime(post.postedAt)}</span>
+                <span className="block truncate text-[17px] font-bold leading-tight tracking-[-0.01em] text-white">@{post.handle}</span>
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] font-medium leading-tight text-white/65">
+                  <span className="truncate">{[KIND[post.mediaType], day, measured ? null : 'Measuring'].filter(Boolean).join(' · ')}</span>
+                  {fresh ? <span className={cn('shrink-0', FRESH_PILL)}>{relativeTime(post.postedAt)}</span> : null}
                 </span>
               </span>
               {live ? (
@@ -298,15 +344,27 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
                   onClick={own(onToggle)}
                   aria-expanded="false"
                   aria-label="Show the details"
-                  className="st-read-toggle pointer-events-auto grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.14] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16)] outline-none [-webkit-tap-highlight-color:transparent] [text-shadow:none] active:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/80"
+                  className="st-read-toggle pointer-events-auto -mr-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.12] text-white outline-none [-webkit-tap-highlight-color:transparent] [text-shadow:none] active:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/80"
                 >
-                  <ChevronUp aria-hidden="true" className="h-4 w-4" strokeWidth={2.6} />
+                  <ChevronUp aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2.4} />
                 </button>
               ) : null}
             </span>
-            <span data-st="" className="flex min-w-0 items-end" style={{ '--i': 1 } as CSSProperties}>
-              <TopBadge size={roomy ? 'xl' : 'lg'} topPercent={post.topPercent} checkpoint={post.latestCheckpoint} />
-            </span>
+            {measured ? (
+              <span data-st="" className="flex min-w-0 items-end pb-1" style={{ '--i': 1 } as CSSProperties}>
+                <CardNumber post={post} size={roomy ? 76 : 60} />
+              </span>
+            ) : null}
+            {/* what it says, in its own words: the lead while it has no number yet, a line under the number where there
+                is room. The open reading has it whole, and takes its place (st-says) */}
+            {says && (!measured || roomy) ? (
+              <span data-st="" className={cn('st-says block', ON_PICTURE)} style={{ '--i': measured ? 2 : 1 } as CSSProperties}>
+                <span className={cn('line-clamp-2 break-words', measured ? 'text-[15px] font-medium leading-[1.4] text-white/75' : cn('font-semibold tracking-[-0.01em] text-white', roomy ? 'text-[20px] leading-[1.3]' : 'text-[17px] leading-[1.32]'))}>{says}</span>
+              </span>
+            ) : null}
+            {!says && !measured ? (
+              <span data-st="" className={cn('block text-[20px] font-semibold leading-[1.3] tracking-[-0.01em] text-white/65', ON_PICTURE)} style={{ '--i': 1 } as CSSProperties}>Measuring</span>
+            ) : null}
           </span>
           {/* the rest of the reading, under the foot (the card itself stays minimal: who, and the number): the four reads,
               the counts as figures, the caption whole, when, the way out */}
@@ -353,10 +411,6 @@ function CardChrome({ post, feeder, width, height, standout, date, live = false,
           ) : null}
         </span>
       </span>
-      {/* a winner (top 10%): a white ring */}
-      {isWinner(post.topPercent) ? (
-        <span data-st-fade="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[4] rounded-[28px] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]" />
-      ) : null}
     </>
   );
 }
@@ -413,6 +467,8 @@ export type PostCellProps = {
   // a move out of a view: the view being left and the post's box in it (its chrome drawn there, going)
   leaving: FeedMode | null;
   leavingShape: CellShape | null;
+  leavingDate?: string | null;
+  leavingFeeder?: StreamFeeder | null;
   // a move into this view: its chrome comes in a piece at a time
   arriving: boolean;
   // the post a move centres on: above the rest while it moves
@@ -430,11 +486,11 @@ export type PostCellProps = {
   feeder: StreamFeeder | null;
   // the old view's leftover during a move (hidden unless the move lets it go from where it was)
   gone?: boolean;
-  // a phone's Day view, not mid-move: the card stands forward or sits back with the scroll (the first post rests lower)
-  depth?: 'first' | 'on' | null;
-  // the Day view's first card (it rests under the order tabs, clear of the header however it stands)
-  first?: boolean;
-  // a phone's card: how far its reading is lifted to clear the folded nav (a short screen)
+  // a phone's Day view, not mid-move: the cards stack as they scroll, each over the one before (stream.css, st-yield), in
+  // their order
+  depth?: boolean;
+  order?: number;
+  // a phone's card: how far its reading is lifted to clear the dock
   clear?: number;
   onOpenTile: (post: StreamPost, element: HTMLElement) => void;
   // a tap on a card that isn't the one in view: the page brings it there. True when it is the one in view now after
@@ -460,8 +516,6 @@ const READ_FADE_EASE = 'cubic-bezier(0.3, 0, 0.4, 1)';
 const READ_PIECE_MS = ms(340);
 const READ_PIECE_AT_MS = ms(50);
 const READ_PIECE_STEP_MS = ms(45);
-// the open reading's fade starts this far above its first line
-const SHADE_LEAD = 84;
 // the open reading leaves at least this much of the picture's top clear (past that, its rest scrolls)
 const READ_TOP_ROOM = 56;
 // a reading open as its card clears is shut once it has slid off (stream.css, .st-read in [data-clean])
@@ -489,6 +543,8 @@ function PostCell({
   wide,
   leaving,
   leavingShape,
+  leavingDate = null,
+  leavingFeeder = null,
   arriving,
   focal,
   active,
@@ -499,8 +555,8 @@ function PostCell({
   eager,
   feeder,
   gone = false,
-  depth = null,
-  first = false,
+  depth = false,
+  order = 0,
   clear = 0,
   onOpenTile,
   onFocusCard,
@@ -511,6 +567,7 @@ function PostCell({
   const card = mode === 'today' && !shape.wide;
   const row = mode === 'today' && shape.wide;
   const frame = frameOf(mode, shape);
+  const foot = card ? footOf(shape.w, shape.h, clear) : null;
   const winner = isWinner(post.topPercent);
   // what of the view being left goes, drawn as it was
   const was = leaving && leavingShape ? { grid: leaving !== 'today', card: leaving === 'today' && !leavingShape.wide, row: leaving === 'today' && leavingShape.wide } : null;
@@ -521,7 +578,8 @@ function PostCell({
   const fullFrame = (cardShape: CellShape) => frameOf('today', cardShape).height >= cardShape.h - 0.5;
   const bg = card ? !fullFrame(shape) : Boolean(cardOut && leavingShape && !fullFrame(leavingShape));
 
-  const style: CSSProperties = { left: x, top: y, width: shape.w, height: shape.h };
+  const stacked = card && depth;
+  const style = { left: x, top: y, width: shape.w, height: shape.h, '--st-z': stacked ? order + 1 : undefined } as CSSProperties;
   const top = post.topPercent;
   const measured = top != null && Number.isFinite(top);
   const label = `${KIND[post.mediaType]} by @${post.handle}, ${measured ? `top ${formatTopPercent(top)}${post.latestCheckpoint ? ` at ${post.latestCheckpoint}` : ''}` : 'not measured yet'}`;
@@ -551,6 +609,8 @@ function PostCell({
     const lines = more.current ? (Array.from(more.current.children) as HTMLElement[]) : [];
     const pieces = more.current ? Array.from(more.current.querySelectorAll<HTMLElement>('[data-trail-seg], [data-figure]')) : [];
     [block, shade.current, more.current, ...lines, ...pieces].forEach((el) => el?.getAnimations().forEach((animation) => animation.cancel()));
+    if (open) cell.dataset.read = '';
+    else delete cell.dataset.read;
     // opening: the rest gets the room the card has left under the foot (past it, it scrolls), from its top
     if (open && more.current) {
       const pad = getComputedStyle(read.current);
@@ -559,8 +619,6 @@ function PostCell({
       more.current.style.setProperty('--st-more-max', `${Math.max(96, Math.floor(room))}px`);
       more.current.scrollTop = 0;
     }
-    if (open) cell.dataset.read = '';
-    else delete cell.dataset.read;
     if (more.current) more.current.inert = !open;
     toggle.current?.setAttribute('aria-expanded', String(open));
     toggle.current?.setAttribute('aria-label', open ? 'Hide the details' : 'Show the details');
@@ -618,9 +676,14 @@ function PostCell({
   const playOff = slideClips && !post.slides[slideAt]?.video;
   // what a card is once its clip stops: cleared past a carousel's first slide, itself on it
   const rest: Clean = slideAt > 0 ? 'slides' : null;
-  // a reading open as the card clears goes down with the rest, and is shut once it is out of sight
+  // a reading open as the card clears closes with it; one that stands over the picture (a short screen) goes down off the
+  // card with the rest instead, and is shut once it is out of sight
   const shutWhenClear = useCallback(() => {
     if (!openRef.current) return;
+    if (cellRef.current?.dataset.over === undefined) {
+      setRead(false);
+      return;
+    }
     window.setTimeout(() => {
       if (cellRef.current?.dataset.clean) setRead(false, false);
     }, CLEAR_MS);
@@ -662,6 +725,10 @@ function PostCell({
   useEffect(() => {
     if (!active) setRead(false, card);
   }, [active, card, setRead]);
+  // the card another size (a rotation): its open reading was placed for the old one
+  useIsoLayoutEffect(() => {
+    setRead(false, false);
+  }, [w, h, clear, setRead]);
   // no longer a card (a move to a grid or a row): nothing of its reading stays on it
   useIsoLayoutEffect(() => {
     if (card) {
@@ -673,12 +740,13 @@ function PostCell({
     if (cellRef.current) delete cellRef.current.dataset.read;
   }, [card]);
 
-  // a tap anywhere on a card: the one in view reads (or, cleared, comes back); another is brought into view
+  // a tap anywhere on a card: the one in view reads (or, its clip playing, comes back); another is brought into view
   const tap = () => {
     if (!active && !onFocusCard(post, glideTapRef.current)) return;
     if (clean) {
       setClean(null);
-      return;
+      // (a tap on a clip only stops it; on a swiped carousel whose reading never left, it reads)
+      if (clean === 'watch' || foot?.over) return;
     }
     setRead(!openRef.current);
   };
@@ -732,8 +800,8 @@ function PostCell({
       data-spot={spot ? '' : undefined}
       data-arriving={arriving ? '' : undefined}
       data-gone={gone ? '' : undefined}
-      data-depth={card && depth ? depth : undefined}
-      data-first={card && first ? '' : undefined}
+      data-depth={stacked ? '' : undefined}
+      data-over={foot?.over ? '' : undefined}
       data-clean={card && clean ? clean : undefined}
       // a card reads from anywhere on it (its chrome lets touches through, to a carousel's slides); the keys have its
       // arrow button
@@ -745,22 +813,30 @@ function PostCell({
       style={style}
     >
       {bg ? (
-        <div data-layer="bg" className="overflow-hidden rounded-[28px] bg-[var(--st-surface)]" style={{ left: 0, top: 0, width: shape.w, height: shape.h }}>
-          <Wash src={post.thumbnailUrl} />
+        // (from a hair under the picture's foot, so no seam shows between them, and never behind its round top corners,
+        // where its dark would show as a fringe; stacked, on past the card's own foot, behind the next one's corners)
+        <div
+          data-layer="bg"
+          className={cn('overflow-hidden bg-[#17171a]', !stacked && 'rounded-b-[28px]')}
+          style={{ left: 0, top: card ? frame.height - 2 : 0, width: shape.w, height: card ? shape.h - frame.height + 2 + (stacked ? DECK_TAIL : 0) : shape.h }}
+        >
+          <Tone src={post.thumbnailUrl} className="inset-0" />
         </div>
       ) : null}
 
       <div
         data-layer="frame"
-        className={cn('group overflow-hidden [contain:strict]', grid ? 'bg-[var(--st-surface)]' : 'isolate bg-[var(--st-media)]')}
+        className={cn('group overflow-hidden [contain:strict]', grid ? 'bg-[var(--st-surface)]' : 'isolate', row && 'bg-[var(--st-media)]')}
         style={{ left: 0, top: 0, width: frame.width, height: frame.height, borderRadius: frame.radius }}
         {...(grid ? press : null)}
       >
         {/* the Day view's frame shows a landscape picture whole, over its own wash */}
-        {row || card ? <Wash src={post.thumbnailUrl} /> : null}
+        {/* (a card's, and its picture, stop a hair short of the frame's foot and its wash of its corners: drawn to the edge,
+            their last pixels bleed past what covers them, as a line and a fringe) */}
+        {row || card ? <Wash src={post.thumbnailUrl} className={card ? 'bottom-[2px] rounded-t-[36px]' : undefined} /> : null}
         {/* the picture gives under the finger (inside the frame: the moves own the frame's transform), and never while
             the finger scrolls the page (press.ts) */}
-        <span className={cn('absolute inset-0 block transition-transform duration-200 ease-out', grid ? 'group-data-[pressed]:scale-[0.97]' : null)}>
+        <span className={cn('absolute inset-x-0 top-0 block', card ? 'bottom-[2px]' : 'bottom-0 transition-transform duration-200 ease-out', grid ? 'group-data-[pressed]:scale-[0.97]' : null)}>
           <PostPicture
             post={post}
             active={active && !grid}
@@ -779,15 +855,17 @@ function PostCell({
             <GridChips post={post} cols={shape.cols} rows={shape.rows} width={shape.w} feeder={feeder} />
           </span>
         ) : null}
-        {row ? <Marks post={post} standout={standout} date={null} /> : null}
+        {/* a card's picture melts into what the card runs on in under it */}
+        {card && foot ? <Tone src={post.thumbnailUrl} melt reach={foot.reach} className="st-card-scrim" style={{ left: 0, right: 0, bottom: 0, height: foot.melt }} /> : null}
+        {/* ...and, going to a grid, lets go of it as it flies (drawn in shares of the frame: it is carried with it) */}
+        {cardOut ? <Tone src={post.thumbnailUrl} melt className="st-melt-out" style={{ left: 0, right: 0, bottom: 0, height: `${MELT_SHARE * 100}%` }} /> : null}
+        {row && standout ? <Marks post={post} /> : null}
         {/* a winner (top 10%): a white ring (what is new is marked on its feeder's circle, not on the post) */}
         {winner && !card ? (
           <span aria-hidden="true" className={cn('pointer-events-none absolute inset-0 z-[4] shadow-[inset_0_0_0_1.5px_rgb(255_255_255/0.8)]', grid ? 'rounded-[6px]' : 'rounded-[28px]')} />
         ) : null}
         {/* the wide Day view's column out of the spotlight: it recedes into the page (dimmed on dark, washed out on light) */}
         {row ? <span aria-hidden="true" className="st-dim pointer-events-none absolute inset-0 z-[5] bg-black light:bg-[var(--st-bg)]" /> : null}
-        {/* a phone's card sitting back (st-depth-dim); kept in every view, so a move can let it go as it flies */}
-        <span data-depth-dim="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[5] bg-black opacity-0" />
         {grid ? (
           <button
             type="button"
@@ -825,6 +903,9 @@ function PostCell({
         </div>
       ) : null}
 
+      {/* a phone's card going under the next one (st-sink) */}
+      {card ? <span data-depth-dim="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[6] rounded-[28px] bg-black opacity-0" /> : null}
+
       {row ? (
         <div data-layer="reading" data-reading="" style={{ left: shape.mediaWidth + READING_GAP, top: 0, width: Math.max(0, shape.w - shape.mediaWidth - READING_GAP), height: shape.h }}>
           <RowReading post={post} feeder={feeder} height={shape.h} />
@@ -839,7 +920,7 @@ function PostCell({
       ) : null}
       {cardOut && leavingShape ? (
         <div data-layer="chrome-out" className="pointer-events-none" style={{ left: 0, top: 0, width: leavingShape.w, height: leavingShape.h }}>
-          <CardChrome post={post} feeder={feeder} width={leavingShape.w} height={leavingShape.h} standout={standout} date={dateParts} />
+          <CardChrome post={post} feeder={leavingFeeder ?? feeder} width={leavingShape.w} height={leavingShape.h} standout={standout} date={leavingDate ? groupParts(leavingDate, 'day', istDay()) : dateParts} clear={leavingShape.clear} />
         </div>
       ) : null}
       {rowOut && leavingShape ? (
