@@ -551,6 +551,18 @@ export function itemIndexAt(layout: StreamLayout, y: number): number {
   return Math.min(from, items.length - 1);
 }
 
+// the group (its header's item) at y: the last one to have begun there, or the first (a grid's; -1: none)
+export function sectionIndexAt(layout: StreamLayout, y: number): number {
+  let found = -1;
+  for (let index = 0; index < layout.items.length; index += 1) {
+    const item = layout.items[index];
+    if (item.kind !== 'section') continue;
+    if (found >= 0 && item.y > y) break;
+    found = index;
+  }
+  return found;
+}
+
 // the days whose posts overlap [y0, y1) (in display order)
 export function daysInRange(layout: StreamLayout, y0: number, y1: number): string[] {
   const [from, to] = itemRange(layout, y0, y1);
@@ -630,7 +642,9 @@ export type StreamAnchor = { key: string; postKey: string | null; id: string | n
 
 export function anchorAt(layout: StreamLayout, top: number, line: number): StreamAnchor | null {
   if (!layout.items.length) return null;
-  const index = layout.mode === 'today' ? dayIndexAt(layout, top) : itemIndexAt(layout, top + line);
+  // (MONTH: the month itself. Its tiles stand by rank, and a day loading can move one a row or two: held to one of them
+  // the page would go with it)
+  const index = layout.mode === 'today' ? dayIndexAt(layout, top) : layout.mode === 'month' ? sectionIndexAt(layout, top + line) : itemIndexAt(layout, top + line);
   const item = layout.items[index];
   if (!item) return null;
   // the Day view: how far the scroll sits from the post's rest, so a swipe in flight is never pulled back to it

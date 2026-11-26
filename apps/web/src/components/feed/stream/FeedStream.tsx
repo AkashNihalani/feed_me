@@ -56,13 +56,11 @@ import { profileHeaderHeight } from '@/components/feed/stream/profileHeaderSize'
 import {
   groupLabel,
   groupParts,
-  groupKeyOf,
   highlightOf,
   istDay,
   mediaProxyUrl,
   scopeKey,
   shiftDay,
-  ZOOM_GROUP,
   ZOOM_ORDER,
   type FeedMode,
   type FeedOrder,
@@ -96,6 +94,7 @@ import {
   type StreamInsets,
   type StreamLayout,
 } from '@/lib/feedStream/layout';
+import { TILE_CLEAR_PX, landingTop, middleOf, placeOf, returnTop, straightBack, type ZoomMemory, type ZoomPlace, type ZoomView } from '@/lib/feedStream/landing';
 import {
   CARRY_EASE_CSS,
   CARRY_MS,
@@ -188,8 +187,6 @@ const LONG_CARRY_MS = ms(760);
 const FOCAL_HOLD_MS = 1200;
 // out of a phone's Day view, a card's ground (its colour under its picture) is gone this soon
 const GROUND_OUT_MS = ms(140);
-// out of the Day view, the focal's tile lands at least this far clear of the header and the nav
-const TILE_CLEAR_PX = 24;
 // a live pinch past the last zoom only gives this much (a rubber band)
 const PINCH_EDGE = 0.35;
 // a live pinch this far from 1 has shown which way it is going
@@ -414,10 +411,8 @@ type Move = {
   index: StreamIndex;
 };
 
-// the last zoom's focal and where it stood on screen, and the scroll that zoom landed at (null: not yet placed)
-type ZoomMemory = { zid: string; screenY: number; scroll: number | null };
-
-type ZoomOptions = { focal?: { zid?: string | null; postKey?: string | null }; point?: { x: number; y: number }; remember?: boolean; waited?: boolean };
+// place: what it is about, when that is known (a month's "+N"; a zoom that waited for its posts or pictures)
+type ZoomOptions = { focal?: { zid?: string | null; postKey?: string | null }; point?: { x: number; y: number }; remember?: boolean; waited?: boolean; place?: ZoomPlace };
 
 type PieceActions = {
   openTile: (post: StreamPost, element: HTMLElement) => void;
@@ -434,6 +429,15 @@ type PieceActions = {
 
 function readingLine(insets: StreamInsets, folded: boolean): number {
   return (folded ? insets.topCompressed : insets.top) + LINE_GAP;
+}
+
+/* The screen a zoom starts from (landing.ts), the page at `scrollY` and the layer's origin at `base`: the header's edge as
+   it stands, the nav's, and the middle of the band between them, or where the fingers are */
+function zoomView(size: Metrics, scrollY: number, base: number, folded: boolean, point: { x: number; y: number } | null = null): ZoomView {
+  const height = window.innerHeight;
+  const head = folded ? size.insets.topCompressed : size.insets.top;
+  const foot = height - size.insets.bottom;
+  return { top: scrollY - base, base, head, foot, height, point: point ? { x: point.x - size.left, y: point.y } : { x: size.width / 2, y: (head + foot) / 2 } };
 }
 
 // the space above the profile, under the open header: PROFILE_HEADROOM narrower than a desktop's column
@@ -1268,12 +1272,8 @@ function FeedStream({
         // (where the page rests, as last read: no read of the page's own after whatever was last written to it)
         const top = savedYRef.current - originRef.current;
         if (!screenLoaded(current, top, size.height)) return;
-        // where a zoom from here opens, as zoomTo picks it: the post nearest the middle of the band (into a view that
-        // doesn't hold it, MONTH's highlights, its day)
-        const middle = ((compressedRef.current ? size.insets.topCompressed : size.insets.top) + window.innerHeight - size.insets.bottom) / 2;
-        const near = nearestPost(current, size.width / 2, top + middle, window.innerHeight);
-        const zid = near >= 0 ? idOf(current.items[near]) : null;
-        place = { day: zid ? zid.split(':')[0] : dayAt(current, top, readingLine(size.insets, compressedRef.current)), zid };
+        // where a zoom from here opens, as zoomTo places it
+        place = placeOf(current, null, zoomView(size, savedYRef.current, originRef.current, compressedRef.current), lastZoomRef.current, savedYRef.current);
         todo = PREWARM_ORDER.filter((other) => other !== mode);
         wait();
       }
@@ -1736,77 +1736,35 @@ function FeedStream({
     const scrollY = window.scrollY;
     const vh = window.innerHeight;
     const base = originRef.current;
-    const point = options.point ?? {
-      x: leftRef.current + size.width / 2,
-      y: ((compressedRef.current ? size.insets.topCompressed : size.insets.top) + vh - size.insets.bottom) / 2,
-    };
+    const viewed = zoomView(size, scrollY, base, compressedRef.current, options.point);
+    const point = options.point ?? { x: size.left + viewed.point.x, y: viewed.point.y };
 
-    // a zoom straight back (nothing tapped or pinched, the page where the last zoom landed it): that zoom's focal
-    // again, where it stood then. Picked afresh from the middle of the screen, a round trip would come back on a
-    // neighbour (a grid's middle column, a card's frame above the middle), or lose your week to a month's highlights
-    const last = lastZoomRef.current;
-    const back = !options.focal && !options.point && last && last.scroll != null && Math.abs(scrollY - last.scroll) < 2 ? last : null;
-
-    // the focal: what was tapped or pinched; else the profile, when it is what you're looking at; else the post
-    // nearest the middle of the band
-    let zid = options.focal?.zid ?? back?.zid ?? null;
-    if (!zid && options.focal?.postKey) {
+    /* What the zoom is about (landing.ts): what was tapped or pinched; else, straight back (nothing picked, the page as
+       the last zoom left it), that zoom's post again, where it stood then (picked afresh from the middle of the screen,
+       a round trip would come back on a neighbour, or lose your week to a month's highlights); else where you are: the
+       start of the posts while it is on screen, the post in view, or the month */
+    let picked = options.focal?.zid ?? null;
+    if (!picked && options.focal?.postKey) {
       const at = was.byPost.get(options.focal.postKey);
-      zid = at != null ? idOf(was.items[at]) : null;
+      picked = at != null ? idOf(was.items[at]) : null;
     }
-    let keepProfile = false;
-    if (!zid && !options.point) {
-      if (current === 'today') keepProfile = dayAtProfile(was, scrollY - base);
-      else {
-        const profileRect = profileRef.current?.getBoundingClientRect();
-        keepProfile = Boolean(profileRect && profileRect.height > 0 && profileRect.bottom > point.y);
-      }
-    }
-    if (!zid && !keepProfile) {
-      const at = nearestPost(was, point.x - leftRef.current, scrollY - base + point.y, vh);
-      zid = at >= 0 ? idOf(was.items[at]) : null;
-    }
+    const last = lastZoomRef.current;
+    const back = !options.focal && !options.point ? straightBack(was, next, last, scrollY, scrollY - base) : null;
+    const place: ZoomPlace = back
+      ? { start: false, zid: back.zid, day: back.day }
+      : options.place ?? placeOf(was, next, viewed, last, scrollY, picked, Boolean(options.point));
+    const zid = place.zid;
 
-    // the new view, laid out now, and where the page goes in it: the focal stays where it is on screen (into the Day
-    // view, it comes to rest on the focus line); the profile, when that is what you're looking at, stays put
+    // the new view, laid out now, and where the page goes in it
     const scope2 = inputsRef.current.scope;
     const targetPosts = loadedPosts(scope2, index2);
     const target = computeLayout({ mode: next, days: index2.days, posts: targetPosts, width: size.width, height: size.height, insets: size.insets, wide: wideOf(size) });
     const focalAt = zid ? indexOfSlot(target, zid) : -1;
-    const focalDay = zid ? zid.split(':')[0] : null;
     const focalFrame = zid ? layer.querySelector<HTMLElement>(`:scope > [data-zid="${zid}"] > [data-layer="frame"]`) : null;
     const anchor = focalFrame ? centreOf(frameRect(focalFrame)) : point;
-    // a zoom straight back puts the focal where it stood before the last zoom, not where that zoom put its frame
-    const anchorY = back ? back.screenY : anchor.y;
-    let top: number;
-    if (keepProfile) top = scrollY - base;
-    else if (next === 'today') top = dayRestTop(target, focalAt >= 0 ? focalAt : Math.max(0, focalDay ? indexForDay(target, focalDay) : 0));
-    else if (focalAt >= 0 && current === 'today' && !back) {
-      /* Out of the Day view: the card shrinks into its tile where it stands (the tile's middle on the card's), so it
-         never travels off. Only when that would leave its week's heading hanging low under the profile does the grid
-         come up, until the heading sits under the header's edge. Either way the tile lands whole, clear of the header
-         and of the nav */
-      const item = target.items[focalAt];
-      const headerEdge = compressedRef.current ? size.insets.topCompressed : size.insets.top;
-      const group = focalDay ? indexForDay(target, focalDay) : -1;
-      const ceiling = headerEdge + TILE_CLEAR_PX;
-      const foot = vh - size.insets.bottom - TILE_CLEAR_PX;
-      top = item.y + item.h / 2 - anchorY;
-      if (group >= 0) top = Math.max(top, target.items[group].y - headerEdge);
-      if (item.y + item.h - top > foot) top = item.y + item.h - foot;
-      if (item.y - top < ceiling) top = item.y - ceiling;
-    } else if (focalAt >= 0) top = target.items[focalAt].y + target.items[focalAt].h / 2 - anchorY;
-    else {
-      // the focal isn't on the new page (MONTH shows highlights). A post that isn't one of its month's highlights goes
-      // into that month's "+N" (the rest of the month), which lands where the post stood, under the fingers; else its
-      // group, under the header's edge as it stands (a grid's jump keeps the fold: folded, the open header's edge would
-      // leave the last group's foot showing above)
-      const rest = next === 'month' && zid && focalDay ? target.byKey.get(`m:${groupKeyOf(focalDay, ZOOM_GROUP.month)}`) : undefined;
-      const headerEdge = compressedRef.current ? size.insets.topCompressed : size.insets.top;
-      const place = focalDay ? indexForDay(target, focalDay) : -1;
-      if (rest != null) top = target.items[rest].y + target.items[rest].h / 2 - anchorY;
-      else top = place >= 0 ? target.items[place].y - headerEdge : scrollY - base;
-    }
+    // (a post not on this screen, the one a month was come out from: where it stood before that)
+    const anchorY = !focalFrame && zid && last?.zid === zid ? last.screenY : anchor.y;
+    const top = back ? returnTop(target, back) : landingTop(target, place, viewed, anchorY);
     const scroll = clamp(base + top, 0, Math.max(0, base + target.totalHeight - vh));
 
     /* The posts it opens on must be here, or their cells would arrive as placeholders (a moment at most). A pinch never
@@ -1815,8 +1773,9 @@ function FeedStream({
     const pinched = pinchScale !== 1;
     zoomWaitRef.current = null;
     // into the Day view: the washes of the card it rests on and the next one made ahead (nothing waits for them)
-    if (next === 'today' && focalAt >= 0) {
-      [focalAt, focalAt + 1].forEach((at) => {
+    const cardAt = next !== 'today' ? -1 : focalAt >= 0 ? focalAt : dayIndexAt(target, scroll - base);
+    if (cardAt >= 0) {
+      [cardAt, cardAt + 1].forEach((at) => {
         const item = target.items[at];
         if (item?.day && item.slot >= 0) warmWash(targetPosts.get(item.day)?.[item.slot]?.thumbnailUrl);
       });
@@ -1828,23 +1787,23 @@ function FeedStream({
         const item = target.items[at];
         if ((item.kind === 'tile' || item.kind === 'reel') && !item.postKey && item.day) missing.add(item.day);
       }
-      // (a zoom straight back finds its memory again: the screen holds still meanwhile)
-      const again = () => zoomToRef.current?.(next, back ? { ...options, waited: true } : { ...options, focal: { zid, postKey: options.focal?.postKey ?? null }, waited: true });
+      // (about what it was about; a zoom straight back finds its memory again: the screen holds still meanwhile)
+      const again = () => zoomToRef.current?.(next, { ...options, place: back ? undefined : place, waited: true });
       if (missing.size && !pinched) {
         const token = {};
         zoomWaitRef.current = token;
         prefetchDays(scope2, [...missing]);
-        void viewReady(scope2, next, size, { day: focalDay, zid }, ZOOM_LOAD_MS).then(() => {
+        void viewReady(scope2, next, size, place, ZOOM_LOAD_MS).then(() => {
           if (zoomWaitRef.current !== token) return;
           zoomWaitRef.current = null;
           again();
         });
         return;
       }
-      // the pictures of the posts a grid brings on screen (those not on it already, decoded). Not into the Day view:
-      // the post it opens on is the one on screen, its neighbours only peek
+      // the pictures of the posts the new view brings on screen (those not on it already, decoded). Not into the Day
+      // view on a post that is on screen: its neighbours only peek
       const cold: string[] = [];
-      for (let at = next === 'today' ? last : first; at < last; at += 1) {
+      for (let at = next === 'today' && focalFrame ? last : first; at < last; at += 1) {
         const item = target.items[at];
         if ((item.kind !== 'tile' && item.kind !== 'reel') || !item.postKey || !item.day) continue;
         const src = targetPosts.get(item.day)?.[item.slot]?.thumbnailUrl;
@@ -1878,9 +1837,10 @@ function FeedStream({
     moveRef.current?.slide?.cover.remove();
     // (the page keeps its own layer through the commit: the move lets it go once under way)
     releaseLayer(true);
-    // this zoom's focal, for one straight back (its scroll set once the page is where it lands)
-    lastZoomRef.current = zid ? { zid, screenY: anchorY, scroll: null } : null;
-    focalHoldRef.current = zid && focalAt >= 0 ? { id: zid, postKey: target.items[focalAt].postKey ?? null, until: performance.now() + FOCAL_HOLD_MS, scroll: null } : null;
+    // this zoom's post, for one straight back (its scroll set once the page is where it lands)
+    lastZoomRef.current = { zid, day: place.day, screenY: anchorY, from: current, fromTop: scrollY - base, fromY: middleOf(was, zid), to: next, scroll: null };
+    // (a month opens at its heading, and the start of the posts is the page's: there the heading holds, or the top)
+    focalHoldRef.current = zid && focalAt >= 0 && next !== 'month' && !place.start ? { id: zid, postKey: target.items[focalAt].postKey ?? null, until: performance.now() + FOCAL_HOLD_MS, scroll: null } : null;
     const reduce = reducedMotion();
     const view = mountWindow(target, scroll - base, vh, true);
     const nextMove: Move | null = reduce ? null : {
@@ -1903,7 +1863,7 @@ function FeedStream({
     moveRef.current = nextMove;
     // the move brings in what it shows: the tab's opening is over (held or not yet begun, it would hide what landed)
     arrivedRef.current = true;
-    const dayNow = next === 'today' ? (focalAt >= 0 ? focalAt : dayIndexAt(target, scroll - base)) : activeRef.current;
+    const dayNow = cardAt >= 0 ? cardAt : activeRef.current;
     const profileNow = next === 'today' ? dayAtProfile(target, scroll - base) : atProfileRef.current;
     // the days the new view opens on, asked for in the same commit (so it is drawn with its posts, not placeholders)
     const wanted = wantedDays(genRef.current, target, scroll - base, vh);
@@ -2464,9 +2424,11 @@ function FeedStream({
     // where the page is, as last read (kept every scroll frame; a held move's, where it lands): an intent comes in the
     // middle of other work (a menu opening), and a read of the page's own would have WebKit work its styles out for it
     const top = savedYRef.current - originRef.current;
-    const day = next.place ? next.place.day : dayAt(current, top, readingLine(size.insets, compressedRef.current));
-    const near = next.scope || next.place ? -1 : nearestPost(current, size.width / 2, top + window.innerHeight / 2, window.innerHeight);
-    const zid = next.place ? next.place.zid : near >= 0 ? idOf(current.items[near]) : null;
+    // (a zoom opens where zoomTo places it; a pick, at the day you're on)
+    const here: Place = next.place ?? (next.scope
+      ? { day: dayAt(current, top, readingLine(size.insets, compressedRef.current)), zid: null }
+      : placeOf(current, null, zoomView(size, savedYRef.current, originRef.current, compressedRef.current), lastZoomRef.current, savedYRef.current));
+    const { day, zid } = here;
     const key = `${scopeKey(forScope)}|${forModes.join(',')}|${day ?? ''}|${zid ?? ''}`;
     const warming = warmingRef.current;
     if (warming.has(key)) return;
@@ -2641,7 +2603,7 @@ function FeedStream({
     },
     openWeek: (day, element) => {
       const rect = element.getBoundingClientRect();
-      zoomTo('week', { focal: { zid: slotId(day, 0) }, point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } });
+      zoomTo('week', { place: { start: false, zid: null, day }, point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } });
     },
     manage: () => callbacksRef.current.onManage(),
     openHighlight,
