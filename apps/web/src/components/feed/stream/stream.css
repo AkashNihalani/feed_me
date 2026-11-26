@@ -364,6 +364,11 @@ html.light .st-bone {
   transition: none;
 }
 
+/* a phone card's frame grown up under the status bar keeps its picture where it stood in its 4:5 (PostCell, --st-pic-y) */
+.st-framed :is(img, video) {
+  object-position: 50% var(--st-pic-y, 50%);
+}
+
 /* in a post's 4:5 frame (PostMedia): a picture 4:5 or wider shows whole, letterboxed over the ambient wash; a taller
    one (a reel, a 3:4 post) fills the frame. Decided once, when the picture loads */
 .st-framed .st-img[data-shape="wide"] {
@@ -487,7 +492,7 @@ html.light .st-bone {
   /* (its own place, never a named timeline shared by the two: WebKit crashes as one of those is taken off) */
   .st-cell[data-depth],
   .st-cell[data-depth] > [data-depth-dim] {
-    animation: st-yield linear both, st-covered linear both;
+    animation: st-yield linear both;
     animation-timeline: view(block var(--st-rest, 0px) 0px);
     animation-range: exit-crossing 0% exit-crossing calc(0% + var(--st-stride, 800px));
   }
@@ -508,15 +513,18 @@ html.light .st-bone {
   100% { transform: translate3d(0px, calc(var(--st-stride, 800px) * 0.53), 0px); }
 }
 
-/* (covered but for what shows over the sheet, under the status bar: let go as the sheet comes to rest) */
-@keyframes st-covered {
-  0%, 84% { opacity: 1; }
-  100% { opacity: 0; }
-}
+/* (the card going stays whole until it is covered: the next one's head reaches the screen's top as it comes to rest, so
+   nothing of the page ever shows over the sheet, under the status bar) */
 
 @keyframes st-sink {
   0%, 4% { opacity: 0; }
   100% { opacity: 0.34; }
+}
+
+/* a phone card's picture under the status bar (PostCell): a soft shade for the clock, strongest at the screen's edge and
+   gone a little way below the bar */
+.st-status-shade {
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.12) 55%, rgb(0 0 0 / 0));
 }
 
 /* ── a card's tone (PostMedia, Tone): charcoal, and its picture's own over it as soon as that is made (one made ahead is
@@ -557,9 +565,20 @@ html.light .st-bone {
 
 /* ── a card's reading (PostCell): its foot between the picture and the dock (who, the lead) and, a tap on, the rest (the
    reads, the figures, the caption, when, the way out) come up from under the foot, the whole block risen as one piece
-   over a fade that rises with it (PostCell moves both, by transform, from wherever they are: a tap mid-way turns them
-   straight round). The rest scrolls inside itself past the room it has (PostCell sets --st-more-max as it opens), the
+   over a ground that rises with it (PostCell moves every piece of it by transform and opacity, on one clock, from
+   wherever it is: a tap mid-way turns it straight round; nothing here has a transition of its own for it). It is cut
+   off at its foot (.st-read-pocket): the rest waits under there unseen, rises out of it and sinks back into it, never
+   down over the dock. The rest scrolls inside itself past the room it has (PostCell sets --st-more-max as it opens), the
    foot staying put over it; the picture above stays clear ── */
+
+/* shut, the foot is one box on every card (PostCell deckFootOf), its pieces from its top; open, just what is in it */
+.st-foot {
+  min-height: var(--st-foot-box, 0px);
+}
+
+.st-cell[data-read] .st-foot {
+  min-height: 0;
+}
 
 /* (it never clips and never scrolls, open or shut: on iOS a box that stops scrolling has its layer rebuilt, a frame of
    it drawn blank as the reading closed; the card's chrome layer clips it to the card) */
@@ -574,8 +593,8 @@ html.light .st-bone {
   pointer-events: auto;
 }
 
-/* closed: the rest waits just under the foot, unseen (where it stands open, so it travels with the block). It is the
-   one that scrolls, the same way open and shut */
+/* closed: the rest waits just under the foot, cut off there (where it stands open, so it travels with the block). It is
+   the one that scrolls, the same way open and shut */
 /* (it runs out to the card's edges, and a little over its first line: the reads' glow isn't cut where it starts) */
 .st-read-more {
   position: absolute;
@@ -584,7 +603,6 @@ html.light .st-bone {
   top: 100%;
   margin-top: 2px;
   padding: 14px 16px 0;
-  opacity: 0;
   max-height: var(--st-more-max, none);
   overflow-x: hidden;
   overflow-y: auto;
@@ -601,12 +619,11 @@ html.light .st-bone {
   position: static;
   margin-left: -16px;
   margin-right: -16px;
-  opacity: 1;
 }
 
 /* more than fits: its lower edge softens into the card, so it reads as one that scrolls (and scrolled to its end, its
-   last line clears the softened edge) */
-.st-cell[data-read] .st-read-more[data-scrolls] {
+   last line clears the softened edge). Kept as it sinks back under the foot: nothing of it changes on the way */
+.st-read-more[data-scrolls] {
   padding-bottom: 20px;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
@@ -697,13 +714,6 @@ html.light .st-bone {
   transform: translate3d(0, 0.6em, 0);
 }
 
-.st-strip-place,
-.st-move {
-  transition:
-    opacity calc(260ms * var(--fm-tempo)) ease,
-    transform calc(420ms * var(--fm-tempo)) cubic-bezier(0.32, 0.72, 0, 1);
-}
-
 .st-move {
   opacity: 0;
   transform: translate3d(0, 10px, 0);
@@ -725,10 +735,6 @@ html.light .st-bone {
 }
 
 /* what a post says, on its closed card: the open reading has it whole, in its place */
-.st-says {
-  transition: opacity calc(200ms * var(--fm-tempo)) ease;
-}
-
 .st-cell[data-read] .st-says {
   height: 0;
   margin-bottom: calc(var(--st-gap, 12px) * -1);
@@ -741,11 +747,8 @@ html.light .st-bone {
 }
 
 .st-cell[data-read] .st-read-shade {
-  opacity: 1;
-}
-
-.st-read-toggle svg {
-  transition: transform calc(380ms * var(--fm-tempo)) cubic-bezier(0.32, 0.72, 0, 1);
+  /* (PostCell READ_SHADE_OPEN: the picture shows through it a little) */
+  opacity: 0.86;
 }
 
 .st-cell[data-read] .st-read-toggle svg {

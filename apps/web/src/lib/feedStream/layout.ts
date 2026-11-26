@@ -72,6 +72,13 @@ const DECK_LIFT = 4;
 // ...and its first stands this far off the profile over it, past what lies between them, so the profile is just off the
 // screen (under the status bar too: StreamInsets.over) once the card rests
 const DECK_AIR = 4;
+// a phone's card rests a few px below the status bar (the folded header's line, 10px under the bar, less DECK_LIFT): its
+// picture is drawn up those px, whole from the bar's edge down (drawn on up under the bar, a post's own top, often its
+// title, went under the clock and the Dynamic Island); over it, to the screen's top, the card is the picture's own top
+// edge run on (PostMedia, Edge: no band of a colour of its own, which read as a bar boxing the page in). Its reading and
+// buttons rise a little more, the reading near the picture's foot
+const DECK_PICTURE_UP = 10 - DECK_LIFT;
+const DECK_READING_RISE = 16;
 // the stack's page runs on this much of the screen past its last card's rest
 const DECK_END = 0.3;
 // wider than a phone (and narrower than a row), a card is a "theatre": 9:16 in the middle, never wider than this
@@ -184,6 +191,12 @@ export type StreamLayout = {
   // clear of the dock, open or folded, the browser's bars in or out
   restTop: number;
   footClear: number;
+  // a phone's card: how far it runs on over its picture, up to the screen's very top as it rests (under the status bar);
+  // how far its picture is drawn up into that (all of it: the picture itself reaches the screen's top), and how far its
+  // reading and buttons rise with it
+  head: number;
+  lift: number;
+  rise: number;
   // lookups (built once per layout)
   bottoms: Float64Array; // running max of y + h, so "first item reaching below y" is a binary search
   byPost: ReadonlyMap<string, number>;
@@ -316,23 +329,28 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
       media = Math.max(MEDIA_MIN, room);
       frame = media / POST_ASPECT;
     }
-    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, restTop: focusY - frame / 2, footClear: 0, dayTop: DAY_TOP };
+    return { focusY, cardWidth: media + READING_GAP + reading, cardHeight: frame, mediaWidth: media as number | null, stride: frame + ROW_GAP, restTop: focusY - frame / 2, footClear: 0, head: 0, lift: 0, rise: 0, dayTop: DAY_TOP };
   }
   /* A phone's card is the whole screen's: the picture 4:5 and the screen's width (carousels and pictures whole, never a
      reel's tall crop), and the card running on under it to the screen's foot, as the browser's bars are away (the page
      runs on under them). Never shorter than its picture. Its reading stands clear of the dock as it is with the bars in
-     (the smaller viewport), so a bar coming back never covers it. A theatre (a tablet) keeps the reel's card the band's
-     height, in the band's middle */
+     (the smaller viewport), so a bar coming back never covers it. And over its picture it runs on up to the screen's
+     very top (its head: in the picture's own colour, under the status bar, whatever shows the page there), so the post
+     is the whole screen as it rests and no page ever shows over it; the next card comes after its head. A theatre (a
+     tablet) keeps the reel's card the band's height, in the band's middle */
   if (width < THEATRE_FROM) {
     const picture = Math.round(width / POST_ASPECT);
     const restTop = Math.max(0, Math.round(bandTop - DECK_LIFT));
     const cardHeight = Math.max(picture, Math.round((insets.screen ?? height) + (insets.under ?? 0) - restTop));
     const footClear = Math.max(0, Math.round(restTop + cardHeight - (height - insets.bottom)));
-    return { focusY: restTop + cardHeight / 2, cardWidth: width, cardHeight, mediaWidth: null as number | null, stride: cardHeight, restTop, footClear, dayTop: Math.max(DAY_TOP, restTop + (insets.over ?? 0) + DECK_AIR - DAY_PROFILE_FOOT) };
+    const head = restTop + (insets.over ?? 0);
+    const lift = Math.min(head, DECK_PICTURE_UP);
+    // (the first card's picture still stands as far under the profile as it always has: its lift is made up in the gap)
+    return { focusY: restTop + cardHeight / 2, cardWidth: width, cardHeight, mediaWidth: null as number | null, stride: cardHeight + head, restTop, footClear, head, lift, rise: Math.min(head, DECK_READING_RISE), dayTop: Math.max(DAY_TOP, restTop + (insets.over ?? 0) + DECK_AIR - DAY_PROFILE_FOOT) + lift };
   }
   const cardHeight = band - REEL_INSET * 2;
   const cardWidth = Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);
-  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, restTop: focusY - cardHeight / 2, footClear: 0, dayTop: DAY_TOP };
+  return { focusY, cardWidth, cardHeight, mediaWidth: null as number | null, stride: cardHeight + REEL_GAP, restTop: focusY - cardHeight / 2, footClear: 0, head: 0, lift: 0, rise: 0, dayTop: DAY_TOP };
 }
 
 export function computeLayout({ mode, days, posts, width, height, insets, wide }: LayoutInput): StreamLayout {
@@ -477,6 +495,9 @@ export function computeLayout({ mode, days, posts, width, height, insets, wide }
     deck: mode === 'today' && width < THEATRE_FROM && !wide,
     restTop: day.restTop,
     footClear: mode === 'today' && width < THEATRE_FROM && !wide ? day.footClear : 0,
+    head: mode === 'today' && width < THEATRE_FROM && !wide ? day.head : 0,
+    lift: mode === 'today' && width < THEATRE_FROM && !wide ? day.lift : 0,
+    rise: mode === 'today' && width < THEATRE_FROM && !wide ? day.rise : 0,
     bottoms,
     byPost,
     byKey,

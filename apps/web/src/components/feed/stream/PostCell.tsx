@@ -48,7 +48,7 @@ import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import CheckpointStrip, { LineSwap } from '@/components/feed/stream/CheckpointStrip';
 import CheckpointTrail from '@/components/feed/stream/CheckpointTrail';
 import { gainOf, moveOf, readAt, readLine, type PostRead } from '@/components/feed/stream/checkpointPick';
-import { PostPicture, Tone, Wash } from '@/components/feed/stream/PostMedia';
+import { Bleed, PostPicture, Tone, Wash, useMediaRatio, type Fall } from '@/components/feed/stream/PostMedia';
 import RollText from '@/components/feed/stream/RollText';
 import PostReading, { formatRate, postedLabel } from '@/components/feed/stream/PostReading';
 import { pageGliding, press } from '@/components/feed/stream/press';
@@ -69,9 +69,9 @@ import {
   withinDay,
 } from '@/lib/feedStream/contract';
 import { POST_ASPECT, READING_GAP } from '@/lib/feedStream/layout';
-import { CARRY_EASE_CSS, reducedMotion, releaseFlight, run, startFlight } from '@/lib/feedStream/motion';
+import { CARRY_EASE_CSS, reducedMotion } from '@/lib/feedStream/motion';
 import { ms } from '@/lib/tempo';
-import { FLIGHT_HOLD_MS, afterDrawn, holdsFlights } from '@/lib/webkitMotion';
+import { holdsFlights } from '@/lib/webkitMotion';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
@@ -85,7 +85,7 @@ const FRESH_PILL = 'rounded-full bg-[var(--fm-accent)] px-2 py-[3px] text-[11px]
 /* ── the box a post has in a view ─────────────────────────── */
 
 // (clear: a phone's card, how far its reading is lifted to clear the dock)
-export type CellShape = { w: number; h: number; cols: number; rows: number; mediaWidth: number; wide: boolean; clear?: number };
+export type CellShape = { w: number; h: number; cols: number; rows: number; mediaWidth: number; wide: boolean; clear?: number; lift?: number; rise?: number };
 
 // the picture's frame inside the cell, and its corners
 function frameOf(mode: FeedMode, shape: CellShape): { width: number; height: number; radius: string } {
@@ -166,23 +166,34 @@ function GridChips({ post, cols, rows, width, feeder }: { post: StreamPost; cols
 /* ── a card's chrome: its reading, under its picture ── */
 
 const TRAIL_MIN = 380;
-// the reading's foot stands this far over the dock
+// the reading's foot stands this far over the dock, and is cut off this far under its foot: just where the rest of it,
+// waiting under there, begins (stream.css .st-read-more's margin: its reads' glow showed as a line in any more)
 const FOOT_PAD = 8;
+const POCKET_PAD = 2;
 // the room under the picture (over the dock) a reading needs to stand clear of it, and to carry a line of the caption too
 const FOOT_ROOM = 84;
 const FOOT_ROOMY = 168;
-// the picture melts into the card over this share of its height, at its foot; under a reading that stands on it, from
-// this far over the reading, and wholly by this far down it (so it reads over any picture)
+// a card's reading, shut, is a box this tall (who, the number, and on a roomy screen a line of what it says), its pieces
+// from its top: the same box whatever a post has in it, so nothing stands higher on one card than on the next
+const FOOT_BOX = 110;
+const FOOT_BOX_ROOMY = 178;
+// the picture melts into the card going to a grid over this share of its height, at its foot (a card's own fall, as it
+// rested, once it is known)
 const MELT_SHARE = 0.3;
-const MELT_LEAD = 88;
-const MELT_WHOLE = 14;
+/* A phone card's ground (PostMedia groundAt): its fall begins this far over the reading's first line and is as deep as
+   it goes this far under it. Where the picture ends before that, it dissolves into its bleed over its last BLEED_FEATHER */
+const GROUND_ABOVE = 180;
+const GROUND_UNDER = 40;
+const BLEED_FEATHER = 44;
 // the open reading's ground comes up out of the picture over this much, and starts this far above its first line
-const SHADE_MELT = 148;
-const SHADE_LEAD = 132;
+const SHADE_MELT = 190;
+const SHADE_LEAD = 170;
 // a stacked card's ground runs on this far past its foot
 const DECK_TAIL = 48;
-// a reading's height, shut (who, and the lead under it)
-const FOOT_HEIGHT = 112;
+// the shade for the clock over a picture under the status bar goes on this far past the bar
+const STATUS_SHADE_PAST = 28;
+// a reel's picture (9:16), guessed until its own is known (anything else: 4:5)
+const REEL_RATIO = 16 / 9;
 
 function standoutText(post: StreamPost, today: string) {
   if (post.day === today || post.resultDay === today) return "Today's standout";
@@ -203,15 +214,22 @@ function Marks({ post }: { post: StreamPost }) {
   );
 }
 
-// where a card's picture ends, how much room its reading has under it, and where the picture starts to melt
-function footOf(width: number, height: number, clear: number) {
-  const picture = Math.min(height, Math.round(width / POST_ASPECT));
-  const room = height - clear - FOOT_PAD - picture;
-  const top = height - clear - FOOT_PAD - FOOT_HEIGHT;
-  const over = room < FOOT_ROOM;
-  const melt = Math.round(Math.min(picture, over ? picture - top + MELT_LEAD : picture * MELT_SHARE));
-  return { over, roomy: room >= FOOT_ROOMY, melt, reach: over ? Math.min(1, (MELT_LEAD + MELT_WHOLE) / Math.max(1, melt)) : 1 };
+/* A phone card's foot, the same on every card of a screen whatever its picture's shape (worked out from the card alone,
+   as a 4:5 window drawn `lift` up): whether its reading has room under the picture (over: it stands on it; roomy: a line
+   of what it says too), the box it stands in, where its first line is, and where its ground falls (the card's own px,
+   from its top). Its chrome is drawn `rise` up, and stands `clear` over the card's foot */
+type DeckFoot = { over: boolean; roomy: boolean; box: number; top: number; fall: number; deep: number };
+function deckFootOf(width: number, height: number, clear: number, lift: number, rise: number): DeckFoot {
+  const picture = Math.min(height, Math.round(width / POST_ASPECT)) - lift;
+  const bottom = height - rise - clear - FOOT_PAD;
+  const room = bottom - picture;
+  const roomy = room >= FOOT_ROOMY;
+  const box = roomy ? FOOT_BOX_ROOMY : FOOT_BOX;
+  const top = bottom - box;
+  return { over: room < FOOT_ROOM, roomy, box, top, fall: top - GROUND_ABOVE, deep: top + GROUND_UNDER };
 }
+// the share of a card's ground's fall at y (the card's own px)
+const fallAt = (foot: DeckFoot, y: number) => (y - foot.fall) / Math.max(1, foot.deep - foot.fall);
 
 /* The card's lead: where the post ranks, as one line of type, rolling to another of its reads as it is picked. Its size
    leaves the strip its room at the row's end, the same for every read of a post (its longest) */
@@ -276,8 +294,10 @@ const RING = 2 * Math.PI * 20.5;
    that). Who (unless the whole feed is one feeder's: solo), what and when; then one lead, where the post ranks, or, not
    measured yet, what it says. The lead is of the read picked (pick, its latest by default), on the strip beside it. Live
    (the card on the page, not the copy a move out of the Day view lets go): the rest of its reading waits under its foot
-   for a tap, a ▶ sits on a reel that has a clip, and the reading clears its foot of the dock (clear) */
-function CardChrome({ post, feeder, solo = false, width, height, standout, date, live = false, clear = 0, parts, pick = null, onPick = NO_PICK, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
+   for a tap, a ▶ sits on a reel that has a clip, and the reading clears its foot of the dock (clear). It stands in one
+   box of the card's (foot: deckFootOf), the same on every card, and is cut off at its foot: what rises out of it as it
+   opens rises from there, and sinks back under it, never down over the dock */
+function CardChrome({ post, feeder, solo = false, width, height, standout, date, live = false, clear = 0, foot, parts, pick = null, onPick = NO_PICK, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
   post: StreamPost;
   feeder: StreamFeeder | null;
   solo?: boolean;
@@ -294,12 +314,14 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
   // a carousel's ▶: under its count, and away while its slide is a picture
   playSlides?: boolean;
   playOff?: boolean;
+  // the card's foot (deckFootOf): whether the screen has room for a line of what it says, and the box it stands in
+  foot: Pick<DeckFoot, 'roomy' | 'box'>;
   // its preview playing (its ▶ now a pause)
   watching?: boolean;
   onToggle?: () => void;
   onPlay?: () => void;
 }) {
-  const { roomy } = footOf(width, height, clear);
+  const { roomy } = foot;
   const face = feeder ?? { handle: post.handle, profilePicUrl: null };
   const measured = post.topPercent != null && Number.isFinite(post.topPercent);
   const says = post.caption ? post.caption.replace(/\s+/g, ' ').trim() : '';
@@ -355,7 +377,7 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
           inert={playOff}
           className={cn(
             'st-play pointer-events-auto absolute right-3 z-[5] grid h-11 w-11 place-items-center rounded-full bg-black/45 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] outline-none [-webkit-tap-highlight-color:transparent] active:scale-[0.92] focus-visible:ring-2 focus-visible:ring-white/80',
-            playSlides ? 'top-[39px]' : 'top-3',
+            playSlides ? 'top-[calc(39px+var(--st-chrome-drop,0px))]' : 'top-[calc(0.75rem+var(--st-chrome-drop,0px))]',
           )}
         >
           <svg aria-hidden="true" viewBox="0 0 44 44" className="pointer-events-none absolute inset-0 h-11 w-11 -rotate-90">
@@ -365,15 +387,18 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
           <Pause aria-hidden="true" className="st-play-off h-[18px] w-[18px]" fill="currentColor" strokeWidth={0} />
         </button>
       ) : null}
+      {/* (cut off a hair under its foot: room for its type's shadow, never for the rest of it waiting under the foot) */}
+      <span className="st-read-pocket pointer-events-none absolute inset-x-0 top-0 block overflow-clip" style={{ bottom: clear + POCKET_PAD }}>
       <span
         ref={parts?.read}
         className="st-read st-on-media absolute inset-x-0 bottom-0 block px-4 pt-4 sm:px-5"
-        style={{ paddingBottom: FOOT_PAD + clear }}
+        style={{ paddingBottom: FOOT_PAD - POCKET_PAD }}
       >
         <span ref={parts?.inner} className="st-read-in relative block" style={{ maxWidth: Math.min(width, 460) }}>
-          <span className="flex min-w-0 flex-col gap-(--st-gap)" style={{ '--st-gap': roomy ? '16px' : '12px' } as CSSProperties}>
+          <span className="st-foot relative flex min-w-0 flex-col gap-(--st-gap)" style={{ '--st-gap': roomy ? '16px' : '12px', '--st-foot-box': `${foot.box}px` } as CSSProperties}>
+            {/* (over the box, not in it: a standout's first line stands where every other card's does) */}
             {standout ? (
-              <span data-st="" className={cn('flex items-center gap-1.5 text-[12px] font-bold leading-none text-white', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
+              <span data-st="" className={cn('absolute bottom-full left-0 mb-(--st-gap) flex items-center gap-1.5 text-[12px] font-bold leading-none text-white', ON_PICTURE)} style={{ '--i': 0 } as CSSProperties}>
                 <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--fm-accent)]" />
                 {standoutText(post, istDay())}
               </span>
@@ -474,6 +499,7 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
           ) : null}
         </span>
       </span>
+      </span>
     </>
   );
 }
@@ -557,6 +583,11 @@ export type PostCellProps = {
   order?: number;
   // a phone's card: how far its reading is lifted to clear the dock
   clear?: number;
+  // a phone's stacked card: how far it runs on over its picture (its head, up to the screen's top as it rests)
+  head?: number;
+  // a phone's card: how far its picture is drawn up into its head, and its reading and buttons
+  lift?: number;
+  rise?: number;
   onOpenTile: (post: StreamPost, element: HTMLElement) => void;
   // a tap on a card that isn't the one in view: the page brings it there. True when it is the one in view now after
   // all (the page rests on it, the scroll that brought it there not settled yet; or the tap stopped the page gliding
@@ -567,20 +598,23 @@ export type PostCellProps = {
 const KIND: Record<StreamMediaType, string> = { reel: 'Reel', carousel: 'Carousel', image: 'Post', unknown: 'Post' };
 const FOCUS = 'outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fm-accent-bright)]';
 
-// a card's reading opening and closing: one even glide each way (the carry's curve), started on the tap and turned
-// round from wherever it is by the next. Its rest comes in a line at a time as it rises, and fades as it sinks
+/* A card's reading opening and closing: one glide each way (the carry's curve), every piece of it on the one clock,
+   started on the tap and turned round from wherever it is by the next. The rest of it rises with it out from under its
+   foot, and sinks back under it (cut off there: CardChrome), nothing in it fading in or out on its own. Its ground rises
+   with it, deepening; the strip gives its place to how the rank moved in its first part, that comes in its rest */
 const READ_OPEN_MS = ms(460);
 const READ_CLOSE_MS = ms(440);
-const READ_LINE_MS = ms(380);
-const READ_LINE_AT_MS = ms(110);
-const READ_LINE_STEP_MS = ms(60);
-const READ_LINE_EASE = 'cubic-bezier(0.16, 0.9, 0.2, 1)';
-const READ_FADE_MS = ms(300);
-const READ_FADE_EASE = 'cubic-bezier(0.3, 0, 0.4, 1)';
-// inside a line: the trail's reads and the figures come in one after another, a beat into their line
-const READ_PIECE_MS = ms(340);
-const READ_PIECE_AT_MS = ms(50);
-const READ_PIECE_STEP_MS = ms(45);
+/* WebKit shows a glide's first frame a while after its clock starts, and ends it on the clock: the start was skipped
+   (a jump, then a hitch) and the end cut. Held at its first pose this long and at its last this long, inside its
+   keyframes, it is seen whole (as the Read page's moves: readOneEngine LEAD, TAIL) */
+const READ_LEAD_MS = 100;
+const READ_TAIL_MS = 240;
+// how deep the open reading's ground lies (stream.css, .st-read-shade opened): the picture shows through it a little
+const READ_SHADE_OPEN = 0.86;
+// the strip going, in the glide's first part; how the rank moved coming, in the rest (and back)
+const READ_SWAP_OUT = 0.4;
+const READ_SWAP_IN = 0.3;
+const READ_SWAP_OUT_EASE = 'cubic-bezier(0.4, 0, 1, 1)';
 // the open reading leaves at least this much of the picture's top clear (past that, its rest scrolls)
 const READ_TOP_ROOM = 56;
 // a reading open as its card clears is shut once it has slid off (stream.css, .st-read in [data-clean])
@@ -592,6 +626,41 @@ const TAP_MAX_MS = 500;
 const TAP_CLICK_MS = 600;
 
 type Clean = 'watch' | 'slides' | null;
+
+// a reading's glide: its whole length, and where in it a share of its move falls
+type ReadGlide = { all: number; at: (share: number) => number };
+function readGlide(move: number): ReadGlide {
+  const webkit = holdsFlights();
+  const lead = webkit ? READ_LEAD_MS : 0;
+  const all = lead + move + (webkit ? READ_TAIL_MS : 0);
+  return { all, at: (share) => (lead + share * move) / all };
+}
+
+// one piece of it: at `from` until `start` of the move, at `to` by `end` (on `easing`), and there after. Once it has
+// ended it lets go: what it ends on is where the piece stands by itself (its own style), so nothing jumps
+function glideOn(el: Element, glide: ReadGlide, from: Keyframe, to: Keyframe, start = 0, end = 1, easing = CARRY_EASE_CSS) {
+  const a = glide.at(start);
+  const b = glide.at(end);
+  const frames: Keyframe[] = [];
+  if (a > 0) frames.push({ ...from, offset: 0, easing: 'linear' });
+  frames.push({ ...from, offset: a, easing });
+  frames.push({ ...to, offset: b, easing: 'linear' });
+  if (b < 1) frames.push({ ...to, offset: 1 });
+  const animation = el.animate(frames, { duration: glide.all, easing: 'linear', fill: 'both' });
+  animation.finished.then(() => animation.cancel(), () => {});
+}
+
+// where a piece is drawn now (mid-way, if it is moving): its opacity, how far it is lifted, how far turned
+function drawnAt(el: Element | null) {
+  if (!el) return null;
+  const style = getComputedStyle(el);
+  const matrix = style.transform && style.transform !== 'none' ? new DOMMatrixReadOnly(style.transform) : null;
+  let turn = matrix ? (Math.atan2(matrix.m12, matrix.m11) * 180) / Math.PI : 0;
+  if (turn < -90) turn += 360;
+  return { opacity: Number(style.opacity), y: matrix ? matrix.m42 : 0, turn };
+}
+
+const lifted = (y: number) => `translate3d(0px, ${y.toFixed(1)}px, 0px)`;
 
 function PostCell({
   cellKey,
@@ -624,6 +693,9 @@ function PostCell({
   depth = false,
   order = 0,
   clear = 0,
+  head = 0,
+  lift = 0,
+  rise = 0,
   onOpenTile,
   onFocusCard,
 }: PostCellProps) {
@@ -633,7 +705,29 @@ function PostCell({
   const card = mode === 'today' && !shape.wide;
   const row = mode === 'today' && shape.wide;
   const frame = frameOf(mode, shape);
-  const foot = card ? footOf(shape.w, shape.h, clear) : null;
+  const stacked = card && depth;
+  const headed = stacked && head > 0;
+  /* A phone's card: its picture runs on up to the screen's very top (under the status bar), never anything made up in
+     its place. Above its 4:5 is as much of the picture's own frame as there is (a reel's 9:16 has plenty, shown once it
+     rests: `grown`); what is missing (a photo, 4:5 or 3:4) it is drawn higher for, its own top under the clock. Its
+     chrome and reading are drawn `upChrome` up, the same on every card */
+  const ratio = useMediaRatio(post.thumbnailUrl, post.mediaType === 'reel' ? REEL_RATIO : 1 / POST_ASPECT);
+  const reach = card && head > 0 ? Math.max(0, head - lift) : 0;
+  const above = Math.min(reach, Math.max(0, Math.floor((ratio * frame.width - frame.height) / 2)));
+  const up = card ? lift + reach - above : 0;
+  const grown = headed ? above : 0;
+  const upChrome = card ? rise : 0;
+  /* Its foot is the same on every card (deckFootOf): the reading stands in one place, and the ground falls over the
+     picture and the picture's bleed in one place, whatever its picture's shape. Where the picture ends, and what of the
+     ground's fall lies over it (and over the card under it) */
+  const deck = card ? deckFootOf(shape.w, shape.h, clear, lift, rise) : null;
+  const pictureFoot = frame.height - up;
+  const pictureFall = deck ? fallAt(deck, pictureFoot) : 1;
+  const groundTop = frame.height - 2 - up;
+  const groundHeight = card ? shape.h - frame.height + 2 + up + (stacked ? DECK_TAIL : 0) : shape.h;
+  // ...kept, in shares of its 4:5, for the picture to let go of as it flies to a grid (its melt as it rested)
+  const restMelt = useRef<{ top: number; height: number; fall: Fall } | null>(null);
+  if (deck) restMelt.current = { top: (deck.fall + up) / frame.height, height: (pictureFoot - deck.fall) / frame.height, fall: [0, pictureFall] };
   const winner = isWinner(post.topPercent);
   // what of the view being left goes, drawn as it was
   const was = leaving && leavingShape ? { grid: leaving !== 'today', card: leaving === 'today' && !leavingShape.wide, row: leaving === 'today' && leavingShape.wide } : null;
@@ -644,7 +738,6 @@ function PostCell({
   const fullFrame = (cardShape: CellShape) => frameOf('today', cardShape).height >= cardShape.h - 0.5;
   const bg = card ? !fullFrame(shape) : Boolean(cardOut && leavingShape && !fullFrame(leavingShape));
 
-  const stacked = card && depth;
   const style = { left: x, top: y, width: shape.w, height: shape.h, '--st-z': stacked ? order + 1 : undefined } as CSSProperties;
   const top = post.topPercent;
   const measured = top != null && Number.isFinite(top);
@@ -662,78 +755,58 @@ function PostCell({
   const openRef = useRef(false);
   const setRead = useCallback((open: boolean, animate = true) => {
     const cell = cellRef.current;
-    const read = readRef;
-    const more = moreRef;
-    const shade = shadeRef;
-    const toggle = toggleRef;
+    const read = readRef.current;
     const block = innerRef.current;
-    if (!cell || !read.current || !block || openRef.current === open) return;
+    if (!cell || !read || !block || openRef.current === open) return;
     openRef.current = open;
-    // where it is on screen now (mid-way, if it is moving), then where it belongs: it goes from the one to the other
+    const more = moreRef.current;
+    const shade = shadeRef.current;
+    const strip = stripRef.current;
+    const toggle = toggleRef.current;
+    const turner = toggle?.querySelector('svg') ?? null;
+    const move = block.querySelector<HTMLElement>('.st-move');
+    const says = block.querySelector<HTMLElement>('.st-says');
+    // where each piece is drawn now (mid-way, if it is moving), then where it belongs: it goes from the one to the other
     const before = block.getBoundingClientRect().top;
-    const shadeAt = shade.current ? Number(getComputedStyle(shade.current).opacity) : 0;
-    const moreAt = more.current ? Number(getComputedStyle(more.current).opacity) : 0;
-    const lines = more.current ? (Array.from(more.current.children) as HTMLElement[]) : [];
-    const pieces = more.current ? Array.from(more.current.querySelectorAll<HTMLElement>('[data-trail-seg], [data-figure]')) : [];
-    [block, shade.current, more.current, ...lines, ...pieces].forEach((el) => el?.getAnimations().forEach((animation) => animation.cancel()));
+    const shadeAt = drawnAt(shade);
+    const stripAt = drawnAt(strip);
+    const moveAt = drawnAt(move);
+    const saysAt = drawnAt(says);
+    const turnerAt = drawnAt(turner);
+    [block, shade, strip, move, says, turner].forEach((el) => el?.getAnimations().forEach((animation) => animation.cancel()));
     if (open) cell.dataset.read = '';
     else delete cell.dataset.read;
     // opening: the rest gets the room the card has left under the foot (past it, it scrolls), from its top
-    if (open && more.current) {
-      const pad = getComputedStyle(read.current);
+    if (open && more) {
+      const pad = getComputedStyle(read);
       const foot = (block.firstElementChild as HTMLElement | null)?.offsetHeight ?? 0;
-      const room = cell.clientHeight - READ_TOP_ROOM - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom) - foot - 16;
-      more.current.style.setProperty('--st-more-max', `${Math.max(96, Math.floor(room))}px`);
-      more.current.scrollTop = 0;
+      const room = (read.parentElement?.clientHeight ?? cell.clientHeight) - READ_TOP_ROOM - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom) - foot - 16;
+      more.style.setProperty('--st-more-max', `${Math.max(96, Math.floor(room))}px`);
+      more.scrollTop = 0;
     }
-    if (more.current) more.current.inert = !open;
+    if (more) more.inert = !open;
     // (the open reading's own reads take its strip's place)
-    if (stripRef.current) stripRef.current.inert = open;
-    toggle.current?.setAttribute('aria-expanded', String(open));
-    toggle.current?.setAttribute('aria-label', open ? 'Hide the details' : 'Show the details');
-    if (open && more.current) more.current.toggleAttribute('data-scrolls', more.current.scrollHeight > more.current.clientHeight + 1);
+    if (strip) strip.inert = open;
+    toggle?.setAttribute('aria-expanded', String(open));
+    toggle?.setAttribute('aria-label', open ? 'Hide the details' : 'Show the details');
+    if (open && more) more.toggleAttribute('data-scrolls', more.scrollHeight > more.clientHeight + 1);
     const after = block.getBoundingClientRect().top;
-    // the fade's top sits a little over the reading's, open or shut, so it goes up and comes down with it. Placed by
+    // the ground's top sits a little over the reading's, open or shut, so it goes up and comes down with it. Placed by
     // translate, never by top: it keeps the card's height whole, its foot covered all the way (shut, its top used to
     // stay up there, and the glide down began with it lifted a whole reading higher: dark over the picture's top)
-    if (shade.current) shade.current.style.translate = `0px ${Math.max(0, after - cell.getBoundingClientRect().top - SHADE_LEAD).toFixed(1)}px`;
+    if (shade) shade.style.translate = `0px ${Math.max(0, after - cell.getBoundingClientRect().top - SHADE_LEAD).toFixed(1)}px`;
     const dy = before - after;
     if (!animate || reducedMotion() || Math.abs(dy) < 0.5) return;
-    // (WebKit starts a glide's clock before the frame that draws it is on screen: held at its start for that frame, it
-    // is seen whole)
-    const flight = startFlight(holdsFlights() ? FLIGHT_HOLD_MS : 0);
-    const glide: KeyframeAnimationOptions = { duration: open ? READ_OPEN_MS : READ_CLOSE_MS, easing: CARRY_EASE_CSS, fill: 'backwards' };
-    const from = `translate3d(0px, ${dy.toFixed(1)}px, 0px)`;
-    run(flight, block, [{ transform: from }, { transform: 'translate3d(0px, 0px, 0px)' }], glide);
-    if (shade.current) run(flight, shade.current, [{ opacity: shadeAt, transform: from }, { opacity: open ? 1 : 0, transform: 'translate3d(0px, 0px, 0px)' }], glide);
-    if (open && moreAt > 0.05) {
-      // (a close turned round mid-way: it is all there already, it only rises back)
-      lines.forEach((line) => run(flight, line, [{ opacity: moreAt }, { opacity: 1 }], { duration: READ_LINE_MS, easing: READ_LINE_EASE, fill: 'backwards' }));
-    } else if (open) {
-      // a line at a time under the foot as it rises; in the trail's line and the figures' line, their pieces one after
-      // another a beat into it
-      lines.forEach((line, index) => {
-        const at = READ_LINE_AT_MS + index * READ_LINE_STEP_MS;
-        const own = Array.from(line.querySelectorAll<HTMLElement>('[data-trail-seg], [data-figure]'));
-        const rise = [{ transform: 'translate3d(0px, 12px, 0px)' }, { transform: 'translate3d(0px, 0px, 0px)' }];
-        if (!own.length) {
-          run(flight, line, [{ ...rise[0], opacity: 0 }, { ...rise[1], opacity: 1 }], { duration: READ_LINE_MS, delay: at, easing: READ_LINE_EASE, fill: 'backwards' });
-          return;
-        }
-        run(flight, line, rise, { duration: READ_LINE_MS, delay: at, easing: READ_LINE_EASE, fill: 'backwards' });
-        own.forEach((piece, step) => run(
-          flight,
-          piece,
-          piece.dataset.figure !== undefined
-            ? [{ opacity: 0, transform: 'translate3d(0px, 8px, 0px)' }, { opacity: 1, transform: 'translate3d(0px, 0px, 0px)' }]
-            : [{ opacity: 0, transform: 'translate3d(-10px, 0px, 0px)' }, { opacity: 1, transform: 'translate3d(0px, 0px, 0px)' }],
-          { duration: READ_PIECE_MS, delay: at + READ_PIECE_AT_MS + step * READ_PIECE_STEP_MS, easing: READ_LINE_EASE, fill: 'backwards' },
-        ));
-      });
-    } else if (more.current) {
-      run(flight, more.current, [{ opacity: moreAt }, { opacity: 0 }], { duration: READ_FADE_MS, easing: READ_FADE_EASE, fill: 'backwards' });
-    }
-    if (flight.hold) afterDrawn(() => releaseFlight(flight));
+    const glide = readGlide(open ? READ_OPEN_MS : READ_CLOSE_MS);
+    glideOn(block, glide, { transform: lifted(dy) }, { transform: lifted(0) });
+    if (shade && shadeAt) glideOn(shade, glide, { opacity: shadeAt.opacity, transform: lifted(dy) }, { opacity: open ? READ_SHADE_OPEN : 0, transform: lifted(0) });
+    if (turner && turnerAt) glideOn(turner, glide, { transform: `rotate(${turnerAt.turn.toFixed(1)}deg)` }, { transform: `rotate(${open ? 180 : 0}deg)` });
+    // the strip gives its place to how the rank moved (and takes it back): the one going, then the one coming
+    const [going, goingAt, coming, comingAt] = open ? [strip, stripAt, move, moveAt] : [move, moveAt, strip, stripAt];
+    if (going && goingAt) glideOn(going, glide, { opacity: goingAt.opacity, transform: lifted(goingAt.y) }, { opacity: 0, transform: lifted(open ? -10 : 10) }, 0, READ_SWAP_OUT, READ_SWAP_OUT_EASE);
+    if (coming && comingAt) glideOn(coming, glide, { opacity: comingAt.opacity, transform: lifted(comingAt.y) }, { opacity: 1, transform: lifted(0) }, READ_SWAP_IN, 1);
+    // what it says under the number (a roomy screen): the open reading has it whole in its place
+    if (says && saysAt) glideOn(says, glide, { opacity: saysAt.opacity }, { opacity: open ? 0 : 1 }, open ? 0 : 0.55, open ? 0.25 : 1);
   }, []);
 
   /* ── cleared: a clip playing (its ▶), or a carousel's slides past the first ── */
@@ -818,7 +891,7 @@ function PostCell({
     if (clean) {
       setClean(null);
       // (a tap on a clip only stops it; on a swiped carousel whose reading never left, it reads)
-      if (clean === 'watch' || foot?.over) return;
+      if (clean === 'watch' || deck?.over) return;
     }
     setRead(!openRef.current);
   };
@@ -873,7 +946,7 @@ function PostCell({
       data-arriving={arriving ? '' : undefined}
       data-gone={gone ? '' : undefined}
       data-depth={stacked ? '' : undefined}
-      data-over={foot?.over ? '' : undefined}
+      data-over={deck?.over ? '' : undefined}
       data-clean={card && clean ? clean : undefined}
       // a card reads from anywhere on it (its chrome lets touches through, to a carousel's slides); the keys have its
       // arrow button
@@ -890,16 +963,36 @@ function PostCell({
         <div
           data-layer="bg"
           className={cn('overflow-hidden bg-[#17171a]', !stacked && 'rounded-b-[28px]')}
-          style={{ left: 0, top: card ? frame.height - 2 : 0, width: shape.w, height: card ? shape.h - frame.height + 2 + (stacked ? DECK_TAIL : 0) : shape.h }}
+          style={{ left: 0, top: card ? groundTop : 0, width: shape.w, height: groundHeight }}
         >
-          <Tone src={post.thumbnailUrl} className="inset-0" />
+          {deck ? (
+            // the picture's own colours run on under the reading, the ground falling over them (never whole)
+            <>
+              <Bleed src={post.thumbnailUrl} className="inset-0" />
+              <Tone src={post.thumbnailUrl} fall={[fallAt(deck, groundTop), fallAt(deck, groundTop + groundHeight)]} deep className="inset-0" />
+            </>
+          ) : (
+            <Tone src={post.thumbnailUrl} className="inset-0" />
+          )}
         </div>
       ) : null}
 
       <div
         data-layer="frame"
         className={cn('group overflow-hidden [contain:strict]', grid ? 'bg-[var(--st-surface)]' : 'isolate', row && 'bg-[var(--st-media)]')}
-        style={{ left: 0, top: 0, width: frame.width, height: frame.height, borderRadius: frame.radius }}
+        // (grown, its picture is placed in it just where it stood in its 4:5 (--st-pic-y, stream.css), and the frame is
+        // measured as its 4:5 for a move (data-grown). Drawn up, the picture's own buttons stay below the status bar:
+        // --st-pic-top)
+        data-grown={grown || undefined}
+        style={{
+          left: 0,
+          top: -up - grown,
+          width: frame.width,
+          height: frame.height + grown,
+          borderRadius: frame.radius,
+          '--st-pic-top': up + grown ? `${up + grown}px` : undefined,
+          '--st-pic-y': grown ? `${(grown - (ratio * frame.width - frame.height + 2) / 2).toFixed(2)}px` : undefined,
+        } as CSSProperties}
         {...(grid ? press : null)}
       >
         {/* the Day view's frame shows a landscape picture whole, over its own wash */}
@@ -927,10 +1020,22 @@ function PostCell({
             <GridChips post={post} cols={shape.cols} rows={shape.rows} width={shape.w} feeder={feeder} />
           </span>
         ) : null}
-        {/* a card's picture melts into what the card runs on in under it */}
-        {card && foot ? <Tone src={post.thumbnailUrl} melt reach={foot.reach} className="st-card-scrim" style={{ left: 0, right: 0, bottom: 0, height: foot.melt }} /> : null}
+        {/* a card's picture melts into what the card runs on in under it: dissolving into its own colours over its foot
+            (where the ground over it is light enough to show them), the ground falling over it */}
+        {deck && pictureFall < 1 ? <Bleed src={post.thumbnailUrl} ramp className="st-card-scrim" style={{ left: 0, right: 0, bottom: 0, height: BLEED_FEATHER }} /> : null}
+        {deck && pictureFoot > deck.fall ? (
+          <Tone src={post.thumbnailUrl} fall={[0, pictureFall]} className="st-card-scrim" style={{ left: 0, right: 0, bottom: 0, height: pictureFoot - deck.fall }} />
+        ) : null}
+        {/* ...and, under the status bar, is shaded for the clock, gone a little way below it */}
+        {up - lift + grown > 0 ? (
+          <span aria-hidden="true" className="st-status-shade pointer-events-none absolute inset-x-0 top-0 block" style={{ height: up - lift + grown + STATUS_SHADE_PAST }} />
+        ) : null}
         {/* ...and, going to a grid, lets go of it as it flies (drawn in shares of the frame: it is carried with it) */}
-        {cardOut ? <Tone src={post.thumbnailUrl} melt className="st-melt-out" style={{ left: 0, right: 0, bottom: 0, height: `${MELT_SHARE * 100}%` }} /> : null}
+        {cardOut && restMelt.current ? (
+          <Tone src={post.thumbnailUrl} fall={restMelt.current.fall} className="st-melt-out" style={{ left: 0, right: 0, top: `${restMelt.current.top * 100}%`, height: `${restMelt.current.height * 100}%` }} />
+        ) : cardOut ? (
+          <Tone src={post.thumbnailUrl} melt className="st-melt-out" style={{ left: 0, right: 0, bottom: 0, height: `${MELT_SHARE * 100}%` }} />
+        ) : null}
         {row && standout ? <Marks post={post} /> : null}
         {/* a winner (top 10%): a white ring (what is new is marked on its feeder's circle, not on the post) */}
         {winner && !card ? (
@@ -949,7 +1054,7 @@ function PostCell({
       </div>
 
       {card ? (
-        <div data-layer="chrome" className="pointer-events-none overflow-hidden rounded-[28px]" style={{ left: 0, top: 0, width: shape.w, height: shape.h }}>
+        <div data-layer="chrome" className="pointer-events-none overflow-hidden rounded-[28px]" style={{ left: 0, top: -upChrome, width: shape.w, height: shape.h, '--st-chrome-drop': upChrome ? `${upChrome}px` : undefined } as CSSProperties}>
           <CardChrome
             post={post}
             feeder={feeder}
@@ -960,6 +1065,7 @@ function PostCell({
             date={dateParts}
             live
             clear={clear}
+            foot={deck ?? { roomy: false, box: 0 }}
             parts={{ read: readRef, inner: innerRef, more: moreRef, shade: shadeRef, toggle: toggleRef, ring: ringRef, strip: stripRef }}
             pick={pick}
             onPick={setPick}
@@ -979,7 +1085,7 @@ function PostCell({
       ) : null}
 
       {/* a phone's card going under the next one (st-sink) */}
-      {card ? <span data-depth-dim="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[6] rounded-[28px] bg-black opacity-0" /> : null}
+      {card ? <span data-depth-dim="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[6] rounded-[28px] bg-black opacity-0" style={headed ? { top: -head } : undefined} /> : null}
 
       {row ? (
         <div data-layer="reading" data-reading="" style={{ left: shape.mediaWidth + READING_GAP, top: 0, width: Math.max(0, shape.w - shape.mediaWidth - READING_GAP), height: shape.h }}>
@@ -995,7 +1101,7 @@ function PostCell({
       ) : null}
       {cardOut && leavingShape ? (
         <div data-layer="chrome-out" className="pointer-events-none" style={{ left: 0, top: 0, width: leavingShape.w, height: leavingShape.h }}>
-          <CardChrome post={post} feeder={leavingFeeder ?? feeder} solo={solo} width={leavingShape.w} height={leavingShape.h} standout={standout} date={leavingDate ? groupParts(leavingDate, 'day', istDay()) : dateParts} clear={leavingShape.clear} />
+          <CardChrome post={post} feeder={leavingFeeder ?? feeder} solo={solo} width={leavingShape.w} height={leavingShape.h} standout={standout} date={leavingDate ? groupParts(leavingDate, 'day', istDay()) : dateParts} clear={leavingShape.clear} foot={deckFootOf(leavingShape.w, leavingShape.h, leavingShape.clear ?? 0, leavingShape.lift ?? 0, leavingShape.rise ?? 0)} />
         </div>
       ) : null}
       {rowOut && leavingShape ? (
@@ -1015,7 +1121,7 @@ export default memo(PostCell);
 
 /* ── a slot whose day hasn't loaded: a still block where the post will be ── */
 
-export const PlaceholderCell = memo(function PlaceholderCell({ cellKey, mode, x, y, w, h, mediaWidth, wide, gone = false }: {
+export const PlaceholderCell = memo(function PlaceholderCell({ cellKey, mode, x, y, w, h, mediaWidth, wide, gone = false, lift = 0 }: {
   cellKey: string;
   mode: FeedMode;
   x: number;
@@ -1025,6 +1131,8 @@ export const PlaceholderCell = memo(function PlaceholderCell({ cellKey, mode, x,
   mediaWidth: number;
   wide: boolean;
   gone?: boolean;
+  // a phone's card: its picture drawn this far up, where the post's will be (PostCell)
+  lift?: number;
 }) {
   const shape: CellShape = { w, h, cols: 1, rows: 1, mediaWidth, wide };
   const frame = frameOf(mode, shape);
@@ -1033,7 +1141,7 @@ export const PlaceholderCell = memo(function PlaceholderCell({ cellKey, mode, x,
   return (
     <div data-cell={cellKey} data-kind="placeholder" data-card={card ? '' : undefined} data-gone={gone ? '' : undefined} aria-hidden="true" className={cn('st-cell', card && 'rounded-[28px]')} style={style}>
       {card && frame.height < shape.h - 0.5 ? <div className="st-placeholder absolute inset-0 rounded-[28px]" /> : null}
-      <div data-layer="frame" className="st-placeholder" style={{ left: 0, top: 0, width: frame.width, height: frame.height, borderRadius: frame.radius }} />
+      <div data-layer="frame" className="st-placeholder" style={{ left: 0, top: card ? -lift : 0, width: frame.width, height: frame.height, borderRadius: frame.radius }} />
     </div>
   );
 });

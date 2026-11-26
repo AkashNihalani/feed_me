@@ -136,6 +136,8 @@ function saveData() {
 const WASH_SIZE = 24;
 const WASH_KEEP = 240;
 const washes = new Map<string, HTMLCanvasElement>();
+// ...and, learnt with it, each picture's shape: its height over its width
+const ratios = new Map<string, number>();
 
 // a picture's wash made ahead (a card about to be shown): drawn at once when its card mounts, no fade
 export function warmWash(src: string | null | undefined) {
@@ -149,6 +151,7 @@ function washOf(src: string): Promise<HTMLCanvasElement | null> {
   image.decoding = 'async';
   image.src = src;
   return image.decode().then(() => {
+    if (image.naturalWidth > 0) ratios.set(src, image.naturalHeight / image.naturalWidth);
     const scale = WASH_SIZE / Math.max(image.naturalWidth, image.naturalHeight);
     const wash = document.createElement('canvas');
     wash.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -164,6 +167,25 @@ function washOf(src: string): Promise<HTMLCanvasElement | null> {
     washes.set(src, wash);
     return wash;
   }, () => null);
+}
+
+/* A picture's height over its width, once its wash is made (the same load), and `guess` until then. Known at once for a
+   picture seen before */
+export function useMediaRatio(src: string | null, guess: number): number {
+  const [learnt, setLearnt] = useState<{ src: string; ratio: number } | null>(null);
+  useEffect(() => {
+    if (!src || ratios.has(src)) return undefined;
+    let live = true;
+    void washOf(src).then(() => {
+      const ratio = ratios.get(src);
+      if (live && ratio) setLearnt({ src, ratio });
+    });
+    return () => {
+      live = false;
+    };
+  }, [src]);
+  if (!src) return guess;
+  return ratios.get(src) ?? (learnt?.src === src ? learnt.ratio : guess);
 }
 
 export const Wash = memo(function Wash({ src, className }: { src: string | null; className?: string }) {
@@ -223,17 +245,21 @@ function blank(width: number, height: number): [HTMLCanvasElement, CanvasRenderi
   return [canvas, context];
 }
 
-function makeTone(src: string, wash: HTMLCanvasElement): HTMLCanvasElement | null {
-  const kept = tones.get(src);
-  if (kept) return kept;
-  // what the frame shows of it (a landscape one stands whole over its wash: all of it)
+// what a post's 4:5 frame shows of its picture, in the wash's pixels (a landscape one stands whole over its wash: all of it)
+function shownOf(wash: HTMLCanvasElement) {
   const { width, height } = wash;
   const ratio = width / height;
-  const shown = ratio >= LANDSCAPE
+  return ratio >= LANDSCAPE
     ? { x: 0, w: width, y: 0, h: height }
     : ratio > 0.8
       ? { x: (width - height * 0.8) / 2, w: height * 0.8, y: 0, h: height }
       : { x: 0, w: width, y: (height - width / 0.8) / 2, h: width / 0.8 };
+}
+
+function makeTone(src: string, wash: HTMLCanvasElement): HTMLCanvasElement | null {
+  const kept = tones.get(src);
+  if (kept) return kept;
+  const shown = shownOf(wash);
   const band = shown.h * TONE_BAND;
   // (halved step by step: each step averages whole pixels, so nothing in the picture is skipped over)
   const eight = blank(TONE_ACROSS * 2, 4);
@@ -260,29 +286,53 @@ const MELT: ReadonlyArray<readonly [number, number]> = [[0, 0], [0.1, 0.012], [0
 const meltCss = (reach: number) => `linear-gradient(to bottom, ${MELT.map(([at, alpha]) => `rgb(23 23 26 / ${alpha}) ${(at * reach * 100).toFixed(2)}%`).join(', ')})`;
 const GROUND_CSS = 'linear-gradient(to bottom, #17171a, #101013)';
 
-function drawTone(canvas: HTMLCanvasElement, tone: HTMLCanvasElement, melt: boolean, reach: number) {
+/* A phone card's ground: how deep it lies over what is under it (the picture, then the picture's bleed) at a share of
+   its fall (0: the picture itself; 1 and on: as deep as it goes). One fall for every card, set by where its reading
+   stands, never by where its picture ends: slow to begin, arriving with no edge (smooth at both ends), and never whole
+   (the picture's own colours show through it, under the reading too) */
+export const GROUND_DEPTH = 0.9;
+export function groundAt(share: number) {
+  const t = Math.min(1, Math.max(0, share));
+  return GROUND_DEPTH * (t * t * (3 - 2 * t)) ** 1.3;
+}
+// a span of that fall over a box, top to foot
+export type Fall = readonly [number, number];
+const FALL_STOPS = 24;
+const fallStops = ([from, to]: Fall) => Array.from({ length: FALL_STOPS + 1 }, (_, step) => [step / FALL_STOPS, groundAt(from + ((to - from) * step) / FALL_STOPS)] as const);
+const fallCss = (fall: Fall) => `linear-gradient(to bottom, ${fallStops(fall).map(([at, alpha]) => `rgb(23 23 26 / ${alpha.toFixed(3)}) ${(at * 100).toFixed(2)}%`).join(', ')})`;
+
+function drawTone(canvas: HTMLCanvasElement, tone: HTMLCanvasElement, melt: boolean, reach: number, fall: Fall | null, deep: boolean) {
   canvas.width = TONE_ACROSS;
-  canvas.height = melt ? 64 : 24;
+  canvas.height = melt || fall ? 64 : 24;
   const context = canvas.getContext('2d');
   if (!context) return;
   context.drawImage(tone, 0, 0, TONE_ACROSS, canvas.height);
-  const fall = context.createLinearGradient(0, 0, 0, canvas.height);
-  if (melt) {
-    MELT.forEach(([at, alpha]) => fall.addColorStop(at * reach, `rgba(0, 0, 0, ${alpha})`));
-    context.globalCompositeOperation = 'destination-in';
-  } else {
-    fall.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    fall.addColorStop(1, 'rgba(0, 0, 0, 0.36)');
+  // (deeper toward its foot)
+  if (deep || (!melt && !fall)) {
+    const down = context.createLinearGradient(0, 0, 0, canvas.height);
+    down.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    down.addColorStop(1, 'rgba(0, 0, 0, 0.36)');
+    context.fillStyle = down;
+    context.fillRect(0, 0, TONE_ACROSS, canvas.height);
   }
-  context.fillStyle = fall;
+  if (!melt && !fall) return;
+  const alpha = context.createLinearGradient(0, 0, 0, canvas.height);
+  if (fall) fallStops(fall).forEach(([at, value]) => alpha.addColorStop(at, `rgba(0, 0, 0, ${value})`));
+  else MELT.forEach(([at, value]) => alpha.addColorStop(Math.min(1, at * reach), `rgba(0, 0, 0, ${value})`));
+  context.globalCompositeOperation = 'destination-in';
+  context.fillStyle = alpha;
   context.fillRect(0, 0, TONE_ACROSS, canvas.height);
+  context.globalCompositeOperation = 'source-over';
 }
 
 /* A card's tone: its ground under the picture, or (melt) the fall the picture's foot melts into it by, whole from `reach`
-   of its height down. Charcoal until the picture's is made */
-export const Tone = memo(function Tone({ src, melt = false, reach = 1, className, style }: { src: string | null; melt?: boolean; reach?: number; className?: string; style?: CSSProperties }) {
+   of its height down, or (fall) a span of a phone card's ground (groundAt), deeper toward its foot too with `deep`.
+   Charcoal until the picture's is made */
+export const Tone = memo(function Tone({ src, melt = false, reach = 1, fall = null, deep = false, className, style }: { src: string | null; melt?: boolean; reach?: number; fall?: Fall | null; deep?: boolean; className?: string; style?: CSSProperties }) {
   const boxRef = useRef<HTMLSpanElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fallFrom = fall ? fall[0] : null;
+  const fallTo = fall ? fall[1] : null;
   useIsoLayoutEffect(() => {
     const box = boxRef.current;
     const canvas = canvasRef.current;
@@ -291,7 +341,7 @@ export const Tone = memo(function Tone({ src, melt = false, reach = 1, className
     const draw = (wash: HTMLCanvasElement | null, instant: boolean) => {
       const tone = live && wash ? makeTone(src, wash) : null;
       if (!tone) return;
-      drawTone(canvas, tone, melt, reach);
+      drawTone(canvas, tone, melt, reach, fallFrom != null && fallTo != null ? [fallFrom, fallTo] : null, deep);
       if (instant) box.dataset.instant = '';
       box.dataset.ready = '';
     };
@@ -301,10 +351,82 @@ export const Tone = memo(function Tone({ src, melt = false, reach = 1, className
     return () => {
       live = false;
     };
-  }, [src, melt, reach]);
+  }, [src, melt, reach, fallFrom, fallTo, deep]);
+  const still = fallFrom != null && fallTo != null ? fallCss([fallFrom, fallTo]) : melt ? meltCss(reach) : GROUND_CSS;
   return (
     <span ref={boxRef} aria-hidden="true" className={cn('st-tone pointer-events-none absolute block overflow-hidden', className)} style={style}>
-      <span className="st-tone-still absolute inset-0 block" style={{ background: melt ? meltCss(reach) : GROUND_CSS }} />
+      <span className="st-tone-still absolute inset-0 block" style={{ background: still }} />
+      {src ? <canvas ref={canvasRef} width={1} height={1} className="st-tone-own absolute inset-0 block h-full w-full" /> : null}
+    </span>
+  );
+});
+
+/* ── a picture's bleed ────────────────────────────────────────────────────────
+   The colours along the foot of what the 4:5 frame shows (its last few rows, a dozen across, as they are), run on down:
+   what a phone card's ground lies over where the picture itself has ended, so the picture goes on into its own colours
+   and never stops at an edge. `ramp`: coming in over its height, laid over the picture's own foot (the picture
+   dissolving into it). Nothing until the picture's is made (the ground over it holds) */
+
+const BLEED_ACROSS = 12;
+// the share of the frame's height, from its foot, the bleed is taken from
+const BLEED_BAND = 0.08;
+const bleeds = new Map<string, HTMLCanvasElement>();
+
+function makeBleed(src: string, wash: HTMLCanvasElement): HTMLCanvasElement | null {
+  const kept = bleeds.get(src);
+  if (kept) return kept;
+  const shown = shownOf(wash);
+  const band = Math.max(1, shown.h * BLEED_BAND);
+  const one = blank(BLEED_ACROSS, 1);
+  if (!one) return null;
+  // (the wash is saturated for a backdrop: back to the picture's own)
+  if ('filter' in one[1]) one[1].filter = 'saturate(0.8)';
+  one[1].drawImage(wash, shown.x, shown.y + shown.h - band, shown.w, band, 0, 0, BLEED_ACROSS, 1);
+  if (bleeds.size >= TONE_KEEP) bleeds.delete(bleeds.keys().next().value as string);
+  bleeds.set(src, one[0]);
+  return one[0];
+}
+
+export const Bleed = memo(function Bleed({ src, ramp = false, className, style }: { src: string | null; ramp?: boolean; className?: string; style?: CSSProperties }) {
+  const boxRef = useRef<HTMLSpanElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useIsoLayoutEffect(() => {
+    const box = boxRef.current;
+    const canvas = canvasRef.current;
+    if (!box || !canvas || !src) return undefined;
+    let live = true;
+    const draw = (wash: HTMLCanvasElement | null, instant: boolean) => {
+      const bleed = live && wash ? makeBleed(src, wash) : null;
+      if (!bleed) return;
+      canvas.width = BLEED_ACROSS;
+      canvas.height = ramp ? 32 : 1;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.drawImage(bleed, 0, 0, BLEED_ACROSS, canvas.height);
+      if (ramp) {
+        // (in with no edge at either end: the picture is itself at its top, all bleed at its foot)
+        const alpha = context.createLinearGradient(0, 0, 0, canvas.height);
+        for (let step = 0; step <= 8; step += 1) {
+          const t = step / 8;
+          alpha.addColorStop(t, `rgba(0, 0, 0, ${(t * t * (3 - 2 * t)).toFixed(3)})`);
+        }
+        context.globalCompositeOperation = 'destination-in';
+        context.fillStyle = alpha;
+        context.fillRect(0, 0, BLEED_ACROSS, canvas.height);
+        context.globalCompositeOperation = 'source-over';
+      }
+      if (instant) box.dataset.instant = '';
+      box.dataset.ready = '';
+    };
+    const kept = washes.get(src);
+    if (kept) draw(kept, true);
+    else void washOf(src).then((wash) => draw(wash, false));
+    return () => {
+      live = false;
+    };
+  }, [src, ramp]);
+  return (
+    <span ref={boxRef} aria-hidden="true" className={cn('st-tone pointer-events-none absolute block overflow-hidden', className)} style={style}>
       {src ? <canvas ref={canvasRef} width={1} height={1} className="st-tone-own absolute inset-0 block h-full w-full" /> : null}
     </span>
   );
@@ -559,7 +681,7 @@ function Slides({ post, controls, play, hooks, onSlide }: {
           rest in the Day view, so they fade in (st-controls-in). A card's dots wait for a swipe (st-card-dots), and a card's
           count and dots step clear of the header while it is open over them (st-slide-count, st-slide-dots) */}
       <span className={controls === 'top' ? 'st-card-dots' : 'contents'}>
-        <span aria-hidden="true" className={cn('st-slide-dots st-controls-in pointer-events-none absolute inset-x-0 z-[2] flex justify-center gap-[5px]', controls === 'top' ? 'top-3' : 'bottom-3')}>
+        <span aria-hidden="true" className={cn('st-slide-dots st-controls-in pointer-events-none absolute inset-x-0 z-[2] flex justify-center gap-[5px]', controls === 'top' ? 'top-[calc(0.75rem+var(--st-pic-top,0px))]' : 'bottom-3')}>
           {slides.map((slide, index) => (
             <span
               key={slide.role}
@@ -568,7 +690,7 @@ function Slides({ post, controls, play, hooks, onSlide }: {
           ))}
         </span>
       </span>
-      <span className={cn('st-slide-count st-controls-in pointer-events-none absolute right-3 z-[2] rounded-full bg-black/55 px-2 py-1 text-[11px] font-bold leading-none tabular-nums text-white', controls === 'top' ? 'top-3' : 'bottom-3')}>
+      <span className={cn('st-slide-count st-controls-in pointer-events-none absolute right-3 z-[2] rounded-full bg-black/55 px-2 py-1 text-[11px] font-bold leading-none tabular-nums text-white', controls === 'top' ? 'top-[calc(0.75rem+var(--st-pic-top,0px))]' : 'bottom-3')}>
         {at + 1}/{count}
       </span>
       <span className="pointer-events-none absolute inset-0 z-[3] hidden [@media(hover:hover)]:block">

@@ -820,6 +820,15 @@ html.fm-mobile-browser-immersive {
   background-color: var(--fm-page) !important;
 }
 
+/* ...except while a phone's Day card is up (FeedStream sets [data-feed-card], with the theme colour to match): then it is
+   the cards' dark, so the edge Safari tints at its status bar (and round its toolbar) reads as the card's, not as a white
+   haze over it */
+:root[data-feed-deck][data-feed-card],
+:root[data-feed-deck][data-feed-card] body {
+  background: #141416 !important;
+  background-color: #141416 !important;
+}
+
 html.fm-mobile-browser-immersive,
 html.fm-mobile-browser-immersive body,
 html.fm-mobile-browser-immersive body > main,

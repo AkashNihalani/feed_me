@@ -126,6 +126,7 @@ import { markScrollJump, type ScrollJump } from '@/lib/useCompressedOnScroll';
 import { TEMPO, ms } from '@/lib/tempo';
 import { afterDrawn } from '@/lib/webkitMotion';
 import { LAUNCH_CLASS, announceFirstScreen, launchHolds } from '@/lib/launch';
+import { THEME_COLORS } from '@/lib/themeBootstrap';
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -204,6 +205,16 @@ const PINCH_SPAN_MS = 1000;
 // other way only once it is this far past 1 (each turn draws the page afresh)
 const PINCH_BAND = 0.05;
 const NO_DAYS: string[] = [];
+// the page's own colour while a phone's Day card is up (globals.css, [data-feed-card]): the cards' dark
+const CARD_PAGE = '#141416';
+function cardPage(on: boolean) {
+  const html = document.documentElement;
+  const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+  if (on) html.dataset.feedCard = '';
+  else delete html.dataset.feedCard;
+  const color = on ? CARD_PAGE : THEME_COLORS[html.classList.contains('dark') ? 'dark' : 'light'];
+  metas.forEach((meta) => meta.setAttribute('content', color));
+}
 // a phone's Day card snaps by its head: this much of it
 const MARK_HEAD = 120;
 const SNAP_CLASS = 'fm-feed-root-scroll';
@@ -685,6 +696,14 @@ function wantedDays(gen: string, layout: StreamLayout, top: number, height: numb
   return { gen, key: `${gen}|${days.join(',')}`, days };
 }
 
+/* A post's frame on screen: a phone card's grown up under the status bar (PostCell, data-grown) counts as its 4:5, the
+   picture a move carries */
+function frameRect(el: HTMLElement): Rect {
+  const rect = rectOf(el);
+  const grown = Number(el.dataset.grown) || 0;
+  return grown > 0 ? { ...rect, top: rect.top + grown, height: rect.height - grown } : rect;
+}
+
 /* Where every cell (and each of its layers) is on screen now, live moves and a pinch included */
 function snapshot(layer: HTMLElement): Map<string, Shot> {
   const shots = new Map<string, Shot>();
@@ -693,7 +712,8 @@ function snapshot(layer: HTMLElement): Map<string, Shot> {
     const shot: Shot = { cell: rectOf(el) };
     el.querySelectorAll<HTMLElement>(':scope > [data-layer], :scope > [data-layer="frame"] > [data-layer]').forEach((part) => {
       const name = part.dataset.layer ?? '';
-      if (name === 'frame' || name === 'bg' || name === 'chips' || name === 'chrome' || name === 'reading') shot[name] = rectOf(part);
+      if (name === 'frame') shot.frame = frameRect(part);
+      else if (name === 'bg' || name === 'chips' || name === 'chrome' || name === 'reading') shot[name] = rectOf(part);
     });
     // a phone card going under the next one in the Day view (its boxes above are measured as it stands): how dimmed. One
     // wholly under it, unseen, is where the scroll alone would have it: over the top of the screen
@@ -988,15 +1008,27 @@ function FeedStream({
   }, []);
 
   /* The snap comes on only under a finger: held (inline none) whenever the page turns it on or scrolls itself, and let
-     back by the next touch that moves the page (takeSnap). iOS Safari keeps the card the page rests on as a place in its
-     list of snap points (the fourth one), set when a swipe or a scroll ends with the snap on, and whenever the page is
-     still it puts the page back on that place in the list as it now stands. A scroll made with the snap held never sets
-     it, and the list changes as cards mount: let back while still, the page is pulled to whatever card is fourth now
-     (WebKit: WKWebView _createVisibleContentRectUpdate, scrollOffsetSnappedToNearestSnapPoint). Let back during a
-     swipe, the swipe's end sets it afresh */
+     back by the next touch (armSnap). iOS Safari keeps the card the page rests on as a place in its list of snap points
+     (the fourth one), set when a swipe or a scroll ends with the snap on, and whenever the page is still it puts the
+     page back on that place in the list as it now stands. A scroll made with the snap held never sets it, and the list
+     changes as cards mount: let back while still, the page is pulled to whatever card is fourth now (WebKit: WKWebView
+     _createVisibleContentRectUpdate, scrollOffsetSnappedToNearestSnapPoint) */
   const holdSnap = useCallback(() => {
     snapHeldRef.current = true;
     holdSnapStyle(true);
+  }, []);
+
+  /* ...let back as a finger lands, before it moves the page: iOS snaps a swipe by the snap it began with, and a quick
+     flick sends no scroll while the finger is down, so a snap let back on the swipe's first scroll left every flick free
+     to coast past card after card. The page is still there, so its place in the list is set first, the one way a page
+     can set it: a scroll made with the snap on (a pixel off and back, in the same task: nothing is drawn between) */
+  const armSnap = useCallback(() => {
+    if (!snapHeldRef.current || !snapOnRef.current || moveRef.current || pinchRef.current || handoverRef.current) return;
+    snapHeldRef.current = false;
+    const y = window.scrollY;
+    holdSnapStyle(false);
+    window.scrollTo(0, y + 1);
+    window.scrollTo(0, y);
   }, []);
 
   /* where the page is in its own terms: its scroll, plus the offset a held move draws it at (handed over at rest when a
@@ -1332,11 +1364,11 @@ function FeedStream({
     if (!touchingRef.current) scrollingRef.current = false;
     if (!current || !visibleRef.current || touchingRef.current || moveRef.current || pinchRef.current) return;
     /* a held scroll a finger kept: handed over now the page is at rest (under a copy). A phone's Day view first comes to
-       rest on a card: that finger's swipe began before the view's snap was back on (it comes on as a move lands, the
-       finger's touch landing it), and iOS snaps a swipe only by the snap it began with, so it coasted to a stop between
-       two cards. It glides onto the nearest, and is handed over once that glide is at rest */
+       rest on a card: a swipe that ran with the snap still held (one begun before a move landed, or one the snap couldn't
+       be let back for: armSnap) is snapped by nothing, and coasts to a stop between two cards. It glides onto the
+       nearest, and a held scroll is handed over once that glide is at rest */
     const carried = handoverRef.current;
-    if (carried) {
+    if (carried || snapHeldRef.current) {
       const size = metricsRef.current;
       const top = pageY() - originRef.current;
       if (current.mode === 'today' && current.mediaWidth == null && size && !dayAtProfile(current, top)) {
@@ -1344,11 +1376,11 @@ function FeedStream({
         if (Math.abs(rest - top) > 2) {
           holdSnap();
           scrollingRef.current = true;
-          window.scrollTo({ top: originRef.current + rest - carried.by, behavior: 'smooth' });
+          window.scrollTo({ top: originRef.current + rest - (carried?.by ?? 0), behavior: 'smooth' });
           return;
         }
       }
-      landCarriedRef.current();
+      if (carried) landCarriedRef.current();
     }
     const scrollY = pageY();
     savedYRef.current = scrollY;
@@ -1508,6 +1540,11 @@ function FeedStream({
      it is: the move's own scroll held it already, and a finger that has taken the page since (a swipe as the move
      lands) keeps it, so the swipe still ends on a card instead of coasting to a stop between two */
   const endMove = useCallback((keepHeld = false) => {
+    /* a phone's zoom into the Day view landing on a card: the page's colours are the cards' at once (underCard takes them
+       on from the next commit), before the hand-over below scrolls the page under the still copy and WebKit shows the
+       bare page for a few frames, under the status bar too, where the card's picture now reaches: dark, not a white
+       flash between the card flying in and its head */
+    if (moveRef.current?.to === 'today' && layoutRef.current?.deck && !atProfileRef.current) cardPage(true);
     const keep = (keepHeld || touchingRef.current) && handoverRef.current !== null;
     // whether this landing hands a held scroll over itself (then where it really landed is read below)
     const handing = handoverRef.current !== null && !keep;
@@ -1596,6 +1633,11 @@ function FeedStream({
      it, and the copy dissolves once WebKit has drawn the page where it now is. A finger or a wheel takes the page back
      at once; another move takes over by itself (zoomTo, commit) */
   const landHeld = useCallback((flight: Flight) => {
+    /* (a card landing: the page's colours the cards' a frame or two ahead of the hand-over, so Safari's haze under the
+       status bar is already dark as the page is handed over: endMove. For 3–4 frames of that hand-over WebKit still
+       leaves the strip over the viewport unpainted, a pale band where the card's picture reaches; nothing in the page
+       colours it, measured: not the layer's ground nor the stream's) */
+    if (moveRef.current?.to === 'today' && layoutRef.current?.deck && !atProfileRef.current) cardPage(true);
     const root = rootRef.current;
     if (!root || !visibleRef.current) {
       endMove();
@@ -1733,7 +1775,7 @@ function FeedStream({
     const focalAt = zid ? indexOfSlot(target, zid) : -1;
     const focalDay = zid ? zid.split(':')[0] : null;
     const focalFrame = zid ? layer.querySelector<HTMLElement>(`:scope > [data-zid="${zid}"] > [data-layer="frame"]`) : null;
-    const anchor = focalFrame ? centreOf(rectOf(focalFrame)) : point;
+    const anchor = focalFrame ? centreOf(frameRect(focalFrame)) : point;
     // a zoom straight back puts the focal where it stood before the last zoom, not where that zoom put its frame
     const anchorY = back ? back.screenY : anchor.y;
     let top: number;
@@ -2813,6 +2855,20 @@ function FeedStream({
       delete html.dataset.feedDeck;
     };
   }, [layout?.deck]);
+  /* ...and while a card is up (past the profile, not mid-move), the page's own colours are the cards' dark: iOS Safari
+     tints the edge of its status bar and its toolbar from them (its theme colour, the page's background), and a light
+     one hazes the top of the card's head, under the clock. Back at the profile or out of the Day view, the page's own
+     again (globals.css, [data-feed-card]) */
+  const underCard = Boolean(layout?.deck) && !atProfile && !move;
+  useIsoLayoutEffect(() => {
+    if (!underCard) {
+      // (taken early by a landing that, after all, doesn't rest on a card: endMove)
+      if (!move && document.documentElement.dataset.feedCard !== undefined) cardPage(false);
+      return undefined;
+    }
+    cardPage(true);
+    return () => cardPage(false);
+  }, [underCard, move]);
   const insets = metrics?.insets ?? null;
   // what the Day view's cards snap to: a phone's rest line (its cards rest at their top, under the status bar:
   // layout.restTop); a
@@ -3071,6 +3127,7 @@ function FeedStream({
     const onTouchStart = (event: TouchEvent) => {
       touchingRef.current = true;
       scrollingRef.current = true;
+      if (event.touches.length === 1) armSnap();
       stopPrewarm();
       // (a zoom still waiting for its posts gives way to the finger)
       cancelZoomWait();
@@ -3128,7 +3185,7 @@ function FeedStream({
       window.removeEventListener('touchcancel', onTouchEnd);
       window.removeEventListener('wheel', takeSnap);
     };
-  }, [cancelZoomWait, lookAhead, pageY, settle, stopPrewarm, syncFrame]);
+  }, [armSnap, cancelZoomWait, lookAhead, pageY, settle, stopPrewarm, syncFrame]);
 
   // a first frame mounts only the screen; the rest of the window a frame later
   useEffect(() => {
@@ -3233,7 +3290,7 @@ function FeedStream({
     const cardId = onCard ? idOf(onCard) : null;
     if (onCard && cardId) {
       const frame = layerRef.current?.querySelector<HTMLElement>(`:scope > [data-zid="${cardId}"] > [data-layer="frame"]`);
-      const middle = frame ? centreOf(rectOf(frame)) : { x: fingers.x, y: fingers.y };
+      const middle = frame ? centreOf(frameRect(frame)) : { x: fingers.x, y: fingers.y };
       focal = { x: middle.x, y: middle.y, zid: cardId, postKey: onCard.postKey ?? null };
     }
     // a spring still running from the last pinch lets go first: the page is this one's, and its box is read unscaled
@@ -3335,6 +3392,8 @@ function FeedStream({
       mediaWidth: drawn.mediaWidth ?? 0,
       wide: drawn.mode === 'today' && drawn.mediaWidth != null,
       clear: drawn.footClear,
+      lift: drawn.lift,
+      rise: drawn.rise,
     });
     for (let at = mountFrom; at < mountTo; at += 1) {
       const item = drawn.items[at];
@@ -3416,6 +3475,7 @@ function FeedStream({
           mediaWidth={spec.shape.mediaWidth}
           wide={spec.shape.wide}
           gone={going}
+          lift={spec.mode === 'today' && drawn?.deck ? drawn.lift : 0}
         />
       );
     }
@@ -3457,6 +3517,9 @@ function FeedStream({
         depth={!going && inDay && Boolean(drawn?.deck) && !move}
         order={spec.index}
         clear={inDay && drawn?.deck ? drawn.footClear : 0}
+        head={inDay && drawn?.deck ? drawn.head : 0}
+        lift={inDay && drawn?.deck ? drawn.lift : 0}
+        rise={inDay && drawn?.deck ? drawn.rise : 0}
         onOpenTile={actions.openTile}
         onFocusCard={actions.focusCard}
       />
