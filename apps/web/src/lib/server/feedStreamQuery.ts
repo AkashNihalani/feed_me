@@ -26,7 +26,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient as createServerSupabaseClient } from '@/lib/supabase/server';
 import { instagramLinkLive } from '@/lib/server/instagramLink';
-import { postMoment } from '@/lib/postMoment';
+import { postMoment, wentUpMs } from '@/lib/postMoment';
 import {
   CAPTION_MAX,
   STREAM_WINDOW_DAYS,
@@ -762,9 +762,16 @@ async function liveSlides(sb: AdminClient, keys: string[], nowMs: number): Promi
   return slides;
 }
 
-// the caption's opening, on one line's worth of whitespace
+// the caption's opening, on one line's worth of whitespace: without the scraper's backslash at each line's end ("…\"
+// then a new line, which read as "\ \") or the lines Instagram captions use as spacers ("." "-" "•")
 function captionOf(value: string | null | undefined): string | null {
-  const text = (value || '').replace(/\s+/g, ' ').trim();
+  const text = (value || '')
+    .replace(/\\(?=\r?\n)/g, '')
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*[.\-_•·*~]+\s*$/.test(line))
+    .join('\n')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!text) return null;
   return text.length > CAPTION_MAX ? `${text.slice(0, CAPTION_MAX - 1).trimEnd()}…` : text;
 }
@@ -1067,8 +1074,13 @@ function buildProfile(
   const typical = median(measuredTops(measured.filter((post) => post.day >= recentFrom)));
   const typicalPrev = median(measuredTops(measured.filter((post) => post.day >= previousFrom && post.day < recentFrom)));
 
+  // the last post's moment: its shortcode's where that fits its stored date (wentUpMs; the stored time is only its date)
+  const nowMs = Date.now();
   let lastPostMs = 0;
-  for (const post of posts) if (post.postedAtMs > lastPostMs) lastPostMs = post.postedAtMs;
+  for (const post of posts) {
+    const moment = Math.min(nowMs, wentUpMs(post.row.posted_at, post.row.post_url, nowMs) ?? post.postedAtMs);
+    if (moment > lastPostMs) lastPostMs = moment;
+  }
 
   // 13 Mon–Sun weeks, oldest first, ending with this one
   const thisWeek = groupKeyOf(today, 'week');

@@ -35,6 +35,23 @@ export function postMoment(postedAt: string | null | undefined, postUrl: string 
   return shortcodeMoment(shortcodeOf(postUrl)) ?? (Number.isFinite(stored) ? stored : null);
 }
 
+/* When a post went up, for whatever says its time or its age: the shortcode's moment where it falls inside the stored
+   date (a US Pacific date at 00:00 UTC, so up to a day and a bit past it) and not in the future; otherwise the stored
+   time. Before the date, a scheduled post's shortcode was minted when it was scheduled; well past it, or ahead of now,
+   the code isn't a post's (seen Nov 28: three codes a week past their date, 9h ahead). A countdown to a read keeps the
+   stored posted_at: the worker plans the checkpoints from it */
+const WENT_UP_SPAN_MS = 2 * 86_400_000;
+export function wentUpMs(postedAt: string | null | undefined, postUrl: string | null | undefined, now: number = Date.now()): number | null {
+  const stored = Date.parse(postedAt || '');
+  if (!Number.isFinite(stored)) return null;
+  const moment = postMoment(postedAt, postUrl);
+  return moment != null && moment >= stored && moment <= stored + WENT_UP_SPAN_MS && moment <= now ? moment : stored;
+}
+export function wentUpAt(postedAt: string, postUrl: string | null | undefined): string {
+  const at = wentUpMs(postedAt, postUrl);
+  return at == null ? postedAt : new Date(at).toISOString();
+}
+
 /* the IST calendar: day key and weekday (0 = Monday) */
 export function istDayKey(ms: number) {
   return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);

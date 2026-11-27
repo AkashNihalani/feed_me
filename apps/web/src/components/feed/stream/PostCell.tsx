@@ -74,6 +74,7 @@ import { CARRY_EASE_CSS, reducedMotion } from '@/lib/feedStream/motion';
 import { ms } from '@/lib/tempo';
 import { holdsFlights } from '@/lib/webkitMotion';
 import { playHaptic } from '@/lib/haptics';
+import { wentUpAt } from '@/lib/postMoment';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
@@ -387,8 +388,10 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
   const measured = post.topPercent != null && Number.isFinite(post.topPercent);
   // when it went up: today, yesterday, or its date
   const day = date ? (date.kicker === 'Today' || date.kicker === 'Yesterday' ? date.kicker : date.title) : null;
-  // posted in the last 24 hours: its age is marked red (something new)
-  const fresh = withinDay(post.postedAt);
+  // the moment it went up (its shortcode's: the stored time is only its date); posted in the last 24 hours, its age is
+  // marked red (something new)
+  const wentUp = wentUpAt(post.postedAt, post.url);
+  const fresh = withinDay(wentUp);
   // the read it shows, and its numbers there as figures: each a number over what it counts, and what it gained since the
   // read before (a figure stays put whichever read is picked)
   const read = readAt(post, pick);
@@ -402,6 +405,7 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
   // what and when; and, an earlier read picked, what it had then in its place (the open reading has that as its figures)
   const told = [KIND[post.mediaType], day].filter(Boolean).join(' · ');
   const now = useMinute(!measured);
+  // (the countdown keeps the stored posted_at: the worker plans the first read from it)
   const wait = measured ? null : waitOf(post.postedAt, now);
   const then = read.latest ? null : [read.day, readLine(read)].filter(Boolean).join(' · ');
   const line = (
@@ -410,10 +414,10 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
         <span className="st-told col-start-1 row-start-1 truncate">{told}</span>
         {measured ? <LineSwap id={then ?? ''} className="st-then col-start-1 row-start-1">{then ?? ' '}</LineSwap> : null}
       </span>
-      {fresh ? <span className={cn('shrink-0', FRESH_PILL)}>{relativeTime(post.postedAt)}</span> : null}
+      {fresh ? <span className={cn('shrink-0', FRESH_PILL)}>{relativeTime(wentUp)}</span> : null}
     </span>
   );
-  const when = postedLabel(post.postedAt);
+  const when = postedLabel(wentUp);
   // a tap on these is theirs, not the card's
   const own = (action?: () => void) => (event: ReactMouseEvent) => {
     event.stopPropagation();

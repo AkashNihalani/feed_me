@@ -88,6 +88,9 @@ function CheckpointTrail({ results, latest, size, postedDay = null, at = latest,
               className={cn(
                 box,
                 'text-[var(--st-text-3)] shadow-[inset_0_0_0_1px_var(--st-line)]',
+                // on a Day card the reads still to come sit over the picture: a ground of their own, so the picture's
+                // own words never read inside them ("soon", "in 5d")
+                lg && 'bg-black/55',
                 lg || (md && note) ? 'justify-between' : 'justify-center',
               )}
             >

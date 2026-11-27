@@ -43,6 +43,7 @@ import {
   type StreamPost,
 } from '@/lib/feedStream/contract';
 import { titleCase } from '@/lib/feedLabels';
+import { wentUpAt } from '@/lib/postMoment';
 import { cn } from '@/lib/utils';
 import '@/components/feed/stream/stream.css';
 
@@ -77,14 +78,15 @@ export function postedLabel(iso: string) {
 }
 
 export function postMeta(post: StreamPost, feeder: StreamFeeder | null) {
-  return [feeder?.feedTitle ? titleCase(feeder.feedTitle) : null, KIND[post.mediaType], postedLabel(post.postedAt)]
+  return [feeder?.feedTitle ? titleCase(feeder.feedTitle) : null, KIND[post.mediaType], postedLabel(wentUpAt(post.postedAt, post.url))]
     .filter(Boolean)
     .join(' · ');
 }
 
-// 1.37 → "1.37%", 12.5 → "12.5%"
+// 1.37 → "1.37%", 12.5 → "12.5%"; under a hundredth of a percent (a big account's quiet post) "<0.01%", never "0%"
 export function formatRate(value: number | null) {
   if (value == null || !Number.isFinite(value)) return '—';
+  if (value > 0 && value < 0.005) return '<0.01%';
   return `${value.toFixed(value >= 10 ? 1 : 2).replace(/\.?0+$/, '')}%`;
 }
 
@@ -103,7 +105,7 @@ export function PostWho({ post, feeder, solo = false, size, titleId }: { post: S
   if (solo) {
     return (
       <h2 id={titleId} className={cn('truncate font-semibold leading-tight text-[var(--st-text-2)]', stage ? 'text-[18px]' : 'text-[16px]')}>
-        {[KIND[post.mediaType], postedLabel(post.postedAt)].filter(Boolean).join(' · ')}
+        {[KIND[post.mediaType], postedLabel(wentUpAt(post.postedAt, post.url))].filter(Boolean).join(' · ')}
       </h2>
     );
   }
