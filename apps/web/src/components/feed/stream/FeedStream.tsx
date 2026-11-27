@@ -124,7 +124,7 @@ import { useAppHaptics } from '@/lib/haptics';
 import { acquireRootPageScroll } from '@/lib/rootScrollMode';
 import { pinToScreen, stillFrame, unsnap, whenDrawn, type StillFrame } from '@/lib/feedStream/stillFrame';
 import { markScrollJump, type ScrollJump } from '@/lib/useCompressedOnScroll';
-import { TEMPO, ms } from '@/lib/tempo';
+import { MOVE_PACE, TEMPO, moveMs, ms } from '@/lib/tempo';
 import { afterDrawn } from '@/lib/webkitMotion';
 import { LAUNCH_CLASS, announceFirstScreen, launchHolds } from '@/lib/launch';
 
@@ -171,7 +171,7 @@ const PREWARM_LEFT_MAX = 128;
 const SEED_DAYS = 18;
 const SEED_AHEAD = 3;
 // a move into the Day view: the spotlight (the row's reading) comes on this far into it
-const SPOT_AFTER_MS = ms(200);
+const SPOT_AFTER_MS = moveMs(200);
 // a post replacing its placeholder (its day just loaded) dissolves in this long; more than SWAP_IN_MAX on screen at
 // once come in as they are (a dissolve each is a layer each, in a heavy commit)
 const SWAP_IN_MS = ms(200);
@@ -183,13 +183,13 @@ const SWAP_COVER_Z = '7';
 const FAR = 1.15;
 const PART = 0.4;
 // the longest a carry takes (a post crossing the whole screen)
-const LONG_CARRY_MS = ms(760);
+const LONG_CARRY_MS = moveMs(760);
 // how long a zoom's focal is held where it landed while its days come in (focalHoldRef)
 const FOCAL_HOLD_MS = 1200;
 // out of a phone's Day view, a card's ground (its colour under its picture) is gone this soon
-const GROUND_OUT_MS = ms(140);
+const GROUND_OUT_MS = moveMs(140);
 // a zoom's new headings come in this long after the old ones set off (their quick leave is most of the way out by then)
-const WORDS_AFTER_MS = ms(150);
+const WORDS_AFTER_MS = moveMs(150);
 /* A post carried between a grid and the Day view changes its chrome on the way, on its carry's own clock: a tile's
    (its shadows, its number, its name) goes with the picture it lies on and is gone by CHROME_OUT of the way; what it
    gets comes in from CHROME_IN and is whole as the picture lands. Before, the new chrome was a CSS entrance that set
@@ -888,7 +888,7 @@ function carryLayer(flight: Flight, el: HTMLElement, was: Rect, vw: number, vh: 
 function carryTime(was: Rect, now: Rect): number {
   const a = centreOf(was);
   const b = centreOf(now);
-  return Math.min(LONG_CARRY_MS, CARRY_MS + Math.max(0, Math.hypot(b.x - a.x, b.y - a.y) - 480) * 0.3 * TEMPO);
+  return Math.min(LONG_CARRY_MS, CARRY_MS + Math.max(0, Math.hypot(b.x - a.x, b.y - a.y) - 480) * 0.3 * TEMPO * MOVE_PACE);
 }
 
 // a zoom that takes `from` (a post's tile) onto `to` (its card): where it puts any other rect of the same view

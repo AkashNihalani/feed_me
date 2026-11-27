@@ -11,6 +11,8 @@
 :root {
   /* how long motion takes, as a factor on its designed pace (keep in step with TEMPO in lib/tempo.ts) */
   --fm-tempo: 1.35;
+  /* ...and the Feed's moves between its views, a little quicker than that (keep in step with MOVE_PACE there) */
+  --fm-move-pace: 0.8;
   --background: #f4f7f9;
   --foreground: #000000;
   --border-color: #000000;
@@ -834,7 +836,7 @@ html.fm-mobile-browser-immersive {
    (A theme picked draws itself in its own circle: nothing glides under that) */
 html.fm-mobile-browser-immersive,
 html.fm-mobile-browser-immersive body {
-  transition: background-color calc(360ms * var(--fm-tempo, 1)) cubic-bezier(0.4, 0, 0.6, 1);
+  transition: background-color calc(360ms * var(--fm-tempo, 1) * var(--fm-move-pace, 1)) cubic-bezier(0.4, 0, 0.6, 1);
 }
 
 html[data-theme-reveal],

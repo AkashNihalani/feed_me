@@ -10,7 +10,7 @@ import { useAppHaptics } from '@/lib/haptics';
 import { shade } from '@/components/read/readShade';
 import type { Shot } from './leadModels';
 import { cn } from '@/lib/utils';
-import { CARRY_EASE_CSS, CARRY_MS, carryCurve, reducedMotion, releaseFlight, run, startFlight } from '@/lib/feedStream/motion';
+import { CARRY_EASE_CSS, carryCurve, reducedMotion, releaseFlight, run, startFlight } from '@/lib/feedStream/motion';
 import { ms } from '@/lib/tempo';
 import { FLIGHT_HOLD_MS, afterDrawn, holdsFlights } from '@/lib/webkitMotion';
 import { LEDGER_DEAL_MS } from '@/components/motion/Ledger';
@@ -457,6 +457,8 @@ export function useWide() {
 /* ── rows that trade places ────────────────────────────────────────────── */
 
 // rows set off a beat apart, top first, so a re-ranked ladder settles in order rather than all at once
+// a row's carry, at the app's tempo (the Feed's own carry runs at its quicker move pace)
+const CARRY_MS = ms(500);
 const CARRY_STEP_MS = ms(30);
 
 /* A list whose rows trade places (a new range re-ranks them, a row opening pushes the rest down): after each commit

@@ -561,7 +561,7 @@ html.light .st-bone {
 /* (and back off it as a glide, with the page's own colour under it: globals.css. Out to a grid that is as the move
    lands, the posts by then over most of it: a one-frame change there lit the screen up) */
 .fm-stream {
-  transition: background-color calc(360ms * var(--fm-tempo, 1)) cubic-bezier(0.4, 0, 0.6, 1);
+  transition: background-color calc(360ms * var(--fm-tempo, 1) * var(--fm-move-pace, 1)) cubic-bezier(0.4, 0, 0.6, 1);
 }
 
 /* (a theme picked draws itself in its own circle: nothing glides under that) */

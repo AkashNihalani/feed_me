@@ -36,10 +36,10 @@ import { computeLayout, type StreamInsets } from '@/lib/feedStream/layout';
 import { CARRY_EASE_CSS, carry, endFlight, flightDone, rectOf, reducedMotion, releaseFlight, run, startFlight, type Flight, type Rect } from '@/lib/feedStream/motion';
 import { useDayPosts } from '@/lib/feedStream/store';
 import { markScrollJump, setScrollSource } from '@/lib/useCompressedOnScroll';
-import { ms } from '@/lib/tempo';
+import { moveMs } from '@/lib/tempo';
 
 // one move in or out
-const MOVE_MS = ms(560);
+const MOVE_MS = moveMs(560);
 // a move held at its first frame (released two frames on, once its layers are drawn)
 const HOLD_MS = 800;
 // how many frames a move is held at its first pose before its clock runs (?prime=N to try others)

@@ -18,6 +18,12 @@ export const TEMPO = 1.35;
 export const ms = (value: number) => Math.round(value * TEMPO);
 export const sec = (value: number) => value * TEMPO;
 
+/* The Feed's moves between its views (Day · Week · Month, a post carried between them, what leaves and arrives with
+   it) run a little quicker than TEMPO: on a phone, at the app's tempo, they read as slow ("up the pace a little", Nov
+   28). Only those moves, and the glides that ride them. Keep in step with --fm-move-pace in app/globals.css */
+export const MOVE_PACE = 0.8;
+export const moveMs = (value: number) => Math.round(value * TEMPO * MOVE_PACE);
+
 /* a spring that settles TEMPO times slower with the same feel: the same damping ratio, its period stretched */
 export function slowSpring<T extends { stiffness: number; damping: number; mass: number }>(spring: T): T {
   return { ...spring, mass: spring.mass * TEMPO * TEMPO, damping: spring.damping * TEMPO };

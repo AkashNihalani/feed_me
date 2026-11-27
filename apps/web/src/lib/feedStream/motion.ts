@@ -33,21 +33,21 @@
    together once it is on screen: the whole glide is seen.
    ───────────────────────────────────────────────────────────── */
 
-import { ms } from '@/lib/tempo';
+import { moveMs } from '@/lib/tempo';
 
 export type Rect = { left: number; top: number; width: number; height: number };
 
-// how long a carry takes, and what leaves and arrives (at the app's tempo)
-export const CARRY_MS = ms(500);
-export const LEAVE_MS = ms(320);
-export const ENTER_MS = ms(340);
+// how long a carry takes, and what leaves and arrives (at the Feed's move pace: MOVE_PACE)
+export const CARRY_MS = moveMs(500);
+export const LEAVE_MS = moveMs(320);
+export const ENTER_MS = moveMs(340);
 // a leaving piece stays whole this far into its time (what arrives comes in over it, so the screen never dims), then
 // dissolves
 const LEAVE_HOLD = 0.35;
 // what arrives starts a beat in, a ring at a time out from the centre of the move
-const ENTER_DELAY_MS = ms(30);
+const ENTER_DELAY_MS = moveMs(30);
 const RING_PX = 180;
-const RING_STEP_MS = ms(16);
+const RING_STEP_MS = moveMs(16);
 const RING_MAX = 6;
 // a leaving piece shrinks to this and drifts this far (away from the centre of the move); an arriving one grows from it
 const AWAY_SCALE = 0.94;
@@ -55,7 +55,7 @@ const DRIFT_PX = 28;
 const SAMPLES = 24;
 
 const LEAVE_EASE = 'cubic-bezier(0.3, 0, 0.6, 1)';
-const QUICK_LEAVE_MS = ms(200);
+const QUICK_LEAVE_MS = moveMs(200);
 const QUICK_LEAVE_EASE = 'cubic-bezier(0.4, 0, 1, 1)';
 const ENTER_EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
 
