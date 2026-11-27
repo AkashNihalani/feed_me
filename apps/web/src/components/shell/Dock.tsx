@@ -66,6 +66,7 @@ import { dropPush, holdPush, leavePush, releasePush, scrubPush } from '@/lib/tab
 import { openMe } from '@/lib/meDoor';
 import { leaveTab } from '@/lib/tabSheet';
 import { ms } from '@/lib/tempo';
+import { currentScrollSource, liveScrollJump, onScrollSource } from '@/lib/useCompressedOnScroll';
 import { DockPull, Glide, PRESS, coolRing, pillAt, pillShown, posePill, springBar, type PullDom } from './dockPull';
 import { DockMe } from './MeLine';
 import './dock.css';
@@ -116,6 +117,17 @@ const REST_MS = 70;
 const PICK_HOLD_MS = ms(420);
 // a tab or a choice picked: the layers sink first, then the page moves (the page's work never holds them up)
 const APPLY_MS = ms(280);
+/* A choice picked (a time frame): the frost stays whole while the layers sink and the page makes ready, and lifts as the
+   page sets off (FeedStream says so: PAGE_MOVES_EVENT), over the move's first part. Safari takes the look of its bars from
+   what is under them: let go before the move, the old view came back under them for a moment, and they turned to it and
+   then to the new one, two re-tints in a second. Held, they go from the frost to the new view once. A page that never
+   says (no move, a tab with no such event) lets it go after FROST_WAIT_MS */
+const PAGE_MOVES_EVENT = 'fm:page-moves';
+// ...and as the page jumps under a still copy before it moves (Feed out of a Day card), with how far: the frost, which
+// lies in the page, goes with the screen
+const PAGE_JUMP_EVENT = 'fm:page-jump';
+const FROST_LIFT_MS = ms(420);
+const FROST_WAIT_MS = 1600;
 // circles dealt out of a feed: the rail's fan clock, a beat between one and the next
 const DEAL_STEP_MS = ms(40);
 
@@ -161,6 +173,22 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const frostRef = useRef<HTMLDivElement | null>(null);
+  // the frost kept whole through a choice's move (the layers' --p no longer draws it): how it is let go
+  const frostHold = useRef<{ lift: Animation | null; stop: () => void } | null>(null);
+  /* Raised over a phone's Day card, the layers and their frost are the cards' dark in either theme (dock.css
+     [data-on-card]): the card is dark in both, and the light theme's frost washed it out, Safari's toolbar turning
+     light over it and back as a pick lifted it. Decided as they start to rise, kept till the frost is gone (a pick's
+     move takes the page off the card meanwhile) */
+  const cardLayers = useRef(false);
+  const markCard = useCallback((on: boolean) => {
+    if (cardLayers.current === on) return;
+    cardLayers.current = on;
+    [rootRef.current, frostRef.current].forEach((el) => {
+      if (!el) return;
+      if (on) el.dataset.onCard = '';
+      else delete el.dataset.onCard;
+    });
+  }, []);
   const barRef = useRef<HTMLButtonElement | null>(null);
   const faceRef = useRef<HTMLSpanElement | null>(null);
   // the bar's glass, the handle's own (folded), and what the bar carries beside the handle (the line, the tab's disc)
@@ -272,14 +300,82 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     motion.current.p = p;
     rootRef.current?.style.setProperty('--p', p.toFixed(4));
     const frost = frostRef.current;
-    if (frost) {
+    // (held through a choice's move: it lifts on its own clock)
+    if (frost && !frostHold.current) {
       frost.style.opacity = clamp(p * 1.5, 0, 1).toFixed(3);
       // only drawn while there is something to frost for
-      if (p > 0.001) frost.dataset.live = '';
-      else delete frost.dataset.live;
+      if (p > 0.001) {
+        if (frost.dataset.live === undefined) markCard(document.documentElement.dataset.feedCard !== undefined);
+        frost.dataset.live = '';
+      } else {
+        delete frost.dataset.live;
+        markCard(false);
+      }
     }
     drawFaces();
-  }, [drawFaces]);
+  }, [drawFaces, markCard]);
+
+  /* ── the frost held through a choice's move, and lifted as the page sets off (or let go at once) ── */
+  const dropFrostHold = useCallback(() => {
+    const hold = frostHold.current;
+    if (!hold) return;
+    frostHold.current = null;
+    hold.stop();
+    hold.lift?.cancel();
+    const frost = frostRef.current;
+    if (!frost) return;
+    const p = motion.current.p;
+    frost.style.opacity = clamp(p * 1.5, 0, 1).toFixed(3);
+    if (p > 0.001) frost.dataset.live = '';
+    else {
+      delete frost.dataset.live;
+      markCard(false);
+    }
+  }, [markCard]);
+  const holdFrost = useCallback(() => {
+    const frost = frostRef.current;
+    if (!frost || reducedMotion()) return;
+    dropFrostHold();
+    frost.style.opacity = '1';
+    frost.dataset.live = '';
+    let timer = 0;
+    const lift = () => {
+      const hold = frostHold.current;
+      if (!hold || hold.lift) return;
+      window.removeEventListener(PAGE_MOVES_EVENT, lift);
+      window.clearTimeout(timer);
+      // (where the screen is now: a page that moved its scroll as it set off)
+      if (frost.parentElement) frost.style.top = `${-frost.parentElement.getBoundingClientRect().top}px`;
+      hold.lift = frost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FROST_LIFT_MS, easing: 'cubic-bezier(0.4, 0, 0.6, 1)', fill: 'forwards' });
+      hold.lift.onfinish = () => {
+        if (frostHold.current !== hold) return;
+        hold.stop();
+        frostHold.current = null;
+        hold.lift?.cancel();
+        frost.style.opacity = '0';
+        if (motion.current.p <= 0.001) {
+          delete frost.dataset.live;
+          markCard(false);
+        }
+      };
+    };
+    const jump = (event: Event) => {
+      const by = (event as CustomEvent<{ by?: number }>).detail?.by ?? 0;
+      frost.style.top = `${(parseFloat(frost.style.top) || 0) + by}px`;
+    };
+    window.addEventListener(PAGE_MOVES_EVENT, lift);
+    window.addEventListener(PAGE_JUMP_EVENT, jump);
+    timer = window.setTimeout(lift, FROST_WAIT_MS);
+    frostHold.current = {
+      lift: null,
+      stop: () => {
+        window.removeEventListener(PAGE_MOVES_EVENT, lift);
+        window.removeEventListener(PAGE_JUMP_EVENT, jump);
+        window.clearTimeout(timer);
+      },
+    };
+  }, [dropFrostHold, markCard]);
+  useEffect(() => dropFrostHold, [dropFrostHold]);
 
   /* the layers rising or sinking on their own. From rest (a tap, a pick, a scroll) on one even curve whose way back is
      the mirror of its way out, so they go up at the pace they come down; let go mid-pull, on from where the finger left
@@ -480,6 +576,8 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
   // the layers made ready to rise: the frost laid where the screen is now, and the row turned to the one you're on,
   // whose circle flies up out of the hero
   const readyLayers = () => {
+    // (a frost still held from the last choice is the layers' own again)
+    dropFrostHold();
     const frost = frostRef.current;
     if (frost?.parentElement) frost.style.top = `${-frost.parentElement.getBoundingClientRect().top}px`;
     const r = row.current;
@@ -611,14 +709,26 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
      listener and an attribute: nothing renders while the page scrolls */
   useEffect(() => {
     if (!mounted) return undefined;
+    // (a layer scrolling in the page's place, Feed's Day on a phone: its scroll is the one followed while it is up)
+    let source = currentScrollSource();
+    const yOf = () => (source ? source.scrollTop : window.scrollY);
     const onScroll = () => {
       const s = scrolled.current;
-      const y = window.scrollY;
+      const y = yOf();
       const dy = y - s.y;
       s.y = y;
       // (the layers up, or a swipe on the dock: they have it)
       if (motion.current.p > 0 || swipe.current.held) return;
-      const foot = document.documentElement.scrollHeight - window.innerHeight;
+      /* (a jump the page makes itself is no direction: Feed's zoom handing its held scroll over as it lands went up a
+         whole screen in one step, and the bar unfolded a beat after the move had landed. It keeps its fold, as the
+         header does; one asking for the whole screen folds it) */
+      const jumping = liveScrollJump();
+      if (jumping) {
+        s.travel = 0;
+        if (jumping === 'fold') fold(true);
+        return;
+      }
+      const foot = source ? source.scrollHeight - source.clientHeight : document.documentElement.scrollHeight - window.innerHeight;
       if (y < 24 || y > foot - 48) {
         s.travel = 0;
         fold(false);
@@ -629,8 +739,22 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
       if (s.travel > FOLD_TRAVEL) fold(true);
       else if (s.travel < -FOLD_TRAVEL) fold(false);
     };
+    // (the source changing: measured afresh from where the new one is, its first scroll no direction)
+    const follow = () => {
+      source?.removeEventListener('scroll', onScroll);
+      source = currentScrollSource();
+      source?.addEventListener('scroll', onScroll, { passive: true });
+      scrolled.current.y = yOf();
+      scrolled.current.travel = 0;
+    };
+    source?.addEventListener('scroll', onScroll, { passive: true });
+    const unfollow = onScrollSource(follow);
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      unfollow();
+      source?.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onScroll);
+    };
   }, [mounted, fold]);
 
   // open, a scroll of the page, Escape, or another tab shuts it
@@ -804,6 +928,8 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
       const value = choice.options[Number(key.slice(7))];
       if (value === choice.value) return;
       playHaptic('pick');
+      // (the frost stays till the page sets off: Safari's bars go from it to the new view, never back to the old)
+      holdFrost();
       closeLayers();
       pulse();
       later(() => choice.onChange(value), APPLY_MS);

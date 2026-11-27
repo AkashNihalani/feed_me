@@ -823,9 +823,31 @@ html.fm-mobile-browser-immersive {
 /* ...except while a phone's Day card is up (FeedStream sets [data-feed-card], with the theme colour to match): then it is
    the cards' dark, so the edge Safari tints at its status bar (and round its toolbar) reads as the card's, not as a white
    haze over it */
-:root[data-feed-deck][data-feed-card],
-:root[data-feed-deck][data-feed-card] body {
+:root[data-feed-card],
+:root[data-feed-card] body {
   background: #141416 !important;
+  background-color: #141416 !important;
+}
+
+/* ...and it turns to it, and back, as a glide, never in one frame: Safari takes the strip over the clock from it, and a
+   snap there between the page's light and the card's dark read as a flash in every move between a grid and the cards.
+   (A theme picked draws itself in its own circle: nothing glides under that) */
+html.fm-mobile-browser-immersive,
+html.fm-mobile-browser-immersive body {
+  transition: background-color calc(360ms * var(--fm-tempo, 1)) cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+html[data-theme-reveal],
+html[data-theme-reveal] body {
+  transition: none !important;
+}
+
+/* a scroll the Feed made itself, handed over as a move lands (FeedStream: shadeBand): what WebKit shows under Safari's
+   bars for the few frames it takes to draw the page where it now is. The cards' dark, never a band of the page's light.
+   (Not the page's own colour: Safari tints its status bar from that, and would turn it for those frames. A phone's
+   browser only: elsewhere the surface shows round the page, and would darken for half a second) */
+html.fm-mobile-browser-immersive[data-handing] [data-route-surface="true"],
+:root[data-handing]:has(.fm-mobile-browser-immersive) [data-route-surface="true"] {
   background-color: #141416 !important;
 }
 

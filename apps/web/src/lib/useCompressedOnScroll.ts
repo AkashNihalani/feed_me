@@ -21,6 +21,29 @@ export function markScrollJump(mode: ScrollJump = 'keep', ms = 180, at: number |
   if (at != null) jumpListeners.forEach((listener) => listener());
 }
 
+// the page's own jump under way (markScrollJump), for what folds with the scroll outside watchScrollFold: what it asks
+export function liveScrollJump(): ScrollJump | null {
+  return jump && performance.now() < jump.until ? jump.mode : null;
+}
+
+/* A layer over the page that scrolls in its place (Feed's Day on a phone: its cards are a scroller of their own over
+   the grid, the page itself never moving): what folds with the page's scroll (the dock) follows that one's instead, while
+   it is up. null: the page's own */
+let scrollSource: HTMLElement | null = null;
+const sourceListeners = new Set<() => void>();
+export function setScrollSource(el: HTMLElement | null) {
+  if (scrollSource === el) return;
+  scrollSource = el;
+  sourceListeners.forEach((listener) => listener());
+}
+export function currentScrollSource(): HTMLElement | null {
+  return scrollSource;
+}
+export function onScrollSource(listener: () => void): () => void {
+  sourceListeners.add(listener);
+  return () => sourceListeners.delete(listener);
+}
+
 type CollapseOptions = {
   // How far you must scroll DOWN (px) before the header collapses.
   collapseDistance?: number;

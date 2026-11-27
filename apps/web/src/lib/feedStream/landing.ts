@@ -124,12 +124,14 @@ export function placeOf(
   // (a post pinched at the start, on the way out: the start still holds, the post only made sure of)
   if (picked) return start && out ? { ...onPost(picked), start: true } : onPost(picked);
   if (start || (pointed && point.y < -top)) return { start: true, zid: null, day: null };
-  if (memory && (memory.zid || memory.day) && unmoved(layout, memory, scrollY, top)) return { start: false, zid: memory.zid, day: memory.day };
-  // (a Day view is about one post at a time, wherever the fingers are)
+  /* (a Day view is about one post at a time, wherever the fingers are: the card in view, before anything the last zoom
+     remembers. A zoom into the Day view on a month remembers a day, no post, and a move out of it about no post had
+     nothing to fly on top: the grid's own order stacked the card the one in view covered over it, for the whole move) */
   if (layout.mode === 'today') {
     const card = layout.items[dayIndexAt(layout, top)];
     return onPost(card ? idOf(card) : null);
   }
+  if (memory && (memory.zid || memory.day) && unmoved(layout, memory, scrollY, top)) return { start: false, zid: memory.zid, day: memory.day };
   if (layout.mode === 'month') {
     const under = pointed ? layout.items[itemIndexAt(layout, top + point.y)] : undefined;
     if (!under || under.kind !== 'tile') {

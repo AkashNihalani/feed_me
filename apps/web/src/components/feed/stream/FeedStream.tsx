@@ -46,12 +46,14 @@ import {
   type Ref,
 } from 'react';
 import { flushSync } from 'react-dom';
+import DayLayer, { note as dayNote, type DayLayerHandle, type DayStart } from '@/components/feed/stream/DayLayer';
 import DayStamp from '@/components/feed/stream/DayStamp';
 import MoreTile from '@/components/feed/stream/MoreTile';
 import PostCell, { PlaceholderCell, type CellShape } from '@/components/feed/stream/PostCell';
 import ProfileHeader from '@/components/feed/stream/ProfileHeader';
 import SectionHeader from '@/components/feed/stream/SectionHeader';
 import { notePageScroll } from '@/components/feed/stream/press';
+import { cardPage, frameRect, rankFlight, rankIn } from '@/components/feed/stream/flightParts';
 import { profileHeaderHeight } from '@/components/feed/stream/profileHeaderSize';
 import {
   groupLabel,
@@ -125,7 +127,6 @@ import { markScrollJump, type ScrollJump } from '@/lib/useCompressedOnScroll';
 import { TEMPO, ms } from '@/lib/tempo';
 import { afterDrawn } from '@/lib/webkitMotion';
 import { LAUNCH_CLASS, announceFirstScreen, launchHolds } from '@/lib/launch';
-import { THEME_COLORS } from '@/lib/themeBootstrap';
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -187,6 +188,24 @@ const LONG_CARRY_MS = ms(760);
 const FOCAL_HOLD_MS = 1200;
 // out of a phone's Day view, a card's ground (its colour under its picture) is gone this soon
 const GROUND_OUT_MS = ms(140);
+// a zoom's new headings come in this long after the old ones set off (their quick leave is most of the way out by then)
+const WORDS_AFTER_MS = ms(150);
+/* A post carried between a grid and the Day view changes its chrome on the way, on its carry's own clock: a tile's
+   (its shadows, its number, its name) goes with the picture it lies on and is gone by CHROME_OUT of the way; what it
+   gets comes in from CHROME_IN and is whole as the picture lands. Before, the new chrome was a CSS entrance that set
+   off a third of a second in and ran on a quarter of a second past the landing: every tile's shadow and number came
+   in after its picture, one after another, and the scroll's hand-over (its light band under Safari's bars) waited on
+   it */
+const CHROME_OUT = 0.3;
+const CHROME_IN = 0.45;
+// (a card's words one after another, this much of the way apart, from a little below where they stand)
+const CHROME_STEP = 0.06;
+const CHROME_RISE_PX = 10;
+const CHROME_EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
+// out of a card, the ground under the grid goes to the page's own from this far into the move (watchCardEdge's dark)
+const GROUND_LIGHT_AT = 0.45;
+// said on window as a move's pieces set off (the dock's frost waits for it: shell/Dock)
+const PAGE_MOVES_EVENT = 'fm:page-moves';
 // a live pinch past the last zoom only gives this much (a rubber band)
 const PINCH_EDGE = 0.35;
 // a live pinch this far from 1 has shown which way it is going
@@ -203,14 +222,55 @@ const PINCH_SPAN_MS = 1000;
 const PINCH_BAND = 0.05;
 const NO_DAYS: string[] = [];
 // the page's own colour while a phone's Day card is up (globals.css, [data-feed-card]): the cards' dark
-const CARD_PAGE = '#141416';
-function cardPage(on: boolean) {
-  const html = document.documentElement;
-  const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
-  if (on) html.dataset.feedCard = '';
-  else delete html.dataset.feedCard;
-  const color = on ? CARD_PAGE : THEME_COLORS[html.classList.contains('dark') ? 'dark' : 'light'];
-  metas.forEach((meta) => meta.setAttribute('content', color));
+/* A move between a phone's Day cards and a grid: the colours under the clock follow the card the move carries (the
+   stream's own ground, [data-card-edge]/[data-card-dim] in stream.css, and the page's colours Safari tints its bars
+   from). Mid-move a card is its 4:5 (the picture drawn on up under the clock, its head, comes back once it rests), so
+   the strip over it was the stream's light ground: a white band over the dark card from a zoom's first frame out of
+   the Day view (the card held still meanwhile: WebKit's start) and through the last ~13 frames of one into it, then a
+   snap to dark as it landed. Where the card is drawn is read each frame, until it crosses; the move hands the colours
+   back as it lands */
+const EDGE_SLACK_PX = 8;
+function watchCardEdge(flight: Flight, root: HTMLElement, frame: HTMLElement, rest: Rect, toCard: boolean, vw: number) {
+  const covers = () => {
+    const box = frame.getBoundingClientRect();
+    return box.top <= rest.top + EDGE_SLACK_PX && box.left <= EDGE_SLACK_PX && box.right >= vw - EDGE_SLACK_PX;
+  };
+  let raf = 0;
+  // (once the card covers the screen's top, or once it no longer does)
+  const when = (covering: boolean, then: () => void) => {
+    const look = () => {
+      raf = 0;
+      if (flight.ended) return;
+      if (covers() === covering) {
+        then();
+        return;
+      }
+      raf = requestAnimationFrame(look);
+    };
+    look();
+  };
+  flight.cleanups.push(() => {
+    if (raf) cancelAnimationFrame(raf);
+  });
+  /* Safari tints the strip under its clock from the page's colours (cardPage, a glide: globals.css), over whatever is
+     under it. Coming to a card they go to the cards' dark as it sets off, with the ground the other posts leave into
+     (stream.css, [data-card-dim]), so the tint darkens as the card grows. Turned only once the card covered the top, it
+     lay over the card's head as a light grey bar for the last third of the move, then went dark */
+  if (toCard) {
+    cardPage(true);
+    root.toggleAttribute('data-card-dim', true);
+    when(true, () => root.toggleAttribute('data-card-edge', true));
+    return;
+  }
+  /* Going to a grid, the cards' dark stays the ground the whole way, under the grid coming in, and goes to the page's
+     own only as the move lands, as a glide (stream.css), by then behind a screen of posts. Handed back the moment the
+     card's top left the screen's, it put the page's light all round the card as it set off: in the light theme a white
+     screen for a third of a second, the posts above and below coming in over it. Safari's tint does go then, gliding to
+     the page's own while the posts come in under it, so it is the page's as the move lands: turned after, it went light
+     over the landed grid, and the band the scroll's hand-over leaves (shadeBand) showed dark under it */
+  cardPage(true);
+  root.toggleAttribute('data-card-edge', true);
+  when(false, () => cardPage(false));
 }
 // a phone's Day card snaps by its head: this much of it
 const MARK_HEAD = 120;
@@ -229,8 +289,30 @@ const HOLD_FROM_PX = 240;
    identical page under it: nothing seen), quicker under a finger */
 const STILL_SETTLE_MS = 600;
 const STILL_HOLD_MS = 450;
+/* Meanwhile WebKit shows, where it hasn't drawn yet, the colour of the surface the page lies on (the app's page,
+   AppShell's [data-route-surface]: the page's own light). The still copy hides that everywhere but the strips under
+   Safari's status bar and toolbar, where nothing fixed is drawn: a band of the light page there for 3–6 frames after
+   every held move had landed (measured: 242 under a Day card, 243 over a week's tiles). Handed over, the surface is
+   the cards' dark until the page is drawn again (globals.css, [data-handing]) */
+let bandAsk = 0;
+function shadeBand(page: HTMLElement | null) {
+  const html = document.documentElement;
+  // (the band lies under Safari's tint, which is the page's colours: the cards' dark under a card, else the page's own,
+  // which is the surface's already)
+  if (html.dataset.feedCard === undefined) return;
+  const ask = (bandAsk += 1);
+  html.dataset.handing = '';
+  const clear = () => {
+    if (ask === bandAsk) delete html.dataset.handing;
+  };
+  if (!page) {
+    window.setTimeout(clear, STILL_SETTLE_MS);
+    return;
+  }
+  void whenDrawn(page, STILL_SETTLE_MS).then(() => requestAnimationFrame(() => requestAnimationFrame(clear)));
+}
 /* The copy shows everything at its end (stillFrame: no animation plays in it), so what is still on its way when the
-   pieces are home (the chrome the move brought coming in, a picture developing) would all snap there at once as it
+   pieces are home (a picture developing, a reading coming in) would all snap there at once as it
    goes up: it is let finish first, the page held still meanwhile, at most this long */
 const LAND_SETTLE_MS = ms(450);
 // an even dissolve: pictures that finished loading under the copy come up gently, not in one frame (left at its own
@@ -248,6 +330,11 @@ const STILL_FADE_DRIFT = 56;
 const STILL_FADE_EASE = 'cubic-bezier(0.3, 0, 0.5, 1)';
 // under the header (z 100) and the nav (z 180)
 const STILL_Z = 90;
+/* ...and short of the screen's foot by this much (stillFrame's foot): one running on past it is taken by Safari 26 for a
+   bar of the page's, and its toolbar filled solid in its colour as a move landed (measured: a light band over the
+   screen's foot for 3 frames landing on Month, 8 landing on a Day card). Short of it, the toolbar stays clear glass over
+   the page under it (as a tab's copies do: tabPush BAR_CLEAR) */
+const STILL_FOOT = 12;
 /* A new order (Newest posts · Latest results) slides in sideways, as a tab's pages do: the list you were on (a still
    copy of it) goes out one side as the new one comes in from the other, edge to edge, on the carry curve, the way the
    tab you tapped lies. The profile and its tabs stay themselves. (Someone else's posts never slide: the cards come and
@@ -258,6 +345,14 @@ const TAP_SLOP_PX = 10;
 /* WebKit: a move's pieces wait at their start (at most this long) until the frame that draws the new view is on screen,
    then all set off together (motion.ts, releaseFlight): their clock would otherwise start before that frame is shown */
 const FLIGHT_HOLD_MS = 800;
+/* Out of a phone's Day card a move holds the scroll no longer: the page goes where the grid opens first, under a still
+   copy of the card (it covers the screen, so the few frames WebKit leaves the strips under Safari's bars bare are the
+   cards' dark, unseen), and the move sets off once the page is drawn there, the copy gone in that frame. Handed over as
+   it landed, the bare strips came over the week's posts: a band of the page's light under the toolbar. The move waits
+   at most this long for it */
+const COVER_HOLD_MS = 2000;
+// said on window as the page jumps under that copy, with how far (the dock moves its frost with it: shell/Dock)
+const PAGE_JUMP_EVENT = 'fm:page-jump';
 /* A move's own scroll is told to the header as a jump (it never folds or unfolds the header by which way it went), with
    where it lands, until the frame that carries it is on screen (then the usual moment more), at most this long: a slow
    first frame would otherwise have the header read it as the reader's */
@@ -350,6 +445,13 @@ function columnLeft(el: HTMLElement) {
   return Math.round(left);
 }
 const wideOf = (size: Metrics) => viewOf(size) >= READING_FROM;
+/* A phone's Day view is a layer over the grid (DayLayer), never the page turned into its cards: on a phone the page's
+   own zoom is always a grid's, and Day lies over it. (?day=page: the page's own cards, to compare) */
+const dayLayerOn = (size: Metrics | null): boolean =>
+  Boolean(size && size.width < THEATRE_FROM && !wideOf(size)) && !(typeof window !== 'undefined' && window.location.search.includes('day=page'));
+// a tile Day closes onto where it stands: any of it showing more than this far under the screen's top and over its foot
+const DAY_TILE_TOP = 90;
+const DAY_TILE_FOOT = 90;
 // what is mounted: a band of layer y, for one scope and one zoom (narrow: the screen only, for a first frame)
 type Win = { gen: string; mode: FeedMode; y0: number; y1: number; narrow: boolean };
 type DayWin = { gen: string; key: string; days: string[] };
@@ -383,7 +485,7 @@ type Spec =
 
 // where a cell and its layers were on screen
 // (a phone card going under the next one in the Day view: how dimmed it was as the move began)
-type Shot = Partial<Record<'cell' | 'frame' | 'bg' | 'chips' | 'chrome' | 'reading', Rect>> & { dim?: number };
+type Shot = Partial<Record<'cell' | 'frame' | 'bg' | 'chips' | 'chrome' | 'reading', Rect>> & { dim?: number; grown?: number; below?: number };
 
 // a move between views in progress: what the screen was, and where the page goes
 type Move = {
@@ -409,10 +511,13 @@ type Move = {
   // post (another element) under the move. What loads meanwhile comes in once it has landed
   posts: ReadonlyMap<string, StreamPost[]>;
   index: StreamIndex;
+  // out of a phone's Day card: the still copy of the card the page goes where it lands under, before anything moves
+  cover: { remove: () => void } | null;
 };
 
-// place: what it is about, when that is known (a month's "+N"; a zoom that waited for its posts or pictures)
-type ZoomOptions = { focal?: { zid?: string | null; postKey?: string | null }; point?: { x: number; y: number }; remember?: boolean; waited?: boolean; place?: ZoomPlace };
+// place: what it is about, when that is known (a month's "+N"; a zoom that waited for its posts or pictures); covered:
+// the card's still copy already up (jumpUnderCard)
+type ZoomOptions = { focal?: { zid?: string | null; postKey?: string | null }; point?: { x: number; y: number }; remember?: boolean; waited?: boolean; place?: ZoomPlace; covered?: { remove: () => void } };
 
 type PieceActions = {
   openTile: (post: StreamPost, element: HTMLElement) => void;
@@ -570,18 +675,17 @@ function screenLoaded(layout: StreamLayout, top: number, height: number): boolea
   return true;
 }
 
-/* A held move's pieces home: what in the page is still on its way (`known`, the chrome it brought, and whatever else
-   is running there: a picture developing, a reading coming in), let finish before the still copy is taken (LAND_SETTLE_MS
-   at most; never what loops for good). Resolves at once under a finger or a wheel, and when the flight ends (another
-   move, the tab hidden) */
-function whenSettled(flight: Flight, root: HTMLElement, known: readonly Animation[]): Promise<void> {
+/* A held move's pieces home: whatever in the page is still running (a picture developing, a reading coming in), let
+   finish before the still copy is taken (LAND_SETTLE_MS at most; never what loops for good). Resolves at once under a
+   finger or a wheel, and when the flight ends (another move, the tab hidden) */
+function whenSettled(flight: Flight, root: HTMLElement): Promise<void> {
   const running = (animation: Animation) => {
     if (animation.playState !== 'running') return false;
     const end = animation.effect?.getComputedTiming().endTime;
     const now = animation.currentTime;
     return typeof end === 'number' && Number.isFinite(end) && typeof now === 'number' && end > now;
   };
-  const settling = new Set(known.filter(running));
+  const settling = new Set<Animation>();
   document.getAnimations().forEach((animation) => {
     const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
     if (target && root.contains(target) && running(animation)) settling.add(animation);
@@ -700,41 +804,51 @@ function wantedDays(gen: string, layout: StreamLayout, top: number, height: numb
   return { gen, key: `${gen}|${days.join(',')}`, days };
 }
 
-/* A post's frame on screen: a phone card's grown up under the status bar (PostCell, data-grown) counts as its 4:5, the
-   picture a move carries */
-function frameRect(el: HTMLElement): Rect {
-  const rect = rectOf(el);
-  const grown = Number(el.dataset.grown) || 0;
-  return grown > 0 ? { ...rect, top: rect.top + grown, height: rect.height - grown } : rect;
-}
-
 /* Where every cell (and each of its layers) is on screen now, live moves and a pinch included */
 function snapshot(layer: HTMLElement): Map<string, Shot> {
   const shots = new Map<string, Shot>();
+  // the Day view's stack: each card's place in it (--st-z), the yield the scroll gives it, and its shot
+  const stack: Array<{ z: number; by: number; opacity: number; cell: Rect; shot: Shot }> = [];
   layer.querySelectorAll<HTMLElement>(':scope > [data-cell]').forEach((el) => {
     if (el.dataset.gone !== undefined) return;
-    const shot: Shot = { cell: rectOf(el) };
+    const cell = rectOf(el);
+    const shot: Shot = { cell };
     el.querySelectorAll<HTMLElement>(':scope > [data-layer], :scope > [data-layer="frame"] > [data-layer]').forEach((part) => {
       const name = part.dataset.layer ?? '';
-      if (name === 'frame') shot.frame = frameRect(part);
+      if (name === 'frame') {
+        shot.frame = frameRect(part);
+        shot.grown = Number(part.dataset.grown) || 0;
+        shot.below = Number(part.dataset.below) || 0;
+      }
       else if (name === 'bg' || name === 'chips' || name === 'chrome' || name === 'reading') shot[name] = rectOf(part);
     });
-    // a phone card going under the next one in the Day view (its boxes above are measured as it stands): how dimmed. One
-    // wholly under it, unseen, is where the scroll alone would have it: over the top of the screen
+    // a phone card going under the next one in the Day view (its boxes above are measured as it stands): how dimmed
     if (el.dataset.depth !== undefined) {
       const style = getComputedStyle(el);
       const dim = el.querySelector<HTMLElement>(':scope > [data-depth-dim]');
       shot.dim = dim ? Number(getComputedStyle(dim).opacity) || 0 : 0;
       const by = style.transform === 'none' ? 0 : new DOMMatrixReadOnly(style.transform).m42;
-      if (by && Number(style.opacity) < 0.05) {
-        (['cell', 'frame', 'bg', 'chrome'] as const).forEach((name) => {
-          const rect = shot[name];
-          if (rect) shot[name] = { ...rect, top: rect.top - by };
-        });
-        shot.dim = 0;
-      }
+      stack.push({ z: Number(el.style.getPropertyValue('--st-z')) || 0, by, opacity: Number(style.opacity), cell, shot });
     }
     shots.set(el.dataset.cell ?? '', shot);
+  });
+  /* One wholly unseen (faded, or under the cards over it in the stack: none of it on screen above the next one's top) is
+     where the scroll alone would have it: over the top of the screen. Measured where it stood, it was carried, chrome and
+     all, from under the card in view: once the move turns the stack off, the card that card covered showed over the grid
+     coming in, or flew up out from behind it */
+  const vh = typeof window === 'undefined' ? 0 : window.innerHeight;
+  stack.forEach((card) => {
+    const { shot, by, cell } = card;
+    if (!by) return;
+    // (the cards over it reach up as far as their pictures do: drawn up under the status bar, over the cell's top)
+    const over = stack.reduce((top, other) => (other.z > card.z ? Math.min(top, other.cell.top, other.shot.frame?.top ?? Infinity) : top), Infinity);
+    const seen = Math.min(cell.top + cell.height, over, vh) - Math.max(cell.top, 0);
+    if (card.opacity >= 0.05 && seen > 1) return;
+    (['cell', 'frame', 'bg', 'chrome'] as const).forEach((name) => {
+      const rect = shot[name];
+      if (rect) shot[name] = { ...rect, top: rect.top - by };
+    });
+    shot.dim = 0;
   });
   return shots;
 }
@@ -760,15 +874,68 @@ function carryLayer(flight: Flight, el: HTMLElement, was: Rect, vw: number, vh: 
   const a = centreOf(was);
   const b = centreOf(now);
   const distance = Math.hypot(b.x - a.x, b.y - a.y);
-  // on screen at both ends, it makes the whole trip however far (part of the way would end in a pop); a long trip
-  // takes a little longer, so nothing ever streaks across the screen
+  // on screen at both ends, it makes the whole trip however far (part of the way would end in a pop)
   if (distance <= FAR * vh || (before && after)) {
-    carry(flight, el, now, was, now, { picture, duration: Math.min(LONG_CARRY_MS, CARRY_MS + Math.max(0, distance - 480) * 0.3 * TEMPO) });
+    carry(flight, el, now, was, now, { picture, duration: carryTime(was, now) });
     return;
   }
   const fraction = (PART * vh) / distance;
   if (before) carry(flight, el, now, was, partway(was, now, fraction), { picture, fade: 'out' });
   else carry(flight, el, now, partway(now, was, fraction), now, { picture, fade: 'in' });
+}
+
+// how long a layer's whole trip takes: a long one a little longer, so nothing ever streaks across the screen
+function carryTime(was: Rect, now: Rect): number {
+  const a = centreOf(was);
+  const b = centreOf(now);
+  return Math.min(LONG_CARRY_MS, CARRY_MS + Math.max(0, Math.hypot(b.x - a.x, b.y - a.y) - 480) * 0.3 * TEMPO);
+}
+
+// a zoom that takes `from` (a post's tile) onto `to` (its card): where it puts any other rect of the same view
+function zoomMap(from: Rect, to: Rect): (rect: Rect) => Rect {
+  const k = to.width / Math.max(from.width, 0.01);
+  return (rect) => ({ left: to.left + (rect.left - from.left) * k, top: to.top + (rect.top - from.top) * k, width: rect.width * k, height: rect.height * k });
+}
+
+// ...and how long carryLayer takes it (part of the way, from or to far off screen, a plain carry's time; 0: not at all)
+function tripOf(was: Rect, now: Rect, vw: number, vh: number): number {
+  const before = onScreen(was, vw, vh);
+  const after = onScreen(now, vw, vh);
+  if (!before && !after) return 0;
+  const a = centreOf(was);
+  const b = centreOf(now);
+  return Math.hypot(b.x - a.x, b.y - a.y) <= FAR * vh || (before && after) ? carryTime(was, now) : CARRY_MS;
+}
+
+/* The chrome a post gets as a move carries it between a grid and the Day view, in on its carry's clock (`duration`):
+   a tile's (in its frame, so it rides the picture's box) as one, a card's or a row's words one after another, each from
+   a little below; all of it whole as the picture lands */
+function bringChrome(flight: Flight, el: HTMLElement, duration: number) {
+  const chips = el.querySelector<HTMLElement>(':scope > [data-layer="frame"] > [data-layer="chips"]');
+  if (chips) run(flight, chips, [{ opacity: 0 }, { opacity: 0, offset: CHROME_IN, easing: CHROME_EASE }, { opacity: 1 }], { duration, fill: 'backwards' });
+  const words = el.querySelectorAll<HTMLElement>(':scope > :is([data-layer="chrome"], [data-layer="reading"]) :is([data-st], [data-st-fade])');
+  const low = `translate3d(0px, ${CHROME_RISE_PX}px, 0px)`;
+  words.forEach((word) => {
+    if (word.dataset.stFade !== undefined) {
+      run(flight, word, [{ opacity: 0 }, { opacity: 0, offset: CHROME_IN, easing: CHROME_EASE }, { opacity: 1 }], { duration, fill: 'backwards' });
+      return;
+    }
+    const from = Math.min(0.8, CHROME_IN + (Number(word.style.getPropertyValue('--i')) || 0) * CHROME_STEP);
+    run(flight, word, [
+      { offset: 0, opacity: 0, transform: low },
+      { offset: from, opacity: 0, transform: low, easing: CHROME_EASE },
+      { offset: 1, opacity: 1, transform: 'translate3d(0px, 0px, 0px)' },
+    ], { duration, fill: 'backwards' });
+  });
+}
+
+/* A tile's own chrome (its `-out` copy) as its post grows into a card: carried with the picture's box (from where it
+   stood, `was`, to the frame's place in the card, `to`), gone by CHROME_OUT of the way. Held where it stood, the number
+   and the shadow were left behind as the picture flew off from under them */
+function rideOut(flight: Flight, el: HTMLElement, at: Rect, was: Rect, to: Rect, duration: number) {
+  if (at.width <= 0 || at.height <= 0) return;
+  carry(flight, el, at, was, to, { duration });
+  run(flight, el, [{ opacity: 1 }, { opacity: 0, offset: CHROME_OUT }, { opacity: 0 }], { duration, easing: 'linear', fill: 'both' });
 }
 
 /* A layer of the view being left, held where it stood and let go (from as faded as it stood: a card sitting back) */
@@ -867,17 +1034,6 @@ function FeedStream({
   const inputsRef = useRef<{ index: StreamIndex | null; posts: ReadonlyMap<string, StreamPost[]>; scope: StreamScope }>({ index: null, posts: new Map(), scope });
   const compressedRef = useRef(headerCompressed);
   const specsRef = useRef<Spec[]>([]);
-  // the cells whose chrome a Day⇄grid move brought in is still coming in after that move has landed (they keep
-  // [data-arriving] so the CSS entrance plays out instead of snapping; read only while no move is under way). Set
-  // with the landing (one render), let go once that entrance is done, with the next render that comes anyway (a
-  // finished entrance's attribute does nothing): its mirror, and the set whose entrance is done. Worn only in the view
-  // (scope and zoom) it landed in: a pick or a zoom with no move of its own never replays it on its own cells
-  const [arrivingAfter, setArrivingAfter] = useState<{ view: string; keys: ReadonlySet<string> } | null>(null);
-  const arrivingAfterRef = useRef<{ view: string; keys: ReadonlySet<string> } | null>(null);
-  const arrivingDoneRef = useRef<ReadonlySet<string> | null>(null);
-  // handed to the landing (endMove), so it lands in the same render as the move's end (a held WebKit landing ends
-  // later, under its still copy)
-  const arrivingNextRef = useRef<ReadonlySet<string> | null>(null);
   // what the last commit mounted (and the window it was drawn with, when it was the window asked for)
   const renderedRef = useRef<{ layout: StreamLayout; gen: string; from: number; to: number; win: Win | null } | null>(null);
   const dayWinRef = useRef<DayWin | null>(null);
@@ -941,6 +1097,13 @@ function FeedStream({
   // placeholders' copies still dissolving off the posts that took their place
   const placeholdersRef = useRef<{ view: string; slots: Set<string> }>({ view: '', slots: new Set() });
   const coversRef = useRef(new Set<HTMLElement>());
+  // a phone's Day view, the layer over the grid (DayLayer): up, from which post; its handle
+  const [dayOpen, setDayOpen] = useState<DayStart | null>(null);
+  const dayOpenRef = useRef<DayStart | null>(null);
+  const dayLayerRef = useRef<DayLayerHandle | null>(null);
+  const daySeqRef = useRef(0);
+  // where Day's layer is put: the tab's own box, beside the stream (the grid's zoom never carries it)
+  const [dayHost, setDayHost] = useState<HTMLElement | null>(null);
 
   /* ── data ── */
 
@@ -1053,11 +1216,13 @@ function FeedStream({
     if (root) root.style.top = '';
     markScrollJump(pending.mode);
     holdSnap();
+    shadeBand(root);
     window.scrollTo(0, window.scrollY + pending.by);
     stillRef.current?.follow();
     savedYRef.current = window.scrollY;
     settledTopRef.current = window.scrollY;
   }, [holdSnap]);
+
 
   const dropStill = useCallback(() => {
     stillRef.current?.remove();
@@ -1104,11 +1269,6 @@ function FeedStream({
       // (only laid out again, the window the same: what is drawn is this already, no render for it)
       if (!was || was.gen !== next.gen || was.mode !== next.mode || was.y0 !== next.y0 || was.y1 !== next.y1 || was.narrow !== next.narrow) {
         setWin(next);
-        // a landing's chrome done coming in lets go of [data-arriving] in this render (not one of its own)
-        if (arrivingAfterRef.current && arrivingAfterRef.current.keys === arrivingDoneRef.current) {
-          arrivingAfterRef.current = null;
-          setArrivingAfter(null);
-        }
       }
     }
     // the days within three screens either way are asked for (worked out again only when that range moves)
@@ -1567,10 +1727,6 @@ function FeedStream({
     setMove(null);
     // what it was laid out from stays on screen (the page isn't laid out again as it lands)
     setLanded({ gen: genRef.current, posts: landing.posts, index: landing.index });
-    const arriving = arrivingNextRef.current ? { view: `${genRef.current}|${landing.to}`, keys: arrivingNextRef.current } : null;
-    arrivingAfterRef.current = arriving;
-    setArrivingAfter(arriving);
-    arrivingNextRef.current = null;
     setSpotOn(true);
     // where it really landed (a held scroll just handed over), read once, after this landing's own writes (hidden: where
     // it was kept). A zoom straight back reads it only from that hand-over: otherwise the move already noted where it
@@ -1595,7 +1751,9 @@ function FeedStream({
      reads as the page frozen */
   const coverPage = useCallback((root: HTMLElement, onTouch?: () => void) => {
     dropStill();
-    const still = stillFrame(root, { zIndex: STILL_Z });
+    /* (laid in the app's own layer, with the dock and its frost, under them as the page is: over the body, it covered the
+       frost a range was picked through, the card under it bright and sharp for the frames the copy stood, Nov 27) */
+    const still = stillFrame(root, { zIndex: STILL_Z, foot: STILL_FOOT, into: root.closest<HTMLElement>('.fm-app-shell-root') ?? undefined });
     let quick = false;
     const letGo = () => {
       onTouch?.();
@@ -1701,12 +1859,96 @@ function FeedStream({
 
   /* A zoom. What is on screen is measured where it is (a live pinch included), the new view laid out and drawn in one
      commit at the scroll it opens at, and the move (below) carries every piece from where it was */
+  /* ── a phone's Day: the layer over the grid ── */
+
+  const openDay = useCallback((key: string | null, day: string | null, instant: boolean) => {
+    if (dayOpenRef.current) return;
+    daySeqRef.current += 1;
+    const start: DayStart = { key, day, seq: daySeqRef.current, instant, at: performance.now() };
+    dayOpenRef.current = start;
+    setDayOpen(start);
+  }, []);
+  // the layer gone (closed, or a width with no layer): the page as it was
+  const closedDay = useCallback(() => {
+    dayOpenRef.current = null;
+    setDayOpen(null);
+  }, []);
+  const dropDay = useCallback(() => {
+    if (!dayOpenRef.current) return;
+    const root = rootRef.current;
+    if (root) {
+      root.style.opacity = '';
+      root.style.pointerEvents = '';
+      root.style.transform = '';
+      root.style.transformOrigin = '';
+    }
+    cardPage(false);
+    closedDay();
+  }, [closedDay]);
+  // the post in the grid nearest the reading line (Day opens on it when nothing was tapped)
+  const postInView = useCallback((): { key: string | null; day: string | null } => {
+    const current = layoutRef.current;
+    const size = metricsRef.current;
+    if (!current || !size) return { key: null, day: null };
+    const at = nearestPost(current, size.width / 2, pageY() - originRef.current + size.height * 0.4, size.height);
+    const item = at >= 0 ? current.items[at] : undefined;
+    return { key: item?.postKey ?? null, day: item?.day ?? null };
+  }, [pageY]);
+  const dayPage = useCallback(() => rootRef.current, []);
+  useIsoLayoutEffect(() => {
+    setDayHost(rootRef.current?.parentElement ?? null);
+  }, []);
+  const dayTile = useCallback((key: string) => layerRef.current?.querySelector<HTMLElement>(`:scope > [data-cell="${CSS.escape(`p:${key}`)}"]`) ?? null, []);
+  // the page's scroll that brings a post's tile on screen (null: it is on screen already, or the grid hasn't it)
+  const placeDayTile = useCallback((key: string): number | null => {
+    const current = layoutRef.current;
+    const at = current?.byPost.get(key);
+    if (!current || at == null) return null;
+    const item = current.items[at];
+    const vh = window.innerHeight;
+    const top = originRef.current + item.y - window.scrollY;
+    if (top + item.h >= DAY_TILE_TOP && top <= vh - DAY_TILE_FOOT) return null;
+    const room = Math.max(0, (document.scrollingElement ?? document.documentElement).scrollHeight - vh);
+    return clamp(Math.round(originRef.current + item.y + item.h / 2 - vh * 0.45), 0, room);
+  }, []);
+
   const zoomTo = useCallback((next: FeedMode, options: ZoomOptions = {}) => {
     const current = modeRef.current;
     const pinchScale = pinchRef.current?.scale ?? 1;
     pinchRef.current = null;
     const root = rootRef.current;
+    // (the card's copy this zoom put up, taken down by any way out of it but the move)
+    const uncover = () => {
+      if (options.covered && stillRef.current === options.covered) dropStill();
+      else options.covered?.remove();
+    };
+    // a phone: Day is the layer over the grid (DayLayer), the page's own zoom always a grid's
+    if (dayLayerOn(metricsRef.current)) {
+      const size = metricsRef.current;
+      if (next === 'today') {
+        uncover();
+        if (dayOpenRef.current) return;
+        if (size && options.remember !== false) writeStoredMode(breakpointOf(viewOf(size)), 'today');
+        const focalKey = options.focal?.postKey ?? null;
+        dayNote(`zoomTo today focal ${focalKey ? focalKey.slice(0, 9) : 'none'} ${new Error().stack?.split('\n').slice(2, 4).map((line) => line.trim().slice(0, 40)).join(' < ') ?? ''}`);
+        const at = focalKey ? layoutRef.current?.byPost.get(focalKey) : undefined;
+        const place = focalKey ? { key: focalKey, day: at != null ? layoutRef.current?.items[at]?.day ?? null : null } : postInView();
+        openDay(place.key, place.day, false);
+        return;
+      }
+      if (dayOpenRef.current) {
+        uncover();
+        if (size && options.remember !== false) writeStoredMode(breakpointOf(viewOf(size)), next);
+        dayNote(`zoomTo ${next} closes ${new Error().stack?.split('\n').slice(2, 4).map((line) => line.trim().slice(0, 40)).join(' < ') ?? ''}`);
+        // (out onto the grid it lies over; another grid than that one, a zoom between grids after)
+        dayLayerRef.current?.close(() => {
+          if (next !== modeRef.current) zoomToRef.current?.(next, { remember: false });
+        });
+        return;
+      }
+    }
     if (!current || next === current) {
+      uncover();
       // (a page held from a pinch springs home from where it is held, the Day view's snap back on)
       if (root && pinchAnimRef.current) {
         zoomWaitRef.current = null;
@@ -1723,6 +1965,7 @@ function FeedStream({
     const layer = layerRef.current;
     const index2 = inputsRef.current.index;
     if (!size || !was || !layer || !index2 || !visibleRef.current) {
+      uncover();
       dropHold(true);
       releaseLayer();
       lastZoomRef.current = null;
@@ -1730,9 +1973,10 @@ function FeedStream({
       setMode(next);
       return;
     }
-    // the page where it really is (a move's held scroll handed over, its still copy let go)
+    // the page where it really is (a move's held scroll handed over, its still copy let go; not the card's copy this zoom
+    // put up to go out under)
     handOver();
-    dropStill();
+    if (!options.covered) dropStill();
     const scrollY = window.scrollY;
     const vh = window.innerHeight;
     const base = originRef.current;
@@ -1753,7 +1997,11 @@ function FeedStream({
     const place: ZoomPlace = back
       ? { start: false, zid: back.zid, day: back.day }
       : options.place ?? placeOf(was, next, viewed, last, scrollY, picked, Boolean(options.point));
-    const zid = place.zid;
+    /* (straight back out of the Day view: the page goes back where it was, and the card in view is still what flies on
+       top, even when the zoom in remembered a day and no post: without it the grid's own order stacked the card it
+       covered over it) */
+    const cardInView = back && !back.zid && was.mode === 'today' && !dayAtProfile(was, scrollY - base) ? was.items[dayIndexAt(was, scrollY - base)] : null;
+    const zid = place.zid ?? (cardInView ? idOf(cardInView) : null);
 
     // the new view, laid out now, and where the page goes in it
     const scope2 = inputsRef.current.scope;
@@ -1823,6 +2071,26 @@ function FeedStream({
       }
     }
 
+    /* Out of a phone's Day card (a card on screen, the page going far): the card's still copy goes up first, and the zoom
+       goes on once it is on screen (the move then puts the page where it lands under it: COVER_HOLD_MS). A finger first,
+       or another zoom: the copy goes, and nothing moves. A pinch keeps its own way (the page is in the fingers). (Tried
+       into a card too, Nov 27: the page under the copy took ~0.5s to settle after the Day view mounted, a tap standing
+       still that long, and the copy of a light grid turned Safari's bars white for a beat. Into a card keeps the held
+       way, handed over as it lands) */
+    if (!options.covered && !pinched && root && current === 'today' && next !== 'today' && size.width < THEATRE_FROM && holdsScroll() && !reducedMotion() && Math.abs(scroll - scrollY) >= HOLD_FROM_PX && !dayAtProfile(was, scrollY - base)) {
+      const token = {};
+      zoomWaitRef.current = token;
+      const cover = coverPage(root, () => {
+        if (zoomWaitRef.current === token) zoomWaitRef.current = null;
+      });
+      void cover.shown.then(() => {
+        if (zoomWaitRef.current !== token) return;
+        zoomWaitRef.current = null;
+        zoomToRef.current?.(next, { ...options, place: back ? undefined : place, waited: true, covered: cover });
+      });
+      return;
+    }
+
     // the screen as it stands, then the new view in one commit
     dropHold(true);
     const shots = snapshot(layer);
@@ -1859,6 +2127,7 @@ function FeedStream({
       slide: null,
       posts: targetPosts,
       index: index2,
+      cover: options.covered ?? null,
     };
     moveRef.current = nextMove;
     // the move brings in what it shows: the tab's opening is over (held or not yet begun, it would hide what landed)
@@ -1887,12 +2156,13 @@ function FeedStream({
       setMove(nextMove);
     });
     if (reduce) {
+      uncover();
       dropLayer();
       window.scrollTo(0, scroll);
       savedYRef.current = window.scrollY;
       if (lastZoomRef.current) lastZoomRef.current.scroll = window.scrollY;
     }
-  }, [dropHold, dropLayer, dropStill, handOver, handSlideOff, keepHeight, releaseLayer, resnap, springHome, stopPrewarm]);
+  }, [coverPage, dropHold, dropLayer, dropStill, handOver, handSlideOff, keepHeight, openDay, postInView, releaseLayer, resnap, springHome, stopPrewarm]);
   useIsoLayoutEffect(() => {
     zoomToRef.current = zoomTo;
   });
@@ -1905,9 +2175,6 @@ function FeedStream({
     // a placeholder's copy still dissolving would stay where its post now is, not go with it
     coversRef.current.forEach((cover) => cover.remove());
     coversRef.current.clear();
-    // the chrome a move cut short (or still to land under its still copy) was bringing in is not this one's: this move's
-    // own landing says what is still coming in
-    arrivingNextRef.current = null;
     const layer = layerRef.current;
     if (!layer) {
       endMove();
@@ -1924,7 +2191,15 @@ function FeedStream({
     const room = Math.max(0, (document.scrollingElement ?? document.documentElement).scrollHeight - window.innerHeight);
     const by = Math.min(goal, room) - window.scrollY;
     const root = rootRef.current;
-    if (root && holdsScroll() && Math.abs(by) >= HOLD_FROM_PX) {
+    if (move.cover) {
+      // (under the card's copy: the page where it lands now, the bare strips the cards' dark; the dock's frost with it)
+      holdSnap();
+      shadeBand(root);
+      window.dispatchEvent(new CustomEvent(PAGE_JUMP_EVENT, { detail: { by } }));
+      window.scrollTo(0, goal);
+      savedYRef.current = window.scrollY;
+      settledTopRef.current = window.scrollY;
+    } else if (root && holdsScroll() && Math.abs(by) >= HOLD_FROM_PX) {
       // WebKit: drawn where it lands by an offset, nothing scrolled; the scroll handed over once it has landed, under a
       // still copy (landHeld). The old profile's copy, inside the page, stays put
       const copyAt = move.profileCopy ? rectOf(move.profileCopy) : null;
@@ -1957,7 +2232,7 @@ function FeedStream({
 
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const flight = startFlight(holdsScroll() ? FLIGHT_HOLD_MS : 0);
+    const flight = startFlight(move.cover ? COVER_HOLD_MS : holdsScroll() ? FLIGHT_HOLD_MS : 0);
     flightRef.current = flight;
     /* A finger (or a wheel) on the page while a zoom or a pick is still moving takes the page at once: the move lands
        where it was going, and the page is live under the finger (a page still moving mounts nothing new as it scrolls:
@@ -2080,12 +2355,30 @@ function FeedStream({
 
     // what leaves goes away from where the move started; what arrives comes in a ring at a time from where it lands
     const focalFrame = move.focalKey ? layer.querySelector<HTMLElement>(`:scope > [data-cell="p:${move.focalKey}"] > [data-layer="frame"]`) : null;
-    const landing = focalFrame ? centreOf(rectOf(focalFrame)) : move.centre;
+    const focalRect = focalFrame ? rectOf(focalFrame) : null;
+    const landing = focalRect ? centreOf(focalRect) : move.centre;
 
     // every piece measured where it now is before any is set moving (a measure after an animation is added has WebKit
     // work its styles out again, once for every piece)
     const steps: Array<() => void> = [];
     const phone = (metricsRef.current?.width ?? vw) < THEATRE_FROM;
+    /* (a zoom's headings and "+N" tiles are words: the old ones go at once and the new come in a beat after, so two never
+       stand over each other. Held whole while the new came in, "23–29 Nov" and "November", their two BEST pills and post
+       counts, read over each other for a sixth of a second) */
+    const words = (el: HTMLElement) => move.kind === 'zoom' && (el.dataset.kind === 'section' || el.dataset.kind === 'more');
+    // a grid and the Day view: each post the move carries changes its chrome on the way (bringChrome)
+    const crossingMove = (move.from === 'today') !== (move.to === 'today');
+    /* ...and on a phone the grid moves as one surface with the card, as a camera would: going into the card it is
+       carried on with the zoom that takes the post's tile onto the card, out past the screen's edges, dissolving;
+       coming out of one it comes in from where that zoom put it as the card shrinks into its place. One map for every
+       piece and one clock (the card's carry): before, each tile came or went on its own, a ring at a time, and the grid
+       never read as one thing */
+    const focalWas = move.focalKey ? move.shots.get(`p:${move.focalKey}`)?.frame ?? null : null;
+    const toCard = move.to === 'today';
+    // (the card's own 4:5, not its top grown up under the clock: that is what its tile shows)
+    const focalWindow = focalFrame ? frameRect(focalFrame) : null;
+    const camera = phone && crossingMove && focalWas && focalWindow ? zoomMap(toCard ? focalWas : focalWindow, toCard ? focalWindow : focalWas) : null;
+    const cameraTrip = focalWas && focalRect ? tripOf(focalWas, focalRect, vw, vh) || CARRY_MS : CARRY_MS;
     if (!move.slide) layer.querySelectorAll<HTMLElement>(':scope > [data-cell]').forEach((el) => {
       const shot = move.shots.get(el.dataset.cell ?? '');
       // the old view's leftovers: held where they were, and let go
@@ -2093,7 +2386,12 @@ function FeedStream({
         const was = shot?.cell;
         if (was && onScreen(was, vw, vh)) {
           const now = rectOf(el);
-          steps.push(() => leave(flight, el, now, was, move.centre));
+          if (camera && toCard) {
+            steps.push(() => carry(flight, el, now, was, camera(was), { duration: cameraTrip, fade: 'out' }));
+            return;
+          }
+          const quick = words(el);
+          steps.push(() => leave(flight, el, now, was, move.centre, { quick }));
           steps.push(() => easeDepthOut(flight, el, shot, true));
         }
         return;
@@ -2102,8 +2400,41 @@ function FeedStream({
       if (el.dataset.kind === 'post' && frameEl && shot?.frame) {
         const frameWas = shot.frame;
         const frameNow = rectOf(frameEl);
+        /* (a post both views hold but the card the move is about: a card off screen in the Day view. Out of it, its tile
+           comes in with the grid; into it, its tile goes with the grid, the card it becomes unseen) */
+        if (camera && el.dataset.focal === undefined) {
+          if (!toCard) {
+            const now = rectOf(el);
+            if (onScreen(now, vw, vh)) steps.push(() => carry(flight, el, now, camera(now), now, { duration: cameraTrip, fade: 'in' }));
+          } else if (onScreen(frameWas, vw, vh)) {
+            steps.push(() => carry(flight, frameEl, frameNow, frameWas, camera(frameWas), { duration: cameraTrip, fade: 'out', picture: frameEl.querySelector<HTMLElement>('[data-picture]') }));
+          }
+          return;
+        }
         const picture = frameEl.querySelector<HTMLElement>('[data-picture]');
-        steps.push(() => carryLayer(flight, frameEl, frameWas, vw, vh, picture, frameNow));
+        /* A card coming in with its own top grown up under the clock (a reel's frame above its 4:5: PostCell): carried
+           from its tile as if that top stood over the tile (the tile's picture is the card's 4:5, so nothing in it shifts),
+           the top cut off at first and opened as it grows, on the carry's curve. Going back, the same the other way: its
+           tile wears that top (PostCell, cardTop), carried from the whole card, cut off as it shrinks, and the shade
+           over it under the clock goes with it */
+        const grownPx = el.dataset.focal !== undefined ? Number(frameEl.dataset.grown) || 0 : 0;
+        const belowPx = el.dataset.focal !== undefined ? Number(frameEl.dataset.below) || 0 : 0;
+        const toWas = frameWas.width / Math.max(frameNow.width, 0.01);
+        const tall = grownPx > 0 ? (toCard ? grownPx * toWas : shot.grown ?? 0) : 0;
+        const deep = belowPx > 0 ? (toCard ? belowPx * toWas : shot.below ?? 0) : 0;
+        const fromRect = tall || deep ? { ...frameWas, top: frameWas.top - tall, height: frameWas.height + tall + deep } : frameWas;
+        steps.push(() => carryLayer(flight, frameEl, fromRect, vw, vh, picture, frameNow));
+        const trip = tripOf(frameWas, frameNow, vw, vh);
+        if (grownPx > 0 || belowPx > 0) {
+          const round = getComputedStyle(frameEl).borderRadius || '0px';
+          const open = `inset(0px 0px 0px 0px round ${round})`;
+          const shut = `inset(${grownPx}px 0px ${belowPx}px 0px round ${round})`;
+          const timing: KeyframeAnimationOptions = { duration: trip || CARRY_MS, easing: CARRY_EASE_CSS, fill: 'backwards' };
+          steps.push(() => run(flight, frameEl, [{ clipPath: toCard ? shut : open }, { clipPath: toCard ? open : shut }], timing));
+          const shade = toCard ? null : frameEl.querySelector<HTMLElement>(':scope > [data-back-shade]');
+          if (shade) steps.push(() => run(flight, shade, [{ opacity: 1 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }], { ...timing, easing: 'linear' }));
+        }
+        if (crossingMove && trip) steps.push(() => bringChrome(flight, el, trip));
         const bg = el.querySelector<HTMLElement>(':scope > [data-layer="bg"]');
         if (bg) {
           const bgWas = shot.bg ?? frameWas;
@@ -2121,8 +2452,23 @@ function FeedStream({
           const out = el.querySelector<HTMLElement>(`:scope > [data-layer="${name}"]`);
           if (!out || !was) return;
           const now = rectOf(out);
-          steps.push(() => letGo(flight, out, was, now));
+          // (a tile's own chrome, its post growing into a card: it goes with the picture it lies on, not left behind)
+          if (name === 'chips-out' && crossingMove && trip) steps.push(() => rideOut(flight, out, now, was, frameNow, trip));
+          else steps.push(() => letGo(flight, out, was, now));
         });
+        // (the number the move is about, flying from where it stood to where it lands)
+        if (camera && el.dataset.focal !== undefined && trip) {
+          const outName = toCard ? 'chips-out' : 'chrome-out';
+          const outEl = el.querySelector<HTMLElement>(`:scope > [data-layer="${outName}"]`);
+          const outWas = toCard ? shot.chips : shot.chrome;
+          if (outEl && outWas) {
+            const outNow = rectOf(outEl);
+            const from = rankIn(el, outName, { x: outWas.left - outNow.left, y: outWas.top - outNow.top });
+            const to = rankIn(el, toCard ? 'chrome' : 'frame"] > [data-layer="chips');
+            const fly = from && to ? rankFlight(layer, from, to) : null;
+            if (fly) steps.push(() => fly(flight, trip));
+          }
+        }
         steps.push(() => easeDepthOut(flight, el, shot, false));
         return;
       }
@@ -2134,39 +2480,42 @@ function FeedStream({
         return;
       }
       const now = rectOf(el);
+      // (out of a card: what the grid brings comes in with it, from where the zoom put it)
+      if (camera && !toCard) {
+        if (onScreen(now, vw, vh)) steps.push(() => carry(flight, el, now, camera(now), now, { duration: cameraTrip, fade: 'in' }));
+        return;
+      }
       // (a phone card over the one in view is under the status bar only, and unseen from the landing on: never seen)
       if (phone && move.to === 'today' && now.top < -TILE_CLEAR_PX) {
         steps.push(() => run(flight, el, [{ opacity: 0 }, { opacity: 0 }], { duration: CARRY_MS, fill: 'both' }));
         return;
       }
-      if (onScreen(now, vw, vh)) steps.push(() => enter(flight, el, now, landing));
+      if (onScreen(now, vw, vh)) steps.push(() => enter(flight, el, now, landing, words(el) ? WORDS_AFTER_MS : 0));
     });
     const profileNode = profileRef.current;
     const profileNow = profileNode ? rectOf(profileNode) : null;
-    /* The chrome a move between a grid and the Day view brings in (its CSS entrance, [data-arriving]) outlasts the
-       pieces. The move still lands when its pieces are home (the page is the reader's again, a held scroll handed
-       over); the cells it brought keep [data-arriving] until their entrance is done (arrivingAfter), so nothing
-       snaps. Read here, with the measures, before any piece is set moving (no extra style flush) */
-    const crossingMove = (move.from === 'today') !== (move.to === 'today');
-    const arrivingCells = crossingMove ? Array.from(layer.querySelectorAll<HTMLElement>(':scope > [data-arriving]')) : [];
-    const chrome = arrivingCells
-      .flatMap((cell) => Array.from(cell.querySelectorAll<HTMLElement>('[data-st], [data-st-fade]')))
-      .flatMap((el) => el.getAnimations())
-      .filter((animation) => animation instanceof CSSAnimation && (animation.animationName === 'st-arrive' || animation.animationName === 'st-fade-in'));
-    const arrivingKeys = new Set(arrivingCells.map((cell) => cell.dataset.cell).filter((key): key is string => Boolean(key)));
-    /* (WebKit) that entrance is CSS: its clock started in this commit's frame, while the pieces wait for that frame to
-       be on screen. It waits with them, from its start, and sets off when they do; a flight that never sets off lets
-       it go on its own */
-    if (flight.hold) {
-      chrome.forEach((animation) => {
-        animation.pause();
-        animation.currentTime = 0;
-      });
-      flight.cleanups.push(() => chrome.forEach((animation) => {
-        if (animation.playState === 'paused') animation.play();
-      }));
-    }
     steps.forEach((step) => step());
+    // (a phone's card and a grid: the colour under the clock follows the card the move carries, as it goes)
+    if (phone && crossingMove && root) {
+      // where it rests as a card: where it lands (to a card), or where it set off from (from one)
+      const rest = toCard ? focalRect : focalWas;
+      // (a phone's Day view is its cards: the layout read by handlers is still the one being left here)
+      if (focalFrame && rest) watchCardEdge(flight, root, focalFrame, rest, toCard, vw);
+      else cardPage(false);
+      /* Out of a card the ground under the grid, the cards' dark through the move, goes to the page's own from part of
+         the way on (a glide: stream.css), the posts coming in over it by then: on the move's clock, so it is the page's
+         as the move lands. Let go only as it landed, the gaps between the posts lit up after it, the last thing to move */
+      if (!toCard && camera) {
+        const cue = root.animate([{ visibility: 'visible' }, { visibility: 'visible' }], { duration: cameraTrip * GROUND_LIGHT_AT, delay: flight.hold });
+        flight.animations.push(cue);
+        // (its glide timed to end as the move lands: on the stream's own 360ms it finished a beat after)
+        void cue.finished.then(() => {
+          if (flight.ended) return;
+          root.style.transitionDuration = `${Math.round(cameraTrip * (1 - GROUND_LIGHT_AT))}ms`;
+          root.removeAttribute('data-card-edge');
+        }, () => undefined);
+      }
+    }
 
     // the page's profile: the same element, moved with the page (a pick for someone else: the old one's copy goes as
     // the new one comes in)
@@ -2177,8 +2526,14 @@ function FeedStream({
         run(flight, copy, [{ opacity: 1 }, { opacity: 0 }], { duration: ms(180), easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'both' });
         flight.cleanups.push(() => copy.remove());
       } else if (move.profile) {
-        // moved with the page; from (or to) far off screen only part of the way, fading
-        carryLayer(flight, profileNode, move.profile, vw, vh, null, profileNow);
+        /* moved with the page; from (or to) far off screen only part of the way, fading. A phone's zoom between a card
+           and a grid takes it the camera's way, as it takes the grid's posts, when one end has it out of sight (it slid
+           on its own way meanwhile, against the grid zooming beside it) */
+        const before = onScreen(move.profile, vw, vh);
+        const after = onScreen(profileNow, vw, vh);
+        if (camera && toCard && before && !after) carry(flight, profileNode, profileNow, move.profile, camera(move.profile), { duration: cameraTrip, fade: 'out' });
+        else if (camera && !toCard && after && !before) carry(flight, profileNode, profileNow, camera(profileNow), profileNow, { duration: cameraTrip, fade: 'in' });
+        else carryLayer(flight, profileNode, move.profile, vw, vh, null, profileNow);
       }
     }
 
@@ -2187,55 +2542,57 @@ function FeedStream({
       window.clearTimeout(spotTimerRef.current);
       spotTimerRef.current = window.setTimeout(() => setSpotOn(true), SPOT_AFTER_MS);
     };
+    /* (the page setting off, said to whatever is waiting on it: the dock lifts the frost a range was picked over as the
+       new view comes in, so Safari's bars, which take their look from what is under them, go from the frost to the new
+       view once, never back to the old one in between) */
+    const setOff = () => window.dispatchEvent(new Event(PAGE_MOVES_EVENT));
     if (flight.hold) {
       // held at its start for the frame that draws it, then set moving once that frame is on screen (WebKit only
       // starts the next frame once the last is shown)
-      requestAnimationFrame(() => requestAnimationFrame(() => {
+      const go = () => {
         if (flightRef.current !== flight || flight.ended) return;
         answerHeader();
         releaseFlight(flight);
-        [...chrome, ...glides].forEach((animation) => {
+        glides.forEach((animation) => {
           if (animation.playState === 'paused') animation.play();
         });
         under();
+        setOff();
         // the page's own layer (a pinch's) let go now its first frame is on screen
         dropLayer();
-      }));
+        // (out of a card: its copy goes in the frame the move sets off in, the same picture under it)
+        if (move.cover && stillRef.current === move.cover) dropStill();
+      };
+      // (under the card's copy: once the page is drawn where it now is)
+      if (move.cover && root) void whenDrawn(root, STILL_SETTLE_MS).then(() => requestAnimationFrame(go));
+      else requestAnimationFrame(() => requestAnimationFrame(go));
     } else {
       under();
+      setOff();
       afterDrawn(() => {
         if (flightRef.current === flight || flightRef.current === null) answerHeader();
         dropLayer();
       });
     }
-    // landed (with a backstop, should an animation never report): its chrome goes on coming in on its own
+    // landed (with a backstop, should an animation never report): every piece home, its chrome with it
     const backstop = window.setTimeout(() => {
       if (flightRef.current === flight) endMove();
     }, LONG_CARRY_MS + 600 + flight.hold);
     void flightDone(flight).then(() => {
       window.clearTimeout(backstop);
       if (flightRef.current !== flight) return;
-      // with the landing's own render: the cells still bringing their chrome in, or none (marked done when their
-      // entrance is, and let go with the next render that comes anyway: syncFrame)
-      const still = chrome.length && arrivingKeys.size ? arrivingKeys : null;
-      arrivingNextRef.current = still;
-      if (still) {
-        void Promise.allSettled(chrome.map((animation) => animation.finished)).then(() => {
-          arrivingDoneRef.current = still;
-        });
-      }
       if (!handoverRef.current || !root) {
         endMove();
         return;
       }
       // held: what is still on its way plays out first (the page held still), so the copy is taken at rest
-      void whenSettled(flight, root, chrome).then(() => {
+      void whenSettled(flight, root).then(() => {
         if (flightRef.current !== flight) return;
         if (handoverRef.current) landHeld(flight);
         else endMove();
       });
     });
-  }, [move, dropLayer, endMove, handOver, holdSnap, landHeld]);
+  }, [move, dropLayer, dropStill, endMove, handOver, holdSnap, landHeld]);
 
   /* ── a new pick or order ── */
 
@@ -2382,6 +2739,7 @@ function FeedStream({
       slide: slideAsk && slideCover ? { dir: slideAsk, cover: slideCover, from: midSlide } : null,
       posts: nextPosts,
       index: nextIndex,
+      cover: null,
     };
     moveRef.current = nextMove;
     // the move brings in what it shows: the tab's opening is over (held or not yet begun, it would hide what landed)
@@ -2522,6 +2880,10 @@ function FeedStream({
   }, [cancelZoomWait, coverPage, handOver, landSlide, scrollPage]);
 
   const scrollToNewest = useCallback(() => {
+    if (dayOpenRef.current) {
+      dayLayerRef.current?.toNewest();
+      return;
+    }
     cancelZoomWait(true);
     landSlide();
     handOver();
@@ -2651,11 +3013,6 @@ function FeedStream({
       touchingRef.current = false;
       pinchRef.current = null;
       endMove();
-      // a landing's entrance is long over when the tab is back: [data-arriving] left on would play it again there
-      // (showing the tab again restarts the CSS animations it matches)
-      arrivingAfterRef.current = null;
-      arrivingNextRef.current = null;
-      setArrivingAfter(null);
       dropStill();
       // an order's old list still sliding out lies over the whole screen: it goes with the tab
       dropHanded();
@@ -2738,17 +3095,23 @@ function FeedStream({
     const first = breakpointRef.current === null;
     breakpointRef.current = breakpoint;
     const wanted = initialMode(viewOf(metrics));
+    // (a phone's Day is the layer over a grid: the page is the week under it)
+    const layered = wanted === 'today' && dayLayerOn(metrics);
+    const pageWanted: FeedMode = layered ? 'week' : wanted;
+    if (!dayLayerOn(metrics)) dropDay();
     if (first || !modeRef.current) {
-      modeRef.current = wanted;
-      setMode(wanted);
+      modeRef.current = pageWanted;
+      setMode(pageWanted);
+      if (layered) openDay(null, null, true);
       return;
     }
-    if (wanted !== modeRef.current) {
+    if (pageWanted !== modeRef.current) {
       endMove();
-      modeRef.current = wanted;
-      setMode(wanted);
+      modeRef.current = pageWanted;
+      setMode(pageWanted);
     }
-  }, [metrics, endMove]);
+    if (layered) openDay(null, null, true);
+  }, [metrics, endMove, dropDay, openDay]);
 
   // a new scope: what was measured against the last one is let go (an opening still held waits for the new one's posts)
   useIsoLayoutEffect(() => {
@@ -2822,15 +3185,22 @@ function FeedStream({
      one hazes the top of the card's head, under the clock. Back at the profile or out of the Day view, the page's own
      again (globals.css, [data-feed-card]) */
   const underCard = Boolean(layout?.deck) && !atProfile && !move;
+  // (a move between a phone's cards and a grid sets them itself, from where the card it carries is: watchCardEdge)
+  const crossingCards = Boolean(move) && (move?.from === 'today') !== (move?.to === 'today');
   useIsoLayoutEffect(() => {
-    if (!underCard) {
-      // (taken early by a landing that, after all, doesn't rest on a card: endMove)
-      if (!move && document.documentElement.dataset.feedCard !== undefined) cardPage(false);
-      return undefined;
+    // (landed: the card's own head is drawn under the clock again)
+    if (!move) {
+      rootRef.current?.removeAttribute('data-card-edge');
+      rootRef.current?.removeAttribute('data-card-dim');
+      if (rootRef.current) rootRef.current.style.transitionDuration = '';
     }
-    cardPage(true);
-    return () => cardPage(false);
-  }, [underCard, move]);
+    // (Day as the layer over the grid sets them itself)
+    if (crossingCards || dayOpenRef.current) return;
+    if (underCard) cardPage(true);
+    // (taken early by a landing that, after all, doesn't rest on a card: endMove; or a move setting off from a card)
+    else if (document.documentElement.dataset.feedCard !== undefined) cardPage(false);
+  }, [underCard, move, crossingCards]);
+  useIsoLayoutEffect(() => () => cardPage(false), []);
   const insets = metrics?.insets ?? null;
   // what the Day view's cards snap to: a phone's rest line (its cards rest at their top, under the status bar:
   // layout.restTop); a
@@ -3044,8 +3414,8 @@ function FeedStream({
 
   // tell the tab which zoom is on (its header control shows it)
   useIsoLayoutEffect(() => {
-    if (mode) callbacksRef.current.onModeChange(mode);
-  }, [mode]);
+    if (mode) callbacksRef.current.onModeChange(dayOpen ? 'today' : mode);
+  }, [mode, dayOpen]);
 
   // the scroll: window.scrollY once a frame; settled on 'scrollend' or after a quiet spell
   useIsoLayoutEffect(() => {
@@ -3298,7 +3668,8 @@ function FeedStream({
     springHome(root, pinch.scale, resnap);
   }, [resnap, springHome, zoomTo]);
 
-  usePinch(rootRef, { enabled: Boolean(layout), onStart: onPinchStart, onScale: onPinchScale, onEnd: onPinchEnd });
+  // (not under Day's layer: the page under it is the grid, unseen, and its pinch held it zoomed and zoomed it on its own)
+  usePinch(rootRef, { enabled: Boolean(layout) && !dayOpen, onStart: onPinchStart, onScale: onPinchScale, onEnd: onPinchEnd });
 
   /* ── render ── */
 
@@ -3404,10 +3775,6 @@ function FeedStream({
   const oldSpecs = new Map<string, Spec>();
   move?.leaving.forEach((spec) => oldSpecs.set(spec.key, spec));
   const gone = move ? move.leaving.filter((spec) => !specKeys.has(spec.key)) : [];
-  // the move's two views differ in kind (a grid and the Day view): each post's chrome changes, and comes in
-  const crossing = Boolean(move && (move.from === 'today') !== (move.to === 'today'));
-  // ...and once it has landed, the cells whose chrome is still coming in (in the view it landed in)
-  const stillArriving = !move && arrivingAfter && drawn && arrivingAfter.view === `${gen}|${drawn.mode}` ? arrivingAfter.keys : null;
 
   const drawSpec = (spec: Spec, going: boolean) => {
     if (spec.kind === 'section') {
@@ -3461,9 +3828,10 @@ function FeedStream({
         wide={spec.shape.wide}
         leaving={wasPost ? wasPost.mode : null}
         leavingShape={wasPost ? wasPost.shape : null}
+        cardTop={wasPost?.mode === 'today' && !going && move?.focalKey === spec.post.key ? (move.shots.get(spec.key)?.grown ?? 0) : 0}
+        cardBelow={wasPost?.mode === 'today' && !going && move?.focalKey === spec.post.key ? (move.shots.get(spec.key)?.below ?? 0) : 0}
         leavingDate={wasPost ? wasPost.date : null}
         leavingFeeder={wasPost?.feederHandle ? feeders.get(wasPost.feederHandle) ?? null : null}
-        arriving={!going && (crossing || stillArriving?.has(spec.key) === true)}
         focal={!going && move?.focalKey === spec.post.key}
         // the post the Day view rests on plays, and goes on playing while a swipe carries it away (stopping it at the
         // swipe's start swapped the picture under the finger): the next one takes over once the page settles on it
@@ -3513,8 +3881,8 @@ function FeedStream({
     /* Every cell in one order that never changes (by its key; they are placed absolutely, the order only stacks pieces
        that cross mid-move), so React never moves one in the page, only adds and removes. A cell moved in the page is
        taken out and put back, and its CSS animations start over: in layout order, a leftover the landed view mounted
-       again above the cards a move brought had React move those cards instead, and the chrome still coming in on them
-       blinked out and came in again */
+       again above the cards a move brought had React move those cards instead, and their running animations started
+       over */
     const cells: Array<{ spec: Spec; going: boolean }> = [...specs.map((spec) => ({ spec, going: false })), ...gone.map((spec) => ({ spec, going: true }))];
     cells.sort((a, b) => (a.spec.key < b.spec.key ? -1 : a.spec.key > b.spec.key ? 1 : 0));
     content = cells.map(({ spec, going }) => drawSpec(spec, going));
@@ -3544,6 +3912,7 @@ function FeedStream({
       );
     }
   }
+
 
   // what this render draws (a move out of it starts from these)
   useIsoLayoutEffect(() => {
@@ -3641,6 +4010,21 @@ function FeedStream({
         <div ref={probeScreenRef} className="w-px h-[100lvh]" />
       </div>
       {profileHeader}
+      {dayOpen && metrics && index && dayHost ? (
+        <DayLayer
+          ref={dayLayerRef}
+          start={dayOpen}
+          scope={scope}
+          index={index}
+          feeders={feeders}
+          size={metrics}
+          host={dayHost}
+          page={dayPage}
+          tileOf={dayTile}
+          placeTile={placeDayTile}
+          onClosed={closedDay}
+        />
+      ) : null}
       <div
         ref={layerRef}
         className="relative isolate w-full"

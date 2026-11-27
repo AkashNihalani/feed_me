@@ -190,7 +190,7 @@ export function carry(
   at: Rect,
   from: Rect,
   to: Rect,
-  options: { picture?: HTMLElement | null; duration?: number; delay?: number; fade?: 'in' | 'out' } = {},
+  options: { picture?: HTMLElement | null; duration?: number; delay?: number; fade?: 'in' | 'out'; fill?: FillMode } = {},
 ) {
   if (at.width <= 0 || at.height <= 0) return;
   const duration = options.duration ?? CARRY_MS;
@@ -213,7 +213,7 @@ export function carry(
       counter.push({ offset, transform: `scale(${(even / sx).toFixed(4)}, ${(even / sy).toFixed(4)})` });
     }
   }
-  const timing: KeyframeAnimationOptions = { duration, delay: (options.delay ?? 0) + flight.hold, easing: 'linear', fill: 'backwards' };
+  const timing: KeyframeAnimationOptions = { duration, delay: (options.delay ?? 0) + flight.hold, easing: 'linear', fill: options.fill ?? 'backwards' };
   flight.animations.push(el.animate(frames, timing));
   const picture = options.picture;
   if (reshape && picture) {

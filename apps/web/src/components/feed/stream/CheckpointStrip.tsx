@@ -8,7 +8,8 @@
    slide along the strip, and the glide travels to it as the
    number rolls. A read still to come, or missed, is there but
    faint: a tap on it, or on the one that is on, opens the card's
-   details, where all four are told.
+   details, where all four are told. With none landed yet
+   (progress), D1's glide fills as the day to it goes, breathing.
 
    LineSwap is the line beside it: it rolls over when it changes.
    ───────────────────────────────────────────────────────────── */
@@ -22,13 +23,15 @@ import '@/components/feed/stream/stream.css';
 // a segment's width (the strip is four of them and its rim)
 const SEGMENT = 38;
 
-function CheckpointStrip({ post, at, topPercent, onPick, onOpen }: {
+function CheckpointStrip({ post, at, topPercent, onPick, onOpen, progress }: {
   post: StreamPost;
   // the read the card shows, and its rank
   at: StreamCheckpoint | null;
   topPercent: number | null;
   onPick: (checkpoint: StreamCheckpoint) => void;
   onOpen: () => void;
+  // no read landed yet: how far the day to D1 has gone (0–1)
+  progress?: number;
 }) {
   const scrub = useScrub(post.results, at, onPick);
   const index = Math.max(0, at ? STREAM_CHECKPOINTS.indexOf(at) : 0);
@@ -40,7 +43,14 @@ function CheckpointStrip({ post, at, topPercent, onPick, onOpen }: {
       className="st-strip pointer-events-auto relative inline-flex shrink-0 touch-pan-y select-none rounded-full bg-white/[0.09] p-[3px]"
     >
       <span aria-hidden="true" className="st-glide absolute left-[3px] top-[3px] h-8 rounded-full" style={{ width: SEGMENT, transform: `translate3d(${index * SEGMENT}px, 0px, 0px)` }}>
-        <span className="absolute inset-0 rounded-full bg-white/[0.2]" />
+        {progress == null ? (
+          <span className="absolute inset-0 rounded-full bg-white/[0.2]" />
+        ) : (
+          <>
+            <span className="absolute inset-0 rounded-full bg-white/[0.1]" />
+            <span className="st-wait-fill absolute inset-0 rounded-full bg-white/[0.32]" style={{ clipPath: `inset(0px ${((1 - progress) * 100).toFixed(1)}% 0px 0px round 999px)` }} />
+          </>
+        )}
         <span className={cn('st-glide-win absolute inset-0 rounded-full bg-[var(--fm-accent)]', isWinner(topPercent) ? 'opacity-100' : 'opacity-0')} />
       </span>
       {STREAM_CHECKPOINTS.map((checkpoint) => {

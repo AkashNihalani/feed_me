@@ -364,8 +364,15 @@ html.light .st-bone {
   transition: none;
 }
 
-/* a phone card's frame grown up under the status bar keeps its picture where it stood in its 4:5 (PostCell, --st-pic-y) */
-.st-framed :is(img, video) {
+/* a phone card's frame grown up under the status bar keeps its picture where it stood in its 4:5 (PostCell, --st-pic-y);
+   in a still copy too, where its pictures are canvases (stillFrame): without them the copy showed a reel centred in its
+   frame, its picture jumping for the frames it stood */
+.st-framed :is(img, video, canvas) {
+  object-position: 50% var(--st-pic-y, 50%);
+}
+
+/* ...and so does a tile still wearing its card's top, as a move out of the Day view takes it back (PostCell, backTop) */
+[data-layer='frame'][data-grown] > span > [data-picture] > :is(img, video, canvas) {
   object-position: 50% var(--st-pic-y, 50%);
 }
 
@@ -419,34 +426,6 @@ html.light .st-bone {
    stays), then they come in a ring at a time (FeedStream's arrival) */
 [data-holding] > .st-cell {
   opacity: 0;
-}
-
-/* a move into a view: the post's chrome (a card's foot, a tile's number) comes in a piece at a time as it lands. Only
-   the view it lands in: the chrome of the view being left (the *-out layers) holds where it stood and goes with the
-   move (an entrance's hidden start on it would blink it out in the move's first frame). What lies over the picture as
-   a whole (a scrim, a winner's ring) only fades in, from the first piece's moment: drawn at once, it would sit at the
-   new size while the picture is still on its way into it */
-.st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st] {
-  animation: st-arrive calc(420ms * var(--fm-tempo)) var(--st-ease, ease-out) backwards;
-  animation-delay: calc((var(--st-arrive-at, 260ms) + var(--i, 0) * 45ms) * var(--fm-tempo));
-}
-
-.st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st-fade] {
-  animation: st-fade-in calc(420ms * var(--fm-tempo)) var(--st-ease, ease-out) backwards;
-  animation-delay: calc(var(--st-arrive-at, 260ms) * var(--fm-tempo));
-}
-
-@keyframes st-arrive {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 10px, 0);
-  }
-}
-
-@keyframes st-fade-in {
-  from {
-    opacity: 0;
-  }
 }
 
 /* the wide Day view's spotlight: the row on the focus line reads, its pieces coming in one after another, the way it
@@ -563,13 +542,56 @@ html.light .st-bone {
   to { opacity: 0; }
 }
 
+/* a move between a phone's Day cards and a grid, while the card it carries covers the screen's top (FeedStream
+   watchCardEdge): the ground under the clock is the cards' dark (the card flies as its 4:5, its head drawn again once it
+   rests), never the page's light over it */
+.fm-stream[data-card-edge] {
+  background: #141416 !important;
+  /* (onto it at once: a glide there, as a move set off from a card, lit the ground round the shrinking card in the light
+     theme, light going dark over a fifth of a second before the posts came over it) */
+  transition: none;
+}
+
+/* (coming to a card from a grid, the ground the other posts leave into dims to the cards' dark as the card grows: the
+   glide below, FeedStream watchCardEdge) */
+.fm-stream[data-card-dim] {
+  background: #141416 !important;
+}
+
+/* (and back off it as a glide, with the page's own colour under it: globals.css. Out to a grid that is as the move
+   lands, the posts by then over most of it: a one-frame change there lit the screen up) */
+.fm-stream {
+  transition: background-color calc(360ms * var(--fm-tempo, 1)) cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* (a theme picked draws itself in its own circle: nothing glides under that) */
+html[data-theme-reveal] .fm-stream {
+  transition: none !important;
+}
+
 /* ── a card's reading (PostCell): its foot between the picture and the dock (who, the lead) and, a tap on, the rest (the
    reads, the figures, the caption, when, the way out) come up from under the foot, the whole block risen as one piece
    over a ground that rises with it (PostCell moves every piece of it by transform and opacity, on one clock, from
-   wherever it is: a tap mid-way turns it straight round; nothing here has a transition of its own for it). It is cut
-   off at its foot (.st-read-pocket): the rest waits under there unseen, rises out of it and sinks back into it, never
-   down over the dock. The rest scrolls inside itself past the room it has (PostCell sets --st-more-max as it opens), the
-   foot staying put over it; the picture above stays clear ── */
+   wherever it is: a tap mid-way turns it straight round; nothing here has a transition of its own for it). Under its
+   foot it melts into the ground (.st-read-pocket): the rest waits under there unseen, rises out of it and sinks back
+   into it whole, never cut at a line (its white was seen chopped there) and never down over the dock. The rest scrolls
+   inside itself past the room it has (PostCell sets --st-more-max as it opens), the foot staying put over it; the
+   picture above stays clear ── */
+
+/* the ground under the foot: what goes down into it melts away over --st-fog (PostCell READ_FOG), on a smoothstep, so
+   no edge shows where it begins or ends */
+/* (in a still copy (stillFrame) without its melt: masked and clipped there, WebKit drew none of the card's chrome in the
+   copy, its words, number and ground gone for the frames it stood over a move, measured Nov 27) */
+[data-still-frame] .st-read-pocket {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  overflow: hidden !important;
+}
+
+.st-read-pocket {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--st-fog, 0px)), rgba(0, 0, 0, 0.84) calc(100% - var(--st-fog, 0px) * 0.75), rgba(0, 0, 0, 0.5) calc(100% - var(--st-fog, 0px) * 0.5), rgba(0, 0, 0, 0.16) calc(100% - var(--st-fog, 0px) * 0.25), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--st-fog, 0px)), rgba(0, 0, 0, 0.84) calc(100% - var(--st-fog, 0px) * 0.75), rgba(0, 0, 0, 0.5) calc(100% - var(--st-fog, 0px) * 0.5), rgba(0, 0, 0, 0.16) calc(100% - var(--st-fog, 0px) * 0.25), transparent);
+}
 
 /* shut, the foot is one box on every card (PostCell deckFootOf), its pieces from its top; open, just what is in it */
 .st-foot {
@@ -593,8 +615,8 @@ html.light .st-bone {
   pointer-events: auto;
 }
 
-/* closed: the rest waits just under the foot, cut off there (where it stands open, so it travels with the block). It is
-   the one that scrolls, the same way open and shut */
+/* closed: the rest waits under the foot, past the ground's melt (where it stands open, that much lower: PostCell
+   READ_SINK; it travels with the block). It is the one that scrolls, the same way open and shut */
 /* (it runs out to the card's edges, and a little over its first line: the reads' glow isn't cut where it starts) */
 .st-read-more {
   position: absolute;
@@ -603,6 +625,9 @@ html.light .st-bone {
   top: 100%;
   margin-top: 2px;
   padding: 14px 16px 0;
+  /* (unseen while it waits; PostCell keeps it whole as it rises and sinks) */
+  opacity: 0;
+  transform: translate3d(0px, calc(var(--st-fog, 0px) * 2), 0px);
   max-height: var(--st-more-max, none);
   overflow-x: hidden;
   overflow-y: auto;
@@ -619,6 +644,8 @@ html.light .st-bone {
   position: static;
   margin-left: -16px;
   margin-right: -16px;
+  opacity: 1;
+  transform: none;
 }
 
 /* more than fits: its lower edge softens into the card, so it reads as one that scrolls (and scrolled to its end, its
@@ -741,9 +768,9 @@ html.light .st-bone {
   opacity: 0;
 }
 
+/* (no transition of its own for the reading: PostCell glides it; only a clip or a swipe clearing the card fades it) */
 .st-read-shade {
   opacity: 0;
-  transition: opacity calc(300ms * var(--fm-tempo)) ease;
 }
 
 .st-cell[data-read] .st-read-shade {
@@ -780,6 +807,10 @@ html.light .st-bone {
 .st-cell[data-clean] .st-read-shade,
 .st-cell[data-clean] .st-card-marks {
   opacity: 0;
+}
+
+.st-cell[data-clean] .st-read-shade {
+  transition: opacity calc(300ms * var(--fm-tempo)) ease;
 }
 
 /* a card's slide dots stay out of its tab's way at rest and come up as you swipe or play a slide (the tab clears
@@ -848,7 +879,7 @@ html.light .st-bone {
   }
 
   .st-read,
-  .st-read-shade,
+  .st-cell[data-clean] .st-read-shade,
   .st-read-toggle svg,
   .st-card-marks,
   .st-card-dots,
@@ -869,11 +900,6 @@ html.light .st-bone {
   .st-play .st-play-off,
   .st-play-ring {
     transition: none;
-  }
-
-  .st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st],
-  .st-cell[data-arriving] > :not([data-layer$="-out"]) [data-st-fade] {
-    animation: none;
   }
 
   .st-row [data-reading] .st-settle,
@@ -901,4 +927,75 @@ html.light .st-bone {
     animation-duration: 1ms;
     animation-delay: 0ms;
   }
+}
+
+/* a post with no number yet (PostCell CardWait): a live dot beside "Measuring" (a ring going out from it, slowly), and
+   D1's glide filling toward its first read, breathing */
+.st-wait-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.9);
+  animation: st-wait-ring calc(2200ms * var(--fm-tempo, 1)) cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+
+@keyframes st-wait-ring {
+  0% { transform: scale(1); opacity: 0.8; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+
+.st-wait-fill {
+  animation: st-wait-breathe calc(2200ms * var(--fm-tempo, 1)) ease-in-out infinite;
+}
+
+@keyframes st-wait-breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-wait-dot::after,
+  .st-wait-fill {
+    animation: none;
+  }
+}
+
+/* ── a phone's Day view as a layer over the grid (DayLayer): part of the page, laid over the screen where the page stands
+   (from under the clock to under the toolbar), never fixed (a fixed layer at the screen's edges has Safari paint its bars
+   solid). Its own scroller, one card a swipe; the stack as it scrolls is the cards' own (st-yield, on this scroller's
+   timeline). The page under it is the grid it was ── */
+
+.st-day-layer {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  z-index: 40;
+  background: transparent;
+  transition: none;
+}
+
+.st-day-deck {
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+
+.st-day-deck::-webkit-scrollbar {
+  display: none;
+}
+
+/* one a card, where it rests */
+.st-day-mark {
+  position: absolute;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  pointer-events: none;
 }

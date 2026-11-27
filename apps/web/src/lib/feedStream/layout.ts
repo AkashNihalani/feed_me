@@ -113,6 +113,10 @@ const BOTTOM_PAD = 16;
 // the Day view's first post sits this far under the profile (a phone's, further: DECK_AIR), and what lies between the
 // profile's last line and the layer
 const DAY_TOP = 12;
+/* a phone card's reading comes this much nearer the dock than the nav's inset (which has 10 of air over its bar): its foot
+   just over the bar as it opens again (a scroll back), and ~40pt over the folded circle (before ~75, with its box's empty
+   foot). Never onto the circle's line: the bar unfolds over a card, and would cover it */
+const DOCK_EASE = 10;
 const DAY_PROFILE_FOOT = 20;
 
 export type GridMode = Exclude<FeedMode, 'today'>;
@@ -342,11 +346,13 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
     const picture = Math.round(width / POST_ASPECT);
     const restTop = Math.max(0, Math.round(bandTop - DECK_LIFT));
     const cardHeight = Math.max(picture, Math.round((insets.screen ?? height) + (insets.under ?? 0) - restTop));
-    const footClear = Math.max(0, Math.round(restTop + cardHeight - (height - insets.bottom)));
     const head = restTop + (insets.over ?? 0);
     const lift = Math.min(head, DECK_PICTURE_UP);
+    // (its chrome is drawn `rise` up: its foot is cleared of the dock where it is drawn, not that much over it)
+    const rise = Math.min(head, DECK_READING_RISE);
+    const footClear = Math.max(0, Math.round(restTop + cardHeight - (height - insets.bottom) - DOCK_EASE - rise));
     // (the first card's picture still stands as far under the profile as it always has: its lift is made up in the gap)
-    return { focusY: restTop + cardHeight / 2, cardWidth: width, cardHeight, mediaWidth: null as number | null, stride: cardHeight + head, restTop, footClear, head, lift, rise: Math.min(head, DECK_READING_RISE), dayTop: Math.max(DAY_TOP, restTop + (insets.over ?? 0) + DECK_AIR - DAY_PROFILE_FOOT) + lift };
+    return { focusY: restTop + cardHeight / 2, cardWidth: width, cardHeight, mediaWidth: null as number | null, stride: cardHeight + head, restTop, footClear, head, lift, rise, dayTop: Math.max(DAY_TOP, restTop + (insets.over ?? 0) + DECK_AIR - DAY_PROFILE_FOOT) + lift };
   }
   const cardHeight = band - REEL_INSET * 2;
   const cardWidth = Math.min(cardHeight * REEL_ASPECT, THEATRE_MAX_WIDTH, width - REEL_INSET * 2);

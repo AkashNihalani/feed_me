@@ -18,21 +18,34 @@
 .fm-dock {
   --p: 0;
   --fm-dock-ease: cubic-bezier(0.3, 0.3, 0.2, 1);
-  /* words over the frost: a soft halo of the page's colour, so they read over any picture behind it */
-  --fm-dock-halo: 0 0 10px color-mix(in srgb, var(--fm-page) 90%, transparent), 0 0 2px color-mix(in srgb, var(--fm-page) 70%, transparent);
   --fm-dock-ink-2: color-mix(in srgb, var(--foreground) 62%, transparent);
   --fm-dock-ink-3: color-mix(in srgb, var(--foreground) 34%, transparent);
   /* a tab's name you're not on: plainly readable over the frost or the pill, a clear step under the one you're on */
   --fm-dock-ink-tab: color-mix(in srgb, var(--foreground) 66%, transparent);
-  /* its glass: denser and whiter than the header's (dark: a step up out of the page), a hairline holding its edge on a
-     pale page, its shadow, and round it a glow of the page's own colour that clears the page's words off its edge, so
-     it reads over text as well as over a picture */
-  --fm-dock-tint: rgb(255 255 255 / 0.74);
-  --fm-dock-blur: 16px;
-  --fm-dock-rim: rgb(var(--fm-shadow-rgb) / 0.1);
-  --fm-dock-rim-top: rgb(255 255 255 / 0.9);
-  --fm-dock-drop: rgb(var(--fm-shadow-rgb) / 0.2);
-  --fm-dock-glow: color-mix(in srgb, var(--fm-page) 58%, transparent);
+  /* its glass: clear enough that what's under it shows through, blurred and in its own colours, the way the desktop
+     rail's frost shows the posts under it, and lit like a lens: a light falling in from the top left, a bright rim all
+     round (strongest on top) and a faint glow inside the edge. One blur pass; the light is still paint. Never a glow of
+     the page's colour round it (over Feed's pictures that was a white haze), and never so white it reads as a coat over
+     the page */
+  --fm-dock-tint: linear-gradient(to bottom, rgb(255 255 255 / 0.56), rgb(255 255 255 / 0.4));
+  --fm-dock-sheen: radial-gradient(120% 140% at 18% -20%, rgb(255 255 255 / 0.5), transparent 50%);
+  --fm-dock-lens: blur(14px) saturate(180%) brightness(1.06);
+  --fm-dock-rims:
+    inset 0 1px 0 rgb(255 255 255 / 0.95),
+    inset 0 -1px 0 rgb(255 255 255 / 0.38),
+    inset 1px 0 0 rgb(255 255 255 / 0.42),
+    inset -1px 0 0 rgb(255 255 255 / 0.42),
+    inset 0 0 20px rgb(255 255 255 / 0.2);
+  --fm-dock-rim: rgb(var(--fm-shadow-rgb) / 0.13);
+  --fm-dock-drop: rgb(var(--fm-shadow-rgb) / 0.3);
+  /* the plate: the hairline, a contact shadow, the drop, and a soft lift that leans up. None of it reaches more than
+     12px under the glass: iOS Safari draws nothing fixed past its toolbar's top, 12px under the dock, and a longer
+     shadow ended there on a hard straight edge, a grey strip under the bar */
+  --fm-dock-plate:
+    0 0 0 0.5px var(--fm-dock-rim),
+    0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08),
+    0 4px 14px -6px var(--fm-dock-drop),
+    0 -2px 16px -4px rgb(var(--fm-shadow-rgb) / 0.1);
   position: fixed;
   left: 0;
   right: 0;
@@ -42,15 +55,18 @@
   pointer-events: none;
 }
 
-/* (over a phone's Day cards, dark in both themes: no light round it) */
-html[data-feed-deck] .fm-dock {
-  --fm-dock-glow: transparent;
-}
-
+/* (dark: smoked glass, a step up out of the page, its rim a thin light) */
 html.dark .fm-dock {
-  --fm-dock-tint: rgb(28 28 32 / 0.74);
+  --fm-dock-tint: linear-gradient(to bottom, rgb(32 32 38 / 0.58), rgb(24 24 28 / 0.5));
+  --fm-dock-sheen: radial-gradient(120% 140% at 18% -20%, rgb(255 255 255 / 0.08), transparent 50%);
+  --fm-dock-lens: blur(14px) saturate(170%) brightness(0.92);
+  --fm-dock-rims:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    inset 0 -1px 0 rgb(255 255 255 / 0.06),
+    inset 1px 0 0 rgb(255 255 255 / 0.08),
+    inset -1px 0 0 rgb(255 255 255 / 0.08),
+    inset 0 0 20px rgb(255 255 255 / 0.04);
   --fm-dock-rim: rgb(255 255 255 / 0.1);
-  --fm-dock-rim-top: rgb(255 255 255 / 0.14);
   --fm-dock-drop: rgb(0 0 0 / 0.55);
 }
 
@@ -60,8 +76,11 @@ html.dark .fm-dock {
   }
 }
 
-/* the frost: a veil over the page under the layers, blurred and washed toward the page's colour, strongest at the foot
-   and clear by the top: the page still there to see through it, the layers' words always clear over it. It lies in the page, not over
+/* the frost: the desktop rail's own frost (sideRail.css), turned to rise from the foot: the page blurred and washed
+   toward its own colour, strongest behind the layers (86 to 78%, the posts still there as soft shapes under them) and
+   clear a little over them, with no edge of its own. Strong enough behind the words that they read without a halo.
+   Measured from its foot, since the layers stand a fixed height over the dock on every phone: the foot is 96px under the
+   screen's (below), the dock 12px over that, and the layers' top row (Me) under 400px up. It lies in the page, not over
    the screen (a fixed box at the screen's foot is taken by iOS Safari for a bar, and its toolbar filled solid with the
    box's colour): laid where the screen is as the layers rise (Dock), and on past the screen's foot, under the toolbar
    (iOS 26's large viewport stops at the toolbar's top). Drawn only while they are up (data-live), so it costs nothing
@@ -73,17 +92,17 @@ html.dark .fm-dock {
   z-index: 170;
   display: none;
   height: calc(100lvh + 96px);
-  -webkit-backdrop-filter: blur(10px) saturate(125%);
-  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  backdrop-filter: blur(12px) saturate(130%);
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--fm-page) 74%, transparent),
-    color-mix(in srgb, var(--fm-page) 48%, transparent) 36%,
-    color-mix(in srgb, var(--fm-page) 14%, transparent) 68%,
-    transparent
+    color-mix(in srgb, var(--fm-page) 86%, transparent),
+    color-mix(in srgb, var(--fm-page) 78%, transparent) 360px,
+    color-mix(in srgb, var(--fm-page) 36%, transparent) 520px,
+    transparent 660px
   );
-  -webkit-mask-image: linear-gradient(to top, #000 44%, transparent 86%);
-  mask-image: linear-gradient(to top, #000 44%, transparent 86%);
+  -webkit-mask-image: linear-gradient(to top, #000 440px, transparent 680px);
+  mask-image: linear-gradient(to top, #000 440px, transparent 680px);
   opacity: 0;
   pointer-events: none;
   will-change: opacity;
@@ -91,6 +110,25 @@ html.dark .fm-dock {
 
 .fm-dock-frost[data-live] {
   display: block;
+}
+
+/* (raised over a phone's Day card, the layers and their frost take the cards' dark in either theme: the card is dark in
+   both, and the light theme's frost washed it out. Decided as they rise, kept till the frost is gone: Dock markCard.
+   The ink tokens are worked out again where the page's are swapped, or they would keep the theme's) */
+.fm-dock-frost[data-on-card] {
+  --fm-page: #141416;
+}
+
+.fm-dock[data-on-card] .fm-dock-layers {
+  --foreground: #ffffff;
+  --fm-page: #141416;
+  --fm-fg: #ffffff;
+  --fm-fg-rgb: 255 255 255;
+  --fm-shadow-rgb: 0 0 0;
+  --fm-dock-ink-2: color-mix(in srgb, var(--foreground) 62%, transparent);
+  --fm-dock-ink-3: color-mix(in srgb, var(--foreground) 34%, transparent);
+  --fm-dock-ink-tab: color-mix(in srgb, var(--foreground) 66%, transparent);
+  color: var(--foreground);
 }
 
 .fm-dock-frost[data-open] {
@@ -159,20 +197,16 @@ html.dark .fm-dock {
 }
 
 .fm-dock-glass::before {
-  background: var(--fm-dock-tint);
-  box-shadow: inset 0 1px 0 var(--fm-dock-rim-top);
-  -webkit-backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
-  backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
+  background: var(--fm-dock-sheen), var(--fm-dock-tint);
+  box-shadow: var(--fm-dock-rims);
+  -webkit-backdrop-filter: var(--fm-dock-lens);
+  backdrop-filter: var(--fm-dock-lens);
 }
 
-/* (the plate: its hairline, its shadow, and the glow round it, on top of one another in that order) */
+/* (the plate: its hairline and its shadow, on top of one another in that order) */
 .fm-dock-glass::after {
   z-index: -1;
-  box-shadow:
-    0 0 0 0.5px var(--fm-dock-rim),
-    0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08),
-    0 12px 28px -10px var(--fm-dock-drop),
-    0 -2px 22px 6px var(--fm-dock-glow);
+  box-shadow: var(--fm-dock-plate);
 }
 
 /* the handle's own glass (folded): the bar's glass and plate, round, a little wider than the hero */
@@ -181,10 +215,10 @@ html.dark .fm-dock {
   inset: -6px;
   z-index: -1;
   border-radius: 50%;
-  background: var(--fm-dock-tint);
-  box-shadow: inset 0 1px 0 var(--fm-dock-rim-top);
-  -webkit-backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
-  backdrop-filter: blur(var(--fm-dock-blur)) saturate(160%);
+  background: var(--fm-dock-sheen), var(--fm-dock-tint);
+  box-shadow: var(--fm-dock-rims);
+  -webkit-backdrop-filter: var(--fm-dock-lens);
+  backdrop-filter: var(--fm-dock-lens);
   opacity: 0;
   pointer-events: none;
 }
@@ -195,11 +229,7 @@ html.dark .fm-dock {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  box-shadow:
-    0 0 0 0.5px var(--fm-dock-rim),
-    0 1px 2px rgb(var(--fm-shadow-rgb) / 0.08),
-    0 12px 28px -10px var(--fm-dock-drop),
-    0 -2px 22px 6px var(--fm-dock-glow);
+  box-shadow: var(--fm-dock-plate);
 }
 
 /* what the bar carries beside the handle: the line and the tab's disc. Folded, it draws in to the bar's middle with the
@@ -356,7 +386,8 @@ html.dark .fm-dock {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--fm-dock-ink-2);
+  /* (a step darker than the layers' second ink: the glass under it shows a dark picture through) */
+  color: color-mix(in srgb, var(--foreground) 74%, transparent);
   font-variant-numeric: tabular-nums;
   animation-delay: calc(50ms * var(--fm-tempo, 1));
 }
@@ -497,7 +528,6 @@ html.dark .fm-dock {
 /* (the one flying home lets its name go first) */
 .fm-dock-item [data-ledger-label] {
   opacity: var(--name, 1);
-  text-shadow: var(--fm-dock-halo);
 }
 
 /* the tab words rise over the row: the one you're on first, the others a beat behind; the finger's takes the mark */
@@ -518,7 +548,6 @@ html.dark .fm-dock {
   background: none;
   color: var(--foreground);
   white-space: nowrap;
-  text-shadow: var(--fm-dock-halo);
   opacity: clamp(0, var(--q), 1);
   transform: translateY(calc((1 - var(--q)) * 26px)) scale(calc(0.88 + 0.12 * min(var(--q), 1)));
   transition: scale 220ms var(--fm-dock-ease);
@@ -589,7 +618,6 @@ html.dark .fm-dock {
   letter-spacing: -0.035em;
   line-height: 1;
   color: var(--fm-dock-ink-tab);
-  text-shadow: var(--fm-dock-halo);
   opacity: clamp(0, var(--q), 1);
   transform: translateY(calc((1 - var(--q)) * 26px)) scale(calc(0.88 + 0.12 * min(var(--q), 1)));
   transition: color 260ms ease, scale 220ms var(--fm-dock-ease);
@@ -657,7 +685,6 @@ html.dark .fm-dock {
   text-transform: uppercase;
   color: var(--fm-dock-ink-2);
   font-variant-numeric: tabular-nums;
-  text-shadow: var(--fm-dock-halo);
   opacity: var(--e);
   transform: translateX(calc(var(--cx) * (var(--e) - 1))) scale(calc(0.82 + 0.18 * var(--e)));
   transition: background-color 240ms ease, color 240ms ease, box-shadow 240ms ease, scale 220ms var(--fm-dock-ease);
@@ -668,7 +695,6 @@ html.dark .fm-dock {
 .fm-dock-chips [data-hot] {
   background: var(--foreground);
   color: var(--fm-page);
-  text-shadow: none;
   box-shadow: 0 10px 22px -12px rgb(var(--fm-shadow-rgb) / 0.5);
 }
 

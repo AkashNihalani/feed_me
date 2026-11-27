@@ -122,7 +122,9 @@ function pictureCanvas(original: HTMLImageElement, copied: HTMLImageElement): HT
    at the screen's foot (Safari 26 takes a fixed layer at its toolbar's edge for a bar of the page's and paints the
    toolbar solid in its colour, until the page next scrolls): given, the copy stops that far short of the foot instead
    of running on past it; `into`: where the layer goes (the body, or a page's own surface, to lie under the page);
-   `held`: drawn but not shown until show(); `freeze`: pieces mid-animation copied where they stand (below) */
+   `held`: drawn but not shown until show(); `freeze`: pieces mid-animation copied where they stand (below). (Never
+   drawn on past the box by a child of it, toward the edges: Safari takes its bars' colours from that too, and painted
+   both solid for as long as the copy stood, measured Nov 27) */
 export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, foot, into, held = false, freeze = false }: { zIndex: number; edge?: number; foot?: number; into?: HTMLElement; held?: boolean; freeze?: boolean }): StillFrame {
   const height = window.innerHeight;
   const rect = source.getBoundingClientRect();
@@ -167,8 +169,10 @@ export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, foo
   const videos = pairs<HTMLVideoElement>('video');
 
   // what is not part of the picture: an earlier copy still going, what the page marks as never drawn, and what a move
-  // has let go of (unseen: copying it is only work)
-  copy.querySelectorAll('[data-still-frame], [data-still-skip], [data-gone], [data-layer$="-out"]').forEach((node) => node.remove());
+  // has let go of (unseen: copying it is only work). A card's melt going with it to a tile (.st-melt-out) is gone by a
+  // CSS animation that holds its end: the copy plays none, and drew it whole over the tile's foot, its number greyed
+  // under it until the copy dissolved
+  copy.querySelectorAll('[data-still-frame], [data-still-skip], [data-gone], [data-layer$="-out"], .st-melt-out').forEach((node) => node.remove());
 
   cells.forEach(([original, copied]) => {
     if (offScreen(original, height)) copied.remove();
@@ -242,6 +246,9 @@ export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, foo
     // a layer of its own, drawn once
     willChange: 'opacity',
   });
+  const raise = () => {
+    cover.style.opacity = '1';
+  };
   cover.appendChild(copy);
   (into ?? document.body).appendChild(cover);
   const follow = () => undefined;
@@ -253,15 +260,13 @@ export function stillFrame(source: HTMLElement, { zIndex, edge = EDGE_CLEAR, foo
     await nextFrame();
     await nextFrame();
     if (removed || held) return;
-    cover.style.opacity = '1';
+    raise();
     await nextFrame();
   })();
 
   return {
     shown,
-    show: () => {
-      cover.style.opacity = '1';
-    },
+    show: raise,
     element: cover,
     follow,
     remove: () => {
