@@ -160,6 +160,10 @@ html.dark .fm-dock {
   touch-action: none;
   outline: none;
   -webkit-tap-highlight-color: transparent;
+  /* (a thumb resting on it is the dock's hold: never iOS's selection or its picture menu) */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   translate: -50% 0;
   transition: scale 240ms var(--fm-dock-ease);
 }
@@ -737,4 +741,112 @@ html.dark .fm-dock {
 
 .fm-dock[data-away] {
   visibility: hidden;
+}
+
+/* ── the way back turned in (back.turn: a Day card on Feed). Who you're on is shown whole first; then the circle rolls
+   over: the face goes up and out of its round window, whole, as the way back comes up into it, a full disc of the same
+   kind (the face's own ground and white edge, an ink mark). One strip, one move, the line under the name rolling with
+   it (fm-dock-line-in, the same way: up). The window gives a little as the strip goes, as a pick's press does. Out of it
+   the strip rolls back down. Transforms and opacity alone ── */
+.fm-dock-hero {
+  --fm-dock-turn: calc(560ms * var(--fm-tempo, 1));
+}
+
+.fm-dock-turnwin {
+  position: absolute;
+  inset: 4px;
+  z-index: 20;
+  border-radius: 50%;
+  overflow: hidden;
+  clip-path: circle(50%);
+}
+
+.fm-dock-turnstrip {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 200%;
+  transform: translate3d(0, 0, 0);
+  transition: transform var(--fm-dock-turn) var(--fm-dock-ease);
+  will-change: transform;
+}
+
+.fm-dock-turnwin[data-turn='in'] .fm-dock-turnstrip {
+  transform: translate3d(0, -50%, 0);
+}
+
+.fm-dock-turnface,
+.fm-dock-turnback {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 100%;
+  height: 50%;
+  transition:
+    scale var(--fm-dock-turn) var(--fm-dock-ease),
+    opacity var(--fm-dock-turn) var(--fm-dock-ease);
+}
+
+/* (the one leaving draws back a touch as it goes, the one coming grows into its place: depth, not a slide) */
+.fm-dock-turnwin[data-turn='in'] .fm-dock-turnface,
+.fm-dock-turnwin:not([data-turn='in']) .fm-dock-turnback {
+  scale: 0.78;
+  opacity: 0.4;
+}
+
+.fm-dock-turnback {
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f4f4f6, #e4e5ea);
+  color: var(--foreground);
+}
+
+.dark .fm-dock-turnback {
+  border-color: var(--fm-ink);
+  background: linear-gradient(135deg, #1c1917, #18181b);
+}
+
+.fm-dock-turnback svg {
+  width: 26px;
+  height: 26px;
+  /* (a touch left of the middle: a chevron's weight sits on its point) */
+  translate: -1.5px 0;
+}
+
+.fm-dock-turnwin[data-turn='in'] {
+  animation: fm-dock-turn-in var(--fm-dock-turn) var(--fm-dock-ease);
+}
+
+.fm-dock-turnwin[data-turn='out'] {
+  animation: fm-dock-turn-out var(--fm-dock-turn) var(--fm-dock-ease);
+}
+
+/* (two names for the same give, so each way plays it afresh) */
+@keyframes fm-dock-turn-in {
+  0% { scale: 1; }
+  32% { scale: 0.9; }
+  72% { scale: 1.03; }
+  100% { scale: 1; }
+}
+
+@keyframes fm-dock-turn-out {
+  0% { scale: 1; }
+  32% { scale: 0.9; }
+  72% { scale: 1.03; }
+  100% { scale: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-dock-turnstrip,
+  .fm-dock-turnface,
+  .fm-dock-turnback {
+    transition-duration: 1ms;
+  }
+
+  .fm-dock-turnwin[data-turn] {
+    animation: none;
+  }
 }

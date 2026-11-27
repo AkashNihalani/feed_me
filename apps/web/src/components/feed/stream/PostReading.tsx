@@ -21,7 +21,7 @@
    arrives (ReelCard). Nothing here moves by itself.
    ───────────────────────────────────────────────────────────── */
 
-import { memo, useState, type CSSProperties } from 'react';
+import { memo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import FeederStoryAvatar from '@/components/feed/FeederStoryAvatar';
 import { LineSwap } from '@/components/feed/stream/CheckpointStrip';
@@ -68,6 +68,8 @@ export type PostReadingProps = {
   // the sheet draws its own header (with the close button); the Day view's reading carries who and when itself
   withHeader?: boolean;
   titleId?: string;
+  // who it is, tapped: their page (a feed's view, or all of them)
+  onWho?: () => void;
 };
 
 // "Sat 4 Oct, 7:42 pm", "Today, 9:05 am" (IST)
@@ -100,7 +102,7 @@ function landedNote(post: StreamPost, today: string) {
   return null;
 }
 
-export function PostWho({ post, feeder, solo = false, size, titleId }: { post: StreamPost; feeder: StreamFeeder | null; solo?: boolean; size: PostReadingProps['size']; titleId?: string }) {
+export function PostWho({ post, feeder, solo = false, size, titleId, onWho }: { post: StreamPost; feeder: StreamFeeder | null; solo?: boolean; size: PostReadingProps['size']; titleId?: string; onWho?: () => void }) {
   const stage = size === 'stage';
   if (solo) {
     return (
@@ -110,20 +112,46 @@ export function PostWho({ post, feeder, solo = false, size, titleId }: { post: S
     );
   }
   const meta = postMeta(post, feeder);
+  // their face and name: each a way to their page (the name's button inside the heading, so the heading stays one)
+  const open = onWho
+    ? (event: ReactMouseEvent) => {
+        event.stopPropagation();
+        onWho();
+      }
+    : undefined;
+  const faceClass = cn('relative shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgb(var(--fm-fg-rgb)/0.16)]', stage ? 'h-11 w-11' : 'h-10 w-10');
+  const face = <FeederStoryAvatar feeder={feeder ?? { handle: post.handle, profilePicUrl: null }} className={stage ? 'text-[16px]' : 'text-[14px]'} />;
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <span className={cn('relative shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgb(var(--fm-fg-rgb)/0.16)]', stage ? 'h-11 w-11' : 'h-10 w-10')}>
-        <FeederStoryAvatar feeder={feeder ?? { handle: post.handle, profilePicUrl: null }} className={stage ? 'text-[16px]' : 'text-[14px]'} />
-      </span>
+      {open ? (
+        <button type="button" tabIndex={-1} aria-hidden="true" onClick={open} className={cn(faceClass, 'cursor-pointer outline-none [-webkit-tap-highlight-color:transparent] active:scale-95')}>
+          {face}
+        </button>
+      ) : (
+        <span className={faceClass}>{face}</span>
+      )}
       <div className="min-w-0 flex-1">
-        <h2 id={titleId} className={cn('truncate font-bold leading-tight text-[var(--st-text)]', stage ? 'text-[18px]' : 'text-[16px]')}>@{post.handle}</h2>
+        <h2 id={titleId} className={cn('truncate font-bold leading-tight text-[var(--st-text)]', stage ? 'text-[18px]' : 'text-[16px]')}>
+          {open ? (
+            <button
+              type="button"
+              onClick={open}
+              aria-label={`Open @${post.handle}'s page`}
+              className="max-w-full cursor-pointer truncate text-left decoration-2 underline-offset-4 outline-none [-webkit-tap-highlight-color:transparent] hover:underline focus-visible:underline active:opacity-70"
+            >
+              @{post.handle}
+            </button>
+          ) : (
+            `@${post.handle}`
+          )}
+        </h2>
         {meta ? <p className={cn('mt-1 truncate font-medium leading-tight text-[var(--st-text-2)]', stage ? 'text-[14px]' : 'text-[12px]')}>{meta}</p> : null}
       </div>
     </div>
   );
 }
 
-function PostReading({ post, feeder, solo = false, size, withHeader = true, titleId }: PostReadingProps) {
+function PostReading({ post, feeder, solo = false, size, withHeader = true, titleId, onWho }: PostReadingProps) {
   const look = SIZE[size];
   // the read it shows (its latest until one is picked on the trail), and the one before it
   const [pick, setPick] = useState<StreamCheckpoint | null>(null);
@@ -146,7 +174,7 @@ function PostReading({ post, feeder, solo = false, size, withHeader = true, titl
     <div className={cn('flex min-w-0 flex-col', look.gap)}>
       {withHeader ? (
         <div className="st-settle" data-settle="0" style={{ '--i': 0 } as CSSProperties}>
-          <PostWho post={post} feeder={feeder} solo={solo} size={size} titleId={titleId} />
+          <PostWho post={post} feeder={feeder} solo={solo} size={size} titleId={titleId} onWho={onWho} />
         </div>
       ) : null}
 

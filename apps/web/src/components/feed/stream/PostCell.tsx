@@ -359,7 +359,7 @@ const RING = 2 * Math.PI * 20.5;
    for a tap, a ▶ sits on a reel that has a clip, and the reading clears its foot of the dock (clear). It stands in one
    box of the card's (foot: deckFootOf), the same on every card, and is cut off at its foot: what rises out of it as it
    opens rises from there, and sinks back under it, never down over the dock */
-function CardChrome({ post, feeder, solo = false, width, height, standout, date, live = false, clear = 0, foot, parts, pick = null, onPick = NO_PICK, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay }: {
+function CardChrome({ post, feeder, solo = false, width, height, standout, date, live = false, clear = 0, foot, parts, pick = null, onPick = NO_PICK, playable = false, playSlides = false, playOff = false, watching = false, onToggle, onPlay, onWho }: {
   post: StreamPost;
   feeder: StreamFeeder | null;
   solo?: boolean;
@@ -382,6 +382,8 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
   watching?: boolean;
   onToggle?: () => void;
   onPlay?: () => void;
+  // who it is, tapped: their page
+  onWho?: () => void;
 }) {
   const { roomy } = foot;
   const face = feeder ?? { handle: post.handle, profilePicUrl: null };
@@ -476,11 +478,34 @@ function CardChrome({ post, feeder, solo = false, width, height, standout, date,
                 <span className="min-w-0 flex-1 text-[16px] font-semibold leading-tight text-white/80">{line}</span>
               ) : (
                 <>
-                  <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
-                    <FeederStoryAvatar feeder={face} className="text-[14px]" />
-                  </span>
+                  {/* who: their face and name open their page (a tap on the rest is the card's) */}
+                  {onWho ? (
+                    <button
+                      type="button"
+                      onClick={own(onWho)}
+                      aria-label={`Open @${post.handle}'s page`}
+                      className="pointer-events-auto relative h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)] outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-white/80 active:scale-95"
+                    >
+                      <FeederStoryAvatar feeder={face} className="text-[14px]" />
+                    </button>
+                  ) : (
+                    <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_1px_rgba(255,255,255,0.22)]">
+                      <FeederStoryAvatar feeder={face} className="text-[14px]" />
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[17px] font-bold leading-tight tracking-[-0.01em] text-white">@{post.handle}</span>
+                    {onWho ? (
+                      <button
+                        type="button"
+                        onClick={own(onWho)}
+                        tabIndex={-1}
+                        className="pointer-events-auto block max-w-full truncate text-left text-[17px] font-bold leading-tight tracking-[-0.01em] text-white outline-none [-webkit-tap-highlight-color:transparent] active:opacity-70"
+                      >
+                        @{post.handle}
+                      </button>
+                    ) : (
+                      <span className="block truncate text-[17px] font-bold leading-tight tracking-[-0.01em] text-white">@{post.handle}</span>
+                    )}
                     <span className="mt-0.5 block min-w-0 text-[13px] font-medium leading-tight text-white/65">{line}</span>
                   </span>
                 </>
@@ -583,7 +608,7 @@ function readingStart(room: number): ReadingSize {
   return 'compact';
 }
 
-function RowReading({ post, feeder, solo, height }: { post: StreamPost; feeder: StreamFeeder | null; solo: boolean; height: number }) {
+function RowReading({ post, feeder, solo, height, onWho }: { post: StreamPost; feeder: StreamFeeder | null; solo: boolean; height: number; onWho?: () => void }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [reading, setReading] = useState<{ height: number; size: ReadingSize }>(() => ({ height, size: readingStart(height) }));
   if (reading.height !== height) setReading({ height, size: readingStart(height) });
@@ -597,7 +622,7 @@ function RowReading({ post, feeder, solo, height }: { post: StreamPost; feeder: 
   return (
     <div ref={boxRef} className="flex h-full min-w-0 items-center overflow-hidden py-1">
       <div className="w-full min-w-0 max-w-[520px]">
-        <PostReading post={post} feeder={feeder} solo={solo} size={reading.size} />
+        <PostReading post={post} feeder={feeder} solo={solo} size={reading.size} onWho={onWho} />
       </div>
     </div>
   );
@@ -663,6 +688,8 @@ export type PostCellProps = {
   // all (the page rests on it, the scroll that brought it there not settled yet; or the tap stopped the page gliding
   // onto it: gliding), and the tap goes on to read it
   onFocusCard: (post: StreamPost, gliding?: boolean) => boolean;
+  // its @handle tapped: that feeder's page (absent on a feeder's own page, where no post says whose it is)
+  onFeeder?: (handle: string) => void;
 };
 
 const KIND: Record<StreamMediaType, string> = { reel: 'Reel', carousel: 'Carousel', image: 'Post', unknown: 'Post' };
@@ -772,6 +799,7 @@ function PostCell({
   rise = 0,
   onOpenTile,
   onFocusCard,
+  onFeeder,
 }: PostCellProps) {
   const shape: CellShape = { w, h, cols, rows, mediaWidth, wide };
   const dateParts = date ? groupParts(date, 'day', istDay()) : null;
@@ -1210,6 +1238,7 @@ function PostCell({
             playSlides={slideClips}
             playOff={playOff}
             watching={clean === 'watch'}
+            onWho={onFeeder ? () => onFeeder(post.handle) : undefined}
             onToggle={() => {
               if (!active && !onFocusCard(post, glideTapRef.current)) return;
               // (a cleared card: its reading back, then open)
@@ -1227,7 +1256,7 @@ function PostCell({
 
       {row ? (
         <div data-layer="reading" data-reading="" style={{ left: shape.mediaWidth + READING_GAP, top: 0, width: Math.max(0, shape.w - shape.mediaWidth - READING_GAP), height: shape.h }}>
-          <RowReading post={post} feeder={feeder} solo={solo} height={shape.h} />
+          <RowReading post={post} feeder={feeder} solo={solo} height={shape.h} onWho={onFeeder ? () => onFeeder(post.handle) : undefined} />
         </div>
       ) : null}
 

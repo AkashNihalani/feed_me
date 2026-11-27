@@ -400,7 +400,9 @@ export type FeedStreamHandle = {
   // ...and shown: the screen as it is now is kept for the move, and apply() (the tab's own state) shows the new pick in
   // the same commit. profile: the profile is someone else's; slide: a new order, its list coming in from that side (1:
   // from the right; SLIDE_MS)
-  commit: (apply: () => void, options: { profile: boolean; slide?: StreamSlide }) => void;
+  commit: (apply: () => void, options: { profile: boolean; slide?: StreamSlide; top?: boolean }) => void;
+  // a phone's Day open: it closes onto the grid first (its card going home), then `then`; else `then` at once
+  leaveDay: (then: () => void) => void;
   // a pick or a zoom (or zooms) about to be taken (a hover, a press): its posts and the pictures it opens on are
   // fetched now
   warm: (next: { scope?: StreamScope; modes?: readonly FeedMode[] }) => void;
@@ -429,6 +431,8 @@ export type FeedStreamProps = {
   keyboard: boolean;
   onModeChange: (mode: FeedMode) => void;
   onManage: () => void;
+  // a post's @handle tapped (a feed or all of them on screen): that feeder's page, from its top
+  onFeeder?: (handle: string) => void;
 };
 
 // left: where the stream's column starts in the window (past the side rail from a laptop up; 0 on a phone)
@@ -975,6 +979,7 @@ function FeedStream({
   keyboard,
   onModeChange,
   onManage,
+  onFeeder,
 }: FeedStreamProps) {
   const gen = scopeKey(scope);
   // the scope without its order: the profile stays through a change of order
@@ -1041,7 +1046,7 @@ function FeedStream({
   // the scroll's speed (px a ms, read once a frame) and the pictures last asked for ahead of it
   const speedRef = useRef({ y: 0, t: 0, v: 0 });
   const aheadRef = useRef<{ layout: StreamLayout; from: number; to: number; land: number } | null>(null);
-  const callbacksRef = useRef({ onModeChange, onManage, play });
+  const callbacksRef = useRef({ onModeChange, onManage, onFeeder, play });
   const savedYRef = useRef(0);
   const visibleRef = useRef(false);
   const touchingRef = useRef(false);
@@ -2623,7 +2628,7 @@ function FeedStream({
   }, [cancelZoomWait, handOver, stopPrewarm]);
 
   // ...and shown: the screen as it is now is kept for the move, and apply() shows the new pick in the same commit
-  const commit = useCallback((apply: () => void, options: { profile: boolean; slide?: StreamSlide }) => {
+  const commit = useCallback((apply: () => void, options: { profile: boolean; slide?: StreamSlide; top?: boolean }) => {
     cancelZoomWait();
     handOver();
     dropStill();
@@ -2645,7 +2650,7 @@ function FeedStream({
     if (!pick || !size || !layer || !current || !nextIndex || !visibleRef.current || reducedMotion()) {
       endMove();
       flushSync(apply);
-      if (pick && !pick.keepScroll && !pick.day) window.scrollTo(0, 0);
+      if (options.top || (pick && !pick.keepScroll && !pick.day)) window.scrollTo(0, 0);
       return;
     }
     const nextPosts = loadedPosts(pick.next, nextIndex);
@@ -2660,6 +2665,8 @@ function FeedStream({
       const headerEdge = compressedRef.current ? size.insets.topCompressed : size.insets.top;
       if (at >= 0) scroll = current === 'today' ? nextOrigin + dayRestTop(target, at) : nextOrigin + target.items[at].y - headerEdge;
     }
+    // (asked for from its top: a feeder's page opened from one of their posts, at their profile)
+    if (options.top) scroll = 0;
     // a new order slides in under the tabs: they keep their place while they are on screen; read further down, the new
     // list opens at its start, under the header's edge
     const slideAsk = options.slide ?? null;
@@ -2933,12 +2940,18 @@ function FeedStream({
 
   useImperativeHandle(ref, () => ({
     setMode: (next: FeedMode) => zoomTo(next),
+    leaveDay: (then: () => void) => {
+      if (dayOpenRef.current && dayLayerRef.current) dayLayerRef.current.close(then);
+      else then();
+    },
     scrollToNewest,
     prepare,
     commit,
     warm: warmView,
   }), [commit, prepare, scrollToNewest, warmView, zoomTo]);
 
+  // a post's @handle: the tab opens that feeder's page (one function for good: the cells are memoised)
+  const feederTap = useCallback((handle: string) => callbacksRef.current.onFeeder?.(handle), []);
   const actions = useMemo<PieceActions>(() => ({
     openTile: (post, element) => {
       const rect = element.getBoundingClientRect();
@@ -3036,7 +3049,7 @@ function FeedStream({
     genRef.current = gen;
     inputsRef.current = { index, posts, scope };
     compressedRef.current = headerCompressed;
-    callbacksRef.current = { onModeChange, onManage, play };
+    callbacksRef.current = { onModeChange, onManage, onFeeder, play };
     if (!moveRef.current) renderedRef.current = layout && mountView ? { layout, gen, from: mountFrom, to: mountTo, win: mountView === win ? win : null } : null;
   });
 
@@ -3852,6 +3865,7 @@ function FeedStream({
         rise={inDay && drawn?.deck ? drawn.rise : 0}
         onOpenTile={actions.openTile}
         onFocusCard={actions.focusCard}
+        onFeeder={spec.solo ? undefined : feederTap}
       />
     );
   };
@@ -4023,6 +4037,7 @@ function FeedStream({
           tileOf={dayTile}
           placeTile={placeDayTile}
           onClosed={closedDay}
+          onFeeder={scope.handle ? undefined : feederTap}
         />
       ) : null}
       <div

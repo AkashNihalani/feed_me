@@ -93,6 +93,8 @@ type DayLayerProps = {
   // the page's scroll that brings a post's tile on screen (null: it is on screen, or the grid hasn't it)
   placeTile: (key: string) => number | null;
   onClosed: () => void;
+  // a card's @handle tapped (not on a feeder's own page)
+  onFeeder?: (handle: string) => void;
 };
 
 const frames = (count: number) =>
@@ -274,7 +276,7 @@ function tileWear(frame: HTMLElement, at: Rect, tileFrame: HTMLElement, fit: Lan
   return wear;
 }
 
-function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf, placeTile, onClosed }: DayLayerProps) {
+function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf, placeTile, onClosed, onFeeder }: DayLayerProps) {
   const over = size.insets.over ?? 0;
   const layerRef = useRef<HTMLDivElement | null>(null);
   const deckRef = useRef<HTMLDivElement | null>(null);
@@ -744,6 +746,7 @@ function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf,
         rise={layout.rise}
         onOpenTile={openTile}
         onFocusCard={focusCard}
+        onFeeder={onFeeder}
       />,
     );
   }

@@ -1,9 +1,12 @@
 /* ─────────────────────────────────────────────────────────────
-   DOCK PULL — the dock's third gesture: pull it down for the
-   tab's choice (Lead's range, Feed's zoom, Read's part). Its pill,
-   its springs and its ring serve the tab swipe too (Dock).
+   DOCK PULL — the dock's third gesture: hold it for the tab's
+   choice (Lead's range, Feed's zoom, Read's part), then slide.
+   Its pill, its springs and its ring serve the tab swipe too
+   (Dock). (It began as a pull down; a pull toward the screen's
+   foot ran into iOS's own gestures there, Reachability and
+   Safari's toolbar, so a hold opens it now: `hold`.)
 
-   Made of the dock's own parts. As the thumb pulls, the bar
+   Made of the dock's own parts. As the thumb rests, the bar
    presses in, the hero's ring is drawn round in the accent as far
    as the window you're on reaches (the ring a sideways swipe
    draws in ink), and one small pill, the tabs' own a size up, comes up
@@ -11,8 +14,8 @@
    with the thumb, a stop at a time, right for longer and left for
    shorter (the arrow keys' order), the ring sweeping with it; on
    a page that can keep up (Lead), the page follows the thumb, so
-   nothing is left to do on letting go. Pushed back up, it is as
-   it was. A quick flick down goes back to the one before.
+   nothing is left to do on letting go: back and forth without
+   lifting, to compare.
 
    One rAF loop, transforms alone. The page's own change waits
    until the mark is nearly home, so its work never holds the mark
@@ -159,6 +162,8 @@ export class DockPull {
   private mark = new Glide(0);
   private ring = new Glide(0);
   private taken = false;
+  // opened by a hold (the slide alone moves it from there), not by a pull
+  private byHold = false;
   private follow = 0;
   private timer = 0;
   // the finger is on it
@@ -172,6 +177,7 @@ export class DockPull {
     this.active = true;
     this.open = false;
     this.taken = false;
+    this.byHold = false;
     this.at = this.shown = choice.at;
     this.lean = 0;
     this.down = this.p = this.pTo = this.press = 0;
@@ -187,8 +193,26 @@ export class DockPull {
     this.run();
   }
 
+  /* the thumb rested on the dock: it opens at once where the thumb is, the bar pressed in as far as a pull would have
+     taken it, and from here only the slide moves it (nothing heads for the screen's foot) */
+  hold(x: number) {
+    if (!this.active || !this.choice) return;
+    this.byHold = true;
+    this.thumbX = x;
+    this.down = PULL_ARM;
+    this.pTo = 1;
+    this.openAt(x);
+    this.run();
+  }
+
   move(down: number, x: number) {
     if (!this.active || !this.choice) return;
+    if (this.byHold) {
+      this.thumbX = x;
+      if (this.open) this.slide(x);
+      this.run();
+      return;
+    }
     this.down = Math.max(0, down);
     this.thumbX = x;
     this.pTo = clamp((this.down - 6) / (PULL_ARM - 6), 0, 1);
@@ -251,7 +275,7 @@ export class DockPull {
   end(t: number, cancelled = false) {
     const { choice } = this;
     if (!this.active || !choice) return;
-    if (!cancelled && t - this.t0 < FLICK_MS && this.down > FLICK_PT && this.at === choice.at && Math.abs(this.thumbX - this.x0) < FLICK_SIDE) {
+    if (!cancelled && !this.byHold && t - this.t0 < FLICK_MS && this.down > FLICK_PT && this.at === choice.at && Math.abs(this.thumbX - this.x0) < FLICK_SIDE) {
       // a flick: the pill opens all the way, its mark goes back to the one before, and it is let go once that is seen
       this.lean = 0;
       if (!this.open) this.openAt(this.thumbX);

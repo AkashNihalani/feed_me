@@ -28,9 +28,11 @@
    as it does, and the ring turns back to ink. Let go before, and
    it all settles back.
 
-   Pull it down for the tab's choice (Lead's range, Feed's zoom,
-   Read's part): the same pill with the choices in it, opened on
-   the one you're on; slide along it and let go (dockPull).
+   Hold it for the tab's choice (Lead's range, Feed's zoom, Read's
+   part): the same pill with the choices in it rises, opened on the
+   one you're on; slide along it, back and forth to compare, and
+   let go (dockPull). A hold, not a pull down: the dock sits by the
+   screen's foot, where a pull ran into iOS's own gestures.
 
    Pull it up, or tap it, and the page frosts over while the
    dock's parts rise out of it as layers (a tap's at the pace they
@@ -54,7 +56,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { BookOpenText, LayoutGrid, Trophy } from 'lucide-react';
+import { BookOpenText, ChevronLeft, LayoutGrid, Trophy } from 'lucide-react';
 import { press } from '@/components/feed/stream/press';
 import { FAN_MS } from '@/components/motion/Ledger';
 import { Plate, RailFace, RailLabel, StoryRing, useShownHeader, useWideChrome, whoOf, type HeaderFeed, type HeaderFeeder, type RailFaceOf, type TabHeaderConfig } from '@/components/shell/TabHeader';
@@ -113,6 +115,15 @@ const FOLD_TRAVEL = 36;
 const FOLD_MS = ms(420);
 // a face, a chip or a word must have been under the finger this long to be taken on letting go: a flick past never is
 const REST_MS = 70;
+// the thumb resting on the dock this long (ms, a functional clock: not the tempo's), moved no further than this (pt), opens
+// the tab's choice (dockPull's hold); any more and it is a swipe or a pull
+const HOLD_MS = 280;
+const HOLD_SLOP = 8;
+// inside something with no picture of its own (a Day card): who you're on is shown whole this long first (the card has
+// landed by then), then the circle rolls over to the way back, taking TURN_MS (dock.css: --fm-dock-turn); out of it, it
+// rolls back as the card goes home
+const TURN_AFTER_MS = ms(560);
+const TURN_MS = ms(560);
 // a feeder picked: its ring drawn round before the layers sink back with it
 const PICK_HOLD_MS = ms(420);
 // a tab or a choice picked: the layers sink first, then the page moves (the page's work never holds them up)
@@ -152,7 +163,7 @@ const clamp = (value: number, low: number, high: number) => Math.min(high, Math.
 const magnet = (t: number) => t ** 3 / (t ** 3 + (1 - t) ** 3);
 
 // (`ring`: how far round a sideways swipe has drawn the hero's ring, 0 → 1; `raw`: how much of a pull up the finger has made)
-type Gesture = { id: number; x0: number; y0: number; mode: null | 'pull' | 'swipe' | 'drop'; wasOpen: boolean; locked: boolean; lastX: number; lastT: number; v: number; ring: number; raw: number };
+type Gesture = { id: number; x0: number; y0: number; mode: null | 'pull' | 'swipe' | 'drop' | 'idle'; wasOpen: boolean; locked: boolean; lastX: number; lastT: number; v: number; ring: number; raw: number };
 type RingParts = { right: HTMLElement | null; left: HTMLElement | null; lead: HTMLElement | null; start: HTMLElement | null; end: HTMLElement | null };
 
 // the swipe's marks: the dock plain again with none of them
@@ -229,8 +240,9 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
   const laterTimer = useRef(0);
   // the tab you're on, for what settles after a switch has already changed it
   const tabRef = useRef(tab);
-  // the pull down for the tab's choice (dockPull), its parts, and the choice each tab was last on
+  // the hold for the tab's choice (dockPull), its parts, and the choice each tab was last on
   const pull = useRef<DockPull | null>(null);
+  const holdTimer = useRef(0);
   const pillRef = useRef<HTMLDivElement | null>(null);
   const pillMarkRef = useRef<HTMLDivElement | null>(null);
   const pillBrightRef = useRef<HTMLDivElement | null>(null);
@@ -244,6 +256,26 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
   const pickIndex = faces.findIndex((face) => face.key === pickKey);
   const choice = config?.choice ?? null;
   const back = config?.back ?? null;
+  /* the way back turned in (back.turn): who you're on, whole, first; then the circle rolls over, the face going up and
+     out of it whole as the way back comes up into it (one strip, one move). Out of it ('out'), it rolls back down, the
+     face returning, and rests ('off') once that has played */
+  const turning = Boolean(back && back.turn && !back.art && !me);
+  const [turn, setTurn] = useState<'off' | 'in' | 'out'>('off');
+  useEffect(() => {
+    if (!turning) return undefined;
+    const timer = window.setTimeout(() => setTurn('in'), reducedMotion() ? 0 : TURN_AFTER_MS);
+    return () => {
+      window.clearTimeout(timer);
+      // (one already rolling back, from the tap that went back, plays out)
+      setTurn((was) => (was === 'in' ? 'out' : was));
+    };
+  }, [turning]);
+  useEffect(() => {
+    if (turn !== 'out') return undefined;
+    const timer = window.setTimeout(() => setTurn('off'), reducedMotion() ? 0 : TURN_MS + 80);
+    return () => window.clearTimeout(timer);
+  }, [turn]);
+  const turnedNow = turning && turn === 'in';
   const here = TABS.indexOf(tab);
   // (a flick goes back to the one before: told as the choice changes, however it was changed; a pull tells it once, as
   // it ends, not each stop it passed)
@@ -955,7 +987,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     const word = choice.label(value);
     return /^[A-Z]{3,}$/.test(word) ? word[0] + word.slice(1).toLowerCase() : word;
   }) : [];
-  const startPull = (event: ReactPointerEvent<HTMLElement>) => {
+  const startPull = (x: number, t: number) => {
     const bar = barRef.current;
     const face = faceRef.current;
     const pill = pillRef.current;
@@ -988,7 +1020,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
       onDone: (index) => {
         if (index !== at) chosen.current[tab] = { now: options[index], last: options[at] };
       },
-    }, event.clientX, gesture.current?.lastT ?? event.timeStamp);
+    }, x, t);
   };
 
   /* A second finger anywhere: it is a pinch on the page, never the dock's (the thumb of one resting here would switch
@@ -996,6 +1028,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
   const dropGesture = useRef<() => void>(() => {});
   useEffect(() => {
     dropGesture.current = () => {
+      window.clearTimeout(holdTimer.current);
       const g = gesture.current;
       if (!g) return;
       gesture.current = null;
@@ -1023,7 +1056,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     return () => window.removeEventListener('touchstart', onTouches, { capture: true });
   }, []);
 
-  /* ── the dock's own gestures: sideways for the next tab, up for the layers, down for the choice, a tap to open ── */
+  /* ── the dock's own gestures: sideways for the next tab, up for the layers, a hold for the choice, a tap to open ── */
   const onDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     // (a second finger's: the dock is never part of a pinch)
@@ -1032,6 +1065,21 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     gesture.current = { id: event.pointerId, x0: event.clientX, y0: event.clientY, mode: null, wasOpen: open, locked: false, lastX: event.clientX, lastT: event.timeStamp, v: 0, ring: 0, raw: 0 };
     // the page copied now, while the finger is still: a swipe that follows has nothing heavy to do (lib/tabPush)
     if (!open && !me && !reducedMotion()) holdPush(tab);
+    // the thumb left resting: the tab's choice rises where it rests, and the slide takes it from there
+    window.clearTimeout(holdTimer.current);
+    if (pullable && !open) {
+      const id = event.pointerId;
+      const x = event.clientX;
+      holdTimer.current = window.setTimeout(() => {
+        const g = gesture.current;
+        if (!g || g.id !== id || g.mode) return;
+        g.mode = 'drop';
+        releasePush();
+        startPull(x, performance.now());
+        pull.current?.hold(x);
+        barRef.current?.classList.add('is-dragging');
+      }, HOLD_MS);
+    }
   };
 
   // a swipe begun: the ring dims to a track, and the tabs rise over the dock, the one you're on lit
@@ -1063,6 +1111,8 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     if (!g || event.pointerId !== g.id) return;
     const dx = event.clientX - g.x0;
     const dy = g.y0 - event.clientY;
+    // (moved off the spot before the hold came: it is no hold)
+    if (!g.mode && Math.hypot(dx, dy) > HOLD_SLOP) window.clearTimeout(holdTimer.current);
     if (!g.mode && Math.hypot(dx, dy) > 10) {
       if (!g.wasOpen && Math.abs(dx) > Math.abs(dy) * 1.2) {
         g.mode = 'swipe';
@@ -1078,11 +1128,11 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
           follow.current.at = null;
           readyLayers();
         }
-      } else if (pullable) {
-        g.mode = 'drop';
-        startPull(event);
+      } else {
+        // down: none of the dock's (the screen's foot is iOS's), and no tap either
+        g.mode = 'idle';
       }
-      barRef.current?.classList.add('is-dragging');
+      if (g.mode !== 'idle') barRef.current?.classList.add('is-dragging');
     }
     if (g.mode === 'drop') {
       pull.current?.move(-dy, event.clientX);
@@ -1137,6 +1187,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
   const onUp = (event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
     const g = gesture.current;
     if (!g || event.pointerId !== g.id) return;
+    window.clearTimeout(holdTimer.current);
     gesture.current = null;
     barRef.current?.classList.remove('is-dragging');
     const dx = event.clientX - g.x0;
@@ -1144,6 +1195,10 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
 
     if (g.mode === 'drop') {
       pull.current?.end(event.timeStamp, cancelled);
+      return;
+    }
+    if (g.mode === 'idle') {
+      releasePush();
       return;
     }
     if (g.mode === 'swipe') {
@@ -1179,8 +1234,11 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     // (on Me: the disc is the way back to the tab it opened over, and the rest opens the layers)
     const disc = me && !foldedRef.current ? barRef.current?.querySelector('.fm-dock-tab')?.getBoundingClientRect() : null;
     if (disc && event.clientX >= disc.left - 8 && event.clientX <= disc.right + 14) return goTab(tab);
-    // (inside something: a tap is the way back out of it)
-    if (back && !me) return back.onBack();
+    // (inside something: a tap is the way back out of it; the circle rolls back with the move, not after it)
+    if (back && !me) {
+      setTurn((was) => (was === 'in' ? 'out' : was));
+      return back.onBack();
+    }
     openTap.current = { x: event.clientX, y: event.clientY, t: event.timeStamp };
     openLayers();
   };
@@ -1239,8 +1297,10 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
   const where = pickedFeeder
     ? activeFeed ? titleCase(activeFeed.title) : ''
     : activeFeed ? `${activeFeed.feeders.length} feeders` : config.feeds ? `${config.feeds.length} feeds` : '';
-  const sub = [back ? back.note : where, choice ? choice.label(choice.value) : null].filter(Boolean).join(' · ');
-  const line = back ? back.label : heroName;
+  // (a way back still turning in: who you're on, as ever, till it has)
+  const shownBack = back && (!turning || turnedNow) ? back : null;
+  const sub = turnedNow ? back?.note ?? '' : [shownBack ? shownBack.note : where, choice ? choice.label(choice.value) : null].filter(Boolean).join(' · ');
+  const line = shownBack ? shownBack.label : heroName;
 
   return (
     <>
@@ -1350,7 +1410,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
           type="button"
           className="fm-dock-bar"
           aria-expanded={open}
-          aria-label={`${me ? line : back ? `Back to ${line.toLowerCase()}` : heroName}${sub ? `, ${sub}` : ''}, ${me ? `over ${NAME[tab]}` : NAME[tab]}. Swipe for the next tab; pull up${back && !me ? '' : ' or tap'} for feeders and choices${choice ? `; pull down for ${choice.name.toLowerCase()}` : ''}`}
+          aria-label={`${me ? line : turning ? `${back?.note ?? 'Back'}, ${heroName}` : back ? `Back to ${line.toLowerCase()}` : heroName}${sub && !turning ? `, ${sub}` : ''}, ${me ? `over ${NAME[tab]}` : NAME[tab]}. Swipe for the next tab; pull up${back && !me ? '' : ' or tap'} for feeders and choices${choice ? `; hold and slide for ${choice.name.toLowerCase()}` : ''}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={(event) => onUp(event)}
@@ -1361,7 +1421,13 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
           }}
           onClick={(event) => {
             // a key press (the pointer's own taps are handled on letting go)
-            if (event.detail === 0) (open ? closeLayers : back && !me ? back.onBack : openLayers)();
+            if (event.detail === 0) {
+              if (open) closeLayers();
+              else if (back && !me) {
+                setTurn((was) => (was === 'in' ? 'out' : was));
+                back.onBack();
+              } else openLayers();
+            }
           }}
         >
           {/* its glass and the still plate of its shadow (folded, it draws in behind the handle) */}
@@ -1371,7 +1437,7 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
               the handle, on a glass of its own */}
           <span ref={faceRef} className="fm-dock-face">
             <span ref={padRef} className="fm-dock-pad" aria-hidden="true" />
-            <span key={back ? `back:${pickKey}` : pickKey} className="fm-dock-hero">
+            <span key={back?.art ? `back:${pickKey}` : pickKey} className="fm-dock-hero">
               <Plate lit marked={false} armed={false} reduce={reduce}>
                 <span className="fm-dock-story">
                   <StoryRing on reduce={reduce} />
@@ -1421,8 +1487,23 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
                     />
                   </span>
                 </span>
-                {/* eslint-disable-next-line @next/next/no-img-element -- a picture drawn on this page */}
-                {back?.art ? <img className="fm-dock-back" src={back.art} alt="" draggable={false} /> : <RailFace face={heroArt} reduce={reduce} pressable={false} />}
+                {back?.art ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- a picture drawn on this page
+                  <img className="fm-dock-back" src={back.art} alt="" draggable={false} />
+                ) : (
+                  /* the face in a round window, over the way back on one strip (drawn always, so rolling over never draws
+                     the face again, and rolling back has the way back to take away) */
+                  <span className="fm-dock-turnwin" data-turn={turnedNow ? 'in' : turn === 'out' ? 'out' : undefined}>
+                    <span className="fm-dock-turnstrip">
+                      <span className="fm-dock-turnface">
+                        <RailFace face={heroArt} reduce={reduce} pressable={false} />
+                      </span>
+                      <span className="fm-dock-turnback" aria-hidden="true">
+                        <ChevronLeft strokeWidth={2.8} />
+                      </span>
+                    </span>
+                  </span>
+                )}
               </Plate>
             </span>
           </span>

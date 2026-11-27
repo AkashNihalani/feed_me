@@ -179,9 +179,11 @@ function StreamError({ onRetry }: { onRetry: () => void }) {
 /* What the one tab header shows on Feed: FEED · where you are, the zoom control, and the rail. It alone reads the
    pick as it changes (a tap re-renders this, not the tab, so the rail answers in a light frame); the stream follows
    once the rail is moving (lib/tabScope). */
-const FeedHeader = memo(function FeedHeader({ feeds, mode, compressed, freshHandles, onModeChange, onModeIntent, onIntent }: {
+const FeedHeader = memo(function FeedHeader({ feeds, mode, backTo, compressed, freshHandles, onModeChange, onModeIntent, onIntent }: {
   feeds: AppFeed[] | null;
   mode: FeedMode;
+  // the grid a Day card goes back to (the one it was opened from; Week when Day came first)
+  backTo: FeedMode;
   compressed: boolean;
   freshHandles: string[] | undefined;
   onModeChange: (next: FeedMode) => void;
@@ -226,6 +228,9 @@ const FeedHeader = memo(function FeedHeader({ feeds, mode, compressed, freshHand
     onFeed: (id) => (id === liveFeed?.id ? pickFeeder(null) : pickFeed(id)),
     onFeeder: (handle) => pickFeeder(live.handle === handle ? null : handle),
     onIntent,
+    // a Day card (inside the feed, a post at a time): the dock is the way back to the grid it came from. Who you're on
+    // shows first, then the face turns into the way back (Dock: back.turn); the dock lives on a phone, so only there
+    back: mode === 'today' ? { label, note: `Back to ${backTo === 'month' ? 'month' : 'week'}`, art: null, turn: true, onBack: () => onModeChange(backTo) } : null,
   });
   return null;
 });
@@ -247,6 +252,14 @@ function FeedTabContent() {
   // over once the stream says). Only the header reads it, never the server's markup
   const [mode, setMode] = useState<FeedMode | null>(() => (typeof window === 'undefined' ? null : initialMode(document.documentElement.clientWidth)));
   const [manage, setManage] = useState<ManageState>({ open: false, intent: null });
+  // the last grid shown (a Day card goes back to it), told as the stream reports its zoom
+  const [backTo, setBackTo] = useState<FeedMode>(() => (mode === 'week' || mode === 'month' ? mode : 'week'));
+  const modeShown = useCallback((next: FeedMode) => {
+    setMode(next);
+    if (next === 'week' || next === 'month') setBackTo(next);
+  }, []);
+  // a feeder's page opened from one of their posts: it opens at its top, their profile (once: the next pick goes as ever)
+  const toTopRef = useRef(false);
 
   // the pick, followed in a transition (the rail answers the tap first), with the order
   const pick = useTabScopeTransition();
@@ -319,7 +332,10 @@ function FeedTabContent() {
     }
     const slide = slideOf(shownRef.current, live, someoneElse);
     void stream.prepare(live).then(() => {
-      if (!cancelled) stream.commit(apply, { profile: someoneElse, slide });
+      if (cancelled) return;
+      const top = toTopRef.current;
+      toTopRef.current = false;
+      stream.commit(apply, { profile: someoneElse, slide, top });
     });
     return () => {
       cancelled = true;
@@ -351,6 +367,20 @@ function FeedTabContent() {
   /* ── the header (FeedHeader: the one part of Feed that answers a pick at once) ── */
 
   const changeMode = useCallback((next: FeedMode) => streamRef.current?.setMode(next), []);
+  /* a post's @handle (a feed, or all of them, on screen): that feeder's page, from its top. A Day card closes onto the
+     grid first, its post going home, then the pick is made as the rail's or the dock's would be: the dock's face turns to
+     theirs */
+  const openFeeder = useCallback((handle: string) => {
+    const current = resolvePick(feedsRef.current, getTabScope());
+    if (current.handle === handle) return;
+    const go = () => {
+      toTopRef.current = true;
+      setTabScope({ feedId: current.feedId, handle });
+    };
+    const stream = streamRef.current;
+    if (stream) stream.leaveDay(go);
+    else go();
+  }, []);
   // a zoom (or zooms) or a pick about to be taken: the stream gets its posts and first pictures ready
   const modeIntent = useCallback((modes: readonly FeedMode[]) => streamRef.current?.warm({ modes }), []);
   const pickIntent = useCallback((pick: { feedId: string | null; handle: string | null }) => {
@@ -393,6 +423,7 @@ function FeedTabContent() {
       <FeedHeader
         feeds={feeds}
         mode={mode ?? 'today'}
+        backTo={backTo}
         compressed={compressed}
         freshHandles={everyFeed.index?.freshHandles}
         onModeChange={changeMode}
@@ -411,8 +442,9 @@ function FeedTabContent() {
         headerCompressed={compressed}
         blank={blank}
         keyboard={!manage.open}
-        onModeChange={setMode}
+        onModeChange={modeShown}
         onManage={openManage}
+        onFeeder={openFeeder}
       />
       <FeedManageSheet open={manage.open} scope={pickScope} intent={manage.intent} onClose={closeManage} />
     </div>
