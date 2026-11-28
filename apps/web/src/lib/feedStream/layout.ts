@@ -128,7 +128,10 @@ export type GridMode = Exclude<FeedMode, 'today'>;
 // runs on to its foot (without it, the viewport's)
 // over, under: how much of the page shows past the screen's two ends (iOS Safari draws it on under its status bar and its
 // toolbar, outside every viewport it reports)
-export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number; screen?: number; over?: number; under?: number };
+// live: the viewport's height as it is now (a phone's Day only): short of `screen` by as much as the browser's bars are
+// in, the dock that much nearer the card's top (iOS: its toolbar out, the dock risen with it; Android: its top bar, the
+// page come down under it)
+export type StreamInsets = { top: number; topCompressed: number; bottom: number; dock?: number; screen?: number; over?: number; under?: number; live?: number };
 
 export type LayoutKind = 'section' | 'tile' | 'reel' | 'more';
 
@@ -350,7 +353,11 @@ function dayGeometry(width: number, height: number, insets: StreamInsets, wide =
     const lift = Math.min(head, DECK_PICTURE_UP);
     // (its chrome is drawn `rise` up: its foot is cleared of the dock where it is drawn, not that much over it)
     const rise = Math.min(head, DECK_READING_RISE);
-    const footClear = Math.max(0, Math.round(restTop + cardHeight - (height - insets.bottom) - DOCK_EASE - rise));
+    /* (and cleared of the dock where it is now: with the browser's bars in, the dock stands nearer by as much, and the
+       reading rises with it, the same air over the dock either way. Before, a card opened with Safari's toolbar out had
+       the dock's circle 5pt under its strip, and one opened with it away 39pt: the one look or the other, by chance) */
+    const barsIn = Math.max(0, (insets.screen ?? height) - (insets.live ?? insets.screen ?? height));
+    const footClear = Math.max(0, Math.round(restTop + cardHeight - (height - insets.bottom) - DOCK_EASE - rise + barsIn));
     // (the first card's picture still stands as far under the profile as it always has: its lift is made up in the gap)
     return { focusY: restTop + cardHeight / 2, cardWidth: width, cardHeight, mediaWidth: null as number | null, stride: cardHeight + head, restTop, footClear, head, lift, rise, dayTop: Math.max(DAY_TOP, restTop + (insets.over ?? 0) + DECK_AIR - DAY_PROFILE_FOOT) + lift };
   }

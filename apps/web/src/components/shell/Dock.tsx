@@ -737,6 +737,18 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
     fold(false);
   }, [tab, me, fold]);
 
+  /* Feed's Day (the way back turned in): the bar stays open, never folding as its cards go by. Its cards already stand
+     their reading clear of the open bar, so a fold freed only their dark ground, and it moved on every swipe with the
+     card (two movers), leaving a bare back chevron at the screen's foot. User, Nov 28: "keep the dock open in day" */
+  const holdOpenRef = useRef(false);
+  useIsoLayoutEffect(() => {
+    holdOpenRef.current = turning;
+    if (turning) {
+      scrolled.current.travel = 0;
+      fold(false);
+    }
+  }, [turning, fold]);
+
   /* the page scrolling: down a way, the bar folds; back up a way, or at the page's top or foot, it opens. A passive
      listener and an attribute: nothing renders while the page scrolls */
   useEffect(() => {
@@ -749,8 +761,12 @@ export default function Dock({ tab, me = false }: { tab: DockTab; me?: boolean }
       const y = yOf();
       const dy = y - s.y;
       s.y = y;
-      // (the layers up, or a swipe on the dock: they have it)
+      // (the layers up, or a swipe on the dock: they have it; Feed's Day holds it open)
       if (motion.current.p > 0 || swipe.current.held) return;
+      if (holdOpenRef.current) {
+        s.travel = 0;
+        return;
+      }
       /* (a jump the page makes itself is no direction: Feed's zoom handing its held scroll over as it lands went up a
          whole screen in one step, and the bar unfolded a beat after the move had landed. It keeps its fold, as the
          header does; one asking for the whole screen folds it) */

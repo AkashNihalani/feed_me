@@ -29,21 +29,18 @@
 import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Ref } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import PostCell, { PlaceholderCell } from '@/components/feed/stream/PostCell';
-import { cardPage, frameRect, rankFlight, rankIn } from '@/components/feed/stream/flightParts';
+import { DAY_HOLD_MS, DAY_MOVE_MS, PRIME_FRAMES, frames, layDayMove, shifted } from '@/components/feed/stream/dayMove';
+import { cardPage, rankIn } from '@/components/feed/stream/flightParts';
 import { notePageScroll } from '@/components/feed/stream/press';
 import type { StreamFeeder, StreamIndex, StreamPost, StreamScope } from '@/lib/feedStream/contract';
 import { computeLayout, type StreamInsets } from '@/lib/feedStream/layout';
-import { CARRY_EASE_CSS, carry, endFlight, flightDone, rectOf, reducedMotion, releaseFlight, run, startFlight, type Flight, type Rect } from '@/lib/feedStream/motion';
+import { endFlight, flightDone, reducedMotion, releaseFlight, run, startFlight, type Flight } from '@/lib/feedStream/motion';
 import { useDayPosts } from '@/lib/feedStream/store';
 import { markScrollJump, setScrollSource } from '@/lib/useCompressedOnScroll';
-import { moveMs } from '@/lib/tempo';
 
-// one move in or out
-const MOVE_MS = moveMs(560);
-// a move held at its first frame (released two frames on, once its layers are drawn)
-const HOLD_MS = 800;
-// how many frames a move is held at its first pose before its clock runs (?prime=N to try others)
-const PRIME_FRAMES = typeof window !== 'undefined' && /[?&]prime=(\d)/.test(window.location.search) ? Number(/[?&]prime=(\d)/.exec(window.location.search)?.[1]) : 2;
+// one move in or out, and how long it is held at its first frame (dayMove)
+const MOVE_MS = DAY_MOVE_MS;
+const HOLD_MS = DAY_HOLD_MS;
 // the cards mounted either side of the one in view (the next one loads before a swipe brings it)
 const AROUND = 2;
 // the days asked for either side of it, in cards
@@ -53,14 +50,12 @@ const SETTLE_MS = 140;
 // the page's colours go to the cards' dark this far into the move in, and back this far into the move out
 const DARK_IN_AT = 0.4;
 const DARK_OUT_AT = 0.5;
-/* The layer's own ground (the cards' dark), the one ground of the whole screen through a move: in, it comes over the
-   zooming grid evenly by GROUND_IN, so nothing of the page (its gaps, three times their size, the strip under the
-   clock) is left light round the card; out, it lifts evenly from GROUND_OUT as the grid zooms back. The card's own
-   ground comes in once its picture covers most of the screen, and goes before the ground lifts */
+/* The layer's own ground (the cards' dark), the one ground of the whole screen through a move: it comes over the
+   zooming grid evenly, so nothing of the page (its gaps, three times their size, the strip under the clock) is left
+   light round the card, and lifts evenly as the grid zooms back (dayMove). The card's own ground comes in once its
+   picture covers most of the screen, and goes before the ground lifts */
 const GROUND = 'rgb(20, 20, 22)';
 const GROUND_CLEAR = 'rgba(20, 20, 22, 0)';
-const GROUND_IN = 0.5;
-const GROUND_OUT = 0.4;
 // the swiped-far way out: how long the page is given to draw the tile it went to
 const TILE_WAIT_FRAMES = 24;
 /* (a move setting off, said as the page's own moves say it: the dock holds its frost over a range picked from it till
@@ -97,17 +92,6 @@ type DayLayerProps = {
   onFeeder?: (handle: string) => void;
 };
 
-const frames = (count: number) =>
-  new Promise<void>((resolve) => {
-    let left = count;
-    const step = () => {
-      left -= 1;
-      if (left <= 0) resolve();
-      else requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
-
 // ?daydebug: the open's and close's timings, on screen
 export function note(text: string) {
   if (typeof window === 'undefined' || !window.location.search.includes('daydebug')) return;
@@ -141,14 +125,9 @@ function watch(flight: Flight, label: string) {
   }, HOLD_MS + MOVE_MS + 900);
 }
 
-/* What a card's picture wears that its tile doesn't (its melt into the ground, the bleed at its foot, the shade under the
-   clock): in late on the way in, gone early on the way out, so the picture flies as the tile's own */
+// what a card's picture wears that its tile doesn't (its melt into the ground, the bleed at its foot, the shade under the
+// clock): in late on the way in, gone early on the way out (dayMove)
 const CARD_ONLY = ':scope > .st-card-scrim, :scope > .st-status-shade';
-const WEAR_IN_FROM = 0.4;
-const WEAR_OUT_BY = 0.3;
-// ...and what its tile wears (tileWear): on from here on the way out, whole by here
-const WEAR_TILE_FROM = 0.45;
-const WEAR_TILE_BY = 0.9;
 
 // where an element's top is in the page
 const pageTop = (el: HTMLElement) => el.getBoundingClientRect().top + window.scrollY;
@@ -161,8 +140,22 @@ function still(on: boolean) {
   else document.removeEventListener('touchmove', refuse);
 }
 
+/* The viewport's height as it is now (100dvh: short of 100lvh by as much as the browser's bars are in), the cards' reading
+   cleared of the dock where it stands now (layout: StreamInsets.live). Measured as the layer is drawn, so a move in sets
+   off from the reading where it will rest */
+const LIVE_PROBE = 'position:fixed;left:0;top:0;width:1px;height:100dvh;visibility:hidden;pointer-events:none';
+function liveHeight(): number | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const probe = document.createElement('div');
+  probe.style.cssText = LIVE_PROBE;
+  document.body.appendChild(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return height || undefined;
+}
+
 // the days whose posts the cards from `from` to `to` are (counted from the index, a loaded day by its posts)
-function daysAround(index: StreamIndex, posts: ReadonlyMap<string, StreamPost[]>, from: number, to: number, also: string | null): string[] {
+export function daysAround(index: StreamIndex, posts: ReadonlyMap<string, StreamPost[]>, from: number, to: number, also: string | null): string[] {
   const days: string[] = [];
   let at = 0;
   for (const entry of index.days) {
@@ -173,107 +166,6 @@ function daysAround(index: StreamIndex, posts: ReadonlyMap<string, StreamPost[]>
   }
   if (also && !days.includes(also)) days.push(also);
   return days;
-}
-
-/* The grid's zoom that puts a tile (P, untransformed: where it stands with the page's own shift `shift` taken off) onto
-   the card's picture (to): a translate and scale of the page about its top-left (L) */
-function camera(page: Rect, shift: number, tile: Rect, to: Rect): string {
-  const k = to.width / Math.max(tile.width, 0.01);
-  const left = page.left;
-  const top = page.top - shift;
-  const tx = to.left - left - (tile.left - left) * k;
-  const ty = to.top - top - (tile.top - shift - top) * k;
-  return `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${k.toFixed(4)})`;
-}
-const shifted = (by: number) => `translate(0px, ${by.toFixed(2)}px) scale(1)`;
-
-/* Where a frame's picture is drawn: its content as object-fit and object-position lay it in the box it is drawn in
-   (`box`: its own on screen; a tile's frame, as the tile's picture gives under a finger). For a carousel, the slide in
-   view. Null while it has no size */
-const POSITION: Record<string, string> = { left: '0%', top: '0%', center: '50%', right: '100%', bottom: '100%' };
-function pictureOf(frame: HTMLElement, boxOf: (img: HTMLImageElement) => Rect = rectOf): Rect | null {
-  const frameBox = rectOf(frame);
-  for (const img of Array.from(frame.querySelectorAll<HTMLImageElement>('img.st-img'))) {
-    if (!img.naturalWidth || !img.naturalHeight) continue;
-    const at = boxOf(img);
-    const mid = at.left + at.width / 2;
-    if (at.width < 1 || at.height < 1 || mid < frameBox.left || mid > frameBox.left + frameBox.width) continue;
-    const style = getComputedStyle(img);
-    if (style.objectFit !== 'cover' && style.objectFit !== 'contain') return at;
-    const sx = at.width / img.naturalWidth;
-    const sy = at.height / img.naturalHeight;
-    const scale = style.objectFit === 'cover' ? Math.max(sx, sy) : Math.min(sx, sy);
-    const width = img.naturalWidth * scale;
-    const height = img.naturalHeight * scale;
-    const [x = '50%', y = '50%'] = style.objectPosition.trim().split(/\s+/).map((part) => POSITION[part] ?? part);
-    const place = (value: string, free: number) => (value.endsWith('%') ? (free * parseFloat(value)) / 100 : parseFloat(value) || 0);
-    return { left: at.left + place(x, at.width - width), top: at.top + place(y, at.height - height), width, height };
-  }
-  return null;
-}
-
-/* A card's frame (at rest at `at`) laid over its tile so the picture stands just where the tile draws it: the tile is
-   3:4 and crops its picture about its middle, the card shows its 4:5 window under a top grown up under the clock, so
-   the two pictures are matched, not the two boxes (matching the 4:5 window to the tile's top left the picture 6pt high,
-   and it dropped into place as the tile took over). `onto`: the card's frame there; `clip`: its frame cut to the
-   tile's box (frame px); `inCard`: the tile's box in the card's terms, for the grid's zoom */
-type Landing = { k: number; onto: Rect; clip: string; inCard: Rect };
-function landing(frame: HTMLElement, at: Rect, tileFrame: HTMLElement): Landing {
-  const tileBox = frameRect(tileFrame);
-  const card = pictureOf(frame);
-  const tile = pictureOf(tileFrame, () => tileBox);
-  let k: number;
-  let onto: Rect;
-  if (card && tile && card.width > 0) {
-    k = tile.width / card.width;
-    onto = { left: tile.left - (card.left - at.left) * k, top: tile.top - (card.top - at.top) * k, width: at.width * k, height: at.height * k };
-  } else {
-    // (no picture to go by: the card's 4:5 window onto the tile's box, as before)
-    const window4x5 = frameRect(frame);
-    k = tileBox.width / Math.max(window4x5.width, 0.01);
-    onto = { left: tileBox.left - (window4x5.left - at.left) * k, top: tileBox.top - (window4x5.top - at.top) * k, width: at.width * k, height: at.height * k };
-  }
-  const cut = (value: number) => `${Math.max(0, value / Math.max(k, 0.01)).toFixed(1)}px`;
-  const radius = (parseFloat(getComputedStyle(tileFrame).borderTopLeftRadius) || 0) / Math.max(k, 0.01);
-  const clip = `inset(${cut(tileBox.top - onto.top)} ${cut(onto.left + onto.width - tileBox.left - tileBox.width)} ${cut(onto.top + onto.height - tileBox.top - tileBox.height)} ${cut(tileBox.left - onto.left)} round ${radius.toFixed(1)}px)`;
-  const inCard = {
-    left: at.left + (tileBox.left - onto.left) / k,
-    top: at.top + (tileBox.top - onto.top) / k,
-    width: tileBox.width / k,
-    height: tileBox.height / k,
-  };
-  return { k, onto, clip, inCard };
-}
-
-/* What a tile wears over its picture and its card doesn't (its shade, its ▶, a 2×2's face, a winner's ring; never its
-   number, which flies on its own): copied into the card's frame where the tile lies in it, so it rides the frame's carry
-   and is the tile's own size as it lands. Without it they were gone the moment a move in set off, and came in only as
-   the tile took over from the card, a beat after a move out had landed */
-function tileWear(frame: HTMLElement, at: Rect, tileFrame: HTMLElement, fit: Landing): HTMLElement | null {
-  const parts = tileFrame.querySelectorAll<HTMLElement>(':scope > [data-layer="chips"], :scope > [data-ring]');
-  if (!parts.length) return null;
-  const box = frameRect(tileFrame);
-  const wear = document.createElement('span');
-  wear.setAttribute('aria-hidden', 'true');
-  wear.style.cssText = [
-    'position:absolute',
-    'pointer-events:none',
-    'z-index:7',
-    'transform-origin:0 0',
-    `left:${(fit.inCard.left - at.left).toFixed(2)}px`,
-    `top:${(fit.inCard.top - at.top).toFixed(2)}px`,
-    `width:${box.width.toFixed(2)}px`,
-    `height:${box.height.toFixed(2)}px`,
-    `transform:scale(${(1 / Math.max(fit.k, 0.01)).toFixed(5)})`,
-    'opacity:0',
-  ].join(';');
-  parts.forEach((part) => {
-    const copy = part.cloneNode(true) as HTMLElement;
-    copy.querySelectorAll<HTMLElement>('[data-rank]').forEach((rank) => (rank.style.visibility = 'hidden'));
-    wear.appendChild(copy);
-  });
-  frame.appendChild(wear);
-  return wear;
 }
 
 function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf, placeTile, onClosed, onFeeder }: DayLayerProps) {
@@ -352,9 +244,30 @@ function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf,
   if (!holding) heldRef.current = livePosts;
   const posts = holding ? heldRef.current : livePosts;
 
+  // (the bars coming in or going while it is up: Safari's toolbar tapped out, a phone turned)
+  const [live, setLive] = useState(liveHeight);
+  useLayoutEffect(() => {
+    const probe = document.createElement('div');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = LIVE_PROBE;
+    document.body.appendChild(probe);
+    const read = () => {
+      const now = probe.getBoundingClientRect().height;
+      if (now) setLive((was) => (was != null && Math.abs(was - now) < 0.5 ? was : now));
+    };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(read);
+    observer?.observe(probe);
+    window.addEventListener('resize', read);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', read);
+      probe.remove();
+    };
+  }, []);
+  const insets = useMemo(() => (live ? { ...size.insets, live } : size.insets), [size.insets, live]);
   const layout = useMemo(
-    () => computeLayout({ mode: 'today', days: index.days, posts, width: size.width, height: size.height, insets: size.insets, wide: false }),
-    [index, posts, size.width, size.height, size.insets],
+    () => computeLayout({ mode: 'today', days: index.days, posts, width: size.width, height: size.height, insets, wide: false }),
+    [index, posts, size.width, size.height, insets],
   );
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -471,43 +384,26 @@ function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf,
         return;
       }
       const nudge = nudgeRef.current;
-      const tileBox = frameRect(tileFrame);
-      const at = rectOf(frame);
-      // (from the tile's picture just as the tile draws it, cut to the tile's box, wearing what the tile wears)
-      const fit = landing(frame, at, tileFrame);
-      const from = fit.onto;
-      wearRef.current?.remove();
-      const wear = tileWear(frame, at, tileFrame, fit);
-      wearRef.current = wear;
-      // (the number measured where both stand, before anything moves them)
-      const fromRank = tile ? rankIn(tile, 'frame') : null;
-      const toRank = rankIn(cell, 'chrome');
-      const rank = fromRank && toRank ? rankFlight(layer, fromRank, toRank) : null;
-      const pageBox = rectOf(root);
-
       const flight = startFlight(HOLD_MS);
       flightRef.current = flight;
-      carry(flight, frame, at, from, at, { duration: MOVE_MS });
-      run(flight, frame, [{ clipPath: fit.clip }, { clipPath: 'inset(0px 0px 0px 0px round 0px)' }], { duration: MOVE_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
-      // (the tile's shade and ▶ go with its picture as it grows, gone by the time it is a card's)
-      if (wear) run(flight, wear, [{ opacity: 1 }, { opacity: 0, offset: WEAR_OUT_BY }, { opacity: 0 }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
+      wearRef.current?.remove();
+      // (from the tile's picture just as the tile draws it, cut to the tile's box, wearing what the tile wears)
       const bg = cell.querySelector<HTMLElement>(':scope > [data-layer="bg"]');
-      run(flight, layer, [{ backgroundColor: GROUND_CLEAR }, { backgroundColor: GROUND, offset: GROUND_IN }, { backgroundColor: GROUND }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
-      if (bg) run(flight, bg, [{ opacity: 0 }, { opacity: 0, offset: 0.45 }, { opacity: 1 }], { duration: MOVE_MS, easing: 'linear', fill: 'backwards' });
-      frame.querySelectorAll<HTMLElement>(CARD_ONLY).forEach((part) => {
-        run(flight, part, [{ opacity: 0 }, { opacity: 0, offset: WEAR_IN_FROM }, { opacity: 1 }], { duration: MOVE_MS, easing: 'linear', fill: 'backwards' });
+      const { wear } = layDayMove(flight, {
+        way: 'in',
+        layer,
+        frame,
+        tile: tile ?? tileFrame,
+        tileFrame,
+        page: root,
+        shift: nudge,
+        rank: rankIn(cell, 'chrome'),
+        ground: { el: layer, clear: { backgroundColor: GROUND_CLEAR }, whole: { backgroundColor: GROUND } },
+        words: Array.from(cell.querySelectorAll<HTMLElement>(':scope > :is([data-layer="chrome"], [data-layer="reading"])')),
+        wears: Array.from(frame.querySelectorAll<HTMLElement>(CARD_ONLY)),
+        late: bg ? [bg] : [],
       });
-      cell.querySelectorAll<HTMLElement>(':scope > :is([data-layer="chrome"], [data-layer="reading"])').forEach((part) => {
-        run(flight, part, [
-          { opacity: 0, transform: 'translate3d(0px, 10px, 0px)' },
-          { opacity: 0, transform: 'translate3d(0px, 10px, 0px)', offset: 0.45 },
-          { opacity: 1, transform: 'translate3d(0px, 0px, 0px)' },
-        ], { duration: MOVE_MS, easing: CARRY_EASE_CSS, fill: 'backwards' });
-      });
-      // the grid zooms out on the picture's curve, and goes as the card's ground comes over it
-      root.style.transformOrigin = '0 0';
-      run(flight, root, [{ transform: shifted(nudge) }, { transform: camera(pageBox, nudge, tileBox, fit.inCard) }], { duration: MOVE_MS, easing: CARRY_EASE_CSS, fill: 'both' });
-      rank?.(flight, MOVE_MS);
+      wearRef.current = wear;
       layer.style.opacity = '';
       note('laid out');
       await frames(PRIME_FRAMES);
@@ -611,42 +507,26 @@ function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf,
         run(flight, layer, [{ opacity: 1 }, { opacity: 0 }], { duration: MOVE_MS * 0.6, easing: 'linear', fill: 'both' });
         run(flight, root, [{ opacity: 0 }, { opacity: 1 }], { duration: MOVE_MS * 0.6, easing: 'linear', fill: 'both' });
       } else {
-        const tileBox = frameRect(tileFrame);
-        const at = rectOf(frame);
         // (onto the tile's picture just as the tile draws it, cut to the tile's box, wearing what the tile wears: the
-        // tile takes over from it with nothing moving and nothing coming in)
-        const fit = landing(frame, at, tileFrame);
-        const to = fit.onto;
+        // tile takes over from it with nothing moving and nothing coming in; the cards that aren't it go at once)
         wearRef.current?.remove();
-        const wear = tileWear(frame, at, tileFrame, fit);
-        wearRef.current = wear;
-        const fromRank = rankIn(cell, 'chrome');
-        const toRank = rankIn(tile, 'frame');
-        const rank = fromRank && toRank ? rankFlight(layer, fromRank, toRank) : null;
-        const pageBox = rectOf(root);
-        // (it holds where it lands till the layer is taken down: never a frame back on the card)
-        carry(flight, frame, at, at, to, { duration: MOVE_MS, fill: 'both' });
-        run(flight, frame, [{ clipPath: 'inset(0px 0px 0px 0px round 0px)' }, { clipPath: fit.clip }], { duration: MOVE_MS, easing: CARRY_EASE_CSS, fill: 'both' });
-        // (the tile's shade and ▶ come on with the picture as it shrinks into its place, whole as it lands)
-        if (wear) run(flight, wear, [{ opacity: 0 }, { opacity: 0, offset: WEAR_TILE_FROM }, { opacity: 1, offset: WEAR_TILE_BY }, { opacity: 1 }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
         const bg = cell.querySelector<HTMLElement>(':scope > [data-layer="bg"]');
-        run(flight, layer, [{ backgroundColor: GROUND }, { backgroundColor: GROUND, offset: GROUND_OUT }, { backgroundColor: GROUND_CLEAR }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
-        if (bg) run(flight, bg, [{ opacity: 1 }, { opacity: 1, offset: 0.15 }, { opacity: 0, offset: GROUND_OUT }, { opacity: 0 }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
-        frame.querySelectorAll<HTMLElement>(CARD_ONLY).forEach((part) => {
-          run(flight, part, [{ opacity: 1 }, { opacity: 0, offset: WEAR_OUT_BY }, { opacity: 0 }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
+        const { wear } = layDayMove(flight, {
+          way: 'out',
+          layer,
+          frame,
+          tile,
+          tileFrame,
+          page: root,
+          shift: nudge,
+          rank: rankIn(cell, 'chrome'),
+          ground: { el: layer, clear: { backgroundColor: GROUND_CLEAR }, whole: { backgroundColor: GROUND } },
+          words: Array.from(cell.querySelectorAll<HTMLElement>(':scope > :is([data-layer="chrome"], [data-layer="reading"])')),
+          wears: Array.from(frame.querySelectorAll<HTMLElement>(CARD_ONLY)),
+          late: bg ? [bg] : [],
+          others: Array.from(deck.querySelectorAll<HTMLElement>(':scope > div > [data-cell]')).filter((other) => other !== cell),
         });
-        cell.querySelectorAll<HTMLElement>(':scope > :is([data-layer="chrome"], [data-layer="reading"])').forEach((part) => {
-          run(flight, part, [{ opacity: 1 }, { opacity: 0, offset: 0.22 }, { opacity: 0 }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
-        });
-        // the cards that aren't it go at once (the one under it showed as its ground thinned)
-        deck.querySelectorAll<HTMLElement>(':scope > div > [data-cell]').forEach((other) => {
-          if (other !== cell) run(flight, other, [{ opacity: 0 }, { opacity: 0 }], { duration: MOVE_MS, fill: 'both' });
-        });
-        root.style.transformOrigin = '0 0';
-        run(flight, root, [{ transform: camera(pageBox, nudge, tileBox, fit.inCard) }, { transform: shifted(nudge) }], { duration: MOVE_MS, easing: CARRY_EASE_CSS, fill: 'both' });
-        // (the grid whole under the ground from the start: it shows as the ground lifts)
-        run(flight, root, [{ opacity: 1 }, { opacity: 1 }], { duration: MOVE_MS, easing: 'linear', fill: 'both' });
-        rank?.(flight, MOVE_MS);
+        wearRef.current = wear;
       }
       note('close laid out');
       await frames(PRIME_FRAMES);
@@ -686,8 +566,11 @@ function DayLayer({ ref, start, scope, index, feeders, size, host, page, tileOf,
   }, [layout, stride]);
   const openTile = useCallback(() => undefined, []);
 
-  // (gone with the layer: the page's own scroll and colours again, a swipe free)
+  /* (gone with the layer: the page's own scroll and colours again, a swipe free, and a move still under way ended, so
+     nothing of it lands on the page after: a window widened or narrowed past a phone's mid-move left the grid unseen) */
   useLayoutEffect(() => () => {
+    endFlight(flightRef.current);
+    flightRef.current = null;
     window.clearTimeout(settleRef.current);
     setScrollSource(null);
     still(false);

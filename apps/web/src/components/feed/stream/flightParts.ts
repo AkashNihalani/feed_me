@@ -5,7 +5,7 @@
    4:5, and its number flown between its tile and its card.
    ───────────────────────────────────────────────────────────── */
 
-import { CARRY_EASE_CSS, rectOf, run, type Flight, type Rect } from '@/lib/feedStream/motion';
+import { CARRY_EASE_CSS, carryCurve, rectOf, run, type Flight, type Rect } from '@/lib/feedStream/motion';
 import { THEME_COLORS } from '@/lib/themeBootstrap';
 
 /* The page's own colours while a phone's Day card is up: the cards' dark (globals.css, [data-feed-card]), so the strip
@@ -83,8 +83,23 @@ function rankTwin(end: RankEnd, layer: HTMLElement, layerBox: Rect): HTMLElement
   layer.appendChild(twin);
   return twin;
 }
+/* A sweep in place of the hand over (a wide window's Day, its number ink on the page, its tile's white on the picture):
+   both copies stay whole all the way, the Day's passing under the flying picture (put before `under`, the pictures'
+   box), the tile's over it, cut to the picture's box as the move carries it (`clip`: clip-path keyframes in the layer's
+   terms, linear in time), so the colour goes over with the picture's edge. A hand over mid-air read as a fade */
+export type RankSweep = { day: 'from' | 'to'; under: HTMLElement; clip: Keyframe[] };
+/* The number riding its tile's corner near the tile (a wide window's Day): the tile there is under the grid's zoom, its
+   corner moving and growing with it, and a straight line to where the corner rests left the number hanging off the
+   tile's edge, half ink and half white, all through the settle. Near the tile it goes where the corner is now: going
+   out it reaches the corner by RIDE_AT of the move and rides it in; coming in it leaves the corner from RIDE_AT's
+   mirror. `box`: the tile at rest; `zoomed`: the tile where the grid's zoom puts it at the Day (a move's camera eases
+   between the two on the carry curve) */
+export type RankRide = { tile: 'from' | 'to'; box: Rect; zoomed: Rect };
+const RIDE_AT = 0.8;
+const RIDE_SAMPLES = 24;
 // (measured and copied as the move is laid out, before any of its carries moves what they stand in; flown on its clock)
-export function rankFlight(layer: HTMLElement, from: RankEnd, to: RankEnd): (flight: Flight, duration: number) => void {
+export function rankFlight(layer: HTMLElement, from: RankEnd, to: RankEnd, options: { sweep?: RankSweep; ride?: RankRide } = {}): (flight: Flight, duration: number) => void {
+  const { sweep, ride } = options;
   const layerBox = rectOf(layer);
   const a = markOf(from.value, from.shift);
   const b = markOf(to.value, to.shift);
@@ -100,17 +115,58 @@ export function rankFlight(layer: HTMLElement, from: RankEnd, to: RankEnd): (fli
   // (what each real one hides meanwhile: its figures and its %, never a card's "Top", which stays with its words)
   const parts = (end: RankEnd) => (end.value === end.el ? [end.el] : Array.from(end.el.children).filter((child): child is HTMLElement => child instanceof HTMLElement && (child === end.value || child.previousElementSibling !== null)));
   const hidden = [...parts(from), ...parts(to)];
+  // (the sweep's two copies: the Day's under the pictures, the tile's in a box cut to the picture)
+  let cut: HTMLElement | null = null;
+  if (sweep) {
+    const [day, tile] = sweep.day === 'from' ? [one, two] : [two, one];
+    day.style.zIndex = '';
+    layer.insertBefore(day, sweep.under);
+    cut = document.createElement('div');
+    cut.setAttribute('aria-hidden', 'true');
+    cut.style.cssText = 'position:absolute;inset:0;z-index:8;pointer-events:none';
+    layer.appendChild(cut);
+    cut.appendChild(tile);
+  }
   return (flight, duration) => {
     hidden.forEach((el) => (el.style.visibility = 'hidden'));
     const still = 'translate3d(0px, 0px, 0px) scale(1)';
     const timing: KeyframeAnimationOptions = { duration, easing: CARRY_EASE_CSS, fill: 'both' };
-    run(flight, one, [
+    if (sweep && cut) run(flight, cut, sweep.clip, { duration, easing: 'linear', fill: 'both' });
+    if (ride) {
+      // (where the number is at each step: between the Day's mark and the tile's mark as the zoom has it then)
+      const [tileMark, dayMark] = ride.tile === 'from' ? [a, b] : [b, a];
+      const grow = ride.zoomed.width / Math.max(ride.box.width, 0.01);
+      const oneFrames: Keyframe[] = [];
+      const twoFrames: Keyframe[] = [];
+      for (let step = 0; step <= RIDE_SAMPLES; step += 1) {
+        const offset = step / RIDE_SAMPLES;
+        const e = carryCurve(offset);
+        // (how far the zoom has the tile from its rest, and how far the number is from the tile toward the Day)
+        const p = ride.tile === 'from' ? e : 1 - e;
+        const u = ride.tile === 'from' ? Math.max(0, (e - (1 - RIDE_AT)) / RIDE_AT) ** 2 : 1 - (1 - Math.min(1, e / RIDE_AT)) ** 2;
+        const toDay = ride.tile === 'from' ? u : 1 - u;
+        const tileX = ride.box.left + (tileMark.x - ride.box.left) * (1 + (grow - 1) * p) + (ride.zoomed.left - ride.box.left) * p;
+        const tileY = ride.box.top + (tileMark.y - ride.box.top) * (1 + (grow - 1) * p) + (ride.zoomed.top - ride.box.top) * p;
+        const tileSize = tileMark.size * (1 + (grow - 1) * p);
+        const x = tileX + (dayMark.x - tileX) * toDay;
+        const y = tileY + (dayMark.y - tileY) * toDay;
+        const size = tileSize + (dayMark.size - tileSize) * toDay;
+        const at = (mark: { x: number; y: number; size: number }) => `translate3d(${(x - mark.x).toFixed(2)}px, ${(y - mark.y).toFixed(2)}px, 0px) scale(${(size / Math.max(mark.size, 0.01)).toFixed(4)})`;
+        oneFrames.push({ offset, transform: at(a), opacity: 1 });
+        twoFrames.push({ offset, transform: at(b), opacity: 1 });
+      }
+      run(flight, one, oneFrames, { duration, easing: 'linear', fill: 'both' });
+      run(flight, two, twoFrames, { duration, easing: 'linear', fill: 'both' });
+    } else if (sweep) {
+      run(flight, one, [{ transform: still, opacity: 1 }, { transform: `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0px) scale(${k.toFixed(4)})`, opacity: 1 }], timing);
+      run(flight, two, [{ transform: `translate3d(${(-dx).toFixed(2)}px, ${(-dy).toFixed(2)}px, 0px) scale(${(1 / k).toFixed(4)})`, opacity: 1 }, { transform: still, opacity: 1 }], timing);
+    } else run(flight, one, [
       { offset: 0, transform: still, opacity: 1 },
       { offset: RANK_HAND[0], opacity: 1 },
       { offset: RANK_HAND[1], opacity: 0 },
       { offset: 1, transform: `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0px) scale(${k.toFixed(4)})`, opacity: 0 },
     ], timing);
-    run(flight, two, [
+    if (!sweep && !ride) run(flight, two, [
       { offset: 0, transform: `translate3d(${(-dx).toFixed(2)}px, ${(-dy).toFixed(2)}px, 0px) scale(${(1 / k).toFixed(4)})`, opacity: 0 },
       { offset: RANK_HAND[0], opacity: 0 },
       { offset: RANK_HAND[1], opacity: 1 },
@@ -123,6 +179,7 @@ export function rankFlight(layer: HTMLElement, from: RankEnd, to: RankEnd): (fli
       back = true;
       one.remove();
       two.remove();
+      cut?.remove();
       hidden.forEach((el) => (el.style.visibility = ''));
     };
     const flying = flight.animations[flight.animations.length - 1];

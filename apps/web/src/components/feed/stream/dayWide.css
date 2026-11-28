@@ -1,0 +1,646 @@
+/* ── the Day view on a wide window (lib/feedStream/dayWide: WideDay; DayWide). One picture off the window's top, right
+   and foot, its words in the middle of what is left. Every size here is the words' natural one times --dw-s (the room
+   beside the picture: a laptop ~1, a big monitor up to 1.32, a narrow window down to 0.7), so nothing collides and
+   nothing is lost on a big screen. Transforms and opacity only move ── */
+
+.dw {
+  --dw-ink2: rgb(var(--fm-fg-rgb) / 0.66);
+  --dw-ink3: rgb(var(--fm-fg-rgb) / 0.42);
+  --dw-line: rgb(var(--fm-fg-rgb) / 0.1);
+  --dw-well: rgb(var(--fm-fg-rgb) / 0.055);
+  --dw-s: 1;
+  position: fixed;
+  inset: 0;
+  /* (under the floating side rail: the rail stands over the Day as over every page) */
+  z-index: 60;
+  overflow: hidden;
+  contain: strict;
+  color: var(--fm-fg);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+.dw-grounds,
+.dw-ground {
+  position: absolute;
+  inset: 0;
+}
+
+.dw-ground {
+  background: var(--fm-page);
+  will-change: opacity;
+}
+
+.dw-measure {
+  position: absolute;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+/* ── pictures ── */
+.dw-pics {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--dw-pic);
+  height: var(--dw-h);
+  isolation: isolate;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.dw-pic {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  will-change: transform;
+}
+
+.dw-pic.is-on {
+  visibility: visible;
+}
+
+.dw-pic > img,
+.dw-video,
+.dw-track img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.dw-video {
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.dw-video.is-on {
+  opacity: 1;
+}
+
+.dw-mist {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.dw-sink {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+}
+
+/* a carousel: its slides side by side, the dots and the count over the picture, the arrows when the pointer is on it */
+.dw-track {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  will-change: transform;
+}
+
+.dw-track img {
+  position: relative;
+  inset: auto;
+  flex: 0 0 100%;
+}
+
+.dw-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.dw-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.55);
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 1px 4px rgb(0 0 0 / 0.18);
+  transition: width 260ms cubic-bezier(0.3, 0.3, 0.2, 1), background-color 260ms;
+}
+
+.dw-dots i.is-on {
+  width: 18px;
+  background: #fff;
+}
+
+.dw-cnt {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  padding: 5px 8px;
+  border-radius: 99px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.dw-arw {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.5);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  opacity: 0;
+  cursor: pointer;
+  outline: none;
+  transition: opacity 200ms ease-out, transform 200ms ease-out, background-color 200ms;
+}
+
+.dw-prev {
+  left: 16px;
+}
+
+.dw-next {
+  right: 16px;
+}
+
+.dw-pics:hover .dw-arw,
+.dw-arw:focus-visible {
+  opacity: 1;
+}
+
+.dw-arw:hover {
+  background: rgb(0 0 0 / 0.65);
+}
+
+.dw-arw:active {
+  transform: scale(0.92);
+}
+
+.dw-pic.is-first .dw-prev,
+.dw-pic.is-last .dw-next {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* ── the words ── */
+.dw-read {
+  position: absolute;
+  left: var(--dw-left);
+  right: var(--dw-pic);
+  top: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+}
+
+.dw-block {
+  width: var(--dw-block);
+  will-change: transform, opacity;
+}
+
+.dw-slot {
+  position: relative;
+}
+
+.dw-it {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  will-change: transform, opacity;
+}
+
+.dw-date {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  height: calc(44px * var(--dw-s));
+  margin-bottom: calc(34px * var(--dw-s));
+  font-size: calc(36px * var(--dw-s));
+  line-height: calc(44px * var(--dw-s));
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  font-variant-numeric: normal;
+}
+
+.dw-dnum {
+  display: flex;
+  height: calc(44px * var(--dw-s));
+  padding: 0 4px;
+  margin: 0 -4px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+}
+
+.dw-dcol {
+  position: relative;
+  height: calc(44px * var(--dw-s));
+}
+
+.dw-dcol span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.dw-dmon {
+  margin-left: 0.22em;
+}
+
+.dw-dwk {
+  position: relative;
+  margin-left: 0.3em;
+  color: var(--dw-ink3);
+  font-weight: 500;
+}
+
+.dw-dwk span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  line-height: calc(44px * var(--dw-s));
+  will-change: transform, opacity;
+}
+
+.dw-who {
+  height: calc(60px * var(--dw-s));
+}
+
+.dw-whob {
+  display: flex;
+  align-items: center;
+  gap: calc(14px * var(--dw-s));
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+button.dw-whob {
+  cursor: pointer;
+  outline: none;
+  border-radius: 99px;
+}
+
+button.dw-whob:hover b {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+button.dw-whob:focus-visible {
+  box-shadow: 0 0 0 2px var(--fm-page), 0 0 0 4px var(--fm-fg);
+}
+
+.dw-face {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: calc(46px * var(--dw-s));
+  height: calc(46px * var(--dw-s));
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f4f4f6, #e4e5ea);
+  box-shadow: 0 0 0 1px rgb(var(--fm-fg-rgb) / 0.12);
+  font-size: calc(18px * var(--dw-s));
+  font-weight: 700;
+  font-style: normal;
+  color: rgb(11 11 15 / 0.7);
+}
+
+.dw-face img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dw-face i {
+  font-style: normal;
+}
+
+.dw-name {
+  min-width: 0;
+}
+
+.dw-name b {
+  display: block;
+  overflow: hidden;
+  font-size: calc(19px * var(--dw-s));
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dw-name span {
+  display: block;
+  margin-top: 5px;
+  font-size: calc(14px * var(--dw-s));
+  line-height: 1;
+  color: var(--dw-ink2);
+}
+
+.dw-lead {
+  position: relative;
+  height: calc(176px * var(--dw-s));
+  margin-top: calc(6px * var(--dw-s));
+}
+
+.dw-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: calc(14px * var(--dw-s));
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  will-change: transform, opacity;
+}
+
+.dw-top {
+  margin-right: calc(14px * var(--dw-s));
+  padding-bottom: calc(10px * var(--dw-s));
+  font-size: calc(46px * var(--dw-s));
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--dw-ink3);
+}
+
+.dw-cols {
+  position: relative;
+  display: flex;
+  height: calc(176px * var(--dw-s));
+  margin: 0 -16px calc(-14px * var(--dw-s));
+  padding: 0 16px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 90%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 90%, transparent 100%);
+}
+
+.dw-col {
+  position: relative;
+  height: 100%;
+  font-size: calc(168px * var(--dw-s));
+  line-height: calc(176px * var(--dw-s));
+  will-change: width;
+}
+
+.dw-col span {
+  position: absolute;
+  left: 0;
+  top: calc(4px * var(--dw-s));
+  will-change: transform;
+}
+
+.dw-pct {
+  margin-left: 4px;
+  padding-bottom: calc(8px * var(--dw-s));
+  font-size: calc(74px * var(--dw-s));
+  line-height: 1;
+}
+
+/* a post still measuring: its first read's wait in the number's place (the phone card's CardWait) */
+.dw-wait {
+  position: absolute;
+  inset: 0;
+}
+
+.dw-wait .dw-it {
+  align-items: flex-end;
+  padding-bottom: calc(22px * var(--dw-s));
+}
+
+.dw-waiting {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--dw-s));
+}
+
+.dw-waiting > i {
+  position: relative;
+  flex: none;
+  width: calc(12px * var(--dw-s));
+  height: calc(12px * var(--dw-s));
+  border-radius: 50%;
+  background: var(--fm-fg);
+}
+
+.dw-waiting > i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--fm-fg);
+  animation: dw-ring 1.8s ease-out infinite;
+}
+
+@keyframes dw-ring {
+  from {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+.dw-waiting b {
+  display: block;
+  font-size: calc(58px * var(--dw-s));
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.dw-waiting small {
+  display: block;
+  margin-top: calc(10px * var(--dw-s));
+  font-size: calc(18px * var(--dw-s));
+  line-height: 1;
+  color: var(--dw-ink2);
+}
+
+/* the reads: D1 · D3 · D7 · D21, the one shown on its glide; those it has can be picked */
+.dw-strip {
+  position: relative;
+  display: inline-flex;
+  margin-top: calc(18px * var(--dw-s));
+  padding: 4px;
+  border-radius: 99px;
+  background: var(--dw-well);
+  will-change: opacity;
+}
+
+.dw-strip button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: calc(54px * var(--dw-s));
+  height: calc(38px * var(--dw-s));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dw-ink3);
+  font: inherit;
+  font-size: calc(14px * var(--dw-s));
+  font-weight: 700;
+  cursor: default;
+  outline: none;
+}
+
+.dw-strip button.is-had {
+  color: var(--fm-fg);
+  cursor: pointer;
+}
+
+.dw-strip em {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: calc(54px * var(--dw-s));
+  height: calc(38px * var(--dw-s));
+  border-radius: 99px;
+  background: var(--fm-fg);
+  will-change: transform, opacity;
+  transition: background-color 300ms ease;
+}
+
+.dw-strip em.is-win {
+  background: var(--fm-accent);
+}
+
+.dw-strip u {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+  color: var(--fm-page);
+  opacity: 0;
+}
+
+.dw-strip em.is-win ~ button u {
+  color: #fff;
+}
+
+.dw-figs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: calc(74px * var(--dw-s));
+  margin-top: calc(26px * var(--dw-s));
+  padding-top: calc(14px * var(--dw-s));
+  box-shadow: inset 0 1px 0 var(--dw-line);
+  will-change: opacity;
+}
+
+.dw-figs .dw-slot {
+  height: calc(40px * var(--dw-s));
+}
+
+.dw-figs b {
+  font-size: calc(27px * var(--dw-s));
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.dw-figs small {
+  display: block;
+  margin-top: 1px;
+  font-size: calc(13px * var(--dw-s));
+  line-height: 1;
+  color: var(--dw-ink2);
+}
+
+.dw-cap {
+  height: calc(72px * var(--dw-s));
+  margin-top: calc(10px * var(--dw-s));
+}
+
+.dw-cap .dw-it {
+  align-items: flex-start;
+  padding-top: calc(10px * var(--dw-s));
+  font-size: calc(15px * var(--dw-s));
+  line-height: 1.5;
+  color: var(--dw-ink2);
+}
+
+.dw-cap p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* the way out to the post itself, as the app's reading ends */
+.dw-ig {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(44px * var(--dw-s));
+  margin-top: calc(22px * var(--dw-s));
+  padding: 0 16px 0 20px;
+  border-radius: 99px;
+  background: var(--fm-fg);
+  color: var(--fm-page);
+  font-size: calc(14px * var(--dw-s));
+  font-weight: 700;
+  text-decoration: none;
+  outline: none;
+  transition: transform 150ms ease-out;
+}
+
+.dw-ig svg {
+  transition: transform 200ms ease-out;
+}
+
+.dw-ig:hover svg {
+  transform: translate(1px, -1px);
+}
+
+.dw-ig:active {
+  transform: scale(0.97);
+}
+
+.dw-ig:focus-visible {
+  box-shadow: 0 0 0 2px var(--fm-page), 0 0 0 4px var(--fm-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dw-waiting > i::after {
+    animation: none;
+  }
+}

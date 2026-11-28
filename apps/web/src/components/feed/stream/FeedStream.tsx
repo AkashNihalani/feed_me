@@ -47,6 +47,7 @@ import {
 } from 'react';
 import { flushSync } from 'react-dom';
 import DayLayer, { note as dayNote, type DayLayerHandle, type DayStart } from '@/components/feed/stream/DayLayer';
+import DayWide from '@/components/feed/stream/DayWide';
 import DayStamp from '@/components/feed/stream/DayStamp';
 import MoreTile from '@/components/feed/stream/MoreTile';
 import PostCell, { PlaceholderCell, type CellShape } from '@/components/feed/stream/PostCell';
@@ -453,6 +454,11 @@ const wideOf = (size: Metrics) => viewOf(size) >= READING_FROM;
    own zoom is always a grid's, and Day lies over it. (?day=page: the page's own cards, to compare) */
 const dayLayerOn = (size: Metrics | null): boolean =>
   Boolean(size && size.width < THEATRE_FROM && !wideOf(size)) && !(typeof window !== 'undefined' && window.location.search.includes('day=page'));
+/* A wide window's Day as a layer over the grid too (DayWide: one picture and its words, on the phone's own move). ?day=rows:
+   the page's own rows, as it was before, to compare */
+const dayWideOn = (size: Metrics | null): boolean => Boolean(size && wideOf(size)) && !(typeof window !== 'undefined' && /[?&]day=rows/.test(window.location.search));
+// the Day is a layer over the grid (a phone's cards, or a wide window's picture and words)
+const dayAsLayer = (size: Metrics | null): boolean => dayLayerOn(size) || dayWideOn(size);
 // a tile Day closes onto where it stands: any of it showing more than this far under the screen's top and over its foot
 const DAY_TILE_TOP = 90;
 const DAY_TILE_FOOT = 90;
@@ -1928,7 +1934,7 @@ function FeedStream({
       else options.covered?.remove();
     };
     // a phone: Day is the layer over the grid (DayLayer), the page's own zoom always a grid's
-    if (dayLayerOn(metricsRef.current)) {
+    if (dayAsLayer(metricsRef.current)) {
       const size = metricsRef.current;
       if (next === 'today') {
         uncover();
@@ -3109,9 +3115,10 @@ function FeedStream({
     breakpointRef.current = breakpoint;
     const wanted = initialMode(viewOf(metrics));
     // (a phone's Day is the layer over a grid: the page is the week under it)
-    const layered = wanted === 'today' && dayLayerOn(metrics);
+    const layered = wanted === 'today' && dayAsLayer(metrics);
     const pageWanted: FeedMode = layered ? 'week' : wanted;
-    if (!dayLayerOn(metrics)) dropDay();
+    // (a new breakpoint has a Day of its own, or none: one open on the last one is let go, and opened again below)
+    if (!first || !dayAsLayer(metrics)) dropDay();
     if (first || !modeRef.current) {
       modeRef.current = pageWanted;
       setMode(pageWanted);
@@ -3552,7 +3559,10 @@ function FeedStream({
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
-      const current = modeRef.current;
+      /* (the zoom shown: with Day up as a layer the page under it is still the grid it opened from, and → stepped on
+         from that grid, Week to Month, where it meant Day to Week) */
+      const layered = dayOpenRef.current;
+      const current = layered ? 'today' : modeRef.current;
       if (!current) return;
       const go = (next: FeedMode | null) => {
         if (!next) return;
@@ -3585,13 +3595,14 @@ function FeedStream({
         case 'Escape': {
           // only from the page itself: Escape in a menu or a sheet is that control's
           const fromPage = !target || target === document.body || Boolean(rootRef.current?.contains(target));
-          if (fromPage && current !== 'week') zoomTo('week');
+          if (fromPage && (current !== 'week' || dayOpenRef.current)) zoomTo('week');
           break;
         }
         case 'ArrowDown':
         case 'j':
         case 'J':
-          if (current === 'today') {
+          // (a layer's Day steps its own posts)
+          if (current === 'today' && !layered) {
             event.preventDefault();
             stepPost(1);
           }
@@ -3599,7 +3610,7 @@ function FeedStream({
         case 'ArrowUp':
         case 'k':
         case 'K':
-          if (current === 'today') {
+          if (current === 'today' && !layered) {
             event.preventDefault();
             stepPost(-1);
           }
@@ -4024,7 +4035,21 @@ function FeedStream({
         <div ref={probeScreenRef} className="w-px h-[100lvh]" />
       </div>
       {profileHeader}
-      {dayOpen && metrics && index && dayHost ? (
+      {dayOpen && metrics && index && dayHost && dayWideOn(metrics) ? (
+        <DayWide
+          ref={dayLayerRef}
+          start={dayOpen}
+          scope={scope}
+          index={index}
+          feeders={feeders}
+          left={metrics.left}
+          page={dayPage}
+          tileOf={dayTile}
+          placeTile={placeDayTile}
+          onClosed={closedDay}
+          onFeeder={scope.handle ? undefined : feederTap}
+        />
+      ) : dayOpen && metrics && index && dayHost && dayLayerOn(metrics) ? (
         <DayLayer
           ref={dayLayerRef}
           start={dayOpen}
